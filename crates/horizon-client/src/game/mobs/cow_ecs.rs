@@ -432,6 +432,7 @@ mod tests {
     #[ignore = "daily"]
     fn cows_ecs_reuse_ticks_like_mob() {
         let (n, asks, hits) = scenario(2, 1500).unwrap();
+        eprintln!("cow ecs: {n} ticks compared, {asks} queries asked, {hits} answered from the cache");
         assert!(n == 1500 && hits * 2 > asks, "{n} {asks} {hits}");
     }
 
