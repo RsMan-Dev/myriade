@@ -89,6 +89,7 @@ pub mod random_textures;
 pub mod ravager;
 pub mod render;
 pub mod riders;
+pub mod cow_memo;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;
