@@ -18,6 +18,7 @@ pub struct CowEcs {
     world: World,
     ids: horizon_client::fast_hash::FxHashMap<u32, Entity>,
     entered: Option<Entity>,
+    entered_in_mob: bool,
     passes: u32,
 }
 
@@ -38,6 +39,7 @@ impl CowEcs {
             world: World::new(),
             ids: Default::default(),
             entered: None,
+            entered_in_mob: false,
             passes: 0,
         }
     }
@@ -68,8 +70,27 @@ impl CowEcs {
 
     /// Before cow `m`'s tick: its entity (made on first sight), the stamp of the blocks around its
     /// box refreshed, and its cache lent to this thread.
-    pub fn enter(&mut self, m: &Mob, world: &horizon_client_render::world::World) {
+    pub fn enter(&mut self, m: &mut Mob, world: &horizon_client_render::world::World) {
         if self.mode == 0 || m.species() != Species::Cow || !world.moving_pistons.is_empty() || !world.shulkers.is_empty() {
+            return;
+        }
+        if self.mode == 3 {
+            // The same cache and stamp kept in the mob itself: no entity, no change detection.
+            let b = m.bounds();
+            let (lo, hi) = (b.min_position(), b.max_position());
+            let lo = [lo.x.floor() as i32 - 2, lo.y.floor() as i32 - 2, lo.z.floor() as i32 - 2];
+            let hi = [hi.x.floor() as i32 + 2, hi.y.floor() as i32 + 2, hi.z.floor() as i32 + 2];
+            let Some(stamp) = world.region_stamp(lo, hi) else {
+                return;
+            };
+            let mut held = m.memo.0.take().unwrap_or_default();
+            if held.0 != Some(stamp) {
+                held.0 = Some(stamp);
+                held.1.clear();
+            }
+            horizon_client::mobs::cow_memo::enter(std::mem::take(&mut held.1), lo, hi, true);
+            m.memo.0 = Some(held);
+            self.entered_in_mob = true;
             return;
         }
         let e = *self.ids.entry(m.id).or_insert_with(|| {
@@ -100,7 +121,13 @@ impl CowEcs {
     }
 
     /// After the tick: the cache goes back to its entity.
-    pub fn leave(&mut self) {
+    pub fn leave(&mut self, m: &mut Mob) {
+        if std::mem::take(&mut self.entered_in_mob) {
+            if let (Some(cache), Some(held)) = (horizon_client::mobs::cow_memo::leave(), m.memo.0.as_mut()) {
+                held.1 = cache;
+            }
+            return;
+        }
         let Some(e) = self.entered.take() else {
             return;
         };
@@ -406,5 +433,13 @@ mod tests {
     fn cows_ecs_reuse_ticks_like_mob() {
         let (n, asks, hits) = scenario(2, 1500).unwrap();
         assert!(n == 1500 && hits * 2 > asks, "{n} {asks} {hits}");
+    }
+
+    /// Mode 3: the same cache and stamp kept in the `Mob` itself (no entity, no change detection).
+    #[test]
+    #[ignore = "daily"]
+    fn cows_in_mob_memo_ticks_like_mob() {
+        let (n, asks, _) = scenario(3, 1500).unwrap();
+        assert!(n == 1500 && asks == 0, "{n} {asks}");
     }
 }

@@ -473,7 +473,7 @@ impl Game<'_> {
                         super::super::tick_profile::start_mob(&mobs[i].kind)
                     };
                     if let Some(c) = cow_ecs.as_deref_mut() {
-                        c.enter(&mobs[i], &self.world);
+                        c.enter(&mut mobs[i], &self.world);
                     }
                     let run_tick = || {
                         if resuming {
@@ -503,7 +503,7 @@ impl Game<'_> {
                             Ok(progress) => progress,
                             Err(payload) => {
                                 if let Some(c) = cow_ecs.as_deref_mut() {
-                                    c.leave();
+                                    c.leave(&mut mobs[i]);
                                 }
                                 mobs[i].despawn = mod_api::Despawn::default();
                                 if seen_guest.is_none() {
@@ -530,7 +530,7 @@ impl Game<'_> {
                             }
                         };
                     if let Some(c) = cow_ecs.as_deref_mut() {
-                        c.leave();
+                        c.leave(&mut mobs[i]);
                     }
                     let kept = match progress {
                         horizon_client::mobs::ai::TickProgress::Complete(kept) => kept,

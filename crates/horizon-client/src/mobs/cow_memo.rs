@@ -16,7 +16,7 @@ enum Value {
 }
 
 /// What the cow's tick asked, with the answers.
-#[derive(Component, Default)]
+#[derive(Component, Default, Clone)]
 pub struct QueryCache {
     answers: Vec<(Key, Value)>,
     pub hits: u64,
@@ -135,5 +135,20 @@ pub fn powder_snow(bounds: Aabb, compute: impl FnOnce() -> bool) -> bool {
     match ask(2, bounds, Vec3::ZERO, 1, || Value::Powder(compute())) {
         Value::Powder(v) => v,
         _ => unreachable!("kind 2 holds a powder"),
+    }
+}
+
+/// The cache and the stamp of its region, when they live in the mob (mode 3, no ECS): a clone of the
+/// mob starts without them, and they are not part of its `Debug` text.
+#[derive(Default)]
+pub struct MobMemo(pub Option<Box<(Option<crate::world::RegionStamp>, QueryCache)>>);
+impl Clone for MobMemo {
+    fn clone(&self) -> Self {
+        Self(None)
+    }
+}
+impl std::fmt::Debug for MobMemo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MobMemo")
     }
 }

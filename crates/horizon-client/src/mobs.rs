@@ -1626,6 +1626,8 @@ pub struct Mob {
     /// What `entity_size` answered for its pose and vanilla size (`EntityEvent.Size`):
     /// `dims` uses it while it holds.
     pub size_answer: Option<crate::pose::SizeAnswer>,
+    /// Prototype (mode 3 of `cow_ecs`): the same cache as the ECS component, kept in the mob.
+    pub memo: cow_memo::MobMemo,
 }
 /// A mannequin's `description` and `hide_description` (`Mannequin.updateDescription`):
 /// the default `entity.minecraft.mannequin.label`, none at all, or a component.
@@ -3655,6 +3657,7 @@ impl Mob {
             profile: None,
             random_textures: Default::default(),
             size_answer: None,
+            memo: Default::default(),
             attrs: Attrs {
                 speed: kind.speed,
                 attack_damage: kind.attack_damage,
