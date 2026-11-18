@@ -99,9 +99,13 @@ pub struct Asleep {
 /// last within 32 blocks, or the cow was hurt).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ActiveUntil(pub u64);
-/// The players of the bench: positions (x, z), read each tick.
+/// The players of the bench: positions (x, z). `dirty` is the event: a player moved, came or left.
 #[derive(Resource, Default)]
-pub struct Players(pub Vec<(f64, f64)>);
+pub struct Players {
+    pub list: Vec<(f64, f64)>,
+    prev: Vec<(f64, f64)>,
+    pub dirty: bool,
+}
 /// What a woken sleeper still owes its stroll wait.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resume(pub i32);
@@ -400,35 +404,53 @@ fn stroll(
     }
 }
 
-/// `Mob.checkDespawn`'s reset of `noActionTime`: a cow within 32 blocks of a player is active (for 100 ticks
-/// after), and a sleeper that had gone idle wakes. The players are binned in 32-block cells and the cows in the
-/// cells they cover are visited once each, whatever the number of players: each cow tests only the players of
-/// the 3 x 3 bins around it.
+/// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are.
+/// When one moves (`Players.dirty`), the cows of the cells its old and new circles cover are tested against the
+/// players of the 3 x 3 bins of 32 blocks around them, and only the cows that enter or leave the 32 blocks are
+/// touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and an idle sleeper wakes; a leaving
+/// cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
 fn player_near(
     clock: Res<Clock>,
-    players: Res<Players>,
+    mut players: ResMut<Players>,
     mut grid: ResMut<Grid>,
     mut active: Query<(&mut ActiveUntil, Option<&Asleep>)>,
     mut commands: Commands,
 ) {
-    if players.0.is_empty() {
+    if !players.dirty {
         return;
     }
+    players.dirty = false;
     const BIN: f64 = 32.0;
     let origin = grid.origin;
     let bins = ((grid.width as f64 * CELL / BIN).ceil() as i64).max(1) + 2;
     let bin = |v: f64| (((v - origin) / BIN).floor() as i64 + 1).clamp(0, bins - 1);
-    let mut by_bin: Vec<Vec<(f64, f64)>> = vec![Vec::new(); (bins * bins) as usize];
-    for &(px, pz) in &players.0 {
-        by_bin[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
-    }
-    // The cells any player's square covers, each once.
-    let tick = clock.0 as u32;
+    let fill = |list: &[(f64, f64)]| {
+        let mut by_bin: Vec<Vec<(f64, f64)>> = vec![Vec::new(); (bins * bins) as usize];
+        for &(px, pz) in list {
+            by_bin[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
+        }
+        by_bin
+    };
+    let new = players.list.clone();
+    let old = std::mem::replace(&mut players.prev, new.clone());
+    let within = |by_bin: &Vec<Vec<(f64, f64)>>, x: f64, z: f64| {
+        let (bx, bz) = (bin(x), bin(z));
+        (bz - 1..=bz + 1).any(|zz| {
+            (bx - 1..=bx + 1).any(|xx| {
+                (0..bins).contains(&xx)
+                    && (0..bins).contains(&zz)
+                    && by_bin[(zz * bins + xx) as usize].iter().any(|&(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0)
+            })
+        })
+    };
+    let (new_bins, _old_bins) = (fill(&new), ());
+    // The cells either circle covers, each once.
+    let tick = clock.0 as u32 + 1;
     let cells = grid.width * grid.width;
-    let (width, grid) = (grid.width, &mut *grid);
+    let grid = &mut *grid;
     grid.stamp.resize(cells, 0);
     let mut covered: Vec<usize> = Vec::new();
-    for &(px, pz) in &players.0 {
+    for &(px, pz) in new.iter().chain(old.iter()) {
         let (x0, x1) = (grid.column(px - 32.0).max(0), grid.column(px + 32.0).min(grid.width as i64 - 1));
         let (z0, z1) = (grid.column(pz - 32.0).max(0), grid.column(pz + 32.0).min(grid.width as i64 - 1));
         for zz in z0..=z1 {
@@ -441,28 +463,19 @@ fn player_near(
             }
         }
     }
-    let fresh = clock.0 + 100;
     for c in covered {
         for e in &grid.items[grid.start[c] as usize..grid.start[c + 1] as usize] {
-            let (bx, bz) = (bin(e.x), bin(e.z));
-            let near = (bz - 1..=bz + 1).any(|zz| {
-                (bx - 1..=bx + 1).any(|xx| {
-                    (0..bins).contains(&xx)
-                        && (0..bins).contains(&zz)
-                        && by_bin[(zz * bins + xx) as usize]
-                            .iter()
-                            .any(|&(px, pz)| (e.x - px).powi(2) + (e.z - pz).powi(2) < 32.0 * 32.0)
-                })
-            });
-            if near && let Ok((mut a, asleep)) = active.get_mut(e.entity) {
-                if a.0 < fresh {
-                    a.0 = fresh;
-                }
+            let now_in = within(&new_bins, e.x, e.z);
+            let Ok((mut a, asleep)) = active.get_mut(e.entity) else { continue };
+            if now_in && a.0 != u64::MAX {
+                a.0 = u64::MAX;
                 if let Some(asleep) = asleep
                     && asleep.until == u64::MAX
                 {
                     commands.entity(e.entity).remove::<Asleep>().insert(Resume(1));
                 }
+            } else if !now_in && a.0 == u64::MAX {
+                a.0 = clock.0 + 100;
             }
         }
     }
@@ -943,7 +956,9 @@ impl Herd {
     }
     /// The players of the herd's world (their positions; cows within 32 blocks stay active).
     pub fn set_players(&mut self, players: Vec<(f64, f64)>) {
-        self.world.resource_mut::<Players>().0 = players;
+        let mut p = self.world.resource_mut::<Players>();
+        p.list = players;
+        p.dirty = true;
     }
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);
