@@ -58,6 +58,8 @@ fn main() {
         herd.tick();
     }
     *herd.world.resource_mut::<horizon_ecs_proto::cow::OrderedStats>() = Default::default();
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let i0 = counter.as_ref().map_or(0, |c| c.read());
     let t0 = Instant::now();
     for _ in warm..ticks {
         if timed {
@@ -67,6 +69,8 @@ fn main() {
         }
     }
     let dt = t0.elapsed();
+    let instr = counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64;
+    println!("instr_per_entity_tick={instr}");
     if std::env::var_os("HUNT").is_some() {
         let c = horizon_ecs_proto::goals::counts(&mut herd.world);
         let hits = herd.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();

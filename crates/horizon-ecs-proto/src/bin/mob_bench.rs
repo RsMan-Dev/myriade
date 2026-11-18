@@ -78,10 +78,13 @@ fn main() {
     let mut test_level = TestLevel::new(7);
     let mut pushes = PendingPushes::default();
     let mut attacks = 0usize;
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let mut i0 = 0;
     let mut t0 = Instant::now();
     for t in 0..ticks {
         if t == warm {
             t0 = Instant::now();
+            i0 = counter.as_ref().map_or(0, |c| c.read());
         }
         let mut snapshot: Vec<Seen> = mobs.iter().map(|m| m.seen(None, items)).collect();
         let mut grid = mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
@@ -112,6 +115,7 @@ fn main() {
         std::hint::black_box(&events);
     }
     eprintln!("player hits {attacks}; with a target: {}", mobs.iter().filter(|m| m.ai.target.is_some()).count());
+    println!("instr_per_entity_tick={}", counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64);
     let walking = mobs.iter().filter(|m| !m.ai.nav.is_done()).count();
     println!(
         "mob n={n} ticks={ticks} spacing={spacing} players={players} wall/tick={:.1}us walking={walking}",
