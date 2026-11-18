@@ -475,6 +475,10 @@ pub struct Config {
     /// Batch mode: an animal that overlaps another stays in `push` every tick even if it does not move (`vanilla` runs
     /// `pushEntities` for every entity, at rest or not).
     pub keep_touching: bool,
+    /// EXPERIMENT (calibration of the batch push): the form (0: all impulses x k; 1: only the impulse from a lower index x k)
+    /// and the factor k, from the environment (PUSH_FORM, PUSH_K).
+    pub push_form: u8,
+    pub push_k: f64,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -686,9 +690,20 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
         ),
     )
 }
+/// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
+/// tick see it).
+pub fn enter_index(world: &mut World, e: Entity) {
+    let Some(b) = world.get::<Bounds>(e).copied() else { return };
+    let (mn, mx) = (b.0.min_position(), b.0.max_position());
+    let cell = world.resource::<Index>().cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+    world.resource_mut::<Index>().insert(e, cell);
+    world.get_mut::<Cell>(e).unwrap().0 = cell;
+    world.resource_mut::<crate::goals::CellMoves>().0.push(e);
+}
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
     let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
+    enter_index(world, e);
     crate::hostile::equip(world, e, sp);
     crate::farm::equip(world, e, sp);
     e
@@ -1809,10 +1824,15 @@ fn push(
             // `Entity.push` is called for the pair from both sides every tick (each entity runs `pushEntities`): each of the
             // two receives its impulse twice per tick.
             let (bx, bz) = (xa * pow * f64::from(0.05_f32), za * pow * f64::from(0.05_f32));
-            xa = bx * 2.0;
-            za = bz * 2.0;
-            dv.0 -= xa;
-            dv.1 -= za;
+            // The neighbour `o` is ticked before this animal (a lower index) or after it.
+            let lower = o.index().index() < e.index().index();
+            let gain = |o_lower: bool| if cfg.push_form == 0 { 2.0 * cfg.push_k } else { 1.0 + if o_lower { cfg.push_k } else { 1.0 } };
+            let (gx, gz) = (bx * gain(lower), bz * gain(lower));
+            // What the neighbour receives of this animal's call: its own call is the other one.
+            xa = bx * gain(!lower);
+            za = bz * gain(!lower);
+            dv.0 -= gx;
+            dv.1 -= gz;
             // An overlap begins: in the ordered mode this one and its neighbour are handled by `ordered_pass` from the
             // next tick (this tick's impulse was given above).
             if cfg.ordered_push {
@@ -2303,7 +2323,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some() });
+        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());

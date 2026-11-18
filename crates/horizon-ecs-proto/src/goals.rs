@@ -961,6 +961,7 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     // The baby is of its parents' species (the mate was checked to be the same).
     let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(a).unwrap().0 as usize];
     let baby = w.spawn(spawn_bundle(&sp, pos.x, pos.z, seed)).id();
+    enter_index(w, baby);
     crate::farm::equip(w, baby, &sp);
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active;
     make_baby(w, baby, data.baby_age);
