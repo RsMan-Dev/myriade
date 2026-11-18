@@ -451,14 +451,23 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
     world.resource_mut::<Requests>().0.extend(reqs);
     true
 }
-/// Makes `parent` the mother of `baby`: its moves wake the baby's follow-parent goal.
-pub fn adopt(world: &mut World, parent: Entity, baby: Entity) {
+/// `parent` is watched for `baby`: its moves wake the baby's follow-parent goal (an event on the adult that was
+/// the nearest when the baby last looked, not a scan of the herd).
+fn watch(world: &mut World, parent: Entity, baby: Entity) {
     match world.get_mut::<Mother>(parent) {
-        Some(mut m) => m.0.push(baby),
+        Some(mut m) => {
+            if !m.0.contains(&baby) {
+                m.0.push(baby);
+            }
+        }
         None => {
             world.entity_mut(parent).insert(Mother(vec![baby]));
         }
     }
+}
+/// Makes `parent` the mother of `baby` and wakes the baby.
+pub fn adopt(world: &mut World, parent: Entity, baby: Entity) {
+    watch(world, parent, baby);
     world.resource_mut::<Requests>().0.push(Req::Start(baby, Kind::FollowParent));
 }
 /// A baby of `ticks` ticks of age left.
@@ -472,6 +481,7 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
     world.entity_mut(e).insert(GrowAt(now + ticks));
     world.resource_mut::<Babies>().0.push(e);
+    world.resource_mut::<Requests>().0.push(Req::Start(e, Kind::FollowParent));
     world.resource_mut::<Wheel>().push((now + ticks).min(now + WHEEL_MAX), e, Due::Grow);
 }
 
@@ -1065,6 +1075,10 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
                     }
                 }
             }
+            // The adult found, near or far, is watched: it moving wakes the baby again.
+            if let Some(b) = best {
+                watch(w, b.0, e);
+            }
             best.filter(|b| b.1 >= 9.0).map(|b| Pick::Parent(b.0))
         }
         Kind::Stroll => {
@@ -1214,6 +1228,10 @@ pub fn counts(world: &mut World) -> Vec<(&'static str, usize)> {
 mod tests {
     use super::*;
 
+    /// The item that tempts the species of the process (`HORIZON_SPECIES`).
+    fn item() -> u32 {
+        (1..32).find(|i| species().goals.tempt_items >> i & 1 == 1).unwrap()
+    }
     fn herd() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
         Some(Herd::new(0, 6.0, true, false, 3))
@@ -1303,9 +1321,9 @@ mod tests {
             if p && started.is_none() {
                 started = Some(t);
                 assert!(!running(&h, e, Kind::Stroll), "panic took MOVE from the stroll");
-                assert_eq!(h.world.get::<Nav>(e).unwrap().speed, 2.0);
+                assert_eq!(h.world.get::<Nav>(e).unwrap().speed, species().goals.panic);
                 let c = at(&h, e);
-                player(&mut h, 2, c.x + 3.0, c.z, WHEAT);
+                player(&mut h, 2, c.x + 3.0, c.z, item());
             }
             if started.is_some_and(|s| t == s + 8) {
                 assert!(has::<Panicking>(&h, e) || running(&h, e, Kind::Panic) || !has::<Tempting>(&h, e), "tempt waits for the panic");
@@ -1318,10 +1336,10 @@ mod tests {
             if started.is_some() && !p && ended.is_none() && h.world.resource::<Clock>().0 > h.world.get::<Panic>(e).unwrap().until {
                 ended = Some(t);
                 let c = at(&h, e);
-                player(&mut h, 2, c.x + 3.0, c.z, WHEAT);
+                player(&mut h, 2, c.x + 3.0, c.z, item());
             }
             prev = at(&h, e);
-            if ended.is_some() && t > ended.unwrap() + 4 {
+            if ended.is_some() && t > ended.unwrap() + 120 || ended.is_some() && has::<Tempting>(&h, e) {
                 break;
             }
         }
@@ -1331,8 +1349,10 @@ mod tests {
         // Moving: modifier 2 gives 2 x 2 the pull of modifier 1 (`setSpeed` is both the speed and the input).
         let fast = steps.iter().cloned().fold(0.0, f64::max);
         let slow = stroll_steps.iter().cloned().fold(0.0, f64::max);
-        assert!(fast / slow > 3.0 && fast / slow < 4.6, "{fast} / {slow}");
-        // Player 2 held wheat in range while it panicked: tempting began after the panic, not during it.
+        let want = species().goals.panic.powi(2);
+        assert!(fast / slow > want * 0.75 && fast / slow < want * 1.15, "{fast} / {slow}, expected about {want}");
+        // Player 2 held wheat in range while it panicked: tempting began after the panic (and after the calm that the
+        // interrupted tempt left), not during it.
         assert!(running(&h, e, Kind::Tempt) || has::<Tempting>(&h, e));
         eprintln!("panic {started}..{ended}, step {fast:.3} vs stroll {slow:.3}");
     }
@@ -1343,23 +1363,23 @@ mod tests {
         let Some(mut h) = herd() else { return };
         let (near, far) = (cow(&mut h, -8.5, 0.5, 21), cow(&mut h, -10.5, 5.5, 22));
         ticks(&mut h, 2);
-        player(&mut h, 1, 0.5, 0.5, WHEAT);
+        player(&mut h, 1, 0.5, 0.5, item());
         ticks(&mut h, 3);
         assert!(has::<Tempting>(&h, near), "9 blocks away");
         assert!(!has::<Tempting>(&h, far), "11.2 blocks away");
-        assert_eq!(h.world.get::<Nav>(near).unwrap().speed, 1.25);
+        assert_eq!(h.world.get::<Nav>(near).unwrap().speed, species().goals.tempt);
         ticks(&mut h, 120);
         let d = dist(at(&h, near), Vec3::new(0.5, 1.0, 0.5));
         assert!(d < 3.5 && d > 1.5, "stopped {d} from the player");
         // The player takes a step toward the far cow: it comes into range, the event wakes it.
-        player(&mut h, 1, -1.5, 1.5, WHEAT);
+        player(&mut h, 1, -1.5, 1.5, item());
         ticks(&mut h, 2);
         assert!(has::<Tempting>(&h, far), "came into range");
         // Wheat away: both stop within a tick; a new grab inside the 100 ticks of calm does not tempt.
         player(&mut h, 1, -1.5, 1.5, 0);
         ticks(&mut h, 2);
         assert!(!has::<Tempting>(&h, near) && !has::<Tempting>(&h, far));
-        player(&mut h, 1, -1.5, 1.5, WHEAT);
+        player(&mut h, 1, -1.5, 1.5, item());
         ticks(&mut h, 50);
         assert!(!has::<Tempting>(&h, near), "calm down");
         ticks(&mut h, 60);
@@ -1424,6 +1444,23 @@ mod tests {
         h.world.get_mut::<Bounds>(mom).unwrap().0 = box_at(to, 0.9, 1.4);
         ticks(&mut h, 3);
         assert!(has::<Trailing>(&h, far), "woken by the mother's move");
+    }
+
+    /// A baby 1.4 blocks from an adult that is not its mother: the adult walks off, and the baby follows (no scan).
+    #[test]
+    fn a_baby_follows_the_nearest_adult_that_walks_off() {
+        let Some(mut h) = herd() else { return };
+        let adult = cow(&mut h, 0.5, 0.5, 61);
+        let baby = cow(&mut h, 1.5, 1.5, 62);
+        ticks(&mut h, 2);
+        make_baby(&mut h.world, baby, 5000);
+        ticks(&mut h, 4);
+        assert!(!has::<Trailing>(&h, baby), "1.4 blocks: no need");
+        let to = Vec3::new(-2.0, 1.0, 0.5);
+        h.world.get_mut::<Pos>(adult).unwrap().0 = to;
+        h.world.get_mut::<Bounds>(adult).unwrap().0 = box_at(to, 0.9, 1.4);
+        ticks(&mut h, 3);
+        assert!(has::<Trailing>(&h, baby), "the adult moved 3.7 blocks away");
     }
 
     /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.

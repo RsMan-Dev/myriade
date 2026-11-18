@@ -661,11 +661,11 @@ fn pathfind(
     level: Res<Level>,
     sp: Res<Species>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel), With<NeedsPath>>,
 ) {
     let now = clock.0;
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel| {
         let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
@@ -686,7 +686,8 @@ fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
+        // A cow that a recoil or a jump has just lifted (upward velocity, not yet integrated) is in the air already.
+        let path = ((c.on_ground && vel.0.y <= 0.0) || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -702,10 +703,10 @@ fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f)| one(e, p, b, c, &mut s, &mut n, f));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v)| one(e, p, b, c, &mut s, &mut n, f, v));
     } else {
-        for (e, p, b, c, mut s, mut n, f) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f);
+        for (e, p, b, c, mut s, mut n, f, v) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v);
         }
     }
 }
