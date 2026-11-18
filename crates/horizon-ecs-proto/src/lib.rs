@@ -3,3 +3,4 @@
 //! collision kernel and the stroll / move-control / travel formulas of the real cow.
 pub mod cow;
 pub mod flat;
+pub mod kernel_lab;

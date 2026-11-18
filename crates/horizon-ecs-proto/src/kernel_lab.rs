@@ -1,0 +1,214 @@
+//! Worlds and call lists for the block-collision kernel alone (suivi/ecs-noyau-collisions.md): the cases of a
+//! cow, and a varied random world with random calls for the equality test of the optimised kernel.
+use horizon_client_lib::mobs::MobWorld;
+use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use horizon_core::geometry::{Aabb, Vec3};
+use horizon_world::registry::{BlockRegistry, BlockStateId};
+use std::sync::Arc;
+
+#[derive(Clone, Copy)]
+pub struct Rng(pub u64);
+impl Rng {
+    pub fn next(&mut self) -> u64 {
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    pub fn unit(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / (1u64 << 53) as f64
+    }
+    pub fn range(&mut self, a: f64, b: f64) -> f64 {
+        a + (b - a) * self.unit()
+    }
+    pub fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
+
+/// One call of the kernel.
+#[derive(Clone, Copy)]
+pub struct Call {
+    pub bounds: Aabb,
+    pub movement: Vec3,
+    pub step: f32,
+    pub on_ground: bool,
+}
+
+const VARIED: &[&str] = &[
+    "stone", "dirt", "oak_slab", "stone_slab", "oak_stairs", "stone_stairs", "oak_fence", "cobblestone_wall",
+    "snow", "oak_fence_gate", "oak_trapdoor", "white_carpet", "powder_snow", "scaffolding", "water", "lava",
+    "cobweb", "glass_pane", "iron_bars", "lily_pad", "soul_sand", "honey_block", "cactus", "farmland", "dirt_path",
+    "chest", "white_bed", "anvil", "hopper", "cauldron", "brewing_stand", "end_portal_frame", "short_grass",
+    "torch", "ladder", "vine", "sea_pickle", "turtle_egg", "lantern", "pointed_dripstone", "flower_pot", "piston",
+    "sticky_piston", "piston_head", "moving_piston", "shulker_box", "composter", "big_dripleaf", "rail",
+    "stone_button", "candle", "cake", "end_rod", "chain", "bell", "grindstone", "stonecutter", "lectern",
+    "enchanting_table", "daylight_detector", "ice", "slime_block", "oak_door", "oak_leaves", "amethyst_cluster",
+    "dragon_egg", "sculk_sensor", "campfire", "conduit", "heavy_core", "mud", "chorus_plant", "chorus_flower",
+    "oak_sign", "oak_pressure_plate", "tripwire", "snow_block", "bamboo", "azalea", "moss_carpet", "creaking_heart",
+];
+
+/// The states of the names above, per name.
+fn varied_states(registry: &BlockRegistry) -> Vec<Vec<BlockStateId>> {
+    let mut by_name: Vec<Vec<BlockStateId>> = vec![Vec::new(); VARIED.len()];
+    for i in 0..registry.len() {
+        let id = BlockStateId(i as u32);
+        let name = &registry.state(id).unwrap().name;
+        if let Some(k) = VARIED.iter().position(|v| name.strip_prefix("minecraft:") == Some(v)) {
+            by_name[k].push(id);
+        }
+    }
+    by_name.retain(|v| !v.is_empty());
+    by_name
+}
+
+pub fn leaked(build: impl FnOnce(&mut horizon_client_render::world::World, &BlockRegistry)) -> &'static MobWorld<'static> {
+    horizon_client_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES").0
+}
+
+fn insert_chunks(w: &mut horizon_client_render::world::World, c0: i32, c1: i32) {
+    for cx in c0..c1 {
+        for cz in c0..c1 {
+            w.chunks.insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
+        }
+    }
+}
+
+/// Bench world: a stone floor at y = 0 over x, z in [-48, 48), a wall x = 20 (y 1..=3) and, for x in [24, 44),
+/// z in [-20, 20), a field of random non-cubic blocks at y = 1 (and some at y = 2).
+pub fn bench_world() -> &'static MobWorld<'static> {
+    leaked(|w, registry| {
+        insert_chunks(w, -3, 3);
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let states = varied_states(registry);
+        let mut r = Rng(0x9E37_79B9_7F4A_7C15);
+        for x in -48..48 {
+            for z in -48..48 {
+                w.set(x, 0, z, stone).unwrap();
+            }
+        }
+        for z in -48..48 {
+            for y in 1..=3 {
+                w.set(20, y, z, stone).unwrap();
+            }
+        }
+        for x in 24..44 {
+            for z in -20..20 {
+                if r.below(3) == 0 {
+                    continue;
+                }
+                let k = r.below(states.len());
+                let s = states[k][r.below(states[k].len())];
+                w.set(x, 1, z, s).unwrap();
+                if r.below(8) == 0 {
+                    let k = r.below(states.len());
+                    w.set(x, 2, z, states[k][r.below(states[k].len())]).unwrap();
+                }
+            }
+        }
+    })
+}
+
+pub fn cow_box(x: f64, y: f64, z: f64) -> Aabb {
+    Aabb::new(Vec3::new(x - 0.45, y, z - 0.45), Vec3::new(x + 0.45, y + 1.4, z + 0.45))
+}
+
+pub const CASES: [&str; 5] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture"];
+
+/// The calls of one cow case (a few hundred, cycled by the bench).
+pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
+    let mut r = Rng(0x1234_5678_9ABC_DEF1);
+    let g = -0.08 * f64::from(0.98_f32);
+    (0..n)
+        .map(|_| {
+            let (x, z) = (r.range(-40.0, 10.0), r.range(-40.0, 40.0));
+            let walk = Vec3::new(r.range(-0.12, 0.12), g, r.range(-0.12, 0.12));
+            let (bounds, movement, on_ground) = match case {
+                "a-rest" => (cow_box(x, 1.0, z), Vec3::new(0.0, g, 0.0), true),
+                "b-walk" => (cow_box(x, 1.0, z), walk, true),
+                "c-wall" => (cow_box(19.0 - 0.45 - r.range(0.0, 0.3), 1.0, z), Vec3::new(0.12, g, r.range(-0.05, 0.05)), true),
+                "d-fall" => (cow_box(x, r.range(5.0, 30.0), z), Vec3::new(0.0, r.range(-1.2, -0.1), 0.0), false),
+                _ => (cow_box(r.range(24.0, 44.0), 1.0, r.range(-20.0, 20.0)), walk, true),
+            };
+            Call { bounds, movement, step: 0.6, on_ground }
+        })
+        .collect()
+}
+
+pub fn run(world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject: None };
+    scene
+        .resolve_in_border_with(c.bounds, c.movement, c.step, c.on_ground, None, &[])
+        .map_err(|e| e.to_string())
+}
+
+/// The old kernel (kept under another name), for the equality test.
+pub fn run_reference(world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject: None };
+    scene
+        .resolve_in_border_with_reference(c.bounds, c.movement, c.step, c.on_ground, None, &[])
+        .map_err(|e| e.to_string())
+}
+
+/// A varied random world over x, z in [-32, 32) (chunk (2, 0) and beyond absent) and y in [-2, 12), with sections
+/// of different densities, and `n` random calls over it (boxes of several sizes, speeds, steps).
+pub fn varied_world(seed: u64) -> &'static MobWorld<'static> {
+    leaked(|w, registry| {
+        insert_chunks(w, -2, 2);
+        let states = varied_states(registry);
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let mut r = Rng(seed | 1);
+        for bx in (-32..32).step_by(4) {
+            for by in (-4..12).step_by(4) {
+                for bz in (-32..32).step_by(4) {
+                    let density = [0, 0, 5, 20, 60, 100][r.below(6)];
+                    let kind = r.below(3);
+                    for x in bx..bx + 4 {
+                        for y in by..by + 4 {
+                            for z in bz..bz + 4 {
+                                if r.below(100) >= density {
+                                    continue;
+                                }
+                                let s = match kind {
+                                    0 => stone,
+                                    _ => {
+                                        let k = r.below(states.len());
+                                        states[k][r.below(states[k].len())]
+                                    }
+                                };
+                                w.set(x, y, z, s).unwrap();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn random_calls(seed: u64, n: usize) -> Vec<Call> {
+    let mut r = Rng(seed ^ 0xABCD_EF01_2345_6789 | 1);
+    (0..n)
+        .map(|_| {
+            let (w, h) = [(0.9, 1.4), (0.6, 1.8), (0.3, 0.3), (1.4, 0.9), (0.6, 0.6)][r.below(5)];
+            let (x, y, z) = (r.range(-34.0, 40.0), r.range(-4.0, 14.0), r.range(-34.0, 34.0));
+            // Positions on block faces and edges are the ones that stress the thresholds.
+            let snap = |v: f64, r: &mut Rng| if r.below(4) == 0 { (v * 8.0).round() / 8.0 } else { v };
+            let (x, y, z) = (snap(x, &mut r), snap(y, &mut r), snap(z, &mut r));
+            let bounds = Aabb::new(Vec3::new(x - w / 2.0, y, z - w / 2.0), Vec3::new(x + w / 2.0, y + h, z + w / 2.0));
+            let scale = [0.05, 0.2, 0.5, 2.0, 8.0][r.below(5)];
+            let axis_only = r.below(3);
+            let mut m = Vec3::new(r.range(-scale, scale), r.range(-scale, scale), r.range(-scale, scale));
+            if axis_only == 0 {
+                m = Vec3::new(0.0, -r.range(0.0, 0.08), 0.0);
+            } else if axis_only == 1 && r.below(2) == 0 {
+                m = Vec3::new(m.x, -0.0784, m.z);
+            }
+            if r.below(10) == 0 {
+                m = Vec3::new(0.0, m.y, 0.0);
+            }
+            let step = [0.0_f32, 0.6, 1.0][r.below(3)];
+            Call { bounds, movement: m, step, on_ground: r.below(2) == 0 }
+        })
+        .collect()
+}

@@ -269,6 +269,24 @@ impl<'w> SceneCollisions<'w, '_> {
         }
         .resolve_with_context(bounds, movement, max_step, on_ground, context)
     }
+    /// The kernel as it was before the fast paths, kept for the equality test.
+    pub fn resolve_in_border_with_reference(
+        self,
+        bounds: Aabb,
+        movement: Vec3,
+        max_step: f32,
+        on_ground: bool,
+        border: Option<(&BorderGeometry, [f64; 2])>,
+        entities: &[Aabb],
+    ) -> Result<Vec3> {
+        let context = self.context(bounds);
+        EntityCollisions {
+            blocks: self,
+            entities,
+            border,
+        }
+        .resolve_with_context(bounds, movement, max_step, on_ground, context)
+    }
     /// Resolve movement with the entity's captured collision context. Most
     /// callers only need the position context; entities such as falling blocks
     /// also affect contextual block shapes (for example powder snow).
