@@ -30,3 +30,26 @@ fn the_fast_kernel_equals_the_reference_bit_for_bit() {
     // The cases must actually collide, or the equality says nothing.
     assert!(moved * 5 > calls, "only {moved} of {calls} calls were stopped by a block");
 }
+
+/// The flag of the unit-cube states, state by state: set exactly for a state whose cached shape is the unit cube and
+/// that has no contextual rule and no entity-kind variants; and the states that are the unit cube but not plain (the
+/// ones the flag must keep out) are listed, so that the equality test's worlds can hold them.
+#[test]
+fn the_plain_cube_flag_is_right_for_every_state() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let binding = mw.collision;
+    let (mut plain, mut cube_but_contextual) = (0, Vec::new());
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        let cube = binding.cached_shapes().cached_shape(id).unwrap().is_some_and(horizon_core::geometry::VoxelShape::is_block);
+        let ctx = binding.has_context_rule(id);
+        assert_eq!(binding.is_plain_cube(id), cube && !ctx, "state {i}");
+        plain += usize::from(binding.is_plain_cube(id));
+        if cube && ctx {
+            cube_but_contextual.push(mw.registry.state(id).unwrap().name.clone());
+        }
+    }
+    eprintln!("{plain} plain cube states; unit cubes with a contextual rule: {cube_but_contextual:?}");
+    assert!(plain > 100);
+}
