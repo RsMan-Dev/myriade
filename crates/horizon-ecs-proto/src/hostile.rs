@@ -358,7 +358,7 @@ fn melee_run(
             } else if d > 256.0 {
                 a.recalc += 5;
             }
-            go_to(&mut cmd, e, p.x, p.z, a.speed);
+            go_to(&mut cmd, e, p.x, p.z, a.speed, 5);
         }
         a.until = (a.until - 1).max(0);
         if a.until <= 0 && g.seen && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(player_box(&p)) {

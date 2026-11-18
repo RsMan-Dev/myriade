@@ -31,6 +31,18 @@ fn main() {
             let o = -f64::from(side) * spacing / 2.0;
             let mut m = Mob::new(i as u32 + 1, kind.clone(), Vec3::new(o + cx * spacing + 0.5, 1.0, o + cz * spacing + 0.5), ((i * 37) % 360) as f32);
             m.persistent = true;
+            // SCOPE: only the goals the ECS zombie has (melee, stroll, the two looks; hurt-by and nearest player).
+            if std::env::var_os("SCOPE").is_some() {
+                use horizon_client_lib::mobs::goals::*;
+                m.ai.goals.clear();
+                m.ai.targets.clear();
+                m.ai.goals.add(3, MeleeAttack::new(1.0, false).zombie());
+                m.ai.goals.add(7, Stroll::avoiding_water(1.0));
+                m.ai.goals.add(8, LookAtPlayer::new(8.0));
+                m.ai.goals.add(8, RandomLookAround::default());
+                m.ai.targets.add(1, HurtByTarget::new());
+                m.ai.targets.add(2, NearestTarget::player(true));
+            }
             m
         })
         .collect();
@@ -44,9 +56,10 @@ fn main() {
         .collect();
     let holders = (players as f64 * hold) as usize;
     let walkers = holders / 10;
+    let item_name = std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into());
     let view = |at: Vec3, wheat: bool| {
         let mut p = player_view(at);
-        p.main_hand = wheat.then(|| "minecraft:wheat".into());
+        p.main_hand = wheat.then(|| item_name.as_str().into());
         p
     };
     let mut views: Vec<PlayerView> = list.iter().enumerate().map(|(i, &(x, z))| view(Vec3::new(x, 1.0, z), i < holders)).collect();
@@ -83,10 +96,13 @@ fn main() {
     };
     let mut test_level = TestLevel::new(7);
     let mut pushes = PendingPushes::default();
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let mut i0 = 0;
     let mut t0 = Instant::now();
     for t in 0..ticks {
         if t == warm {
             t0 = Instant::now();
+            i0 = counter.as_ref().map_or(0, |c| c.read());
         }
         // The walkers (as in `goal_bench`) move along x; they stay in their bin for the nearest-player lookup.
         for (i, v) in views.iter_mut().enumerate().take(walkers) {
@@ -124,7 +140,7 @@ fn main() {
                 others_solid: Some(&[]),
                 nearest_player: near.map(|i| Vec3::new(list[i].0, 1.0, list[i].1)),
                 player: near.map(|i| views[i].clone()),
-                game_time: t as i64,
+                game_time: t as i64 + 1,
                 ..w.clone()
             };
             let kept = mobs::ai::tick(&mut mobs[slot], &view, &mut level, &mut events);
@@ -137,12 +153,14 @@ fn main() {
         }
         std::hint::black_box(&events);
     }
+    let instr = counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64;
     let breeding = mobs.iter().filter(|m| m.ai.goals.is_running("Breed")).count();
     let tempting = mobs.iter().filter(|m| m.ai.goals.is_running("Tempt")).count();
     let panicking = mobs.iter().filter(|m| m.ai.goals.is_running("Panic")).count();
     let walking = mobs.iter().filter(|m| !m.ai.nav.is_done()).count();
+    eprintln!("path searches over the whole run ({ticks} ticks): {}", horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed));
     println!(
-        "mob n={n} ticks={ticks} spacing={spacing} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us walking={walking} tempting={tempting} breeding={breeding} panicking={panicking} cows_now={}",
+        "mob n={n} instr_per_entity_tick={instr} ticks={ticks} spacing={spacing} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us walking={walking} tempting={tempting} breeding={breeding} panicking={panicking} cows_now={}",
         t0.elapsed().as_secs_f64() * 1e6 / (ticks - warm).max(1) as f64,
         mobs.len()
     );

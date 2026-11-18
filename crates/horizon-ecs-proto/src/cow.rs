@@ -93,6 +93,8 @@ pub struct Nav {
     pub last_pos: Vec3,
     /// The speed modifier of the goal that asked for the path.
     pub speed: f64,
+    /// The searches the path finder ran for this animal (a counter for the benches).
+    pub searches: u32,
     /// `PathNavigation.timeLastRecompute` and `delayedRecompute`.
     pub last_recompute: u64,
     pub delayed: bool,
@@ -101,7 +103,7 @@ pub struct Nav {
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, last_recompute: 0, delayed: false, reach: 1 }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -556,7 +558,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
-    let names: [&'static str; 4] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep"];
+    let names: [&'static str; 5] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep", "minecraft:chicken"];
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
@@ -702,6 +704,7 @@ pub fn schedule() -> Schedule {
     s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
+    crate::farm::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -849,7 +852,13 @@ pub(crate) fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)).flatten();
+        let path = (c.on_ground || fluid)
+            .then(|| {
+                nav.searches += 1;
+                crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+            })
+            .flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -1049,7 +1058,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1139,6 +1148,10 @@ fn travel_one(
     if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
+    // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
+    if !c.on_ground && vel.0.y < 0.0 {
+        vel.0.y *= sp.farm.slow_fall;
+    }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
     let v = vel.0;
     vel.0 = Vec3::new(
@@ -1224,7 +1237,7 @@ fn travel_one(
     !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
-fn travel(
+pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
     table: Res<SpeciesTable>,
@@ -1239,7 +1252,7 @@ fn travel(
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
         let rest = travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
-        if fall > 0.0 {
+        if fall > 0.0 && !sp.farm.fall_immune {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
@@ -1942,6 +1955,7 @@ pub(crate) fn due(
     mut clock: ResMut<Clock>,
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
+    mut grown: ResMut<crate::farm::Grown>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -1977,6 +1991,7 @@ pub(crate) fn due(
                         b.height = sizes.adult.1;
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                         commands.entity(e).remove::<GrowAt>().insert(Recheck);
+                        grown.0.push(e);
                     }
                 }
             }
@@ -2222,9 +2237,14 @@ mod tests {
         }
         show(&herd, 40);
         // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
-        assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
-        assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
-        assert!(health(&herd, cactus).is_some_and(|h| h < species().max_health), "the cactus did not hurt");
+        if species().farm.fall_immune {
+            // A hen takes no fall damage (`causeFallDamage` answers no).
+            assert!(health(&herd, hurt) == Some(species().max_health) && health(&herd, dies) == Some(species().max_health), "{:?} {:?}", health(&herd, hurt), health(&herd, dies));
+        } else {
+            assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
+            assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
+        }
+        assert!(health(&herd, cactus).is_none_or(|h| h < species().max_health), "the cactus did not hurt");
         for _ in 0..100 {
             herd.tick();
         }
@@ -2235,14 +2255,15 @@ mod tests {
             herd.tick();
         }
         show(&herd, 340);
-        assert!(health(&herd, snow).is_some_and(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
+        assert!(health(&herd, snow).is_none_or(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
         // Still burning or dead at tick 340: a species with the panic goal flees the fire burning; one without wanders
         // out of it by chance, and the fire ends (160 ticks) before the tick 340.
         if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
             assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
-        if species().eye_height <= 1.4 {
+        // (A hen's glide cuts her sinking speed in water too; whether she drowns as a `Mob` hen does was not compared.)
+        if species().eye_height <= 1.4 && species().farm.slow_fall >= 1.0 {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
         }
         assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
@@ -2401,8 +2422,12 @@ mod tests {
         herd.set_block(10, 0, 10, "minecraft:air");
         herd.tick();
         assert!(moving(&herd, a) && !moving(&herd, far));
-        for _ in 0..6 {
+        // The fall of a block: 6 ticks, more for a hen (her glide cuts the fall speed).
+        for _ in 0..60 {
             herd.tick();
+            if !moving(&herd, a) {
+                break;
+            }
         }
         let y1 = herd.world.get::<Pos>(a).unwrap().0.y;
         assert!((y0 - y1 - 1.0).abs() < 1.0e-6 && !moving(&herd, a), "{y0} -> {y1}");
@@ -2505,6 +2530,8 @@ mod tests {
             assert!(y > 1.5, "the cow floats up: y = {y}");
         }
         // Fire in the cell of the second cow, then water over it: the burning stops.
+        // (The burner stands still for this: a panic that runs from the fire is the goals' business, not the hazards'.)
+        herd.world.entity_mut(burner).remove::<crate::goals::Panic>();
         herd.set_block(-11, 1, 10, "minecraft:fire");
         for _ in 0..3 {
             herd.tick();

@@ -32,6 +32,8 @@ pub enum Kind {
     Melee,
     /// `EatBlockGoal` (the sheep): graze (`farm.rs`).
     EatBlock,
+    /// The hen's egg deadline (`farm.rs`): a timer of the wheel, not a goal.
+    LayEgg,
 }
 /// `GoalSelector`: (goal, priority, flags) in registration order; `running` and `pending` are slot bitmasks;
 /// `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and starts when it frees.
@@ -123,6 +125,10 @@ pub const CARROT: u32 = 2;
 pub const POTATO: u32 = 3;
 pub const BEETROOT: u32 = 4;
 pub const CARROT_ON_A_STICK: u32 = 5;
+pub const WHEAT_SEEDS: u32 = 6;
+pub const BEETROOT_SEEDS: u32 = 7;
+pub const MELON_SEEDS: u32 = 8;
+pub const PUMPKIN_SEEDS: u32 = 9;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -131,6 +137,10 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:potato" => POTATO,
         "minecraft:beetroot" => BEETROOT,
         "minecraft:carrot_on_a_stick" => CARROT_ON_A_STICK,
+        "minecraft:wheat_seeds" => WHEAT_SEEDS,
+        "minecraft:beetroot_seeds" => BEETROOT_SEEDS,
+        "minecraft:melon_seeds" => MELON_SEEDS,
+        "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
         _ => 0,
     }
 }
@@ -178,6 +188,8 @@ const SHEEP_SLOTS: [(Kind, u8, u8); 9] = [
     (Kind::RandomLook, 8, MOVE | LOOK),
 ];
 const SHEEP_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.1, items: 1 << WHEAT }];
+const CHICKEN_SLOTS: [(Kind, u8, u8); 8] = COW_SLOTS;
+const CHICKEN_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.0, items: 1 << WHEAT_SEEDS | 1 << BEETROOT_SEEDS | 1 << MELON_SEEDS | 1 << PUMPKIN_SEEDS }];
 const COW_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.25, items: 1 << WHEAT }];
 const PIG_TEMPTS: [TemptDef; 2] = [
     TemptDef { speed: 1.2, items: 1 << CARROT_ON_A_STICK },
@@ -190,6 +202,7 @@ pub fn goal_def(species: &str) -> GoalDef {
         "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, look: 6.0, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
         // `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player.
         "minecraft:sheep" => GoalDef { slots: &SHEEP_SLOTS, look: 6.0, panic: 1.25, tempts: &SHEEP_TEMPTS, follow: 1.1 },
+        "minecraft:chicken" => GoalDef { slots: &CHICKEN_SLOTS, look: 6.0, panic: 1.4, tempts: &CHICKEN_TEMPTS, follow: 1.1 },
         "minecraft:zombie" => GoalDef { slots: &ZOMBIE_SLOTS, look: 8.0, panic: 0.0, tempts: &[], follow: 0.0 },
         _ => GoalDef { slots: &COW_SLOTS, look: 6.0, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
     }
@@ -290,6 +303,9 @@ pub struct Head {
     pub stable: f32,
     pub stable_time: i32,
     pub at: (f64, f64),
+    /// The angles to the look target, kept while neither the target nor the animal moves (the arc tangents are not
+    /// worked out every tick of a look that lasts 40).
+    pub angles: Option<([f64; 3], Vec3, Option<f32>, Option<f32>)>,
 }
 /// `Mob.getFluidJumpThreshold`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -344,7 +360,7 @@ pub fn goals_bundle(sp: &Species) -> impl Bundle {
         Scan { period: 50 },
         GoalTimers::default(),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None },
         Buoyancy(if sp.eye_height < 0.4 { 0.0 } else { 0.4 }),
         Jump(false),
         Phase(u64::MAX),
@@ -367,6 +383,73 @@ pub enum Req {
 }
 #[derive(Resource, Default)]
 pub struct Requests(pub Vec<Req>);
+/// The option of the lazy look: when on, the look goals (`LookAtPlayer`, `RandomLookAround`) and the look control run
+/// only for an animal that a player can see, i.e. within `range` blocks, the client tracking range of an animal
+/// (10 chunks = 160 blocks; the client renders an entity at most 64 x 2.5 = 160 blocks away), rounded out to 16-block
+/// bins. Off by default: the owner decides.
+#[derive(Resource)]
+pub struct LazyLook {
+    pub enabled: bool,
+    pub range: f64,
+    /// How many players watch each 16-block bin.
+    counts: HashMap<(i32, i32), u32>,
+    /// The bin each player was last counted in.
+    at: HashMap<u32, (i32, i32)>,
+}
+impl Default for LazyLook {
+    fn default() -> Self {
+        Self { enabled: false, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
+    }
+}
+fn bin16(x: f64, z: f64) -> (i32, i32) {
+    ((x / 16.0).floor() as i32, (z / 16.0).floor() as i32)
+}
+impl LazyLook {
+    /// Whether a player can see an animal at (x, z); always true with the option off.
+    pub fn watched(&self, x: f64, z: f64) -> bool {
+        !self.enabled || self.counts.get(&bin16(x, z)).is_some_and(|&n| n > 0)
+    }
+    /// A player is now at `to` (None: gone); returns the bins that went from unwatched to watched.
+    fn moved(&mut self, id: u32, to: Option<(f64, f64)>) -> Vec<(i32, i32)> {
+        let reach = (self.range / 16.0).ceil() as i32;
+        let new = to.map(|(x, z)| bin16(x, z));
+        let old = self.at.get(&id).copied();
+        if old == new {
+            return Vec::new();
+        }
+        if let Some(o) = old {
+            for bz in o.1 - reach..=o.1 + reach {
+                for bx in o.0 - reach..=o.0 + reach {
+                    if let Some(c) = self.counts.get_mut(&(bx, bz)) {
+                        *c -= 1;
+                    }
+                }
+            }
+            self.at.remove(&id);
+        }
+        let mut fresh = Vec::new();
+        if let Some(n) = new {
+            for bz in n.1 - reach..=n.1 + reach {
+                for bx in n.0 - reach..=n.0 + reach {
+                    let c = self.counts.entry((bx, bz)).or_insert(0);
+                    *c += 1;
+                    if *c == 1 {
+                        fresh.push((bx, bz));
+                    }
+                }
+            }
+            self.at.insert(id, n);
+        }
+        fresh
+    }
+}
+/// Switches the lazy look (see `LazyLook`) on or off in a world.
+pub fn set_lazy_look(world: &mut World, on: bool) {
+    world.resource_mut::<LazyLook>().enabled = on;
+    if !on {
+        arm_all(world);
+    }
+}
 /// Imposed random draws, for comparing with a `Mob` that drew its own: the spot (x, z) a goal of this cow takes next
 /// instead of drawing one. Empty outside the tests.
 #[derive(Resource, Default)]
@@ -462,6 +545,9 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Hurts::default());
     world.insert_resource(Requests::default());
     world.insert_resource(Forced::default());
+    world.insert_resource(LazyLook::default());
+    world.insert_resource(crate::farm::Grown::default());
+    world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     world.insert_resource(Babies::default());
@@ -497,7 +583,8 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
     {
         return false;
     }
-    let b = *world.get::<BreedData>(e).unwrap();
+    // An animal that died is not fed.
+    let Some(b) = world.get::<BreedData>(e).copied() else { return false };
     world.entity_mut(e).insert(Love(now + b.love));
     let p = world.get::<Pos>(e).unwrap().0;
     let mut near = Vec::new();
@@ -556,12 +643,16 @@ pub(crate) fn arm(w: &mut World, e: Entity, k: Kind, wait: i32) {
 fn arm_timers(w: &mut World, e: Entity) {
     let Some(mut t) = w.get::<GoalTimers>(e).copied() else { return };
     let (g, s) = (*w.get::<Glance>(e).unwrap(), *w.get::<Scan>(e).unwrap());
-    if !t.look {
+    let seen = {
+        let p = w.get::<Pos>(e).unwrap().0;
+        w.resource::<LazyLook>().watched(p.x, p.z)
+    };
+    if !t.look && seen {
         let wait = with_rng(w, e, |r| 2 * geometric(r, g.period));
         arm(w, e, Kind::LookAtPlayer, wait);
         t.look = true;
     }
-    if !t.random {
+    if !t.random && seen {
         let wait = with_rng(w, e, |r| 2 * geometric(r, s.period));
         arm(w, e, Kind::RandomLook, wait);
         t.random = true;
@@ -626,12 +717,29 @@ fn online_events(
     mut pl: ResMut<Players>,
     idx: Res<Index>,
     cows: Query<(&Pos, &Tempts)>,
+    mut lazy: ResMut<LazyLook>,
     mut reqs: ResMut<Requests>,
 ) {
     if on.events.is_empty() {
         return;
     }
     let events = std::mem::take(&mut on.events);
+    // The animals that a player now watches wake their look timers (the head state is made again).
+    if lazy.enabled {
+        for (old, new) in &events {
+            let id = new.or(*old).map(|p| p.id).unwrap();
+            for (bx, bz) in lazy.moved(id, new.map(|p| (p.x, p.z))) {
+                let (x, z) = (f64::from(bx) * 16.0 + 8.0, f64::from(bz) * 16.0 + 8.0);
+                idx.for_radius(x, z, 12.0, |c| {
+                    if let Ok((p, _)) = cows.get(c)
+                        && bin16(p.0.x, p.0.z) == (bx, bz)
+                    {
+                        reqs.0.push(Req::Arm(c));
+                    }
+                });
+            }
+        }
+    }
     pl.list = on.list.iter().flatten().map(|p| (p.x, p.z)).collect();
     pl.dirty = true;
     let d2 = |p: &Player, c: Vec3| (p.x - c.x).powi(2) + (p.y - c.y).powi(2) + (p.z - c.z).powi(2);
@@ -676,10 +784,28 @@ pub struct CellMoves(pub Vec<Entity>);
 pub struct Babies(pub Vec<Entity>);
 /// `FollowParentGoal.canUse` looks for the nearest adult of the species within 8 x 4 x 8: a baby is woken when an
 /// adult comes within 9 blocks of it (an adult that changed column), or when it changes column itself.
-fn cell_moves(mut moves: ResMut<CellMoves>, mut babies: ResMut<Babies>, pos: Query<(&Pos, Has<GrowAt>)>, mut reqs: ResMut<Requests>) {
+fn cell_moves(
+    mut moves: ResMut<CellMoves>,
+    mut babies: ResMut<Babies>,
+    pos: Query<(&Pos, Has<GrowAt>)>,
+    timers: Query<(&Pos, &GoalTimers)>,
+    lazy: Res<LazyLook>,
+    mut reqs: ResMut<Requests>,
+) {
     let moved = std::mem::take(&mut moves.0);
     if moved.is_empty() {
         return;
+    }
+    // An animal that walks into a watched bin takes its look timers again.
+    if lazy.enabled {
+        for &m in &moved {
+            if let Ok((p, t)) = timers.get(m)
+                && (!t.look || !t.random)
+                && lazy.watched(p.0.x, p.0.z)
+            {
+                reqs.0.push(Req::Arm(m));
+            }
+        }
     }
     babies.0.retain(|&b| pos.get(b).is_ok_and(|(_, baby)| baby));
     for &b in &babies.0 {
@@ -699,7 +825,12 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
     }
 }
 
-pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64) {
+/// Path searches asked, by goal: 0 stroll, 1 panic, 2 tempt, 3 breed, 4 follow parent, 5 melee (benches read them).
+pub static ASKS: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
+/// The searches `pathfind` ran.
+pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, goal: usize) {
+    ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     cmd.queue(move |w: &mut World| {
         if let Some(mut s) = w.get_mut::<Stroll>(e) {
             s.tx = x;
@@ -743,11 +874,17 @@ pub(crate) type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Foll
 fn tempt_run(
     clock: Res<Clock>,
     on: Res<Online>,
-    mut q: Query<(Aim, &mut Tempts, &Tempting)>,
+    mut q: Query<(Aim, &mut Tempts, &Tempting, Option<&Phase>)>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, following, asked), mut ts, inst) in &mut q {
+    for ((e, pos, mut look, looking, following, asked), mut ts, inst, phase) in &mut q {
+        // `TemptGoal` continues and ticks on the selector's ticks only (tick + id even): one look and at most one path
+        // search every other tick, as the `Mob`.
+        let phase = phase.map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+        if (clock.0 + phase) % 2 == 1 && clock.0 > 1 {
+            continue;
+        }
         let Some(t) = ts.0.get_mut(inst.0 as usize) else { continue };
         let max_d = t.range.max(2.0).powi(2);
         let p = on.get(t.player).filter(|p| p.holds_any(t.items) && d2(Vec3::new(p.x, p.y, p.z), pos.0) <= max_d);
@@ -765,7 +902,7 @@ fn tempt_run(
             let a = (p.x.floor() as i32, p.z.floor() as i32);
             if a != t.aim || (!following && !asked) {
                 t.aim = a;
-                go_to(&mut cmd, e, p.x, p.z, t.speed);
+                go_to(&mut cmd, e, p.x, p.z, t.speed, 2);
             }
         }
         let _ = clock.0;
@@ -793,7 +930,7 @@ fn breed_run(
         let a = (pp.0.x.floor() as i32, pp.0.z.floor() as i32);
         if a != b.aim || (!following && !asked && d >= 9.0) {
             b.aim = a;
-            go_to(&mut cmd, e, pp.0.x, pp.0.z, data.speed);
+            go_to(&mut cmd, e, pp.0.x, pp.0.z, data.speed, 3);
         }
         // `BreedGoal` counts `loveTime` once per selector tick (its `tick` runs then): it breeds when the count reaches
         // `reducedTickDelay(60)` and the partner is within 3 blocks, and gives up at 60.
@@ -850,7 +987,7 @@ fn follow_parent_run(
         };
         if clock.0 >= f.recalc {
             f.recalc = clock.0 + 10;
-            go_to(&mut cmd, e, pp.0.x, pp.0.z, f.speed);
+            go_to(&mut cmd, e, pp.0.x, pp.0.z, f.speed, 4);
         }
     }
 }
@@ -928,18 +1065,27 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     for (e, pos, yaw, mut look, mut h, walking) in &mut q {
         if h.yaw.is_nan() {
-            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z) };
+            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z), angles: None };
         }
         h.pitch = 0.0;
         if look.cooldown > 0 {
             look.cooldown -= 1;
-            let (dx, dy, dz) = (look.target[0] - pos.0.x, look.target[1] - (pos.0.y + look.eye), look.target[2] - pos.0.z);
-            let sd = (dx * dx + dz * dz).sqrt();
-            if dz.abs() > 1.0e-5 || dx.abs() > 1.0e-5 {
-                h.yaw = rotate_towards(h.yaw, trig::atan2_degrees(dz, dx) - 90.0, look.y_speed);
+            let (ty, tp) = match h.angles {
+                Some((t, p, ty, tp)) if t == look.target && p == pos.0 => (ty, tp),
+                _ => {
+                    let (dx, dy, dz) = (look.target[0] - pos.0.x, look.target[1] - (pos.0.y + look.eye), look.target[2] - pos.0.z);
+                    let sd = (dx * dx + dz * dz).sqrt();
+                    let ty = (dz.abs() > 1.0e-5 || dx.abs() > 1.0e-5).then(|| trig::atan2_degrees(dz, dx) - 90.0);
+                    let tp = (dy.abs() > 1.0e-5 || sd > 1.0e-5).then(|| -trig::atan2_degrees(dy, sd));
+                    h.angles = Some((look.target, pos.0, ty, tp));
+                    (ty, tp)
+                }
+            };
+            if let Some(ty) = ty {
+                h.yaw = rotate_towards(h.yaw, ty, look.y_speed);
             }
-            if dy.abs() > 1.0e-5 || sd > 1.0e-5 {
-                h.pitch = rotate_towards(h.pitch, -trig::atan2_degrees(dy, sd), look.x_max);
+            if let Some(tp) = tp {
+                h.pitch = rotate_towards(h.pitch, tp, look.x_max);
             }
         } else {
             h.yaw = rotate_towards(h.yaw, h.body, 10.0);
@@ -980,6 +1126,7 @@ enum Pick {
     Parent(Entity),
 }
 pub(crate) fn arbitrate(world: &mut World) {
+    crate::farm::on_grown(world);
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
     for (e, k) in fired {
@@ -988,7 +1135,15 @@ pub(crate) fn arbitrate(world: &mut World) {
     for r in reqs {
         match r {
             // A cow entering the active zone: its look timers are armed.
-            Req::Arm(e) => arm_timers(world, e),
+            Req::Arm(e) => {
+                if world.resource::<LazyLook>().enabled
+                    && let Some(mut h) = world.get_mut::<Head>(e)
+                {
+                    // A head that was not simulated starts from the body's heading.
+                    h.yaw = f32::NAN;
+                }
+                arm_timers(world, e);
+            }
             Req::Hunt(e) => crate::hostile::hunt(world, e),
             // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
             // heard at the next such tick (the same as the next one at most).
@@ -1023,6 +1178,24 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             } else {
                 t.random = false;
             }
+            // With the lazy look, a timer that comes up for an animal no player sees lapses (nothing re-arms it until a
+            // player's range reaches it again).
+            let p = w.get::<Pos>(e).unwrap().0;
+            if !w.resource::<LazyLook>().watched(p.x, p.z) {
+                return;
+            }
+            // Nobody within the range of the look: the ask fails; the next one is armed without the selector.
+            if k == Kind::LookAtPlayer {
+                let g = *w.get::<Glance>(e).unwrap();
+                let mut any = false;
+                w.resource::<Online>().for_near(p.x, p.z, g.range, |q| any |= (q.x - p.x).powi(2) + (q.z - p.z).powi(2) <= g.range * g.range);
+                if !any {
+                    let wait = with_rng(w, e, |r| 2 * geometric(r, g.period));
+                    arm(w, e, k, wait);
+                    w.get_mut::<GoalTimers>(e).unwrap().look = true;
+                    return;
+                }
+            }
         }
         Kind::Target => {
             let Some(mut t) = w.get_mut::<GoalTimers>(e) else { return };
@@ -1053,6 +1226,10 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             return;
         }
         Kind::Breed if w.get::<Love>(e).is_none_or(|l| l.0 <= now) => return,
+        Kind::LayEgg => {
+            crate::farm::lay_deadline(w, e);
+            return;
+        }
         Kind::EatBlock => {
             // A deadline of the goal that runs (the block, the end) or an ask of one that does not.
             if w.get::<crate::farm::Grazing>(e).is_some() {
@@ -1316,6 +1493,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
         },
         Kind::Melee => crate::hostile::melee_target(w, e).map(Pick::Player),
         Kind::EatBlock => crate::farm::graze_can_use(w, e).then_some(Pick::Yes),
+        Kind::LayEgg => None,
     }
 }
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
@@ -1360,6 +1538,7 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
             w.get_mut::<Nav>(e).unwrap().speed = speed;
             let mut s = w.get_mut::<Stroll>(e).unwrap();
             (s.tx, s.ty, s.tz) = (x, y, z);
+            ASKS[1].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             w.entity_mut(e).insert(NeedsPath);
         }
         (Kind::Breed, Pick::Partner(c)) => {
@@ -1379,6 +1558,7 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
         }
         (Kind::Stroll, _) => {
             w.get_mut::<Nav>(e).unwrap().speed = 1.0;
+            ASKS[0].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             w.entity_mut(e).insert(NeedsPath);
         }
         (Kind::LookAtPlayer, Pick::Player(id)) => {
@@ -1438,6 +1618,7 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         Kind::Target => crate::hostile::lose_target(w, e),
         Kind::Melee => crate::hostile::stop_melee(w, e),
         Kind::EatBlock => crate::farm::graze_stop(w, e),
+        Kind::LayEgg => {}
         Kind::RandomLook => {
             w.entity_mut(e).remove::<Scanning>();
             rearm_timer(w, e, k);
@@ -1614,6 +1795,8 @@ mod tests {
         ticks(&mut h, 3);
         assert!(has::<Tempting>(&h, near), "9 blocks away");
         assert!(!has::<Tempting>(&h, far), "11.2 blocks away");
+        // The path is asked on the goal's ticks (every other one).
+        ticks(&mut h, 3);
         assert_eq!(h.world.get::<Nav>(near).unwrap().speed, species().goals.tempts.last().unwrap().speed);
         ticks(&mut h, 120);
         let d = dist(at(&h, near), Vec3::new(0.5, 1.0, 0.5));
@@ -1790,7 +1973,8 @@ mod tests {
             was = now;
         }
         eprintln!("floating {floating}/1500 ticks, jumps {jumps}, lowest y {low:.2}");
-        assert!(floating > 100 && low > -0.5, "{floating} ticks afloat, lowest {low}");
+        // A hen (eyes at 0.64) is in the water less of the time: only the rate of jumps is the goal's.
+        assert!(floating > 30 && low > -0.5, "{floating} ticks afloat, lowest {low}");
         let rate = jumps as f64 / floating as f64;
         assert!(rate > 0.72 && rate < 0.88, "{rate}");
     }
