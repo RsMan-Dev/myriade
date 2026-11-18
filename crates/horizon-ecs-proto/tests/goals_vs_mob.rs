@@ -453,3 +453,31 @@ fn a_cow_in_a_pond_floats_as_a_mob_does() {
     eprintln!("pond, mean height over ticks 61..400: mob {:.2}, ecs {:.2}", my / n, cy / n);
     assert!((my - cy).abs() / n < 0.3, "afloat at the same height");
 }
+
+#[test]
+#[ignore = "trace"]
+fn trace_panic() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let i = r.add(Vec3::new(0.5, 1.0, 0.5));
+    let e = ecs_cow(&mut h, 0.5, 1.0, 0.5, 11);
+    let (mut pm, mut pc) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
+    for t in 1..=40 {
+        if t == 5 {
+            r.hurt(i, 1.0);
+            h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+        }
+        r.step(None);
+        h.tick();
+        let m = &r.mobs[i];
+        let (cp, d, n) = (h.world.get::<Pos>(e).unwrap().0, h.world.get::<Drive>(e).unwrap(), h.world.get::<Nav>(e).unwrap());
+        eprintln!(
+            "t={t:2} MOB step {:.3} zza {:.3} speed {:.3} attr {:.3} nodes {} panic {} | ECS step {:.3} zza {:.3} speed {:.3} nav.speed {} nodes {} panic {}",
+            xz(pm, m.position), m.ai.zza, m.ai.speed, m.movement_speed(), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()), r.names(i).contains(&"Panic"),
+            xz(pc, cp), d.zza, d.speed, n.speed, n.path.as_ref().map_or(0, |p| p.nodes.len()), h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic)
+        );
+        (pm, pc) = (m.position, cp);
+    }
+}
