@@ -48,6 +48,11 @@ pub trait BlockCollisionWorld {
     fn may_reach_out(&mut self, _chunk: Self::Chunk, _section_y: i32) -> Result<bool, Self::Error> {
         Ok(true)
     }
+    /// Whether `block` collides as the unit cube under every context, so its shape need not be asked for.
+    /// False, the default, asks.
+    fn is_plain_cube(&self, _block: CollisionBlock) -> bool {
+        false
+    }
     /// Whether every block of the chunk's section `section_y` has an empty collision shape under
     /// every context (all air): true lets the scan pass that section's cells without reading
     /// them. False, the default, reads every cell.
@@ -492,12 +497,18 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
             if block.empty_shape {
                 continue;
             }
-            let shape = self
-                .world
-                .context_shape(block, p, &self.context)
-                .map_err(CollisionScanError::World)?;
             let offset = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
-            let moved = if shape.is_block() {
+            let cube = self.world.is_plain_cube(block);
+            let shape = if cube {
+                None
+            } else {
+                Some(
+                    self.world
+                        .context_shape(block, p, &self.context)
+                        .map_err(CollisionScanError::World)?,
+                )
+            };
+            let moved = if cube || shape.as_ref().is_some_and(VoxelShape::is_block) {
                 // Native adds one in floating point, including at i32::MAX.
                 let top = Vec3::new(offset.x + 1.0, offset.y + 1.0, offset.z + 1.0);
                 if !self.bounds.intersects_corners(offset, top) {
@@ -505,6 +516,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                 }
                 return Ok(Some((p, Found::Cube(offset))));
             } else {
+                let shape = shape.expect("a shape that is not a plain cube was asked for");
                 // Shapes whose bounds miss the box share no volume with it:
                 // joinIsNotEmpty(AND) is false without moving them.
                 if !shape

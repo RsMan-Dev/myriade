@@ -135,6 +135,9 @@ impl<W: BlockCollisionWorld> BlockCollisionWorld for EntityCollisions<'_, W> {
     fn missing_chunks_stay_missing(&self) -> bool {
         self.blocks.missing_chunks_stay_missing()
     }
+    fn is_plain_cube(&self, block: CollisionBlock) -> bool {
+        self.blocks.is_plain_cube(block)
+    }
     fn context_shape(
         &mut self,
         block: CollisionBlock,
@@ -577,6 +580,9 @@ impl<'w> BlockCollisionWorld for SceneCollisions<'w, '_> {
     /// The resident columns do not change while a scan runs, and looking one up changes nothing.
     fn missing_chunks_stay_missing(&self) -> bool {
         true
+    }
+    fn is_plain_cube(&self, block: CollisionBlock) -> bool {
+        self.binding.is_plain_cube(block.state)
     }
     fn is_suffocating(
         &mut self,
