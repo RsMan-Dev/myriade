@@ -137,6 +137,10 @@ fn mob_health(m: &Mob) -> f32 {
 /// resting vertical velocity) and fresh from its spawn (velocity zero: it is in the air for its first tick).
 #[test]
 fn cactus_fire_and_lava_hurt_as_a_mob_does() {
+    // The Mob's outcome depends on the panic flight out of the hazard; a species with no Panic wanders at random.
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "cactus_fire_and_lava_hurt_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -191,6 +195,9 @@ fn xz(a: Vec3, b: Vec3) -> f64 {
 /// Struck cows: when the panic starts, how long it lasts, the peak step of the walk.
 #[test]
 fn a_struck_cow_panics_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_struck_cow_panics_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -256,6 +263,9 @@ fn a_struck_cow_panics_as_a_mob_does() {
 /// Wheat in hand: range 9.5 / 10.5, the time to walk up, the stop distance, the calm after putting it away.
 #[test]
 fn wheat_tempts_as_it_does_a_mob() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Tempt(0), "wheat_tempts_as_it_does_a_mob") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -322,6 +332,9 @@ fn wheat_tempts_as_it_does_a_mob() {
 /// Two cows in love 2 and 5 blocks apart: the tick of the birth, the parents' age.
 #[test]
 fn breeding_takes_as_long_as_for_a_mob() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Breed, "breeding_takes_as_long_as_for_a_mob") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -388,6 +401,9 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
 /// (the look goals do not depend on `noActionTime`).
 #[test]
 fn looking_goals_start_as_often_as_a_mob_s() {
+    if horizon_ecs_proto::cow::skip_if(horizon_ecs_proto::goals::Kind::Melee, "looking_goals_start_as_often_as_a_mob_s") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -474,6 +490,9 @@ fn trace_panic() {
 /// A burning cow 4 blocks from a pond runs to the water and puts the fire out, as a mob does (`lookForWater`).
 #[test]
 fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_burning_cow_runs_to_the_water_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -594,6 +613,9 @@ fn trace_burning() {
 /// blow (the others start later, after landing, with draws that cannot be read: not compared here).
 #[test]
 fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -760,6 +782,9 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
 /// (`Forced`); the parent walks the same way and gives birth at the same tick.
 #[test]
 fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Breed, "breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
+        return;
+    }
     if !have_data() {
         return;
     }

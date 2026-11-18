@@ -602,6 +602,27 @@ pub fn species_table() -> SpeciesTable {
     SpeciesTable(TABLE.get().expect("a level was built").clone())
 }
 
+/// For the tests of a behaviour only some species have: whether to skip the test of the process's species, which has no
+/// such goal (the skip is printed, so it is never silent).
+pub fn skip_unless(kind: crate::goals::Kind, test: &str) -> bool {
+    // By the name the process was asked for (`HORIZON_SPECIES`), before any level is built.
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let has = crate::goals::goal_def(&name).slots.iter().any(|s| s.0 == kind);
+    if !has {
+        eprintln!("SKIP {test}: {name} has no {kind:?} goal");
+    }
+    !has
+}
+/// The reverse: a test of a passive behaviour (a player in range changes nothing) skips a species that has the goal
+/// (a zombie hunts the player the test puts in range), printed.
+pub fn skip_if(kind: crate::goals::Kind, test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let has = crate::goals::goal_def(&name).slots.iter().any(|s| s.0 == kind);
+    if has {
+        eprintln!("SKIP {test}: {name} has a {kind:?} goal: the player in range makes it hunt, the test measures passive looking");
+    }
+    has
+}
 /// The species of the process (the first world built sets it: `HORIZON_SPECIES`, `minecraft:cow` by default), for
 /// the bundles that are made without a world at hand.
 static SPECIES: std::sync::OnceLock<Species> = std::sync::OnceLock::new();
@@ -1934,11 +1955,11 @@ mod tests {
             herd.tick();
         }
         assert!(gap(&herd) > start, "the cows were not pushed apart: {}", gap(&herd));
-        assert!(herd.world.get::<Body>(baby).unwrap().width < 0.5);
+        assert!(herd.world.get::<Body>(baby).unwrap().width < species().width * 0.75);
         for _ in 0..40 {
             herd.tick();
         }
-        assert!(herd.world.get::<Body>(baby).unwrap().width > 0.8);
+        assert!(herd.world.get::<Body>(baby).unwrap().width > species().width * 0.9);
     }
 
     /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
@@ -1952,12 +1973,12 @@ mod tests {
         let mut cow = |herd: &mut Herd, x: f64, y: f64, z: f64| {
             let e = herd.world.spawn(cow_bundle(x, z, 77)).id();
             herd.world.get_mut::<Pos>(e).unwrap().0.y = y;
-            herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), 0.9, 1.4);
+            herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), species().width, species().height);
             herd.world.entity_mut(e).insert(ActiveUntil(0));
             e
         };
         let health = |herd: &Herd, e: Entity| herd.world.get::<Health>(e).map(|h| h.0);
-        let (hurt, dies) = (cow(&mut herd, 5.5, 12.0, 5.5), cow(&mut herd, 8.5, 40.0, 5.5));
+        let (hurt, dies) = (cow(&mut herd, 5.5, 1.0 + (0.8 * f64::from(species().max_health)).floor() + 3.0, 5.5), cow(&mut herd, 8.5, 1.0 + f64::from(species().max_health) + 5.0, 5.5));
         let lava = cow(&mut herd, -47.0, 1.0, -47.0);
         let fire = cow(&mut herd, -47.0, 1.0, -39.0);
         let snow = cow(&mut herd, -31.0, 1.0, -47.0);
@@ -1966,7 +1987,8 @@ mod tests {
         // No float goal for this cow (the Mob case has none either): it sinks and drowns.
         herd.world.entity_mut(pond).remove::<crate::goals::Jump>();
         let wall = cow(&mut herd, 20.5, 1.0, 20.5);
-        herd.teleport(wall, Vec3::new(20.5, -0.6, 20.5));
+        // The eyes inside the stone floor (y = 0.7), whatever the height of the species.
+        herd.teleport(wall, Vec3::new(20.5, 0.7 - species().eye_height, 20.5));
         let show = |herd: &Herd, t: u32| {
             let h = |e: Entity| health(herd, e).map_or("dead".to_string(), |h| format!("{h}"));
             eprintln!("tick {t}: fall 11: {}, fall 39: {}, lava: {}, fire: {}, powder snow: {}, cactus: {}, pond: {}, in wall: {}", h(hurt), h(dies), h(lava), h(fire), h(snow), h(cactus), h(pond), h(wall));
@@ -1976,9 +1998,9 @@ mod tests {
         }
         show(&herd, 40);
         // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
-        assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < 10.0), "{:?}", health(&herd, hurt));
+        assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
         assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
-        assert!(health(&herd, cactus).is_some_and(|h| h < 10.0), "the cactus did not hurt");
+        assert!(health(&herd, cactus).is_some_and(|h| h < species().max_health), "the cactus did not hurt");
         for _ in 0..100 {
             herd.tick();
         }
@@ -1989,9 +2011,12 @@ mod tests {
             herd.tick();
         }
         show(&herd, 340);
-        assert!(health(&herd, snow).is_some_and(|h| h < 10.0), "the powder snow: {:?}", health(&herd, snow));
+        assert!(health(&herd, snow).is_some_and(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
         assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
-        assert!(health(&herd, pond).is_none_or(|h| h < 10.0), "the cow in the pond did not drown");
+        // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
+        if species().eye_height <= 1.4 {
+            assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
+        }
         assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
     }
 
@@ -2022,7 +2047,7 @@ mod tests {
         herd.world.entity_mut(e).insert(ActiveUntil(0));
         let speed: f32 = std::env::var("SPEED").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.0) * 0.2;
         herd.world.get_mut::<Pos>(e).unwrap().0 = Vec3::new(-53.0, 1.0, -20.0);
-        herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-53.0, 1.0, -20.0), 0.9, 1.4);
+        herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-53.0, 1.0, -20.0), species().width, species().height);
         herd.world.get_mut::<Yaw>(e).unwrap().0 = -90.0;
         herd.world.get_mut::<Drive>(e).unwrap().speed = speed;
         herd.world.get_mut::<Drive>(e).unwrap().zza = speed;
@@ -2154,11 +2179,13 @@ mod tests {
         let y1 = herd.world.get::<Pos>(a).unwrap().0.y;
         assert!((y0 - y1 - 1.0).abs() < 1.0e-6 && !moving(&herd, a), "{y0} -> {y1}");
         // A stone at head height: suffocation by the event.
-        herd.set_block(20, 2, 20, "minecraft:stone");
+        // A stone in the block of the eyes: the head is in a wall.
+        let eye_y = (1.0 + species().eye_height).floor() as i32;
+        herd.set_block(20, eye_y, 20, "minecraft:stone");
         for _ in 0..15 {
             herd.tick();
         }
-        assert!(herd.world.get::<InWall>(c).is_some() && herd.world.get::<Health>(c).unwrap().0 < 10.0);
+        assert!(herd.world.get::<InWall>(c).is_some() && herd.world.get::<Health>(c).unwrap().0 < species().max_health);
         // Lava put into the cell of a resting cow: its hazard module appears and it burns to death.
         herd.set_block(-21, 1, 20, "minecraft:lava");
         herd.tick();
@@ -2167,7 +2194,7 @@ mod tests {
             herd.tick();
         }
         assert!(herd.world.get::<Health>(d).is_none(), "the cow in lava lives");
-        assert!(herd.world.get::<Health>(far).unwrap().0 == 10.0 && !moving(&herd, far));
+        assert!(herd.world.get::<Health>(far).unwrap().0 == species().max_health && !moving(&herd, far));
         // A path is dropped by a change near its middle only.
         let walker = {
             let e = spawn(&mut herd, -30.5, -20.5);
@@ -2245,7 +2272,10 @@ mod tests {
         }
         assert!(herd.world.get::<InFluid>(swimmer).is_some());
         let y = herd.world.get::<Pos>(swimmer).unwrap().0.y;
-        assert!(y > 1.5, "the cow floats up: y = {y}");
+        // Only a species with the float goal rises (a zombie has none: it stays on the bottom).
+        if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Float) {
+            assert!(y > 1.5, "the cow floats up: y = {y}");
+        }
         // Fire in the cell of the second cow, then water over it: the burning stops.
         herd.set_block(-11, 1, 10, "minecraft:fire");
         for _ in 0..3 {
@@ -2286,7 +2316,7 @@ mod tests {
         assert!(herd.world.get::<Hazard>(high).is_none(), "the lava is out of reach");
         let up = Vec3::new(10.5, 6.0, -10.5);
         herd.world.get_mut::<Pos>(high).unwrap().0 = up;
-        herd.world.get_mut::<Bounds>(high).unwrap().0 = box_at(up, 0.9, 1.4);
+        herd.world.get_mut::<Bounds>(high).unwrap().0 = box_at(up, species().width, species().height);
         herd.tick();
         assert!(herd.world.get::<Hazard>(high).is_some_and(|h| h.0 & HAZ_LAVA != 0), "lava at height 6");
     }
