@@ -1637,16 +1637,27 @@ mod tests {
         let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
         let e = herd.world.spawn(cow_bundle(-42.5, -39.0, 77)).id();
         herd.world.entity_mut(e).insert(ActiveUntil(0));
+        let speed: f32 = std::env::var("SPEED").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.0) * 0.2;
+        herd.world.get_mut::<Pos>(e).unwrap().0 = Vec3::new(-53.0, 1.0, -20.0);
+        herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-53.0, 1.0, -20.0), 0.9, 1.4);
         herd.world.get_mut::<Yaw>(e).unwrap().0 = -90.0;
-        herd.world.get_mut::<Drive>(e).unwrap().speed = 0.2;
-        herd.world.get_mut::<Drive>(e).unwrap().zza = 0.2;
-        for t in 1..=90 {
+        herd.world.get_mut::<Drive>(e).unwrap().speed = speed;
+        herd.world.get_mut::<Drive>(e).unwrap().zza = speed;
+        let mut last = -53.0;
+        for t in 1..=100 {
             herd.tick();
-            if t % 5 == 0 {
-                let p = herd.world.get::<Pos>(e).map(|p| p.0);
-                let h = herd.world.get::<Health>(e).map(|h| h.0);
-                eprintln!("ecs walk t={t:3} pos={p:?} health={h:?}");
+            let Some(p) = herd.world.get::<Pos>(e).map(|p| p.0) else {
+                eprintln!("ecs walk t={t:3}: the cow is gone (last x = {last:.2})");
+                break;
+            };
+            let x = p.x;
+            if t % 10 == 0 {
+                eprintln!("  health {:?} hazard {:?} y {:.2}", herd.world.get::<Health>(e).map(|h| h.0), herd.world.get::<Hazard>(e).map(|h| h.0), p.y);
             }
+            if [10, 20, 30, 40, 60, 80, 100].contains(&t) {
+                eprintln!("ecs walk t={t:3} x={x:.4} step={:.4} vel.x={:.4}", x - last, herd.world.get::<Vel>(e).unwrap().0.x);
+            }
+            last = x;
         }
     }
 
