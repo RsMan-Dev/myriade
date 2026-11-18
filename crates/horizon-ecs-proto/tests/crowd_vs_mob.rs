@@ -188,3 +188,39 @@ fn a_tight_herd_spreads_out_like_a_mob_herd() {
     assert!(dist(&results[1]) < dist(&results[0]), "ordered {:?}, batch {:?}, mob {mob:?}", results[1], results[0]);
     let _ = off;
 }
+
+/// The two overlapping animals tick by tick: position and velocity (x) on both sides, and the pushes the `Mob` sent.
+#[test]
+#[ignore = "trace"]
+fn trace_two_animals() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(20, false);
+    let mut h = Herd::with_slab(20, true, false);
+    h.tick();
+    let w = f64::from(species().width);
+    let starts = [(0.5, 0.5), (0.5 + 0.6 * w, 0.5)];
+    let mut ids = vec![];
+    for (i, s) in starts.iter().enumerate() {
+        r.add(Vec3::new(s.0, 1.0, s.1));
+        let e = h.world.spawn(cow_bundle(s.0, s.1, 3 + i as u64)).id();
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+        ids.push(e);
+    }
+    if std::env::var_os("ORDERED_PUSH").is_some() {
+        h.set_ordered_push(true);
+    }
+    for t in 1..=9 {
+        let from = r.events.len();
+        r.step(None);
+        h.tick();
+        let pushes: Vec<String> = r.events[from..].iter().filter_map(|e| match e {
+            horizon_client_lib::mobs::MobEvent::Push { target, velocity } => Some(format!("{target:?} {:+.4}", velocity[0])),
+            _ => None,
+        }).collect();
+        let m: Vec<String> = r.mobs.iter().map(|m| format!("x {:.4} vx {:+.4}", m.position.x, m.velocity.x)).collect();
+        let e: Vec<String> = ids.iter().map(|&e| format!("x {:.4} vx {:+.4}", h.world.get::<Pos>(e).unwrap().0.x, h.world.get::<Vel>(e).unwrap().0.x)).collect();
+        eprintln!("t={t}: MOB {m:?} pushes {pushes:?}\n     ECS {e:?}");
+    }
+}

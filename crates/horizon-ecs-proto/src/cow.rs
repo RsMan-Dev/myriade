@@ -472,6 +472,9 @@ pub struct Config {
     pub parallel: bool,
     /// The pushes of the animals that overlap another run in the `Mob`'s order (`ordered_pass`): see `PushMode`.
     pub ordered_push: bool,
+    /// Batch mode: an animal that overlaps another stays in `push` every tick even if it does not move (`vanilla` runs
+    /// `pushEntities` for every entity, at rest or not).
+    pub keep_touching: bool,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -1776,9 +1779,10 @@ fn push(
     par: ParallelCommands,
     boxes: Query<Ref<Bounds>>,
     ordered: Query<(), With<Overlapping>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), (Changed<Bounds>, Without<Overlapping>)>,
+    touching: Query<(), With<Touching>>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
 ) {
-    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool| {
+    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
@@ -1817,12 +1821,28 @@ fn push(
                     cmd.entity(o).insert(Overlapping);
                 });
             }
-            if !ob.is_changed() || ordered.contains(o) {
+            if cfg.keep_touching {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(o).insert(Touching);
+                });
+            }
+            if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
                 par.command_scope(|mut cmd| {
                     cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
                 });
             }
         });
+        if cfg.keep_touching {
+            if overlapping > 0 {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(e).insert(Touching);
+                });
+            } else if was_touching {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(e).remove::<Touching>();
+                });
+            }
+        }
         // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
         if overlapping + 1 >= MAX_ENTITY_CRAMMING {
             par.command_scope(|mut cmd| {
@@ -1846,16 +1866,21 @@ fn push(
         }
     };
     if cfg.parallel {
-        movers.par_iter_mut().for_each(|(e, b, mut v, m)| one(e, b, &mut v, m));
+        movers.par_iter_mut().for_each(|(e, b, mut v, m, t)| one(e, b, &mut v, m, t));
     } else {
-        for (e, b, mut v, m) in &mut movers {
-            one(e, b, &mut v, m);
+        for (e, b, mut v, m, t) in &mut movers {
+            one(e, b, &mut v, m, t);
         }
     }
 }
 /// How near (blocks) another animal must come for an animal to stay in the ordered pass: a little more than the largest
 /// step of an animal in a tick.
 const ORDERED_MARGIN: f64 = 0.1;
+/// An animal that overlapped another when `push` last looked at it (batch mode, `Config.keep_touching`): it is looked at
+/// again each tick, moving or not, until nothing overlaps it.
+#[derive(Component, Default)]
+#[component(storage = "SparseSet")]
+pub struct Touching;
 /// An animal that overlaps at least one other (ordered push mode): its travel and its push run in `ordered_pass`.
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
@@ -1896,6 +1921,7 @@ fn ordered_pass(
         Has<Moving>,
     )>,
     marked: Query<Entity, With<Overlapping>>,
+    moving_now: Query<(), With<Moving>>,
     mut commands: Commands,
 ) {
     if !cfg.ordered_push {
@@ -1945,7 +1971,9 @@ fn ordered_pass(
                 // An animal that is about to overlap is in the pass too (an overlap that begins is then seen at once).
                 if !still && wide.intersects(ob.0) {
                     close += 1;
-                    commands.entity(o).insert(Overlapping);
+                    if !marked.contains(o) {
+                        commands.entity(o).insert(Overlapping);
+                    }
                 }
                 continue;
             }
@@ -1973,7 +2001,12 @@ fn ordered_pass(
             if let Ok((_, _, mut ov, ..)) = q.get_mut(o) {
                 ov.0 = Vec3::new(ov.0.x + xa, ov.0.y, ov.0.z + za);
             }
-            commands.entity(o).insert((Overlapping, Moving));
+            if !marked.contains(o) {
+                commands.entity(o).insert(Overlapping);
+            }
+            if !moving_now.contains(o) {
+                commands.entity(o).insert(Moving);
+            }
         }
         if overlapping + close == 0 {
             commands.entity(e).remove::<Overlapping>();
@@ -2119,7 +2152,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel, ordered_push: false });
+        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some() });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());

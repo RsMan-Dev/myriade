@@ -110,6 +110,21 @@ fn main() {
                 let (_, following, moving, total) = herd.counts();
                 let s = herd.world.resource::<OrderedStats>();
                 println!("      ordered pass: {} animals", s.last);
+                // Overlapping pairs whose two animals have no `Moving` (the push of the batch mode never visits them).
+                let moving_set: std::collections::HashSet<_> = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<Moving>>().iter(&herd.world).collect();
+                let mut both_still = 0;
+                let mut any_pair = 0;
+                for i in 0..ids.len() {
+                    for j in i + 1..ids.len() {
+                        if (now[i].0 - now[j].0).abs() < width && (now[i].1 - now[j].1).abs() < width {
+                            any_pair += 1;
+                            if !moving_set.contains(&ids[i]) && !moving_set.contains(&ids[j]) {
+                                both_still += 1;
+                            }
+                        }
+                    }
+                }
+                println!("      pairs {any_pair}, with both animals without Moving: {both_still}");
                 println!("      ecs modules: physics active {moving}, following {following}, of {total}");
             }
             prev = now;
