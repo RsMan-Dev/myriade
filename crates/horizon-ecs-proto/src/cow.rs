@@ -81,10 +81,12 @@ pub struct Nav {
     /// `PathNavigation.doStuckDetection`: where the cow was 100 ticks ago.
     pub last_check: u64,
     pub last_pos: Vec3,
+    /// The speed modifier of the goal that asked for the path.
+    pub speed: f64,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -147,6 +149,7 @@ pub struct Clock(pub u64);
 pub enum Due {
     Stroll,
     Grow,
+    Goal(crate::goals::Kind),
 }
 const WHEEL: usize = 4096;
 /// A timer wheel: what is due at each tick, so that a sleeping or growing cow costs nothing until then.
@@ -193,6 +196,17 @@ impl Index {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+        }
+    }
+    /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
+    pub fn for_radius(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Entity)) {
+        let w = self.width as i64;
+        for zz in self.column(z - r - 1.0).max(0)..=self.column(z + r + 1.0).min(w - 1) {
+            for xx in self.column(x - r - 1.0).max(0)..=self.column(x + r + 1.0).min(w - 1) {
+                for &e in &self.cells[(zz * w + xx) as usize] {
+                    f(e);
+                }
+            }
         }
     }
     /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
@@ -296,7 +310,7 @@ pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
         Nav::default(),
         ActiveUntil(100),
         Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
-        Moving,
+        (Moving, crate::goals::cow_goals()),
         rng,
     )
 }
@@ -318,6 +332,7 @@ pub fn schedule() -> Schedule {
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, travel, reindex, push, apply_pushes).chain());
+    crate::goals::register(&mut s);
     s
 }
 
@@ -333,7 +348,7 @@ fn arm_stroll(wheel: &mut Wheel, now: u64, e: Entity, s: &mut Stroll, r: &mut Rn
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
 /// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Returns whether a spot was picked.
-fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
+pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
     let (h, v) = (s.horizontal_range, s.vertical_range);
     let lim = level.half - 2;
     for _ in 0..10 {
@@ -358,11 +373,12 @@ fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
 /// players of the 3 x 3 bins of 32 blocks around them, and only the cows that enter or leave the 32 blocks are
 /// touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and its stroll attempt is armed if it
 /// had none; a leaving cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
-fn player_near(
+pub(crate) fn player_near(
     clock: Res<Clock>,
     mut players: ResMut<Players>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
+    mut entered: ResMut<crate::goals::Entered>,
     mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
 ) {
     if !players.dirty {
@@ -413,6 +429,7 @@ fn player_near(
             let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
             if now_in && a.0 != u64::MAX {
                 a.0 = u64::MAX;
+                entered.0.push(e);
                 if !s.scheduled && !s.walking {
                     arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
                 }
@@ -537,7 +554,7 @@ fn follow(
                     } else {
                         mw.floor_level(bx, by, bz)
                     };
-                    *m = MoveTo { active: true, x: target.x, y, z: target.z, speed_modifier: 1.0 };
+                    *m = MoveTo { active: true, x: target.x, y, z: target.z, speed_modifier: nav.speed };
                 }
             }
         }
@@ -559,16 +576,10 @@ fn follow(
         }
     }
 }
-/// The walks that are over arm their next stroll attempt (the timer wheel is shared: a serial system, one entry
-/// per walk that ended, not per cow).
-fn path_ended(
-    clock: Res<Clock>,
-    mut wheel: ResMut<Wheel>,
-    mut q: Query<(Entity, &mut Stroll, &mut Rng), With<PathEnded>>,
-    mut commands: Commands,
-) {
-    for (e, mut s, mut r) in &mut q {
-        arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
+/// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
+fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
+    for (e, g) in &q {
+        crate::goals::path_ended(e, g, &mut reqs);
         commands.entity(e).remove::<PathEnded>();
     }
 }
@@ -834,11 +845,10 @@ fn apply_pushes(mut q: Query<(Entity, &PushIn, &mut Vel)>, mut commands: Command
 /// What is due at this tick in the timer wheel: a stroll attempt (a spot is picked, or the attempt fails and is
 /// armed again, or the goal is refused for lack of a player and is not re-armed), a baby grows up.
 #[allow(clippy::type_complexity)]
-fn due(
+pub(crate) fn due(
     mut clock: ResMut<Clock>,
     mut wheel: ResMut<Wheel>,
-    level: Res<Level>,
-    mut strollers: Query<(&Pos, &ActiveUntil, &mut Stroll, &mut Rng)>,
+    mut fired: ResMut<crate::goals::Fired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     mut commands: Commands,
 ) {
@@ -847,27 +857,19 @@ fn due(
     let list = std::mem::take(&mut wheel.slots[slot]);
     for (e, d) in list {
         match d {
-            Due::Stroll => {
-                if let Ok((pos, active, mut s, mut r)) = strollers.get_mut(e) {
-                    s.scheduled = false;
-                    if s.walking || clock.0 >= active.0 {
-                        continue;
-                    }
-                    if pick_spot(&level, pos, &mut s, &mut r) {
-                        commands.entity(e).insert(NeedsPath);
-                    } else {
-                        arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
-                    }
-                }
-            }
+            // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
+            Due::Stroll => fired.0.push((e, crate::goals::Kind::Stroll)),
+            Due::Goal(k) => fired.0.push((e, k)),
             Due::Grow => {
-                if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e)
-                    && g.0 == clock.0
-                {
-                    b.width = sizes.adult.0;
-                    b.height = sizes.adult.1;
-                    bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
-                    commands.entity(e).remove::<GrowAt>();
+                if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e) {
+                    if g.0 > clock.0 {
+                        wheel.push(g.0.min(clock.0 + WHEEL as u64 - 1), e, Due::Grow);
+                    } else if g.0 == clock.0 {
+                        b.width = sizes.adult.0;
+                        b.height = sizes.adult.1;
+                        bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
+                        commands.entity(e).remove::<GrowAt>();
+                    }
                 }
             }
         }
@@ -891,6 +893,7 @@ impl Herd {
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
+        crate::goals::insert_resources(&mut world);
         world.insert_resource(Index::new(-f64::from(half), (2 * half / 2) as usize + 2));
         let mut rng = Rng(seed | 1);
         for i in 0..n {
@@ -908,6 +911,7 @@ impl Herd {
                 world.get_mut::<Stroll>(e).unwrap().scheduled = true;
             }
         }
+        crate::goals::arm_all(&mut world);
         // The cows are listed in the index from the start (a player event is read at the first tick).
         world.run_system_cached(reindex).unwrap();
         Self { world, schedule: schedule() }
