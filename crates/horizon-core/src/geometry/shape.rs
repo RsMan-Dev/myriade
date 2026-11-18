@@ -508,33 +508,27 @@ impl VoxelShape {
         if amount.abs() < COLLISION_EPSILON {
             return 0.0;
         }
+        let (lo, hi, off) = (
+            aabb.min_position().components(),
+            aabb.max_position().components(),
+            offset.components(),
+        );
         // `find_index` of the moved cube: the upper bound among its two coordinates, less one.
-        let at = |a: Axis, v: f64| {
-            let o = offset.component(a);
-            i32::from(o <= v) + i32::from(o + 1.0 <= v) - 1
-        };
+        let at = |a: usize, v: f64| i32::from(off[a] <= v) + i32::from(off[a] + 1.0 <= v) - 1;
         let i = axis as usize;
-        let p = Axis::ALL[(i + 1) % 3];
-        let q = Axis::ALL[(i + 2) % 3];
-        let (p_start, p_end) = (
-            at(p, aabb.min(p) + COLLISION_EPSILON).max(0),
-            (at(p, aabb.max(p) - COLLISION_EPSILON) + 1).min(1),
-        );
-        let (q_start, q_end) = (
-            at(q, aabb.min(q) + COLLISION_EPSILON).max(0),
-            (at(q, aabb.max(q) - COLLISION_EPSILON) + 1).min(1),
-        );
-        if p_start >= p_end || q_start >= q_end {
+        let (p, q) = ((i + 1) % 3, (i + 2) % 3);
+        if at(p, lo[p] + COLLISION_EPSILON).max(0) >= (at(p, hi[p] - COLLISION_EPSILON) + 1).min(1)
+            || at(q, lo[q] + COLLISION_EPSILON).max(0) >= (at(q, hi[q] - COLLISION_EPSILON) + 1).min(1)
+        {
             return amount;
         }
-        let o = offset.component(axis);
         if amount > 0.0 {
-            if at(axis, aabb.max(axis) - COLLISION_EPSILON) + 1 <= 0 {
-                let distance = o - aabb.max(axis);
+            if at(i, hi[i] - COLLISION_EPSILON) < 0 {
+                let distance = off[i] - hi[i];
                 return if distance >= -COLLISION_EPSILON { java_min(amount, distance) } else { amount };
             }
-        } else if amount < 0.0 && at(axis, aabb.min(axis) + COLLISION_EPSILON) >= 1 {
-            let distance = 1.0 + o - aabb.min(axis);
+        } else if amount < 0.0 && at(i, lo[i] + COLLISION_EPSILON) >= 1 {
+            let distance = 1.0 + off[i] - lo[i];
             return if distance <= COLLISION_EPSILON { java_max(amount, distance) } else { amount };
         }
         amount
