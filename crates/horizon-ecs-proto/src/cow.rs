@@ -91,10 +91,13 @@ pub struct Nav {
     pub last_pos: Vec3,
     /// The speed modifier of the goal that asked for the path.
     pub speed: f64,
+    /// `PathNavigation.timeLastRecompute` and `delayedRecompute`.
+    pub last_recompute: u64,
+    pub delayed: bool,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0 }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, last_recompute: 0, delayed: false }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -223,78 +226,92 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// The block changes waiting for the next step: (x, y, z, block name).
 #[derive(Resource, Default)]
 pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
-/// The hazard bits of each block column (a static world here; a block change would update its column: the event).
+/// The hazard blocks of the world by column and height: only the columns that hold one have an entry. A cow's hazard
+/// bits are those of the entries its box (widened by a block each way, as a prefilter) meets; a block change at any
+/// height updates its entry (`set`).
 #[derive(Resource, Default)]
 pub struct Hazards {
     origin: i32,
     width: usize,
-    bits: Vec<u8>,
+    /// Per column: 0, or 1 + the index in `pool`.
+    cols: Vec<u32>,
+    pool: Vec<Vec<(i32, u8)>>,
+}
+fn hazard_bit(name: &str) -> u8 {
+    match name {
+        "minecraft:lava" => HAZ_LAVA,
+        "minecraft:fire" => HAZ_FIRE,
+        "minecraft:water" => HAZ_WATER,
+        "minecraft:powder_snow" => HAZ_SNOW,
+        "minecraft:cactus" => HAZ_CACTUS,
+        _ => 0,
+    }
 }
 impl Hazards {
+    /// Reads the generated height of the world (`-2..=BUILD_TOP`: the floor, the walls and what the patches add).
     pub fn build(level: &Level) -> Self {
         let mw = level.mw.0;
         let (origin, width) = (-level.half, (2 * level.half + 1) as usize);
-        let mut bits = vec![0u8; width * width];
+        let mut h = Self { origin, width, cols: vec![0; width * width], pool: Vec::new() };
         for x in 0..width {
             for z in 0..width {
-                let mut b = 0;
-                for y in 0..=1 {
-                    let state = mw.world.block(x as i32 + origin, y, z as i32 + origin);
-                    match &*mw.facts.get(state).name {
-                        "minecraft:lava" => b |= HAZ_LAVA,
-                        "minecraft:fire" => b |= HAZ_FIRE,
-                        "minecraft:water" => b |= HAZ_WATER,
-                        "minecraft:powder_snow" => b |= HAZ_SNOW,
-                        "minecraft:cactus" => b |= HAZ_CACTUS,
-                        _ => {}
+                for y in -2..=BUILD_TOP {
+                    let bit = hazard_bit(&mw.facts.get(mw.world.block(x as i32 + origin, y, z as i32 + origin)).name);
+                    if bit != 0 {
+                        h.set(x as i32 + origin, y, z as i32 + origin, bit);
                     }
                 }
-                bits[z * width + x] = b;
             }
         }
-        Self { origin, width, bits }
+        h
     }
-    /// The hazard bits of the column (x, z) read again from the blocks (a block there changed).
-    pub fn refresh(&mut self, level: &Level, x: i32, z: i32) {
-        let mw = level.mw.0;
+    /// The block at (x, y, z) now has these hazard bits (0: none), at any height.
+    pub fn set(&mut self, x: i32, y: i32, z: i32, bit: u8) {
         let (cx, cz) = (x - self.origin, z - self.origin);
         if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
             return;
         }
-        let mut b = 0;
-        for y in 0..=1 {
-            match &*mw.facts.get(mw.world.block(x, y, z)).name {
-                "minecraft:lava" => b |= HAZ_LAVA,
-                "minecraft:fire" => b |= HAZ_FIRE,
-                "minecraft:water" => b |= HAZ_WATER,
-                "minecraft:powder_snow" => b |= HAZ_SNOW,
-                "minecraft:cactus" => b |= HAZ_CACTUS,
-                _ => {}
+        let i = cz as usize * self.width + cx as usize;
+        if self.cols[i] == 0 {
+            if bit == 0 {
+                return;
             }
+            self.pool.push(Vec::new());
+            self.cols[i] = self.pool.len() as u32;
         }
-        self.bits[cz as usize * self.width + cx as usize] = b;
-    }
-    fn at(&self, x: i32, z: i32) -> u8 {
-        let (cx, cz) = (x - self.origin, z - self.origin);
-        if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
-            0
-        } else {
-            self.bits[cz as usize * self.width + cx as usize]
+        let list = &mut self.pool[self.cols[i] as usize - 1];
+        list.retain(|e| e.0 != y);
+        if bit != 0 {
+            list.push((y, bit));
         }
     }
-    /// The hazards of the columns a box covers.
+    /// The hazards of the columns a box covers, at the heights it covers (a block more each way).
     pub fn of_box(&self, b: &Aabb) -> u8 {
         let (mn, mx) = (b.min_position(), b.max_position());
         let e = 1.0e-7;
+        let (y0, y1) = (mn.y.floor() as i32 - 1, (mx.y - e).floor() as i32 + 1);
         let mut bits = 0;
         for x in mn.x.floor() as i32..=(mx.x - e).floor() as i32 {
             for z in mn.z.floor() as i32..=(mx.z - e).floor() as i32 {
-                bits |= self.at(x, z);
+                let (cx, cz) = (x - self.origin, z - self.origin);
+                if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
+                    continue;
+                }
+                let c = self.cols[cz as usize * self.width + cx as usize];
+                if c != 0 {
+                    for &(y, bit) in &self.pool[c as usize - 1] {
+                        if (y0..=y1).contains(&y) {
+                            bits |= bit;
+                        }
+                    }
+                }
             }
         }
         bits
     }
 }
+/// The top of what the bench worlds generate (the patches reach y = 3).
+const BUILD_TOP: i32 = 6;
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct GrowAt(pub u64);
@@ -617,7 +634,7 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, block_changes, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
+    s.add_systems((due, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
     crate::goals::register(&mut s);
     s
 }
@@ -1311,7 +1328,8 @@ fn reindex(
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
         if fluid && !in_fluid {
-            commands.entity(e).insert(InFluid);
+            // A cow that enters a fluid (placed water, a push) needs its physics at once.
+            commands.entity(e).insert((InFluid, Moving));
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             *fs = FluidState::default();
@@ -1458,6 +1476,31 @@ fn hazard_tick(
         }
     }
 }
+/// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
+#[derive(Component, Default)]
+pub struct Recompute;
+/// `PathNavigation.recomputePath`: made at once if the last recompute is more than 20 ticks old and the cow can update
+/// a path (on the ground or in a liquid); else the old path is kept and the ask is made again every tick.
+#[allow(clippy::type_complexity)]
+fn recompute(
+    clock: Res<Clock>,
+    mut q: Query<(Entity, &mut Nav, &Contact, &FluidState), With<Recompute>>,
+    mut commands: Commands,
+) {
+    for (e, mut nav, c, fs) in &mut q {
+        if nav.path.as_ref().is_none_or(|p| p.is_done()) {
+            nav.delayed = false;
+            commands.entity(e).remove::<Recompute>();
+        } else if clock.0.saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
+            nav.delayed = true;
+        } else {
+            nav.last_recompute = clock.0;
+            nav.path = None;
+            nav.delayed = false;
+            commands.entity(e).remove::<(Following, Recompute)>().insert(NeedsPath);
+        }
+    }
+}
 /// A block was placed or removed (`ServerLevel.sendBlockUpdated`): the world takes it, the hazard column is read again,
 /// and only what it can change is woken: the cows whose box, widened by a block, meets the block get their physics
 /// (a floor that left), their suffocation and their hazard and fluid modules looked at again (their box counts as
@@ -1485,7 +1528,7 @@ fn block_changes(
             let _ = world.set(x, y, z, state);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
-        hazards.refresh(&level, x, z);
+        hazards.set(x, y, z, hazard_bit(name));
         let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
         let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
         let mut near: Vec<Entity> = Vec::new();
@@ -1511,9 +1554,8 @@ fn block_changes(
             );
             let remaining = (path.nodes.len() - path.next) as f64;
             let c = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
-            if c.distance_squared(middle) < remaining * remaining && s.walking {
-                nav.path = None;
-                commands.entity(e).remove::<Following>().insert(NeedsPath);
+            if c.distance_squared(middle) < remaining * remaining && s.walking && !nav.delayed {
+                commands.entity(e).insert(Recompute);
             }
         }
     }
@@ -2051,7 +2093,92 @@ mod tests {
             herd.tick();
         }
         let new_nodes = herd.world.get::<Nav>(walker).unwrap().path.as_ref().map(|p| p.nodes.clone());
-        assert!(new_nodes.is_some_and(|n| n.iter().all(|p| !(p.x == -20 && p.y == 1 && p.z == -21))), "the new path crosses the stone");
+        assert!(new_nodes.clone().is_some_and(|n| n.iter().all(|p| !(p.x == -20 && p.y == 1 && p.z == -21))), "the new path crosses the stone");
+        // Less than 20 ticks after that recompute: the next change on the path waits (the old path is kept).
+        let nodes_now = new_nodes.unwrap();
+        let mid = nodes_now[nodes_now.len() * 2 / 3];
+        let (r, remaining) = (herd.world.get::<Nav>(walker).unwrap().last_recompute, herd.world.resource::<Clock>().0);
+        assert!(remaining - r < 15, "{r} {remaining}");
+        herd.set_block(mid.x, mid.y, mid.z, "minecraft:stone");
+        herd.set_block(mid.x, mid.y + 1, mid.z, "minecraft:stone");
+        herd.tick();
+        herd.tick();
+        assert!(herd.world.get::<Nav>(walker).unwrap().delayed, "the recompute is delayed");
+        assert_eq!(herd.world.get::<Nav>(walker).unwrap().path.as_ref().map(|p| p.nodes.clone()), Some(nodes_now.clone()));
+        for _ in 0..25 {
+            herd.tick();
+        }
+        let after = herd.world.get::<Nav>(walker).unwrap();
+        assert!(!after.delayed && after.last_recompute > r + 20, "recomputed after the delay");
+    }
+
+    /// Water placed and removed at any height: `InFluid` and the float, fire put out, and a hazard high above the floor.
+    #[test]
+    fn water_placed_floats_extinguishes_and_works_at_height() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        let mut herd = Herd::with_hazards(0, 100.0, true, false, 5, false);
+        let mut spawn = |herd: &mut Herd, x: f64, z: f64| {
+            let e = herd.world.spawn(cow_bundle(x, z, 3 + x as u64)).id();
+            herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+            e
+        };
+        let (swimmer, burner, high) = (spawn(&mut herd, 10.5, 10.5), spawn(&mut herd, -10.5, 10.5), spawn(&mut herd, 10.5, -10.5));
+        for _ in 0..5 {
+            herd.tick();
+        }
+        // Water around and over the swimmer (the floor is at y = 0, the cow stands in y = 1).
+        for x in 9..=11 {
+            for z in 9..=11 {
+                for y in 1..=3 {
+                    herd.set_block(x, y, z, "minecraft:water");
+                }
+            }
+        }
+        for _ in 0..30 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<InFluid>(swimmer).is_some());
+        let y = herd.world.get::<Pos>(swimmer).unwrap().0.y;
+        assert!(y > 1.5, "the cow floats up: y = {y}");
+        // Fire in the cell of the second cow, then water over it: the burning stops.
+        herd.set_block(-11, 1, 10, "minecraft:fire");
+        for _ in 0..3 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Burning>(burner).is_some(), "burning in fire");
+        herd.set_block(-11, 1, 10, "minecraft:water");
+        herd.set_block(-10, 1, 10, "minecraft:water");
+        for _ in 0..3 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Burning>(burner).is_none(), "water puts the fire out");
+        // The water leaves: the swimmer is no longer in a fluid.
+        for x in 9..=11 {
+            for z in 9..=11 {
+                for y in 1..=3 {
+                    herd.set_block(x, y, z, "minecraft:air");
+                }
+            }
+        }
+        for _ in 0..40 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<InFluid>(swimmer).is_none(), "water removed");
+        assert!(herd.world.get::<Pos>(swimmer).unwrap().0.y < 1.01, "back on the floor");
+        // A hazard 4 blocks up (above the generated floor), then the cow is lifted into it: only then it is hurt.
+        herd.set_block(10, 6, -11, "minecraft:lava");
+        herd.set_block(10, 6, -10, "minecraft:lava");
+        for _ in 0..5 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Hazard>(high).is_none(), "the lava is out of reach");
+        let up = Vec3::new(10.5, 6.0, -10.5);
+        herd.world.get_mut::<Pos>(high).unwrap().0 = up;
+        herd.world.get_mut::<Bounds>(high).unwrap().0 = box_at(up, 0.9, 1.4);
+        herd.tick();
+        assert!(herd.world.get::<Hazard>(high).is_some_and(|h| h.0 & HAZ_LAVA != 0), "lava at height 6");
     }
 
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
