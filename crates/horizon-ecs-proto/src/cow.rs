@@ -602,7 +602,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed },
         Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
         Cell(u32::MAX),
-        Contact { on_ground: true, horizontal: false, fall_distance: 0.0 },
+        Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         Drive::default(),
         (
             Sizes { adult: (sp.width, sp.height), baby: sp.baby },
@@ -2104,6 +2104,9 @@ mod tests {
         // A path is dropped by a change near its middle only.
         let walker = {
             let e = spawn(&mut herd, -30.5, -20.5);
+            // A new animal has no known ground until its first sweep: it cannot update a path before.
+            herd.tick();
+            herd.tick();
             herd.world.get_mut::<Stroll>(e).unwrap().walking = true;
             herd.world.get_mut::<Stroll>(e).unwrap().tx = -10.5;
             herd.world.get_mut::<Stroll>(e).unwrap().tz = -20.5;
