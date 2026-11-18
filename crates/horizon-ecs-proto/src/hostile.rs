@@ -1,5 +1,5 @@
-//! The behaviours of a hostile monster, written once by behaviour and assigned by data (a species with a `Target` and a
-//! `Melee` slot in its `GoalDef`): `NearestAttackableTargetGoal` on the player, `HurtByTargetGoal`, `MeleeAttackGoal`.
+//! The data and rules of a hostile monster, shared by the `target` and `melee` modules (a species with those entries in
+//! its configuration): `NearestAttackableTargetGoal` on the player, `HurtByTargetGoal`, `MeleeAttackGoal`.
 //! Event driven like the farm goals: the target is looked for on a geometric deadline (the selector's 1-in-5 ask every
 //! other tick, sampled once), the melee goal looks at the target on its 20-tick check grid, and only a monster that
 //! has a target, or a melee that runs, is visited by a system. The damage goes through the players' state.
@@ -29,6 +29,9 @@ pub struct Attack {
     pub path_target: Vec3,
     /// A check of the melee goal is in the timer wheel.
     pub armed: bool,
+    /// The ranks of the melee and target goals in the animal's selector (`u8::MAX`: none).
+    pub melee_slot: u8,
+    pub target_slot: u8,
 }
 /// The player this monster hunts (the target selector runs; `Target` goal).
 #[derive(Component, Clone, Copy, Debug)]
@@ -107,8 +110,15 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(HurtBy::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((hurt_by_events, sight_eval, aggro_run, melee_run).chain().after(goals::hurt_events).before(arbitrate));
     s.add_systems((sun_eval, sun_burn).chain().after(crate::cow::reindex));
+}
+/// The systems of the target goal (module `target`): the hits that name a target, the line of sight, `canContinue`.
+pub fn target_systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
+    s.add_systems((hurt_by_events, sight_eval, aggro_run).chain().after(apply_damage).in_set(slot));
+}
+/// The system of the melee goal (module `melee`), after the target's.
+pub fn melee_systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
+    s.add_systems(melee_run.in_set(slot));
 }
 
 /// The data of a species that attacks (the vanilla values of `Zombie` and its attributes).
@@ -117,24 +127,30 @@ pub fn equip(world: &mut World, e: Entity, sp: &Species) {
         world.entity_mut(e).insert(BurnsInDay { eye: sp.eye_height, block: (i32::MIN, 0, 0) });
         world.resource_mut::<SunDirty>().0.push(e);
     }
-    if sp.goals.slots.iter().any(|s| s.0 == Kind::Melee) {
-        let now = world.resource::<Clock>().0;
-        world.entity_mut(e).insert(Attack {
-            damage: if sp.attack_damage <= 0.0 { 1.0 } else { sp.attack_damage },
-            interval: 20,
-            speed: 1.0,
-            reach: 2.04_f32.sqrt() as f64 - 0.6,
-            follow: f64::from(sp.follow_range),
-            eye: sp.eye_height,
-            phase: now,
-            until: 0,
-            recalc: 0,
-            path_target: Vec3::ZERO,
-            armed: false,
-        });
-    }
 }
-
+/// The monster's `Attack` data from its species (made once, by whichever of the target and melee modules is equipped first).
+pub fn ensure_attack(w: &mut World, e: Entity) {
+    if w.get::<Attack>(e).is_some() {
+        return;
+    }
+    let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(e).unwrap().0 as usize];
+    let now = w.resource::<Clock>().0;
+    w.entity_mut(e).insert(Attack {
+        damage: if sp.attack_damage <= 0.0 { 1.0 } else { sp.attack_damage },
+        interval: 20,
+        speed: 1.0,
+        reach: 2.04_f32.sqrt() as f64 - 0.6,
+        follow: f64::from(sp.follow_range),
+        eye: sp.eye_height,
+        phase: now,
+        until: 0,
+        recalc: 0,
+        path_target: Vec3::ZERO,
+        armed: false,
+        melee_slot: u8::MAX,
+        target_slot: u8::MAX,
+    });
+}
 // ---- the target goal --------------------------------------------------------------------------------------------
 /// `NearestAttackableTargetGoal.canUse` once the 1-in-5 draw passed: the nearest living player within the follow range
 /// (at least 2 blocks). The line of sight is not computed (the bench world is open).
@@ -166,10 +182,11 @@ pub fn acquire(w: &mut World, e: Entity, player: u32) {
 /// `TargetGoal.stop`: no target; the melee goal ends and the selector asks again from a fresh draw.
 pub fn lose_target(w: &mut World, e: Entity) {
     w.entity_mut(e).remove::<Aggro>();
-    w.resource_mut::<Requests>().0.push(Req::End(e, Kind::Melee));
-    if let Some(mut t) = w.get_mut::<GoalTimers>(e) {
-        t.target = false;
+    if let Some(a) = w.get::<Attack>(e) {
+        let slot = a.melee_slot;
+        w.resource_mut::<Requests>().0.push(Req::End(e, slot));
     }
+    crate::behaviours::target::unarm(w, e);
     arm_timers_of(w, e);
 }
 fn arm_timers_of(w: &mut World, e: Entity) {
@@ -177,9 +194,10 @@ fn arm_timers_of(w: &mut World, e: Entity) {
 }
 /// A hit by a player (`HurtByTargetGoal`, priority 1 over the nearest-player goal): the hitter becomes the target.
 pub fn hunt(w: &mut World, e: Entity) {
+    let Some(slot) = w.get::<Attack>(e).map(|a| a.target_slot) else { return };
     let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
-    if !g.is_running(Kind::Target) {
-        g.start(Kind::Target);
+    if !g.slot_running(slot) {
+        g.start(slot);
     }
     arm_melee(w, e);
 }
@@ -198,7 +216,7 @@ fn hurt_by_events(
             continue;
         }
         cmd.entity(e).insert(Aggro::new(p, 150));
-        reqs.0.push(Req::Hunt(e));
+        reqs.0.push(Req::Call(e, hunt));
         // `HurtByTargetGoal.alertOthers`: the others of the same type within the follow range (10 blocks up and down)
         // that have no target take the same one.
         idx.for_radius(pos.0.x, pos.0.z, a.follow, |o| {
@@ -213,7 +231,7 @@ fn hurt_by_events(
                 && (op.0.y - pos.0.y).abs() <= 11.0
             {
                 cmd.entity(o).insert(Aggro::new(p, 30));
-                reqs.0.push(Req::Hunt(o));
+                reqs.0.push(Req::Call(o, hunt));
             }
         });
     }
@@ -233,7 +251,7 @@ fn aggro_run(clock: Res<Clock>, on: Res<Online>, ps: Res<PlayerState>, mut q: Qu
             g.unseen += 1;
         }
         if !ok || g.unseen > g.memory {
-            reqs.0.push(Req::End(e, Kind::Target));
+            reqs.0.push(Req::End(e, a.target_slot));
         }
     }
 }
@@ -272,8 +290,10 @@ pub fn arm_melee(w: &mut World, e: Entity) {
         return;
     }
     a.armed = true;
+    let a_slot = a.melee_slot;
     let wait = 20 - (now.saturating_sub(a.phase) % 20) as i32;
-    arm(w, e, Kind::Melee, wait);
+    let slot = a_slot;
+    arm(w, e, slot, wait);
 }
 /// The goal ended or its check failed: `canUse` is asked again at the next selection tick if the last ask is 20 ticks old
 /// (the case when the goal ran for a long while: it restarts at once, with a cooldown of 0), else 20 ticks after it.
@@ -284,8 +304,10 @@ pub fn arm_melee_after(w: &mut World, e: Entity) {
         return;
     }
     a.armed = true;
+    let a_slot = a.melee_slot;
     let wait = if now >= a.phase + 20 { 1 } else { (a.phase + 20 - now) as i32 };
-    arm(w, e, Kind::Melee, wait);
+    let slot = a_slot;
+    arm(w, e, slot, wait);
 }
 /// `canUse`: a living target and a path to it or within reach (the path is made by the pathfinder at the start; the
 /// case of no path is not fed back).
@@ -341,7 +363,7 @@ fn melee_run(
 ) {
     for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng) in &mut q {
         let Some(p) = on.get(g.player).filter(|p| ps.alive(p.id)) else {
-            reqs.0.push(Req::End(e, Kind::Melee));
+            reqs.0.push(Req::End(e, a.melee_slot));
             continue;
         };
         let at = Vec3::new(p.x, p.y, p.z);

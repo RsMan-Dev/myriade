@@ -142,7 +142,7 @@ fn mob_health(m: &Mob) -> f32 {
 #[test]
 fn cactus_fire_and_lava_hurt_as_a_mob_does() {
     // The Mob's outcome depends on the panic flight out of the hazard; a species with no Panic wanders at random.
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "cactus_fire_and_lava_hurt_as_a_mob_does") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "cactus_fire_and_lava_hurt_as_a_mob_does") {
         return;
     }
     if !have_data() {
@@ -199,7 +199,7 @@ fn xz(a: Vec3, b: Vec3) -> f64 {
 /// Struck cows: when the panic starts, how long it lasts, the peak step of the walk.
 #[test]
 fn a_struck_cow_panics_as_a_mob_does() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_struck_cow_panics_as_a_mob_does") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "a_struck_cow_panics_as_a_mob_does") {
         return;
     }
     if !have_data() {
@@ -230,7 +230,7 @@ fn a_struck_cow_panics_as_a_mob_does() {
         h.tick();
         for (k, &(i, e)) in cows.iter().enumerate() {
             let mp = r.names(i).contains(&"Panic");
-            let cp = h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic);
+            let cp = h.world.get::<GoalSet>(e).unwrap().is_running(&horizon_ecs_proto::behaviours::panic::MODULE);
             let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
             for (st, on, step) in [(&mut m[k], mp, xz(prev[k].0, a)), (&mut c[k], cp, xz(prev[k].1, b))] {
                 if on && st.0.is_none() {
@@ -267,7 +267,7 @@ fn a_struck_cow_panics_as_a_mob_does() {
 /// Wheat in hand: range 9.5 / 10.5, the time to walk up, the stop distance, the calm after putting it away.
 #[test]
 fn wheat_tempts_as_it_does_a_mob() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Tempt(0), "wheat_tempts_as_it_does_a_mob") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::tempt::MODULE, "wheat_tempts_as_it_does_a_mob") {
         return;
     }
     if !have_data() {
@@ -336,7 +336,7 @@ fn wheat_tempts_as_it_does_a_mob() {
 /// Two cows in love 2 and 5 blocks apart: the tick of the birth, the parents' age.
 #[test]
 fn breeding_takes_as_long_as_for_a_mob() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Breed, "breeding_takes_as_long_as_for_a_mob") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::breed::MODULE, "breeding_takes_as_long_as_for_a_mob") {
         return;
     }
     if !have_data() {
@@ -405,7 +405,7 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
 /// (the look goals do not depend on `noActionTime`).
 #[test]
 fn looking_goals_start_as_often_as_a_mob_s() {
-    if horizon_ecs_proto::cow::skip_if(horizon_ecs_proto::goals::Kind::Melee, "looking_goals_start_as_often_as_a_mob_s") {
+    if horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::melee::MODULE, "looking_goals_start_as_often_as_a_mob_s") {
         return;
     }
     if !have_data() {
@@ -485,7 +485,7 @@ fn trace_panic() {
         eprintln!(
             "t={t:2} MOB step {:.3} vy {:+.3} ground {} zza {:.2} speed {:.2} jump {} node {:?}/{} panic {} | ECS step {:.3} vy {:+.3} ground {} zza {:.2} speed {:.2} jump {} node {:?}/{} panic {}",
             xz(pm, m.position), m.velocity.y, u8::from(m.on_ground), m.ai.zza, m.ai.speed, u8::from(m.ai.jumping), m.ai.nav.path.as_ref().map(|p| p.next), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()), u8::from(r.names(i).contains(&"Panic")),
-            xz(pc, cp), cv.y, u8::from(cc.on_ground), d.zza, d.speed, u8::from(d.jump), n.path.as_ref().map(|p| p.next), n.path.as_ref().map_or(0, |p| p.nodes.len()), u8::from(h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic))
+            xz(pc, cp), cv.y, u8::from(cc.on_ground), d.zza, d.speed, u8::from(d.jump), n.path.as_ref().map(|p| p.next), n.path.as_ref().map_or(0, |p| p.nodes.len()), u8::from(h.world.get::<GoalSet>(e).unwrap().is_running(&horizon_ecs_proto::behaviours::panic::MODULE))
         );
         (pm, pc) = (m.position, cp);
     }
@@ -494,7 +494,7 @@ fn trace_panic() {
 /// A burning cow 4 blocks from a pond runs to the water and puts the fire out, as a mob does (`lookForWater`).
 #[test]
 fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_burning_cow_runs_to_the_water_as_a_mob_does") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "a_burning_cow_runs_to_the_water_as_a_mob_does") {
         return;
     }
     if !have_data() {
@@ -574,7 +574,7 @@ fn trace_cactus() {
             eprintln!(
                 "t={t} pos=({:.2},{:.2},{:.2}) ground={} vy={:.3} hp={} panic={} following={} needs={} path={}",
                 p.x, p.y, p.z, h.world.get::<Contact>(e).unwrap().on_ground, h.world.get::<Vel>(e).unwrap().0.y, health(&h, e),
-                g.is_running(Kind::Panic), h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(),
+                g.is_running(&horizon_ecs_proto::behaviours::panic::MODULE), h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(),
                 h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
             );
         }
@@ -606,7 +606,7 @@ fn trace_burning() {
         eprintln!(
             "t={t:2} MOB ({:.2},{:.2},{:.2}) fire {} goals {:?} nodes {} | ECS ({:.2},{:.2},{:.2}) burning {} panic {} target ({:.1},{:.1}) following {} needs {} path {}",
             m.position.x, m.position.y, m.position.z, m.fire_ticks, r.names(i), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()),
-            p.x, p.y, p.z, h.world.get::<Burning>(e).is_some(), h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic), s.tx, s.tz,
+            p.x, p.y, p.z, h.world.get::<Burning>(e).is_some(), h.world.get::<GoalSet>(e).unwrap().is_running(&horizon_ecs_proto::behaviours::panic::MODULE), s.tx, s.tz,
             h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
         );
     }
@@ -617,7 +617,7 @@ fn trace_burning() {
 /// blow (the others start later, after landing, with draws that cannot be read: not compared here).
 #[test]
 fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Panic, "a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
         return;
     }
     if !have_data() {
@@ -652,7 +652,7 @@ fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
         // The mob is made facing 0; the ecs cow is given the same.
         h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
         if let Some(t) = target[k] {
-            h.world.resource_mut::<Forced>().spots.insert((e, Kind::Panic), t);
+            force_spot(&mut h.world, e, &horizon_ecs_proto::behaviours::panic::MODULE, t);
             kept.push((i, e));
         }
     }
@@ -758,8 +758,8 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
             let (s, spot) = start[k].unwrap();
             if t == s {
                 let e = cows[k].1;
-                h.world.resource_mut::<Forced>().spots.insert((e, Kind::Stroll), spot);
-                h.world.resource_mut::<Fired>().0.push((e, Kind::Stroll));
+                force_spot(&mut h.world, e, &horizon_ecs_proto::behaviours::stroll::MODULE, spot);
+                fire(&mut h.world, e, &horizon_ecs_proto::behaviours::stroll::MODULE);
             }
         }
         r.step(None);
@@ -786,7 +786,7 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
 /// (`Forced`); the parent walks the same way and gives birth at the same tick.
 #[test]
 fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
-    if horizon_ecs_proto::cow::skip_unless(horizon_ecs_proto::goals::Kind::Breed, "breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::breed::MODULE, "breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
         return;
     }
     if !have_data() {

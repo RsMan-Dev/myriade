@@ -373,7 +373,7 @@ fn trace_one_zombie() {
             acquired = true;
             h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: 1.0, z: pz, main: 0, off: 0 });
             h.world.entity_mut(e).insert(Aggro::new(1, 30));
-            h.world.resource_mut::<Requests>().0.push(Req::Hunt(e));
+            h.world.resource_mut::<Requests>().0.push(Req::Call(e, horizon_ecs_proto::hostile::hunt));
             eprintln!("t={t}: target acquired by the Mob; imposed on the ECS");
         }
         h.tick();
