@@ -358,7 +358,7 @@ impl Rng {
 /// The tick counter (advanced by `due`).
 #[derive(Resource, Default)]
 pub struct Clock(pub u64);
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Due {
     Stroll,
     Grow,
@@ -372,15 +372,71 @@ const WHEEL: usize = 4096;
 #[derive(Resource)]
 pub struct Wheel {
     slots: Vec<Vec<(Entity, Due)>>,
+    /// With the simulation zone on (`zone.rs`): what each entity has in the wheel (by entity index), so that a creature
+    /// that leaves the zone takes its entries out without a scan of the wheel.
+    track: bool,
+    owned: Vec<Vec<(Entity, u64, Due)>>,
 }
 impl Default for Wheel {
     fn default() -> Self {
-        Self { slots: vec![Vec::new(); WHEEL] }
+        Self { slots: vec![Vec::new(); WHEEL], track: false, owned: Vec::new() }
     }
 }
 impl Wheel {
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        if self.track {
+            self.own(e, at, d);
+        }
+    }
+    fn own(&mut self, e: Entity, at: u64, d: Due) {
+        let i = e.index().index() as usize;
+        if self.owned.len() <= i {
+            self.owned.resize_with(i + 1, Vec::new);
+        }
+        self.owned[i].push((e, at, d));
+    }
+    /// Starts to keep the entries of each entity (reads the ones already there).
+    pub(crate) fn enable_tracking(&mut self) {
+        self.track = true;
+        self.owned.clear();
+        for at in 0..WHEEL {
+            for k in 0..self.slots[at].len() {
+                let (e, d) = self.slots[at][k];
+                // The slot of tick `at` holds the entries of that tick (an entry is at most WHEEL - 1 ticks ahead).
+                self.own(e, at as u64, d);
+            }
+        }
+    }
+    /// An entry fired at tick `at`: it is no longer the entity's.
+    fn fired(&mut self, e: Entity, at: u64, d: Due) {
+        if let Some(list) = self.owned.get_mut(e.index().index() as usize)
+            && let Some(i) = list.iter().position(|o| o.0 == e && o.2 == d && o.1 % WHEEL as u64 == at % WHEEL as u64)
+        {
+            list.swap_remove(i);
+        }
+    }
+    /// Takes the entries of `e` out of the wheel: `(tick, what)`.
+    pub(crate) fn take_entries(&mut self, e: Entity) -> Vec<(u64, Due)> {
+        let Some(list) = self.owned.get_mut(e.index().index() as usize) else { return Vec::new() };
+        let mine: Vec<(Entity, u64, Due)> = list.iter().copied().filter(|o| o.0 == e).collect();
+        list.retain(|o| o.0 != e);
+        let mut out = Vec::with_capacity(mine.len());
+        for (_, at, d) in mine {
+            let slot = &mut self.slots[(at % WHEEL as u64) as usize];
+            if let Some(i) = slot.iter().position(|o| o.0 == e && o.1 == d) {
+                slot.swap_remove(i);
+                out.push((at, d));
+            }
+        }
+        out
+    }
+    /// How many entries the wheel holds in all.
+    pub fn len(&self) -> usize {
+        self.slots.iter().map(Vec::len).sum()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
     /// How many entries the slot of tick `at` holds.
     pub fn due_len(&self, at: u64) -> usize {
@@ -393,18 +449,20 @@ const CELL: f64 = 1.0;
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
 pub struct Index {
-    origin: f64,
-    width: usize,
-    cells: Vec<Vec<Entity>>,
+    pub(crate) origin: f64,
+    pub(crate) width: usize,
+    pub(crate) cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
-    crossed: Vec<Entity>,
+    pub(crate) crossed: Vec<Entity>,
+    /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
+    pub(crate) zone: crate::zone::Zone,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default() }
     }
-    fn column(&self, x: f64) -> i64 {
+    pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
     }
     pub fn cell_of(&self, x: f64, z: f64) -> u32 {
@@ -731,7 +789,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
@@ -2254,6 +2312,11 @@ pub(crate) fn due(
     clock.0 += 1;
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
+    if wheel.track {
+        for &(e, d) in &list {
+            wheel.fired(e, clock.0, d);
+        }
+    }
     for (e, d) in list {
         match d {
             // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
@@ -2353,6 +2416,15 @@ impl Herd {
         // The cows are listed in the index from the start (a player event is read at the first tick).
         world.run_system_cached(reindex).unwrap();
         Self { world, schedule: schedule() }
+    }
+    /// Turns the simulated chunks on (`zone.rs`): only the chunks within `radius` chunks of a player tick, the creatures of the
+    /// others sleep (at the next tick for the players set later).
+    pub fn set_simulation(&mut self, radius: i32) {
+        crate::zone::enable(&mut self.world, radius);
+    }
+    /// Whether chunk `(cx, cz)` ticks (always, with the zone off).
+    pub fn chunk_simulated(&self, cx: i32, cz: i32) -> bool {
+        self.world.resource::<Index>().zone.chunk_simulated(cx, cz)
     }
     /// The players of the herd's world (their positions; cows within 32 blocks stay active).
     pub fn set_players(&mut self, players: Vec<(f64, f64)>) {
