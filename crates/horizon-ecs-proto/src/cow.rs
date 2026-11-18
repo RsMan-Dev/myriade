@@ -68,6 +68,15 @@ pub struct Stroll {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rng(pub u64);
+/// `AgeableMob`: negative for a baby, counting up to 0 (adult).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Age(pub i32);
+/// The size of an adult and of a baby of the species (data, not code).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Sizes {
+    pub adult: (f32, f32),
+    pub baby: (f32, f32),
+}
 /// On the ground, motionless, no walk, a stroll wait still to run: no movement system visits it.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Asleep;
@@ -100,6 +109,78 @@ pub struct Level {
 pub struct Config {
     pub sleep: bool,
     pub parallel: bool,
+}
+/// One cow of the spatial index: its box and whether it sleeps.
+#[derive(Clone, Copy, Debug)]
+pub struct Entry {
+    pub entity: Entity,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub half: f64,
+    pub height: f64,
+    pub asleep: bool,
+}
+/// The cows by 2-block column, as they were at the start of the step (rebuilt by `index`): the neighbours a
+/// cow reads are never half-updated, whatever the order the cows are visited in.
+#[derive(Resource, Default)]
+pub struct Grid {
+    pub origin: f64,
+    pub width: usize,
+    start: Vec<u32>,
+    items: Vec<Entry>,
+    cell_of: Vec<u32>,
+}
+const CELL: f64 = 2.0;
+impl Grid {
+    fn column(&self, x: f64) -> i64 {
+        ((x - self.origin) / CELL).floor() as i64
+    }
+    fn cell(&self, x: f64, z: f64) -> usize {
+        let cx = self.column(x).clamp(0, self.width as i64 - 1) as usize;
+        let cz = self.column(z).clamp(0, self.width as i64 - 1) as usize;
+        cz * self.width + cx
+    }
+    /// A counting sort of the entries by column.
+    pub fn rebuild(&mut self, entries: impl Iterator<Item = Entry>) {
+        let cells = self.width * self.width;
+        self.start.clear();
+        self.start.resize(cells + 1, 0);
+        let all: Vec<Entry> = entries.collect();
+        self.cell_of.clear();
+        for e in &all {
+            let c = self.cell(e.x, e.z);
+            self.cell_of.push(c as u32);
+            self.start[c + 1] += 1;
+        }
+        for i in 0..cells {
+            self.start[i + 1] += self.start[i];
+        }
+        let mut next: Vec<u32> = self.start[..cells].to_vec();
+        self.items.clear();
+        self.items.resize(all.len(), all.first().copied().unwrap_or(Entry { entity: Entity::PLACEHOLDER, x: 0.0, y: 0.0, z: 0.0, half: 0.0, height: 0.0, asleep: false }));
+        for (e, &c) in all.iter().zip(&self.cell_of) {
+            let slot = next[c as usize];
+            next[c as usize] += 1;
+            self.items[slot as usize] = *e;
+        }
+    }
+    /// The entries in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
+    pub fn near(&self, x: f64, z: f64) -> impl Iterator<Item = &Entry> {
+        let (cx, cz) = (self.column(x), self.column(z));
+        let w = self.width as i64;
+        (cz - 1..=cz + 1).flat_map(move |zz| {
+            (cx - 1..=cx + 1).flat_map(move |xx| {
+                let range = if xx < 0 || zz < 0 || xx >= w || zz >= w {
+                    0..0
+                } else {
+                    let c = (zz * w + xx) as usize;
+                    self.start[c] as usize..self.start[c + 1] as usize
+                };
+                self.items[range].iter()
+            })
+        })
+    }
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -140,6 +221,8 @@ pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
         Body { width: 0.9, height: 1.4, step_height: 0.6, gravity: 0.08, speed: 0.2 },
         Contact { on_ground: true, horizontal: false, fall_distance: 0.0 },
         Drive::default(),
+        Age(0),
+        Sizes { adult: (0.9, 1.4), baby: (0.45, 0.7) },
         MoveTo::default(),
         Stroll { wait, walking: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
         rng,
@@ -156,8 +239,8 @@ pub fn geometric(rng: &mut Rng, n: i32) -> i32 {
 pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
-    // The order is explicit: stroll, move control, travel, sleep, wake.
-    s.add_systems((stroll, move_control, travel, sleep, wake).chain());
+    // The order is explicit: index, stroll, move control, travel, push, growth, sleep, wake.
+    s.add_systems((index, stroll, move_control, travel, push, growth, sleep, wake).chain());
     s
 }
 
@@ -343,19 +426,100 @@ fn travel(
     }
 }
 
+/// The spatial index of the start of the step (a resource, rebuilt by a system).
+fn index(mut grid: ResMut<Grid>, q: Query<(Entity, &Pos, &Body, Has<Asleep>)>) {
+    grid.rebuild(q.iter().map(|(entity, p, b, asleep)| Entry {
+        entity,
+        x: p.0.x,
+        y: p.0.y,
+        z: p.0.z,
+        half: f64::from(b.width) / 2.0,
+        height: f64::from(b.height),
+        asleep,
+    }));
+}
+
+/// `LivingEntity.pushEntities` / `Entity.push`, own half only: each cow reads the neighbours it overlaps in
+/// the index (their positions at the start of the step) and moves its own velocity away from each; a sleeping
+/// neighbour it overlaps is woken (it pushes itself the next step: a one-step delay).
+fn push_one(grid: &Grid, e: Entity, pos: &Pos, vel: &mut Vel, body: &Body, wake: &mut impl FnMut(Entity)) {
+    let half = f64::from(body.width) / 2.0;
+    let height = f64::from(body.height);
+    for o in grid.near(pos.0.x, pos.0.z) {
+        if o.entity == e {
+            continue;
+        }
+        let overlap = (pos.0.x - o.x).abs() < half + o.half
+            && (pos.0.z - o.z).abs() < half + o.half
+            && pos.0.y < o.y + o.height
+            && o.y < pos.0.y + height;
+        if !overlap {
+            continue;
+        }
+        if o.asleep {
+            wake(o.entity);
+        }
+        let (mut xa, mut za) = (o.x - pos.0.x, o.z - pos.0.z);
+        let mut dd = xa.abs().max(za.abs());
+        if dd >= f64::from(0.01_f32) {
+            dd = dd.sqrt();
+            xa /= dd;
+            za /= dd;
+            let pow = (1.0 / dd).min(1.0);
+            xa *= pow * f64::from(0.05_f32);
+            za *= pow * f64::from(0.05_f32);
+            vel.0 = Vec3::new(vel.0.x - xa, vel.0.y, vel.0.z - za);
+        }
+    }
+}
+fn push(
+    cfg: Res<Config>,
+    grid: Res<Grid>,
+    par: ParallelCommands,
+    mut q: Query<(Entity, &Pos, &mut Vel, &Body), Without<Asleep>>,
+) {
+    if cfg.parallel {
+        q.par_iter_mut().for_each(|(e, p, mut v, b)| {
+            par.command_scope(|mut c| push_one(&grid, e, p, &mut v, b, &mut |o| {
+                c.entity(o).remove::<Asleep>();
+            }));
+        });
+    } else {
+        par.command_scope(|mut c| {
+            for (e, p, mut v, b) in &mut q {
+                push_one(&grid, e, p, &mut v, b, &mut |o| {
+                    c.entity(o).remove::<Asleep>();
+                });
+            }
+        });
+    }
+}
+
+/// `AgeableMob.aiStep`: a baby's age counts up to 0, then it has the adult's size (`Sizes`, data).
+fn growth(mut q: Query<(&mut Age, &mut Body, &Sizes), Without<Asleep>>) {
+    for (mut age, mut body, sizes) in &mut q {
+        if age.0 < 0 {
+            age.0 += 1;
+            let (w, h) = if age.0 < 0 { sizes.baby } else { sizes.adult };
+            body.width = w;
+            body.height = h;
+        }
+    }
+}
+
 /// A cow at its resting state (on the ground, no horizontal motion, the vertical rest velocity, no walk, no
 /// input, a wait still to run) goes to sleep: the tick would leave it as it is.
 fn sleep(
     cfg: Res<Config>,
-    q: Query<(Entity, &Vel, &Contact, &Stroll, &Drive, &Body), Without<Asleep>>,
+    q: Query<(Entity, &Vel, &Contact, &Stroll, &Drive, &Body, &Age), Without<Asleep>>,
     mut commands: Commands,
 ) {
     if !cfg.sleep {
         return;
     }
-    for (e, v, c, s, d, b) in &q {
+    for (e, v, c, s, d, b, age) in &q {
         let rest_vy = (0.0 - b.gravity) * f64::from(0.98_f32);
-        if c.on_ground && !s.walking && s.wait > 1 && d.zza == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest_vy {
+        if age.0 >= 0 && c.on_ground && !s.walking && s.wait > 1 && d.zza == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest_vy {
             commands.entity(e).insert(Asleep);
         }
     }
@@ -382,6 +546,7 @@ impl Herd {
         let mut world = World::new();
         world.insert_resource(build_level(root, half));
         world.insert_resource(Config { sleep, parallel });
+        world.insert_resource(Grid { origin: -f64::from(half), width: (2 * half / 2) as usize + 2, ..Default::default() });
         let mut rng = Rng(seed | 1);
         for i in 0..n {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
@@ -406,6 +571,38 @@ impl Herd {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two cows standing in each other are pushed apart; a sleeping cow they overlap is woken; a baby grows up.
+    #[test]
+    fn cows_push_each_other_and_babies_grow() {
+        let Some(root) = std::env::var_os("HORIZON_TEST_RESOURCES") else {
+            return;
+        };
+        let mut herd = Herd::new(std::path::Path::new(&root), 0, 6.0, true, false, 3);
+        let half = herd.world.resource::<Level>().half;
+        let _ = half;
+        let a = herd.world.spawn(cow_bundle(0.5, 0.5, 11)).id();
+        let b = herd.world.spawn(cow_bundle(0.8, 0.5, 12)).id();
+        let baby = herd.world.spawn(cow_bundle(10.5, 10.5, 13)).id();
+        herd.world.entity_mut(baby).insert(Age(-30));
+        for _ in 0..4 {
+            herd.tick();
+        }
+        let gap = |herd: &Herd| {
+            let (pa, pb) = (herd.world.get::<Pos>(a).unwrap().0, herd.world.get::<Pos>(b).unwrap().0);
+            ((pa.x - pb.x).powi(2) + (pa.z - pb.z).powi(2)).sqrt()
+        };
+        let start = 0.3;
+        for _ in 0..20 {
+            herd.tick();
+        }
+        assert!(gap(&herd) > start, "the cows were not pushed apart: {}", gap(&herd));
+        assert!(herd.world.get::<Body>(baby).unwrap().width < 0.5);
+        for _ in 0..40 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Body>(baby).unwrap().width > 0.8);
+    }
 
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
