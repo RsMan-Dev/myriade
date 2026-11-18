@@ -201,13 +201,6 @@ pub(crate) fn fire_contact(
     registry: &horizon_world::registry::BlockRegistry,
     bounds: Aabb,
 ) -> f32 {
-    crate::mobs::cow_memo::fire(bounds, || fire_contact_scan(world, registry, bounds))
-}
-fn fire_contact_scan(
-    world: &World,
-    registry: &horizon_world::registry::BlockRegistry,
-    bounds: Aabb,
-) -> f32 {
     let b = bounds.deflate(Vec3::new(1e-5, 1e-5, 1e-5));
     let mut damage = 0.0f32;
     for x in b.min_position().x.floor() as i32..=b.max_position().x.floor() as i32 {

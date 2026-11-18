@@ -91,10 +91,6 @@ impl Game<'_> {
         let passenger_objects = state.passenger_objects;
         let mut blocked = std::borrow::Cow::Borrowed(state.blocked);
         let mut mobs = state.mobs.take_owned_pass();
-        let mut cow_ecs = self.cow_ecs.take();
-        if let Some(c) = cow_ecs.as_deref_mut() {
-            c.begin_pass(mobs.iter().map(|m| m.id));
-        }
         let mut snapshot = std::mem::take(state.snapshot);
         let mut events = std::mem::take(state.events);
         let mut dead = std::mem::take(state.dead);
@@ -472,9 +468,6 @@ impl Game<'_> {
                     } else {
                         super::super::tick_profile::start_mob(&mobs[i].kind)
                     };
-                    if let Some(c) = cow_ecs.as_deref_mut() {
-                        c.enter(&mut mobs[i], &self.world);
-                    }
                     let run_tick = || {
                         if resuming {
                             resuming = false;
@@ -502,9 +495,6 @@ impl Game<'_> {
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick)) {
                             Ok(progress) => progress,
                             Err(payload) => {
-                                if let Some(c) = cow_ecs.as_deref_mut() {
-                                    c.leave(&mut mobs[i]);
-                                }
                                 mobs[i].despawn = mod_api::Despawn::default();
                                 if seen_guest.is_none() {
                                     base.player = w.player;
@@ -529,9 +519,6 @@ impl Game<'_> {
                                 break;
                             }
                         };
-                    if let Some(c) = cow_ecs.as_deref_mut() {
-                        c.leave(&mut mobs[i]);
-                    }
                     let kept = match progress {
                         horizon_client::mobs::ai::TickProgress::Complete(kept) => kept,
                         horizon_client::mobs::ai::TickProgress::Consumption {
@@ -776,7 +763,6 @@ impl Game<'_> {
             resuming = retry_rider.is_none() && !section_yield;
             retried_rider = retry_rider;
         }
-        self.cow_ecs = cow_ecs;
         laps.lap("creature_loop");
         if dispatch_panic.is_none() {
             if !self.persist.off_level.is_empty() {

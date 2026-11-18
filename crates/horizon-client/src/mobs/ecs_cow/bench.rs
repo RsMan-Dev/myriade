@@ -54,8 +54,11 @@ fn bench_cows() {
             .collect();
         let mut level = TestLevel::new(7);
         match which.as_str() {
-            "mob" => {
+            "mob" | "mob_rest" => {
                 let mut cows = cows;
+                for m in &mut cows {
+                    m.memo.0.enabled = which == "mob_rest";
+                }
                 let mut pushes = PendingPushes::default();
                 for _ in 0..ticks {
                     let events = mob_pass(&mut cows, w, &mut level.level(), &mut pushes, items);
@@ -63,8 +66,9 @@ fn bench_cows() {
                 }
                 eprintln!("bench mob {n} cows {ticks} ticks, {} left", cows.len());
             }
-            "plain" => {
+            "plain" | "plain_rest" => {
                 let mut plain = PlainWorld::new();
+                plain.rest = which == "plain_rest";
                 for m in cows {
                     plain.spawn_from(m);
                 }
@@ -76,6 +80,7 @@ fn bench_cows() {
             }
             _ => {
                 let mut ecs = CowWorld::new();
+                ecs.rest = which == "ecs_rest";
                 for m in cows {
                     ecs.spawn_from(m);
                 }

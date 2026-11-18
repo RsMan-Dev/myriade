@@ -26,6 +26,8 @@ pub mod nav;
 pub mod parts;
 #[path = "physics.rs"]
 pub mod physics;
+#[path = "rest.rs"]
+pub mod rest;
 #[path = "randpos.rs"]
 pub mod randpos;
 #[path = "seen.rs"]
@@ -49,6 +51,7 @@ pub mod view {
         pub extra: ExtraC,
         pub attrs: AttrsC,
         pub anim: AnimC,
+        pub rest: RestC,
         pub _lifetimes: std::marker::PhantomData<(&'a (), &'b ())>,
     }
 }
@@ -65,6 +68,7 @@ use view::CowItem;
 pub struct PlainWorld {
     pub cows: Vec<CowItem<'static, 'static>>,
     pub pushes: PendingPushes,
+    pub rest: bool,
     snapshot: Vec<Seen>,
 }
 
@@ -76,7 +80,7 @@ impl PlainWorld {
         self.cows.len()
     }
     pub fn spawn_from(&mut self, m: Mob) {
-        let p = parts::Parts::from_mob(&m);
+        let p = parts::Parts::from_mob(&m, self.rest);
         self.cows.push(CowItem {
             id: p.id,
             motion: p.motion,
@@ -90,8 +94,12 @@ impl PlainWorld {
             extra: p.extra,
             attrs: p.attrs,
             anim: p.anim,
+            rest: p.rest,
             _lifetimes: std::marker::PhantomData,
         });
+    }
+    pub fn rest_counts(&self) -> (u64, u64) {
+        self.cows.iter().fold((0, 0), |(a, h), c| (a + c.rest.asks, h + c.rest.hits))
     }
     pub fn clear_goals(&mut self, slot: usize) {
         self.cows[slot].goals.0.clear();

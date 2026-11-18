@@ -16,10 +16,11 @@ pub struct Parts {
     pub extra: ExtraC,
     pub attrs: AttrsC,
     pub anim: AnimC,
+    pub rest: RestC,
 }
 
 impl Parts {
-    pub fn from_mob(m: &Mob) -> Self {
+    pub fn from_mob(m: &Mob, rest: bool) -> Self {
         let mut goals = CowGoalSelector::default();
         super::goals::register_cow(&mut goals, &m.kind);
         Self {
@@ -108,6 +109,7 @@ impl Parts {
                 }),
             attrs: AttrsC(m.attrs.clone()),
             anim: AnimC(m.anim.clone()),
+            rest: RestC(super::rest::RestState { enabled: rest, ..Default::default() }),
         }
     }
 }

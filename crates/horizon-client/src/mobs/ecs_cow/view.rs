@@ -17,4 +17,5 @@ pub struct Cow {
     pub attrs: &'static mut AttrsC,
     pub anim: &'static mut AnimC,
     pub goals: &'static mut GoalsC,
+    pub rest: &'static mut RestC,
 }

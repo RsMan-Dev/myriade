@@ -1516,7 +1516,6 @@ struct Game<'a> {
     /// Entities of types Horizon does not simulate.
     others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     armor_stand_assets: armor_stands::ArmorStandAssets,
-    pub(crate) cow_ecs: Option<Box<cow_ecs::CowEcs>>,
     /// `WaypointStyleManager`.
     waypoint_styles: horizon_client::locator_bar::WaypointStyles,
     /// `ClientWaypointManager`: the locator bar's waypoints.
@@ -10925,7 +10924,6 @@ impl<'a> Game<'a> {
             cushions: Default::default(),
             others: Default::default(),
             armor_stand_assets: prepared.armor_stand_assets,
-            cow_ecs: Some(Box::default()),
             waypoint_styles: prepared.waypoint_styles,
             waypoints: Default::default(),
             locator_camera: None,

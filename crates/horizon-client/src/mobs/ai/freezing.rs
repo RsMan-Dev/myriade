@@ -3,9 +3,6 @@ use super::{Mob, MobWorld};
 use horizon_core::geometry::Vec3;
 
 pub(crate) fn in_powder_snow(m: &Mob, w: &MobWorld) -> bool {
-    crate::mobs::cow_memo::powder_snow(m.bounds(), || in_powder_snow_scan(m, w))
-}
-fn in_powder_snow_scan(m: &Mob, w: &MobWorld) -> bool {
     let b = m.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
     let (min, max) = (b.min_position(), b.max_position());
     for x in min.x.floor() as i32..=max.x.floor() as i32 {

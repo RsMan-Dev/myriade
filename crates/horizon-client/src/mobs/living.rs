@@ -259,9 +259,6 @@ impl MobWorld<'_> {
     /// shaped when that cell meets `area`: elsewhere it cannot. The pick is
     /// a total order, so the column-by-column visit finds the same block.
     pub fn supporting_block(&self, area: Aabb, from: Vec3) -> Option<[i32; 3]> {
-        super::cow_memo::support(area, from, || self.supporting_block_scan(area, from))
-    }
-    fn supporting_block_scan(&self, area: Aabb, from: Vec3) -> Option<[i32; 3]> {
         use horizon_core::geometry::Axis;
         let range = |axis| {
             (area.min(axis) - 1.0e-7).floor() as i32 - 1

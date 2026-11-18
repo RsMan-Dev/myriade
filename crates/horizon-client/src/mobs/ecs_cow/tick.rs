@@ -244,7 +244,7 @@ impl CowItem<'_, '_> {
         }
         self.handle_jumping(w);
         let input = Vec3::new(f64::from(self.ai.xxa), f64::from(self.ai.yya), f64::from(self.ai.zza));
-        self.travel(w, level, input, events);
+        self.travel_or_rest(w, level, input, events);
         self.apply_effects_from_blocks(w);
         self.push_entities(w, level, events);
         self.ageable_step(w);

@@ -70,6 +70,8 @@ pub(super) struct Coverage {
     pub fell: bool,
     pub frozen: bool,
     pub strolled: bool,
+    /// (asks, hits) of the ECS cows and of the plain cows.
+    pub rest: ((u64, u64), (u64, u64)),
 }
 thread_local!(static PUSHES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
 
@@ -165,6 +167,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
             .collect();
         let mut ecs = CowWorld::new();
         ecs.mutate_order = what == "reverse";
+        ecs.rest = what == "rest" || what == "rest_mutated";
         for m in &cows {
             let e = ecs.spawn_from(m.clone());
             if !goals {
@@ -172,6 +175,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
             }
         }
         let mut plain = PlainWorld::new();
+        plain.rest = what == "rest" || what == "rest_mutated";
         for (slot, m) in cows.iter().enumerate() {
             plain.spawn_from(m.clone());
             if !goals {
@@ -320,6 +324,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
         result = Ok(ticks);
         cover.children = next_id - n as u32 - 1;
         cover.pushes = PUSHES.with(std::cell::Cell::get);
+        cover.rest = (ecs.rest_counts(), plain.rest_counts());
     });
     if !ran {
         return Err("no resources".into());
@@ -356,4 +361,78 @@ fn forty_cows_with_their_goals_tick_like_the_mobs() {
     let (t, c) = run(40, 800, true, "goals").unwrap();
     eprintln!("coverage {c:?}");
     assert_eq!(t, 800);
+}
+
+/// The resting cows put back what `travel` made last tick: the same states as the Mob cows, and the skip is used.
+#[test]
+#[ignore = "daily"]
+fn forty_cows_that_rest_tick_like_the_mobs() {
+    let (t, c) = run(40, 800, true, "rest").unwrap();
+    eprintln!("rest coverage {c:?}");
+    assert_eq!(t, 800);
+    let ((asks, hits), (pasks, phits)) = c.rest;
+    assert!(asks > 10_000 && hits * 2 > asks, "{asks} {hits}");
+    assert_eq!((asks, hits), (pasks, phits));
+}
+
+/// The mutation of the rest key (only the blocks around the cow left in it): the test fails.
+#[test]
+#[ignore = "daily"]
+fn a_rest_key_that_holds_only_the_blocks_is_caught() {
+    super::rest::MUTATE_KEY.with(|c| c.set(true));
+    let result = run(40, 800, true, "rest_mutated");
+    super::rest::MUTATE_KEY.with(|c| c.set(false));
+    assert!(result.is_err());
+}
+
+/// The hand-written memo on `Mob` (`cow_rest.rs`): the same Mob cows with and without it, tick by tick.
+#[test]
+#[ignore = "daily"]
+fn mob_cows_with_the_rest_memo_tick_like_without_it() {
+    let ran = mobs::world::with_built_test_world(&[], build, |w, types| {
+        let items = w.items.expect("items");
+        let kind = Arc::new(types.types["minecraft:cow"].clone());
+        let make = |memo: bool| -> Vec<Mob> {
+            (0..40usize)
+                .map(|i| {
+                    let (x, z) = (-20.0 + (i % 10) as f64 * 3.0 + 0.5, -20.0 + (i / 10) as f64 * 3.0 + 0.5);
+                    let y = if i % 7 == 3 { 6.0 } else { 1.0 };
+                    let mut m = Mob::new(i as u32 + 1, kind.clone(), Vec3::new(x, y, z), (i * 37 % 360) as f32);
+                    m.persistent = true;
+                    m.memo.0.enabled = memo;
+                    if i % 9 == 1 {
+                        m.extra.age = -150;
+                    }
+                    m
+                })
+                .collect()
+        };
+        let (mut a, mut b) = (make(false), make(true));
+        let (mut pa, mut pb) = (PendingPushes::default(), PendingPushes::default());
+        let (mut la, mut lb) = (TestLevel::new(7), TestLevel::new(7));
+        let mut asks_hits = (0u64, 0u64);
+        for t in 0..800u32 {
+            if t == 100 {
+                for slot in 20..22 {
+                    let src = mobs::Damage::player([0.0, 1.0, 0.0]);
+                    a[slot].damage(&mut la.level(), 3.0, src);
+                    b[slot].damage(&mut lb.level(), 3.0, src);
+                }
+            }
+            let _ = mob_pass(&mut a, w, &mut la.level(), &mut pa, items);
+            let _ = mob_pass(&mut b, w, &mut lb.level(), &mut pb, items);
+            for (slot, (x, y)) in a.iter().zip(&b).enumerate() {
+                let diffs = super::compare_mob::differences(x, y);
+                assert!(diffs.is_empty(), "tick {t}, cow {slot}: {}", diffs.join("; "));
+            }
+            assert_eq!(la.random().next_int(), lb.random().next_int());
+        }
+        for m in &b {
+            asks_hits.0 += m.memo.0.asks;
+            asks_hits.1 += m.memo.0.hits;
+        }
+        eprintln!("mob memo asks {} hits {}", asks_hits.0, asks_hits.1);
+        assert!(asks_hits.1 * 2 > asks_hits.0);
+    });
+    assert!(ran);
 }

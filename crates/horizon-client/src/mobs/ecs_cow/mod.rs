@@ -3,6 +3,8 @@
 pub mod climbing;
 pub mod components;
 pub mod compare;
+#[cfg(test)]
+pub mod compare_mob;
 pub mod control;
 pub mod cowworld;
 pub mod dims;
@@ -17,6 +19,7 @@ pub mod parts;
 pub mod plain;
 pub mod physics;
 pub mod randpos;
+pub mod rest;
 pub mod seen;
 pub mod tick;
 pub mod view;

@@ -20,6 +20,8 @@ pub struct CowWorld {
     pub pushes: PendingPushes,
     /// The mutation of the test of the order: the pass goes through the cows backwards.
     pub mutate_order: bool,
+    /// Whether the cows spawned from now on keep and put back the outputs of their resting ticks.
+    pub rest: bool,
     snapshot: Vec<Seen>,
     next_id: u32,
 }
@@ -28,7 +30,7 @@ impl CowWorld {
     pub fn new() -> Self {
         let mut world = World::new();
         let query = world.query::<Cow>();
-        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, snapshot: Vec::new(), next_id: 1 }
+        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, rest: false, snapshot: Vec::new(), next_id: 1 }
     }
     pub fn len(&self) -> usize {
         self.order.len()
@@ -41,10 +43,10 @@ impl CowWorld {
     /// A cow of the state `m` had at its creation (`Mob::new`: the constructor's draws, the paths'
     /// maluses and the species' goals are the existing code's, once, at the spawn). No `Mob` is kept.
     pub fn spawn_from(&mut self, m: Mob) -> Entity {
-        let p = super::parts::Parts::from_mob(&m);
+        let p = super::parts::Parts::from_mob(&m, self.rest);
         let e = self
             .world
-            .spawn((p.id, p.motion, p.vitals, p.env, p.clk, p.random, p.fluids, p.ai, p.goals, p.extra, p.attrs, p.anim))
+            .spawn((p.id, p.motion, p.vitals, p.env, p.clk, p.random, p.fluids, p.ai, p.goals, p.extra, p.attrs, p.anim, p.rest))
             .id();
         self.order.push(e);
         e
@@ -199,6 +201,11 @@ impl CowWorld {
     pub fn damage(&mut self, e: Entity, level: &mut DamageLevel<'_>, amount: f32, source: crate::mobs::Damage) -> bool {
         let mut item = self.query.get_mut(&mut self.world, e).expect("a cow");
         item.damage(level, amount, source)
+    }
+    /// (asks, hits) of every cow's rest memo.
+    pub fn rest_counts(&mut self) -> (u64, u64) {
+        let mut q = self.world.query::<&RestC>();
+        q.iter(&self.world).fold((0, 0), |(a, h), r| (a + r.asks, h + r.hits))
     }
     pub fn clear_goals(&mut self, e: Entity) {
         let mut item = self.query.get_mut(&mut self.world, e).expect("a cow");

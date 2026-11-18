@@ -189,3 +189,17 @@ impl std::ops::DerefMut for GoalsC {
         &mut self.0
     }
 }
+
+#[derive(Component, Clone, Debug)]
+pub struct RestC(pub super::rest::RestState);
+impl std::ops::Deref for RestC {
+    type Target = super::rest::RestState;
+    fn deref(&self) -> &super::rest::RestState {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for RestC {
+    fn deref_mut(&mut self) -> &mut super::rest::RestState {
+        &mut self.0
+    }
+}
