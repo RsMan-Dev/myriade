@@ -226,6 +226,8 @@ pub enum Cause {
     Fall,
     Drown,
     InWall,
+    /// `cramming`: too many entities in one place (`LivingEntity.pushEntities`); not a panic cause, no knockback.
+    Cramming,
     /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
     Entity,
 }
@@ -694,7 +696,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, cramming).chain());
     crate::goals::register(&mut s);
     crate::hostile::register(&mut s);
     s
@@ -1677,6 +1679,7 @@ fn push(
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
+        let mut overlapping = 0;
         idx.for_near(cx, cz, |o| {
             if o == e {
                 return;
@@ -1685,6 +1688,7 @@ fn push(
             if !b.0.intersects(ob.0) {
                 return;
             }
+            overlapping += 1;
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
@@ -1705,6 +1709,19 @@ fn push(
                 });
             }
         });
+        // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
+        if overlapping + 1 >= MAX_ENTITY_CRAMMING {
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).insert(Crowded);
+            });
+            idx.for_near(cx, cz, |o| {
+                if o != e && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                    par.command_scope(|mut cmd| {
+                        cmd.entity(o).insert(Crowded);
+                    });
+                }
+            });
+        }
         if dv != (0.0, 0.0) {
             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
             if !moving {
@@ -1719,6 +1736,47 @@ fn push(
     } else {
         for (e, b, mut v, m) in &mut movers {
             one(e, b, &mut v, m);
+        }
+    }
+}
+/// `gamerule maxEntityCramming`: 24 others overlapping hurt an animal.
+pub const MAX_ENTITY_CRAMMING: usize = 24;
+/// Overlapping at least `MAX_ENTITY_CRAMMING - 1` others when last looked at: the cramming module visits it each tick
+/// (`LivingEntity.pushEntities` counts the overlapping entities of every entity, every tick) until fewer overlap it.
+#[derive(Component, Default)]
+#[component(storage = "SparseSet")]
+pub struct Crowded;
+/// `LivingEntity.pushEntities`'s cramming: with `maxEntityCramming` or more others overlapping, one tick in four hurts 6.
+/// The entities are taken one after the other and one that this hit kills no longer counts for the next (as the `Mob`
+/// pass sees the deaths of the entities ticked before it): a pile of 25 loses one animal, not six, when the hurt windows end.
+#[allow(clippy::type_complexity)]
+fn cramming(
+    clock: Res<Clock>,
+    idx: Res<Index>,
+    boxes: Query<&Bounds>,
+    mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
+    mut queue: ResMut<DamageQueue>,
+    mut commands: Commands,
+) {
+    let mut dying: Vec<Entity> = Vec::new();
+    for (e, b, mut rng, health, hurt) in &mut q {
+        let (mn, mx) = (b.0.min_position(), b.0.max_position());
+        let mut n = 0;
+        idx.for_near((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0, |o| {
+            if o != e && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                n += 1;
+            }
+        });
+        if n < MAX_ENTITY_CRAMMING {
+            commands.entity(e).remove::<Crowded>();
+        } else if rng.next_int(4) == 0 {
+            queue.add(e, 6.0, Cause::Cramming);
+            // The hit is applied at the start of the next tick.
+            let in_window = clock.0 + 1 < hurt.at + 10 && hurt.at != 0;
+            let applied = if in_window { (6.0 - hurt.last).max(0.0) } else { 6.0 };
+            if health.0 - applied <= 0.0 {
+                dying.push(e);
+            }
         }
     }
 }
