@@ -1815,7 +1815,7 @@ fn nautilus_air_supply(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>) {
 /// `Entity.isInWall` (minus the noPhysics early-out, which the caller applies):
 /// visit every cell covered by the thin eye box and ask whether a suffocating
 /// collision shape actually intersects it. Width multiplication is a float.
-fn in_wall(
+pub(crate) fn in_wall(
     width: f32,
     eye: [f64; 3],
     mut intersects: impl FnMut(i32, i32, i32, &Aabb) -> bool,

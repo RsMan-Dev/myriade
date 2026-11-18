@@ -112,8 +112,8 @@ impl LookControl {
 }
 #[derive(Clone, Debug, Default)]
 pub struct BodyRotation {
-    head_stable_time: i32,
-    last_stable_head: f32,
+    pub(crate) head_stable_time: i32,
+    pub(crate) last_stable_head: f32,
 }
 impl Mob {
     /// `Mob.getMaxHeadXRot`, with `Wolf`'s 20 degrees while sitting.

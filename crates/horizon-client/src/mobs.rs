@@ -90,6 +90,7 @@ pub mod ravager;
 pub mod render;
 pub mod riders;
 pub mod cow_memo;
+pub mod ecs_cow;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;

@@ -28,20 +28,20 @@ pub struct Navigation {
     pub kind: NavKind,
     pub path: Option<Path>,
     pub speed_modifier: f64,
-    tick: i64,
-    last_stuck_check: i64,
-    last_stuck_pos: Vec3,
-    timeout_node: [i32; 3],
-    timeout_timer: i64,
-    last_timeout_check: i64,
-    timeout_limit: f64,
+    pub(crate) tick: i64,
+    pub(crate) last_stuck_check: i64,
+    pub(crate) last_stuck_pos: Vec3,
+    pub(crate) timeout_node: [i32; 3],
+    pub(crate) timeout_timer: i64,
+    pub(crate) last_timeout_check: i64,
+    pub(crate) timeout_limit: f64,
     pub max_distance_to_waypoint: f32,
-    delayed_recompute: bool,
+    pub(crate) delayed_recompute: bool,
     /// `ServerLevel.sendBlockUpdated` asked for a recompute: made at the next tick.
-    pending_recompute: bool,
-    time_last_recompute: i64,
+    pub(crate) pending_recompute: bool,
+    pub(crate) time_last_recompute: i64,
     pub target_pos: Option<[i32; 3]>,
-    reach_range: i32,
+    pub(crate) reach_range: i32,
     pub max_visited_multiplier: f32,
     pub stuck: bool,
     /// Set through [`Mob::set_required_path_length`].
@@ -56,7 +56,7 @@ pub struct Navigation {
     pub avoid_sun: bool,
     pub below_surface: bool,
     /// WallClimberNavigation.pathToPosition
-    climb_to: Option<[i32; 3]>,
+    pub(crate) climb_to: Option<[i32; 3]>,
 }
 /// A controlling passenger uses the vehicle's actual navigation, but the
 /// passenger's private navigation still ticks in Mob.serverAiStep.
@@ -119,13 +119,13 @@ impl Navigation {
             self.last_timeout_check = game_time;
         }
     }
-    fn reset_stuck_timeout(&mut self) {
+    pub(crate) fn reset_stuck_timeout(&mut self) {
         self.timeout_node = [0; 3];
         self.timeout_timer = 0;
         self.timeout_limit = 0.0;
         self.stuck = false;
     }
-    fn evaluator(&self) -> Evaluator {
+    pub(crate) fn evaluator(&self) -> Evaluator {
         match self.kind {
             NavKind::Ground | NavKind::WallClimber => Evaluator::Walk,
             NavKind::Water { breach } => Evaluator::Swim { breach },

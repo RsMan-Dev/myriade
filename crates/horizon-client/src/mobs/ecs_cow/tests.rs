@@ -1,0 +1,319 @@
+//! The oracle: the same cows as `Mob`s (the existing tick) and as ECS cows, in the same world, from the
+//! same state, ticked in the same order; after every tick each cow's state, the snapshot the others read
+//! and the level's random must be equal. See `suivi/ecs-prototype.md` for what this compares and leaves out.
+use super::{cowworld::CowWorld, event::CowEvent};
+use crate::{
+    health::TestLevel,
+    mobs::{self, Mob, MobEvent, MobWorld, PendingPushes, Seen, Who},
+};
+use horizon_core::{geometry::Vec3, random::RandomSource};
+use std::sync::Arc;
+
+/// A walled stone floor with a pond, a lava pit, powder snow, fire and cacti.
+fn build(world: &mut crate::world::World, registry: &horizon_world::registry::BlockRegistry) {
+    for cx in -2..2 {
+        for cz in -2..2 {
+            world.chunks.insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+        }
+    }
+    let s = |name: &str| registry.default_state(name).unwrap();
+    let (stone, water, lava, snow, fire, cactus) = (
+        s("minecraft:stone"),
+        s("minecraft:water"),
+        s("minecraft:lava"),
+        s("minecraft:powder_snow"),
+        s("minecraft:fire"),
+        s("minecraft:cactus"),
+    );
+    for x in -32..32 {
+        for z in -32..32 {
+            world.set(x, -1, z, stone).unwrap();
+            world.set(x, 0, z, stone).unwrap();
+            if x == -32 || x == 31 || z == -32 || z == 31 {
+                world.set(x, 1, z, stone).unwrap();
+                world.set(x, 2, z, stone).unwrap();
+            }
+        }
+    }
+    for x in 8..14 {
+        for z in 8..14 {
+            world.set(x, 0, z, water).unwrap();
+        }
+    }
+    for x in -12..-8 {
+        for z in 8..12 {
+            world.set(x, 0, z, lava).unwrap();
+        }
+    }
+    for x in -10..-6 {
+        for z in -10..-6 {
+            world.set(x, 0, z, snow).unwrap();
+        }
+    }
+    for x in 0..3 {
+        world.set(x, 1, -12, fire).unwrap();
+    }
+    world.set(5, 1, 5, cactus).unwrap();
+    world.set(6, 1, 5, cactus).unwrap();
+}
+
+#[derive(Default, Debug)]
+pub(super) struct Coverage {
+    pub water: bool,
+    pub lava: bool,
+    pub burning: bool,
+    pub hurt: bool,
+    pub panicking: bool,
+    pub grew: bool,
+    pub children: u32,
+    pub pushes: u32,
+    pub fell: bool,
+    pub frozen: bool,
+    pub strolled: bool,
+}
+thread_local!(static PUSHES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
+
+/// One pass of the `Mob`s of a world of cows (`tick_borrowed_creatures`: the snapshot, the grid, the pushes).
+fn mob_pass(
+    mobs: &mut Vec<Mob>,
+    w: &MobWorld,
+    level: &mut crate::health::DamageLevel<'_>,
+    pushes: &mut PendingPushes,
+    items: &crate::items::Items,
+) -> Vec<MobEvent> {
+    let mut snapshot: Vec<Seen> = mobs.iter().map(|m| m.seen(None, items)).collect();
+    let mut grid = mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
+    let mut events = Vec::new();
+    let mut keep = vec![true; mobs.len()];
+    for slot in 0..mobs.len() {
+        mobs::apply_mob_pushes(&mut mobs[slot], pushes);
+        let from = events.len();
+        let view = MobWorld { others: &snapshot, others_grid: Some(&grid), ..w.clone() };
+        let kept = mobs::ai::tick(&mut mobs[slot], &view, level, &mut events);
+        PUSHES.with(|c| c.set(c.get() + events[from..].iter().filter(|e| matches!(e, MobEvent::Push { target: Who::Mob(_), .. })).count() as u32));
+        mobs::take_mob_pushes(&mut events, from, pushes);
+        let mut s = mobs[slot].seen(None, items);
+        s.alive &= kept;
+        s.removed |= !kept;
+        grid.update(slot, s.bounds);
+        snapshot[slot] = s;
+        keep[slot] = kept;
+    }
+    let mut i = 0;
+    mobs.retain(|_| {
+        i += 1;
+        keep[i - 1]
+    });
+    events
+}
+
+/// The child `Game::breed` makes of a cow pair (`create_mob_reason` raw, the inheritance, no orb).
+fn child(
+    level: &mut crate::health::DamageLevel<'_>,
+    id: u32,
+    kind: &Arc<mobs::MobType>,
+    at: Vec3,
+    variant: u8,
+    coin: bool,
+    partner_variant: Option<u8>,
+) -> Mob {
+    let yaw = level.random().next_float() * 360.0;
+    let (own, _uuid) = mobs::living_random();
+    let mut c = Mob::with_random(id, kind.clone(), at, yaw, own);
+    c.persistent = true;
+    c.extra.age = -24000;
+    mobs::spawning::bred_offspring(&mut c);
+    c.extra.sound_variant = None;
+    c.extra.variant = variant;
+    if !coin {
+        c.extra.variant = partner_variant.unwrap_or(variant);
+    }
+    c
+}
+
+pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32, Coverage), String> {
+    let mut result: Result<u32, String> = Err("no resources".into());
+    let mut cover = Coverage::default();
+    let ran = mobs::world::with_built_test_world(&[], build, |w, types| {
+        let items = w.items.expect("items");
+        let kind = Arc::new(types.types["minecraft:cow"].clone());
+        let mut cows: Vec<Mob> = (0..n)
+            .map(|i| {
+                let (x, z) = (-20.0 + (i % 10) as f64 * 3.0 + 0.5, -20.0 + (i / 10) as f64 * 3.0 + 0.5);
+                // A few start high (they fall), a few are babies (they grow up, follow a parent).
+                let y = if i % 7 == 3 { 6.0 } else { 1.0 };
+                // Some start inside the hazards: the pond, the lava, the powder snow, the fire, the cactus.
+                let special = [
+                    (10.5, 0.2, 10.5),
+                    (-10.5, 0.2, 10.5),
+                    (-8.5, 0.2, -8.5),
+                    (1.5, 1.0, -12.5),
+                    (5.5, 1.0, 5.5),
+                    (9.5, 0.2, 9.5),
+                ];
+                let (x, y, z) = if i < special.len() && n >= 30 { special[i] } else { (x, y, z) };
+                let mut m = Mob::new(i as u32 + 1, kind.clone(), Vec3::new(x, y, z), (i * 37 % 360) as f32);
+                m.persistent = true;
+                if i % 9 == 1 {
+                    m.extra.age = -150;
+                }
+                if !goals {
+                    m.ai.goals.clear();
+                }
+                m
+            })
+            .collect();
+        let mut ecs = CowWorld::new();
+        ecs.mutate_order = what == "reverse";
+        for m in &cows {
+            let e = ecs.spawn_from(m.clone());
+            if !goals {
+                ecs.clear_goals(e);
+            }
+        }
+        let mut pushes = PendingPushes::default();
+        let (mut la, mut lb) = (TestLevel::new(7), TestLevel::new(7));
+        let mut next_id = n as u32 + 1;
+        for t in 0..ticks {
+            // The damage and the love of the script, to both.
+            if t == 100 {
+                for slot in 20..22.min(cows.len()) {
+                    let src = mobs::Damage::player([0.0, 1.0, 0.0]);
+                    cows[slot].damage(&mut la.level(), 3.0, src);
+                    let e = ecs.order[slot];
+                    ecs.damage(e, &mut lb.level(), 3.0, src);
+                }
+            }
+            if t == 300 {
+                // Two cows die: they leave the list (and the ECS storage moves a row) a few ticks later.
+                for id in [11u32, 26] {
+                    if let Some(slot) = cows.iter().position(|m| m.id == id) {
+                        let src = mobs::Damage::of(mobs::DamageKind::Generic);
+                        cows[slot].damage(&mut la.level(), 100.0, src);
+                        let e = ecs.order[slot];
+                        ecs.damage(e, &mut lb.level(), 100.0, src);
+                    }
+                }
+            }
+            if t == 150 {
+                for slot in [30, 32, 14, 15] {
+                    if slot < cows.len() {
+                        cows[slot].extra.in_love = 600;
+                        let e = ecs.order[slot];
+                        ecs.set_in_love(e, 600);
+                    }
+                }
+            }
+            let (mut ev_a, ev_b);
+            ev_a = mob_pass(&mut cows, w, &mut la.level(), &mut pushes, items);
+            ev_b = ecs.pass(w, &mut lb.level());
+            // The breedings: the child is a new cow at the end of the list.
+            let mut kids: Vec<(u32, Vec3, u8, bool, Option<u8>, Arc<mobs::MobType>)> = Vec::new();
+            ev_a.retain(|e| {
+                if let MobEvent::Breed { parent, partner, parent_variant, .. } = e {
+                    let p = cows.iter().find(|m| m.id == *parent);
+                    let q = cows.iter().find(|m| m.id == *partner);
+                    if let Some(p) = p {
+                        kids.push((p.id, p.position, p.extra.variant, parent_variant.unwrap_or(false), q.map(|q| q.extra.variant), p.kind.clone()));
+                    }
+                    let partner = *partner;
+                    if let Some(q) = cows.iter_mut().find(|m| m.id == partner) {
+                        q.extra.age = 6000;
+                        q.extra.in_love = 0;
+                    }
+                    false
+                } else {
+                    true
+                }
+            });
+            let mut seeds = Vec::new();
+            for (_, at, variant, coin, partner_variant, k) in kids {
+                let (c, replay) = horizon_client_render::random_source::record_seeds(|| {
+                    child(&mut la.level(), next_id, &k, at, variant, coin, partner_variant)
+                });
+                seeds.push(replay);
+                next_id += 1;
+                cows.push(c);
+            }
+            let mut made = 0;
+            ecs.handle(ev_b, |p| {
+                let replay = seeds[made as usize].clone();
+                let c = horizon_client_render::random_source::replay_seeds(replay, || {
+                    child(&mut lb.level(), n as u32 + 1 + made, &p.kind, p.position, p.variant, p.parent_variant, p.partner_variant)
+                });
+                made += 1;
+                Some(c)
+            });
+            let _ = (what, &mut next_id);
+            // After the tick.
+            if cows.len() != ecs.len() {
+                result = Err(format!("tick {t}: {} Mobs and {} ECS cows", cows.len(), ecs.len()));
+                return;
+            }
+            for (slot, m) in cows.iter().enumerate() {
+                let mut diffs = ecs.differences(slot, m);
+                if format!("{:?}", m.seen(None, items)) != format!("{:?}", ecs.seen_of(slot)) {
+                    diffs.push("the snapshot row".into());
+                }
+                if !diffs.is_empty() {
+                    result = Err(format!("tick {t}, cow {slot} (id {}): {}", m.id, diffs.join("; ")));
+                    return;
+                }
+            }
+            for m in &cows {
+                cover.water |= m.fluids.in_water;
+                cover.lava |= m.fluids.in_lava;
+                cover.burning |= m.fire_ticks > 0;
+                cover.hurt |= m.hurt_time > 0;
+                cover.panicking |= m.ai.panicking;
+                cover.grew |= m.extra.age == 0;
+                cover.frozen |= m.ticks_frozen > 0;
+                cover.fell |= m.fall_distance > 1.0;
+                cover.strolled |= m.ai.goals.is_running("Stroll");
+            }
+            let (ra, rb) = (la.random().next_int(), lb.random().next_int());
+            if ra != rb {
+                result = Err(format!("tick {t}: the level's random streams differ"));
+                return;
+            }
+        }
+        result = Ok(ticks);
+        cover.children = next_id - n as u32 - 1;
+        cover.pushes = PUSHES.with(std::cell::Cell::get);
+    });
+    if !ran {
+        return Err("no resources".into());
+    }
+    result.map(|t| (t, cover))
+}
+
+#[test]
+#[ignore = "daily"]
+fn one_cow_without_goals_ticks_like_the_mob() {
+    assert_eq!(run(1, 200, false, "one").unwrap().0, 200);
+}
+const _: Option<CowEvent> = None;
+const _: Option<Who> = None;
+
+#[test]
+#[ignore = "daily"]
+fn forty_cows_without_goals_tick_like_the_mobs() {
+    let (t, c) = run(40, 500, false, "forty").unwrap();
+    eprintln!("{c:?}");
+    assert_eq!(t, 500);
+}
+
+/// The mutation of the order: the ECS pass visits the cows in reverse, and the test fails.
+#[test]
+#[ignore = "daily"]
+fn visiting_the_cows_in_another_order_is_caught() {
+    assert!(run(40, 800, true, "reverse").is_err());
+}
+
+#[test]
+#[ignore = "daily"]
+fn forty_cows_with_their_goals_tick_like_the_mobs() {
+    let (t, c) = run(40, 800, true, "goals").unwrap();
+    eprintln!("coverage {c:?}");
+    assert_eq!(t, 800);
+}
