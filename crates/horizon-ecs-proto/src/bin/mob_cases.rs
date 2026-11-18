@@ -14,7 +14,7 @@ fn main() {
     let items = w.items.expect("items");
     let cases: [(&str, Vec3); 8] = if walk {
         // A cow walks east into the cactus patch at x = -40 (goals cleared: no panic).
-        [("walk", Vec3::new(-42.5, 1.0, -39.0)); 8]
+        [("walk", Vec3::new(-53.0, 1.0, -20.0)); 8]
     } else {
         [
         ("fall 11", Vec3::new(5.5, 12.0, 5.5)),
@@ -36,7 +36,7 @@ fn main() {
             m.ai.no_action_time = 100;
             if walk {
                 m.ai.goals.clear();
-                m.position = Vec3::new(-42.5, 1.0, -39.0 + (i as f64) * 0.0);
+                m.position = Vec3::new(-55.0, 1.0, -20.0 + (i as f64) * 0.0);
             }
             if i == 6 {
                 // The goals of a cow keep it afloat (FloatGoal); the ECS cow has none yet.
@@ -57,7 +57,8 @@ fn main() {
         let mut events: Vec<MobEvent> = Vec::new();
         let mut lvl = test_level.level();
         if walk {
-            mobs[0].ai.mov.set_wanted(-30.0, 1.0, -39.0, 1.0);
+            let speed: f64 = std::env::var("SPEED").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
+            mobs[0].ai.mov.set_wanted(-5.0, 1.0, -20.0, speed);
         }
         for slot in 0..mobs.len() {
             mobs::apply_mob_pushes(&mut mobs[slot], &mut pushes);
@@ -71,9 +72,9 @@ fn main() {
             grid.update(slot, s.bounds);
             snapshot[slot] = s;
         }
-        if walk && t % 5 == 0 && t <= 90 {
+        if walk && [10, 20, 30, 40, 60, 80, 100].contains(&t) {
             let c = &mobs[0];
-            println!("mob walk t={t:3} pos=({:.2},{:.2},{:.2}) health={}", c.position.x, c.position.y, c.position.z, c.health);
+            println!("mob walk t={t:3} x={:.4} step={:.4} vel.x={:.4}", c.position.x, c.position.x - c.previous.x, c.velocity.x);
         }
         if std::env::var("TRACE").is_ok() && t <= 40 {
             let c = &mobs[5];
