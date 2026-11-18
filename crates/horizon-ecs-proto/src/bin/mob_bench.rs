@@ -6,7 +6,8 @@ use horizon_client_lib::{
     health::TestLevel,
     mobs::{self, Mob, MobEvent, MobWorld, PendingPushes, Seen},
 };
-use horizon_core::geometry::Vec3;
+use horizon_core::geometry::{Aabb, Vec3};
+use horizon_client_lib::mobs::PlayerView;
 use std::time::Instant;
 
 fn main() {
@@ -82,6 +83,7 @@ fn main() {
                 others_grid: Some(&grid),
                 others_solid: Some(&[]),
                 nearest_player: near,
+                player: if std::env::var_os("HUNT").is_some() { near.map(|p| player_view(p, None)) } else { None },
                 ..w.clone()
             };
             let kept = mobs::ai::tick(&mut mobs[slot], &view, &mut level, &mut events);
@@ -99,4 +101,44 @@ fn main() {
         "mob n={n} ticks={ticks} spacing={spacing} players={players} wall/tick={:.1}us walking={walking}",
         t0.elapsed().as_secs_f64() * 1e6 / (ticks - warm).max(1) as f64
     );
+}
+
+fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
+    PlayerView {
+        position: at,
+        bounds: Aabb::new(Vec3::new(at.x - 0.3, at.y, at.z - 0.3), Vec3::new(at.x + 0.3, at.y + 1.8, at.z + 0.3)),
+        eye: [at.x, at.y + 1.62, at.z],
+        alive: true,
+        invulnerable: false,
+        creative: false,
+        sneaking: false,
+        swimming: false,
+        look: [0.0; 3],
+        main_hand: item.map(Into::into),
+        off_hand: None,
+        head: None,
+        chest: None,
+        legs: None,
+        feet: None,
+        armor_cover: 0.0,
+        invisible: false,
+        spectator: false,
+        gold_armor: false,
+        hurt_by: None,
+        last_hurt: None,
+        velocity: Vec3::ZERO,
+        yaw: 0.0,
+        sprinting: false,
+        riding: false,
+        hero: false,
+        effects: Vec::new(),
+        uuid: [0; 4],
+        allies: Default::default(),
+        remote: false,
+        sleeping: false,
+        sleep_timer: 0,
+        passenger: false,
+        riding_vehicle: None,
+        vehicle: None,
+    }
 }

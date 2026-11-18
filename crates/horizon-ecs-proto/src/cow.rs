@@ -1803,6 +1803,13 @@ impl Herd {
         p.list = players;
         p.dirty = true;
     }
+    /// The players as `Online` knows them (ids from 1, at y = 1, nothing in hand), unkillable: for the hunting benches.
+    pub fn set_online(&mut self, players: &[(f64, f64)]) {
+        self.world.resource_mut::<crate::hostile::PlayerState>().immortal = true;
+        for (i, p) in players.iter().enumerate() {
+            self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0 });
+        }
+    }
     /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
         self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
