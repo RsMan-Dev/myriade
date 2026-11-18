@@ -36,9 +36,10 @@ impl Ref {
     fn names(&self, i: usize) -> Vec<&'static str> {
         self.mobs[i].ai.goals.running_names()
     }
-    fn hurt(&mut self, i: usize, amount: f32) {
+    /// A blow of a player standing at `from`: damage and knockback away from it (`Herd::hit` on the ecs side).
+    fn hit(&mut self, i: usize, amount: f32, from: [f64; 3]) {
         let mut lvl = self.tl.level();
-        self.mobs[i].damage(&mut lvl, amount, Damage::of(DamageKind::MobAttack));
+        self.mobs[i].damage(&mut lvl, amount, Damage::player(from));
     }
     fn step(&mut self, player: Option<&PlayerView>) {
         self.t += 1;
@@ -115,6 +116,8 @@ fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     h.world.get_mut::<Pos>(e).unwrap().0.y = y;
     h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), 0.9, 1.4);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+    // A cow at rest has the resting vertical velocity (a fresh one is in the air for its first tick).
+    h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
     e
 }
 fn health(h: &Herd, e: Entity) -> f32 {
@@ -222,8 +225,9 @@ fn a_struck_cow_panics_as_a_mob_does() {
     for t in 1..=200_i64 {
         if t == 5 {
             for &(i, e) in &cows {
-                r.hurt(i, 1.0);
-                h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+                let p = r.mobs[i].position;
+                r.hit(i, 1.0, [p.x, p.y, p.z + 3.0]);
+                h.hit(e, 1.0, (p.x, p.z + 3.0));
             }
         }
         r.step(None);
@@ -462,8 +466,8 @@ fn trace_panic() {
     let (mut pm, mut pc) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
     for t in 1..=40 {
         if t == 5 {
-            r.hurt(i, 1.0);
-            h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+            r.hit(i, 1.0, [0.5, 1.0, 3.5]);
+            h.hit(e, 1.0, (0.5, 3.5));
         }
         r.step(None);
         h.tick();

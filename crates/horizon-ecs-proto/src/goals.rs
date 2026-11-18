@@ -905,6 +905,11 @@ fn end_goal(w: &mut World, e: Entity, k: Kind) {
         return;
     }
     stop_effects(w, e, k);
+    // The selector asks the goals in registration order: a panic that is still wanted comes back before a lower goal
+    // that was waiting for its flag.
+    if k == Kind::Panic {
+        start_goal(w, e, k);
+    }
     // A goal that was waiting for the flags it held tries again, in registration order.
     let g = w.get::<GoalSet>(e).unwrap();
     let waiting: Vec<Kind> = g.slots.iter().enumerate().filter(|(i, _)| g.pending >> i & 1 == 1).map(|s| s.1.0).collect();
@@ -1086,6 +1091,11 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         }
         Kind::Panic => {
             w.entity_mut(e).remove::<Panicking>();
+            // `canUse` is asked again at the next selector tick while the damage is recent or the cow burns.
+            let until = w.get::<Panic>(e).unwrap().until;
+            if now <= until || w.get::<Burning>(e).is_some_and(|b| b.until > now) {
+                arm(w, e, Kind::Panic, 2);
+            }
         }
         Kind::Breed => {
             w.entity_mut(e).remove::<Breeding>();
@@ -1151,6 +1161,7 @@ mod tests {
         let e = h.world.spawn(cow_bundle(x, z, seed)).id();
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+        h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
         *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true };
         e
     }
@@ -1231,16 +1242,24 @@ mod tests {
                 started = Some(t);
                 assert!(!running(&h, e, Kind::Stroll), "panic took MOVE from the stroll");
                 assert_eq!(h.world.get::<Nav>(e).unwrap().speed, 2.0);
-                player(&mut h, 2, 4.5, 4.5, WHEAT);
+                let c = at(&h, e);
+                player(&mut h, 2, c.x + 3.0, c.z, WHEAT);
+            }
+            if started.is_some_and(|s| t == s + 8) {
+                assert!(has::<Panicking>(&h, e) || running(&h, e, Kind::Panic) || !has::<Tempting>(&h, e), "tempt waits for the panic");
+                assert!(!has::<Tempting>(&h, e), "tempt (3) cannot take MOVE from the panic (1)");
             }
             if p {
                 steps.push(dist(prev, at(&h, e)));
             }
-            if started.is_some() && !p && ended.is_none() {
+            // The goal restarts for as long as the damage is recent (40 ticks): it is over after that.
+            if started.is_some() && !p && ended.is_none() && h.world.resource::<Clock>().0 > h.world.get::<Panic>(e).unwrap().until {
                 ended = Some(t);
+                let c = at(&h, e);
+                player(&mut h, 2, c.x + 3.0, c.z, WHEAT);
             }
             prev = at(&h, e);
-            if ended.is_some() && t > ended.unwrap() + 40 {
+            if ended.is_some() && t > ended.unwrap() + 4 {
                 break;
             }
         }

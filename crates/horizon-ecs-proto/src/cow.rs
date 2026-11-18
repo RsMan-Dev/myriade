@@ -629,11 +629,11 @@ fn pathfind(
     level: Res<Level>,
     sp: Res<Species>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>), With<NeedsPath>>,
 ) {
     let now = clock.0;
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool| {
         let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
@@ -653,7 +653,8 @@ fn pathfind(
         let max_len = sp.follow_range;
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
-        let path = Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited);
+        // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
+        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -669,10 +670,10 @@ fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n)| one(e, p, b, c, &mut s, &mut n));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f)| one(e, p, b, c, &mut s, &mut n, f));
     } else {
-        for (e, p, b, c, mut s, mut n) in &mut q {
-            one(e, p, b, c, &mut s, &mut n);
+        for (e, p, b, c, mut s, mut n, f) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f);
         }
     }
 }
