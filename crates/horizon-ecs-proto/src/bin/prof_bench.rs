@@ -1,0 +1,91 @@
+//! `prof-bench SCENE N TICKS [PLAYERS [WARM]]` (SCENE: idle | active | hunt), `HORIZON_TEST_RESOURCES` set (and
+//! `HORIZON_SPECIES` for the species of the herd): the instructions per tick of every system of the real schedule
+//! (`profile.rs`), the entities it visits per tick, instructions per visited entity, and the share of the tick.
+use horizon_ecs_proto::{
+    cow::{Cause, DamageQueue, Herd},
+    goals::{self, Online, Player, WHEAT},
+    profile::{self, Counter},
+};
+
+fn main() {
+    let a: Vec<String> = std::env::args().collect();
+    let scene = a.get(1).map_or("idle", String::as_str);
+    let arg = |i: usize, d: usize| a.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
+    let (n, ticks) = (arg(2, 3000), arg(3, 300));
+    let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
+    let spacing = 2.0;
+    let mix = if scene == "active" { 4 } else { 0 };
+    let mut herd = Herd::with_mix(n, spacing, true, false, 42, false, mix);
+    let shared = profile::instrument(&mut herd);
+    let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();
+    let side = (n as f64).sqrt().ceil() * spacing;
+    let k = ((players as f64).sqrt().ceil() as usize).max(1);
+    let spot = |i: usize| {
+        let (cx, cz) = ((i % k) as f64 + 0.5, (i / k) as f64 + 0.5);
+        (-side / 2.0 + side * cx / k as f64, -side / 2.0 + side * cz / k as f64)
+    };
+    let list: Vec<(f64, f64)> = (0..players).map(spot).collect();
+    let holders = if scene == "active" { players * 3 / 10 } else { 0 };
+    if scene == "hunt" {
+        herd.set_online(&list);
+    } else {
+        for i in 0..players {
+            let (x, z) = spot(i);
+            herd.world.resource_mut::<Online>().set(Player { id: i as u32, x, y: 1.0, z, main: if i < holders { WHEAT } else { 0 }, off: 0 });
+        }
+    }
+    herd.set_players(list);
+    let walkers = holders / 10;
+    let mut seed = 0x9e37_79b9_u64;
+    let mut next = |m: usize| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 11) as usize % m.max(1)
+    };
+    let warm = arg(5, 100).min(ticks / 2);
+    let counter = Counter::new();
+    let mut total = 0u64;
+    for t in 0..ticks {
+        if t == warm {
+            profile::reset(&shared);
+            total = 0;
+        }
+        if scene == "active" {
+            for i in 0..walkers {
+                let (x, z) = spot(i);
+                let phase = ((t / 100 + i) % 2) as f64 * 2.0 - 1.0;
+                let dx = ((t % 100) as f64 * 0.1 - 5.0) * phase;
+                herd.world.resource_mut::<Online>().set(Player { id: i as u32, x: x + dx, y: 1.0, z, main: WHEAT, off: 0 });
+            }
+            if t % 50 == 10 && t >= 50 {
+                for _ in 0..(n / 150).max(1) {
+                    let e = cows[next(cows.len())];
+                    herd.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
+                }
+                for _ in 0..(n / 150).max(1) {
+                    let i = next(cows.len() - 1);
+                    for e in [cows[i], cows[i + 1]] {
+                        if herd.world.get::<goals::BreedData>(e).is_some() {
+                            goals::feed(&mut herd.world, e);
+                        }
+                    }
+                }
+            }
+        }
+        let c0 = counter.read();
+        herd.tick();
+        total += counter.read() - c0;
+    }
+    let r = shared.lock().unwrap();
+    let t = r.ticks.max(1) as f64;
+    let sum: u64 = r.rows.iter().map(|x| x.run + x.apply).sum();
+    println!("scene={scene} n={n} players={players} ticks_measured={} read_cost={} instr/tick(whole Schedule::run)={:.0} sum_rows/tick={:.0} outside_rows/tick={:.0}", r.ticks, r.read_cost, total as f64 / t, sum as f64 / t, (total.saturating_sub(sum)) as f64 / t);
+    println!("{:>3} {:<22} {:>12} {:>12} {:>10} {:>12} {:>7}", "#", "system", "instr/tick", "of which apply", "visited/tick", "instr/visited", "share");
+    for (i, x) in r.rows.iter().enumerate() {
+        let name = x.name.rsplit("::").next().unwrap_or(&x.name);
+        let per = (x.run + x.apply) as f64 / t;
+        let v = x.visited as f64 / t;
+        println!("{i:>3} {name:<22} {per:>12.0} {:>12.0} {v:>10.1} {:>12} {:>6.1}%", x.apply as f64 / t, if v > 0.0 { format!("{:.0}", per / v) } else { "-".into() }, 100.0 * per / (total as f64 / t));
+    }
+}
