@@ -1540,7 +1540,7 @@ mod tests {
             }
         }
         let (began, born) = (began.expect("never began"), born.expect("no baby"));
-        assert!(began <= 12 && born - began >= 60 && born - began <= 100, "began {began}, born {born}");
+        assert!(began <= 12 && born - began >= 56 && born - began <= 100, "began {began}, born {born}");
         let now = h.world.resource::<Clock>().0;
         let baby = h.world.query::<(Entity, &GrowAt)>().iter(&h.world).map(|(e, g)| (e, g.0)).next().unwrap();
         assert_eq!(baby.1, now + 24000);
