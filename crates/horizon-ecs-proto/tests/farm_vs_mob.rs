@@ -202,3 +202,109 @@ fn sheep_graze_as_often_as_a_mob_s_do() {
     eprintln!("graze starts in 2000 ticks, 40 sheep: mob {mob_starts}, ecs {ecs_starts} (a sheep eats where there is grass: the blocks run out)");
     assert!(mob_starts > 10 && ecs_starts as f64 > mob_starts as f64 * 0.7 && (ecs_starts as f64) < mob_starts as f64 * 1.4, "mob {mob_starts}, ecs {ecs_starts}");
 }
+
+fn hen() -> bool {
+    is("minecraft:chicken")
+}
+
+/// The egg timer: an adult hen lays when its timer ends and draws the next in 6000..12000; a baby does not count,
+/// and starts counting when it grows. The first laying is imposed from the `Mob`'s own draw.
+#[test]
+fn a_hen_lays_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    if !hen() {
+        return;
+    }
+    let mut hens = Vec::new();
+    for k in 0..30 {
+        let (x, z) = (-12.0 + 2.5 * f64::from(k % 10), -6.0 + 3.0 * f64::from(k / 10));
+        let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 500 + k as u64));
+        // The mob draws its own timer at birth; the ecs hen takes the same (shortened to the first minute).
+        let left = 20 + (k % 7) as i32 * 5;
+        r.mobs[i].extra.egg_time = left;
+        set_egg(&mut h.world, e, left as u64);
+        hens.push((i, e));
+    }
+    // A baby: its timer is frozen; it grows at tick 100 (age -100), then lays 30 ticks later.
+    let (bi, be) = (r.add(Vec3::new(8.5, 1.0, 5.5)), ecs_cow(&mut h, 8.5, 1.0, 5.5, 900));
+    r.mobs[bi].extra.egg_time = 30;
+    r.mobs[bi].extra.age = -100;
+    set_egg(&mut h.world, be, 30);
+    make_baby(&mut h.world, be, 100);
+    let (mut mob_first, mut ecs_first) = (vec![None; hens.len() + 1], vec![None; hens.len() + 1]);
+    let mut seen = 0;
+    for t in 1..=160_i64 {
+        r.step(None);
+        h.tick();
+        for ev in &r.events[seen..] {
+            if let MobEvent::LayEgg { mob, .. } = ev && let Some(k) = (0..=hens.len()).find(|&k| r.mobs[if k < hens.len() { hens[k].0 } else { bi }].id == *mob) && mob_first[k].is_none() {
+                mob_first[k] = Some(t);
+            }
+        }
+        seen = r.events.len();
+        for ev in h.world.resource::<LaidEggs>().0.iter() {
+            if let Some(k) = (0..=hens.len()).find(|&k| (if k < hens.len() { hens[k].1 } else { be }) == ev.0) && ecs_first[k].is_none() {
+                ecs_first[k] = Some(t);
+            }
+        }
+    }
+    eprintln!("first egg, mob: {:?}\nfirst egg, ecs: {:?}", mob_first, ecs_first);
+    for k in 0..=hens.len() {
+        let (m, c) = (mob_first[k].expect("mob laid"), ecs_first[k].expect("ecs laid"));
+        assert!((m - c).abs() <= 1, "hen {k}: mob {m}, ecs {c}");
+    }
+    // The next timer: the draw is 6000 + nextInt(6000) on both sides.
+    let mob_next: Vec<f64> = hens.iter().map(|&(i, _)| f64::from(r.mobs[i].extra.egg_time)).collect();
+    let ecs_next: Vec<f64> = hens.iter().map(|&(_, e)| h.world.get::<Egg>(e).unwrap().left as f64).collect();
+    let (mm, em) = (mean(&mob_next), mean(&ecs_next));
+    eprintln!("next timer: mob mean {mm:.0} (min {:.0}, max {:.0}); ecs mean {em:.0} (min {:.0}, max {:.0})", mob_next.iter().cloned().fold(1e9, f64::min), mob_next.iter().cloned().fold(0.0, f64::max), ecs_next.iter().cloned().fold(1e9, f64::min), ecs_next.iter().cloned().fold(0.0, f64::max));
+    assert!(mob_next.iter().chain(&ecs_next).all(|&v| (5800.0..12000.0).contains(&v)) && (mm - em).abs() < 1500.0);
+}
+
+/// A hen dropped from 30 blocks: the glide (`vy * 0.6` in the air), the height each tick, the landing, no damage, and the
+/// wings' state during and after the fall.
+#[test]
+fn a_hen_falls_slowly_unhurt_and_flaps_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    if !hen() {
+        return;
+    }
+    let i = r.add(Vec3::new(0.5, 31.0, 0.5));
+    let e = ecs_cow(&mut h, 0.5, 31.0, 0.5, 5);
+    h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
+    let (mut worst_y, mut worst_flap, mut worst_speed, mut worst_flapping) = (0.0_f64, 0.0_f32, 0.0_f32, 0.0_f32);
+    let (mut mob_land, mut ecs_land) = (None, None);
+    for t in 1..=400_i64 {
+        r.step(None);
+        h.tick();
+        let (m, c) = (&r.mobs[i], h.world.get::<Pos>(e).unwrap().0);
+        worst_y = worst_y.max((m.position.y - c.y).abs());
+        if mob_land.is_none() && m.on_ground {
+            mob_land = Some(t);
+        }
+        if ecs_land.is_none() && h.world.get::<Contact>(e).unwrap().on_ground {
+            ecs_land = Some(t);
+        }
+        let f = h.world.get::<Flap>(e).unwrap();
+        if [60, 266, 267, 268, 270, 300, 400].contains(&t) {
+            eprintln!("t={t} flap mob {:.3} ecs {:.3}; flapping mob {:.4} ecs {:.4}; moving {}", m.anim.flap, f.flap, m.anim.flapping, f.flapping, h.world.get::<Moving>(e).is_some());
+        }
+        if t <= 60 || t == 400 {
+            worst_flap = worst_flap.max((m.anim.flap - f.flap).abs());
+            worst_speed = worst_speed.max((m.anim.flap_speed - f.speed).abs());
+            worst_flapping = worst_flapping.max((m.anim.flapping - f.flapping).abs());
+        }
+    }
+    eprintln!("hen: landed at tick mob {mob_land:?}, ecs {ecs_land:?}; worst height difference {worst_y:.4}; wings: flap {worst_flap:.3}, speed {worst_speed:.3}, flapping {worst_flapping:.4} apart; health mob {} ecs {}", r.mobs[i].health, health(&h, e));
+    assert!(worst_y < 0.01 && (mob_land.unwrap() - ecs_land.unwrap()).abs() <= 1);
+    assert!(r.mobs[i].health >= 4.0 && health(&h, e) >= 4.0, "no fall damage");
+    // The wings agree to the digit in the air (ticks 1..60); after the landing the `Mob` takes one step of decay more
+    // than the ecs (its `flapping` 0.81 against 0.90 on the landing tick), which leaves 0.1 x 18 = 1.8 degrees of `flap`.
+    assert!(worst_speed < 0.01 && worst_flapping < 0.01 && worst_flap < 2.0, "wings");
+}

@@ -545,7 +545,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
-    let names: [&'static str; 4] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep"];
+    let names: [&'static str; 5] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep", "minecraft:chicken"];
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
@@ -668,6 +668,7 @@ pub fn schedule() -> Schedule {
     // this tick's physics, as a mob's hurt precedes its tick.
     s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     crate::goals::register(&mut s);
+    crate::farm::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1015,7 +1016,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1105,6 +1106,10 @@ fn travel_one(
     if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
+    // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
+    if !c.on_ground && vel.0.y < 0.0 {
+        vel.0.y *= sp.farm.slow_fall;
+    }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
     let v = vel.0;
     vel.0 = Vec3::new(
@@ -1190,7 +1195,7 @@ fn travel_one(
     !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
-fn travel(
+pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
     table: Res<SpeciesTable>,
@@ -1205,7 +1210,7 @@ fn travel(
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
         let rest = travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
-        if fall > 0.0 {
+        if fall > 0.0 && !sp.farm.fall_immune {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
@@ -1704,6 +1709,7 @@ pub(crate) fn due(
     mut clock: ResMut<Clock>,
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
+    mut grown: ResMut<crate::farm::Grown>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
     mut queue: ResMut<DamageQueue>,
@@ -1737,6 +1743,7 @@ pub(crate) fn due(
                         b.height = sizes.adult.1;
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                         commands.entity(e).remove::<GrowAt>().insert(Recheck);
+                        grown.0.push(e);
                     }
                 }
             }

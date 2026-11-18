@@ -32,6 +32,8 @@ pub enum Kind {
     Melee,
     /// `EatBlockGoal` (the sheep): graze (`farm.rs`).
     EatBlock,
+    /// The hen's egg deadline (`farm.rs`): a timer of the wheel, not a goal.
+    LayEgg,
 }
 /// `GoalSelector`: (goal, priority, flags) in registration order; `running` and `pending` are slot bitmasks;
 /// `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and starts when it frees.
@@ -123,6 +125,10 @@ pub const CARROT: u32 = 2;
 pub const POTATO: u32 = 3;
 pub const BEETROOT: u32 = 4;
 pub const CARROT_ON_A_STICK: u32 = 5;
+pub const WHEAT_SEEDS: u32 = 6;
+pub const BEETROOT_SEEDS: u32 = 7;
+pub const MELON_SEEDS: u32 = 8;
+pub const PUMPKIN_SEEDS: u32 = 9;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -131,6 +137,10 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:potato" => POTATO,
         "minecraft:beetroot" => BEETROOT,
         "minecraft:carrot_on_a_stick" => CARROT_ON_A_STICK,
+        "minecraft:wheat_seeds" => WHEAT_SEEDS,
+        "minecraft:beetroot_seeds" => BEETROOT_SEEDS,
+        "minecraft:melon_seeds" => MELON_SEEDS,
+        "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
         _ => 0,
     }
 }
@@ -178,6 +188,8 @@ const SHEEP_SLOTS: [(Kind, u8, u8); 9] = [
     (Kind::RandomLook, 8, MOVE | LOOK),
 ];
 const SHEEP_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.1, items: 1 << WHEAT }];
+const CHICKEN_SLOTS: [(Kind, u8, u8); 8] = COW_SLOTS;
+const CHICKEN_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.0, items: 1 << WHEAT_SEEDS | 1 << BEETROOT_SEEDS | 1 << MELON_SEEDS | 1 << PUMPKIN_SEEDS }];
 const COW_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.25, items: 1 << WHEAT }];
 const PIG_TEMPTS: [TemptDef; 2] = [
     TemptDef { speed: 1.2, items: 1 << CARROT_ON_A_STICK },
@@ -190,6 +202,7 @@ pub fn goal_def(species: &str) -> GoalDef {
         "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, look: 6.0, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
         // `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player.
         "minecraft:sheep" => GoalDef { slots: &SHEEP_SLOTS, look: 6.0, panic: 1.25, tempts: &SHEEP_TEMPTS, follow: 1.1 },
+        "minecraft:chicken" => GoalDef { slots: &CHICKEN_SLOTS, look: 6.0, panic: 1.4, tempts: &CHICKEN_TEMPTS, follow: 1.1 },
         "minecraft:zombie" => GoalDef { slots: &ZOMBIE_SLOTS, look: 8.0, panic: 0.0, tempts: &[], follow: 0.0 },
         _ => GoalDef { slots: &COW_SLOTS, look: 6.0, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
     }
@@ -462,6 +475,8 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Hurts::default());
     world.insert_resource(Requests::default());
     world.insert_resource(Forced::default());
+    world.insert_resource(crate::farm::Grown::default());
+    world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     world.insert_resource(Babies::default());
@@ -980,6 +995,7 @@ enum Pick {
     Parent(Entity),
 }
 pub(crate) fn arbitrate(world: &mut World) {
+    crate::farm::on_grown(world);
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
     for (e, k) in fired {
@@ -1046,6 +1062,10 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             return;
         }
         Kind::Breed if w.get::<Love>(e).is_none_or(|l| l.0 <= now) => return,
+        Kind::LayEgg => {
+            crate::farm::lay_deadline(w, e);
+            return;
+        }
         Kind::EatBlock => {
             // A deadline of the goal that runs (the block, the end) or an ask of one that does not.
             if w.get::<crate::farm::Grazing>(e).is_some() {
@@ -1309,6 +1329,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
         },
         Kind::Melee => crate::hostile::melee_target(w, e).map(Pick::Player),
         Kind::EatBlock => crate::farm::graze_can_use(w, e).then_some(Pick::Yes),
+        Kind::LayEgg => None,
     }
 }
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
@@ -1431,6 +1452,7 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         Kind::Target => crate::hostile::lose_target(w, e),
         Kind::Melee => crate::hostile::stop_melee(w, e),
         Kind::EatBlock => crate::farm::graze_stop(w, e),
+        Kind::LayEgg => {}
         Kind::RandomLook => {
             w.entity_mut(e).remove::<Scanning>();
             rearm_timer(w, e, k);
