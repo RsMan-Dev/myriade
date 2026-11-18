@@ -24,7 +24,7 @@ use horizon_world::{
     registry::{BlockRegistry, BlockStateId, BlockTableFile},
     world_movement::{
         CollisionCheckRequest, EntityMovementWorld, MovementRequest, no_world_collision,
-        resolve_world_movement,
+        resolve_world_movement, resolve_world_movement_lazy,
     },
 };
 use std::{io, path::Path, sync::Arc};
@@ -135,6 +135,9 @@ impl<W: BlockCollisionWorld> BlockCollisionWorld for EntityCollisions<'_, W> {
     fn missing_chunks_stay_missing(&self) -> bool {
         self.blocks.missing_chunks_stay_missing()
     }
+    fn is_plain_cube(&self, block: CollisionBlock) -> bool {
+        self.blocks.is_plain_cube(block)
+    }
     fn context_shape(
         &mut self,
         block: CollisionBlock,
@@ -210,6 +213,29 @@ where
         on_ground: bool,
         context: CollisionContext<'_>,
     ) -> Result<Vec3> {
+        Ok(resolve_world_movement_lazy(
+            self,
+            MovementRequest {
+                entity: context.entity().unwrap_or(EntityIdentity(0)),
+                context,
+                bounds,
+                movement,
+                max_step,
+                on_ground,
+                candidate_budget: 1_000_000,
+            },
+        )?)
+    }
+    /// [`Self::resolve_with_context`] by the original kernel (shapes built for every block), kept as the
+    /// reference of the equality tests.
+    pub fn resolve_with_context_reference(
+        &mut self,
+        bounds: Aabb,
+        movement: Vec3,
+        max_step: f32,
+        on_ground: bool,
+        context: CollisionContext<'_>,
+    ) -> Result<Vec3> {
         Ok(resolve_world_movement(
             self,
             MovementRequest {
@@ -269,6 +295,26 @@ impl<'w> SceneCollisions<'w, '_> {
         }
         .resolve_with_context(bounds, movement, max_step, on_ground, context)
     }
+    /// The kernel as it was before the fast paths, kept for the equality test.
+    pub fn resolve_in_border_with_reference(
+        self,
+        bounds: Aabb,
+        movement: Vec3,
+        max_step: f32,
+        on_ground: bool,
+        border: Option<(&BorderGeometry, [f64; 2])>,
+        entities: &[Aabb],
+    ) -> Result<Vec3> {
+        horizon_world::block_collision_scan::with_reference_scan(|| {
+        let context = self.context(bounds);
+        EntityCollisions {
+            blocks: self,
+            entities,
+            border,
+        }
+        .resolve_with_context_reference(bounds, movement, max_step, on_ground, context)
+        })
+    }
     /// Resolve movement with the entity's captured collision context. Most
     /// callers only need the position context; entities such as falling blocks
     /// also affect contextual block shapes (for example powder snow).
@@ -280,7 +326,7 @@ impl<'w> SceneCollisions<'w, '_> {
         on_ground: bool,
         context: CollisionContext<'_>,
     ) -> Result<Vec3> {
-        Ok(resolve_world_movement(
+        Ok(resolve_world_movement_lazy(
             self,
             MovementRequest {
                 entity: context.entity().unwrap_or(EntityIdentity(0)),
@@ -536,6 +582,9 @@ impl<'w> BlockCollisionWorld for SceneCollisions<'w, '_> {
     /// The resident columns do not change while a scan runs, and looking one up changes nothing.
     fn missing_chunks_stay_missing(&self) -> bool {
         true
+    }
+    fn is_plain_cube(&self, block: CollisionBlock) -> bool {
+        self.binding.is_plain_cube(block.state)
     }
     fn is_suffocating(
         &mut self,

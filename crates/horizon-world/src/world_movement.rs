@@ -8,7 +8,8 @@ use crate::{
     entity_obstruction::EntityIdentity,
 };
 use horizon_core::geometry::{
-    Aabb, Axis, ShapeOp, Vec3, VoxelShape, entity_collision_bounds, try_resolve_step_movement,
+    Aabb, Axis, BlockCollider, ShapeOp, Vec3, VoxelShape, entity_collision_bounds,
+    try_resolve_step_movement, try_resolve_step_movement_in,
 };
 
 /// How far below the feet `Entity.getAvailableSpaceBelow` looks for ground.
@@ -95,6 +96,60 @@ where
             Ok(shapes)
         },
     )
+}
+
+thread_local! {
+    static COLLIDERS: std::cell::RefCell<Vec<BlockCollider>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// [`resolve_world_movement`] with the same colliders in the same order, but a unit cube is its offset (no shape is
+/// built) and the collider list is a buffer kept per thread.
+pub fn resolve_world_movement_lazy<W, E>(
+    world: &mut W,
+    request: MovementRequest<'_>,
+) -> Result<Vec3, CollisionScanError<E>>
+where
+    W: BlockCollisionWorld<Error = E> + EntityMovementWorld<Error = E>,
+{
+    let entities = world
+        .entity_collisions(
+            request.entity,
+            entity_collision_bounds(request.movement, request.bounds, request.max_step),
+        )
+        .map_err(CollisionScanError::World)?;
+    let sweep = request
+        .bounds
+        .expand_towards(request.movement)
+        .expand_towards(Vec3::new(0.0, f64::from(request.max_step.max(0.0)), 0.0));
+    let candidate_budget = scan_cells(sweep).map_or(request.candidate_budget, |cells| {
+        cells.max(request.candidate_budget)
+    });
+    let mut shapes = COLLIDERS.with(|c| std::mem::take(&mut *c.borrow_mut()));
+    let resolved = try_resolve_step_movement_in(
+        request.movement,
+        request.bounds,
+        request.max_step,
+        request.on_ground,
+        &mut shapes,
+        |bounds, out| {
+            out.extend(entities.iter().cloned().map(|s| BlockCollider::Shape(Box::new(s))));
+            if let Some(border) = world
+                .movement_border(request.entity, bounds)
+                .map_err(CollisionScanError::World)?
+            {
+                out.push(BlockCollider::Shape(Box::new(border)));
+            }
+            let mut scan =
+                BlockCollisionScan::new(world, request.context, bounds, false, candidate_budget)?;
+            while let Some(hit) = scan.next_collider()? {
+                out.push(hit);
+            }
+            Ok(())
+        },
+    );
+    shapes.clear();
+    COLLIDERS.with(|c| *c.borrow_mut() = shapes);
+    resolved
 }
 
 /// Entity-bearing CollisionGetter.noCollision, with block/context selection

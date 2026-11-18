@@ -26,6 +26,10 @@ pub enum Kind {
     Stroll,
     LookAtPlayer,
     RandomLook,
+    /// `NearestAttackableTargetGoal` (the target selector, no flags): picks the player to hunt.
+    Target,
+    /// `MeleeAttackGoal`: chase the target and strike it.
+    Melee,
 }
 /// `GoalSelector`: (goal, priority, flags) in registration order; `running` and `pending` are slot bitmasks;
 /// `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and starts when it frees.
@@ -99,6 +103,8 @@ impl GoalSet {
 #[derive(Clone, Copy, Debug)]
 pub struct GoalDef {
     pub slots: &'static [(Kind, u8, u8)],
+    /// `LookAtPlayerGoal`'s range.
+    pub look: f64,
     pub panic: f64,
     /// The instances of the tempt goal, in registration order (slot `Kind::Tempt(i)` is `tempts[i]`).
     pub tempts: &'static [TemptDef],
@@ -151,6 +157,13 @@ const PIG_SLOTS: [(Kind, u8, u8); 9] = [
     (Kind::LookAtPlayer, 7, LOOK),
     (Kind::RandomLook, 8, MOVE | LOOK),
 ];
+const ZOMBIE_SLOTS: [(Kind, u8, u8); 5] = [
+    (Kind::Target, 2, 0),
+    (Kind::Melee, 3, MOVE | LOOK),
+    (Kind::Stroll, 7, MOVE),
+    (Kind::LookAtPlayer, 8, LOOK),
+    (Kind::RandomLook, 8, MOVE | LOOK),
+];
 const COW_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.25, items: 1 << WHEAT }];
 const PIG_TEMPTS: [TemptDef; 2] = [
     TemptDef { speed: 1.2, items: 1 << CARROT_ON_A_STICK },
@@ -160,8 +173,10 @@ const PIG_TEMPTS: [TemptDef; 2] = [
 /// two tempt goals of one priority (the carrot on a stick, then its foods), each with its own calm-down.
 pub fn goal_def(species: &str) -> GoalDef {
     match species {
-        "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
-        _ => GoalDef { slots: &COW_SLOTS, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
+        "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, look: 6.0, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
+        // `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player.
+        "minecraft:zombie" => GoalDef { slots: &ZOMBIE_SLOTS, look: 8.0, panic: 0.0, tempts: &[], follow: 0.0 },
+        _ => GoalDef { slots: &COW_SLOTS, look: 6.0, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
     }
 }
 /// The goals of the cow (the bench's default species), for the unit tests of the selector.
@@ -237,6 +252,7 @@ pub struct Scan {
 pub struct GoalTimers {
     pub look: bool,
     pub random: bool,
+    pub target: bool,
 }
 /// `LookControl`: where to look, how fast, the eye height, the head's limits.
 #[derive(Component, Clone, Copy, Debug)]
@@ -308,7 +324,7 @@ pub fn goals_bundle(sp: &Species) -> impl Bundle {
         Tempts(d.tempts.iter().map(|t| Tempt { items: t.items, speed: t.speed, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0) }).collect()),
         BreedData { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000 },
         FollowParent { speed: d.follow, recalc: 0 },
-        Glance { range: 6.0, period: 50 },
+        Glance { range: d.look, period: 50 },
         Scan { period: 50 },
         GoalTimers::default(),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
@@ -327,6 +343,8 @@ pub struct Entered(pub Vec<Entity>);
 #[derive(Resource, Default)]
 pub struct Hurts(pub Vec<Entity>);
 pub enum Req {
+    /// The target changed (a hit, an acquisition): the target goal runs and the melee goal looks at its next check.
+    Hunt(Entity),
     Arm(Entity),
     Start(Entity, Kind),
     End(Entity, Kind),
@@ -511,10 +529,10 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     world.resource_mut::<Wheel>().push((now + ticks).min(now + WHEEL_MAX), e, Due::Grow);
 }
 
-fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> T) -> T {
+pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> T) -> T {
     f(&mut w.get_mut::<Rng>(e).unwrap())
 }
-fn arm(w: &mut World, e: Entity, k: Kind, wait: i32) {
+pub(crate) fn arm(w: &mut World, e: Entity, k: Kind, wait: i32) {
     let now = w.resource::<Clock>().0;
     w.resource_mut::<Wheel>().push((now + wait.max(1) as u64).min(now + WHEEL_MAX), e, Due::Goal(k));
 }
@@ -531,6 +549,12 @@ fn arm_timers(w: &mut World, e: Entity) {
         let wait = with_rng(w, e, |r| 2 * geometric(r, s.period));
         arm(w, e, Kind::RandomLook, wait);
         t.random = true;
+    }
+    // The target selector asks every other tick, 1 in `reduced(10)` = 5.
+    if !t.target && w.get::<crate::hostile::Attack>(e).is_some() {
+        let wait = with_rng(w, e, |r| 2 * geometric(r, 5));
+        arm(w, e, Kind::Target, wait);
+        t.target = true;
     }
     *w.get_mut::<GoalTimers>(e).unwrap() = t;
 }
@@ -558,7 +582,7 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 }
 /// `PanicGoal.canUse` after a damage: only the types of `#panic_causes` (a fall, a drowning, a wall do not), then a
 /// window of 40 ticks; a burning cow panics as long as it burns.
-fn hurt_events(
+pub(crate) fn hurt_events(
     clock: Res<Clock>,
     mut h: ResMut<Hurts>,
     causes: Res<HurtCauses>,
@@ -651,12 +675,12 @@ fn cell_moves(mut moves: ResMut<CellMoves>, mut babies: ResMut<Babies>, pos: Que
 }
 /// The path a goal asked for ended (or none was found): the goal that owns it ends (called by `cow::path_ended`).
 pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
-    if let Some(k @ (Kind::Stroll | Kind::Panic)) = g.mover() {
+    if let Some(k @ (Kind::Stroll | Kind::Panic | Kind::Melee)) = g.mover() {
         reqs.0.push(Req::End(e, k));
     }
 }
 
-fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64) {
+pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64) {
     cmd.queue(move |w: &mut World| {
         if let Some(mut s) = w.get_mut::<Stroll>(e) {
             s.tx = x;
@@ -669,7 +693,7 @@ fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64) {
         w.entity_mut(e).insert(NeedsPath);
     });
 }
-fn stop_nav(w: &mut World, e: Entity) {
+pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
     }
@@ -682,7 +706,7 @@ fn stop_nav(w: &mut World, e: Entity) {
     }
     w.entity_mut(e).remove::<(Following, NeedsPath)>();
 }
-fn aim(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>) {
+pub(crate) fn aim(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>) {
     look.target = at;
     look.cooldown = 2;
     look.y_speed = y_speed.unwrap_or(look.y_default);
@@ -690,12 +714,12 @@ fn aim(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 
         cmd.entity(e).insert(Looking);
     }
 }
-fn d2(a: Vec3, b: Vec3) -> f64 {
+pub(crate) fn d2(a: Vec3, b: Vec3) -> f64 {
     (a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)
 }
 
 // ---- running goals: the only things that tick -----------------------------------------------------------------
-type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Following>, Has<NeedsPath>);
+pub(crate) type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Following>, Has<NeedsPath>);
 /// `TemptGoal.canContinue` and `tick`: look at the player, stop near it, walk to it when its block changed.
 fn tempt_run(
     clock: Res<Clock>,
@@ -935,7 +959,7 @@ enum Pick {
     Player(u32),
     Parent(Entity),
 }
-fn arbitrate(world: &mut World) {
+pub(crate) fn arbitrate(world: &mut World) {
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
     for (e, k) in fired {
@@ -945,6 +969,7 @@ fn arbitrate(world: &mut World) {
         match r {
             // A cow entering the active zone: its look timers are armed.
             Req::Arm(e) => arm_timers(world, e),
+            Req::Hunt(e) => crate::hostile::hunt(world, e),
             // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
             // heard at the next such tick (the same as the next one at most).
             Req::Start(e, k) => {
@@ -978,6 +1003,27 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             } else {
                 t.random = false;
             }
+        }
+        Kind::Target => {
+            let Some(mut t) = w.get_mut::<GoalTimers>(e) else { return };
+            t.target = false;
+            // Out of the active zone the selector does not ask (the next entry arms it again); with a target it runs.
+            if now >= active || w.get::<crate::hostile::Aggro>(e).is_some() {
+                return;
+            }
+        }
+        Kind::Melee => {
+            if let Some(mut a) = w.get_mut::<crate::hostile::Attack>(e) {
+                a.armed = false;
+            }
+            if w.get::<crate::hostile::Aggro>(e).is_none() {
+                return;
+            }
+            start_goal(w, e, k);
+            if w.get::<GoalSet>(e).is_some_and(|g| !g.is_running(Kind::Melee)) {
+                crate::hostile::arm_melee(w, e);
+            }
+            return;
         }
         Kind::Breed if w.get::<Love>(e).is_none_or(|l| l.0 <= now) => return,
         _ => {}
@@ -1047,6 +1093,7 @@ fn rearm_timer(w: &mut World, e: Entity, k: Kind) {
     let mut t = *w.get::<GoalTimers>(e).unwrap();
     match k {
         Kind::LookAtPlayer => t.look = false,
+        Kind::Target => t.target = false,
         _ => t.random = false,
     }
     let _ = (g, s);
@@ -1222,6 +1269,14 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             }
         }
         Kind::RandomLook => Some(Pick::Yes),
+        Kind::Target => match crate::hostile::pick_target(w, e) {
+            Some(p) => Some(Pick::Player(p)),
+            None => {
+                rearm_timer(w, e, k);
+                None
+            }
+        },
+        Kind::Melee => crate::hostile::melee_target(w, e).map(Pick::Player),
     }
 }
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
@@ -1286,6 +1341,8 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
             let n = with_rng(w, e, |r| r.next_int(40));
             w.entity_mut(e).insert(Glancing { player: id, until: now + 2 * ((40 + n as u64 + 1) / 2) });
         }
+        (Kind::Target, Pick::Player(id)) => crate::hostile::acquire(w, e, id),
+        (Kind::Melee, Pick::Player(id)) => crate::hostile::start_melee(w, e, id),
         (Kind::RandomLook, _) => {
             let (a, n) = with_rng(w, e, |r| (std::f64::consts::TAU * r.next_f64(), r.next_int(20)));
             w.entity_mut(e).insert(Scanning { dx: a.cos(), dz: a.sin(), until: now + 20 + n as u64 + 1 });
@@ -1333,6 +1390,8 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
             w.entity_mut(e).remove::<Glancing>();
             rearm_timer(w, e, k);
         }
+        Kind::Target => crate::hostile::lose_target(w, e),
+        Kind::Melee => crate::hostile::stop_melee(w, e),
         Kind::RandomLook => {
             w.entity_mut(e).remove::<Scanning>();
             rearm_timer(w, e, k);
@@ -1350,6 +1409,8 @@ pub fn counts(world: &mut World) -> Vec<(&'static str, usize)> {
     vec![
         ("following", n!(Following)),
         ("moving", n!(Moving)),
+        ("hunting", n!(crate::hostile::Aggro)),
+        ("meleeing", n!(crate::hostile::Meleeing)),
         ("panicking", n!(Panicking)),
         ("tempting", n!(Tempting)),
         ("breeding", n!(Breeding)),
@@ -1379,7 +1440,7 @@ mod tests {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
         h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
-        *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true };
+        *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true, target: true };
         e
     }
     fn player(h: &mut Herd, id: u32, x: f64, z: f64, item: u32) {
@@ -1531,7 +1592,7 @@ mod tests {
         let (mut began, mut born) = (None, None);
         for t in 0..200 {
             h.tick();
-            if began.is_none() && has::<Breeding>(&h, a) {
+            if began.is_none() && (has::<Breeding>(&h, a) || has::<Breeding>(&h, b)) {
                 began = Some(t);
             }
             if born.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {

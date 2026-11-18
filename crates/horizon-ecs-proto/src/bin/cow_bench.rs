@@ -35,6 +35,9 @@ fn main() {
             (-side / 2.0 + side * cx / k.max(1) as f64, -side / 2.0 + side * cz / k.max(1) as f64)
         })
         .collect();
+    if std::env::var_os("HUNT").is_some() {
+        herd.set_online(&list);
+    }
     herd.set_players(list);
     if mode == "trace" {
         // The active modules over the ticks (a packed herd: spacing below the width of a cow overlaps).
@@ -60,6 +63,11 @@ fn main() {
         }
     }
     let dt = t0.elapsed();
+    if std::env::var_os("HUNT").is_some() {
+        let c = horizon_ecs_proto::goals::counts(&mut herd.world);
+        let hits = herd.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
+        eprintln!("hunting {:?} meleeing {:?} player hits so far {hits}", c.iter().find(|x| x.0 == "hunting"), c.iter().find(|x| x.0 == "meleeing"));
+    }
     let (idle, following, moving, total) = herd.counts();
     let window = (ticks - warm).max(1);
     if timed {

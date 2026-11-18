@@ -1191,13 +1191,24 @@ pub fn leaked_test_world(
     mob_drops: bool,
     build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
 ) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes)> {
+    leaked_test_world_mut(mob_drops, build).map(|(w, t, _)| (w, t))
+}
+/// `leaked_test_world`, with a pointer to the leaked `World` for a prototype that changes blocks between steps (the
+/// caller promises that no system runs while it does).
+#[cfg(feature = "proto")]
+pub fn leaked_test_world_mut(
+    mob_drops: bool,
+    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
+) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
     let resources: &'static TestResources = TestResources::vanilla()?;
     let TestResources { assets, facts, motion, data, types, biomes, items, collision, suffocation } = resources;
     let registry = assets.registry;
     let air = registry.default_state("minecraft:air").unwrap();
     let mut world = crate::world::World::new(air, 0);
     build(&mut world, registry);
-    let world: &'static crate::world::World = Box::leak(Box::new(world));
+    let leaked: &'static mut crate::world::World = Box::leak(Box::new(world));
+    let blocks: *mut crate::world::World = &mut *leaked;
+    let world: &'static crate::world::World = leaked;
     let lid_openers: &'static std::collections::HashMap<(i32, i32, i32), i32> =
         Box::leak(Box::new(std::collections::HashMap::new()));
     let w = MobWorld {
@@ -1259,5 +1270,5 @@ pub fn leaked_test_world(
         border: None,
         section_writer: None,
     };
-    Some((Box::leak(Box::new(w)), types))
+    Some((Box::leak(Box::new(w)), types, blocks))
 }

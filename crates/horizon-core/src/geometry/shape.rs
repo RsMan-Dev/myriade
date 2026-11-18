@@ -194,7 +194,7 @@ impl VoxelShape {
     pub fn block() -> Self {
         Self::block_ref().clone()
     }
-    fn block_ref() -> &'static Self {
+    pub fn block_ref() -> &'static Self {
         static BLOCK: OnceLock<VoxelShape> = OnceLock::new();
         BLOCK.get_or_init(|| Self::from_cube([1, 1, 1], &[true]).expect("valid unit cube"))
     }
@@ -497,6 +497,97 @@ impl VoxelShape {
                     } else {
                         amount
                     };
+                }
+            }
+        }
+        amount
+    }
+    /// [`Self::collide`] of the unit cube moved by the integer `offset`, without building the shape: the same
+    /// arithmetic on the same coordinates (`o` and `o + 1`), bit for bit.
+    pub fn collide_unit_cube(offset: Vec3, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        if amount.abs() < COLLISION_EPSILON {
+            return 0.0;
+        }
+        let (lo, hi, off) = (
+            aabb.min_position().components(),
+            aabb.max_position().components(),
+            offset.components(),
+        );
+        // `find_index` of the moved cube: the upper bound among its two coordinates, less one.
+        let at = |a: usize, v: f64| i32::from(off[a] <= v) + i32::from(off[a] + 1.0 <= v) - 1;
+        let i = axis as usize;
+        let (p, q) = ((i + 1) % 3, (i + 2) % 3);
+        if at(p, lo[p] + COLLISION_EPSILON).max(0) >= (at(p, hi[p] - COLLISION_EPSILON) + 1).min(1)
+            || at(q, lo[q] + COLLISION_EPSILON).max(0) >= (at(q, hi[q] - COLLISION_EPSILON) + 1).min(1)
+        {
+            return amount;
+        }
+        if amount > 0.0 {
+            if at(i, hi[i] - COLLISION_EPSILON) < 0 {
+                let distance = off[i] - hi[i];
+                return if distance >= -COLLISION_EPSILON { java_min(amount, distance) } else { amount };
+            }
+        } else if amount < 0.0 && at(i, lo[i] + COLLISION_EPSILON) >= 1 {
+            let distance = 1.0 + off[i] - lo[i];
+            return if distance <= COLLISION_EPSILON { java_max(amount, distance) } else { amount };
+        }
+        amount
+    }
+    /// [`Self::collide`] of this shape moved by `offset` (`Self::moved`), without building the moved shape: every
+    /// coordinate is the stored one plus the offset, the same addition, bit for bit.
+    pub fn collide_moved(&self, offset: Vec3, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        if self.is_empty() {
+            return amount;
+        }
+        if amount.abs() < COLLISION_EPSILON {
+            return 0.0;
+        }
+        let at = |a: usize, k: usize| self.coords[a][k] + offset.components()[a];
+        let find = |a: Axis, value: f64| -> i32 {
+            let n = self.coords[a as usize].len();
+            let (mut start, mut end) = (0, n);
+            while start < end {
+                let middle = (start + end) / 2;
+                if value < at(a as usize, middle) {
+                    end = middle;
+                } else {
+                    start = middle + 1;
+                }
+            }
+            start as i32 - 1
+        };
+        let i = axis as usize;
+        let p = Axis::ALL[(i + 1) % 3];
+        let q = Axis::ALL[(i + 2) % 3];
+        let p_start = find(p, aabb.min(p) + COLLISION_EPSILON).max(0);
+        let p_end = (find(p, aabb.max(p) - COLLISION_EPSILON) + 1).min(self.sizes[p as usize] as i32);
+        let q_start = find(q, aabb.min(q) + COLLISION_EPSILON).max(0);
+        let q_end = (find(q, aabb.max(q) - COLLISION_EPSILON) + 1).min(self.sizes[q as usize] as i32);
+        let occupied_layer = |layer| {
+            (p_start..p_end).any(|u| {
+                (q_start..q_end).any(|v| {
+                    let mut cell = [0; 3];
+                    cell[i] = layer;
+                    cell[p as usize] = u;
+                    cell[q as usize] = v;
+                    self.is_full(cell[0], cell[1], cell[2])
+                })
+            })
+        };
+        if amount > 0.0 {
+            let start = find(axis, aabb.max(axis) - COLLISION_EPSILON) + 1;
+            for layer in start..self.sizes[i] as i32 {
+                if occupied_layer(layer) {
+                    let distance = at(i, layer as usize) - aabb.max(axis);
+                    return if distance >= -COLLISION_EPSILON { java_min(amount, distance) } else { amount };
+                }
+            }
+        } else if amount < 0.0 {
+            let start = find(axis, aabb.min(axis) + COLLISION_EPSILON);
+            for layer in (0..start).rev() {
+                if occupied_layer(layer) {
+                    let distance = at(i, layer as usize + 1) - aabb.min(axis);
+                    return if distance <= COLLISION_EPSILON { java_max(amount, distance) } else { amount };
                 }
             }
         }
