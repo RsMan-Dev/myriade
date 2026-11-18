@@ -95,13 +95,16 @@ pub struct Sizes {
 }
 /// A path was asked for (the stroll picked a spot): `pathfind` visits only these.
 #[derive(Component, Clone, Copy, Debug)]
+#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct NeedsPath;
 /// The cow follows a path: `follow` and `move_control` visit only these.
 #[derive(Component, Clone, Copy, Debug)]
+#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct Following;
 /// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
 /// the marker off when the cow is back at rest.
 #[derive(Component, Clone, Copy, Debug)]
+#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct Moving;
 /// `Mob.noActionTime` as a deadline: the stroll goal is refused from this tick on (100 ticks after a player was
 /// last within 32 blocks, or the cow was hurt).
