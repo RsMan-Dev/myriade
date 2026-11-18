@@ -49,6 +49,8 @@ pub struct Contact {
 pub struct Drive {
     pub zza: f32,
     pub speed: f32,
+    /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
+    pub jumping: bool,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -120,6 +122,35 @@ pub struct Players {
     prev: Vec<(f64, f64)>,
     pub dirty: bool,
 }
+/// `EntityFluidInteraction`: the fluid heights the box has, and whether the feet and the eyes are in them.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct FluidState {
+    pub water: f64,
+    pub lava: f64,
+    pub in_water: bool,
+    pub in_lava: bool,
+    pub eye_in_water: bool,
+    pub eye_in_lava: bool,
+}
+/// The fluid module is active: the box overlaps a column with water or lava (`fluid_update` visits only these).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct InFluid;
+/// `Entity.getAirSupply`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Air(pub i32);
+/// The air is below its maximum: the breathing module ticks until it is full again.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AirLow;
+/// Ask `wall_check` to look whether the cow's head is in a block (a spawn, a teleport, a growth: the events that
+/// can put a box into blocks).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Recheck;
+/// The head of the cow is in a suffocating block: it hurts every tick until that stops.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct InWall;
+/// What a hit pushes: the cows to knock back, from where (`LivingEntity.knockback`, strength 0.4).
+#[derive(Resource, Default)]
+pub struct Knockbacks(pub Vec<(Entity, f64, f64)>);
 /// `LivingEntity.health`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Health(pub f32);
@@ -319,6 +350,10 @@ pub struct Species {
     pub can_walk_over_fences: bool,
     pub follow_range: f32,
     pub max_health: f32,
+    pub water_slowdown: f32,
+    pub water_efficiency: f32,
+    pub eye_height: f64,
+    pub breathes_water: bool,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -335,6 +370,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         }
         for x in -half..=half {
             for z in -half..=half {
+                blocks.set(x, -2, z, stone).unwrap();
                 blocks.set(x, -1, z, stone).unwrap();
                 blocks.set(x, 0, z, stone).unwrap();
                 if x.abs() == half || z.abs() == half {
@@ -359,6 +395,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
                 while gz + 40 < half {
                     put(blocks, "minecraft:lava", gx, gz, 0);
                     put(blocks, "minecraft:water", gx + 8, gz, 0);
+                    put(blocks, "minecraft:water", gx + 8, gz, -1);
                     put(blocks, "minecraft:powder_snow", gx + 16, gz, 0);
                     put(blocks, "minecraft:fire", gx, gz + 8, 1);
                     put(blocks, "minecraft:cactus", gx + 8, gz + 8, 1);
@@ -380,6 +417,10 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         can_walk_over_fences: mob.ai.nav.can_walk_over_fences,
         follow_range: mob.attrs.follow_range as f32,
         max_health: mob.health,
+        water_slowdown: kind.water_slowdown,
+        water_efficiency: kind.water_efficiency as f32,
+        eye_height: kind.eye_height,
+        breathes_water: kind.flags.breathes_water,
     };
     (Level { mw: Mw(mw), half }, species, kind)
 }
@@ -410,6 +451,7 @@ pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
         Health(10.0),
         HurtAt { at: 0, last: 0.0 },
         Frozen(0),
+        (FluidState::default(), Air(300), Recheck),
         rng,
         ),
     )
@@ -431,7 +473,7 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, travel, reindex, hazard_tick, push, apply_pushes, apply_damage).chain());
+    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
     s
 }
 
@@ -762,48 +804,24 @@ fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mu
 
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
-fn travel_one(
-    level: &Level,
-    pos: &mut Pos,
-    vel: &mut Vel,
-    yaw: &Yaw,
-    c: &mut Contact,
-    d: &Drive,
-    body: &Body,
-    bounds: &mut Bounds,
-    fall_damage: &mut f32,
-) -> bool {
-    let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
-    // A cow at its resting state stays as it is: no sweep is made for it.
-    if c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
-        return true;
-    }
-    // `LivingEntity.aiStep`: the tiny motions are dropped.
-    let v = vel.0;
-    vel.0 = Vec3::new(
-        if v.x.abs() < 0.003 { 0.0 } else { v.x },
-        if v.y.abs() < 0.003 { 0.0 } else { v.y },
-        if v.z.abs() < 0.003 { 0.0 } else { v.z },
-    );
-    let friction: f32 = if c.on_ground { 0.6 } else { 1.0 };
-    let speed = if c.on_ground {
-        if friction > 0.6 { d.speed * (0.216_000_02 / (friction * friction * friction)) } else { d.speed }
-    } else {
-        0.02
-    };
-    // `Entity.moveRelative` with the input (0, 0, zza).
-    let input = Vec3::new(0.0, 0.0, f64::from(d.zza));
+/// `Entity.moveRelative`.
+fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, zza: f32) {
+    let input = Vec3::new(0.0, 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
-    if len_sq >= 1.0e-7 {
-        let l = len_sq.sqrt();
-        let i = if len_sq > 1.0 { Vec3::new(input.x / l, input.y / l, input.z / l) } else { input };
-        let i = Vec3::new(i.x * f64::from(speed), i.y * f64::from(speed), i.z * f64::from(speed));
-        let angle = f64::from(yaw.0 * trig::DEG_TO_RAD);
-        let (s, co) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
-        let u = vel.0;
-        vel.0 = Vec3::new(u.x + (i.x * co - i.z * s), u.y + i.y, u.z + (i.z * co + i.x * s));
+    if len_sq < 1.0e-7 {
+        return;
     }
-    // `Entity.move`: the sweep over the blocks, then the collision flags and the landing.
+    let l = len_sq.sqrt();
+    let i = if len_sq > 1.0 { Vec3::new(input.x / l, input.y / l, input.z / l) } else { input };
+    let i = Vec3::new(i.x * f64::from(speed), i.y * f64::from(speed), i.z * f64::from(speed));
+    let angle = f64::from(yaw * trig::DEG_TO_RAD);
+    let (s, co) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
+    let u = vel.0;
+    vel.0 = Vec3::new(u.x + (i.x * co - i.z * s), u.y + i.y, u.z + (i.z * co + i.x * s));
+}
+/// `Entity.move`: the sweep over the blocks (Horizon's real kernel), then the collision flags, the landing and the
+/// restitution (the vertical velocity is lost after a landing).
+fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
     let wanted = vel.0;
     let p = pos.0;
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
@@ -829,32 +847,124 @@ fn travel_one(
         }
         c.fall_distance = 0.0;
     }
-    // `Entity.move` ends with the restitution after a landing: the vertical velocity is lost.
-    let mut movement = vel.0;
     if vertical && below {
-        movement.y = 0.0;
+        vel.0.y = 0.0;
     }
+}
+/// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
+#[allow(clippy::too_many_arguments)]
+fn travel_one(
+    level: &Level,
+    sp: &Species,
+    pos: &mut Pos,
+    vel: &mut Vel,
+    yaw: &Yaw,
+    c: &mut Contact,
+    d: &Drive,
+    body: &Body,
+    bounds: &mut Bounds,
+    fs: &FluidState,
+    fall_damage: &mut f32,
+) -> bool {
+    let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
+    let in_fluid = fs.in_water || fs.in_lava;
+    // A cow at its resting state stays as it is: no sweep is made for it.
+    if !in_fluid && !d.jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+        return true;
+    }
+    // `LivingEntity.aiStep`: the tiny motions are dropped.
+    let v = vel.0;
+    vel.0 = Vec3::new(
+        if v.x.abs() < 0.003 { 0.0 } else { v.x },
+        if v.y.abs() < 0.003 { 0.0 } else { v.y },
+        if v.z.abs() < 0.003 { 0.0 } else { v.z },
+    );
+    // `LivingEntity.handleJumping`, in a fluid: the jump input lifts a cow whose feet are in water or lava.
+    let threshold = if sp.eye_height < 0.4 { 0.0 } else { 0.4 };
+    if d.jumping && in_fluid {
+        let deep = if fs.in_lava { fs.lava > threshold } else { fs.water > threshold };
+        if deep || !c.on_ground {
+            vel.0.y += if sp.can_float { f64::from(0.04_f32) } else { 0.3 };
+        }
+    }
+    if in_fluid {
+        let falling = vel.0.y <= 0.0;
+        let old_y = pos.0.y;
+        if fs.in_water {
+            let mut slow = sp.water_slowdown;
+            let mut speed = 0.02_f32;
+            let mut efficiency = sp.water_efficiency;
+            if !c.on_ground {
+                efficiency *= 0.5;
+            }
+            if efficiency > 0.0 {
+                slow += (0.546_000_06 - slow) * efficiency;
+                speed += (d.speed - speed) * efficiency;
+            }
+            move_relative(vel, yaw.0, speed, d.zza);
+            do_move(level, pos, vel, c, body, bounds, fall_damage);
+            let m = vel.0;
+            let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
+            vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
+            c.fall_distance = 0.0;
+        } else {
+            move_relative(vel, yaw.0, 0.02, d.zza);
+            do_move(level, pos, vel, c, body, bounds, fall_damage);
+            let v = vel.0;
+            if fs.lava <= threshold {
+                vel.0 = Vec3::new(v.x * 0.5, v.y * f64::from(0.8_f32), v.z * 0.5);
+                vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, vel.0);
+            } else {
+                vel.0 = Vec3::new(v.x * 0.5, v.y * 0.5, v.z * 0.5);
+            }
+            if body.gravity != 0.0 {
+                vel.0.y -= body.gravity / 4.0;
+            }
+        }
+        // A cow against the shore with free space and no liquid ahead hops out.
+        let m = vel.0;
+        let ahead = bounds.0.move_by(Vec3::new(m.x, m.y + f64::from(0.6_f32) - pos.0.y + old_y, m.z));
+        let mw = level.mw.0;
+        if c.horizontal && mw.no_collision(ahead) && !mw.contains_any_liquid(ahead) {
+            vel.0.y = f64::from(0.3_f32);
+        }
+        return false;
+    }
+    let friction: f32 = if c.on_ground { 0.6 } else { 1.0 };
+    let speed = if c.on_ground {
+        if friction > 0.6 { d.speed * (0.216_000_02 / (friction * friction * friction)) } else { d.speed }
+    } else {
+        0.02
+    };
+    move_relative(vel, yaw.0, speed, d.zza);
+    do_move(level, pos, vel, c, body, bounds, fall_damage);
+    let movement = vel.0;
     let drag = 0.91_f32;
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
     c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
+#[allow(clippy::type_complexity)]
 fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
+    sp: Res<Species>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, Has<Following>), With<Moving>>,
+    mut q: Query<
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, &FluidState, Has<Following>),
+        With<Moving>,
+    >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, following: bool| {
-        // At rest and not following a path: the physics of the cow goes inactive until something moves it.
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool| {
         let mut fall = 0.0_f32;
-        let rest = travel_one(&level, &mut p, &mut v, y, &mut c, d, b, &mut bb, &mut fall);
+        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, d, b, &mut bb, fs, &mut fall);
         if fall > 0.0 {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall)));
             });
         }
+        // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
             par.command_scope(|mut cmd| {
                 cmd.entity(e).remove::<Moving>();
@@ -862,11 +972,135 @@ fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, f)| one(e, p, v, y, c, d, b, bb, f));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f)| one(e, p, v, y, c, d, b, bb, fs, f));
     } else {
-        for (e, p, v, y, c, d, b, bb, f) in &mut q {
-            one(e, p, v, y, c, d, b, bb, f);
+        for (e, p, v, y, c, d, b, bb, fs, f) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f);
         }
+    }
+}
+
+/// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
+/// a column with a fluid.
+fn fluid_update(
+    cfg: Res<Config>,
+    level: Res<Level>,
+    sp: Res<Species>,
+    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact), With<InFluid>>,
+) {
+    let level = &*level;
+    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact| {
+        let mw = level.mw.0;
+        let f = mw.fluids(b.0, pos.0.y + sp.eye_height);
+        *fs = FluidState {
+            water: f.water,
+            lava: f.lava,
+            in_water: f.in_water,
+            in_lava: f.in_lava,
+            eye_in_water: f.eye_in_water,
+            eye_in_lava: f.eye_in_lava,
+        };
+        if f.in_water || f.in_lava {
+            v.0 = mw.pushed_by_currents(b.0, v.0);
+        }
+        if f.in_water {
+            c.fall_distance = 0.0;
+        }
+    };
+    if cfg.parallel {
+        q.par_iter_mut().for_each(|(p, b, mut v, mut fs, mut c)| one(p, b, &mut v, &mut fs, &mut c));
+    } else {
+        for (p, b, mut v, mut fs, mut c) in &mut q {
+            one(p, b, &mut v, &mut fs, &mut c);
+        }
+    }
+}
+
+/// `LivingEntity.baseTick`'s air: the cows in a fluid, or with air missing, breathe (Horizon's real `breathe` and
+/// `drown`): the air runs down while the eyes are in water, refills by 4 outside, and drowning hurts 2.
+#[allow(clippy::type_complexity)]
+fn breathing(
+    level: Res<Level>,
+    sp: Res<Species>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>), Or<(With<InFluid>, With<AirLow>)>>,
+    mut queue: ResMut<DamageQueue>,
+    mut commands: Commands,
+) {
+    let mw = level.mw.0;
+    for (e, pos, fs, mut air, low, in_fluid) in &mut q {
+        let submerged = fs.eye_in_water && {
+            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
+            mw.block_name(x, y, z) != "minecraft:bubble_column"
+        };
+        let drowns = submerged && !sp.breathes_water;
+        let vanilla = horizon_client_lib::breathing::Breath {
+            can_breathe: !drowns,
+            consume: 1,
+            refill: if drowns { 0 } else { 4 },
+        };
+        let id = e.index().index();
+        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, "minecraft:cow", vanilla);
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, "minecraft:cow", &mut air.0, 300, breath, true)
+            && let Some(damage) = d.damage
+        {
+            queue.0.push((e, damage));
+        }
+        if air.0 < 300 && !low {
+            commands.entity(e).insert(AirLow);
+        } else if air.0 >= 300 && low && !in_fluid {
+            commands.entity(e).remove::<AirLow>();
+        }
+    }
+}
+
+/// `Mob.baseTick`'s `isInWall` for the cows an event asked about (a spawn, a teleport, a growth): the head in a
+/// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
+fn wall_check(
+    level: Res<Level>,
+    sp: Res<Species>,
+    q: Query<(Entity, &Pos, &Body, Has<InWall>), With<Recheck>>,
+    mut commands: Commands,
+) {
+    use horizon_core::geometry::{ShapeOp, VoxelShape};
+    let mw = level.mw.0;
+    for (e, pos, body, was) in &q {
+        let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+        let inside = horizon_client_lib::mobs::ai::in_wall(
+            body.width,
+            [pos.0.x, pos.0.y + sp.eye_height, pos.0.z],
+            |x, y, z, eye_bounds| {
+                let p = [x, y, z];
+                let state = mw.world.block(x, y, z);
+                if !mw.suffocation.is_suffocating(&mut scene, state, p).unwrap_or(false) {
+                    return false;
+                }
+                mw.collision.collision_shape(&mut scene, state, p).ok().is_some_and(|shape| {
+                    let Ok(eye_shape) = VoxelShape::from_box(*eye_bounds) else {
+                        return false;
+                    };
+                    shape
+                        .moved(Vec3::new(f64::from(x), f64::from(y), f64::from(z)))
+                        .join_is_not_empty(&eye_shape, ShapeOp::AND)
+                        .unwrap_or(false)
+                })
+            },
+        );
+        let mut cmd = commands.entity(e);
+        cmd.remove::<Recheck>();
+        match (inside, was) {
+            (true, false) => {
+                cmd.insert(InWall);
+            }
+            (false, true) => {
+                cmd.remove::<InWall>();
+            }
+            _ => {}
+        }
+    }
+}
+fn wall_damage(q: Query<Entity, With<InWall>>, mut queue: ResMut<DamageQueue>) {
+    for e in &q {
+        queue.0.push((e, 1.0));
     }
 }
 
@@ -876,10 +1110,10 @@ fn travel(
 fn reindex(
     mut idx: ResMut<Index>,
     hazards: Res<Hazards>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz) in &mut q {
+    for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -890,6 +1124,13 @@ fn reindex(
             c.0 = cell;
         }
         let bits = hazards.of_box(&b.0);
+        let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
+        if fluid && !in_fluid {
+            commands.entity(e).insert(InFluid);
+        } else if !fluid && in_fluid {
+            commands.entity(e).remove::<InFluid>();
+            *fs = FluidState::default();
+        }
         match (bits, hz) {
             (0, Some(_)) => {
                 commands.entity(e).remove::<Hazard>();
@@ -909,9 +1150,22 @@ fn apply_damage(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
+    mut knock: ResMut<Knockbacks>,
     mut q: Query<(&mut Health, &mut HurtAt, &Cell)>,
+    mut bodies: Query<(&mut Vel, &Contact)>,
     mut commands: Commands,
 ) {
+    for (e, dx, dz) in std::mem::take(&mut knock.0) {
+        // `LivingEntity.knockback(0.4, dx, dz)`: away from the attacker, a hop when on the ground.
+        let Ok((mut v, c)) = bodies.get_mut(e) else { continue };
+        let l = (dx * dx + dz * dz).sqrt();
+        if l >= 1.0e-5 {
+            let (nx, nz) = (dx / l * 0.4, dz / l * 0.4);
+            let y = if c.on_ground { (v.0.y / 2.0 + 0.4).min(0.4) } else { v.0.y };
+            v.0 = Vec3::new(v.0.x / 2.0 - nx, y, v.0.z / 2.0 - nz);
+            commands.entity(e).insert(Moving);
+        }
+    }
     for (e, amount) in std::mem::take(&mut queue.0) {
         let Ok((mut h, mut hurt, cell)) = q.get_mut(e) else { continue };
         let applied = if clock.0 < hurt.at + 10 && hurt.at != 0 {
@@ -1104,7 +1358,7 @@ fn due(
                     b.width = sizes.adult.0;
                     b.height = sizes.adult.1;
                     bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
-                    commands.entity(e).remove::<GrowAt>();
+                    commands.entity(e).remove::<GrowAt>().insert(Recheck);
                 }
             }
         }
@@ -1128,6 +1382,7 @@ impl Herd {
         let (level, species, _kind) = build_level(half, hazards);
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
+        world.insert_resource(Knockbacks::default());
         world.insert_resource(level);
         world.insert_resource(species);
         world.insert_resource(Config { sleep, parallel });
@@ -1160,6 +1415,21 @@ impl Herd {
         let mut p = self.world.resource_mut::<Players>();
         p.list = players;
         p.dirty = true;
+    }
+    /// A hit from `from` (x, z): `amount` damage and the knockback away from it (the damage a player does).
+    pub fn hit(&mut self, e: Entity, amount: f32, from: (f64, f64)) {
+        let p = self.world.get::<Pos>(e).unwrap().0;
+        self.world.resource_mut::<DamageQueue>().0.push((e, amount));
+        // `knockback(0.4, attacker - victim)`: the direction TOWARD the attacker, the push is the other way.
+        self.world.resource_mut::<Knockbacks>().0.push((e, from.0 - p.x, from.1 - p.z));
+    }
+    /// Puts the cow at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.
+    pub fn teleport(&mut self, e: Entity, at: Vec3) {
+        let b = *self.world.get::<Body>(e).unwrap();
+        self.world.get_mut::<Pos>(e).unwrap().0 = at;
+        self.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
+        self.world.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
+        self.world.entity_mut(e).insert((Recheck, Moving));
     }
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);
@@ -1264,9 +1534,12 @@ mod tests {
         let fire = cow(&mut herd, -47.0, 1.0, -39.0);
         let snow = cow(&mut herd, -31.0, 1.0, -47.0);
         let cactus = cow(&mut herd, -39.0, 1.0, -39.0);
+        let pond = cow(&mut herd, -39.0, 3.0, -47.0);
+        let wall = cow(&mut herd, 20.5, 1.0, 20.5);
+        herd.teleport(wall, Vec3::new(20.5, -0.6, 20.5));
         let show = |herd: &Herd, t: u32| {
             let h = |e: Entity| health(herd, e).map_or("dead".to_string(), |h| format!("{h}"));
-            eprintln!("tick {t}: fall 11: {}, fall 39: {}, lava: {}, fire: {}, powder snow: {}, cactus: {}", h(hurt), h(dies), h(lava), h(fire), h(snow), h(cactus));
+            eprintln!("tick {t}: fall 11: {}, fall 39: {}, lava: {}, fire: {}, powder snow: {}, cactus: {}, pond: {}, in wall: {}", h(hurt), h(dies), h(lava), h(fire), h(snow), h(cactus), h(pond), h(wall));
         };
         for _ in 0..40 {
             herd.tick();
@@ -1288,6 +1561,66 @@ mod tests {
         show(&herd, 340);
         assert!(health(&herd, snow).is_some_and(|h| h < 10.0), "the powder snow: {:?}", health(&herd, snow));
         assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
+        assert!(health(&herd, pond).is_none_or(|h| h < 10.0), "the cow in the pond did not drown");
+        assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
+    }
+
+    /// The cactus cow of the hazard test, tick by tick (position, health, whether a walk or a path started).
+    #[test]
+    #[ignore = "trace"]
+    fn trace_the_cactus_cow() {
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let e = herd.world.spawn(cow_bundle(-39.0, -39.0, 77)).id();
+        herd.world.get_mut::<Pos>(e).unwrap().0.y = 1.0;
+        herd.world.entity_mut(e).insert(ActiveUntil(0));
+        for t in 1..=40 {
+            herd.tick();
+            let p = herd.world.get::<Pos>(e).map(|p| p.0);
+            let h = herd.world.get::<Health>(e).map(|h| h.0);
+            let walking = herd.world.get::<Stroll>(e).map(|s| s.walking);
+            let hz = herd.world.get::<Hazard>(e).map(|h| h.0);
+            eprintln!("ecs cactus t={t:3} pos={p:?} health={h:?} walking={walking:?} hazard={hz:?}");
+        }
+    }
+
+    /// A cow driven east into the cactus patch (the gesture that counts in play), tick by tick, to compare with `Mob`.
+    #[test]
+    #[ignore = "trace"]
+    fn trace_a_cow_walking_into_a_cactus() {
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let e = herd.world.spawn(cow_bundle(-42.5, -39.0, 77)).id();
+        herd.world.entity_mut(e).insert(ActiveUntil(0));
+        herd.world.get_mut::<Yaw>(e).unwrap().0 = -90.0;
+        herd.world.get_mut::<Drive>(e).unwrap().speed = 0.2;
+        herd.world.get_mut::<Drive>(e).unwrap().zza = 0.2;
+        for t in 1..=90 {
+            herd.tick();
+            if t % 5 == 0 {
+                let p = herd.world.get::<Pos>(e).map(|p| p.0);
+                let h = herd.world.get::<Health>(e).map(|h| h.0);
+                eprintln!("ecs walk t={t:3} pos={p:?} health={h:?}");
+            }
+        }
+    }
+
+    /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
+    #[test]
+    fn a_hit_knocks_a_cow_back() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        let mut herd = Herd::new(1, 100.0, true, false, 5);
+        let e = herd.world.spawn(cow_bundle(10.5, 10.5, 9)).id();
+        herd.world.entity_mut(e).insert(ActiveUntil(0));
+        for _ in 0..5 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Moving>(e).is_none(), "the cow was not at rest");
+        herd.hit(e, 1.0, (11.5, 10.5));
+        herd.tick();
+        let v = herd.world.get::<Vel>(e).unwrap().0;
+        assert!(herd.world.get::<Moving>(e).is_some());
+        assert!(herd.world.get::<Pos>(e).unwrap().0.x < 10.5 && herd.world.get::<Pos>(e).unwrap().0.y > 1.0, "{v:?}");
     }
 
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.

@@ -2037,7 +2037,7 @@ impl crate::entity_rules::EntityRules for Mob {
     }
 }
 /// LivingEntity.getFluidFallingAdjustedMovement.
-pub(crate) fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 {
+pub fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 {
     if gravity != 0.0 && !sprinting {
         let y = if falling && (m.y - 0.005).abs() >= 0.003 && (m.y - gravity / 16.0).abs() < 0.003 {
             -0.003
