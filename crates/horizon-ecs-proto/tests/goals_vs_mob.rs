@@ -133,75 +133,44 @@ fn mob_health(m: &Mob) -> f32 {
     if m.health <= 0.0 || m.removed { 0.0 } else { m.health }
 }
 
-/// A cow put in a cactus, in fire, in lava: its health at the ticks 40, 140 and 340, with the panic of each.
+/// A cow put in a cactus, in fire, in lava: its health at the ticks 40, 140 and 340, with the cow at rest (the
+/// resting vertical velocity) and fresh from its spawn (velocity zero: it is in the air for its first tick).
 #[test]
 fn cactus_fire_and_lava_hurt_as_a_mob_does() {
     if !have_data() {
         return;
     }
     let spots = [("lava", -47.0, -47.0), ("fire", -47.0, -39.0), ("cactus", -39.0, -39.0)];
-    let mut r = Ref::new(56, true);
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
-    let ids: Vec<(usize, Entity)> = spots.iter().map(|s| (r.add(Vec3::new(s.1, 1.0, s.2)), ecs_cow(&mut h, s.1, 1.0, s.2, 77))).collect();
-    let mut rows = Vec::new();
-    for t in 1..=340 {
-        r.step(None);
-        h.tick();
-        if [40, 140, 340].contains(&t) {
-            rows.push((t, ids.iter().map(|&(m, e)| (mob_health(&r.mobs[m]), health(&h, e))).collect::<Vec<_>>()));
-        }
-    }
-    for (t, row) in &rows {
-        let line: Vec<String> = spots.iter().zip(row).map(|(s, (m, e))| format!("{} mob {m} ecs {e}", s.0)).collect();
-        eprintln!("tick {t}: {}", line.join(", "));
-    }
-    // The cactus: the `Mob` path starts by lifting the cow out of the solid block it stands in
-    // (`GroundPathNavigation.createPath`); the ecs `pathfind` does not, so the ecs cow stays in the cactus (known
-    // gap, in the physics and pathfinding of the other agent): only lava and fire are compared.
-    for (t, row) in &rows {
-        for (s, (m, e)) in spots.iter().zip(row) {
-            if s.0 != "cactus" {
-                assert!((m - e).abs() <= 2.0, "{} at tick {t}: mob {m}, ecs {e}", s.0);
+    for rest in [true, false] {
+        let mut r = Ref::new(56, true);
+        let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let ids: Vec<(usize, Entity)> = spots
+            .iter()
+            .map(|s| {
+                let e = ecs_cow(&mut h, s.1, 1.0, s.2, 77);
+                if !rest {
+                    h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
+                }
+                (r.add(Vec3::new(s.1, 1.0, s.2)), e)
+            })
+            .collect();
+        let mut rows = Vec::new();
+        for t in 1..=340 {
+            r.step(None);
+            h.tick();
+            if [40, 140, 340].contains(&t) {
+                rows.push((t, ids.iter().map(|&(m, e)| (mob_health(&r.mobs[m]), health(&h, e))).collect::<Vec<_>>()));
             }
         }
-    }
-}
-
-#[test]
-#[ignore = "trace"]
-fn trace_cactus() {
-    if !have_data() {
-        return;
-    }
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
-    let e = ecs_cow(&mut h, -39.0, 1.0, -39.0, 77);
-    for t in 1..=60 {
-        h.tick();
-        let g = h.world.get::<GoalSet>(e);
-        if let Some(g) = g {
-            let p = h.world.get::<Pos>(e).unwrap().0;
-            eprintln!(
-                "t={t} pos=({:.2},{:.2},{:.2}) hp={} panic={} stroll={} following={} needs={} moving={} path={}",
-                p.x, p.y, p.z, health(&h, e), g.is_running(Kind::Panic), g.is_running(Kind::Stroll),
-                h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Moving>(e).is_some(),
-                h.world.get::<Nav>(e).unwrap().path.is_some()
-            );
+        for (t, row) in &rows {
+            let line: Vec<String> = spots.iter().zip(row).map(|(s, (m, e))| format!("{} mob {m} ecs {e}", s.0)).collect();
+            eprintln!("tick {t} (ecs cow {}): {}", if rest { "at rest" } else { "fresh" }, line.join(", "));
         }
-    }
-}
-
-#[test]
-#[ignore = "trace"]
-fn trace_mob_cactus() {
-    if !have_data() {
-        return;
-    }
-    let mut r = Ref::new(56, true);
-    let i = r.add(Vec3::new(-39.0, 1.0, -39.0));
-    for t in 1..=30 {
-        r.step(None);
-        let m = &r.mobs[i];
-        eprintln!("mob t={t} pos=({:.2},{:.2},{:.2}) hp={} goals={:?} last_damage={:?} age={}", m.position.x, m.position.y, m.position.z, m.health, r.names(i), m.last_damage.map(|d| d.1), m.age);
+        for (t, row) in &rows {
+            for (s, (m, e)) in spots.iter().zip(row) {
+                assert!((m - e).abs() <= 2.0, "{} at tick {t} (rest {rest}): mob {m}, ecs {e}", s.0);
+            }
+        }
     }
 }
 
@@ -532,4 +501,86 @@ fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
     eprintln!("burning near a pond: fire out at tick mob {mout:?}, ecs {cout:?}; health (tick, mob, ecs) {hp:?}");
     let (mout, cout) = (mout.expect("mob never put out"), cout.expect("ecs never put out"));
     assert!(mout < 100 && cout < 100 && (mout - cout).abs() <= 25, "mob {mout}, ecs {cout}");
+}
+
+#[test]
+#[ignore = "trace"]
+fn trace_cactus_paths() {
+    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let i = r.add(Vec3::new(-39.0, 1.0, -39.0));
+    let w = r.w;
+    let pm_mob = r.mobs[i].path_mob();
+    eprintln!("mob PathMob: pos {:?} w {} h {} ground {} water {} step {} fall {} float {} doors {} {} fences {}", pm_mob.position, pm_mob.width, pm_mob.height, pm_mob.on_ground, pm_mob.in_water, pm_mob.max_up_step, pm_mob.max_fall_distance, pm_mob.can_float, pm_mob.can_open_doors, pm_mob.can_pass_doors, pm_mob.can_walk_over_fences);
+    eprintln!("mob malus {:?}", pm_mob.malus);
+    let sp = species();
+    eprintln!("ecs species: step {} w {} h {} fall 3 malus {:?}", sp.step_height, sp.width, sp.height, sp.malus);
+    for (tx, tz) in [(-41, -39), (-39, -42), (-35, -39), (-39, -35), (-43, -43)] {
+        let a = Finder::new(w, &pm_mob, Evaluator::Walk).find(&[[tx, 1, tz]], sp.follow_range, 1, (sp.follow_range * 16.0) as i32);
+        let mut pg = pm_mob.clone();
+        pg.on_ground = true;
+        let b = Finder::new(w, &pg, Evaluator::Walk).find(&[[tx, 1, tz]], sp.follow_range, 1, (sp.follow_range * 16.0) as i32);
+        let show = |p: &Option<horizon_client_lib::mobs::path::Path>| p.as_ref().map(|p| p.nodes.iter().map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
+        eprintln!("target ({tx},{tz}): finder on_ground=false {:?}\n   on_ground=true {:?}", show(&a), show(&b));
+    }
+}
+
+/// The cactus cow tick by tick on the ecs side (`FRESH=1`: velocity zero at the start, as after a spawn).
+#[test]
+#[ignore = "trace"]
+fn trace_cactus() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let e = ecs_cow(&mut h, -39.0, 1.0, -39.0, 77);
+    if std::env::var_os("FRESH").is_some() {
+        h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
+    }
+    for t in 1..=60 {
+        h.tick();
+        if let Some(g) = h.world.get::<GoalSet>(e) {
+            let p = h.world.get::<Pos>(e).unwrap().0;
+            eprintln!(
+                "t={t} pos=({:.2},{:.2},{:.2}) ground={} vy={:.3} hp={} panic={} following={} needs={} path={}",
+                p.x, p.y, p.z, h.world.get::<Contact>(e).unwrap().on_ground, h.world.get::<Vel>(e).unwrap().0.y, health(&h, e),
+                g.is_running(Kind::Panic), h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(),
+                h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "trace"]
+fn trace_burning() {
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let (x, z) = (-39.5, -42.5);
+    let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
+    for _ in 0..3 {
+        r.step(None);
+        h.tick();
+    }
+    r.mobs[i].fire_ticks = 160;
+    ignite(&mut h.world, e, 160);
+    for t in 1..=40 {
+        r.step(None);
+        h.tick();
+        let m = &r.mobs[i];
+        let p = h.world.get::<Pos>(e).unwrap().0;
+        let s = h.world.get::<Stroll>(e).unwrap();
+        eprintln!(
+            "t={t:2} MOB ({:.2},{:.2},{:.2}) fire {} goals {:?} nodes {} | ECS ({:.2},{:.2},{:.2}) burning {} panic {} target ({:.1},{:.1}) following {} needs {} path {}",
+            m.position.x, m.position.y, m.position.z, m.fire_ticks, r.names(i), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()),
+            p.x, p.y, p.z, h.world.get::<Burning>(e).is_some(), h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic), s.tx, s.tz,
+            h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
+        );
+    }
 }

@@ -633,6 +633,7 @@ fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64) {
         if let Some(mut s) = w.get_mut::<Stroll>(e) {
             s.tx = x;
             s.tz = z;
+            s.ty = 1;
         }
         if let Some(mut n) = w.get_mut::<Nav>(e) {
             n.speed = speed;
@@ -646,6 +647,7 @@ fn stop_nav(w: &mut World, e: Entity) {
     }
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.zza = 0.0;
+        d.jump = false;
     }
     if let Some(mut m) = w.get_mut::<MoveTo>(e) {
         m.active = false;
@@ -890,9 +892,11 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 }
 
 // ---- the selector: start and stop, with the locks -------------------------------------------------------------
+#[derive(Clone, Copy)]
 enum Pick {
     Yes,
     Spot(f64, f64),
+    Water(f64, i32, f64),
     Partner(Entity),
     Player(u32),
     Parent(Entity),
@@ -1005,8 +1009,8 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
                 return None;
             }
             // `PanicGoal.lookForWater`: a burning cow looks for water within 5 blocks first (nearest first).
-            if burning && let Some((x, z)) = water_spot(w, pos, 5) {
-                return Some(Pick::Spot(x, z));
+            if burning && let Some((x, y, z)) = water_spot(w, pos, 5) {
+                return Some(Pick::Water(x, y, z));
             }
             let lim = w.resource::<Level>().half - 2;
             // DefaultRandomPos: 10 tries; on the slab only the standing level is a stable destination.
@@ -1130,20 +1134,21 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
 }
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
 /// unless the cow stands in a block with a collision shape.
-fn water_spot(w: &World, pos: Vec3, range: i32) -> Option<(f64, f64)> {
+fn water_spot(w: &World, pos: Vec3, range: i32) -> Option<(f64, i32, f64)> {
     use horizon_client_lib::blocks::Fluid;
     let mw = w.resource::<Level>().mw.0;
     let at = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
     if mw.data.state(mw.world.block(at[0], at[1], at[2])).top != 0.0 {
         return None;
     }
-    mw.nearest_block(at, range, 1, |p, _| mw.fluid(p[0], p[1], p[2]) == Fluid::Water).map(|p| (f64::from(p[0]) + 0.5, f64::from(p[2]) + 0.5))
+    mw.nearest_block(at, range, 1, |p, _| mw.fluid(p[0], p[1], p[2]) == Fluid::Water).map(|p| (f64::from(p[0]) + 0.5, p[1], f64::from(p[2]) + 0.5))
 }
 /// Sets the cow on fire for `ticks`: its damage every 20 ticks, and the panic that a burning cow has.
 pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
     let now = world.resource::<Clock>().0;
     world.entity_mut(e).insert(Burning { until: now + ticks });
-    world.resource_mut::<Wheel>().push(now + 20, e, Due::Burn);
+    // `Entity.baseTick`: the fire hurts on the ticks where the remaining fire is a multiple of 20, the first included.
+    world.resource_mut::<Wheel>().push(now + if ticks % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
     world.resource_mut::<Requests>().0.push(Req::Start(e, Kind::Panic));
 }
 fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
@@ -1152,12 +1157,17 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
         (Kind::Float, _) => {
             w.entity_mut(e).insert(Floating);
         }
-        (Kind::Panic, Pick::Spot(x, z)) => {
+        (Kind::Panic, Pick::Spot(..) | Pick::Water(..)) => {
+            let (x, y, z) = match pick {
+                Pick::Water(x, y, z) => (x, y, z),
+                Pick::Spot(x, z) => (x, 1, z),
+                _ => unreachable!(),
+            };
             let speed = w.get::<Panic>(e).unwrap().speed;
             w.entity_mut(e).insert(Panicking);
             w.get_mut::<Nav>(e).unwrap().speed = speed;
             let mut s = w.get_mut::<Stroll>(e).unwrap();
-            (s.tx, s.tz) = (x, z);
+            (s.tx, s.ty, s.tz) = (x, y, z);
             w.entity_mut(e).insert(NeedsPath);
         }
         (Kind::Breed, Pick::Partner(c)) => {
