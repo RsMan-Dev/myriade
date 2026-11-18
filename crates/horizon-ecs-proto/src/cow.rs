@@ -375,7 +375,8 @@ impl Wheel {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
     }
 }
-const CELL: f64 = 2.0;
+/// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
+const CELL: f64 = 1.0;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -1878,7 +1879,7 @@ impl Herd {
         world.insert_resource(Wheel::default());
         crate::goals::insert_resources(&mut world);
         crate::hostile::insert_resources(&mut world);
-        world.insert_resource(Index::new(-f64::from(half), (2 * half / 2) as usize + 2));
+        world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
         let mut rng = Rng(seed | 1);
         for i in 0..n {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
