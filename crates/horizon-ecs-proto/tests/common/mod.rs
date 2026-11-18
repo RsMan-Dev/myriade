@@ -22,17 +22,20 @@ pub struct MobRef {
     pub events: Vec<MobEvent>,
     pub level: Level,
     applied: usize,
+    /// The path searches of each mob (by the counter around its own tick).
+    pub searches: Vec<u64>,
 }
 impl MobRef {
     pub fn new(half: i32, patches: bool) -> Self {
         let (level, _s, kind) = build_level(half, patches);
-        Self { w: level.mw.0, mobs: Vec::new(), tl: TestLevel::new(7), pushes: PendingPushes::default(), t: 0, kind, events: Vec::new(), level, applied: 0 }
+        Self { w: level.mw.0, mobs: Vec::new(), tl: TestLevel::new(7), pushes: PendingPushes::default(), t: 0, kind, events: Vec::new(), level, applied: 0, searches: Vec::new() }
     }
     pub fn add(&mut self, at: Vec3) -> usize {
         let mut m = Mob::new(self.mobs.len() as u32 + 1, self.kind.clone(), at, 0.0);
         m.persistent = true;
         m.ai.no_action_time = 100;
         self.mobs.push(m);
+        self.searches.push(0);
         self.mobs.len() - 1
     }
     pub fn names(&self, i: usize) -> Vec<&'static str> {
@@ -61,7 +64,9 @@ impl MobRef {
                 game_time: self.t,
                 ..self.w.clone()
             };
+            let before = horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed);
             let kept = mobs::ai::tick(&mut self.mobs[slot], &view, &mut lvl, &mut self.events);
+            self.searches[slot] += horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed) - before;
             mobs::take_mob_pushes(&mut self.events, from, &mut self.pushes);
             let mut s = self.mobs[slot].seen(None, items);
             s.alive &= kept;

@@ -93,13 +93,15 @@ pub struct Nav {
     pub last_pos: Vec3,
     /// The speed modifier of the goal that asked for the path.
     pub speed: f64,
+    /// The searches the path finder ran for this animal (a counter for the benches).
+    pub searches: u32,
     /// `PathNavigation.timeLastRecompute` and `delayedRecompute`.
     pub last_recompute: u64,
     pub delayed: bool,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, last_recompute: 0, delayed: false }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -844,6 +846,7 @@ pub(crate) fn pathfind(
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
         let path = (c.on_ground || fluid)
             .then(|| {
+                nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)
             })
