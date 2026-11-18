@@ -16,8 +16,8 @@ fn main() {
     if parallel {
         bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
     }
-    let mut herd = Herd::new(n, spacing, mode != "awake", parallel, 42);
-    let mut acc = [0.0_f64; 10];
+    let mut herd = Herd::with_hazards(n, spacing, mode != "awake", parallel, 42, std::env::var("HAZARDS").is_ok());
+    let mut acc = [0.0_f64; 12];
     // The players stand on a grid over the slab.
     let side = (n as f64).sqrt().ceil() * spacing;
     let k = (players as f64).sqrt().ceil() as usize;

@@ -18,7 +18,7 @@ fn main() {
     let warm: usize = std::env::var("WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(100).min(ticks);
     let side = (n as f64).sqrt().ceil() as i32;
     let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
-    let (level, _species, kind) = horizon_ecs_proto::cow::build_level(half);
+    let (level, _species, kind) = horizon_ecs_proto::cow::build_level(half, std::env::var("HAZARDS").is_ok());
     let w: &MobWorld = level.mw.0;
     let items = w.items.expect("items");
     let mut mobs: Vec<Mob> = (0..n)

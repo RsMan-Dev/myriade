@@ -122,6 +122,87 @@ pub struct Players {
     prev: Vec<(f64, f64)>,
     pub dirty: bool,
 }
+/// `LivingEntity.health`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Health(pub f32);
+/// The last hurt: the tick and the amount (`invulnerableTime`: for 10 ticks after, only a larger hit counts, by the
+/// difference).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct HurtAt {
+    pub at: u64,
+    pub last: f32,
+}
+/// On fire until this tick; its damage is in the timer wheel (`Due::Burn`, every 20 ticks).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Burning {
+    pub until: u64,
+}
+/// The hazards under the cow's box (bits of `HAZ_*`): present only while it overlaps one.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Hazard(pub u8);
+/// The ticks `ticks_frozen` has counted in powder snow.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Frozen(pub i32);
+pub const HAZ_LAVA: u8 = 1;
+pub const HAZ_FIRE: u8 = 2;
+pub const HAZ_WATER: u8 = 4;
+pub const HAZ_SNOW: u8 = 8;
+pub const HAZ_CACTUS: u8 = 16;
+/// The damage waiting to be applied (what hurts a cow only queues it: a command).
+#[derive(Resource, Default)]
+pub struct DamageQueue(pub Vec<(Entity, f32)>);
+/// The hazard bits of each block column (a static world here; a block change would update its column: the event).
+#[derive(Resource, Default)]
+pub struct Hazards {
+    origin: i32,
+    width: usize,
+    bits: Vec<u8>,
+}
+impl Hazards {
+    pub fn build(level: &Level) -> Self {
+        let mw = level.mw.0;
+        let (origin, width) = (-level.half, (2 * level.half + 1) as usize);
+        let mut bits = vec![0u8; width * width];
+        for x in 0..width {
+            for z in 0..width {
+                let mut b = 0;
+                for y in 0..=1 {
+                    let state = mw.world.block(x as i32 + origin, y, z as i32 + origin);
+                    match &*mw.facts.get(state).name {
+                        "minecraft:lava" => b |= HAZ_LAVA,
+                        "minecraft:fire" => b |= HAZ_FIRE,
+                        "minecraft:water" => b |= HAZ_WATER,
+                        "minecraft:powder_snow" => b |= HAZ_SNOW,
+                        "minecraft:cactus" => b |= HAZ_CACTUS,
+                        _ => {}
+                    }
+                }
+                bits[z * width + x] = b;
+            }
+        }
+        Self { origin, width, bits }
+    }
+    fn at(&self, x: i32, z: i32) -> u8 {
+        let (cx, cz) = (x - self.origin, z - self.origin);
+        if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
+            0
+        } else {
+            self.bits[cz as usize * self.width + cx as usize]
+        }
+    }
+    /// The hazards of the columns a box covers.
+    pub fn of_box(&self, b: &Aabb) -> u8 {
+        let (mn, mx) = (b.min_position(), b.max_position());
+        let e = 1.0e-7;
+        let mut bits = 0;
+        for x in mn.x.floor() as i32..=(mx.x - e).floor() as i32 {
+            for z in mn.z.floor() as i32..=(mx.z - e).floor() as i32 {
+                bits |= self.at(x, z);
+            }
+        }
+        bits
+    }
+}
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct GrowAt(pub u64);
@@ -150,6 +231,7 @@ pub enum Due {
     Stroll,
     Grow,
     Goal(crate::goals::Kind),
+    Burn,
 }
 const WHEEL: usize = 4096;
 /// A timer wheel: what is due at each tick, so that a sleeping or growing cow costs nothing until then.
@@ -250,12 +332,13 @@ pub struct Species {
     pub can_pass_doors: bool,
     pub can_walk_over_fences: bool,
     pub follow_range: f32,
+    pub max_health: f32,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
 
 /// A walled stone slab of `half` blocks each way from the origin, on the prepared vanilla data.
-pub fn build_level(half: i32) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
+pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
     let build = move |blocks: &mut horizon_client_render::world::World, registry: &horizon_world::registry::BlockRegistry| {
         let stone = registry.default_state("minecraft:stone").unwrap();
         let chunks = (half + 15) / 16 + 1;
@@ -266,11 +349,36 @@ pub fn build_level(half: i32) -> (Level, Species, Arc<horizon_client_lib::mobs::
         }
         for x in -half..=half {
             for z in -half..=half {
+                blocks.set(x, -1, z, stone).unwrap();
                 blocks.set(x, 0, z, stone).unwrap();
                 if x.abs() == half || z.abs() == half {
                     blocks.set(x, 1, z, stone).unwrap();
                     blocks.set(x, 2, z, stone).unwrap();
                 }
+            }
+        }
+        if patches {
+            // 3 x 3 hazards every 48 blocks: lava, a pond, powder snow (in the floor), fire and cactus (on it).
+            let put = |blocks: &mut horizon_client_render::world::World, name: &str, x0: i32, z0: i32, y: i32| {
+                let state = registry.default_state(name).unwrap();
+                for x in x0..x0 + 3 {
+                    for z in z0..z0 + 3 {
+                        blocks.set(x, y, z, state).unwrap();
+                    }
+                }
+            };
+            let mut gx = -half + 8;
+            while gx + 40 < half {
+                let mut gz = -half + 8;
+                while gz + 40 < half {
+                    put(blocks, "minecraft:lava", gx, gz, 0);
+                    put(blocks, "minecraft:water", gx + 8, gz, 0);
+                    put(blocks, "minecraft:powder_snow", gx + 16, gz, 0);
+                    put(blocks, "minecraft:fire", gx, gz + 8, 1);
+                    put(blocks, "minecraft:cactus", gx + 8, gz + 8, 1);
+                    gz += 48;
+                }
+                gx += 48;
             }
         }
     };
@@ -285,6 +393,7 @@ pub fn build_level(half: i32) -> (Level, Species, Arc<horizon_client_lib::mobs::
         can_pass_doors: mob.ai.nav.can_pass_doors,
         can_walk_over_fences: mob.ai.nav.can_walk_over_fences,
         follow_range: mob.attrs.follow_range as f32,
+        max_health: mob.health,
     };
     (Level { mw: Mw(mw), half }, species, kind)
 }
@@ -305,13 +414,18 @@ pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
         Cell(u32::MAX),
         Contact { on_ground: true, horizontal: false, fall_distance: 0.0 },
         Drive::default(),
+        (
         Sizes { adult: (0.9, 1.4), baby: (0.45, 0.7) },
         MoveTo::default(),
         Nav::default(),
         ActiveUntil(100),
         Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
         (Moving, crate::goals::cow_goals()),
+        Health(10.0),
+        HurtAt { at: 0, last: 0.0 },
+        Frozen(0),
         rng,
+        ),
     )
 }
 
@@ -331,7 +445,7 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, travel, reindex, push, apply_pushes).chain());
+    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, travel, reindex, hazard_tick, push, apply_pushes, apply_damage).chain());
     crate::goals::register(&mut s);
     s
 }
@@ -668,6 +782,7 @@ fn travel_one(
     d: &Drive,
     body: &Body,
     bounds: &mut Bounds,
+    fall_damage: &mut f32,
 ) -> bool {
     let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
     // A cow at its resting state stays as it is: no sweep is made for it.
@@ -719,6 +834,10 @@ fn travel_one(
         c.fall_distance -= moved.y;
     }
     if c.on_ground {
+        // `LivingEntity.causeFallDamage`: the fall beyond 3 blocks, rounded up.
+        if c.fall_distance > 3.0 {
+            *fall_damage = (c.fall_distance - 3.0).ceil() as f32;
+        }
         c.fall_distance = 0.0;
     }
     // `Entity.move` ends with the restitution after a landing: the vertical velocity is lost.
@@ -740,7 +859,14 @@ fn travel(
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, following: bool| {
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
-        if travel_one(&level, &mut p, &mut v, y, &mut c, d, b, &mut bb) && !following {
+        let mut fall = 0.0_f32;
+        let rest = travel_one(&level, &mut p, &mut v, y, &mut c, d, b, &mut bb, &mut fall);
+        if fall > 0.0 {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall)));
+            });
+        }
+        if rest && !following {
             par.command_scope(|mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
@@ -755,9 +881,16 @@ fn travel(
     }
 }
 
-/// The index follows the boxes that changed (the cows that moved): only a change of column touches it.
-fn reindex(mut idx: ResMut<Index>, mut q: Query<(Entity, &Bounds, &mut Cell), Changed<Bounds>>) {
-    for (e, b, mut c) in &mut q {
+/// The index follows the boxes that changed (the cows that moved): only a change of column touches it; a change of
+/// the hazards under the box adds or takes off the `Hazard` module.
+#[allow(clippy::type_complexity)]
+fn reindex(
+    mut idx: ResMut<Index>,
+    hazards: Res<Hazards>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>), Changed<Bounds>>,
+    mut commands: Commands,
+) {
+    for (e, b, mut c, hz) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -767,9 +900,104 @@ fn reindex(mut idx: ResMut<Index>, mut q: Query<(Entity, &Bounds, &mut Cell), Ch
             idx.insert(e, cell);
             c.0 = cell;
         }
+        let bits = hazards.of_box(&b.0);
+        match (bits, hz) {
+            (0, Some(_)) => {
+                commands.entity(e).remove::<Hazard>();
+            }
+            (0, None) => {}
+            (bits, Some(h)) if h.0 == bits => {}
+            (bits, _) => {
+                commands.entity(e).insert(Hazard(bits));
+            }
+        }
     }
 }
 
+/// `LivingEntity.hurt`: the queued damage is applied; within 10 ticks of a hurt only a larger hit counts, by the
+/// difference; a cow at 0 health dies (leaves the index and the world).
+fn apply_damage(
+    clock: Res<Clock>,
+    mut queue: ResMut<DamageQueue>,
+    mut idx: ResMut<Index>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell)>,
+    mut hurts: ResMut<crate::goals::Hurts>,
+    mut commands: Commands,
+) {
+    for (e, amount) in std::mem::take(&mut queue.0) {
+        let Ok((mut h, mut hurt, cell)) = q.get_mut(e) else { continue };
+        let applied = if clock.0 < hurt.at + 10 && hurt.at != 0 {
+            if amount <= hurt.last {
+                continue;
+            }
+            amount - hurt.last
+        } else {
+            amount
+        };
+        *hurt = HurtAt { at: clock.0, last: amount };
+        h.0 -= applied;
+        if h.0 <= 0.0 {
+            if cell.0 != u32::MAX {
+                idx.remove(e, cell.0);
+            }
+            commands.entity(e).despawn();
+        } else {
+            hurts.0.push(e);
+        }
+    }
+}
+/// The module of the cows that overlap a hazard (only they are visited): lava ignites 15 s and hurts 4, fire ignites
+/// 8 s, a cactus hurts 1, powder snow counts the freezing (1 damage every 40 ticks once frozen for 140), water puts
+/// the fire out. The fire's own damage (1 every 20 ticks) is in the timer wheel.
+#[allow(clippy::type_complexity)]
+fn hazard_tick(
+    clock: Res<Clock>,
+    mut wheel: ResMut<Wheel>,
+    mut queue: ResMut<DamageQueue>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>)>,
+    mut commands: Commands,
+) {
+    let now = clock.0;
+    for (e, h, mut frozen, burning) in &mut q {
+        let f = h.0;
+        if f & HAZ_WATER != 0 {
+            if burning.is_some() {
+                commands.entity(e).remove::<Burning>();
+            }
+        } else {
+            let seconds = if f & HAZ_LAVA != 0 { 300 } else if f & HAZ_FIRE != 0 { 160 } else { 0 };
+            if seconds > 0 {
+                let until = now + seconds;
+                match burning {
+                    None => {
+                        wheel.push(now + 20, e, Due::Burn);
+                        commands.entity(e).insert(Burning { until });
+                    }
+                    Some(b) if b.until < until => {
+                        commands.entity(e).insert(Burning { until });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if f & HAZ_LAVA != 0 {
+            queue.0.push((e, 4.0));
+        }
+        if f & HAZ_FIRE != 0 {
+            // `FireBlock.entityInside`: the fire hurts 1 as well as setting alight.
+            queue.0.push((e, 1.0));
+        }
+        if f & HAZ_CACTUS != 0 {
+            queue.0.push((e, 1.0));
+        }
+        if f & HAZ_SNOW != 0 {
+            frozen.0 = (frozen.0 + 1).min(140);
+            if frozen.0 >= 140 && now % 40 == 0 {
+                queue.0.push((e, 1.0));
+            }
+        }
+    }
+}
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PushIn(pub Vec3);
@@ -850,6 +1078,8 @@ pub(crate) fn due(
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
+    burners: Query<(Entity, &Burning)>,
+    mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     clock.0 += 1;
@@ -860,6 +1090,16 @@ pub(crate) fn due(
             // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
             Due::Stroll => fired.0.push((e, crate::goals::Kind::Stroll)),
             Due::Goal(k) => fired.0.push((e, k)),
+            Due::Burn => {
+                if let Ok((e2, burning)) = burners.get(e) {
+                    if clock.0 < burning.until {
+                        queue.0.push((e2, 1.0));
+                        wheel.push((clock.0 + 20).min(clock.0 + WHEEL as u64 - 1), e, Due::Burn);
+                    } else {
+                        commands.entity(e).remove::<Burning>();
+                    }
+                }
+            }
             Due::Grow => {
                 if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e) {
                     if g.0 > clock.0 {
@@ -883,10 +1123,16 @@ pub struct Herd {
 impl Herd {
     /// `n` cows spaced `spacing` blocks apart on a slab just large enough.
     pub fn new(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64) -> Self {
+        Self::with_hazards(n, spacing, sleep, parallel, seed, false)
+    }
+    /// With `hazards`, 3 x 3 patches of lava, water, powder snow, fire and cactus every 48 blocks.
+    pub fn with_hazards(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool) -> Self {
         let side = (n as f64).sqrt().ceil() as i32;
         let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
         let mut world = World::new();
-        let (level, species, _kind) = build_level(half);
+        let (level, species, _kind) = build_level(half, hazards);
+        world.insert_resource(Hazards::build(&level));
+        world.insert_resource(DamageQueue::default());
         world.insert_resource(level);
         world.insert_resource(species);
         world.insert_resource(Config { sleep, parallel });
@@ -938,7 +1184,7 @@ impl Herd {
         self.world.resource_mut::<Wheel>().push(now + ticks, e, Due::Grow);
     }
     /// One tick with the wall time of each system added to `acc` (seconds), in the schedule's order.
-    pub fn tick_timed(&mut self, acc: &mut [f64; 10]) {
+    pub fn tick_timed(&mut self, acc: &mut [f64; 12]) {
         macro_rules! t {
             ($i:expr, $s:expr) => {
                 let t0 = std::time::Instant::now();
@@ -956,8 +1202,10 @@ impl Herd {
         t!(7, push);
         t!(8, path_ended);
         t!(9, apply_pushes);
+        t!(10, hazard_tick);
+        t!(11, apply_damage);
     }
-    pub const SYSTEMS: [&'static str; 10] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push", "path_ended", "apply_pushes"];
+    pub const SYSTEMS: [&'static str; 12] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push", "path_ended", "apply_pushes", "hazard_tick", "apply_damage"];
     /// (cows with no active module, cows that follow a path, cows whose physics is active, total)
     pub fn counts(&mut self) -> (usize, usize, usize, usize) {
         let following = self.world.query_filtered::<(), With<Following>>().iter(&self.world).count();
@@ -1000,6 +1248,53 @@ mod tests {
             herd.tick();
         }
         assert!(herd.world.get::<Body>(baby).unwrap().width > 0.8);
+    }
+
+    /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
+    #[test]
+    fn falls_fire_lava_snow_and_cactus_hurt_a_cow() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        // half = 56: the patches are at (-48, -48) and (0, 0), 3 x 3 each (lava, pond, snow in the floor; fire, cactus on it).
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let mut cow = |herd: &mut Herd, x: f64, y: f64, z: f64| {
+            let e = herd.world.spawn(cow_bundle(x, z, 77)).id();
+            herd.world.get_mut::<Pos>(e).unwrap().0.y = y;
+            herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), 0.9, 1.4);
+            herd.world.entity_mut(e).insert(ActiveUntil(0));
+            e
+        };
+        let health = |herd: &Herd, e: Entity| herd.world.get::<Health>(e).map(|h| h.0);
+        let (hurt, dies) = (cow(&mut herd, 5.5, 12.0, 5.5), cow(&mut herd, 8.5, 40.0, 5.5));
+        let lava = cow(&mut herd, -47.0, 1.0, -47.0);
+        let fire = cow(&mut herd, -47.0, 1.0, -39.0);
+        let snow = cow(&mut herd, -31.0, 1.0, -47.0);
+        let cactus = cow(&mut herd, -39.0, 1.0, -39.0);
+        let show = |herd: &Herd, t: u32| {
+            let h = |e: Entity| health(herd, e).map_or("dead".to_string(), |h| format!("{h}"));
+            eprintln!("tick {t}: fall 11: {}, fall 39: {}, lava: {}, fire: {}, powder snow: {}, cactus: {}", h(hurt), h(dies), h(lava), h(fire), h(snow), h(cactus));
+        };
+        for _ in 0..40 {
+            herd.tick();
+        }
+        show(&herd, 40);
+        // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
+        assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < 10.0), "{:?}", health(&herd, hurt));
+        assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
+        assert!(health(&herd, cactus).is_some_and(|h| h < 10.0), "the cactus did not hurt");
+        for _ in 0..100 {
+            herd.tick();
+        }
+        show(&herd, 140);
+        assert!(health(&herd, lava).is_none(), "the cow in lava lives: {:?}", health(&herd, lava));
+        assert!(health(&herd, fire).is_none_or(|h| h <= 6.0), "the fire: {:?}", health(&herd, fire));
+        for _ in 0..200 {
+            herd.tick();
+        }
+        show(&herd, 340);
+        assert!(health(&herd, snow).is_some_and(|h| h < 10.0), "the powder snow: {:?}", health(&herd, snow));
+        assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
     }
 
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
