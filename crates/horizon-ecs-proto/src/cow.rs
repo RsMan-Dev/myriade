@@ -98,10 +98,12 @@ pub struct Nav {
     /// `PathNavigation.timeLastRecompute` and `delayedRecompute`.
     pub last_recompute: u64,
     pub delayed: bool,
+    /// `createPath`'s accuracy: how close to the target block the path may end (1 for a spot, 0 for an entity).
+    pub reach: i32,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -226,6 +228,8 @@ pub enum Cause {
     Fall,
     Drown,
     InWall,
+    /// `cramming`: too many entities in one place (`LivingEntity.pushEntities`); not a panic cause, no knockback.
+    Cramming,
     /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
     Entity,
 }
@@ -373,7 +377,8 @@ impl Wheel {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
     }
 }
-const CELL: f64 = 2.0;
+/// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
+const CELL: f64 = 1.0;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -453,6 +458,12 @@ pub struct Level {
 pub struct Config {
     pub sleep: bool,
     pub parallel: bool,
+    /// EXPERIMENT (benches only): travel and push in one serial pass in the order of the entities, as the `Mob`
+    /// pass does (each entity travels, then pushes with an immediate effect on the velocity of the others).
+    pub serial: bool,
+    /// EXPERIMENT: half of the push of a pair reaches the animal of the higher index in the same tick (a nudge of its
+    /// position and a damped velocity), as the `Mob` pass does.
+    pub half_now: bool,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -694,7 +705,8 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, serial_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((apply_nudges, cramming).chain().after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
     crate::hostile::register(&mut s);
@@ -848,7 +860,7 @@ pub(crate) fn pathfind(
             .then(|| {
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)
+                Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
             })
             .flatten();
         par.command_scope(|mut cmd| match path {
@@ -1239,6 +1251,9 @@ pub(crate) fn travel(
         With<Moving>,
     >,
 ) {
+    if cfg.serial {
+        return;
+    }
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
         let sp = &table.0[sid.0 as usize];
         let mut fall = 0.0_f32;
@@ -1616,6 +1631,7 @@ fn block_changes(
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
     mut sun: ResMut<crate::hostile::SunDirty>,
+    mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -1633,6 +1649,7 @@ fn block_changes(
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
         hazards.set(x, y, z, hazard_bit(name));
+        seen.0.push((x, y, z));
         let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
         let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
         let mut near: Vec<Entity> = Vec::new();
@@ -1667,6 +1684,18 @@ fn block_changes(
     }
 }
 
+/// EXPERIMENT (`Config.half_now`): a displacement the push owes this animal in this tick.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Nudge(pub Vec3);
+/// The ground friction times the air drag of the bench world (stone, 0.6 x 0.91).
+const FRICTION: f32 = 0.546;
+fn apply_nudges(mut q: Query<(Entity, &Nudge, &mut Pos, &mut Bounds, &Body)>, mut commands: Commands) {
+    for (e, n, mut p, mut b, body) in &mut q {
+        p.0 = Vec3::new(p.0.x + n.0.x, p.0.y, p.0.z + n.0.z);
+        b.0 = box_at(p.0, body.width, body.height);
+        commands.entity(e).remove::<Nudge>();
+    }
+}
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PushIn(pub Vec3);
@@ -1682,10 +1711,15 @@ fn push(
     boxes: Query<Ref<Bounds>>,
     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), Changed<Bounds>>,
 ) {
+    if cfg.serial {
+        return;
+    }
     let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
+        let mut nudge = (0.0_f64, 0.0_f64);
+        let mut overlapping = 0;
         idx.for_near(cx, cz, |o| {
             if o == e {
                 return;
@@ -1694,6 +1728,7 @@ fn push(
             if !b.0.intersects(ob.0) {
                 return;
             }
+            overlapping += 1;
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
@@ -1704,16 +1739,45 @@ fn push(
             xa /= dd;
             za /= dd;
             let pow = (1.0_f64 / dd).min(1.0);
-            xa *= pow * f64::from(0.05_f32);
-            za *= pow * f64::from(0.05_f32);
-            dv.0 -= xa;
-            dv.1 -= za;
+            // `Entity.push` is called for the pair from both sides every tick (each entity runs `pushEntities`): each of the
+            // two receives its impulse twice per tick.
+            let (bx, bz) = (xa * pow * f64::from(0.05_f32), za * pow * f64::from(0.05_f32));
+            xa = bx * 2.0;
+            za = bz * 2.0;
+            if cfg.half_now && e.index() > o.index() {
+                // The impulse of the lower animal's call reaches this one in the same tick (it travels after it).
+                dv.0 -= bx + f64::from(FRICTION) * bx;
+                dv.1 -= bz + f64::from(FRICTION) * bz;
+                nudge.0 -= bx;
+                nudge.1 -= bz;
+            } else {
+                dv.0 -= xa;
+                dv.1 -= za;
+            }
             if !ob.is_changed() {
                 par.command_scope(|mut cmd| {
                     cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
                 });
             }
         });
+        // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
+        if overlapping + 1 >= MAX_ENTITY_CRAMMING {
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).insert(Crowded);
+            });
+            idx.for_near(cx, cz, |o| {
+                if o != e && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                    par.command_scope(|mut cmd| {
+                        cmd.entity(o).insert(Crowded);
+                    });
+                }
+            });
+        }
+        if nudge != (0.0, 0.0) {
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).insert(Nudge(Vec3::new(nudge.0, 0.0, nudge.1)));
+            });
+        }
         if dv != (0.0, 0.0) {
             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
             if !moving {
@@ -1728,6 +1792,118 @@ fn push(
     } else {
         for (e, b, mut v, m) in &mut movers {
             one(e, b, &mut v, m);
+        }
+    }
+}
+/// `gamerule maxEntityCramming`: 24 others overlapping hurt an animal.
+pub const MAX_ENTITY_CRAMMING: usize = 24;
+/// Overlapping at least `MAX_ENTITY_CRAMMING - 1` others when last looked at: the cramming module visits it each tick
+/// (`LivingEntity.pushEntities` counts the overlapping entities of every entity, every tick) until fewer overlap it.
+#[derive(Component, Default)]
+#[component(storage = "SparseSet")]
+pub struct Crowded;
+/// `LivingEntity.pushEntities`'s cramming: with `maxEntityCramming` or more others overlapping, one tick in four hurts 6.
+/// The entities are taken one after the other and one that this hit kills no longer counts for the next (as the `Mob`
+/// pass sees the deaths of the entities ticked before it): a pile of 25 loses one animal, not six, when the hurt windows end.
+#[allow(clippy::type_complexity)]
+fn cramming(
+    clock: Res<Clock>,
+    idx: Res<Index>,
+    boxes: Query<&Bounds>,
+    mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
+    mut queue: ResMut<DamageQueue>,
+    mut commands: Commands,
+) {
+    let mut dying: Vec<Entity> = Vec::new();
+    for (e, b, mut rng, health, hurt) in &mut q {
+        let (mn, mx) = (b.0.min_position(), b.0.max_position());
+        let mut n = 0;
+        idx.for_near((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0, |o| {
+            if o != e && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                n += 1;
+            }
+        });
+        if n < MAX_ENTITY_CRAMMING {
+            commands.entity(e).remove::<Crowded>();
+        } else if rng.next_int(4) == 0 {
+            queue.add(e, 6.0, Cause::Cramming);
+            // The hit is applied at the start of the next tick.
+            let in_window = clock.0 + 1 < hurt.at + 10 && hurt.at != 0;
+            let applied = if in_window { (6.0 - hurt.last).max(0.0) } else { 6.0 };
+            if health.0 - applied <= 0.0 {
+                dying.push(e);
+            }
+        }
+    }
+}
+/// EXPERIMENT: the `Mob` pass for the physics and the pushes. The entities in the order of their creation: each one
+/// travels, then pushes every overlapping entity at once (its own velocity and the other's, which the other uses in its
+/// own travel of this tick if it comes later).
+fn serial_pass(world: &mut World) {
+    if !world.resource::<Config>().serial {
+        return;
+    }
+    let level = *world.resource::<Level>();
+    let table = world.resource::<SpeciesTable>().clone();
+    let mut ids: Vec<Entity> = world.query_filtered::<Entity, With<Moving>>().iter(world).collect();
+    ids.sort();
+    for e in ids {
+        let Ok(sid) = world.get::<SpeciesId>(e).copied().ok_or(()) else { continue };
+        let sp = table.0[sid.0 as usize];
+        let (mut pos, mut vel, yaw, mut c, mut d, body, mut bounds, fs) = (
+            *world.get::<Pos>(e).unwrap(),
+            *world.get::<Vel>(e).unwrap(),
+            *world.get::<Yaw>(e).unwrap(),
+            *world.get::<Contact>(e).unwrap(),
+            *world.get::<Drive>(e).unwrap(),
+            *world.get::<Body>(e).unwrap(),
+            *world.get::<Bounds>(e).unwrap(),
+            *world.get::<FluidState>(e).unwrap(),
+        );
+        let jumping = world.get::<crate::goals::Jump>(e).is_some_and(|j| j.0);
+        let mut fall = 0.0_f32;
+        travel_one(&level, &sp, &mut pos, &mut vel, &yaw, &mut c, &mut d, &body, &mut bounds, &fs, jumping, &mut fall);
+        *world.get_mut::<Pos>(e).unwrap() = pos;
+        *world.get_mut::<Contact>(e).unwrap() = c;
+        *world.get_mut::<Drive>(e).unwrap() = d;
+        *world.get_mut::<Bounds>(e).unwrap() = bounds;
+        // The pushes of this entity (the `Mob`'s `pushEntities`, called after its own travel).
+        let (mn, mx) = (bounds.0.min_position(), bounds.0.max_position());
+        let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        let mut near = Vec::new();
+        world.resource::<Index>().for_near(cx, cz, |o| near.push(o));
+        let mut own = (0.0_f64, 0.0_f64);
+        let mut others: Vec<(Entity, f64, f64)> = Vec::new();
+        for o in near {
+            if o == e {
+                continue;
+            }
+            let Some(ob) = world.get::<Bounds>(o).copied() else { continue };
+            if !bounds.0.intersects(ob.0) {
+                continue;
+            }
+            let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
+            let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
+            let mut dd = xa.abs().max(za.abs());
+            if dd < f64::from(0.01_f32) {
+                continue;
+            }
+            dd = dd.sqrt();
+            xa /= dd;
+            za /= dd;
+            let pow = (1.0_f64 / dd).min(1.0);
+            xa *= pow * f64::from(0.05_f32);
+            za *= pow * f64::from(0.05_f32);
+            own.0 -= xa;
+            own.1 -= za;
+            others.push((o, xa, za));
+        }
+        vel.0 = Vec3::new(vel.0.x + own.0, vel.0.y, vel.0.z + own.1);
+        *world.get_mut::<Vel>(e).unwrap() = vel;
+        for (o, xa, za) in others {
+            let mut ov = world.get_mut::<Vel>(o).unwrap();
+            ov.0 = Vec3::new(ov.0.x + xa, ov.0.y, ov.0.z + za);
+            world.entity_mut(o).insert(Moving);
         }
     }
 }
@@ -1825,13 +2001,13 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel });
+        world.insert_resource(Config { sleep, parallel, serial: std::env::var_os("SERIAL_PUSH").is_some(), half_now: std::env::var_os("BATCH_HALF").is_some() });
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
         crate::goals::insert_resources(&mut world);
         crate::hostile::insert_resources(&mut world);
-        world.insert_resource(Index::new(-f64::from(half), (2 * half / 2) as usize + 2));
+        world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
         let mut rng = Rng(seed | 1);
         for i in 0..n {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
@@ -2026,19 +2202,15 @@ mod tests {
         }
         show(&herd, 140);
         assert!(health(&herd, lava).is_none(), "the cow in lava lives: {:?}", health(&herd, lava));
-        // A species with a panic goal runs from the fire and dies in it; one without (the zombie) walks out of it by its
-        // stroll, which a hurt wakes: it is only hurt.
-        if crate::goals::goal_def(species().name).slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
-            assert!(health(&herd, fire).is_none_or(|h| h <= 6.0), "the fire: {:?}", health(&herd, fire));
-        } else {
-            assert!(health(&herd, fire).is_none_or(|h| h < species().max_health), "the fire: {:?}", health(&herd, fire));
-        }
+        assert!(health(&herd, fire).is_none_or(|h| h <= species().max_health - 4.0), "the fire: {:?}", health(&herd, fire));
         for _ in 0..200 {
             herd.tick();
         }
         show(&herd, 340);
         assert!(health(&herd, snow).is_none_or(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
-        if crate::goals::goal_def(species().name).slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
+        // Still burning or dead at tick 340: a species with the panic goal flees the fire burning; one without wanders
+        // out of it by chance, and the fire ends (160 ticks) before the tick 340.
+        if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
             assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).

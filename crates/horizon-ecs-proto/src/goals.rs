@@ -700,7 +700,7 @@ pub(crate) fn hurt_events(
     mut reqs: ResMut<Requests>,
 ) {
     for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
-        let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall));
+        let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming));
         if let Ok(mut p) = q.get_mut(e)
             && panics
         {
@@ -1206,15 +1206,22 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             }
         }
         Kind::Melee => {
+            // `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
+            let phase = w.get::<Phase>(e).map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+            if now > 1 && (now + phase) % 2 == 1 {
+                arm(w, e, k, 1);
+                return;
+            }
             if let Some(mut a) = w.get_mut::<crate::hostile::Attack>(e) {
                 a.armed = false;
+                a.phase = now;
             }
             if w.get::<crate::hostile::Aggro>(e).is_none() {
                 return;
             }
             start_goal(w, e, k);
             if w.get::<GoalSet>(e).is_some_and(|g| !g.is_running(Kind::Melee)) {
-                crate::hostile::arm_melee(w, e);
+                crate::hostile::arm_melee_after(w, e);
             }
             return;
         }
