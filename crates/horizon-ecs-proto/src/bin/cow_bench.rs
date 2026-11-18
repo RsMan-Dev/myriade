@@ -84,7 +84,7 @@ fn main() {
     {
         let s = herd.world.resource::<horizon_ecs_proto::cow::OrderedStats>();
         if s.ticks > 0 {
-            eprintln!("ordered pass: {} animals in the last tick, {:.0} on average", s.last, s.total as f64 / s.ticks as f64);
+            eprintln!("ordered pass: {} animals in the last tick, {:.0} on average; islands per tick {:.1} (sizes 1 / 2-3 / 4-10 / 11-100 / >100, per tick: {:.1} {:.1} {:.1} {:.1} {:.1}), largest island {}", s.last, s.total as f64 / s.ticks as f64, s.islands as f64 / s.ticks as f64, s.sizes[0] as f64 / s.ticks as f64, s.sizes[1] as f64 / s.ticks as f64, s.sizes[2] as f64 / s.ticks as f64, s.sizes[3] as f64 / s.ticks as f64, s.sizes[4] as f64 / s.ticks as f64, s.largest);
         }
     }
     let (idle, following, moving, total) = herd.counts();

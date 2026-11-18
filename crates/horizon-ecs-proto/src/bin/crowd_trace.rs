@@ -84,7 +84,11 @@ fn main() {
             prev = mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
         }
     } else {
-        let mut herd = Herd::with_hazards(n, spacing, true, false, 42, false);
+        let threads: usize = std::env::var("PAR_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        if threads > 0 {
+            bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
+        }
+        let mut herd = Herd::with_hazards(n, spacing, true, threads > 0, 42, false);
         for i in 0..n {
             let e = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<ActiveUntil>>().iter(&herd.world).nth(i).unwrap();
             let p = at(i);
@@ -109,7 +113,7 @@ fn main() {
                 report("ecs", t, &prev, &now, width);
                 let (_, following, moving, total) = herd.counts();
                 let s = herd.world.resource::<OrderedStats>();
-                println!("      ordered pass: {} animals", s.last);
+                println!("      ordered pass: {} animals, {} islands (sizes 1 / 2-3 / 4-10 / 11-100 / >100 over the ticks: {:?}), largest {}", s.last, s.islands, s.sizes, s.largest);
                 // Overlapping pairs whose two animals have no `Moving` (the push of the batch mode never visits them).
                 let moving_set: std::collections::HashSet<_> = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<Moving>>().iter(&herd.world).collect();
                 let mut both_still = 0;
