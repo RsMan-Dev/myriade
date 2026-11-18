@@ -51,29 +51,75 @@ impl MobWorld<'_> {
     fn check_neighbours_cached(&self, x: i32, y: i32, z: i32, t: PathType) -> PathType {
         ADJACENT.with(|cell| {
             let (table, touched) = &mut *cell.borrow_mut();
+            // The answer code of a state (`1` none, `2 + type`), worked out once.
+            let mut answer = |id: u32| -> u8 {
+                let i = id as usize;
+                if i >= table.len() {
+                    table.resize(i + 1, 0);
+                }
+                if table[i] == 0 {
+                    table[i] = self.adjacent_of_state(horizon_world::registry::BlockStateId(id)).map_or(1, |t| 2 + t as u8);
+                    touched.push(id);
+                }
+                table[i]
+            };
+            if !self.neighbourhood_may_answer(x, y, z, &mut |id| answer(id) > 1) {
+                return t;
+            }
+            let mut column: ((i32, i32), Option<&horizon_client_render::chunk::Chunk>) = ((i32::MIN, i32::MIN), None);
             for dx in -1..=1 {
                 for dy in -1..=1 {
                     for dz in -1..=1 {
                         if dx == 0 && dz == 0 {
                             continue;
                         }
-                        let state = self.world.block(x.saturating_add(dx), y.saturating_add(dy), z.saturating_add(dz));
-                        let id = state.0 as usize;
-                        if id >= table.len() {
-                            table.resize(id + 1, 0);
+                        let (nx, ny, nz) = (x.saturating_add(dx), y.saturating_add(dy), z.saturating_add(dz));
+                        // `World::block`, the column looked up once for the cells in the same chunk.
+                        let key = (nx >> 4, nz >> 4);
+                        if column.0 != key {
+                            column = (key, self.world.chunks.get(&key).map(|c| &**c));
                         }
-                        if table[id] == 0 {
-                            table[id] = self.adjacent_of_state(state).map_or(1, |t| 2 + t as u8);
-                            touched.push(id as u32);
-                        }
-                        if table[id] > 1 {
-                            return PathType::ALL[usize::from(table[id] - 2)];
+                        let state = column.1.map_or(self.world.air, |chunk| chunk.block(nx & 15, ny, nz & 15));
+                        let code = answer(state.0);
+                        if code > 1 {
+                            return PathType::ALL[usize::from(code - 2)];
                         }
                     }
                 }
             }
             t
         })
+    }
+    /// Whether any block of the 3 x 3 x 3 cells around (x, y, z) may give a neighbour answer, told from the
+    /// palettes of the sections they lie in (a palette of the whole registry, or a section outside the column,
+    /// may). False: none of them does, and none of the 26 blocks need be read.
+    fn neighbourhood_may_answer(&self, x: i32, y: i32, z: i32, some: &mut impl FnMut(u32) -> bool) -> bool {
+        let (x0, x1, y0, y1, z0, z1) = (x.saturating_sub(1), x.saturating_add(1), y.saturating_sub(1), y.saturating_add(1), z.saturating_sub(1), z.saturating_add(1));
+        for cx in (x0 >> 4)..=(x1 >> 4) {
+            for cz in (z0 >> 4)..=(z1 >> 4) {
+                let Some(chunk) = self.world.chunks.get(&(cx, cz)) else {
+                    if some(self.world.air.0) {
+                        return true;
+                    }
+                    continue;
+                };
+                // Heights outside the column read as state 0.
+                if (y0 < chunk.min_y() || y1 >= chunk.max_y()) && some(0) {
+                    return true;
+                }
+                let (lo, hi) = (y0.max(chunk.min_y()), y1.min(chunk.max_y() - 1));
+                if lo > hi {
+                    continue;
+                }
+                for s in ((lo - chunk.min_y()) >> 4)..=((hi - chunk.min_y()) >> 4) {
+                    let blocks = &chunk.sections[s as usize].blocks;
+                    if blocks.is_global() || blocks.maybe_has(|v| some(v)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
     pub fn path_type_from_state(&self, x: i32, y: i32, z: i32) -> PathType {
         self.world.cached_path_type(BlockPos::new(x, y, z), || {
