@@ -2873,6 +2873,10 @@ pub struct PendingPushes {
     by_mob: crate::fast_hash::FxHashMap<u32, Vec<Vec3>>,
 }
 impl PendingPushes {
+    /// Whether a push waits for mob `id`'s turn.
+    pub fn waiting_for(&self, id: u32) -> bool {
+        self.list.iter().any(|(t, _)| *t == id) || self.by_mob.contains_key(&id)
+    }
     /// `other`'s pushes after these, each mob's in their order.
     pub fn append(&mut self, other: PendingPushes) {
         for (id, v) in other.list {

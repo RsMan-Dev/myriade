@@ -24,6 +24,10 @@ pub struct CowWorld {
     pub rest: bool,
     /// Dense unordered pass (a measurement, not vanilla order).
     pub dense: bool,
+    /// The pass as systems (`lanes.rs`), and whether the free lane is used (else every cow is coupled).
+    pub systems: bool,
+    pub lanes: bool,
+    pub all_free: bool,
     snapshot: Vec<Seen>,
     next_id: u32,
 }
@@ -32,7 +36,8 @@ impl CowWorld {
     pub fn new() -> Self {
         let mut world = World::new();
         let query = world.query::<Cow>();
-        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, rest: false, dense: false, snapshot: Vec::new(), next_id: 1 }
+        world.init_resource::<super::lanes::LaneStats>();
+        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, rest: false, dense: false, systems: false, lanes: true, all_free: false, snapshot: Vec::new(), next_id: 1 }
     }
     pub fn len(&self) -> usize {
         self.order.len()
@@ -49,6 +54,7 @@ impl CowWorld {
         let e = self
             .world
             .spawn((p.id, p.motion, p.vitals, p.env, p.clk, p.random, p.fluids, p.ai, p.goals, p.extra, p.attrs, p.anim, p.rest))
+            .insert(super::lanes::Turn::default())
             .id();
         self.order.push(e);
         e
@@ -76,13 +82,28 @@ impl CowWorld {
         } else {
             (0..self.order.len()).collect()
         };
-        if self.dense {
+        if self.systems {
+            let order = self.order.clone();
+            super::lanes::run_pass(
+                &mut self.world,
+                w,
+                level,
+                &mut events,
+                &mut self.snapshot,
+                &mut grid,
+                &mut self.pushes,
+                &mut keep,
+                &order,
+                self.lanes,
+                self.all_free,
+            );
+        } else if self.dense {
             // Indicative only: the table's order, not Horizon's (equal while nothing is removed).
             for (slot, mut item) in self.query.iter_mut(&mut self.world).enumerate() {
                 visit(&mut item, slot, &mut self.pushes, &mut self.snapshot, &mut grid, w, level, &mut events, &mut keep);
             }
         }
-        for slot in slots.into_iter().filter(|_| !self.dense) {
+        for slot in slots.into_iter().filter(|_| !self.dense && !self.systems) {
             let e = self.order[slot];
             let mut item = self.query.get_mut(&mut self.world, e).expect("a cow of the order");
             visit(&mut item, slot, &mut self.pushes, &mut self.snapshot, &mut grid, w, level, &mut events, &mut keep);
@@ -169,6 +190,11 @@ impl CowWorld {
         let mut q = self.world.query::<&RestC>();
         q.iter(&self.world).fold((0, 0), |(a, h), r| (a + r.asks, h + r.hits))
     }
+    /// (free, coupled) cow-passes since the start.
+    pub fn lane_counts(&self) -> (u64, u64) {
+        let s = self.world.resource::<super::lanes::LaneStats>();
+        (s.free, s.coupled)
+    }
     pub fn clear_goals(&mut self, e: Entity) {
         let mut item = self.query.get_mut(&mut self.world, e).expect("a cow");
         item.goals.0.clear();
@@ -203,7 +229,7 @@ impl CowWorld {
 
 /// One cow's turn of a pass (shared by the ordered pass and the dense one).
 #[allow(clippy::too_many_arguments)]
-fn visit(
+pub(super) fn visit(
     item: &mut CowItem<'_, '_>,
     slot: usize,
     pushes: &mut PendingPushes,

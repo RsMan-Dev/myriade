@@ -138,7 +138,7 @@ impl PlainWorld {
                 }
             }
             let from = events.len();
-            let view = MobWorld { others: &self.snapshot, others_grid: Some(&grid), ..w.clone() };
+            let view = MobWorld { others: &self.snapshot, others_grid: Some(&grid), others_solid: Some(&[]), ..w.clone() };
             let kept = item.tick(&view, level, &mut events);
             let mut kept_events = from;
             for i in from..events.len() {

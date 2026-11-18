@@ -33,6 +33,10 @@ pub trait CowGoal: std::fmt::Debug + Send + Sync {
         false
     }
     fn tick(&mut self, _m: &mut CowItem<'_, '_>, _cx: &mut Cx) {}
+    /// Whether the goal holds the id of another cow (its row is read at every step, near or far).
+    fn holds_other(&self) -> bool {
+        false
+    }
     fn box_clone(&self) -> Box<dyn CowGoal>;
     fn name(&self) -> &'static str;
 }
@@ -65,6 +69,9 @@ impl CowGoalSelector {
     pub fn clear(&mut self) {
         self.goals.clear();
         self.locked = [None; 4];
+    }
+    pub fn holds_other(&self) -> bool {
+        self.goals.iter().any(|g| g.goal.holds_other())
     }
     pub fn is_running(&self, name: &str) -> bool {
         self.goals.iter().any(|g| g.running && g.goal.name() == name)
@@ -352,6 +359,9 @@ pub struct FollowParent {
 }
 impl CowGoal for FollowParent {
     clone_goal!("FollowParent");
+    fn holds_other(&self) -> bool {
+        self.parent.is_some()
+    }
     fn flags(&self) -> u8 {
         0
     }
@@ -423,6 +433,9 @@ pub struct Breed {
 }
 impl CowGoal for Breed {
     clone_goal!("Breed");
+    fn holds_other(&self) -> bool {
+        self.partner.is_some()
+    }
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }

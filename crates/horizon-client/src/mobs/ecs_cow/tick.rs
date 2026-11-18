@@ -20,12 +20,23 @@ impl CowItem<'_, '_> {
 
     /// The whole tick; false when the cow leaves the level.
     pub fn tick(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) -> bool {
-        if self.vitals.removed {
+        let Some(was_on_fire) = self.tick_head(w, level, events) else {
             return false;
+        };
+        self.ai_step(w, level, events);
+        self.effects_from_blocks(w, level, events);
+        self.tick_tail(w, level, was_on_fire);
+        true
+    }
+
+    /// The start of the tick up to `ai_step`: None when the cow leaves the level, else whether it was on fire.
+    pub fn tick_head(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) -> Option<bool> {
+        if self.vitals.removed {
+            return None;
         }
         if !self.check_despawn(w) {
             self.vitals.removed = true;
-            return false;
+            return None;
         }
         if self.vitals.invulnerable_time > 0 {
             self.vitals.invulnerable_time -= 1;
@@ -47,10 +58,9 @@ impl CowItem<'_, '_> {
             self.vitals.impulse_grace_time -= 1;
         }
         if !self.alive() && self.vitals.death_time >= 20 {
-            return false;
+            return None;
         }
-        self.ai_step(w, level, events);
-        self.finish_tick(w, level, was_on_fire, events)
+        Some(was_on_fire)
     }
 
     /// `Mob.checkDespawn` of a cow before its tick (a player is the only despawn reference).
@@ -228,7 +238,7 @@ impl CowItem<'_, '_> {
     }
 
     /// `LivingEntity.aiStep` of a cow.
-    fn ai_step(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) {
+    pub fn ai_step(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) {
         if self.ai.no_jump_delay > 0 {
             self.ai.no_jump_delay -= 1;
         }
@@ -400,15 +410,8 @@ impl CowItem<'_, '_> {
         }
     }
 
-    /// `ai::finish_tick`: block effects, freezing, the body, the walk animation, flowers.
-    fn finish_tick(
-        &mut self,
-        w: &MobWorld,
-        level: &mut DamageLevel<'_>,
-        was_on_fire: bool,
-        events: &mut Vec<CowEvent>,
-    ) -> bool {
-        self.effects_from_blocks(w, level, events);
+    /// The end of the tick after the effects of the blocks.
+    pub fn tick_tail(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, was_on_fire: bool) {
         if self.alive() {
             self.freeze_tick(w, level);
         }
@@ -422,7 +425,6 @@ impl CowItem<'_, '_> {
         self.anim.end_tick(swinging);
         self.tick_swing();
         self.flower_contact_effects(w);
-        true
     }
     fn tick_swing(&mut self) {
         let duration = if self.ai.swing_duration > 0 { self.ai.swing_duration } else { 6 };

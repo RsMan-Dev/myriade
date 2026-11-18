@@ -13,6 +13,7 @@ pub mod event;
 pub mod extra;
 pub mod goals;
 pub mod landing;
+pub mod lanes;
 pub mod life;
 pub mod nav;
 pub mod parts;

@@ -72,6 +72,8 @@ pub(super) struct Coverage {
     pub strolled: bool,
     /// (asks, hits) of the ECS cows and of the plain cows.
     pub rest: ((u64, u64), (u64, u64)),
+    /// (free, coupled) cow-passes of the systems.
+    pub lanes: (u64, u64),
 }
 thread_local!(static PUSHES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
 
@@ -90,7 +92,7 @@ pub(super) fn mob_pass(
     for slot in 0..mobs.len() {
         mobs::apply_mob_pushes(&mut mobs[slot], pushes);
         let from = events.len();
-        let view = MobWorld { others: &snapshot, others_grid: Some(&grid), ..w.clone() };
+        let view = MobWorld { others: &snapshot, others_grid: Some(&grid), others_solid: Some(&[]), ..w.clone() };
         let kept = mobs::ai::tick(&mut mobs[slot], &view, level, &mut events);
         PUSHES.with(|c| c.set(c.get() + events[from..].iter().filter(|e| matches!(e, MobEvent::Push { target: Who::Mob(_), .. })).count() as u32));
         mobs::take_mob_pushes(&mut events, from, pushes);
@@ -141,7 +143,11 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
         let kind = Arc::new(types.types["minecraft:cow"].clone());
         let mut cows: Vec<Mob> = (0..n)
             .map(|i| {
-                let (x, z) = (-20.0 + (i % 10) as f64 * 3.0 + 0.5, -20.0 + (i / 10) as f64 * 3.0 + 0.5);
+                let (x, z) = if what.contains("spread") {
+                    (-30.0 + (i % 10) as f64 * 6.0 + 0.5, -30.0 + (i / 10) as f64 * 6.0 + 0.5)
+                } else {
+                    (-20.0 + (i % 10) as f64 * 3.0 + 0.5, -20.0 + (i / 10) as f64 * 3.0 + 0.5)
+                };
                 // A few start high (they fall), a few are babies (they grow up, follow a parent).
                 let y = if i % 7 == 3 { 6.0 } else { 1.0 };
                 // Some start inside the hazards: the pond, the lava, the powder snow, the fire, the cactus.
@@ -167,6 +173,8 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
             .collect();
         let mut ecs = CowWorld::new();
         ecs.mutate_order = what == "reverse";
+        ecs.systems = what.starts_with("sys");
+        ecs.all_free = what.contains("allfree");
         ecs.rest = what == "rest" || what == "rest_mutated";
         for m in &cows {
             let e = ecs.spawn_from(m.clone());
@@ -325,6 +333,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
         cover.children = next_id - n as u32 - 1;
         cover.pushes = PUSHES.with(std::cell::Cell::get);
         cover.rest = (ecs.rest_counts(), plain.rest_counts());
+        cover.lanes = ecs.lane_counts();
     });
     if !ran {
         return Err("no resources".into());
@@ -435,4 +444,23 @@ fn mob_cows_with_the_rest_memo_tick_like_without_it() {
         assert!(asks_hits.1 * 2 > asks_hits.0);
     });
     assert!(ran);
+}
+
+/// The pass as systems, cows far apart (most are free), then close together (most are coupled).
+#[test]
+#[ignore = "daily"]
+fn forty_cows_in_systems_tick_like_the_mobs() {
+    for what in ["sys_spread", "sys"] {
+        let (t, c) = run(40, 800, true, what).unwrap();
+        eprintln!("{what} coverage {c:?}");
+        assert_eq!(t, 800);
+        assert!(c.lanes.0 > 0 && c.lanes.1 > 0, "{:?}", c.lanes);
+    }
+}
+
+/// The mutation of the classification (every cow declared free): the test fails.
+#[test]
+#[ignore = "daily"]
+fn declaring_every_cow_free_is_caught() {
+    assert!(run(40, 800, true, "sys_allfree").is_err());
 }
