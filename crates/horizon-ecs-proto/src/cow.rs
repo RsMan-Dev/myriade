@@ -289,7 +289,10 @@ impl Hazards {
     pub fn of_box(&self, b: &Aabb) -> u8 {
         let (mn, mx) = (b.min_position(), b.max_position());
         let e = 1.0e-7;
+        // Fluids have a surface below the top of their block and flow: they are looked at a block wider (the real
+        // test is `fluids`); fire, cactus and snow are the blocks the box overlaps.
         let (y0, y1) = (mn.y.floor() as i32 - 1, (mx.y - e).floor() as i32 + 1);
+        let (x0, x1) = ((mn.y + 0.001).floor() as i32, (mx.y - 0.001).floor() as i32);
         let mut bits = 0;
         for x in mn.x.floor() as i32..=(mx.x - e).floor() as i32 {
             for z in mn.z.floor() as i32..=(mx.z - e).floor() as i32 {
@@ -300,7 +303,8 @@ impl Hazards {
                 let c = self.cols[cz as usize * self.width + cx as usize];
                 if c != 0 {
                     for &(y, bit) in &self.pool[c as usize - 1] {
-                        if (y0..=y1).contains(&y) {
+                        let fluid = bit & (HAZ_WATER | HAZ_LAVA) != 0;
+                        if (fluid && (y0..=y1).contains(&y)) || (!fluid && (x0..=x1).contains(&y)) {
                             bits |= bit;
                         }
                     }
@@ -1430,25 +1434,37 @@ pub(crate) fn apply_damage(
 #[allow(clippy::type_complexity)]
 fn hazard_tick(
     clock: Res<Clock>,
+    level: Res<Level>,
+    table: Res<SpeciesTable>,
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
-    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>)>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &SpeciesId)>,
     mut commands: Commands,
 ) {
     let now = clock.0;
-    for (e, h, mut frozen, burning) in &mut q {
+    let mw = level.mw.0;
+    for (e, h, mut frozen, burning, pos, b, sid) in &mut q {
         let f = h.0;
-        if f & HAZ_WATER != 0 {
+        // Water and lava as the `Mob` reads them: the fluid height at the cow's box, not the column.
+        let (in_water, in_lava) = if f & (HAZ_WATER | HAZ_LAVA) != 0 {
+            let r = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
+            (r.in_water, r.in_lava)
+        } else {
+            (false, false)
+        };
+        let lit = f & HAZ_FIRE != 0 || in_lava;
+        if in_water {
             if burning.is_some() {
                 commands.entity(e).remove::<Burning>();
             }
         } else {
-            let seconds = if f & HAZ_LAVA != 0 { 300 } else if f & HAZ_FIRE != 0 { 160 } else { 0 };
+            let seconds = if in_lava { 300 } else if lit { 160 } else { 0 };
             if seconds > 0 {
                 let until = now + seconds;
                 match burning {
                     None => {
-                        wheel.push(now + 20, e, Due::Burn);
+                        // `Entity.baseTick` hurts when the time left is a multiple of 20, the first tick included.
+                        wheel.push(now + if seconds % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
                         commands.entity(e).insert(Burning { until });
                     }
                     Some(b) if b.until < until => {
@@ -1458,7 +1474,7 @@ fn hazard_tick(
                 }
             }
         }
-        if f & HAZ_LAVA != 0 {
+        if in_lava {
             queue.add(e, 4.0, Cause::Lava);
         }
         if f & HAZ_FIRE != 0 {
@@ -2148,6 +2164,12 @@ mod tests {
             herd.tick();
         }
         assert!(herd.world.get::<Burning>(burner).is_some(), "burning in fire");
+        // Water in the column but above the cow does not put it out; the first hit of the fire is on the first tick.
+        herd.set_block(-11, 3, 10, "minecraft:water");
+        for _ in 0..3 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Burning>(burner).is_some(), "water above the cow does not extinguish");
         herd.set_block(-11, 1, 10, "minecraft:water");
         herd.set_block(-10, 1, 10, "minecraft:water");
         for _ in 0..3 {
