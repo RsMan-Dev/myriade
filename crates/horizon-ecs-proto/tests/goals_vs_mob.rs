@@ -124,6 +124,9 @@ fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     if y <= 1.0 {
         h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
     }
+    // A cow put in by hand has not swept yet: its ground is unknown (over a hazard patch there may be none), so the
+    // first tick sweeps for real instead of resting (the Mob sweeps every tick).
+    h.world.get_mut::<Contact>(e).unwrap().on_ground = false;
     e
 }
 fn health(h: &Herd, e: Entity) -> f32 {
