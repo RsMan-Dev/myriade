@@ -97,6 +97,9 @@ pub struct Sizes {
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct NeedsPath;
+/// The walk of the cow is over (path done, blocked, or none found): `path_ended` arms its next stroll attempt.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PathEnded;
 /// The cow follows a path: `follow` and `move_control` visit only these.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
@@ -314,7 +317,7 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, player_near, pathfind, follow, move_control, travel, reindex, push).chain());
+    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, travel, reindex, push, apply_pushes).chain());
     s
 }
 
@@ -424,18 +427,21 @@ fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).floor() as i32
 }
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
-/// that asked for a path are visited.
+/// that asked for a path are visited, in parallel when asked; what follows (the next module, the end of the walk)
+/// is a command.
 #[allow(clippy::type_complexity)]
 fn pathfind(
+    cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
     sp: Res<Species>,
-    mut wheel: ResMut<Wheel>,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, &mut Rng), With<NeedsPath>>,
-    mut commands: Commands,
+    par: ParallelCommands,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav), With<NeedsPath>>,
 ) {
-    let mw = level.mw.0;
-    for (e, pos, body, c, mut s, mut nav, mut r) in &mut q {
+    let now = clock.0;
+    let level = &*level;
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav| {
+        let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
             width: body.width,
@@ -455,19 +461,25 @@ fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
         let path = Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited);
-        commands.entity(e).remove::<NeedsPath>();
-        match path {
+        par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
-                nav.last_check = clock.0;
+                nav.last_check = now;
                 nav.last_pos = pos.0;
-                commands.entity(e).insert((Following, Moving));
+                cmd.entity(e).remove::<NeedsPath>().insert((Following, Moving));
             }
             _ => {
                 nav.path = None;
                 s.walking = false;
-                arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
+                cmd.entity(e).remove::<NeedsPath>().insert(PathEnded);
             }
+        });
+    };
+    if cfg.parallel {
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n)| one(e, p, b, c, &mut s, &mut n));
+    } else {
+        for (e, p, b, c, mut s, mut n) in &mut q {
+            one(e, p, b, c, &mut s, &mut n);
         }
     }
 }
@@ -476,14 +488,16 @@ fn pathfind(
 /// control at the next node. (The recompute on a block change is not here.) Visits only the cows that follow a path.
 #[allow(clippy::type_complexity)]
 fn follow(
+    cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    mut wheel: ResMut<Wheel>,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo, &mut Rng), With<Following>>,
-    mut commands: Commands,
+    par: ParallelCommands,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
 ) {
-    let (now, mw) = (clock.0, level.mw.0);
-    for (e, pos, body, mut drive, mut s, mut nav, mut m, mut r) in &mut q {
+    let now = clock.0;
+    let level = &*level;
+    let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
+        let mw = level.mw.0;
         let mut end = false;
         match nav.path.as_mut() {
             None => end = true,
@@ -532,9 +546,30 @@ fn follow(
             s.walking = false;
             drive.zza = 0.0;
             m.active = false;
-            commands.entity(e).remove::<Following>();
-            arm_stroll(&mut wheel, now, e, &mut s, &mut r);
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).remove::<Following>().insert(PathEnded);
+            });
         }
+    };
+    if cfg.parallel {
+        q.par_iter_mut().for_each(|(e, p, b, mut d, mut s, mut n, mut m)| one(e, p, b, &mut d, &mut s, &mut n, &mut m));
+    } else {
+        for (e, p, b, mut d, mut s, mut n, mut m) in &mut q {
+            one(e, p, b, &mut d, &mut s, &mut n, &mut m);
+        }
+    }
+}
+/// The walks that are over arm their next stroll attempt (the timer wheel is shared: a serial system, one entry
+/// per walk that ended, not per cow).
+fn path_ended(
+    clock: Res<Clock>,
+    mut wheel: ResMut<Wheel>,
+    mut q: Query<(Entity, &mut Stroll, &mut Rng), With<PathEnded>>,
+    mut commands: Commands,
+) {
+    for (e, mut s, mut r) in &mut q {
+        arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
+        commands.entity(e).remove::<PathEnded>();
     }
 }
 // Vanilla's NaN-sensitive `!(a < b)` form.
@@ -724,37 +759,38 @@ fn reindex(mut idx: ResMut<Index>, mut q: Query<(Entity, &Bounds, &mut Cell), Ch
     }
 }
 
+/// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PushIn(pub Vec3);
 /// `LivingEntity.pushEntities` / `Entity.push` for the boxes that moved this step (the only ones that can start
-/// overlapping something): the index gives the candidates, the boxes are their components. A pair is handled once
-/// (by the lower entity when both moved), both halves applied; the velocity a cow receives wakes its physics.
-/// A resting cow another one overlaps is pushed by that one (it receives a velocity: the event); a cow that is
-/// not moved and overlaps nobody costs nothing.
+/// overlapping something), in parallel: each moved cow reads the boxes of the neighbours it overlaps (the index gives
+/// the candidates, the boxes are components, final for this step) and changes ONLY ITS OWN velocity (its half); the
+/// neighbour that did not move gets its half as a command (a `PushIn`), which also wakes its physics.
 #[allow(clippy::type_complexity)]
 fn push(
+    cfg: Res<Config>,
     idx: Res<Index>,
-    movers: Query<(Entity, &Bounds), Changed<Bounds>>,
+    par: ParallelCommands,
     boxes: Query<Ref<Bounds>>,
-    mut vels: Query<(&mut Vel, Has<Moving>)>,
-    mut commands: Commands,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), Changed<Bounds>>,
 ) {
-    for (e, b) in &movers {
+    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-        let mut near: Vec<Entity> = Vec::new();
-        idx.for_near(cx, cz, |o| near.push(o));
-        for o in near {
+        let mut dv = (0.0_f64, 0.0_f64);
+        idx.for_near(cx, cz, |o| {
             if o == e {
-                continue;
+                return;
             }
-            let Ok(ob) = boxes.get(o) else { continue };
-            if !b.0.intersects(ob.0) || (ob.is_changed() && o < e) {
-                continue;
+            let Ok(ob) = boxes.get(o) else { return };
+            if !b.0.intersects(ob.0) {
+                return;
             }
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
             if dd < f64::from(0.01_f32) {
-                continue;
+                return;
             }
             dd = dd.sqrt();
             xa /= dd;
@@ -762,15 +798,36 @@ fn push(
             let pow = (1.0_f64 / dd).min(1.0);
             xa *= pow * f64::from(0.05_f32);
             za *= pow * f64::from(0.05_f32);
-            for (who, sign) in [(e, -1.0), (o, 1.0)] {
-                if let Ok((mut v, moving)) = vels.get_mut(who) {
-                    v.0 = Vec3::new(v.0.x + sign * xa, v.0.y, v.0.z + sign * za);
-                    if !moving {
-                        commands.entity(who).insert(Moving);
-                    }
-                }
+            dv.0 -= xa;
+            dv.1 -= za;
+            if !ob.is_changed() {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                });
+            }
+        });
+        if dv != (0.0, 0.0) {
+            v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
+            if !moving {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(e).insert(Moving);
+                });
             }
         }
+    };
+    if cfg.parallel {
+        movers.par_iter_mut().for_each(|(e, b, mut v, m)| one(e, b, &mut v, m));
+    } else {
+        for (e, b, mut v, m) in &mut movers {
+            one(e, b, &mut v, m);
+        }
+    }
+}
+/// The half of a push a cow that did not move is owed: its velocity changes, its physics is active.
+fn apply_pushes(mut q: Query<(Entity, &PushIn, &mut Vel)>, mut commands: Commands) {
+    for (e, p, mut v) in &mut q {
+        v.0 = Vec3::new(v.0.x + p.0.x, v.0.y, v.0.z + p.0.z);
+        commands.entity(e).remove::<PushIn>();
     }
 }
 
@@ -877,7 +934,7 @@ impl Herd {
         self.world.resource_mut::<Wheel>().push(now + ticks, e, Due::Grow);
     }
     /// One tick with the wall time of each system added to `acc` (seconds), in the schedule's order.
-    pub fn tick_timed(&mut self, acc: &mut [f64; 8]) {
+    pub fn tick_timed(&mut self, acc: &mut [f64; 10]) {
         macro_rules! t {
             ($i:expr, $s:expr) => {
                 let t0 = std::time::Instant::now();
@@ -893,8 +950,10 @@ impl Herd {
         t!(5, travel);
         t!(6, reindex);
         t!(7, push);
+        t!(8, path_ended);
+        t!(9, apply_pushes);
     }
-    pub const SYSTEMS: [&'static str; 8] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push"];
+    pub const SYSTEMS: [&'static str; 10] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push", "path_ended", "apply_pushes"];
     /// (cows with no active module, cows that follow a path, cows whose physics is active, total)
     pub fn counts(&mut self) -> (usize, usize, usize, usize) {
         let following = self.world.query_filtered::<(), With<Following>>().iter(&self.world).count();

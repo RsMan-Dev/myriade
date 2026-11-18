@@ -17,7 +17,7 @@ fn main() {
         bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
     }
     let mut herd = Herd::new(n, spacing, mode != "awake", parallel, 42);
-    let mut acc = [0.0_f64; 8];
+    let mut acc = [0.0_f64; 10];
     // The players stand on a grid over the slab.
     let side = (n as f64).sqrt().ceil() * spacing;
     let k = (players as f64).sqrt().ceil() as usize;
@@ -28,6 +28,17 @@ fn main() {
         })
         .collect();
     herd.set_players(list);
+    if mode == "trace" {
+        // The active modules over the ticks (a packed herd: spacing below the width of a cow overlaps).
+        for t in 0..ticks {
+            herd.tick();
+            if t % 10 == 0 || t < 10 {
+                let (idle, following, moving, total) = herd.counts();
+                println!("tick {t:4}: idle {idle:6}/{total}  physics active {moving:6}  following {following:6}");
+            }
+        }
+        return;
+    }
     let warm: usize = std::env::var("WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(100).min(ticks);
     for _ in 0..warm {
         herd.tick();
