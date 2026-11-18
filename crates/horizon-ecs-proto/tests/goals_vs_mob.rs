@@ -110,7 +110,11 @@ fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 }
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 fn tempt_item() -> (u32, &'static str) {
-    if species().name == "minecraft:pig" { (CARROT, "minecraft:carrot") } else { (WHEAT, "minecraft:wheat") }
+    match species().name {
+        "minecraft:pig" => (CARROT, "minecraft:carrot"),
+        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
+        _ => (WHEAT, "minecraft:wheat"),
+    }
 }
 fn have_data() -> bool {
     std::env::var_os("HORIZON_TEST_RESOURCES").is_some()

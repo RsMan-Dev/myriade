@@ -44,9 +44,10 @@ fn main() {
         .collect();
     let holders = (players as f64 * hold) as usize;
     let walkers = holders / 10;
+    let item_name = std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into());
     let view = |at: Vec3, wheat: bool| {
         let mut p = player_view(at);
-        p.main_hand = wheat.then(|| "minecraft:wheat".into());
+        p.main_hand = wheat.then(|| item_name.as_str().into());
         p
     };
     let mut views: Vec<PlayerView> = list.iter().enumerate().map(|(i, &(x, z))| view(Vec3::new(x, 1.0, z), i < holders)).collect();

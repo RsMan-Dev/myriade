@@ -485,7 +485,7 @@ pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems(hurt_events.after(apply_damage));
     s.add_systems(
-        (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_events, float_run, arbitrate, look_control)
+        (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, float_events, float_run, arbitrate, look_control)
             .chain()
             .after(online_events)
             .after(hurt_events)
@@ -885,17 +885,6 @@ fn glance_run(
         }
     }
 }
-/// `RandomLookAroundGoal.tick`.
-fn scan_run(clock: Res<Clock>, mut q: Query<(Aim, &Scanning)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
-    for ((e, pos, mut look, looking, _, _), s) in &mut q {
-        if clock.0 >= s.until {
-            reqs.0.push(Req::End(e, Kind::RandomLook));
-        } else {
-            let at = [pos.0.x + s.dx, pos.0.y + look.eye, pos.0.z + s.dz];
-            aim(&mut cmd, e, &mut look, looking, at, None);
-        }
-    }
-}
 /// A cow in a fluid (the fluid module visits only these) that gets deeper than the threshold, or in lava, starts
 /// floating; one that gets shallower, or leaves the fluid, stops.
 #[allow(clippy::type_complexity)]
@@ -1031,6 +1020,13 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             if s.walking || now >= active {
                 return;
             }
+        }
+        Kind::RandomLook if w.get::<Scanning>(e).is_some() => {
+            // The deadline of the look around that runs.
+            if w.get::<Scanning>(e).is_some_and(|s| now >= s.until) {
+                end_goal(w, e, k);
+            }
+            return;
         }
         Kind::LookAtPlayer | Kind::RandomLook => {
             let Some(mut t) = w.get_mut::<GoalTimers>(e) else { return };
@@ -1404,7 +1400,18 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
         (Kind::Melee, Pick::Player(id)) => crate::hostile::start_melee(w, e, id),
         (Kind::RandomLook, _) => {
             let (a, n) = with_rng(w, e, |r| (std::f64::consts::TAU * r.next_f64(), r.next_int(20)));
-            w.entity_mut(e).insert(Scanning { dx: a.cos(), dz: a.sin(), until: now + 20 + n as u64 + 1 });
+            let until = now + 20 + n as u64 + 1;
+            w.entity_mut(e).insert(Scanning { dx: a.cos(), dz: a.sin(), until });
+            // `RandomLookAroundGoal.tick` asks to look at the same spot every tick: one ask for the whole run (the look
+            // control holds it for the duration plus its 2 ticks), and the end is a deadline, not a per-tick check.
+            let pos = w.get::<Pos>(e).unwrap().0;
+            let mut look = *w.get::<Look>(e).unwrap();
+            look.target = [pos.x + a.cos(), pos.y + look.eye, pos.z + a.sin()];
+            look.cooldown = (until - now + 2).min(255) as u8;
+            look.y_speed = look.y_default;
+            *w.get_mut::<Look>(e).unwrap() = look;
+            w.entity_mut(e).insert(Looking);
+            arm(w, e, Kind::RandomLook, (until - now) as i32);
         }
         _ => {}
     }
@@ -1455,6 +1462,10 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         Kind::LayEgg => {}
         Kind::RandomLook => {
             w.entity_mut(e).remove::<Scanning>();
+            // Interrupted before its end: the look control lets go after its 2 ticks.
+            if let Some(mut l) = w.get_mut::<Look>(e) {
+                l.cooldown = l.cooldown.min(2);
+            }
             rearm_timer(w, e, k);
         }
     }
