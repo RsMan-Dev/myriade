@@ -388,6 +388,15 @@ pub struct Species {
     pub water_efficiency: f32,
     pub eye_height: f64,
     pub breathes_water: bool,
+    /// The type (`minecraft:cow`...), whose size, speed and goals below are data of the species.
+    pub name: &'static str,
+    pub width: f32,
+    pub height: f32,
+    pub step_height: f32,
+    pub gravity: f64,
+    pub speed: f64,
+    pub baby: (f32, f32),
+    pub goals: crate::goals::GoalDef,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -441,7 +450,10 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
     };
     let (mw, types) =
         horizon_client_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES");
-    let kind = Arc::new(types.types["minecraft:cow"].clone());
+    let name: &'static str = Box::leak(
+        std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
+    );
+    let kind = Arc::new(types.types[name].clone());
     let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
     let species = Species {
         malus: mob.ai.malus,
@@ -455,40 +467,60 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         water_efficiency: kind.water_efficiency as f32,
         eye_height: kind.eye_height,
         breathes_water: kind.flags.breathes_water,
+        name,
+        width: kind.width as f32,
+        height: kind.height as f32,
+        step_height: kind.step_height as f32,
+        gravity: kind.gravity,
+        speed: mob.attrs.speed,
+        baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
+        goals: crate::goals::goal_def(name),
     };
+    let _ = SPECIES.set(species);
     (Level { mw: Mw(mw), half }, species, kind)
 }
 
-/// The box of a cow of this size standing at `p`.
+/// The species of the process (the first world built sets it: `HORIZON_SPECIES`, `minecraft:cow` by default), for
+/// the bundles that are made without a world at hand.
+static SPECIES: std::sync::OnceLock<Species> = std::sync::OnceLock::new();
+pub fn species() -> &'static Species {
+    SPECIES.get().expect("a level was built")
+}
+/// The box of a creature of this size standing at `p`.
 pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     let (hw, h) = (f64::from(width) / 2.0, f64::from(height));
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
-pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
+/// An animal of the world's species at (x, z): every number is the species' data.
+pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
     (
         Pos(Vec3::new(x, 1.0, z)),
         Vel(Vec3::ZERO),
         Yaw((rng.next_u32() % 360) as f32),
-        Body { width: 0.9, height: 1.4, step_height: 0.6, gravity: 0.08, speed: 0.2 },
-        Bounds(box_at(Vec3::new(x, 1.0, z), 0.9, 1.4)),
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed },
+        Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
         Cell(u32::MAX),
         Contact { on_ground: true, horizontal: false, fall_distance: 0.0 },
         Drive::default(),
         (
-        Sizes { adult: (0.9, 1.4), baby: (0.45, 0.7) },
-        MoveTo::default(),
-        Nav::default(),
-        ActiveUntil(100),
-        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
-        (Moving, crate::goals::cow_goals()),
-        Health(10.0),
-        HurtAt { at: 0, last: 0.0 },
-        Frozen(0),
-        (FluidState::default(), Air(300), Recheck),
-        rng,
+            Sizes { adult: (sp.width, sp.height), baby: sp.baby },
+            MoveTo::default(),
+            Nav::default(),
+            ActiveUntil(100),
+            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
+            (Moving, crate::goals::goals_bundle(sp)),
+            Health(sp.max_health),
+            HurtAt { at: 0, last: 0.0 },
+            Frozen(0),
+            (FluidState::default(), Air(300), Recheck),
+            rng,
         ),
     )
+}
+/// An animal of the species the process was built for (see `species`).
+pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
+    spawn_bundle(species(), x, z, seed)
 }
 
 /// The number of failed attempts before the first success of a 1-in-`n` draw each tick (the same law as
@@ -1081,8 +1113,8 @@ fn breathing(
             refill: if drowns { 0 } else { 4 },
         };
         let id = e.index().index();
-        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, "minecraft:cow", vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, "minecraft:cow", &mut air.0, 300, breath, true)
+        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, sp.name, vanilla);
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
         {
             queue.0.push((e, damage, Cause::Drown));

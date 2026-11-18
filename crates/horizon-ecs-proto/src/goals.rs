@@ -93,18 +93,74 @@ impl GoalSet {
         was
     }
 }
-/// The goals of the cow, in the order and with the priorities of `farm.rs`.
+/// What differs between the farm animals in `farm.rs::register`: the priorities, the speed modifiers, the tempting
+/// items (data; the behaviours are the same systems).
+#[derive(Clone, Copy, Debug)]
+pub struct GoalDef {
+    pub slots: [(Kind, u8, u8); 8],
+    pub panic: f64,
+    pub tempt: f64,
+    /// A bit per item id (`WHEAT`, `CARROT`...): the items that tempt.
+    pub tempt_items: u32,
+    pub follow: f64,
+}
+pub const WHEAT: u32 = 1;
+pub const CARROT: u32 = 2;
+pub const POTATO: u32 = 3;
+pub const BEETROOT: u32 = 4;
+pub const CARROT_ON_A_STICK: u32 = 5;
+/// The id of an item the players of the bench hold, from its name.
+pub fn item_id(name: &str) -> u32 {
+    match name {
+        "minecraft:wheat" => WHEAT,
+        "minecraft:carrot" => CARROT,
+        "minecraft:potato" => POTATO,
+        "minecraft:beetroot" => BEETROOT,
+        "minecraft:carrot_on_a_stick" => CARROT_ON_A_STICK,
+        _ => 0,
+    }
+}
+/// The goals of a farm animal by its type (`Cow.registerGoals`, `Pig.registerGoals`, in `farm.rs`). The pig has two
+/// tempt goals (the carrot on a stick, then its foods) at one priority: one `Tempt` here with both sets of items.
+pub fn goal_def(species: &str) -> GoalDef {
+    match species {
+        "minecraft:pig" => GoalDef {
+            slots: [
+                (Kind::Float, 0, JUMP),
+                (Kind::Panic, 1, MOVE),
+                (Kind::Breed, 3, MOVE | LOOK),
+                (Kind::Tempt, 4, MOVE | LOOK),
+                (Kind::FollowParent, 5, 0),
+                (Kind::Stroll, 6, MOVE),
+                (Kind::LookAtPlayer, 7, LOOK),
+                (Kind::RandomLook, 8, MOVE | LOOK),
+            ],
+            panic: 1.25,
+            tempt: 1.2,
+            tempt_items: 1 << CARROT | 1 << POTATO | 1 << BEETROOT | 1 << CARROT_ON_A_STICK,
+            follow: 1.1,
+        },
+        _ => GoalDef {
+            slots: [
+                (Kind::Float, 0, JUMP),
+                (Kind::Panic, 1, MOVE),
+                (Kind::Breed, 2, MOVE | LOOK),
+                (Kind::Tempt, 3, MOVE | LOOK),
+                (Kind::FollowParent, 4, 0),
+                (Kind::Stroll, 5, MOVE),
+                (Kind::LookAtPlayer, 6, LOOK),
+                (Kind::RandomLook, 7, MOVE | LOOK),
+            ],
+            panic: 2.0,
+            tempt: 1.25,
+            tempt_items: 1 << WHEAT,
+            follow: 1.25,
+        },
+    }
+}
+/// The goals of the cow (the bench's default species), for the unit tests of the selector.
 pub fn cow_slots() -> [(Kind, u8, u8); 8] {
-    [
-        (Kind::Float, 0, JUMP),
-        (Kind::Panic, 1, MOVE),
-        (Kind::Breed, 2, MOVE | LOOK),
-        (Kind::Tempt, 3, MOVE | LOOK),
-        (Kind::FollowParent, 4, 0),
-        (Kind::Stroll, 5, MOVE),
-        (Kind::LookAtPlayer, 6, LOOK),
-        (Kind::RandomLook, 7, MOVE | LOOK),
-    ]
+    goal_def("minecraft:cow").slots
 }
 
 // ---- species data and state: components, data only --------------------------------------------------------
@@ -120,7 +176,8 @@ pub struct Panic {
 /// `TemptGoal`: the item (0: none), speed, stop distance, range, the look speed, and its state.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Tempt {
-    pub item: u32,
+    /// The items that tempt, a bit per item id.
+    pub items: u32,
     pub speed: f64,
     pub stop: f64,
     pub range: f64,
@@ -227,24 +284,24 @@ pub struct Scanning {
     pub until: u64,
 }
 
-/// The data of a cow's goals (vanilla values of `Cow.registerGoals`, `Animal` and `Mob`).
-pub fn cow_goals() -> impl Bundle {
+/// The data of the goals of an animal of the species (the vanilla values of its `registerGoals`, `Animal` and `Mob`).
+pub fn goals_bundle(sp: &Species) -> impl Bundle {
+    let d = sp.goals;
     (
-        GoalSet::new(&cow_slots()),
-        Panic { speed: 2.0, h: 5, v: 4, window: 40, until: 0 },
-        Tempt { item: WHEAT, speed: 1.25, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, calm_until: 0, player: 0, aim: (i32::MIN, 0) },
+        GoalSet::new(&d.slots),
+        Panic { speed: d.panic, h: 5, v: 4, window: 40, until: 0 },
+        Tempt { items: d.tempt_items, speed: d.tempt, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, calm_until: 0, player: 0, aim: (i32::MIN, 0) },
         BreedData { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000 },
-        FollowParent { speed: 1.25, recalc: 0 },
+        FollowParent { speed: d.follow, recalc: 0 },
         Glance { range: 6.0, period: 50 },
         Scan { period: 50 },
         GoalTimers::default(),
-        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: 1.3 },
+        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
-        Buoyancy(0.4),
+        Buoyancy(if sp.eye_height < 0.4 { 0.0 } else { 0.4 }),
         Jump(false),
     )
 }
-pub const WHEAT: u32 = 1;
 
 // ---- resources: the events, as data ------------------------------------------------------------------------
 #[derive(Resource, Default)]
@@ -273,6 +330,11 @@ pub struct Player {
 impl Player {
     pub fn holds(&self, item: u32) -> bool {
         item != 0 && (self.main == item || self.off == item)
+    }
+    /// Whether a hand holds one of the items of the mask (a bit per item id).
+    pub fn holds_any(&self, items: u32) -> bool {
+        let has = |i: u32| i != 0 && i < 32 && items >> i & 1 == 1;
+        has(self.main) || has(self.off)
     }
     pub fn eye(&self) -> f64 {
         self.y + 1.62
@@ -499,8 +561,8 @@ fn online_events(
         idx.for_radius(n.x, n.z, SCAN, |c| {
             let Ok((pos, t)) = cows.get(c) else { return };
             let reach = t.range.max(2.0).powi(2);
-            let was = old.is_some_and(|o| o.holds(t.item) && d2(&o, pos.0) <= reach);
-            if clock.0 >= t.calm_until && n.holds(t.item) && d2(&n, pos.0) <= reach && !was {
+            let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
+            if clock.0 >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
                 reqs.0.push(Req::Start(c, Kind::Tempt));
             }
         });
@@ -604,7 +666,7 @@ fn tempt_run(
 ) {
     for ((e, pos, mut look, looking, following, asked), mut t) in &mut q {
         let max_d = t.range.max(2.0).powi(2);
-        let p = on.get(t.player).filter(|p| p.holds(t.item) && d2(Vec3::new(p.x, p.y, p.z), pos.0) <= max_d);
+        let p = on.get(t.player).filter(|p| p.holds_any(t.items) && d2(Vec3::new(p.x, p.y, p.z), pos.0) <= max_d);
         let Some(p) = p else {
             reqs.0.push(Req::End(e, Kind::Tempt));
             continue;
@@ -982,7 +1044,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             let reach = t.range.max(2.0);
             w.resource::<Online>().for_near(pos.x, pos.z, reach, |p| {
                 let d = d2(pos, Vec3::new(p.x, p.y, p.z));
-                if p.holds(t.item) && d <= reach * reach && best.is_none_or(|b| d < b.1) {
+                if p.holds_any(t.items) && d <= reach * reach && best.is_none_or(|b| d < b.1) {
                     best = Some((p.id, d));
                 }
             });

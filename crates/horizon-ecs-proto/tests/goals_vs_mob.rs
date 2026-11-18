@@ -108,13 +108,17 @@ fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
         vehicle: None,
     }
 }
+/// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
+fn tempt_item() -> (u32, &'static str) {
+    if species().name == "minecraft:pig" { (CARROT, "minecraft:carrot") } else { (WHEAT, "minecraft:wheat") }
+}
 fn have_data() -> bool {
     std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
 }
 fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();
     h.world.get_mut::<Pos>(e).unwrap().0.y = y;
-    h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), 0.9, 1.4);
+    h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), species().width, species().height);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
     // A cow at rest has the resting vertical velocity (a fresh one is in the air for its first tick).
     h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
@@ -279,8 +283,8 @@ fn wheat_tempts_as_it_does_a_mob() {
     let tempted = |r: &Ref, h: &Herd, i: usize, e: Entity| (r.names(i).contains(&"Tempt"), h.world.get::<Tempting>(e).is_some());
     // Player 9.5 blocks from the first cow, 10.5 blocks from the second.
     let at = Vec3::new(-1.0, 1.0, 0.5);
-    let mut p = player_view(at, Some("minecraft:wheat"));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: WHEAT, off: 0 });
+    let mut p = player_view(at, Some(tempt_item().1));
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
     for _ in 0..6 {
         r.step(Some(&p));
         h.tick();
@@ -313,8 +317,8 @@ fn wheat_tempts_as_it_does_a_mob() {
         r.step(Some(&p));
         h.tick();
     }
-    p.main_hand = Some("minecraft:wheat".into());
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: WHEAT, off: 0 });
+    p.main_hand = Some(tempt_item().1.into());
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
     let (mut mc, mut cc) = (None, None);
     for t in 1..=200 {
         r.step(Some(&p));
