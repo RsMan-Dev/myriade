@@ -482,6 +482,8 @@ pub struct Species {
     pub speed: f64,
     pub baby: (f32, f32),
     pub goals: crate::goals::GoalDef,
+    /// The farm behaviours of the species (`farm.rs`).
+    pub farm: crate::farm::FarmDef,
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
@@ -547,7 +549,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
-    let names: [&'static str; 3] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie"];
+    let names: [&'static str; 4] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep"];
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
@@ -574,6 +576,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             speed: mob.attrs.speed,
             baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
             goals: crate::goals::goal_def(name),
+            farm: crate::farm::farm_def(name),
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
@@ -642,6 +645,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
     let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
     crate::hostile::equip(world, e, sp);
+    crate::farm::equip(world, e, sp);
     e
 }
 /// An animal of the species the process was built for (see `species`).

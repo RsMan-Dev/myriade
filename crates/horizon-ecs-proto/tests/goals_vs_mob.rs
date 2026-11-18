@@ -349,7 +349,7 @@ fn breeding_takes_as_long_as_for_a_mob() {
         let (mt, ct) = (mt.expect("mob never bred"), ct.expect("ecs never bred"));
         let now = h.world.resource::<Clock>().0;
         eprintln!("breed gap {gap}: mob at tick {mt}, ecs at tick {ct}; mob parents' age {}/{}; ecs rest {}", ages.0, ages.1, h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64));
-        assert!((mt - ct).abs() <= 8, "gap {gap}");
+        assert!((mt - ct).abs() <= 1, "gap {gap}");
         assert!(ages.0.max(ages.1) >= 5998, "{ages:?}");
         assert_eq!(h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64), 6000);
     }
@@ -613,8 +613,8 @@ fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
     }
     for (k, &i) in ids.iter().enumerate() {
         if r.names(i).contains(&"Panic") && let Some(p) = &r.mobs[i].ai.nav.path {
-            let n = p.nodes.last().unwrap();
-            target[k] = Some((f64::from(n.x) + 0.5, f64::from(n.z) + 0.5));
+            // The spot the goal drew: the path's target (its last node is up to a block short of it).
+            target[k] = Some((f64::from(p.target[0]) + 0.5, f64::from(p.target[2]) + 0.5));
         }
     }
     // Second pass: the same mobs and the ecs cows, the ecs taking the mobs' spots and phases.
@@ -643,6 +643,11 @@ fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
         r.step(None);
         h.tick();
         for &(i, e) in &kept {
+            if std::env::var_os("TRACE").is_some() && r.mobs[i].id == 19 && (4..=12).contains(&t) {
+                let m = &r.mobs[i];
+                let (c, d, mv) = (h.world.get::<Pos>(e).unwrap().0, h.world.get::<Drive>(e).unwrap(), h.world.get::<MoveTo>(e).unwrap());
+                eprintln!("id19 t={t} MOB pos ({:.3},{:.3}) yaw {} zza {:.2} path {:?} | ECS pos ({:.3},{:.3}) yaw {} zza {:.2} moveto ({:.1},{:.1}) active {}", m.position.x, m.position.z, m.yaw, m.ai.zza, m.ai.nav.path.as_ref().map(|p| p.nodes.iter().map(|n| (n.x, n.z)).collect::<Vec<_>>()), c.x, c.z, h.world.get::<Yaw>(e).unwrap().0, d.zza, mv.x, mv.z, mv.active);
+            }
             apart[t].push(xz(r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0));
         }
     }
@@ -657,5 +662,195 @@ fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
     // Up to the end of the first walk the two are one trajectory (the cows apart are the ones whose spot lies along an
     // axis, where the two round the heading differently); after it each draws its own next spot, so only the
     // first 20 ticks are asserted.
-    assert!(close(10) * 10 >= kept.len() * 7 && close(20) * 10 >= kept.len() * 6, "{line:?}");
+    assert!(close(10) == kept.len() && close(20) * 10 >= kept.len() * 8, "{line:?}");
+}
+
+#[test]
+#[ignore = "trace"]
+fn trace_short_path() {
+    use horizon_client_lib::mobs::path::{Evaluator, Finder};
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(20, false);
+    let i = r.add(Vec3::new(7.5, 1.0, 2.5));
+    let mut pm = r.mobs[i].path_mob();
+    pm.on_ground = true;
+    let sp = species();
+    for target in [[7, 1, 3], [7, 1, 4], [7, 1, 6]] {
+        let p = Finder::new(r.w, &pm, Evaluator::Walk).find(&[target], sp.follow_range, 1, (sp.follow_range * 16.0) as i32);
+        eprintln!("target {target:?}: {:?}", p.as_ref().map(|p| p.nodes.iter().map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>()));
+    }
+    let m = &mut r.mobs[i];
+    m.on_ground = true;
+    let p = m.create_path_to(r.w, [7, 1, 3], 1);
+    eprintln!("mob create_path_to (7,1,3): {:?}", p.as_ref().map(|p| p.nodes.iter().map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>()));
+}
+
+/// A walk: the `Mob` draws when to stroll and where; the ecs cow is started at the same tick, with the same spot
+/// (`Forced`), and the two are followed for 60 ticks.
+#[test]
+fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if !have_data() {
+        return;
+    }
+    let spots: Vec<(f64, f64)> = (0..5).flat_map(|i| (0..4).map(move |j| (-14.5 + 7.0 * f64::from(i), -12.5 + 8.0 * f64::from(j)))).collect();
+    // First pass: the mobs alone (awake: noActionTime 0), to read when and where each starts to stroll.
+    let mut r = Ref::new(20, false);
+    let ids: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+    for &i in &ids {
+        r.mobs[i].ai.no_action_time = 0;
+    }
+    let mut start: Vec<Option<(usize, (f64, f64))>> = vec![None; ids.len()];
+    for t in 1..=400_usize {
+        r.step(None);
+        for (k, &i) in ids.iter().enumerate() {
+            r.mobs[i].ai.no_action_time = 0;
+            if start[k].is_none() && t < 330 && r.names(i).contains(&"Stroll") && let Some(p) = &r.mobs[i].ai.nav.path {
+                start[k] = Some((t, (f64::from(p.target[0]) + 0.5, f64::from(p.target[2]) + 0.5)));
+            }
+        }
+    }
+    let begun: Vec<usize> = (0..ids.len()).filter(|&k| start[k].is_some()).collect();
+    assert!(begun.len() >= 6, "only {} mobs strolled", begun.len());
+    // Second pass: the mobs and the ecs cows; at each start tick the ecs cow is told to stroll to the same spot.
+    let (mut r, mut h) = flat_pair();
+    let cows: Vec<(usize, Entity)> = spots.iter().enumerate().map(|(k, &(x, z))| (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 700 + k as u64))).collect();
+    for (k, &(i, e)) in cows.iter().enumerate() {
+        r.mobs[i].ai.no_action_time = 0;
+        h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+        let _ = k;
+    }
+    let mut apart: Vec<Vec<f64>> = vec![Vec::new(); 61];
+    for t in 1..=400_usize {
+        for &(i, _) in &cows {
+            r.mobs[i].ai.no_action_time = 0;
+        }
+        for &k in &begun {
+            let (s, spot) = start[k].unwrap();
+            if t == s {
+                let e = cows[k].1;
+                h.world.resource_mut::<Forced>().spots.insert((e, Kind::Stroll), spot);
+                h.world.resource_mut::<Fired>().0.push((e, Kind::Stroll));
+            }
+        }
+        r.step(None);
+        h.tick();
+        for &k in &begun {
+            let (s, _) = start[k].unwrap();
+            if std::env::var_os("TRACE").is_some() && t >= s - 1 && t <= s + 3 && k < 4 {
+                let (m, e) = (&r.mobs[cows[k].0], cows[k].1);
+                let (c, d) = (h.world.get::<Pos>(e).unwrap().0, h.world.get::<Drive>(e).unwrap());
+                eprintln!("k{k} s={s} t={t} MOB ({:.3},{:.3}) yaw {} zza {:.2} spd {} path {:?} | ECS ({:.3},{:.3}) yaw {} zza {:.2} spd {}", m.position.x, m.position.z, m.yaw, m.ai.zza, m.ai.speed, m.ai.nav.path.as_ref().map(|p| (p.nodes.len(), p.target)), c.x, c.z, h.world.get::<Yaw>(e).unwrap().0, d.zza, d.speed);
+            }
+            if t >= s && t < s + 60 {
+                apart[t - s + 1].push(xz(r.mobs[cows[k].0].position, h.world.get::<Pos>(cows[k].1).unwrap().0));
+            }
+        }
+    }
+    let close = |n: usize| apart[n].iter().filter(|&&d| d < 0.1).count();
+    let line: Vec<String> = [2, 10, 30, 60].iter().map(|&n| format!("+{n}: {}/{} within 0.1", close(n), apart[n].len())).collect();
+    eprintln!("stroll with the mob's spot: {}", line.join(" | "));
+    assert!(close(30) * 10 >= apart[30].len() * 8, "{line:?}");
+}
+
+/// Three cows in love: the `Mob` picks its partner (the first in its list), the ecs cow takes the same one
+/// (`Forced`); the parent walks the same way and gives birth at the same tick.
+#[test]
+fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
+    if !have_data() {
+        return;
+    }
+    let pos = [(0.5, 0.5), (5.5, 0.5), (0.5, 3.5)];
+    // First pass: the mobs alone; the first birth tells who bred with whom.
+    let mut r = Ref::new(20, false);
+    let ids: Vec<usize> = pos.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+    for &i in &ids {
+        r.mobs[i].extra.in_love = 600;
+    }
+    let mut first = None;
+    for t in 1..=200_i64 {
+        r.step(None);
+        if first.is_none() && let Some(MobEvent::Breed { parent, partner, .. }) = r.events.iter().find(|e| matches!(e, MobEvent::Breed { .. })) {
+            first = Some((*parent, *partner, t));
+        }
+    }
+    let (parent, partner, born) = first.expect("no birth");
+    let (pk, qk) = (ids.iter().position(|&i| r.mobs[i].id == parent).unwrap(), ids.iter().position(|&i| r.mobs[i].id == partner).unwrap());
+    // Second pass.
+    let (mut r, mut h) = flat_pair();
+    let cows: Vec<(usize, Entity)> = pos.iter().enumerate().map(|(k, &(x, z))| (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 600 + k as u64))).collect();
+    h.tick();
+    for &(i, e) in &cows {
+        r.mobs[i].extra.in_love = 600;
+        h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
+        h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
+    }
+    h.world.resource_mut::<Forced>().partners.insert(cows[pk].1, cows[qk].1);
+    for &(_, e) in &cows {
+        assert!(feed(&mut h.world, e));
+    }
+    let mut apart = Vec::new();
+    let mut ecs_born = None;
+    for t in 1..=200_i64 {
+        r.step(None);
+        h.tick();
+        apart.push(xz(r.mobs[cows[pk].0].position, h.world.get::<Pos>(cows[pk].1).unwrap().0));
+        if ecs_born.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {
+            ecs_born = Some(t);
+        }
+    }
+    let ecs_born = ecs_born.expect("ecs never bred");
+    let worst = apart[..(born as usize).min(60)].iter().cloned().fold(0.0, f64::max);
+    eprintln!("breeding: mob parent {pk} with {qk} at tick {born}; ecs at tick {ecs_born}; parent {:.2} apart at worst before the birth (first 60 ticks)", worst);
+    assert!((born - ecs_born).abs() <= 1, "birth tick mob {born}, ecs {ecs_born}");
+    assert!(worst < 0.5, "{worst}");
+}
+
+/// The pig has two tempt goals of one priority, each with its own calm-down: after the carrot on a stick is put
+/// away, a carrot tempts at once; the stick tempts again only 100 ticks after it stopped.
+#[test]
+fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    if species().name != "minecraft:pig" {
+        return;
+    }
+    let mi = r.add(Vec3::new(-6.5, 1.0, 0.5));
+    let e = ecs_cow(&mut h, -6.5, 1.0, 0.5, 5);
+    h.tick();
+    let at = Vec3::new(-1.0, 1.0, 0.5);
+    let mut p = player_view(at, None);
+    let mut t = 0;
+    let mut set = |r: &mut Ref, h: &mut Herd, p: &mut PlayerView, held: Option<(&str, u32)>, ticks: usize, t: &mut i64, log: &mut Vec<(i64, bool, Option<u8>)>| {
+        p.main_hand = held.map(|x| x.0.into());
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0 });
+        for _ in 0..ticks {
+            r.step(Some(p));
+            h.tick();
+            *t += 1;
+            log.push((*t, r.names(mi).contains(&"Tempt"), h.world.get::<Tempting>(e).map(|x| x.0)));
+        }
+    };
+    let mut log = Vec::new();
+    let stick = Some(("minecraft:carrot_on_a_stick", CARROT_ON_A_STICK));
+    let carrot = Some(("minecraft:carrot", CARROT));
+    set(&mut r, &mut h, &mut p, stick, 10, &mut t, &mut log);
+    let stopped_at = t;
+    set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);
+    let carrot_from = t;
+    set(&mut r, &mut h, &mut p, carrot, 20, &mut t, &mut log);
+    set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);
+    let stick_from = t;
+    set(&mut r, &mut h, &mut p, stick, 140, &mut t, &mut log);
+    let first = |from: i64, inst: Option<u8>| log.iter().find(|l| l.0 > from && match inst { Some(i) => l.2 == Some(i), None => l.1 }).map(|l| l.0 - from);
+    let (mob_carrot, ecs_carrot) = (log.iter().find(|l| l.0 > carrot_from && l.1).map(|l| l.0 - carrot_from), first(carrot_from, Some(1)));
+    let (mob_stick, ecs_stick) = (log.iter().find(|l| l.0 > stick_from && l.1).map(|l| l.0 - stick_from), first(stick_from, Some(0)));
+    eprintln!("pig tempt: carrot after the stick: mob {mob_carrot:?} ticks, ecs {ecs_carrot:?}; stick again (stopped at tick {stopped_at}): mob {mob_stick:?}, ecs {ecs_stick:?}");
+    let (a, b, c, d) = (mob_carrot.unwrap(), ecs_carrot.unwrap(), mob_stick.unwrap(), ecs_stick.unwrap());
+    assert!((a - b).abs() <= 3 && (c - d).abs() <= 4, "carrot {a}/{b}, stick {c}/{d}");
 }
