@@ -15,7 +15,66 @@ use horizon_core::position::BlockPos;
 pub use mod_api::PathType;
 pub const PATH_TYPES: usize = PathType::COUNT;
 
+thread_local! {
+    /// The answer of a neighbour block of each state (`0` not asked, `1` none, `2 + type`), and the states asked.
+    static ADJACENT: std::cell::RefCell<(Vec<u8>, Vec<u32>)> = const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+    /// A finder's query is running on this thread (tags and block data cannot change under it).
+    static IN_QUERY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static REFERENCE_FINDER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// Runs `f` with this thread's finders working as before the fast paths: the reference of the equality tests.
+pub fn with_reference_finder<T>(f: impl FnOnce() -> T) -> T {
+    let before = REFERENCE_FINDER.with(|r| r.replace(true));
+    let out = f();
+    REFERENCE_FINDER.with(|r| r.set(before));
+    out
+}
+
 impl MobWorld<'_> {
+    /// What a neighbour in `state` gives a node (`checkNeighbourBlocks`), when no mod part is asked: its default
+    /// answer, else water's border, else the type its own path type maps to.
+    pub(super) fn adjacent_of_state(&self, state: horizon_world::registry::BlockStateId) -> Option<PathType> {
+        let facts = self.facts.get(state);
+        let default = if facts.name.as_ref() == "minecraft:sweet_berry_bush" {
+            Some(PathType::DamagingInNeighbor)
+        } else if data::vanilla_burning_block(&facts.name, facts.emission > 0, self.has_tag("minecraft:fire", &facts.name)) {
+            Some(PathType::FireInNeighbor)
+        } else {
+            None
+        };
+        default
+            .or_else(|| matches!(facts.fluid, Fluid::Water | Fluid::Modded).then_some(PathType::WaterBorder))
+            .or_else(|| data::vanilla_adjacent(self.data.path_type(state)))
+    }
+    /// `check_neighbours` inside a finder's query, with no mod hooks: a neighbour's answer depends on its state alone,
+    /// so it is worked out once per state per query.
+    fn check_neighbours_cached(&self, x: i32, y: i32, z: i32, t: PathType) -> PathType {
+        ADJACENT.with(|cell| {
+            let (table, touched) = &mut *cell.borrow_mut();
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        if dx == 0 && dz == 0 {
+                            continue;
+                        }
+                        let state = self.world.block(x.saturating_add(dx), y.saturating_add(dy), z.saturating_add(dz));
+                        let id = state.0 as usize;
+                        if id >= table.len() {
+                            table.resize(id + 1, 0);
+                        }
+                        if table[id] == 0 {
+                            table[id] = self.adjacent_of_state(state).map_or(1, |t| 2 + t as u8);
+                            touched.push(id as u32);
+                        }
+                        if table[id] > 1 {
+                            return PathType::ALL[usize::from(table[id] - 2)];
+                        }
+                    }
+                }
+            }
+            t
+        })
+    }
     pub fn path_type_from_state(&self, x: i32, y: i32, z: i32) -> PathType {
         self.world.cached_path_type(BlockPos::new(x, y, z), || {
             let state = self.world.block(x, y, z);
@@ -51,6 +110,9 @@ impl MobWorld<'_> {
     /// (`getAdjacentBlockPathType`) decides it. The neighbour step saturates, so a
     /// node at the edge of the `i32` range still reads its eight neighbours (arismoko/horizon#4443).
     pub fn check_neighbours(&self, x: i32, y: i32, z: i32, t: PathType) -> PathType {
+        if self.mob_hooks.is_none() && IN_QUERY.with(std::cell::Cell::get) && !REFERENCE_FINDER.with(std::cell::Cell::get) {
+            return self.check_neighbours_cached(x, y, z, t);
+        }
         for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
@@ -340,6 +402,7 @@ pub struct Finder<'a, 'w> {
 
 impl<'a, 'w> Drop for Finder<'a, 'w> {
     fn drop(&mut self) {
+        IN_QUERY.with(|q| q.set(false));
         TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
                 self.nodes.clear();
@@ -379,6 +442,13 @@ fn swim_cell_type(
 
 impl<'a, 'w> Finder<'a, 'w> {
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
+        ADJACENT.with(|cell| {
+            let (table, touched) = &mut *cell.borrow_mut();
+            for id in touched.drain(..) {
+                table[id as usize] = 0;
+            }
+        });
+        IN_QUERY.with(|q| q.set(true));
         let (nodes, index, heap, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
                 buf.clear();
