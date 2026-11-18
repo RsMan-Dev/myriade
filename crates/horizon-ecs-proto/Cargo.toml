@@ -17,5 +17,7 @@ horizon-world = { path = "../horizon-world" }
 libc = "0.2"
 
 [features]
+# The markers of the modules (`Moving`, `Following`, `NeedsPath`...) in sparse sets: a toggle does not move the entity's row.
+default = ["sparse"]
 # The sleeping marker in sparse-set storage instead of a table (measured against the table).
 sparse = []
