@@ -14,9 +14,9 @@ fn same(a: &Result<horizon_core::geometry::Vec3, String>, b: &Result<horizon_cor
 fn the_fast_kernel_equals_the_reference_bit_for_bit() {
     let mut calls = 0;
     let mut moved = 0;
-    for seed in 1..=4u64 {
+    for seed in 1..=6u64 {
         let world = varied_world(seed);
-        for c in random_calls(seed, 15_000) {
+        for c in random_calls(seed, 12_000) {
             let (new, old) = (run(world, &c), run_reference(world, &c));
             assert!(
                 same(&new, &old),

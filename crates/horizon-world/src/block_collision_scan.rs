@@ -159,6 +159,19 @@ struct SectionFacts {
     reaches: bool,
 }
 
+thread_local! {
+    static REFERENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f` with every scan of this thread made the way it was before the fast paths (cell by cell, a shape asked
+/// for every block, a join for every shape): the reference of the equality tests.
+pub fn with_reference_scan<T>(f: impl FnOnce() -> T) -> T {
+    let before = REFERENCE.with(|r| r.replace(true));
+    let out = f();
+    REFERENCE.with(|r| r.set(before));
+    out
+}
+
 /// Entries of the per-thread cache of moved full cubes.
 const MOVED_BLOCKS: usize = 256;
 type MovedBlocks = [Option<(BlockPos, VoxelShape)>; MOVED_BLOCKS];
@@ -232,6 +245,7 @@ pub struct BlockCollisionScan<'w, 'c, W: BlockCollisionWorld> {
     sections_next: usize,
     /// `missing_chunks_stay_missing`, asked once.
     missing_stays: bool,
+    reference: bool,
     failed: bool,
 }
 impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
@@ -268,6 +282,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
             sections: [None; REACH_SECTIONS],
             sections_next: 0,
             missing_stays,
+            reference: REFERENCE.with(std::cell::Cell::get),
             failed: false,
         })
     }
@@ -435,7 +450,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
             return Ok(None);
         }
         let offset = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
-        let cube = self.world.is_plain_cube(block);
+        let cube = !self.reference && self.world.is_plain_cube(block);
         let shape = if cube {
             None
         } else {
@@ -462,7 +477,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
             {
                 return Ok(None);
             }
-            if clearly_overlaps(&shape, offset, self.bounds) {
+            if !self.reference && clearly_overlaps(&shape, offset, self.bounds) {
                 return Ok(Some(Found::Moved(Box::new((shape, offset)))));
             }
             let moved = shape.moved(offset);
@@ -548,7 +563,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
     }
 
     fn scan_next(&mut self) -> Result<Option<(BlockPos, Found)>, CollisionScanError<W::Error>> {
-        if self.missing_stays && self.budget >= self.count {
+        if !self.reference && self.missing_stays && self.budget >= self.count {
             return self.scan_rows();
         }
         while self.index < self.count {

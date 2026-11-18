@@ -305,6 +305,7 @@ impl<'w> SceneCollisions<'w, '_> {
         border: Option<(&BorderGeometry, [f64; 2])>,
         entities: &[Aabb],
     ) -> Result<Vec3> {
+        horizon_world::block_collision_scan::with_reference_scan(|| {
         let context = self.context(bounds);
         EntityCollisions {
             blocks: self,
@@ -312,6 +313,7 @@ impl<'w> SceneCollisions<'w, '_> {
             border,
         }
         .resolve_with_context_reference(bounds, movement, max_step, on_ground, context)
+        })
     }
     /// Resolve movement with the entity's captured collision context. Most
     /// callers only need the position context; entities such as falling blocks

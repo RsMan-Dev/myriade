@@ -152,7 +152,48 @@ pub fn run_reference(world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
 
 /// A varied random world over x, z in [-32, 32) (chunk (2, 0) and beyond absent) and y in [-2, 12), with sections
 /// of different densities, and `n` random calls over it (boxes of several sizes, speeds, steps).
+/// The blocks that stress the scan: shapes that reach out of their cell, contextual ones, thin and stepped ones.
+const TRICKY: &[&str] = &[
+    "oak_fence", "cobblestone_wall", "oak_fence_gate", "scaffolding", "powder_snow", "oak_stairs", "oak_slab",
+    "snow", "white_bed", "oak_trapdoor", "white_carpet", "moving_piston", "piston_head", "iron_bars", "anvil",
+    "hopper", "cauldron", "lily_pad", "soul_sand", "cactus", "chest", "end_rod", "bamboo", "pointed_dripstone",
+];
+
+/// An even seed gives a dense small world of tricky blocks (x, z in [-12, 12), y in [0, 6)); an odd one the wide
+/// varied world.
 pub fn varied_world(seed: u64) -> &'static MobWorld<'static> {
+    if seed % 2 == 0 {
+        return leaked(|w, registry| {
+            insert_chunks(w, -2, 2);
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let pool: Vec<Vec<BlockStateId>> = TRICKY
+                .iter()
+                .map(|n| {
+                    (0..registry.len() as u32)
+                        .map(BlockStateId)
+                        .filter(|&id| registry.state(id).unwrap().name.strip_prefix("minecraft:") == Some(n))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|v| !v.is_empty())
+                .collect();
+            let mut r = Rng(seed | 1);
+            for x in -12..12 {
+                for z in -12..12 {
+                    w.set(x, 0, z, stone).unwrap();
+                    for y in 1..6 {
+                        match r.below(100) {
+                            0..=14 => w.set(x, y, z, stone).unwrap(),
+                            15..=44 => {
+                                let k = r.below(pool.len());
+                                w.set(x, y, z, pool[k][r.below(pool[k].len())]).unwrap();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        });
+    }
     leaked(|w, registry| {
         insert_chunks(w, -2, 2);
         let states = varied_states(registry);
@@ -192,7 +233,11 @@ pub fn random_calls(seed: u64, n: usize) -> Vec<Call> {
         .map(|_| {
             let (w, h) = [(0.9, 1.4), (0.6, 1.8), (0.3, 0.3), (1.4, 0.9), (0.6, 0.6), (1.0, 1.0), (0.5, 0.5), (0.75, 1.5)]
                 [r.below(8)];
-            let (x, y, z) = (r.range(-34.0, 40.0), r.range(-4.0, 14.0), r.range(-34.0, 34.0));
+            let (x, y, z) = if seed % 2 == 0 {
+                (r.range(-14.0, 14.0), r.range(-0.5, 6.5), r.range(-14.0, 14.0))
+            } else {
+                (r.range(-34.0, 40.0), r.range(-4.0, 14.0), r.range(-34.0, 34.0))
+            };
             // Faces on the 1/8 grid, and a hair (the vanilla thresholds, 1e-7) either side of it, are the ones that
             // stress the comparisons.
             let snap = |v: f64, r: &mut Rng| match r.below(4) {
