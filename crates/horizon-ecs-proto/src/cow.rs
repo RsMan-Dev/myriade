@@ -32,6 +32,12 @@ pub struct Body {
     /// The movement speed attribute.
     pub speed: f64,
 }
+/// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Bounds(pub Aabb);
+/// The column of the spatial index the cow is listed in (`u32::MAX`: not yet).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Cell(pub u32);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Contact {
     pub on_ground: bool,
@@ -53,13 +59,12 @@ pub struct MoveTo {
     pub z: f64,
     pub speed_modifier: f64,
 }
-/// `RandomStrollGoal`: the wait before the next attempt, whether a walk is on, where to.
+/// `RandomStrollGoal`: whether a walk is on, where to, whether an attempt is waiting in the timer wheel.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Stroll {
-    pub wait: i32,
     pub walking: bool,
-    /// A spot was picked and its path is not made yet.
-    pub pending: bool,
+    /// A stroll attempt is in the timer wheel.
+    pub scheduled: bool,
     pub tx: f64,
     pub tz: f64,
     pub horizontal_range: i32,
@@ -88,13 +93,16 @@ pub struct Sizes {
     pub adult: (f32, f32),
     pub baby: (f32, f32),
 }
-/// On the ground, motionless, no walk, a stroll wait still to run: no movement system visits it.
+/// A path was asked for (the stroll picked a spot): `pathfind` visits only these.
 #[derive(Component, Clone, Copy, Debug)]
-#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
-pub struct Asleep {
-    /// The tick at which the stroll wait ends and the cow wakes (it is in the timer wheel at that tick).
-    pub until: u64,
-}
+pub struct NeedsPath;
+/// The cow follows a path: `follow` and `move_control` visit only these.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Following;
+/// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
+/// the marker off when the cow is back at rest.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Moving;
 /// `Mob.noActionTime` as a deadline: the stroll goal is refused from this tick on (100 ticks after a player was
 /// last within 32 blocks, or the cow was hurt).
 #[derive(Component, Clone, Copy, Debug)]
@@ -106,9 +114,6 @@ pub struct Players {
     prev: Vec<(f64, f64)>,
     pub dirty: bool,
 }
-/// What a woken sleeper still owes its stroll wait.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Resume(pub i32);
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct GrowAt(pub u64);
@@ -134,7 +139,7 @@ impl Rng {
 pub struct Clock(pub u64);
 #[derive(Clone, Copy, Debug)]
 pub enum Due {
-    Wake { until: u64 },
+    Stroll,
     Grow,
 }
 const WHEEL: usize = 4096;
@@ -153,99 +158,44 @@ impl Wheel {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
     }
 }
-/// One cow of the spatial index: its box and whether it sleeps.
-#[derive(Clone, Copy, Debug)]
-pub struct Entry {
-    pub entity: Entity,
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-    pub half: f64,
-    pub height: f64,
-    pub asleep: bool,
-    pub until: u64,
-}
-/// The cows by 2-block column, as they were at the start of the step (rebuilt by `index`): the neighbours a
-/// cow reads are never half-updated, whatever the order the cows are visited in.
+const CELL: f64 = 2.0;
+/// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
+/// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
-pub struct Grid {
-    pub origin: f64,
-    pub width: usize,
-    start: Vec<u32>,
-    items: Vec<Entry>,
-    cell_of: Vec<u32>,
-    next: Vec<u32>,
-    scratch: Vec<Entry>,
+pub struct Index {
+    origin: f64,
+    width: usize,
+    cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
 }
-const CELL: f64 = 2.0;
-impl Grid {
+impl Index {
+    pub fn new(origin: f64, width: usize) -> Self {
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width] }
+    }
     fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
     }
-    fn cell(&self, x: f64, z: f64) -> usize {
+    pub fn cell_of(&self, x: f64, z: f64) -> u32 {
         let cx = self.column(x).clamp(0, self.width as i64 - 1) as usize;
         let cz = self.column(z).clamp(0, self.width as i64 - 1) as usize;
-        cz * self.width + cx
+        (cz * self.width + cx) as u32
     }
-    /// A counting sort of the entries by column, in buffers that are kept from one step to the next.
-    pub fn rebuild(&mut self, entries: impl Iterator<Item = Entry>) {
-        let cells = self.width * self.width;
-        self.start.clear();
-        self.start.resize(cells + 1, 0);
-        let mut all = std::mem::take(&mut self.scratch);
-        all.clear();
-        all.extend(entries);
-        self.cell_of.clear();
-        for e in &all {
-            let c = self.cell(e.x, e.z);
-            self.cell_of.push(c as u32);
-            self.start[c + 1] += 1;
-        }
-        for i in 0..cells {
-            self.start[i + 1] += self.start[i];
-        }
-        self.next.clear();
-        self.next.extend_from_slice(&self.start[..cells]);
-        let filler = all.first().copied().unwrap_or(Entry {
-            entity: Entity::PLACEHOLDER,
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            half: 0.0,
-            height: 0.0,
-            asleep: false,
-            until: 0,
-        });
-        self.items.clear();
-        self.items.resize(all.len(), filler);
-        for (e, &c) in all.iter().zip(&self.cell_of) {
-            let slot = self.next[c as usize];
-            self.next[c as usize] += 1;
-            self.items[slot as usize] = *e;
-        }
-        self.scratch = all;
+    pub fn insert(&mut self, e: Entity, cell: u32) {
+        self.cells[cell as usize].push(e);
     }
-    /// Calls `f` for every entry in the columns that meet the square.
-    pub fn for_region(&self, x0: f64, z0: f64, x1: f64, z1: f64, mut f: impl FnMut(&Entry)) {
-        let w = self.width as i64;
-        for zz in self.column(z0).max(0)..=self.column(z1).min(w - 1) {
-            for xx in self.column(x0).max(0)..=self.column(x1).min(w - 1) {
-                let c = (zz * w + xx) as usize;
-                for e in &self.items[self.start[c] as usize..self.start[c + 1] as usize] {
-                    f(e);
-                }
-            }
+    pub fn remove(&mut self, e: Entity, cell: u32) {
+        let list = &mut self.cells[cell as usize];
+        if let Some(i) = list.iter().position(|&o| o == e) {
+            list.swap_remove(i);
         }
     }
-    /// Calls `f` for the entries in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
-    pub fn for_near(&self, x: f64, z: f64, mut f: impl FnMut(&Entry)) {
+    /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
+    pub fn for_near(&self, x: f64, z: f64, mut f: impl FnMut(Entity)) {
         let (cx, cz) = (self.column(x), self.column(z));
         let w = self.width as i64;
         for zz in (cz - 1).max(0)..=(cz + 1).min(w - 1) {
             for xx in (cx - 1).max(0)..=(cx + 1).min(w - 1) {
-                let c = (zz * w + xx) as usize;
-                for e in &self.items[self.start[c] as usize..self.start[c + 1] as usize] {
+                for &e in &self.cells[(zz * w + xx) as usize] {
                     f(e);
                 }
             }
@@ -319,21 +269,28 @@ pub fn build_level(half: i32) -> (Level, Species, Arc<horizon_client_lib::mobs::
     (Level { mw: Mw(mw), half }, species, kind)
 }
 
+/// The box of a cow of this size standing at `p`.
+pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
+    let (hw, h) = (f64::from(width) / 2.0, f64::from(height));
+    Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
+}
 pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
-    let wait = idle_wait(&mut rng, 60);
     (
         Pos(Vec3::new(x, 1.0, z)),
         Vel(Vec3::ZERO),
         Yaw((rng.next_u32() % 360) as f32),
         Body { width: 0.9, height: 1.4, step_height: 0.6, gravity: 0.08, speed: 0.2 },
+        Bounds(box_at(Vec3::new(x, 1.0, z), 0.9, 1.4)),
+        Cell(u32::MAX),
         Contact { on_ground: true, horizontal: false, fall_distance: 0.0 },
         Drive::default(),
         Sizes { adult: (0.9, 1.4), baby: (0.45, 0.7) },
         MoveTo::default(),
         Nav::default(),
         ActiveUntil(100),
-        Stroll { wait, walking: false, pending: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        Moving,
         rng,
     )
 }
@@ -354,21 +311,23 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, index, player_near, stroll, pathfind, follow, move_control, travel, push, resume, sleep).chain());
+    s.add_systems((due, player_near, pathfind, follow, move_control, travel, reindex, push).chain());
     s
 }
 
 // ---- systems ---------------------------------------------------------------------------------------------
 /// `RandomStrollGoal.canUse` and `LandRandomPos`: after the wait, 10 tries of a spot within 10 x 7 (the first valid
 /// one wins as all the ground weighs the same); the path to it is made by `pathfind`.
-fn stroll_one(level: &Level, now: u64, active: &ActiveUntil, pos: &Pos, s: &mut Stroll, r: &mut Rng) {
-    if s.walking || now >= active.0 {
-        return;
-    }
-    if s.wait > 0 {
-        s.wait -= 1;
-        return;
-    }
+/// Arms the stroll attempt `idle_wait` ticks from now (the goal selector asks every other tick, 1 chance in 60).
+fn arm_stroll(wheel: &mut Wheel, now: u64, e: Entity, s: &mut Stroll, r: &mut Rng) {
+    let at = now + idle_wait(r, s.interval).max(1) as u64;
+    wheel.push(at.min(now + WHEEL as u64 - 1), e, Due::Stroll);
+    s.scheduled = true;
+}
+/// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
+/// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
+/// Returns whether a spot was picked.
+fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
     let (h, v) = (s.horizontal_range, s.vertical_range);
     let lim = level.half - 2;
     for _ in 0..10 {
@@ -380,60 +339,41 @@ fn stroll_one(level: &Level, now: u64, active: &ActiveUntil, pos: &Pos, s: &mut 
         // A spot in the air has nothing under it; one in the stone is lifted out of it onto the slab.
         if dy <= 0 && x.abs() < lim && z.abs() < lim {
             s.walking = true;
-            s.pending = true;
             s.tx = f64::from(x) + 0.5;
             s.tz = f64::from(z) + 0.5;
-            return;
+            return true;
         }
     }
-    s.wait = idle_wait(r, s.interval);
-}
-fn stroll(
-    cfg: Res<Config>,
-    level: Res<Level>,
-    clock: Res<Clock>,
-    mut q: Query<(&Pos, &ActiveUntil, &mut Stroll, &mut Rng), Without<Asleep>>,
-) {
-    let now = clock.0;
-    if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, a, mut s, mut r)| stroll_one(&level, now, a, p, &mut s, &mut r));
-    } else {
-        for (p, a, mut s, mut r) in &mut q {
-            stroll_one(&level, now, a, p, &mut s, &mut r);
-        }
-    }
+    false
 }
 
 /// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are.
 /// When one moves (`Players.dirty`), the cows of the cells its old and new circles cover are tested against the
 /// players of the 3 x 3 bins of 32 blocks around them, and only the cows that enter or leave the 32 blocks are
-/// touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and an idle sleeper wakes; a leaving
-/// cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
+/// touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and its stroll attempt is armed if it
+/// had none; a leaving cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
 fn player_near(
     clock: Res<Clock>,
     mut players: ResMut<Players>,
-    mut grid: ResMut<Grid>,
-    mut active: Query<(&mut ActiveUntil, Option<&Asleep>)>,
-    mut commands: Commands,
+    mut idx: ResMut<Index>,
+    mut wheel: ResMut<Wheel>,
+    mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
 ) {
     if !players.dirty {
         return;
     }
     players.dirty = false;
     const BIN: f64 = 32.0;
-    let origin = grid.origin;
-    let bins = ((grid.width as f64 * CELL / BIN).ceil() as i64).max(1) + 2;
+    let origin = idx.origin;
+    let bins = ((idx.width as f64 * CELL / BIN).ceil() as i64).max(1) + 2;
     let bin = |v: f64| (((v - origin) / BIN).floor() as i64 + 1).clamp(0, bins - 1);
-    let fill = |list: &[(f64, f64)]| {
-        let mut by_bin: Vec<Vec<(f64, f64)>> = vec![Vec::new(); (bins * bins) as usize];
-        for &(px, pz) in list {
-            by_bin[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
-        }
-        by_bin
-    };
     let new = players.list.clone();
     let old = std::mem::replace(&mut players.prev, new.clone());
-    let within = |by_bin: &Vec<Vec<(f64, f64)>>, x: f64, z: f64| {
+    let mut by_bin: Vec<Vec<(f64, f64)>> = vec![Vec::new(); (bins * bins) as usize];
+    for &(px, pz) in &new {
+        by_bin[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
+    }
+    let within = |x: f64, z: f64| {
         let (bx, bz) = (bin(x), bin(z));
         (bz - 1..=bz + 1).any(|zz| {
             (bx - 1..=bx + 1).any(|xx| {
@@ -443,36 +383,32 @@ fn player_near(
             })
         })
     };
-    let (new_bins, _old_bins) = (fill(&new), ());
     // The cells either circle covers, each once.
     let tick = clock.0 as u32 + 1;
-    let cells = grid.width * grid.width;
-    let grid = &mut *grid;
-    grid.stamp.resize(cells, 0);
+    let idx = &mut *idx;
     let mut covered: Vec<usize> = Vec::new();
     for &(px, pz) in new.iter().chain(old.iter()) {
-        let (x0, x1) = (grid.column(px - 32.0).max(0), grid.column(px + 32.0).min(grid.width as i64 - 1));
-        let (z0, z1) = (grid.column(pz - 32.0).max(0), grid.column(pz + 32.0).min(grid.width as i64 - 1));
+        let (x0, x1) = (idx.column(px - 32.0).max(0), idx.column(px + 32.0).min(idx.width as i64 - 1));
+        let (z0, z1) = (idx.column(pz - 32.0).max(0), idx.column(pz + 32.0).min(idx.width as i64 - 1));
         for zz in z0..=z1 {
             for xx in x0..=x1 {
-                let c = zz as usize * grid.width + xx as usize;
-                if grid.stamp[c] != tick {
-                    grid.stamp[c] = tick;
+                let c = zz as usize * idx.width + xx as usize;
+                if idx.stamp[c] != tick {
+                    idx.stamp[c] = tick;
                     covered.push(c);
                 }
             }
         }
     }
     for c in covered {
-        for e in &grid.items[grid.start[c] as usize..grid.start[c + 1] as usize] {
-            let now_in = within(&new_bins, e.x, e.z);
-            let Ok((mut a, asleep)) = active.get_mut(e.entity) else { continue };
+        for &e in &idx.cells[c] {
+            let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { continue };
+            let (mn, mx) = (b.0.min_position(), b.0.max_position());
+            let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
             if now_in && a.0 != u64::MAX {
                 a.0 = u64::MAX;
-                if let Some(asleep) = asleep
-                    && asleep.until == u64::MAX
-                {
-                    commands.entity(e.entity).remove::<Asleep>().insert(Resume(1));
+                if !s.scheduled && !s.walking {
+                    arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
                 }
             } else if !now_in && a.0 == u64::MAX {
                 a.0 = clock.0 + 100;
@@ -484,111 +420,119 @@ fn player_near(
 fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).floor() as i32
 }
-/// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder.
-fn pathfind_one(now: u64, level: &Level, sp: &Species, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, r: &mut Rng) {
-    s.pending = false;
-    let mw = level.mw.0;
-    let pm = PathMob {
-        position: pos.0,
-        width: body.width,
-        height: body.height,
-        on_ground: c.on_ground,
-        in_water: false,
-        max_up_step: body.step_height,
-        max_fall_distance: comfortable_fall_distance(0.0),
-        malus: sp.malus,
-        can_float: sp.can_float,
-        can_open_doors: sp.can_open_doors,
-        can_pass_doors: sp.can_pass_doors,
-        can_walk_over_fences: sp.can_walk_over_fences,
-        stands_on_lava: false,
-    };
-    let max_len = sp.follow_range;
-    let max_visited = (max_len * 16.0).floor() as i32;
-    let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
-    let path = Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited);
-    match path {
-        Some(p) if !p.nodes.is_empty() => {
-            nav.path = Some(p);
-            nav.last_check = now;
-            nav.last_pos = pos.0;
-        }
-        _ => {
-            nav.path = None;
-            s.walking = false;
-            s.wait = idle_wait(r, s.interval);
-        }
-    }
-}
+/// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
+/// that asked for a path are visited.
+#[allow(clippy::type_complexity)]
 fn pathfind(
-    cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
     sp: Res<Species>,
-    mut q: Query<(&Pos, &Body, &Contact, &mut Stroll, &mut Nav, &mut Rng), Without<Asleep>>,
+    mut wheel: ResMut<Wheel>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, &mut Rng), With<NeedsPath>>,
+    mut commands: Commands,
 ) {
-    if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, b, c, mut s, mut n, mut r)| {
-            if s.pending {
-                pathfind_one(clock.0, &level, &sp, p, b, c, &mut s, &mut n, &mut r);
+    let mw = level.mw.0;
+    for (e, pos, body, c, mut s, mut nav, mut r) in &mut q {
+        let pm = PathMob {
+            position: pos.0,
+            width: body.width,
+            height: body.height,
+            on_ground: c.on_ground,
+            in_water: false,
+            max_up_step: body.step_height,
+            max_fall_distance: comfortable_fall_distance(0.0),
+            malus: sp.malus,
+            can_float: sp.can_float,
+            can_open_doors: sp.can_open_doors,
+            can_pass_doors: sp.can_pass_doors,
+            can_walk_over_fences: sp.can_walk_over_fences,
+            stands_on_lava: false,
+        };
+        let max_len = sp.follow_range;
+        let max_visited = (max_len * 16.0).floor() as i32;
+        let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
+        let path = Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited);
+        commands.entity(e).remove::<NeedsPath>();
+        match path {
+            Some(p) if !p.nodes.is_empty() => {
+                nav.path = Some(p);
+                nav.last_check = clock.0;
+                nav.last_pos = pos.0;
+                commands.entity(e).insert((Following, Moving));
             }
-        });
-    } else {
-        for (p, b, c, mut s, mut n, mut r) in &mut q {
-            if s.pending {
-                pathfind_one(clock.0, &level, &sp, p, b, c, &mut s, &mut n, &mut r);
+            _ => {
+                nav.path = None;
+                s.walking = false;
+                arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
             }
         }
     }
 }
 
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
-/// control at the next node. (The stuck detection and the recompute on a block change are not here.)
-fn follow_one(now: u64, level: &Level, pos: &Pos, body: &Body, drive: &Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo, r: &mut Rng) {
-    let mw = level.mw.0;
-    let Some(path) = nav.path.as_mut() else {
-        s.walking = false;
-        s.wait = idle_wait(r, s.interval);
-        return;
-    };
-    let mob = Vec3::new(pos.0.x, (pos.0.y + 0.5).floor(), pos.0.z);
-    let width = body.width;
-    let max_distance = if width > 0.75 { width / 2.0 } else { 0.75 - width / 2.0 };
-    let n = path.next_node();
-    let xd = (pos.0.x - (f64::from(n.x) + 0.5)).abs();
-    let yd = (pos.0.y - f64::from(n.y)).abs();
-    let zd = (pos.0.z - (f64::from(n.z) + 0.5)).abs();
-    let max = f64::from(max_distance);
-    let close = xd < max && zd < max && yd < 1.0;
-    if close || (Navigation::can_cut_corner(n.kind) && should_target_next_node(path, mob, width)) {
-        path.advance();
+/// control at the next node. (The recompute on a block change is not here.) Visits only the cows that follow a path.
+#[allow(clippy::type_complexity)]
+fn follow(
+    clock: Res<Clock>,
+    level: Res<Level>,
+    mut wheel: ResMut<Wheel>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo, &mut Rng), With<Following>>,
+    mut commands: Commands,
+) {
+    let (now, mw) = (clock.0, level.mw.0);
+    for (e, pos, body, mut drive, mut s, mut nav, mut m, mut r) in &mut q {
+        let mut end = false;
+        match nav.path.as_mut() {
+            None => end = true,
+            Some(path) => {
+                let mob = Vec3::new(pos.0.x, (pos.0.y + 0.5).floor(), pos.0.z);
+                let width = body.width;
+                let max_distance = if width > 0.75 { width / 2.0 } else { 0.75 - width / 2.0 };
+                let n = path.next_node();
+                let xd = (pos.0.x - (f64::from(n.x) + 0.5)).abs();
+                let yd = (pos.0.y - f64::from(n.y)).abs();
+                let zd = (pos.0.z - (f64::from(n.z) + 0.5)).abs();
+                let max = f64::from(max_distance);
+                let close = xd < max && zd < max && yd < 1.0;
+                if close || (Navigation::can_cut_corner(n.kind) && should_target_next_node(path, mob, width)) {
+                    path.advance();
+                }
+                // `doStuckDetection`: every 100 ticks, a cow that has moved less than a quarter of what its speed
+                // would carry it gives its path up.
+                let mut stuck = false;
+                if now - nav.last_check > 100 {
+                    let speed = drive.speed;
+                    let effective = if speed >= 1.0 { speed } else { speed * speed };
+                    let threshold = f64::from(effective * 100.0 * 0.25);
+                    let d = (mob.x - nav.last_pos.x).powi(2) + (mob.y - nav.last_pos.y).powi(2) + (mob.z - nav.last_pos.z).powi(2);
+                    stuck = d < threshold * threshold;
+                    nav.last_check = now;
+                    nav.last_pos = mob;
+                }
+                let path = nav.path.as_ref().unwrap();
+                if stuck || path.is_done() {
+                    end = true;
+                } else {
+                    let target = path.entity_pos_at(path.next, width);
+                    let (bx, by, bz) = (target.x.floor() as i32, target.y.floor() as i32, target.z.floor() as i32);
+                    let y = if mw.facts.is_air(mw.world.block(bx, by.saturating_sub(1), bz)) {
+                        target.y
+                    } else {
+                        mw.floor_level(bx, by, bz)
+                    };
+                    *m = MoveTo { active: true, x: target.x, y, z: target.z, speed_modifier: 1.0 };
+                }
+            }
+        }
+        if end {
+            nav.path = None;
+            s.walking = false;
+            drive.zza = 0.0;
+            m.active = false;
+            commands.entity(e).remove::<Following>();
+            arm_stroll(&mut wheel, now, e, &mut s, &mut r);
+        }
     }
-    // `doStuckDetection`: every 100 ticks, a cow that has moved less than a quarter of what its speed would carry it
-    // gives its path up.
-    let mut stuck = false;
-    if now - nav.last_check > 100 {
-        let speed = drive.speed;
-        let effective = if speed >= 1.0 { speed } else { speed * speed };
-        let threshold = f64::from(effective * 100.0 * 0.25);
-        let d = (mob.x - nav.last_pos.x).powi(2) + (mob.y - nav.last_pos.y).powi(2) + (mob.z - nav.last_pos.z).powi(2);
-        stuck = d < threshold * threshold;
-        nav.last_check = now;
-        nav.last_pos = mob;
-    }
-    if stuck || path.is_done() {
-        nav.path = None;
-        s.walking = false;
-        s.wait = idle_wait(r, s.interval);
-        return;
-    }
-    let target = path.entity_pos_at(path.next, width);
-    let (bx, by, bz) = (target.x.floor() as i32, target.y.floor() as i32, target.z.floor() as i32);
-    let y = if mw.facts.is_air(mw.world.block(bx, by.saturating_sub(1), bz)) {
-        target.y
-    } else {
-        mw.floor_level(bx, by, bz)
-    };
-    *m = MoveTo { active: true, x: target.x, y, z: target.z, speed_modifier: 1.0 };
 }
 // Vanilla's NaN-sensitive `!(a < b)` form.
 #[allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -615,27 +559,6 @@ fn should_target_next_node(path: &Path, mob: Vec3, width: f32) -> bool {
     let a = to_current.normalize();
     let b = to_next.normalize();
     a.x * b.x + a.y * b.y + a.z * b.z < 0.0
-}
-fn follow(
-    cfg: Res<Config>,
-    clock: Res<Clock>,
-    level: Res<Level>,
-    mut q: Query<(&Pos, &Body, &Drive, &mut Stroll, &mut Nav, &mut MoveTo, &mut Rng), Without<Asleep>>,
-) {
-    let now = clock.0;
-    if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, b, d, mut s, mut n, mut m, mut r)| {
-            if s.walking && !s.pending {
-                follow_one(now, &level, p, b, d, &mut s, &mut n, &mut m, &mut r);
-            }
-        });
-    } else {
-        for (p, b, d, mut s, mut n, mut m, mut r) in &mut q {
-            if s.walking && !s.pending {
-                follow_one(now, &level, p, b, d, &mut s, &mut n, &mut m, &mut r);
-            }
-        }
-    }
 }
 
 fn wrap(a: f32) -> f32 {
@@ -675,7 +598,7 @@ fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, bod
     d.speed = speed;
     d.zza = speed;
 }
-fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body), Without<Asleep>>) {
+fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body), With<Following>>) {
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b)| move_control_one(p, &mut y, &mut m, &mut d, b));
     } else {
@@ -695,10 +618,12 @@ fn travel_one(
     c: &mut Contact,
     d: &Drive,
     body: &Body,
-) {
+    bounds: &mut Bounds,
+) -> bool {
+    let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == (0.0 - body.gravity) * f64::from(0.98_f32) {
-        return;
+    if c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+        return true;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
     let v = vel.0;
@@ -728,13 +653,14 @@ fn travel_one(
     // `Entity.move`: the sweep over the blocks, then the collision flags and the landing.
     let wanted = vel.0;
     let p = pos.0;
-    let (hw, h) = (f64::from(body.width) / 2.0, f64::from(body.height));
-    let bounds = Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw));
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
     let moved = scene
-        .resolve_in_border_with(bounds, wanted, body.step_height, c.on_ground, None, &[])
+        .resolve_in_border_with(bounds.0, wanted, body.step_height, c.on_ground, None, &[])
         .unwrap_or(Vec3::ZERO);
     pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
+    if moved != Vec3::ZERO {
+        bounds.0 = bounds.0.move_by(moved);
+    }
     let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
     c.horizontal = differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
     let vertical = wanted.y != moved.y;
@@ -755,149 +681,105 @@ fn travel_one(
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
+    c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    mut q: Query<(&mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body), Without<Asleep>>,
+    par: ParallelCommands,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, Has<Following>), With<Moving>>,
 ) {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, following: bool| {
+        // At rest and not following a path: the physics of the cow goes inactive until something moves it.
+        if travel_one(&level, &mut p, &mut v, y, &mut c, d, b, &mut bb) && !following {
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).remove::<Moving>();
+            });
+        }
+    };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(mut p, mut v, y, mut c, d, b)| travel_one(&level, &mut p, &mut v, y, &mut c, d, b));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, f)| one(e, p, v, y, c, d, b, bb, f));
     } else {
-        for (mut p, mut v, y, mut c, d, b) in &mut q {
-            travel_one(&level, &mut p, &mut v, y, &mut c, d, b);
+        for (e, p, v, y, c, d, b, bb, f) in &mut q {
+            one(e, p, v, y, c, d, b, bb, f);
         }
     }
 }
 
-/// The spatial index of the start of the step (a resource, rebuilt by a system).
-fn index(mut grid: ResMut<Grid>, q: Query<(Entity, &Pos, &Body, Option<&Asleep>)>) {
-    grid.rebuild(q.iter().map(|(entity, p, b, asleep)| Entry {
-        entity,
-        x: p.0.x,
-        y: p.0.y,
-        z: p.0.z,
-        half: f64::from(b.width) / 2.0,
-        height: f64::from(b.height),
-        asleep: asleep.is_some(),
-        until: asleep.map_or(0, |a| a.until),
-    }));
+/// The index follows the boxes that changed (the cows that moved): only a change of column touches it.
+fn reindex(mut idx: ResMut<Index>, mut q: Query<(Entity, &Bounds, &mut Cell), Changed<Bounds>>) {
+    for (e, b, mut c) in &mut q {
+        let (mn, mx) = (b.0.min_position(), b.0.max_position());
+        let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        if cell != c.0 {
+            if c.0 != u32::MAX {
+                idx.remove(e, c.0);
+            }
+            idx.insert(e, cell);
+            c.0 = cell;
+        }
+    }
 }
 
-/// `LivingEntity.pushEntities` / `Entity.push`, own half only: each cow reads the neighbours it overlaps in
-/// the index (their positions at the start of the step) and moves its own velocity away from each; a sleeping
-/// neighbour it overlaps is woken (it pushes itself the next step: a one-step delay).
-fn push_one(
-    grid: &Grid,
-    now: u64,
-    e: Entity,
-    pos: &Pos,
-    vel: &mut Vel,
-    body: &Body,
-    wake: &mut impl FnMut(Entity, i32),
+/// `LivingEntity.pushEntities` / `Entity.push` for the boxes that moved this step (the only ones that can start
+/// overlapping something): the index gives the candidates, the boxes are their components. A pair is handled once
+/// (by the lower entity when both moved), both halves applied; the velocity a cow receives wakes its physics.
+/// A resting cow another one overlaps is pushed by that one (it receives a velocity: the event); a cow that is
+/// not moved and overlaps nobody costs nothing.
+#[allow(clippy::type_complexity)]
+fn push(
+    idx: Res<Index>,
+    movers: Query<(Entity, &Bounds), Changed<Bounds>>,
+    boxes: Query<Ref<Bounds>>,
+    mut vels: Query<(&mut Vel, Has<Moving>)>,
+    mut commands: Commands,
 ) {
-    let half = f64::from(body.width) / 2.0;
-    let height = f64::from(body.height);
-    let mut dv = (0.0_f64, 0.0_f64);
-    grid.for_near(pos.0.x, pos.0.z, |o| {
-        if o.entity == e {
-            return;
-        }
-        let overlap = (pos.0.x - o.x).abs() < half + o.half
-            && (pos.0.z - o.z).abs() < half + o.half
-            && pos.0.y < o.y + o.height
-            && o.y < pos.0.y + height;
-        if !overlap {
-            return;
-        }
-        if o.asleep {
-            wake(o.entity, if o.until == u64::MAX { 1 } else { o.until.saturating_sub(now) as i32 });
-        }
-        let (mut xa, mut za) = (o.x - pos.0.x, o.z - pos.0.z);
-        let mut dd = xa.abs().max(za.abs());
-        if dd >= f64::from(0.01_f32) {
+    for (e, b) in &movers {
+        let (mn, mx) = (b.0.min_position(), b.0.max_position());
+        let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        let mut near: Vec<Entity> = Vec::new();
+        idx.for_near(cx, cz, |o| near.push(o));
+        for o in near {
+            if o == e {
+                continue;
+            }
+            let Ok(ob) = boxes.get(o) else { continue };
+            if !b.0.intersects(ob.0) || (ob.is_changed() && o < e) {
+                continue;
+            }
+            let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
+            let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
+            let mut dd = xa.abs().max(za.abs());
+            if dd < f64::from(0.01_f32) {
+                continue;
+            }
             dd = dd.sqrt();
             xa /= dd;
             za /= dd;
             let pow = (1.0_f64 / dd).min(1.0);
             xa *= pow * f64::from(0.05_f32);
             za *= pow * f64::from(0.05_f32);
-            dv.0 -= xa;
-            dv.1 -= za;
-        }
-    });
-    if dv != (0.0, 0.0) {
-        vel.0 = Vec3::new(vel.0.x + dv.0, vel.0.y, vel.0.z + dv.1);
-    }
-}
-fn push(
-    cfg: Res<Config>,
-    grid: Res<Grid>,
-    clock: Res<Clock>,
-    par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &mut Vel, &Body), Without<Asleep>>,
-) {
-    let now = clock.0;
-    if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, mut v, b)| {
-            par.command_scope(|mut c| {
-                push_one(&grid, now, e, p, &mut v, b, &mut |o, remaining| {
-                    c.entity(o).remove::<Asleep>().insert(Resume(remaining));
-                })
-            });
-        });
-    } else {
-        par.command_scope(|mut c| {
-            for (e, p, mut v, b) in &mut q {
-                push_one(&grid, now, e, p, &mut v, b, &mut |o, remaining| {
-                    c.entity(o).remove::<Asleep>().insert(Resume(remaining));
-                });
+            for (who, sign) in [(e, -1.0), (o, 1.0)] {
+                if let Ok((mut v, moving)) = vels.get_mut(who) {
+                    v.0 = Vec3::new(v.0.x + sign * xa, v.0.y, v.0.z + sign * za);
+                    if !moving {
+                        commands.entity(who).insert(Moving);
+                    }
+                }
             }
-        });
-    }
-}
-/// A sleeper woken by a push takes up its stroll wait where it was.
-fn resume(mut q: Query<(Entity, &Resume, &mut Stroll)>, mut commands: Commands) {
-    for (e, r, mut s) in &mut q {
-        s.wait = r.0.max(1);
-        commands.entity(e).remove::<Resume>();
+        }
     }
 }
 
-/// A cow at its resting state (on the ground, no horizontal motion, the vertical rest velocity, no walk, no
-/// input, a stroll wait still to run) goes to sleep until that wait ends: the tick would leave it as it is.
-fn sleep(
-    cfg: Res<Config>,
-    clock: Res<Clock>,
-    mut wheel: ResMut<Wheel>,
-    q: Query<(Entity, &Vel, &Contact, &Stroll, &Drive, &Body, &ActiveUntil), Without<Asleep>>,
-    mut commands: Commands,
-) {
-    if !cfg.sleep {
-        return;
-    }
-    for (e, v, c, s, d, b, a) in &q {
-        let rest_vy = (0.0 - b.gravity) * f64::from(0.98_f32);
-        if !(c.on_ground && !s.walking && d.zza == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest_vy) {
-            continue;
-        }
-        if clock.0 >= a.0 {
-            // The stroll goal is refused until a player comes near: no wake time, only the player wakes it.
-            commands.entity(e).insert(Asleep { until: u64::MAX });
-        } else if s.wait > 1 {
-            let until = clock.0 + (s.wait as u64 - 1).min(WHEEL as u64 - 1);
-            wheel.push(until, e, Due::Wake { until });
-            commands.entity(e).insert(Asleep { until });
-        }
-    }
-}
-/// What is due at this tick in the timer wheel: a sleeper's stroll wait ends (it wakes owing 1), a baby grows up.
-/// A sleeper that was woken earlier (a push) has a stale entry, ignored.
+/// What is due at this tick in the timer wheel: a stroll attempt (a spot is picked, or the attempt fails and is
+/// armed again, or the goal is refused for lack of a player and is not re-armed), a baby grows up.
+#[allow(clippy::type_complexity)]
 fn due(
     mut clock: ResMut<Clock>,
     mut wheel: ResMut<Wheel>,
-    mut sleepers: Query<(&Asleep, &mut Stroll)>,
-    mut babies: Query<(&mut Body, &Sizes, &GrowAt)>,
+    level: Res<Level>,
+    mut strollers: Query<(&Pos, &ActiveUntil, &mut Stroll, &mut Rng)>,
+    mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     mut commands: Commands,
 ) {
     clock.0 += 1;
@@ -905,21 +787,26 @@ fn due(
     let list = std::mem::take(&mut wheel.slots[slot]);
     for (e, d) in list {
         match d {
-            Due::Wake { until } => {
-                if until == clock.0
-                    && let Ok((a, mut s)) = sleepers.get_mut(e)
-                    && a.until == until
-                {
-                    s.wait = 1;
-                    commands.entity(e).remove::<Asleep>();
+            Due::Stroll => {
+                if let Ok((pos, active, mut s, mut r)) = strollers.get_mut(e) {
+                    s.scheduled = false;
+                    if s.walking || clock.0 >= active.0 {
+                        continue;
+                    }
+                    if pick_spot(&level, pos, &mut s, &mut r) {
+                        commands.entity(e).insert(NeedsPath);
+                    } else {
+                        arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
+                    }
                 }
             }
             Due::Grow => {
-                if let Ok((mut b, sizes, g)) = babies.get_mut(e)
+                if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e)
                     && g.0 == clock.0
                 {
                     b.width = sizes.adult.0;
                     b.height = sizes.adult.1;
+                    bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                     commands.entity(e).remove::<GrowAt>();
                 }
             }
@@ -944,7 +831,7 @@ impl Herd {
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
-        world.insert_resource(Grid { origin: -f64::from(half), width: (2 * half / 2) as usize + 2, ..Default::default() });
+        world.insert_resource(Index::new(-f64::from(half), (2 * half / 2) as usize + 2));
         let mut rng = Rng(seed | 1);
         for i in 0..n {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
@@ -952,6 +839,17 @@ impl Herd {
             let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
             world.spawn(cow_bundle(o + cx * spacing + 0.5, o + cz * spacing + 0.5, s));
         }
+        {
+            let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
+            let ids: Vec<Entity> = world.query_filtered::<Entity, With<Stroll>>().iter(&world).collect();
+            for e in ids {
+                let at = 1 + idle_wait(&mut arm, 60).max(0) as u64;
+                world.resource_mut::<Wheel>().push(at.min(WHEEL as u64 - 1), e, Due::Stroll);
+                world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+            }
+        }
+        // The cows are listed in the index from the start (a player event is read at the first tick).
+        world.run_system_cached(reindex).unwrap();
         Self { world, schedule: schedule() }
     }
     /// The players of the herd's world (their positions; cows within 32 blocks stay active).
@@ -967,14 +865,16 @@ impl Herd {
     pub fn make_baby(&mut self, e: Entity, ticks: u64) {
         let now = self.world.resource::<Clock>().0;
         let sizes = *self.world.get::<Sizes>(e).unwrap();
+        let p = self.world.get::<Pos>(e).unwrap().0;
         let mut b = self.world.get_mut::<Body>(e).unwrap();
         b.width = sizes.baby.0;
         b.height = sizes.baby.1;
+        self.world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
         self.world.entity_mut(e).insert(GrowAt(now + ticks));
         self.world.resource_mut::<Wheel>().push(now + ticks, e, Due::Grow);
     }
     /// One tick with the wall time of each system added to `acc` (seconds), in the schedule's order.
-    pub fn tick_timed(&mut self, acc: &mut [f64; 11]) {
+    pub fn tick_timed(&mut self, acc: &mut [f64; 8]) {
         macro_rules! t {
             ($i:expr, $s:expr) => {
                 let t0 = std::time::Instant::now();
@@ -983,25 +883,22 @@ impl Herd {
             };
         }
         t!(0, due);
-        t!(1, index);
-        t!(2, player_near);
-        t!(3, stroll);
-        t!(4, pathfind);
-        t!(5, follow);
-        t!(6, move_control);
-        t!(7, travel);
-        t!(8, push);
-        t!(9, resume);
-        t!(10, sleep);
+        t!(1, player_near);
+        t!(2, pathfind);
+        t!(3, follow);
+        t!(4, move_control);
+        t!(5, travel);
+        t!(6, reindex);
+        t!(7, push);
     }
-    pub const SYSTEMS: [&'static str; 11] =
-        ["due", "index", "player_near", "stroll", "pathfind", "follow", "move_control", "travel", "push", "resume", "sleep"];
-    /// (asleep, walking, total)
-    pub fn counts(&mut self) -> (usize, usize, usize) {
-        let asleep = self.world.query_filtered::<(), With<Asleep>>().iter(&self.world).count();
-        let walking = self.world.query::<&Stroll>().iter(&self.world).filter(|s| s.walking).count();
+    pub const SYSTEMS: [&'static str; 8] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push"];
+    /// (cows with no active module, cows that follow a path, cows whose physics is active, total)
+    pub fn counts(&mut self) -> (usize, usize, usize, usize) {
+        let following = self.world.query_filtered::<(), With<Following>>().iter(&self.world).count();
+        let moving = self.world.query_filtered::<(), With<Moving>>().iter(&self.world).count();
+        let idle = self.world.query_filtered::<(), (Without<Moving>, Without<Following>)>().iter(&self.world).count();
         let total = self.world.query::<&Pos>().iter(&self.world).count();
-        (asleep, walking, total)
+        (idle, following, moving, total)
     }
 }
 
@@ -1053,7 +950,7 @@ mod tests {
         for t in 0..800 {
             herd.tick();
             if t >= 400 {
-                let (asleep, _, _) = herd.counts();
+                let (asleep, _, _, _) = herd.counts();
                 max_asleep = max_asleep.max(asleep);
                 min_asleep = min_asleep.min(asleep);
             }
@@ -1070,19 +967,15 @@ mod tests {
         for _ in 0..400 {
             herd.tick();
         }
-        {
-            let mut q = herd.world.query_filtered::<(&Stroll, &Vel, &Contact, &Pos, &ActiveUntil), Without<Asleep>>();
-            for (s, v, c, p, a) in q.iter(&herd.world).take(6) {
-                eprintln!("awake: walking={} pending={} wait={} vel=({:.4},{:.4},{:.4}) ground={} pos=({:.1},{:.1}) active_until={}", s.walking, s.pending, s.wait, v.0.x, v.0.y, v.0.z, c.on_ground, p.0.x, p.0.z, a.0);
-            }
-        }
         assert!(herd.counts().0 >= 295, "{} asleep after the player left", herd.counts().0);
         // And the player comes back: the cows around it wake.
         herd.set_players(vec![(0.0, 0.0)]);
-        for _ in 0..5 {
+        let mut least = 300;
+        for _ in 0..300 {
             herd.tick();
+            least = least.min(herd.counts().0);
         }
-        assert!(herd.counts().0 < 150, "{} still asleep with a player there", herd.counts().0);
+        assert!(least < 250, "{least} idle at the least with a player there");
         eprintln!("travelled {travelled}, asleep between {min_asleep} and {max_asleep} of 300");
     }
 }

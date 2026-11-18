@@ -17,7 +17,7 @@ fn main() {
         bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
     }
     let mut herd = Herd::new(n, spacing, mode != "awake", parallel, 42);
-    let mut acc = [0.0_f64; 11];
+    let mut acc = [0.0_f64; 8];
     // The players stand on a grid over the slab.
     let side = (n as f64).sqrt().ceil() * spacing;
     let k = (players as f64).sqrt().ceil() as usize;
@@ -41,7 +41,7 @@ fn main() {
         }
     }
     let dt = t0.elapsed();
-    let (asleep, walking, total) = herd.counts();
+    let (idle, following, moving, total) = herd.counts();
     let window = (ticks - warm).max(1);
     if timed {
         let total: f64 = acc.iter().sum();
@@ -50,7 +50,7 @@ fn main() {
         }
     }
     println!(
-        "{mode} n={n} ticks={ticks} spacing={spacing} players={players} wall/tick={:.1}us asleep={asleep}/{total} walking={walking}",
+        "{mode} n={n} ticks={ticks} spacing={spacing} players={players} wall/tick={:.1}us idle={idle}/{total} following={following} moving={moving}",
         dt.as_secs_f64() * 1e6 / window as f64
     );
 }
