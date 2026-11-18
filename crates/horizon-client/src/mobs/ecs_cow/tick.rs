@@ -92,8 +92,14 @@ impl CowItem<'_, '_> {
         true
     }
 
-    /// `ai::base_tick`: fluids, fire, wall, air, hurt timers, burning and the ambient sound.
-    fn base_tick(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) -> bool {
+    /// The part of the base tick that reads the blocks: fluids, fire contact, void, wall, air. Returns the
+    /// fire contact, whether the cow touches lava, and where they were measured.
+    pub fn base_world(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<CowEvent>,
+    ) -> (f32, bool, Vec3) {
         self.env.was_eye_in_water = self.fluids.eye_in_water;
         self.update_fluids(w, events);
         let fire = crate::motion::environment::fire_contact(w.world, w.registry, self.bounds());
@@ -171,6 +177,12 @@ impl CowItem<'_, '_> {
                 self.damage(level, damage, Damage::of(DamageKind::Drown));
             }
         }
+        (fire, lava, contact_at)
+    }
+
+    /// `ai::base_tick`: fluids, fire, wall, air, hurt timers, burning and the ambient sound.
+    fn base_tick(&mut self, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<CowEvent>) -> bool {
+        let (fire, lava, contact_at) = self.base_world_or_rest(w, level, events);
         // `hurt_by::base_tick`
         if self.vitals.hurt_time > 0 {
             self.vitals.hurt_time -= 1;

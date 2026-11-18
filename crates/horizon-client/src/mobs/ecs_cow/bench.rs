@@ -19,8 +19,9 @@ fn bench_cows() {
     let which = std::env::var("BENCH").unwrap_or_else(|_| "mob".into());
     let (n, ticks) = (env("BENCH_N", 2000), env("BENCH_TICKS", 100) as u32);
     // A square of cows two blocks apart (the server bench's grid is as dense), walled in.
+    let spacing = env("BENCH_SPACING", 2) as f64;
     let side = (n as f64).sqrt().ceil() as i32 + 2;
-    let half = side + 2;
+    let half = (f64::from(side) * spacing / 2.0) as i32 + 4;
     let chunks = (half * 2 / 16) + 2;
     let build = move |world: &mut crate::world::World, registry: &horizon_world::registry::BlockRegistry| {
         for cx in -chunks..chunks {
@@ -46,9 +47,13 @@ fn bench_cows() {
         let cows: Vec<Mob> = (0..n)
             .map(|i| {
                 let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
-                let at = Vec3::new(-f64::from(side) + cx * 2.0 + 0.5, 1.0, -f64::from(side) + cz * 2.0 + 0.5);
+                let o = -f64::from(side) * spacing / 2.0;
+                let at = Vec3::new(o + cx * spacing + 0.5, 1.0, o + cz * spacing + 0.5);
                 let mut m = Mob::new(i as u32 + 1, kind.clone(), at, (i * 37 % 360) as f32);
                 m.persistent = true;
+                if env("BENCH_GOALS", 1) == 0 {
+                    m.ai.goals.clear();
+                }
                 m
             })
             .collect();
@@ -72,24 +77,33 @@ fn bench_cows() {
                 for m in cows {
                     plain.spawn_from(m);
                 }
+                if env("BENCH_GOALS", 1) == 0 {
+                    for slot in 0..plain.len() {
+                        plain.clear_goals(slot);
+                    }
+                }
                 for _ in 0..ticks {
                     let events = plain.pass(w, &mut level.level());
                     std::hint::black_box(&events);
                 }
-                eprintln!("bench plain {n} cows {ticks} ticks, {} left", plain.len());
+                eprintln!("bench plain {n} cows {ticks} ticks, {} left, rest {:?}", plain.len(), plain.rest_counts());
             }
             _ => {
                 let mut ecs = CowWorld::new();
-                ecs.rest = which == "ecs_rest";
+                ecs.rest = which.ends_with("_rest");
+                ecs.systems = which.starts_with("ecs_sys");
                 ecs.dense = which == "ecs_dense";
                 for m in cows {
-                    ecs.spawn_from(m);
+                    let e = ecs.spawn_from(m);
+                    if env("BENCH_GOALS", 1) == 0 {
+                        ecs.clear_goals(e);
+                    }
                 }
                 for _ in 0..ticks {
                     let events = ecs.pass(w, &mut level.level());
                     std::hint::black_box(&events);
                 }
-                eprintln!("bench ecs {n} cows {ticks} ticks, {} left", ecs.len());
+                eprintln!("bench ecs {n} cows {ticks} ticks, {} left, rest {:?}, lanes {:?}", ecs.len(), ecs.rest_counts(), ecs.lane_counts());
             }
         }
     });

@@ -175,7 +175,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
         ecs.mutate_order = what == "reverse";
         ecs.systems = what.starts_with("sys");
         ecs.all_free = what.contains("allfree");
-        ecs.rest = what == "rest" || what == "rest_mutated";
+        ecs.rest = what.starts_with("rest");
         for m in &cows {
             let e = ecs.spawn_from(m.clone());
             if !goals {
@@ -183,7 +183,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
             }
         }
         let mut plain = PlainWorld::new();
-        plain.rest = what == "rest" || what == "rest_mutated";
+        plain.rest = what.starts_with("rest");
         for (slot, m) in cows.iter().enumerate() {
             plain.spawn_from(m.clone());
             if !goals {
@@ -214,6 +214,24 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                         ecs.damage(e, &mut lb.level(), 100.0, src);
                         plain.damage(slot, &mut lc.level(), 100.0, src);
                     }
+                }
+            }
+            if (t == 180 || t == 200) && cows.len() >= 30 {
+                // Cows are put beside a fire, a lava pit and powder snow (in the same chunk, to rest there), then into
+                // them (their rest must end: the key must hold what the cow reads, not only the chunks).
+                let spots = if t == 180 {
+                    [(25, [1.5, 1.0, -10.2]), (27, [-10.5, 1.0, 12.9]), (29, [-8.5, 1.0, -5.2]), (31, [6.5, 1.0, 6.5])]
+                } else {
+                    [(25, [1.5, 1.0, -11.5]), (27, [-10.5, 0.2, 11.5]), (29, [-8.5, 0.2, -6.5]), (31, [6.5, -0.8, 6.5])]
+                };
+                for (slot, [x, y, z]) in spots {
+                    let at = Vec3::new(x, y, z);
+                    cows[slot].position = at;
+                    cows[slot].previous = at;
+                    cows[slot].velocity = Vec3::ZERO;
+                    let e = ecs.order[slot];
+                    ecs.teleport(e, at);
+                    plain.teleport(slot, at);
                 }
             }
             if t == 150 {
@@ -463,4 +481,14 @@ fn forty_cows_in_systems_tick_like_the_mobs() {
 #[ignore = "daily"]
 fn declaring_every_cow_free_is_caught() {
     assert!(run(40, 800, true, "sys_allfree").is_err());
+}
+
+/// The mutation of the base memo's key (only the blocks around the cow): the test fails.
+#[test]
+#[ignore = "daily"]
+fn a_base_key_that_holds_only_the_blocks_is_caught() {
+    super::rest::MUTATE_BASE.with(|c| c.set(true));
+    let result = run(40, 800, true, "rest_base_mutated");
+    super::rest::MUTATE_BASE.with(|c| c.set(false));
+    assert!(result.is_err());
 }

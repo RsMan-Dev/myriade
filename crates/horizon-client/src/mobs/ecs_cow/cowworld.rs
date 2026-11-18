@@ -188,12 +188,18 @@ impl CowWorld {
     /// (asks, hits) of every cow's rest memo.
     pub fn rest_counts(&mut self) -> (u64, u64) {
         let mut q = self.world.query::<&RestC>();
-        q.iter(&self.world).fold((0, 0), |(a, h), r| (a + r.asks, h + r.hits))
+        q.iter(&self.world).fold((0, 0), |(a, h), r| (a + r.asks + r.base_asks, h + r.hits + r.base_hits))
     }
     /// (free, coupled) cow-passes since the start.
     pub fn lane_counts(&self) -> (u64, u64) {
         let s = self.world.resource::<super::lanes::LaneStats>();
         (s.free, s.coupled)
+    }
+    pub fn teleport(&mut self, e: Entity, at: horizon_core::geometry::Vec3) {
+        let mut item = self.query.get_mut(&mut self.world, e).expect("a cow");
+        item.motion.position = at;
+        item.motion.previous = at;
+        item.motion.velocity = horizon_core::geometry::Vec3::ZERO;
     }
     pub fn clear_goals(&mut self, e: Entity) {
         let mut item = self.query.get_mut(&mut self.world, e).expect("a cow");
@@ -267,6 +273,7 @@ pub(super) fn visit(
         let view = MobWorld {
             others: &*snapshot,
             others_grid: Some(&*grid),
+            others_solid: Some(&[]),
             ..w.clone()
         };
         let kept = item.tick(&view, level, events);

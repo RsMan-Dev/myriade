@@ -16,6 +16,10 @@ pub struct RestState {
     pub memo: Option<Box<RestMemo>>,
     pub hits: u64,
     pub asks: u64,
+    /// The memo of the part of the base tick that reads the blocks, and its hits and asks.
+    pub base: Option<Box<BaseMemo>>,
+    pub base_hits: u64,
+    pub base_asks: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +58,9 @@ pub struct RestMemo {
 
 /// The mutation of the test: the key holds only the blocks around the cow (the test must then fail).
 thread_local!(pub static MUTATE_KEY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
+
+/// The mutation of the test of the base memo: the position leaves its key .
+thread_local!(pub static MUTATE_BASE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
 
 fn bits(v: Vec3) -> [u64; 3] {
     [v.x.to_bits(), v.y.to_bits(), v.z.to_bits()]
@@ -190,5 +197,115 @@ impl CowItem<'_, '_> {
                     },
                 })
             });
+    }
+}
+
+/// What the world part of the base tick reads of the cow, when nothing in it is burning.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BaseKey {
+    position: [u64; 3],
+    baby: bool,
+    alive: bool,
+    fluids: [u64; 2],
+    fluid_flags: [bool; 4],
+    frozen: i32,
+    air: i32,
+    stamp: RegionStamp,
+}
+#[derive(Clone, Debug)]
+pub struct BaseMemo {
+    key: BaseKey,
+    fire: f32,
+    lava: bool,
+}
+
+impl CowItem<'_, '_> {
+    fn base_key(&self, w: &MobWorld) -> Option<BaseKey> {
+        if self.env.fire_ticks != 0
+            || self.env.first_tick
+            || self.motion.no_physics
+            || !w.world.moving_pistons.is_empty()
+            || !w.world.shulkers.is_empty()
+        {
+            return None;
+        }
+        let b = self.bounds();
+        let (lo, hi) = (b.min_position(), b.max_position());
+        let stamp = w.world.region_stamp(
+            [lo.x.floor() as i32 - 2, lo.y.floor() as i32 - 2, lo.z.floor() as i32 - 2],
+            [hi.x.floor() as i32 + 2, hi.y.floor() as i32 + 3, hi.z.floor() as i32 + 2],
+        )?;
+        let f = &self.fluids;
+        let key = BaseKey {
+            position: bits(self.motion.position),
+            baby: self.is_baby(),
+            alive: self.alive(),
+            fluids: [f.water.to_bits(), f.lava.to_bits()],
+            fluid_flags: [f.in_water, f.in_lava, f.eye_in_water, f.eye_in_lava],
+            frozen: self.env.ticks_frozen,
+            air: self.env.air,
+            stamp,
+        };
+        if MUTATE_BASE.with(std::cell::Cell::get) {
+            // The mutation: a key that holds the blocks around the cow and nothing of the cow.
+            return Some(BaseKey {
+                position: [0; 3],
+                baby: false,
+                alive: true,
+                fluids: [0; 2],
+                fluid_flags: [false; 4],
+                frozen: 0,
+                air: 0,
+                stamp: key.stamp,
+            });
+        }
+        Some(key)
+    }
+
+    /// `base_world`, or its kept outputs when the cow rests in unchanged surroundings.
+    pub fn base_world_or_rest(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<CowEvent>,
+    ) -> (f32, bool, Vec3) {
+        if !self.rest.enabled {
+            return self.base_world(w, level, events);
+        }
+        let key = self.base_key(w);
+        self.rest.base_asks += 1;
+        let hit = match (&key, &self.rest.base) {
+            (Some(k), Some(memo)) if memo.key == *k => Some((memo.fire, memo.lava)),
+            _ => None,
+        };
+        if let Some((fire, lava)) = hit {
+            self.rest.base_hits += 1;
+            self.env.was_eye_in_water = self.fluids.eye_in_water;
+            return (fire, lava, self.motion.position);
+        }
+        let (random, n, health) = (self.random.state(), events.len(), self.vitals.health);
+        let pre = (
+            bits(self.motion.position),
+            [self.fluids.water.to_bits(), self.fluids.lava.to_bits()],
+            [self.fluids.in_water, self.fluids.in_lava, self.fluids.eye_in_water, self.fluids.eye_in_lava],
+            self.env.ticks_frozen,
+            self.env.air,
+        );
+        let out = self.base_world(w, level, events);
+        self.rest.base = key
+            .filter(|_| {
+                let f = &self.fluids;
+                self.random.state() == random
+                    && events.len() == n
+                    && self.vitals.health == health
+                    && bits(self.motion.position) == pre.0
+                    && [f.water.to_bits(), f.lava.to_bits()] == pre.1
+                    && [f.in_water, f.in_lava, f.eye_in_water, f.eye_in_lava] == pre.2
+                    && self.env.ticks_frozen == pre.3
+                    && self.env.air == pre.4
+                    && self.env.fire_ticks == 0
+            })
+            .map(|key| Box::new(BaseMemo { key, fire: out.0, lava: out.1 }));
+        out
     }
 }

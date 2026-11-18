@@ -99,7 +99,7 @@ impl PlainWorld {
         });
     }
     pub fn rest_counts(&self) -> (u64, u64) {
-        self.cows.iter().fold((0, 0), |(a, h), c| (a + c.rest.asks, h + c.rest.hits))
+        self.cows.iter().fold((0, 0), |(a, h), c| (a + c.rest.asks + c.rest.base_asks, h + c.rest.hits + c.rest.base_hits))
     }
     pub fn clear_goals(&mut self, slot: usize) {
         self.cows[slot].goals.0.clear();
@@ -167,6 +167,11 @@ impl PlainWorld {
     }
     pub fn damage(&mut self, slot: usize, level: &mut DamageLevel<'_>, amount: f32, source: crate::mobs::Damage) -> bool {
         self.cows[slot].damage(level, amount, source)
+    }
+    pub fn teleport(&mut self, slot: usize, at: horizon_core::geometry::Vec3) {
+        self.cows[slot].motion.position = at;
+        self.cows[slot].motion.previous = at;
+        self.cows[slot].motion.velocity = horizon_core::geometry::Vec3::ZERO;
     }
     pub fn set_in_love(&mut self, slot: usize, ticks: i32) {
         self.cows[slot].extra.in_love = ticks;
