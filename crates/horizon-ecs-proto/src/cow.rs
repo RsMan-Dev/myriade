@@ -362,7 +362,9 @@ pub struct Clock(pub u64);
 pub enum Due {
     Stroll,
     Grow,
-    Goal(crate::goals::Kind),
+    Goal(u8),
+    /// The hen's egg timer (`farm.rs`): a rule of the species, not a goal.
+    Egg,
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -509,7 +511,7 @@ pub struct Species {
     pub gravity: f64,
     pub speed: f64,
     pub baby: (f32, f32),
-    pub goals: crate::goals::GoalDef,
+    pub goals: crate::species::Config,
     /// The farm behaviours of the species (`farm.rs`).
     pub farm: crate::farm::FarmDef,
     /// `Attributes.KNOCKBACK_RESISTANCE`.
@@ -603,7 +605,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             gravity: kind.gravity,
             speed: mob.attrs.speed,
             baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
-            goals: crate::goals::goal_def(name),
+            goals: crate::species::config(name),
             farm: crate::farm::farm_def(name),
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
@@ -632,22 +634,22 @@ pub fn species_table() -> SpeciesTable {
 
 /// For the tests of a behaviour only some species have: whether to skip the test of the process's species, which has no
 /// such goal (the skip is printed, so it is never silent).
-pub fn skip_unless(kind: crate::goals::Kind, test: &str) -> bool {
+pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bool {
     // By the name the process was asked for (`HORIZON_SPECIES`), before any level is built.
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
-    let has = crate::goals::goal_def(&name).slots.iter().any(|s| s.0 == kind);
+    let has = crate::species::config(&name).has(module);
     if !has {
-        eprintln!("SKIP {test}: {name} has no {kind:?} goal");
+        eprintln!("SKIP {test}: {name} has no {} goal", module.name);
     }
     !has
 }
 /// The reverse: a test of a passive behaviour (a player in range changes nothing) skips a species that has the goal
 /// (a zombie hunts the player the test puts in range), printed.
-pub fn skip_if(kind: crate::goals::Kind, test: &str) -> bool {
+pub fn skip_if(module: &'static crate::behaviours::Module, test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
-    let has = crate::goals::goal_def(&name).slots.iter().any(|s| s.0 == kind);
+    let has = crate::species::config(&name).has(module);
     if has {
-        eprintln!("SKIP {test}: {name} has a {kind:?} goal: the player in range makes it hunt, the test measures passive looking");
+        eprintln!("SKIP {test}: {name} has a {} goal: the player in range makes it hunt, the test measures passive looking", module.name);
     }
     has
 }
@@ -1417,12 +1419,12 @@ fn fluid_update(
 fn breathing(
     level: Res<Level>,
     table: Res<SpeciesTable>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, sid) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, sid, uid) in &mut q {
         let sp = &table.0[sid.0 as usize];
         let submerged = fs.eye_in_water && {
             let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
@@ -1434,7 +1436,7 @@ fn breathing(
             consume: 1,
             refill: if drowns { 0 } else { 4 },
         };
-        let id = e.index().index();
+        let id = uid.0 as u32;
         let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, sp.name, vanilla);
         if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
@@ -1559,7 +1561,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId, &crate::goals::Uid)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -1569,7 +1571,7 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid, uid)) = q.get_mut(e) else {
             continue;
         };
         let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
@@ -1603,7 +1605,7 @@ pub(crate) fn apply_damage(
             if !stroll.scheduled && !stroll.walking {
                 // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
                 // of a panic), which the hit must not shift.
-                let mut own = Rng(((e.index().index() as u64) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
+                let mut own = Rng(((uid.0) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
                 arm_stroll(&mut wheel, clock.0, e, &mut stroll, &mut own);
             }
         }
@@ -2071,6 +2073,7 @@ fn ordered_pass(
     mut queue: ResMut<DamageQueue>,
     q: Query<OrderedItems>,
     marked: Query<Entity, With<Overlapping>>,
+    uids: Query<&crate::goals::Uid>,
     moving_now: Query<(), With<Moving>>,
     mut commands: Commands,
     mut node: Local<Vec<u32>>,
@@ -2079,8 +2082,8 @@ fn ordered_pass(
         return;
     }
     let mut ids: Vec<Entity> = marked.iter().collect();
-    // The order of creation (the `Mob` herd's list order): the index of the entity (`Entity`'s own ordering is not it).
-    ids.sort_unstable_by_key(|e| e.index());
+    // The order of creation (the `Mob` herd's list order): the animal's `Uid` (an entity index is reused after a death).
+    ids.sort_unstable_by_key(|e| uids.get(*e).map_or(0, |u| u.0));
     stats.last = ids.len();
     stats.total += ids.len() as u64;
     stats.ticks += 1;
@@ -2257,8 +2260,9 @@ pub(crate) fn due(
     for (e, d) in list {
         match d {
             // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
-            Due::Stroll => fired.0.push((e, crate::goals::Kind::Stroll)),
+            Due::Stroll => fired.0.push((e, crate::behaviours::stroll::FIRED)),
             Due::Goal(k) => fired.0.push((e, k)),
+            Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
@@ -2315,6 +2319,7 @@ impl Herd {
         let side = (n as f64).sqrt().ceil() as i32;
         let half = slab.unwrap_or(((f64::from(side) * spacing / 2.0) as i32 + 6).max(20));
         let mut world = World::new();
+        crate::goals::reset_uids();
         let (level, species, _kind) = build_level(half, hazards);
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
@@ -2547,7 +2552,7 @@ mod tests {
         assert!(health(&herd, snow).is_none_or(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
         // Still burning or dead at tick 340: a species with the panic goal flees the fire burning; one without wanders
         // out of it by chance, and the fire ends (160 ticks) before the tick 340.
-        if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
+        if species().goals.has(&crate::behaviours::panic::MODULE) {
             assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
@@ -2644,7 +2649,7 @@ mod tests {
             let sp = table[id as usize];
             let b = herd.world.get::<Body>(e).unwrap();
             assert_eq!((b.width, b.height, b.speed), (sp.width, sp.height, sp.speed), "{}", sp.name);
-            assert_eq!(herd.world.get::<Panic>(e).unwrap().speed, sp.goals.panic);
+            assert_eq!(herd.world.get::<Panic>(e).unwrap().speed, sp.goals.param::<crate::behaviours::panic::Params>(&crate::behaviours::panic::MODULE, 0).unwrap().speed);
         }
         // A player with a carrot in the middle: the pigs are tempted, the cows are not; then with wheat, the reverse.
         let tempted = |herd: &mut Herd, id: u8| {
@@ -2815,7 +2820,7 @@ mod tests {
         assert!(herd.world.get::<InFluid>(swimmer).is_some());
         let y = herd.world.get::<Pos>(swimmer).unwrap().0.y;
         // Only a species with the float goal rises (a zombie has none: it stays on the bottom).
-        if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Float) {
+        if species().goals.has(&crate::behaviours::float::MODULE) {
             assert!(y > 1.5, "the cow floats up: y = {y}");
         }
         // Fire in the cell of the second cow, then water over it: the burning stops.

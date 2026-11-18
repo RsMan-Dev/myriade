@@ -1,0 +1,209 @@
+//! `BreedGoal`: an animal in love walks to the nearest other animal in love of its species and, after the delay,
+//! gives birth to a baby. Love is given by `feed`.
+use super::*;
+use crate::{cow::*, goals::*};
+
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    pub speed: f64,
+    /// The range within which a partner is looked for.
+    pub range: f64,
+    /// `reducedTickDelay(60)`: ticks before the birth.
+    pub delay: u64,
+    /// Ticks of love after a feeding, ticks of rest after a birth, age of a newborn (ticks before it grows up).
+    pub love: u64,
+    pub rest: u64,
+    pub baby_age: u64,
+}
+impl Params {
+    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000 };
+}
+/// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct BreedData {
+    pub speed: f64,
+    pub range: f64,
+    pub delay: u64,
+    pub love: u64,
+    pub rest: u64,
+    pub baby_age: u64,
+    pub slot: u8,
+    partner: Option<Entity>,
+}
+/// In love until this tick; resting (age 6000) until this tick.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Love(pub u64);
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Resting(pub u64);
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Breeding {
+    pub partner: Entity,
+    pub since: u64,
+    pub aim: (i32, i32),
+}
+
+pub static MODULE: Module = Module {
+    name: "breed",
+    flags: MOVE | LOOK,
+    ends_with_path: false,
+    blocked: None,
+    retry_on_end: false,
+    after_change: None,
+    resources: no_resources,
+    equip,
+    arm: no_arm,
+    fired,
+    can_use,
+    start,
+    stop,
+    systems,
+};
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+    let p = params::<Params>(p);
+    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, slot: inst.slot, partner: None });
+}
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems(breed_run.in_set(slot));
+}
+/// `Animal.setInLove` by feeding: refused for a baby, a resting or a loving animal. Wakes the goal, and the loving
+/// animals around (their partner just appeared).
+pub fn feed(world: &mut World, e: Entity) -> bool {
+    let now = world.resource::<Clock>().0;
+    if world.get::<GrowAt>(e).is_some()
+        || world.get::<Resting>(e).is_some_and(|r| r.0 > now)
+        || world.get::<Love>(e).is_some_and(|l| l.0 > now)
+    {
+        return false;
+    }
+    // An animal that died is not fed.
+    let Some(b) = world.get::<BreedData>(e).copied() else { return false };
+    world.entity_mut(e).insert(Love(now + b.love));
+    let p = world.get::<Pos>(e).unwrap().0;
+    let mut near = Vec::new();
+    world.resource::<Index>().for_radius(p.x, p.z, b.range, |c| near.push(c));
+    let mut reqs = vec![Req::Start(e, b.slot)];
+    for c in near {
+        if c != e
+            && world.get::<Love>(c).is_some_and(|l| l.0 > now)
+            && let Some(d) = world.get::<BreedData>(c)
+        {
+            reqs.push(Req::Start(c, d.slot));
+        }
+    }
+    world.resource_mut::<Requests>().0.extend(reqs);
+    true
+}
+fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
+    let now = w.resource::<Clock>().0;
+    !w.get::<Love>(e).is_none_or(|l| l.0 <= now)
+}
+fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
+    let now = w.resource::<Clock>().0;
+    let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
+    let Some(b) = w.get::<BreedData>(e).copied() else { return false };
+    if w.get::<Love>(e).is_none_or(|l| l.0 <= now) {
+        return false;
+    }
+    let mut near = Vec::new();
+    w.resource::<Index>().for_radius(pos.x, pos.z, b.range, |c| near.push(c));
+    let mut best: Option<(Entity, f64)> = None;
+    for c in near {
+        let Some(cp) = w.get::<Pos>(c) else { continue };
+        let d = d2(pos, cp.0);
+        let lovers = w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<Love>(c).is_some_and(|l| l.0 > now) && w.get::<GrowAt>(c).is_none() && w.get::<Panicking>(c).is_none();
+        if c != e && lovers && d <= b.range * b.range && best.is_none_or(|x| d < x.1) {
+            best = Some((c, d));
+        }
+    }
+    if let Some(c) = w.resource_mut::<Forced>().partners.remove(&e)
+        && w.get::<Love>(c).is_some_and(|l| l.0 > now)
+    {
+        best = Some((c, 0.0));
+    }
+    match best {
+        Some((c, _)) => {
+            w.get_mut::<BreedData>(e).unwrap().partner = Some(c);
+            true
+        }
+        None => {
+            // No partner yet: the next look is a deadline, not a poll of every tick.
+            arm(w, e, inst.slot, 10);
+            false
+        }
+    }
+}
+fn start(w: &mut World, e: Entity, _: Inst) {
+    let now = w.resource::<Clock>().0;
+    let Some(c) = w.get::<BreedData>(e).and_then(|b| b.partner) else { return };
+    w.entity_mut(e).insert(Breeding { partner: c, since: now, aim: (i32::MIN, 0) });
+    wake(w, c, &MODULE);
+}
+fn stop(w: &mut World, e: Entity, _: Inst) {
+    w.entity_mut(e).remove::<Breeding>();
+}
+/// `BreedGoal.canContinue` and `tick`: walk to the partner, and after the delay, if close, give birth.
+#[allow(clippy::type_complexity)]
+fn breed_run(
+    clock: Res<Clock>,
+    mut q: Query<(Aim, &mut Breeding, &BreedData, Option<&Love>, Option<&Phase>)>,
+    partners: Query<(&Pos, Option<&Love>, Has<Panicking>)>,
+    mut reqs: ResMut<Requests>,
+    mut cmd: Commands,
+) {
+    let now = clock.0;
+    for ((e, pos, mut look, looking, following, asked), mut b, data, love, phase) in &mut q {
+        let partner = partners.get(b.partner).ok().filter(|(_, l, panicking)| l.is_some_and(|l| l.0 > now) && !panicking);
+        let (Some((pp, _, _)), true) = (partner, love.is_some_and(|l| l.0 > now)) else {
+            reqs.0.push(Req::End(e, data.slot));
+            continue;
+        };
+        let at = [pp.0.x, pp.0.y + look.eye, pp.0.z];
+        let d = d2(pos.0, pp.0);
+        aim(&mut cmd, e, &mut look, looking, at, None);
+        let a = (pp.0.x.floor() as i32, pp.0.z.floor() as i32);
+        if a != b.aim || (!following && !asked && d >= 9.0) {
+            b.aim = a;
+            go_to(&mut cmd, e, pp.0.x, pp.0.z, data.speed, 3);
+        }
+        // `BreedGoal` counts `loveTime` once per selector tick (its `tick` runs then): it breeds when the count reaches
+        // `reducedTickDelay(60)` and the partner is within 3 blocks, and gives up at 60.
+        let phase = phase.map_or(0, |p| p.0);
+        let selector = |t: u64| (t + phase) % 2 == 0;
+        let first = if selector(b.since) { b.since } else { b.since + 1 };
+        let love_time = if now >= first { (now - first) / 2 + 1 } else { 0 };
+        if selector(now) && love_time >= data.delay / 2 && d < 9.0 {
+            let partner = b.partner;
+            cmd.queue(move |w: &mut World| birth(w, e, partner));
+        } else if love_time > data.delay {
+            reqs.0.push(Req::End(e, data.slot));
+        }
+    }
+}
+/// `Animal.spawnChildFromBreeding`: a baby of age -`baby_age`, both parents rest, love ends.
+fn birth(w: &mut World, a: Entity, b: Entity) {
+    let now = w.resource::<Clock>().0;
+    if w.get::<Breeding>(a).is_none() || w.get::<Love>(a).is_none_or(|l| l.0 <= now) {
+        return;
+    }
+    let data = *w.get::<BreedData>(a).unwrap();
+    let (pos, active) = (w.get::<Pos>(a).unwrap().0, w.get::<ActiveUntil>(a).unwrap().0);
+    for e in [a, b] {
+        w.entity_mut(e).insert(Resting(now + data.rest)).remove::<Love>();
+    }
+    let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
+    // The baby is of its parents' species (the mate was checked to be the same).
+    let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(a).unwrap().0 as usize];
+    let baby = w.spawn(spawn_bundle(&sp, pos.x, pos.z, seed)).id();
+    enter_index(w, baby);
+    crate::farm::equip(w, baby, &sp);
+    w.get_mut::<ActiveUntil>(baby).unwrap().0 = active;
+    make_baby(w, baby, data.baby_age);
+    adopt(w, a, baby);
+    if active > now {
+        stroll::arm_now(w, baby);
+    }
+    arm_timers(w, baby);
+    let reqs: Vec<Req> = [a, b].iter().filter_map(|&p| w.get::<BreedData>(p).map(|d| Req::End(p, d.slot))).collect();
+    w.resource_mut::<Requests>().0.extend(reqs);
+}

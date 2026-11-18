@@ -68,7 +68,7 @@ fn a_sheep_grazes_as_a_mob_does() {
     let sheep: Vec<Entity> = spots.iter().enumerate().map(|(k, &(x, z))| ecs_cow(&mut h, x, 1.0, z, 40 + k as u64)).collect();
     for &e in &sheep {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-        h.world.get_mut::<GoalTimers>(e).unwrap().graze = true;
+        h.world.get_mut::<Graze>(e).unwrap().armed = true;
     }
     let mut rows = Vec::new();
     let mut ecs_block: Vec<Option<i64>> = vec![None; mobs.len()];
@@ -77,7 +77,7 @@ fn a_sheep_grazes_as_a_mob_does() {
     for t in 1..=3000_i64 {
         for &k in &began {
             if Some(t) == log[k].0 {
-                h.world.resource_mut::<Fired>().0.push((sheep[k], Kind::EatBlock));
+                fire(&mut h.world, sheep[k], &horizon_ecs_proto::behaviours::eat_block::MODULE);
             }
         }
         r.step(None);
@@ -130,15 +130,15 @@ fn eating_breaks_short_grass_regrows_wool_and_ages_a_baby() {
     h.world.get_mut::<Wool>(ea).unwrap().sheared = true;
     for &e in &[ea, eb] {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-        h.world.get_mut::<GoalTimers>(e).unwrap().graze = true;
+        h.world.get_mut::<Graze>(e).unwrap().armed = true;
     }
     h.tick();
     assert!(!shear(&mut h.world, eb), "a baby is not shorn");
     // Both graze at tick 5: the mobs by their own draw is not imposed here, the goal is started by hand.
     for t in 1..=60 {
         if t == 5 {
-            h.world.resource_mut::<Fired>().0.push((ea, Kind::EatBlock));
-            h.world.resource_mut::<Fired>().0.push((eb, Kind::EatBlock));
+            fire(&mut h.world, ea, &horizon_ecs_proto::behaviours::eat_block::MODULE);
+            fire(&mut h.world, eb, &horizon_ecs_proto::behaviours::eat_block::MODULE);
             for &i in &[a, b] {
                 r.mobs[i].ai.goals.set_start_delay("EatBlock", 0);
             }
@@ -184,7 +184,7 @@ fn sheep_graze_as_often_as_a_mob_s_do() {
     }
     for &(_, e) in &cows {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-        h.world.get_mut::<GoalTimers>(e).unwrap().graze = false;
+        h.world.get_mut::<Graze>(e).unwrap().armed = false;
     }
     arm_all(&mut h.world);
     let (mut mob_starts, mut ecs_starts) = (0, 0);
