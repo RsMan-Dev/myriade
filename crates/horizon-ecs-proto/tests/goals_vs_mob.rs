@@ -349,7 +349,7 @@ fn breeding_takes_as_long_as_for_a_mob() {
         let (mt, ct) = (mt.expect("mob never bred"), ct.expect("ecs never bred"));
         let now = h.world.resource::<Clock>().0;
         eprintln!("breed gap {gap}: mob at tick {mt}, ecs at tick {ct}; mob parents' age {}/{}; ecs rest {}", ages.0, ages.1, h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64));
-        assert!((mt - ct).abs() <= 8, "gap {gap}");
+        assert!((mt - ct).abs() <= 1, "gap {gap}");
         assert!(ages.0.max(ages.1) >= 5998, "{ages:?}");
         assert_eq!(h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64), 6000);
     }
@@ -805,6 +805,52 @@ fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
     let ecs_born = ecs_born.expect("ecs never bred");
     let worst = apart[..(born as usize).min(60)].iter().cloned().fold(0.0, f64::max);
     eprintln!("breeding: mob parent {pk} with {qk} at tick {born}; ecs at tick {ecs_born}; parent {:.2} apart at worst before the birth (first 60 ticks)", worst);
-    assert!((born - ecs_born).abs() <= 4, "birth tick mob {born}, ecs {ecs_born}");
+    assert!((born - ecs_born).abs() <= 1, "birth tick mob {born}, ecs {ecs_born}");
     assert!(worst < 0.5, "{worst}");
+}
+
+/// The pig has two tempt goals of one priority, each with its own calm-down: after the carrot on a stick is put
+/// away, a carrot tempts at once; the stick tempts again only 100 ticks after it stopped.
+#[test]
+fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    if species().name != "minecraft:pig" {
+        return;
+    }
+    let mi = r.add(Vec3::new(-6.5, 1.0, 0.5));
+    let e = ecs_cow(&mut h, -6.5, 1.0, 0.5, 5);
+    h.tick();
+    let at = Vec3::new(-1.0, 1.0, 0.5);
+    let mut p = player_view(at, None);
+    let mut t = 0;
+    let mut set = |r: &mut Ref, h: &mut Herd, p: &mut PlayerView, held: Option<(&str, u32)>, ticks: usize, t: &mut i64, log: &mut Vec<(i64, bool, Option<u8>)>| {
+        p.main_hand = held.map(|x| x.0.into());
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0 });
+        for _ in 0..ticks {
+            r.step(Some(p));
+            h.tick();
+            *t += 1;
+            log.push((*t, r.names(mi).contains(&"Tempt"), h.world.get::<Tempting>(e).map(|x| x.0)));
+        }
+    };
+    let mut log = Vec::new();
+    let stick = Some(("minecraft:carrot_on_a_stick", CARROT_ON_A_STICK));
+    let carrot = Some(("minecraft:carrot", CARROT));
+    set(&mut r, &mut h, &mut p, stick, 10, &mut t, &mut log);
+    let stopped_at = t;
+    set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);
+    let carrot_from = t;
+    set(&mut r, &mut h, &mut p, carrot, 20, &mut t, &mut log);
+    set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);
+    let stick_from = t;
+    set(&mut r, &mut h, &mut p, stick, 140, &mut t, &mut log);
+    let first = |from: i64, inst: Option<u8>| log.iter().find(|l| l.0 > from && match inst { Some(i) => l.2 == Some(i), None => l.1 }).map(|l| l.0 - from);
+    let (mob_carrot, ecs_carrot) = (log.iter().find(|l| l.0 > carrot_from && l.1).map(|l| l.0 - carrot_from), first(carrot_from, Some(1)));
+    let (mob_stick, ecs_stick) = (log.iter().find(|l| l.0 > stick_from && l.1).map(|l| l.0 - stick_from), first(stick_from, Some(0)));
+    eprintln!("pig tempt: carrot after the stick: mob {mob_carrot:?} ticks, ecs {ecs_carrot:?}; stick again (stopped at tick {stopped_at}): mob {mob_stick:?}, ecs {ecs_stick:?}");
+    let (a, b, c, d) = (mob_carrot.unwrap(), ecs_carrot.unwrap(), mob_stick.unwrap(), ecs_stick.unwrap());
+    assert!((a - b).abs() <= 3 && (c - d).abs() <= 4, "carrot {a}/{b}, stick {c}/{d}");
 }

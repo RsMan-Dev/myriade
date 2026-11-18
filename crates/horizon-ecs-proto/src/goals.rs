@@ -20,7 +20,8 @@ pub enum Kind {
     Float,
     Panic,
     Breed,
-    Tempt,
+    /// A tempt goal; a species may have several (the pig: the carrot on a stick, then its foods), by instance.
+    Tempt(u8),
     FollowParent,
     Stroll,
     LookAtPlayer,
@@ -97,12 +98,17 @@ impl GoalSet {
 /// items (data; the behaviours are the same systems).
 #[derive(Clone, Copy, Debug)]
 pub struct GoalDef {
-    pub slots: [(Kind, u8, u8); 8],
+    pub slots: &'static [(Kind, u8, u8)],
     pub panic: f64,
-    pub tempt: f64,
-    /// A bit per item id (`WHEAT`, `CARROT`...): the items that tempt.
-    pub tempt_items: u32,
+    /// The instances of the tempt goal, in registration order (slot `Kind::Tempt(i)` is `tempts[i]`).
+    pub tempts: &'static [TemptDef],
     pub follow: f64,
+}
+/// One `TemptGoal`: its speed modifier and the items that tempt (a bit per item id: `WHEAT`, `CARROT`...).
+#[derive(Clone, Copy, Debug)]
+pub struct TemptDef {
+    pub speed: f64,
+    pub items: u32,
 }
 pub const WHEAT: u32 = 1;
 pub const CARROT: u32 = 2;
@@ -124,47 +130,43 @@ pub fn item_id(name: &str) -> u32 {
 /// a `Mob`). `u64::MAX`: the entity's index.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Phase(pub u64);
-/// The goals of a farm animal by its type (`Cow.registerGoals`, `Pig.registerGoals`, in `farm.rs`). The pig has two
-/// tempt goals (the carrot on a stick, then its foods) at one priority: one `Tempt` here with both sets of items.
+const COW_SLOTS: [(Kind, u8, u8); 8] = [
+    (Kind::Float, 0, JUMP),
+    (Kind::Panic, 1, MOVE),
+    (Kind::Breed, 2, MOVE | LOOK),
+    (Kind::Tempt(0), 3, MOVE | LOOK),
+    (Kind::FollowParent, 4, 0),
+    (Kind::Stroll, 5, MOVE),
+    (Kind::LookAtPlayer, 6, LOOK),
+    (Kind::RandomLook, 7, MOVE | LOOK),
+];
+const PIG_SLOTS: [(Kind, u8, u8); 9] = [
+    (Kind::Float, 0, JUMP),
+    (Kind::Panic, 1, MOVE),
+    (Kind::Breed, 3, MOVE | LOOK),
+    (Kind::Tempt(0), 4, MOVE | LOOK),
+    (Kind::Tempt(1), 4, MOVE | LOOK),
+    (Kind::FollowParent, 5, 0),
+    (Kind::Stroll, 6, MOVE),
+    (Kind::LookAtPlayer, 7, LOOK),
+    (Kind::RandomLook, 8, MOVE | LOOK),
+];
+const COW_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.25, items: 1 << WHEAT }];
+const PIG_TEMPTS: [TemptDef; 2] = [
+    TemptDef { speed: 1.2, items: 1 << CARROT_ON_A_STICK },
+    TemptDef { speed: 1.2, items: 1 << CARROT | 1 << POTATO | 1 << BEETROOT },
+];
+/// The goals of a farm animal by its type (`Cow.registerGoals`, `Pig.registerGoals`, in `farm.rs`). The pig registers
+/// two tempt goals of one priority (the carrot on a stick, then its foods), each with its own calm-down.
 pub fn goal_def(species: &str) -> GoalDef {
     match species {
-        "minecraft:pig" => GoalDef {
-            slots: [
-                (Kind::Float, 0, JUMP),
-                (Kind::Panic, 1, MOVE),
-                (Kind::Breed, 3, MOVE | LOOK),
-                (Kind::Tempt, 4, MOVE | LOOK),
-                (Kind::FollowParent, 5, 0),
-                (Kind::Stroll, 6, MOVE),
-                (Kind::LookAtPlayer, 7, LOOK),
-                (Kind::RandomLook, 8, MOVE | LOOK),
-            ],
-            panic: 1.25,
-            tempt: 1.2,
-            tempt_items: 1 << CARROT | 1 << POTATO | 1 << BEETROOT | 1 << CARROT_ON_A_STICK,
-            follow: 1.1,
-        },
-        _ => GoalDef {
-            slots: [
-                (Kind::Float, 0, JUMP),
-                (Kind::Panic, 1, MOVE),
-                (Kind::Breed, 2, MOVE | LOOK),
-                (Kind::Tempt, 3, MOVE | LOOK),
-                (Kind::FollowParent, 4, 0),
-                (Kind::Stroll, 5, MOVE),
-                (Kind::LookAtPlayer, 6, LOOK),
-                (Kind::RandomLook, 7, MOVE | LOOK),
-            ],
-            panic: 2.0,
-            tempt: 1.25,
-            tempt_items: 1 << WHEAT,
-            follow: 1.25,
-        },
+        "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
+        _ => GoalDef { slots: &COW_SLOTS, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
     }
 }
 /// The goals of the cow (the bench's default species), for the unit tests of the selector.
-pub fn cow_slots() -> [(Kind, u8, u8); 8] {
-    goal_def("minecraft:cow").slots
+pub fn cow_slots() -> Vec<(Kind, u8, u8)> {
+    goal_def("minecraft:cow").slots.to_vec()
 }
 
 // ---- species data and state: components, data only --------------------------------------------------------
@@ -177,8 +179,8 @@ pub struct Panic {
     pub window: u64,
     pub until: u64,
 }
-/// `TemptGoal`: the item (0: none), speed, stop distance, range, the look speed, and its state.
-#[derive(Component, Clone, Copy, Debug)]
+/// `TemptGoal`: the items, speed, stop distance, range, the look speed, and its state (one per instance).
+#[derive(Clone, Copy, Debug)]
 pub struct Tempt {
     /// The items that tempt, a bit per item id.
     pub items: u32,
@@ -188,9 +190,14 @@ pub struct Tempt {
     pub look_y: f32,
     pub calm: u64,
     pub calm_until: u64,
+    /// The tick since which the calm-down stands still because the goal cannot be asked (0: it counts).
+    pub paused_at: u64,
     pub player: u32,
     pub aim: (i32, i32),
 }
+/// The tempt goals of the animal (one instance each: its own items, speed, calm-down and player).
+#[derive(Component, Clone, Debug)]
+pub struct Tempts(pub Vec<Tempt>);
 /// `BreedGoal` and the animal's breeding times.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BreedData {
@@ -261,7 +268,11 @@ pub struct Jump(pub bool);
 
 // ---- run markers: a goal that runs is a marker its system visits ------------------------------------------
 macro_rules! markers { ($($n:ident),*) => { $(#[derive(Component, Clone, Copy, Debug)] #[component(storage = "SparseSet")] pub struct $n;)* } }
-markers!(Floating, Panicking, Tempting, Looking);
+markers!(Floating, Panicking, Looking);
+/// A tempt goal runs: which instance.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Tempting(pub u8);
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Breeding {
@@ -292,9 +303,9 @@ pub struct Scanning {
 pub fn goals_bundle(sp: &Species) -> impl Bundle {
     let d = sp.goals;
     (
-        GoalSet::new(&d.slots),
+        GoalSet::new(d.slots),
         Panic { speed: d.panic, h: 5, v: 4, window: 40, until: 0 },
-        Tempt { items: d.tempt_items, speed: d.tempt, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, calm_until: 0, player: 0, aim: (i32::MIN, 0) },
+        Tempts(d.tempts.iter().map(|t| Tempt { items: t.items, speed: t.speed, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0) }).collect()),
         BreedData { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000 },
         FollowParent { speed: d.follow, recalc: 0 },
         Glance { range: 6.0, period: 50 },
@@ -571,7 +582,7 @@ fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,
     idx: Res<Index>,
-    cows: Query<(&Pos, &Tempt)>,
+    cows: Query<(&Pos, &Tempts)>,
     mut reqs: ResMut<Requests>,
 ) {
     if on.events.is_empty() {
@@ -584,11 +595,13 @@ fn online_events(
     for (old, new) in events {
         let Some(n) = new else { continue };
         idx.for_radius(n.x, n.z, SCAN, |c| {
-            let Ok((pos, t)) = cows.get(c) else { return };
-            let reach = t.range.max(2.0).powi(2);
-            let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
-            if clock.0 >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
-                reqs.0.push(Req::Start(c, Kind::Tempt));
+            let Ok((pos, ts)) = cows.get(c) else { return };
+            for (i, t) in ts.0.iter().enumerate() {
+                let reach = t.range.max(2.0).powi(2);
+                let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
+                if clock.0 >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
+                    reqs.0.push(Req::Start(c, Kind::Tempt(i as u8)));
+                }
             }
         });
     }
@@ -687,15 +700,16 @@ type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Following>, Has
 fn tempt_run(
     clock: Res<Clock>,
     on: Res<Online>,
-    mut q: Query<(Aim, &mut Tempt), With<Tempting>>,
+    mut q: Query<(Aim, &mut Tempts, &Tempting)>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, following, asked), mut t) in &mut q {
+    for ((e, pos, mut look, looking, following, asked), mut ts, inst) in &mut q {
+        let Some(t) = ts.0.get_mut(inst.0 as usize) else { continue };
         let max_d = t.range.max(2.0).powi(2);
         let p = on.get(t.player).filter(|p| p.holds_any(t.items) && d2(Vec3::new(p.x, p.y, p.z), pos.0) <= max_d);
         let Some(p) = p else {
-            reqs.0.push(Req::End(e, Kind::Tempt));
+            reqs.0.push(Req::End(e, Kind::Tempt(inst.0)));
             continue;
         };
         aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], Some(t.look_y));
@@ -718,13 +732,13 @@ fn tempt_run(
 #[allow(clippy::type_complexity)]
 fn breed_run(
     clock: Res<Clock>,
-    mut q: Query<(Aim, &mut Breeding, &BreedData, Option<&Love>)>,
+    mut q: Query<(Aim, &mut Breeding, &BreedData, Option<&Love>, Option<&Phase>)>,
     partners: Query<(&Pos, Option<&Love>, Has<Panicking>)>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
     let now = clock.0;
-    for ((e, pos, mut look, looking, following, asked), mut b, data, love) in &mut q {
+    for ((e, pos, mut look, looking, following, asked), mut b, data, love, phase) in &mut q {
         let partner = partners.get(b.partner).ok().filter(|(_, l, panicking)| l.is_some_and(|l| l.0 > now) && !panicking);
         let (Some((pp, _, _)), true) = (partner, love.is_some_and(|l| l.0 > now)) else {
             reqs.0.push(Req::End(e, Kind::Breed));
@@ -738,11 +752,16 @@ fn breed_run(
             b.aim = a;
             go_to(&mut cmd, e, pp.0.x, pp.0.z, data.speed);
         }
-        let elapsed = now - b.since;
-        if elapsed >= data.delay && d < 9.0 {
+        // `BreedGoal` counts `loveTime` once per selector tick (its `tick` runs then): it breeds when the count reaches
+        // `reducedTickDelay(60)` and the partner is within 3 blocks, and gives up at 60.
+        let phase = phase.map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+        let selector = |t: u64| (t + phase) % 2 == 0;
+        let first = if selector(b.since) { b.since } else { b.since + 1 };
+        let love_time = if now >= first { (now - first) / 2 + 1 } else { 0 };
+        if selector(now) && love_time >= data.delay / 2 && d < 9.0 {
             let partner = b.partner;
             cmd.queue(move |w: &mut World| birth(w, e, partner));
-        } else if elapsed >= 2 * data.delay {
+        } else if love_time > data.delay {
             reqs.0.push(Req::End(e, Kind::Breed));
         }
     }
@@ -989,6 +1008,38 @@ fn start_goal(w: &mut World, e: Entity, k: Kind) {
         stop_effects(w, e, s);
     }
     start_effects(w, e, k, pick);
+    calm_pause(w, e);
+}
+/// `TemptGoal.canUse` counts its `calmDown` down each time the selector asks, and the selector asks only a goal that
+/// could take its flags: while another goal of an equal or higher priority holds them, the calm-down stands still.
+fn calm_pause(w: &mut World, e: Entity) {
+    let now = w.resource::<Clock>().0;
+    let Some(n) = w.get::<Tempts>(e).map(|t| t.0.len()) else { return };
+    for i in 0..n {
+        let k = Kind::Tempt(i as u8);
+        let g = w.get::<GoalSet>(e).unwrap();
+        let blocked = !g.is_running(k) && !g.replaceable(k);
+        let t = &mut w.get_mut::<Tempts>(e).unwrap().0[i];
+        if blocked && t.calm_until > now && t.paused_at == 0 {
+            t.paused_at = now;
+        }
+    }
+}
+/// The goals that blocked a tempt goal are gone: its calm-down runs again, from where it stood.
+fn calm_resume(w: &mut World, e: Entity) {
+    let now = w.resource::<Clock>().0;
+    let Some(n) = w.get::<Tempts>(e).map(|t| t.0.len()) else { return };
+    for i in 0..n {
+        let k = Kind::Tempt(i as u8);
+        let free = w.get::<GoalSet>(e).unwrap().replaceable(k);
+        let t = &mut w.get_mut::<Tempts>(e).unwrap().0[i];
+        if free && t.paused_at != 0 {
+            t.calm_until += now - t.paused_at;
+            t.paused_at = 0;
+            let left = t.calm_until.saturating_sub(now);
+            arm(w, e, k, left as i32);
+        }
+    }
 }
 fn rearm_timer(w: &mut World, e: Entity, k: Kind) {
     let g = *w.get::<Glance>(e).unwrap();
@@ -1016,6 +1067,7 @@ fn end_goal(w: &mut World, e: Entity, k: Kind) {
     // A goal that was waiting for the flags it held tries again, in registration order.
     let g = w.get::<GoalSet>(e).unwrap();
     let waiting: Vec<Kind> = g.slots.iter().enumerate().filter(|(i, _)| g.pending >> i & 1 == 1).map(|s| s.1.0).collect();
+    calm_resume(w, e);
     for p in waiting {
         start_goal(w, e, p);
     }
@@ -1096,8 +1148,8 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
                 }
             }
         }
-        Kind::Tempt => {
-            let t = *w.get::<Tempt>(e)?;
+        Kind::Tempt(i) => {
+            let t = *w.get::<Tempts>(e)?.0.get(i as usize)?;
             if now < t.calm_until {
                 return None;
             }
@@ -1214,11 +1266,12 @@ fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
             w.entity_mut(e).insert(Breeding { partner: c, since: now, aim: (i32::MIN, 0) });
             w.resource_mut::<Requests>().0.push(Req::Start(c, Kind::Breed));
         }
-        (Kind::Tempt, Pick::Player(id)) => {
-            let mut t = w.get_mut::<Tempt>(e).unwrap();
+        (Kind::Tempt(i), Pick::Player(id)) => {
+            let mut ts = w.get_mut::<Tempts>(e).unwrap();
+            let t = &mut ts.0[i as usize];
             t.player = id;
             t.aim = (i32::MIN, 0);
-            w.entity_mut(e).insert(Tempting);
+            w.entity_mut(e).insert(Tempting(i));
         }
         (Kind::FollowParent, Pick::Parent(c)) => {
             w.get_mut::<FollowParent>(e).unwrap().recalc = now;
@@ -1258,13 +1311,15 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         Kind::Breed => {
             w.entity_mut(e).remove::<Breeding>();
         }
-        Kind::Tempt => {
+        Kind::Tempt(i) => {
             w.entity_mut(e).remove::<Tempting>();
             stop_nav(w, e);
-            // `calmDown = reducedTickDelay(100)`: no new temptation for 100 ticks, then it is looked at again.
-            let calm = w.get::<Tempt>(e).unwrap().calm;
-            w.get_mut::<Tempt>(e).unwrap().calm_until = now + calm;
-            arm(w, e, Kind::Tempt, calm as i32);
+            // `calmDown = reducedTickDelay(100)`: no new temptation by this goal for 100 ticks, then it is looked at
+            // again; the other tempt goal of the animal has its own.
+            let mut ts = w.get_mut::<Tempts>(e).unwrap();
+            let calm = ts.0[i as usize].calm;
+            ts.0[i as usize].calm_until = now + calm;
+            arm(w, e, Kind::Tempt(i), calm as i32);
         }
         Kind::FollowParent => {
             w.entity_mut(e).remove::<Trailing>();
@@ -1312,7 +1367,7 @@ mod tests {
 
     /// The item that tempts the species of the process (`HORIZON_SPECIES`).
     fn item() -> u32 {
-        (1..32).find(|i| species().goals.tempt_items >> i & 1 == 1).unwrap()
+        (1..32).find(|i| species().goals.tempts.last().unwrap().items >> i & 1 == 1).unwrap()
     }
     fn herd() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
@@ -1354,16 +1409,16 @@ mod tests {
         let mut g = GoalSet::new(&cow_slots());
         g.start(Kind::Stroll);
         assert!(!g.replaceable(Kind::RandomLook), "random look (7) cannot take MOVE from the stroll (5)");
-        assert!(g.replaceable(Kind::Tempt) && g.replaceable(Kind::Panic) && g.replaceable(Kind::Float));
+        assert!(g.replaceable(Kind::Tempt(0)) && g.replaceable(Kind::Panic) && g.replaceable(Kind::Float));
         g.start(Kind::LookAtPlayer);
         assert_eq!(g.start(Kind::Panic), vec![Kind::Stroll]);
-        assert!(!g.replaceable(Kind::Tempt) && !g.replaceable(Kind::Stroll) && !g.replaceable(Kind::Breed));
+        assert!(!g.replaceable(Kind::Tempt(0)) && !g.replaceable(Kind::Stroll) && !g.replaceable(Kind::Breed));
         assert!(g.is_running(Kind::LookAtPlayer), "panic holds only MOVE");
         g.stop(Kind::Panic);
-        assert_eq!(g.start(Kind::Tempt), vec![Kind::LookAtPlayer], "tempt (3) takes LOOK from look-at-player (6)");
+        assert_eq!(g.start(Kind::Tempt(0)), vec![Kind::LookAtPlayer], "tempt (3) takes LOOK from look-at-player (6)");
         assert!(g.replaceable(Kind::FollowParent) && g.start(Kind::FollowParent).is_empty(), "no flags: never conflicts");
         assert!(!g.replaceable(Kind::LookAtPlayer));
-        g.stop(Kind::Tempt);
+        g.stop(Kind::Tempt(0));
         g.start(Kind::RandomLook);
         assert_eq!(g.start(Kind::Stroll), vec![Kind::RandomLook]);
     }
@@ -1407,7 +1462,7 @@ mod tests {
                 let c = at(&h, e);
                 player(&mut h, 2, c.x + 3.0, c.z, item());
             }
-            assert!(!(running(&h, e, Kind::Panic) && running(&h, e, Kind::Tempt)), "panic and tempt share MOVE");
+            assert!(!(running(&h, e, Kind::Panic) && running(&h, e, Kind::Tempt(0))), "panic and tempt share MOVE");
             if p {
                 steps.push(dist(prev, at(&h, e)));
             }
@@ -1432,7 +1487,7 @@ mod tests {
         assert!(fast / slow > want * 0.75 && fast / slow < want * 1.15, "{fast} / {slow}, expected about {want}");
         // Player 2 held wheat in range while it panicked: tempting began after the panic (and after the calm that the
         // interrupted tempt left), not during it.
-        assert!(running(&h, e, Kind::Tempt) || has::<Tempting>(&h, e));
+        assert!(running(&h, e, Kind::Tempt(0)) || has::<Tempting>(&h, e));
         eprintln!("panic {started}..{ended}, step {fast:.3} vs stroll {slow:.3}");
     }
 
@@ -1446,7 +1501,7 @@ mod tests {
         ticks(&mut h, 3);
         assert!(has::<Tempting>(&h, near), "9 blocks away");
         assert!(!has::<Tempting>(&h, far), "11.2 blocks away");
-        assert_eq!(h.world.get::<Nav>(near).unwrap().speed, species().goals.tempt);
+        assert_eq!(h.world.get::<Nav>(near).unwrap().speed, species().goals.tempts.last().unwrap().speed);
         ticks(&mut h, 120);
         let d = dist(at(&h, near), Vec3::new(0.5, 1.0, 0.5));
         assert!(d < 3.5 && d > 1.5, "stopped {d} from the player");
