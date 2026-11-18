@@ -348,10 +348,12 @@ pub fn insert_resources(world: &mut World) {
 }
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
+    s.add_systems(hurt_events.after(apply_damage));
     s.add_systems(
-        (entered_events, hurt_events, mother_moved, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_run, arbitrate, look_control)
+        (entered_events, mother_moved, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_run, arbitrate, look_control)
             .chain()
-            .after(online_events),
+            .after(online_events)
+            .after(hurt_events),
     );
 }
 
@@ -463,9 +465,20 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
         reqs.0.extend(std::mem::take(&mut en.0).into_iter().map(Req::Arm));
     }
 }
-fn hurt_events(clock: Res<Clock>, mut h: ResMut<Hurts>, mut q: Query<&mut Panic>, mut reqs: ResMut<Requests>) {
-    for e in std::mem::take(&mut h.0) {
-        if let Ok(mut p) = q.get_mut(e) {
+/// `PanicGoal.canUse` after a damage: only the types of `#panic_causes` (a fall, a drowning, a wall do not), then a
+/// window of 40 ticks; a burning cow panics as long as it burns.
+fn hurt_events(
+    clock: Res<Clock>,
+    mut h: ResMut<Hurts>,
+    causes: Res<HurtCauses>,
+    mut q: Query<&mut Panic>,
+    mut reqs: ResMut<Requests>,
+) {
+    for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
+        let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall));
+        if let Ok(mut p) = q.get_mut(e)
+            && panics
+        {
             p.until = clock.0 + p.window;
             reqs.0.push(Req::Start(e, Kind::Panic));
         }
@@ -860,7 +873,8 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
         Kind::Float => floats(w, e).then_some(Pick::Yes),
         Kind::Panic => {
             let p = *w.get::<Panic>(e)?;
-            if now > p.until {
+            let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
+            if now > p.until && !burning {
                 return None;
             }
             let lim = w.resource::<Level>().half - 2;

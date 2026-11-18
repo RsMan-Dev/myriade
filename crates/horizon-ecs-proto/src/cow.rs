@@ -1177,7 +1177,7 @@ fn reindex(
 
 /// `LivingEntity.hurt`: the queued damage is applied; within 10 ticks of a hurt only a larger hit counts, by the
 /// difference; a cow at 0 health dies (leaves the index and the world).
-fn apply_damage(
+pub(crate) fn apply_damage(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
