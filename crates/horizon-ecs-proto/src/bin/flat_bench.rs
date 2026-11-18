@@ -1,6 +1,6 @@
 //! `horizon-ecs-proto MODE N TICKS [THREADS]` (MODE: awake | sleep | par): runs the herd, prints the wall time
 //! per tick of the ticks after the first 100 (the warm-up), and how many cows sleep at the end.
-use horizon_ecs_proto::Herd;
+use horizon_ecs_proto::flat::Herd;
 use std::time::Instant;
 
 fn main() {

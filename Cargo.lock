@@ -2449,6 +2449,9 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "bevy_tasks",
+ "horizon-client-render",
+ "horizon-core",
+ "horizon-world",
 ]
 
 [[package]]
