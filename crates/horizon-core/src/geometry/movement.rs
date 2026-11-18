@@ -53,11 +53,113 @@ pub fn try_resolve_step_movement<S: std::borrow::Borrow<VoxelShape>, E>(
     on_ground: bool,
     mut collect: impl FnMut(Aabb) -> Result<Vec<S>, E>,
 ) -> Result<Vec3, E> {
+    let mut shapes = Vec::new();
+    try_resolve_step_movement_in(movement, aabb, max_step, on_ground, &mut shapes, |bounds, out| {
+        out.extend(collect(bounds)?.into_iter().map(Borrowed));
+        Ok(())
+    })
+}
+
+/// What a block contributes to a movement: it answers the two questions the resolution asks.
+pub trait Collider {
+    fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64;
+    /// The Y boundaries of the shape, ascending: how many, and the `k`th.
+    fn y_len(&self) -> usize;
+    fn y_at(&self, k: usize) -> f64;
+}
+impl Collider for VoxelShape {
+    #[inline]
+    fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        VoxelShape::collide(self, axis, aabb, amount)
+    }
+    #[inline]
+    fn y_len(&self) -> usize {
+        self.coordinates(Axis::Y).len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        self.coordinates(Axis::Y)[k]
+    }
+}
+impl<C: Collider + ?Sized> Collider for &C {
+    #[inline]
+    fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        (**self).collide(axis, aabb, amount)
+    }
+    #[inline]
+    fn y_len(&self) -> usize {
+        (**self).y_len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        (**self).y_at(k)
+    }
+}
+struct Borrowed<S>(S);
+impl<S: std::borrow::Borrow<VoxelShape>> Collider for Borrowed<S> {
+    #[inline]
+    fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        self.0.borrow().collide(axis, aabb, amount)
+    }
+    #[inline]
+    fn y_len(&self) -> usize {
+        self.0.borrow().coordinates(Axis::Y).len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        self.0.borrow().coordinates(Axis::Y)[k]
+    }
+}
+/// A block's collider: the unit cube at an integer offset (no shape is built for it), or any shape, already moved.
+#[derive(Clone, Debug)]
+pub enum BlockCollider {
+    Cube(Vec3),
+    Shape(Box<VoxelShape>),
+    /// A stored shape and the offset that moves it (the moved shape is never built).
+    Moved(Box<(VoxelShape, Vec3)>),
+}
+impl Collider for BlockCollider {
+    #[inline]
+    fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        match self {
+            Self::Cube(offset) => VoxelShape::collide_unit_cube(*offset, axis, aabb, amount),
+            Self::Shape(shape) => shape.collide(axis, aabb, amount),
+            Self::Moved(m) => m.0.collide_moved(m.1, axis, aabb, amount),
+        }
+    }
+    #[inline]
+    fn y_len(&self) -> usize {
+        match self {
+            Self::Cube(_) => 2,
+            Self::Shape(shape) => shape.coordinates(Axis::Y).len(),
+            Self::Moved(m) => m.0.coordinates(Axis::Y).len(),
+        }
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        match self {
+            Self::Cube(offset) => k as f64 + offset.y,
+            Self::Shape(shape) => shape.coordinates(Axis::Y)[k],
+            Self::Moved(m) => m.0.coordinates(Axis::Y)[k] + m.1.y,
+        }
+    }
+}
+
+/// [`try_resolve_step_movement`] over colliders the caller collects into a reused buffer (cleared before each query).
+pub fn try_resolve_step_movement_in<C: Collider, E>(
+    movement: Vec3,
+    aabb: Aabb,
+    max_step: f32,
+    on_ground: bool,
+    shapes: &mut Vec<C>,
+    mut collect: impl FnMut(Aabb, &mut Vec<C>) -> Result<(), E>,
+) -> Result<Vec3, E> {
     let resolved = if movement.length_squared() == 0.0 {
         movement
     } else {
-        let shapes = collect(aabb.expand_towards(movement))?;
-        resolve_borrowed_shape_movement(movement, aabb, &shapes)
+        shapes.clear();
+        collect(aabb.expand_towards(movement), shapes)?;
+        resolve_borrowed_shape_movement(movement, aabb, shapes)
     };
     let landed = movement.y != resolved.y && movement.y < 0.0;
     if max_step > 0.0
@@ -73,12 +175,13 @@ pub fn try_resolve_step_movement<S: std::borrow::Borrow<VoxelShape>, E>(
         if !landed {
             query = query.expand_towards(Vec3::new(0.0, -(1.0e-5_f32 as f64), 0.0));
         }
-        let shapes = collect(query)?;
-        for height in borrowed_step_heights(step_box, &shapes, max_step, resolved.y as f32) {
+        shapes.clear();
+        collect(query, shapes)?;
+        for height in borrowed_step_heights(step_box, shapes, max_step, resolved.y as f32) {
             let candidate = resolve_borrowed_shape_movement(
                 Vec3::new(movement.x, height as f64, movement.z),
                 step_box,
-                &shapes,
+                shapes,
             );
             if candidate.horizontal_distance_squared() > resolved.horizontal_distance_squared() {
                 return Ok(candidate.subtract(Vec3::new(
@@ -100,11 +203,7 @@ pub fn try_resolve_step_movement<S: std::borrow::Borrow<VoxelShape>, E>(
 pub fn resolve_shape_movement(movement: Vec3, aabb: Aabb, shapes: &[&VoxelShape]) -> Vec3 {
     resolve_borrowed_shape_movement(movement, aabb, shapes)
 }
-fn resolve_borrowed_shape_movement<S: std::borrow::Borrow<VoxelShape>>(
-    movement: Vec3,
-    aabb: Aabb,
-    shapes: &[S],
-) -> Vec3 {
+fn resolve_borrowed_shape_movement<C: Collider>(movement: Vec3, aabb: Aabb, shapes: &[C]) -> Vec3 {
     if shapes.is_empty() {
         return movement;
     }
@@ -115,12 +214,15 @@ fn resolve_borrowed_shape_movement<S: std::borrow::Borrow<VoxelShape>>(
             continue;
         }
         let moved = aabb.move_by(Vec3::new(result[0], result[1], result[2]));
-        result[axis as usize] = VoxelShape::collide_all(
-            axis,
-            moved,
-            shapes.iter().map(std::borrow::Borrow::borrow),
-            amount,
-        );
+        let mut amount = amount;
+        for shape in shapes {
+            if amount.abs() < super::COLLISION_EPSILON {
+                amount = 0.0;
+                break;
+            }
+            amount = shape.collide(axis, moved, amount);
+        }
+        result[axis as usize] = amount;
     }
     Vec3::new(result[0], result[1], result[2])
 }
@@ -137,17 +239,16 @@ pub fn candidate_step_heights(
     borrowed_step_heights(aabb, shapes, max_step, current_y)
 }
 
-fn borrowed_step_heights<S: std::borrow::Borrow<VoxelShape>>(
+fn borrowed_step_heights<C: Collider>(
     aabb: Aabb,
-    shapes: &[S],
+    shapes: &[C],
     max_step: f32,
     current_y: f32,
 ) -> Vec<f32> {
     let mut heights = Vec::<f32>::with_capacity(4);
     for shape in shapes {
-        let shape = shape.borrow();
-        for coordinate in shape.coordinates(Axis::Y) {
-            let height = (*coordinate - aabb.min(Axis::Y)) as f32;
+        for k in 0..shape.y_len() {
+            let height = (shape.y_at(k) - aabb.min(Axis::Y)) as f32;
             if height < 0.0 || height == current_y {
                 continue;
             }
