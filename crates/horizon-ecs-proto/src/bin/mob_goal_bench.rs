@@ -96,10 +96,13 @@ fn main() {
     };
     let mut test_level = TestLevel::new(7);
     let mut pushes = PendingPushes::default();
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let mut i0 = 0;
     let mut t0 = Instant::now();
     for t in 0..ticks {
         if t == warm {
             t0 = Instant::now();
+            i0 = counter.as_ref().map_or(0, |c| c.read());
         }
         // The walkers (as in `goal_bench`) move along x; they stay in their bin for the nearest-player lookup.
         for (i, v) in views.iter_mut().enumerate().take(walkers) {
@@ -150,12 +153,14 @@ fn main() {
         }
         std::hint::black_box(&events);
     }
+    let instr = counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64;
     let breeding = mobs.iter().filter(|m| m.ai.goals.is_running("Breed")).count();
     let tempting = mobs.iter().filter(|m| m.ai.goals.is_running("Tempt")).count();
     let panicking = mobs.iter().filter(|m| m.ai.goals.is_running("Panic")).count();
     let walking = mobs.iter().filter(|m| !m.ai.nav.is_done()).count();
+    eprintln!("path searches over the whole run ({ticks} ticks): {}", horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed));
     println!(
-        "mob n={n} ticks={ticks} spacing={spacing} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us walking={walking} tempting={tempting} breeding={breeding} panicking={panicking} cows_now={}",
+        "mob n={n} instr_per_entity_tick={instr} ticks={ticks} spacing={spacing} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us walking={walking} tempting={tempting} breeding={breeding} panicking={panicking} cows_now={}",
         t0.elapsed().as_secs_f64() * 1e6 / (ticks - warm).max(1) as f64,
         mobs.len()
     );

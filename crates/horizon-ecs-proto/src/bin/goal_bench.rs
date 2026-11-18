@@ -39,11 +39,14 @@ fn main() {
         seed ^= seed << 17;
         (seed >> 11) as usize % m.max(1)
     };
-    let warm = 100.min(ticks);
+    let warm: usize = std::env::var("WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(100).min(ticks);
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let mut i0 = 0;
     let mut t0 = Instant::now();
     for t in 0..ticks {
         if t == warm {
             t0 = Instant::now();
+            i0 = counter.as_ref().map_or(0, |c| c.read());
         }
         for i in 0..walkers {
             let (x, z) = spot(i);
@@ -65,11 +68,15 @@ fn main() {
         herd.tick();
     }
     let dt = t0.elapsed();
+    let instr = counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64;
     let (_, following, moving, total) = herd.counts();
     let now = herd.world.resource::<Clock>().0;
     let modules: Vec<String> = goals::counts(&mut herd.world).iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let a: Vec<u64> = goals::ASKS.iter().map(|x| x.load(std::sync::atomic::Ordering::Relaxed)).collect();
+    let finds = goals::FINDS.load(std::sync::atomic::Ordering::Relaxed);
+    eprintln!("path searches over the whole run ({} ticks): asked by stroll {} panic {} tempt {} breed {} follow-parent {} melee {}; searches run {finds}", ticks, a[0], a[1], a[2], a[3], a[4], a[5]);
     println!(
-        "goals n={n} ticks={ticks} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us cows_now={total} tick={now} following={following} moving={moving} {}",
+        "goals n={n} instr_per_entity_tick={instr} ticks={ticks} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us cows_now={total} tick={now} following={following} moving={moving} {}",
         dt.as_secs_f64() * 1e6 / (ticks - warm).max(1) as f64,
         modules.join(" ")
     );

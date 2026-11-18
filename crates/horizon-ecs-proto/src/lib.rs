@@ -5,5 +5,6 @@ pub mod cow;
 pub mod farm;
 pub mod flat;
 pub mod goals;
+pub mod instr;
 pub mod hostile;
 pub mod kernel_lab;

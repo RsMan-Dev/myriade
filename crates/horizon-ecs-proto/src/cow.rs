@@ -842,7 +842,12 @@ pub(crate) fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
+        let path = (c.on_ground || fluid)
+            .then(|| {
+                crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)
+            })
+            .flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);

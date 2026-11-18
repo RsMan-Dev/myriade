@@ -23,6 +23,8 @@ pub enum NavKind {
         prefers_shallow: bool,
     },
 }
+/// The searches `create_path_raw` made (a counter for the benches of the ecs prototype).
+pub static FINDER_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[derive(Clone, Debug)]
 pub struct Navigation {
     pub kind: NavKind,
@@ -335,6 +337,7 @@ impl Mob {
         let pm = self.path_mob();
         let max_visited =
             (self.ai.nav.max_visited_nodes as f32 * self.ai.nav.max_visited_multiplier) as i32;
+        FINDER_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let finder = Finder::new(w, &pm, self.ai.nav.evaluator());
         let path = finder.find(targets, max_len, reach, max_visited);
         if let Some(p) = &path {

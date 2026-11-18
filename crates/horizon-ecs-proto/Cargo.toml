@@ -14,6 +14,7 @@ horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
 horizon-client-render = { path = "../horizon-client-render" }
 horizon-core = { path = "../horizon-core" }
 horizon-world = { path = "../horizon-world" }
+libc = "0.2"
 
 [features]
 # The sleeping marker in sparse-set storage instead of a table (measured against the table).
