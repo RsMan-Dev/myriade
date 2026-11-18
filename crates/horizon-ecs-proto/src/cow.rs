@@ -198,13 +198,18 @@ pub struct Hit {
     pub cause: Cause,
     /// The attacker's position (x, z); `None` for an attacker without one or an environmental cause.
     pub from: Option<(f64, f64)>,
+    /// The player that did it (an entity of the bench's `Online` list), for the target of a `HurtByTarget`.
+    pub by: Option<u32>,
 }
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, from: None });
+        self.0.push(Hit { target, amount, cause, from: None, by: None });
+    }
+    pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(player) });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, from: Some(from) });
+        self.0.push(Hit { target, amount, cause, from: Some(from), by: None });
     }
 }
 /// What hurt (`DamageType`): `Panic` reads it (`#panic_environmental_causes`: cactus, freeze, hot_floor, in_fire, lava,
@@ -477,6 +482,8 @@ pub struct Species {
     pub goals: crate::goals::GoalDef,
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
+    /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
+    pub attack_damage: f32,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -536,7 +543,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
-    let names: [&'static str; 2] = ["minecraft:cow", "minecraft:pig"];
+    let names: [&'static str; 3] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie"];
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
@@ -564,15 +571,22 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
             goals: crate::goals::goal_def(name),
             knockback_resistance: mob.attrs.knockback_resistance,
+            attack_damage: mob.attrs.attack_damage,
         });
         if name == chosen {
             chosen_kind = Some(kind);
         }
     }
+    let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());
     let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
     (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), half }, species, chosen_kind.expect("a known species"))
+}
+/// The prepared vanilla types of the process, for the species the tests compare with a `Mob`.
+static TYPES: std::sync::OnceLock<&'static horizon_client_lib::mobs::MobTypes> = std::sync::OnceLock::new();
+pub fn mob_kind(name: &str) -> Arc<horizon_client_lib::mobs::MobType> {
+    Arc::new(TYPES.get().expect("a level was built").types[name].clone())
 }
 /// Every species of the process (see `build_level`).
 static TABLE: std::sync::OnceLock<Vec<Species>> = std::sync::OnceLock::new();
@@ -619,6 +633,12 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
         ),
     )
 }
+/// Spawns an animal of species `sp` (with the extra data of a species that attacks).
+pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
+    crate::hostile::equip(world, e, sp);
+    e
+}
 /// An animal of the species the process was built for (see `species`).
 pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
     spawn_bundle(species(), x, z, seed)
@@ -642,6 +662,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     s.add_systems((due, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
     crate::goals::register(&mut s);
+    crate::hostile::register(&mut s);
     s
 }
 
@@ -1385,6 +1406,7 @@ pub(crate) fn apply_damage(
     mut wheel: ResMut<Wheel>,
     mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId)>,
     mut hurts: ResMut<crate::goals::Hurts>,
+    mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
     mut commands: Commands,
 ) {
@@ -1415,6 +1437,9 @@ pub(crate) fn apply_damage(
         }
         hurts.0.push(e);
         causes.0.push((e, hit.cause));
+        if let Some(p) = hit.by {
+            by.0.push((e, p));
+        }
         // `Animal.actuallyHurt`: damage taken ends love.
         commands.entity(e).remove::<crate::goals::Love>();
         // `ai::after_hurt`: `noActionTime = 0`.
@@ -1746,6 +1771,7 @@ impl Herd {
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
         crate::goals::insert_resources(&mut world);
+        crate::hostile::insert_resources(&mut world);
         world.insert_resource(Index::new(-f64::from(half), (2 * half / 2) as usize + 2));
         let mut rng = Rng(seed | 1);
         for i in 0..n {
@@ -1754,7 +1780,7 @@ impl Herd {
             let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
             let table = species_table();
             let sp = if other_every > 0 { table.0[usize::from(i % other_every == 0)] } else { species };
-            world.spawn(spawn_bundle(&sp, o + cx * spacing + 0.5, o + cz * spacing + 0.5, s));
+            spawn_species(&mut world, &sp, o + cx * spacing + 0.5, o + cz * spacing + 0.5, s);
         }
         {
             let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
@@ -1781,6 +1807,11 @@ impl Herd {
         self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
     }
     /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
+    /// A hit by player `player` (of `Online`): from where it stands.
+    pub fn hit_by(&mut self, e: Entity, amount: f32, player: u32) {
+        let p = self.world.resource::<crate::goals::Online>().get(player).expect("an online player");
+        self.world.resource_mut::<DamageQueue>().add_by(e, amount, (p.x, p.z), player);
+    }
     pub fn hit(&mut self, e: Entity, amount: f32, from: (f64, f64)) {
         self.world.resource_mut::<DamageQueue>().add_from(e, amount, Cause::Entity, from);
     }
