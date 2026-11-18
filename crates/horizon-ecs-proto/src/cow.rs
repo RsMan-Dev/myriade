@@ -181,7 +181,25 @@ pub const HAZ_SNOW: u8 = 8;
 pub const HAZ_CACTUS: u8 = 16;
 /// The damage waiting to be applied (what hurts a cow only queues it: a command).
 #[derive(Resource, Default)]
-pub struct DamageQueue(pub Vec<(Entity, f32)>);
+pub struct DamageQueue(pub Vec<(Entity, f32, Cause)>);
+/// What hurt (`DamageType`): `Panic` reads it (`#panic_environmental_causes`: cactus, freeze, hot_floor, in_fire, lava,
+/// lightning_bolt, on_fire).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cause {
+    Cactus,
+    InFire,
+    OnFire,
+    Lava,
+    Freeze,
+    Fall,
+    Drown,
+    InWall,
+    /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
+    Entity,
+}
+/// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
+#[derive(Resource, Default)]
+pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// The hazard bits of each block column (a static world here; a block change would update its column: the event).
 #[derive(Resource, Default)]
 pub struct Hazards {
@@ -875,12 +893,13 @@ fn travel_one(
     body: &Body,
     bounds: &mut Bounds,
     fs: &FluidState,
+    jumping: bool,
     fall_damage: &mut f32,
 ) -> bool {
     let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
     let in_fluid = fs.in_water || fs.in_lava;
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if !in_fluid && !d.jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
@@ -892,7 +911,7 @@ fn travel_one(
     );
     // `LivingEntity.handleJumping`, in a fluid: the jump input lifts a cow whose feet are in water or lava.
     let threshold = if sp.eye_height < 0.4 { 0.0 } else { 0.4 };
-    if d.jumping && in_fluid {
+    if jumping && in_fluid {
         let deep = if fs.in_lava { fs.lava > threshold } else { fs.water > threshold };
         if deep || !c.on_ground {
             vel.0.y += if sp.can_float { f64::from(0.04_f32) } else { 0.3 };
@@ -963,16 +982,17 @@ fn travel(
     sp: Res<Species>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, &FluidState, Has<Following>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
         With<Moving>,
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
         let mut fall = 0.0_f32;
-        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, d, b, &mut bb, fs, &mut fall);
+        let jumping = jump.is_some_and(|j| j.0);
+        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, d, b, &mut bb, fs, jumping, &mut fall);
         if fall > 0.0 {
             par.command_scope(|mut cmd| {
-                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall)));
+                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall, Cause::Fall)));
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
@@ -983,10 +1003,10 @@ fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f)| one(e, p, v, y, c, d, b, bb, fs, f));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j)| one(e, p, v, y, c, d, b, bb, fs, f, j));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f);
+        for (e, p, v, y, c, d, b, bb, fs, f, j) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j);
         }
     }
 }
@@ -1054,7 +1074,7 @@ fn breathing(
         if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, "minecraft:cow", &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
         {
-            queue.0.push((e, damage));
+            queue.0.push((e, damage, Cause::Drown));
         }
         if air.0 < 300 && !low {
             commands.entity(e).insert(AirLow);
@@ -1111,7 +1131,7 @@ fn wall_check(
 }
 fn wall_damage(q: Query<Entity, With<InWall>>, mut queue: ResMut<DamageQueue>) {
     for e in &q {
-        queue.0.push((e, 1.0));
+        queue.0.push((e, 1.0, Cause::InWall));
     }
 }
 
@@ -1165,6 +1185,7 @@ fn apply_damage(
     mut q: Query<(&mut Health, &mut HurtAt, &Cell)>,
     mut bodies: Query<(&mut Vel, &Contact)>,
     mut hurts: ResMut<crate::goals::Hurts>,
+    mut causes: ResMut<HurtCauses>,
     mut commands: Commands,
 ) {
     for (e, dx, dz) in std::mem::take(&mut knock.0) {
@@ -1178,7 +1199,9 @@ fn apply_damage(
             commands.entity(e).insert(Moving);
         }
     }
-    for (e, amount) in std::mem::take(&mut queue.0) {
+    // The causes of the previous step were read by the goals (they run after this system in the chain).
+    causes.0.clear();
+    for (e, amount, cause) in std::mem::take(&mut queue.0) {
         let Ok((mut h, mut hurt, cell)) = q.get_mut(e) else { continue };
         let applied = if clock.0 < hurt.at + 10 && hurt.at != 0 {
             if amount <= hurt.last {
@@ -1197,6 +1220,7 @@ fn apply_damage(
             commands.entity(e).despawn();
         } else {
             hurts.0.push(e);
+            causes.0.push((e, cause));
         }
     }
 }
@@ -1235,19 +1259,19 @@ fn hazard_tick(
             }
         }
         if f & HAZ_LAVA != 0 {
-            queue.0.push((e, 4.0));
+            queue.0.push((e, 4.0, Cause::Lava));
         }
         if f & HAZ_FIRE != 0 {
             // `FireBlock.entityInside`: the fire hurts 1 as well as setting alight.
-            queue.0.push((e, 1.0));
+            queue.0.push((e, 1.0, Cause::InFire));
         }
         if f & HAZ_CACTUS != 0 {
-            queue.0.push((e, 1.0));
+            queue.0.push((e, 1.0, Cause::Cactus));
         }
         if f & HAZ_SNOW != 0 {
             frozen.0 = (frozen.0 + 1).min(140);
             if frozen.0 >= 140 && now % 40 == 0 {
-                queue.0.push((e, 1.0));
+                queue.0.push((e, 1.0, Cause::Freeze));
             }
         }
     }
@@ -1347,7 +1371,7 @@ pub(crate) fn due(
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
                     if clock.0 < burning.until {
-                        queue.0.push((e2, 1.0));
+                        queue.0.push((e2, 1.0, Cause::OnFire));
                         wheel.push((clock.0 + 20).min(clock.0 + WHEEL as u64 - 1), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
@@ -1389,6 +1413,7 @@ impl Herd {
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
         world.insert_resource(Knockbacks::default());
+        world.insert_resource(HurtCauses::default());
         world.insert_resource(level);
         world.insert_resource(species);
         world.insert_resource(Config { sleep, parallel });
@@ -1427,7 +1452,7 @@ impl Herd {
     /// A hit from `from` (x, z): `amount` damage and the knockback away from it (the damage a player does).
     pub fn hit(&mut self, e: Entity, amount: f32, from: (f64, f64)) {
         let p = self.world.get::<Pos>(e).unwrap().0;
-        self.world.resource_mut::<DamageQueue>().0.push((e, amount));
+        self.world.resource_mut::<DamageQueue>().0.push((e, amount, Cause::Entity));
         // `knockback(0.4, attacker - victim)`: the direction TOWARD the attacker, the push is the other way.
         self.world.resource_mut::<Knockbacks>().0.push((e, from.0 - p.x, from.1 - p.z));
     }
@@ -1543,6 +1568,8 @@ mod tests {
         let snow = cow(&mut herd, -31.0, 1.0, -47.0);
         let cactus = cow(&mut herd, -39.0, 1.0, -39.0);
         let pond = cow(&mut herd, -39.0, 3.0, -47.0);
+        // No float goal for this cow (the Mob case has none either): it sinks and drowns.
+        herd.world.entity_mut(pond).remove::<crate::goals::Jump>();
         let wall = cow(&mut herd, 20.5, 1.0, 20.5);
         herd.teleport(wall, Vec3::new(20.5, -0.6, 20.5));
         let show = |herd: &Herd, t: u32| {

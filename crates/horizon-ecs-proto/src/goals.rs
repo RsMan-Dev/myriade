@@ -1158,7 +1158,7 @@ mod tests {
         ticks(&mut h, 3);
         assert!(running(&h, e, Kind::Stroll));
         let from = at(&h, e);
-        h.world.resource_mut::<DamageQueue>().0.push((e, 1.0));
+        h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, crate::cow::Cause::Entity));
         let mut steps = Vec::new();
         let (mut started, mut ended) = (None, None);
         let mut prev = at(&h, e);
