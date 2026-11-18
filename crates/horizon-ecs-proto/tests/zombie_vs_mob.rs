@@ -21,12 +21,13 @@ struct Ref {
     t: i64,
     kind: Arc<mobs::MobType>,
     pub events: Vec<MobEvent>,
+    pub sun: bool,
 }
 impl Ref {
     fn new(half: i32, patches: bool) -> Self {
         let (level, _s, _k) = build_level(half, patches);
         let kind = mob_kind("minecraft:zombie");
-        Self { w: level.mw.0, mobs: Vec::new(), tl: TestLevel::new(7), pushes: PendingPushes::default(), t: 0, kind, events: Vec::new() }
+        Self { w: level.mw.0, mobs: Vec::new(), tl: TestLevel::new(7), pushes: PendingPushes::default(), t: 0, kind, events: Vec::new(), sun: false }
     }
     fn add(&mut self, at: Vec3) -> usize {
         let mut m = Mob::new(self.mobs.len() as u32 + 1, self.kind.clone(), at, 0.0);
@@ -59,6 +60,7 @@ impl Ref {
                 nearest_player: player.map(|p| p.position),
                 player: player.cloned(),
                 game_time: self.t,
+                monsters_burn: self.sun,
                 ..self.w.clone()
             };
             let kept = mobs::ai::tick(&mut self.mobs[slot], &view, &mut lvl, &mut self.events);
@@ -261,4 +263,71 @@ fn the_target_is_lost_beyond_the_range_or_when_the_player_dies() {
     let (el, ne) = mean_of(&e.lost);
     eprintln!("player dies at tick 150: target lost mob {nm}/12 at {ml:.1}, ecs {ne}/12 at {el:.1}");
     assert!(nm > 0 && ne > 0 && (ml - el).abs() < 6.0, "lost: mob {ml}, ecs {el}");
+}
+
+/// Burning in daylight: the tick of the first fire of 20 zombies in the open, no player.
+#[test]
+fn zombies_burn_in_daylight_as_a_mob_does() {
+    if !have_data() { return; }
+    let n = 100;
+    let spots: Vec<(f64, f64)> = (0..n).map(|i| (-45.0 + 9.0 * (i % 10) as f64 + 0.5, -45.0 + 9.0 * (i / 10) as f64 + 0.5)).collect();
+    let mut rf = Ref::new(60, false);
+    rf.sun = true;
+    for s in &spots {
+        rf.add(Vec3::new(s.0, 1.0, s.1));
+    }
+    eprintln!("brightness at the eyes {}, sees sky {}", rf.w.brightness(-45, 2, -45), rf.w.can_see_sky(-45, 2, -45));
+    let mut mob_first: Vec<Option<i64>> = vec![None; n];
+    for t in 1..=300 {
+        rf.step(None);
+        for (i, m) in rf.mobs.iter().enumerate() {
+            if m.fire_ticks > 0 && mob_first[i].is_none() {
+                mob_first[i] = Some(t);
+            }
+        }
+    }
+    let mut h = Herd::with_slab(60, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let ids: Vec<Entity> = spots.iter().enumerate().map(|(i, s)| spawn_species(&mut h.world, &table[2], s.0, s.1, 500 + i as u64)).collect();
+    h.set_day(true);
+    let mut ecs_first: Vec<Option<i64>> = vec![None; n];
+    for t in 1..=300 {
+        h.tick();
+        for (i, &e) in ids.iter().enumerate() {
+            if h.world.get::<Burning>(e).is_some() && ecs_first[i].is_none() {
+                ecs_first[i] = Some(t);
+            }
+        }
+    }
+    let (m, nm) = mean_of(&mob_first);
+    let (e, ne) = mean_of(&ecs_first);
+    eprintln!("first fire in daylight: mob {nm}/{n} at {m:.1}, ecs {ne}/{n} at {e:.1}");
+    // Night: nobody burns.
+    h.set_day(false);
+    assert!(nm > 0 && ne > 0, "someone must burn in the day on both sides");
+    assert!((m - e).abs() < 12.0, "mob {m}, ecs {e}");
+}
+
+/// A zombie hurt by a player calls the zombies within its follow range that have no target, not the ones beyond.
+#[test]
+fn a_hurt_zombie_alerts_the_zombies_around_it() {
+    if !have_data() { return; }
+    let mut h = Herd::with_slab(60, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let near: Vec<Entity> = (0..5).map(|i| spawn_species(&mut h.world, &table[2], -20.0 + 2.0 * i as f64, 0.5, 1 + i)).collect();
+    let far = spawn_species(&mut h.world, &table[2], 50.5, 0.5, 9);
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: -18.0, y: 1.0, z: 3.5, main: 0, off: 0 });
+    for &e in near.iter().chain([&far]) {
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    }
+    // The zombies are in the spatial index after their first tick.
+    h.tick();
+    h.tick();
+    h.hit_by(near[0], 1.0, 1);
+    for _ in 0..3 {
+        h.tick();
+    }
+    let hunting = |e: Entity| h.world.get::<Aggro>(e).is_some();
+    assert!(near.iter().all(|&e| hunting(e)), "the zombies around it are alerted");
+    assert!(!hunting(far), "the one 70 blocks away is not");
 }

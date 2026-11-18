@@ -352,6 +352,8 @@ pub enum Due {
     Grow,
     Goal(crate::goals::Kind),
     Burn,
+    /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
+    Sun,
 }
 const WHEEL: usize = 4096;
 /// A timer wheel: what is due at each tick, so that a sleeping or growing cow costs nothing until then.
@@ -484,6 +486,8 @@ pub struct Species {
     pub knockback_resistance: f64,
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
     pub attack_damage: f32,
+    /// `EntityType` flag: the undead that burn in daylight.
+    pub burns_in_day: bool,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -572,6 +576,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             goals: crate::goals::goal_def(name),
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
+            burns_in_day: kind.flags.burns_in_day,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -1351,7 +1356,7 @@ fn wall_damage(q: Query<Entity, With<InWall>>, mut queue: ResMut<DamageQueue>) {
 /// The index follows the boxes that changed (the cows that moved): only a change of column touches it; a change of
 /// the hazards under the box adds or takes off the `Hazard` module.
 #[allow(clippy::type_complexity)]
-fn reindex(
+pub(crate) fn reindex(
     mut idx: ResMut<Index>,
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
@@ -1572,6 +1577,7 @@ fn block_changes(
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
+    mut sun: ResMut<crate::hostile::SunDirty>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -1593,6 +1599,8 @@ fn block_changes(
         let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
         let mut near: Vec<Entity> = Vec::new();
         idx.for_near(f64::from(x) + 0.5, f64::from(z) + 0.5, |e| near.push(e));
+        // The sky above a column changed: whoever stands in it looks again at the sun.
+        sun.0.extend(near.iter().copied());
         for e in near {
             if let Ok((mut b, _, mut c)) = q.get_mut(e)
                 && b.0.intersects(reach)
@@ -1700,6 +1708,7 @@ pub(crate) fn due(
     mut clock: ResMut<Clock>,
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
+    mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
     mut queue: ResMut<DamageQueue>,
@@ -1713,6 +1722,7 @@ pub(crate) fn due(
             // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
             Due::Stroll => fired.0.push((e, crate::goals::Kind::Stroll)),
             Due::Goal(k) => fired.0.push((e, k)),
+            Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
                     if clock.0 < burning.until {
@@ -1817,6 +1827,12 @@ impl Herd {
         for (i, p) in players.iter().enumerate() {
             self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0 });
         }
+    }
+    /// Day or night for the monsters that burn in daylight (`monsters_burn`): every one of them looks at the sun again.
+    pub fn set_day(&mut self, day: bool) {
+        self.world.resource_mut::<crate::hostile::Daylight>().0 = day;
+        let all: Vec<Entity> = self.world.query_filtered::<Entity, With<crate::hostile::BurnsInDay>>().iter(&self.world).collect();
+        self.world.resource_mut::<crate::hostile::SunDirty>().0.extend(all);
     }
     /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
