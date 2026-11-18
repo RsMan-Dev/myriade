@@ -1560,6 +1560,9 @@ mod tests {
     /// interrupted stops; a tempting player met during the panic waits for the flag and then tempts.
     #[test]
     fn a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals() {
+        if crate::cow::skip_unless(crate::goals::Kind::Panic, "a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals") {
+            return;
+        }
         let Some(mut h) = herd() else { return };
         let (e, s) = (cow(&mut h, 0.5, 0.5, 11), cow(&mut h, -10.5, -10.5, 12));
         player(&mut h, 1, 0.5, 6.5, 0);
@@ -1627,6 +1630,9 @@ mod tests {
     /// Wheat within 10 blocks tempts, 10.5 does not; putting it away stops, with 100 ticks of calm.
     #[test]
     fn wheat_tempts_within_ten_blocks_and_stops_when_put_away() {
+        if crate::cow::skip_unless(crate::goals::Kind::Tempt(0), "wheat_tempts_within_ten_blocks_and_stops_when_put_away") {
+            return;
+        }
         let Some(mut h) = herd() else { return };
         let (near, far) = (cow(&mut h, -8.5, 0.5, 21), cow(&mut h, -10.5, 5.5, 22));
         ticks(&mut h, 2);
@@ -1656,6 +1662,9 @@ mod tests {
     /// Two cows in love: after the 60-tick delay close to each other, a baby of age -24000; both rest 6000 ticks.
     #[test]
     fn two_cows_in_love_make_a_baby_after_the_delay() {
+        if crate::cow::skip_unless(crate::goals::Kind::Breed, "two_cows_in_love_make_a_baby_after_the_delay") {
+            return;
+        }
         let Some(mut h) = herd() else { return };
         let (a, b) = (cow(&mut h, 0.5, 0.5, 31), cow(&mut h, 5.5, 0.5, 32));
         ticks(&mut h, 2);
@@ -1690,6 +1699,9 @@ mod tests {
     /// walks away wakes it again.
     #[test]
     fn a_baby_follows_its_parent_beyond_three_blocks() {
+        if crate::cow::skip_unless(crate::goals::Kind::FollowParent, "a_baby_follows_its_parent_beyond_three_blocks") {
+            return;
+        }
         let Some(mut h) = herd() else { return };
         let mom = cow(&mut h, 0.5, 0.5, 41);
         let (far, close, lost) = (cow(&mut h, 6.5, 0.5, 42), cow(&mut h, 1.5, 1.5, 43), cow(&mut h, -12.5, 0.5, 44));
@@ -1716,6 +1728,9 @@ mod tests {
     /// A baby 1.4 blocks from an adult that is not its mother: the adult walks off, and the baby follows (no scan).
     #[test]
     fn a_baby_follows_the_nearest_adult_that_walks_off() {
+        if crate::cow::skip_unless(crate::goals::Kind::FollowParent, "a_baby_follows_the_nearest_adult_that_walks_off") {
+            return;
+        }
         let Some(mut h) = herd() else { return };
         let adult = cow(&mut h, 0.5, 0.5, 61);
         let baby = cow(&mut h, 1.5, 1.5, 62);
@@ -1757,10 +1772,10 @@ mod tests {
         }
         let (mut near, mut near_hit, mut far_hit) = (0, 0, 0);
         for (i, (_, x, z)) in cows.iter().enumerate() {
-            if (x * x + z * z).sqrt() <= 5.5 {
+            if (x * x + z * z).sqrt() <= species().goals.look - 0.5 {
                 near += 1;
                 near_hit += usize::from(glanced[i]);
-            } else if (x * x + z * z).sqrt() > 6.5 {
+            } else if (x * x + z * z).sqrt() > species().goals.look + 0.5 {
                 far_hit += usize::from(glanced[i]);
             }
             scanned += usize::from(seen_scan[i]);
@@ -1777,6 +1792,9 @@ mod tests {
     /// A cow dropped in a pond floats: a jump 8 ticks in 10 while the water is deeper than 0.4, and it stays afloat.
     #[test]
     fn a_cow_in_a_pond_jumps_eight_ticks_in_ten() {
+        if crate::cow::skip_unless(crate::goals::Kind::Float, "a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
+            return;
+        }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

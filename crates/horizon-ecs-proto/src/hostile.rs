@@ -6,6 +6,7 @@
 use crate::cow::*;
 use crate::goals::{self, *};
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::ParamSet;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `MeleeAttackGoal`'s data (from the species: damage, interval, speed) and state.
@@ -78,15 +79,23 @@ impl PlayerState {
 pub struct HurtBy(pub Vec<(Entity, u32)>);
 
 pub fn insert_resources(world: &mut World) {
+    world.insert_resource(Daylight::default());
+    world.insert_resource(SunDirty::default());
+    world.insert_resource(SunFired::default());
     world.insert_resource(PlayerState::default());
     world.insert_resource(HurtBy::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems((hurt_by_events, aggro_run, melee_run).chain().after(goals::hurt_events).before(arbitrate));
+    s.add_systems((sun_eval, sun_burn).chain().after(crate::cow::reindex));
 }
 
 /// The data of a species that attacks (the vanilla values of `Zombie` and its attributes).
 pub fn equip(world: &mut World, e: Entity, sp: &Species) {
+    if sp.burns_in_day {
+        world.entity_mut(e).insert(BurnsInDay { eye: sp.eye_height, block: (i32::MIN, 0, 0) });
+        world.resource_mut::<SunDirty>().0.push(e);
+    }
     if sp.goals.slots.iter().any(|s| s.0 == Kind::Melee) {
         let now = world.resource::<Clock>().0;
         world.entity_mut(e).insert(Attack {
@@ -146,12 +155,39 @@ pub fn hunt(w: &mut World, e: Entity) {
     }
     arm_melee(w, e);
 }
-fn hurt_by_events(mut by: ResMut<HurtBy>, ps: Res<PlayerState>, q: Query<(), With<Attack>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+fn hurt_by_events(
+    by: ResMut<HurtBy>,
+    ps: Res<PlayerState>,
+    idx: Res<Index>,
+    q: Query<(&Pos, &SpeciesId, Has<Aggro>, &Attack)>,
+    mut reqs: ResMut<Requests>,
+    mut cmd: Commands,
+) {
+    let mut by = by;
     for (e, p) in std::mem::take(&mut by.0) {
-        if q.get(e).is_ok() && ps.alive(p) {
-            cmd.entity(e).insert(Aggro { player: p });
-            reqs.0.push(Req::Hunt(e));
+        let Ok((pos, sp, _, a)) = q.get(e) else { continue };
+        if !ps.alive(p) {
+            continue;
         }
+        cmd.entity(e).insert(Aggro { player: p });
+        reqs.0.push(Req::Hunt(e));
+        // `HurtByTargetGoal.alertOthers`: the others of the same type within the follow range (10 blocks up and down)
+        // that have no target take the same one.
+        idx.for_radius(pos.0.x, pos.0.z, a.follow, |o| {
+            if o == e {
+                return;
+            }
+            if let Ok((op, osp, has, _)) = q.get(o)
+                && osp == sp
+                && !has
+                && (op.0.x - pos.0.x).abs() <= a.follow + 1.0
+                && (op.0.z - pos.0.z).abs() <= a.follow + 1.0
+                && (op.0.y - pos.0.y).abs() <= 11.0
+            {
+                cmd.entity(o).insert(Aggro { player: p });
+                reqs.0.push(Req::Hunt(o));
+            }
+        });
     }
 }
 /// `TargetGoal.canContinueToUse`, asked every other tick of the monsters that have a target: alive and within the
@@ -248,6 +284,121 @@ fn melee_run(
         if a.until <= 0 && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(player_box(&p)) {
             a.until = a.interval;
             ps.hurt(clock.0, p.id, a.damage, (pos.0.x, pos.0.z));
+        }
+    }
+}
+
+// ---- burning in daylight ----------------------------------------------------------------------------------------
+/// `monsters_burn`: the sun is up (the level's day, set by the game).
+#[derive(Resource, Default)]
+pub struct Daylight(pub bool);
+/// Monsters that must look at the sun again: the day came or went, a block changed in their column.
+#[derive(Resource, Default)]
+pub struct SunDirty(pub Vec<Entity>);
+/// Monsters whose `Due::Sun` draw came up this tick.
+#[derive(Resource, Default)]
+pub struct SunFired(pub Vec<Entity>);
+/// A species that burns in daylight (`burns_in_day`): the eye height and the eye block last looked at.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct BurnsInDay {
+    eye: f64,
+    block: (i32, i32, i32),
+}
+/// Daylight, sky seen from the eyes and light enough: each tick the monster burns with probability
+/// `(brightness - 0.4) * 2 / 30` (`Mob.isSunBurnTick`); one draw is armed in the wheel, its tick is `token`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Exposed {
+    token: u64,
+}
+fn eye_block(p: Vec3, eye: f64) -> (i32, i32, i32) {
+    (p.x.floor() as i32, (p.y + eye).floor() as i32, p.z.floor() as i32)
+}
+/// The probability per tick of a burn at this block, 0 when the light is too low or the sky is not seen.
+fn burn_chance(level: &Level, day: bool, b: (i32, i32, i32)) -> f64 {
+    let mw = level.mw.0;
+    if !day || !mw.can_see_sky(b.0, b.1, b.2) {
+        return 0.0;
+    }
+    let br = f64::from(mw.brightness(b.0, b.1, b.2));
+    if br > 0.5 { ((br - 0.4) * 2.0 / 30.0).min(1.0) } else { 0.0 }
+}
+/// The wait for the first success of a 1-in-`1/p` draw each tick.
+fn wait_for(rng: &mut Rng, p: f64) -> u64 {
+    let u = rng.next_f64().max(1.0e-12);
+    let n = (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64;
+    1 + n
+}
+/// Looks at the sun again for the monsters an event names and those whose eye changed block: no scan of the others.
+#[allow(clippy::type_complexity)]
+fn sun_eval(
+    clock: Res<Clock>,
+    level: Res<Level>,
+    day: Res<Daylight>,
+    mut dirty: ResMut<SunDirty>,
+    mut wheel: ResMut<Wheel>,
+    mut p: ParamSet<(
+        Query<(Entity, &Pos, &BurnsInDay), Changed<Bounds>>,
+        Query<(&Pos, &mut BurnsInDay, &mut Rng, Has<Exposed>)>,
+    )>,
+    mut cmd: Commands,
+) {
+    let mut todo = std::mem::take(&mut dirty.0);
+    todo.extend(p.p0().iter().filter(|(_, pos, b)| eye_block(pos.0, b.eye) != b.block).map(|x| x.0));
+    todo.sort_unstable();
+    todo.dedup();
+    let mut watched = p.p1();
+    for e in todo {
+        let Ok((pos, mut b, mut rng, exposed)) = watched.get_mut(e) else { continue };
+        b.block = eye_block(pos.0, b.eye);
+        let chance = burn_chance(&level, day.0, b.block);
+        if chance > 0.0 && !exposed {
+            let at = clock.0 + wait_for(&mut rng, chance);
+            wheel.push(at, e, Due::Sun);
+            cmd.entity(e).insert(Exposed { token: at });
+        } else if chance == 0.0 && exposed {
+            cmd.entity(e).remove::<Exposed>();
+        }
+    }
+}
+/// The draw came up: a monster that is not wet catches fire for 160 ticks (`ignite_for_ticks`), and the next draw is
+/// armed while it stays exposed.
+#[allow(clippy::type_complexity)]
+fn sun_burn(
+    clock: Res<Clock>,
+    level: Res<Level>,
+    day: Res<Daylight>,
+    mut fired: ResMut<SunFired>,
+    mut wheel: ResMut<Wheel>,
+    mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng)>,
+    mut cmd: Commands,
+) {
+    let now = clock.0;
+    for e in std::mem::take(&mut fired.0) {
+        let Ok((x, b, fs, burning, mut rng)) = q.get_mut(e) else { continue };
+        if x.token != now {
+            continue;
+        }
+        if !fs.in_water {
+            let until = now + 160;
+            match burning {
+                None => {
+                    wheel.push(now + 1, e, Due::Burn);
+                    cmd.entity(e).insert(Burning { until });
+                }
+                Some(bn) if bn.until < until => {
+                    cmd.entity(e).insert(Burning { until });
+                }
+                _ => {}
+            }
+        }
+        let chance = burn_chance(&level, day.0, b.block);
+        if chance > 0.0 {
+            let at = now + wait_for(&mut rng, chance);
+            wheel.push(at, e, Due::Sun);
+            cmd.entity(e).insert(Exposed { token: at });
+        } else {
+            cmd.entity(e).remove::<Exposed>();
         }
     }
 }
