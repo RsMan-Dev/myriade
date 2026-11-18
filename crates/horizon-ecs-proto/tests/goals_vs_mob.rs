@@ -36,9 +36,10 @@ impl Ref {
     fn names(&self, i: usize) -> Vec<&'static str> {
         self.mobs[i].ai.goals.running_names()
     }
-    fn hurt(&mut self, i: usize, amount: f32) {
+    /// A blow of a player standing at `from`: damage and knockback away from it (`Herd::hit` on the ecs side).
+    fn hit(&mut self, i: usize, amount: f32, from: [f64; 3]) {
         let mut lvl = self.tl.level();
-        self.mobs[i].damage(&mut lvl, amount, Damage::of(DamageKind::MobAttack));
+        self.mobs[i].damage(&mut lvl, amount, Damage::player(from));
     }
     fn step(&mut self, player: Option<&PlayerView>) {
         self.t += 1;
@@ -119,6 +120,10 @@ fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     h.world.get_mut::<Pos>(e).unwrap().0.y = y;
     h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), species().width, species().height);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+    // A cow at rest has the resting vertical velocity (a fresh one is in the air for its first tick).
+    if y <= 1.0 {
+        h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
+    }
     e
 }
 fn health(h: &Herd, e: Entity) -> f32 {
@@ -128,70 +133,44 @@ fn mob_health(m: &Mob) -> f32 {
     if m.health <= 0.0 || m.removed { 0.0 } else { m.health }
 }
 
-/// A cow put in a cactus, in fire, in lava: its health at the ticks 40, 140 and 340, with the panic of each.
+/// A cow put in a cactus, in fire, in lava: its health at the ticks 40, 140 and 340, with the cow at rest (the
+/// resting vertical velocity) and fresh from its spawn (velocity zero: it is in the air for its first tick).
 #[test]
 fn cactus_fire_and_lava_hurt_as_a_mob_does() {
     if !have_data() {
         return;
     }
     let spots = [("lava", -47.0, -47.0), ("fire", -47.0, -39.0), ("cactus", -39.0, -39.0)];
-    let mut r = Ref::new(56, true);
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
-    let ids: Vec<(usize, Entity)> = spots.iter().map(|s| (r.add(Vec3::new(s.1, 1.0, s.2)), ecs_cow(&mut h, s.1, 1.0, s.2, 77))).collect();
-    let mut rows = Vec::new();
-    for t in 1..=340 {
-        r.step(None);
-        h.tick();
-        if [40, 140, 340].contains(&t) {
-            rows.push((t, ids.iter().map(|&(m, e)| (mob_health(&r.mobs[m]), health(&h, e))).collect::<Vec<_>>()));
+    for rest in [true, false] {
+        let mut r = Ref::new(56, true);
+        let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let ids: Vec<(usize, Entity)> = spots
+            .iter()
+            .map(|s| {
+                let e = ecs_cow(&mut h, s.1, 1.0, s.2, 77);
+                if !rest {
+                    h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
+                }
+                (r.add(Vec3::new(s.1, 1.0, s.2)), e)
+            })
+            .collect();
+        let mut rows = Vec::new();
+        for t in 1..=340 {
+            r.step(None);
+            h.tick();
+            if [40, 140, 340].contains(&t) {
+                rows.push((t, ids.iter().map(|&(m, e)| (mob_health(&r.mobs[m]), health(&h, e))).collect::<Vec<_>>()));
+            }
         }
-    }
-    for (t, row) in &rows {
-        let line: Vec<String> = spots.iter().zip(row).map(|(s, (m, e))| format!("{} mob {m} ecs {e}", s.0)).collect();
-        eprintln!("tick {t}: {}", line.join(", "));
-    }
-    for (t, row) in &rows {
-        for (s, (m, e)) in spots.iter().zip(row) {
-            assert!((m - e).abs() <= 2.0, "{} at tick {t}: mob {m}, ecs {e}", s.0);
+        for (t, row) in &rows {
+            let line: Vec<String> = spots.iter().zip(row).map(|(s, (m, e))| format!("{} mob {m} ecs {e}", s.0)).collect();
+            eprintln!("tick {t} (ecs cow {}): {}", if rest { "at rest" } else { "fresh" }, line.join(", "));
         }
-    }
-}
-
-#[test]
-#[ignore = "trace"]
-fn trace_cactus() {
-    if !have_data() {
-        return;
-    }
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
-    let e = ecs_cow(&mut h, -39.0, 1.0, -39.0, 77);
-    for t in 1..=60 {
-        h.tick();
-        let g = h.world.get::<GoalSet>(e);
-        if let Some(g) = g {
-            let p = h.world.get::<Pos>(e).unwrap().0;
-            eprintln!(
-                "t={t} pos=({:.2},{:.2},{:.2}) hp={} panic={} stroll={} following={} needs={} moving={} path={}",
-                p.x, p.y, p.z, health(&h, e), g.is_running(Kind::Panic), g.is_running(Kind::Stroll),
-                h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Moving>(e).is_some(),
-                h.world.get::<Nav>(e).unwrap().path.is_some()
-            );
+        for (t, row) in &rows {
+            for (s, (m, e)) in spots.iter().zip(row) {
+                assert!((m - e).abs() <= 2.0, "{} at tick {t} (rest {rest}): mob {m}, ecs {e}", s.0);
+            }
         }
-    }
-}
-
-#[test]
-#[ignore = "trace"]
-fn trace_mob_cactus() {
-    if !have_data() {
-        return;
-    }
-    let mut r = Ref::new(56, true);
-    let i = r.add(Vec3::new(-39.0, 1.0, -39.0));
-    for t in 1..=30 {
-        r.step(None);
-        let m = &r.mobs[i];
-        eprintln!("mob t={t} pos=({:.2},{:.2},{:.2}) hp={} goals={:?} last_damage={:?} age={}", m.position.x, m.position.y, m.position.z, m.health, r.names(i), m.last_damage.map(|d| d.1), m.age);
     }
 }
 
@@ -219,15 +198,17 @@ fn a_struck_cow_panics_as_a_mob_does() {
             cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 500 + cows.len() as u64)));
         }
     }
-    // (start, end, peak step) per cow, for the mob and the ecs.
-    let mut m = vec![(None::<i64>, None::<i64>, 0.0_f64); cows.len()];
+    // Per cow, for the mob and the ecs: (first tick of the goal, ticks of the goal in the 60 after the blow, peak step
+    // of the goal, distance walked in those 60 ticks, first tick that moves the cow after the blow's recoil).
+    let mut m = vec![(None::<i64>, 0_i64, 0.0_f64, 0.0_f64, None::<i64>); cows.len()];
     let mut c = m.clone();
     let mut prev: Vec<(Vec3, Vec3)> = cows.iter().map(|&(i, e)| (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0)).collect();
-    for t in 1..=200_i64 {
+    for t in 1..=65_i64 {
         if t == 5 {
             for &(i, e) in &cows {
-                r.hurt(i, 1.0);
-                h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
+                let p = r.mobs[i].position;
+                r.hit(i, 1.0, [p.x, p.y, p.z + 3.0]);
+                h.hit(e, 1.0, (p.x, p.z + 3.0));
             }
         }
         r.step(None);
@@ -241,28 +222,31 @@ fn a_struck_cow_panics_as_a_mob_does() {
                     st.0 = Some(t);
                 }
                 if on {
+                    st.1 += 1;
                     st.2 = st.2.max(step);
                 }
-                if !on && st.0.is_some() && st.1.is_none() {
-                    st.1 = Some(t);
+                if t >= 5 {
+                    st.3 += step;
                 }
             }
             prev[k] = (a, b);
         }
     }
-    let stats = |v: &[(Option<i64>, Option<i64>, f64)]| {
+    type Row = (Option<i64>, i64, f64, f64, Option<i64>);
+    let stats = |v: &[Row]| {
         let s: Vec<f64> = v.iter().filter_map(|x| x.0).map(|x| (x - 5) as f64).collect();
-        let d: Vec<f64> = v.iter().filter_map(|x| Some((x.1? - x.0?) as f64)).collect();
+        let on: Vec<f64> = v.iter().map(|x| x.1 as f64).collect();
         let p: Vec<f64> = v.iter().map(|x| x.2).collect();
-        (mean(&s), s.len(), mean(&d), mean(&p))
+        let d: Vec<f64> = v.iter().map(|x| x.3).collect();
+        (mean(&s), s.len(), mean(&on), mean(&p), mean(&d))
     };
-    let (ms, mn, md, mp) = stats(&m);
-    let (cs, cn, cd, cp) = stats(&c);
-    eprintln!("panic: mob start +{ms:.1} ({mn} cows) length {md:.1} peak step {mp:.3}; ecs start +{cs:.1} ({cn}) length {cd:.1} peak step {cp:.3}");
+    let (ms, mn, mo, mp, md) = stats(&m);
+    let (cs, cn, co, cp, cd) = stats(&c);
+    eprintln!("panic: mob start +{ms:.1} ({mn} cows) goal ticks {mo:.1}/60 peak step {mp:.3} walked {md:.1}; ecs start +{cs:.1} ({cn}) goal ticks {co:.1}/60 peak step {cp:.3} walked {cd:.1}");
     assert!(mn == cows.len() && cn == cows.len());
     assert!((ms - cs).abs() <= 3.0, "start");
-    assert!(cd / md > 0.6 && cd / md < 1.6, "length");
-    assert!(cp / mp > 0.8 && cp / mp < 1.2, "speed");
+    assert!(cd / md > 0.7 && cd / md < 1.4, "distance walked");
+    assert!(cp / mp > 0.8 && cp / mp < 1.25, "speed");
 }
 
 /// Wheat in hand: range 9.5 / 10.5, the time to walk up, the stop distance, the calm after putting it away.
@@ -384,7 +368,7 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
         make_baby(&mut h.world, eb, 24000);
         h.tick();
         adopt(&mut h.world, ea, eb);
-        for _ in 0..6 {
+        for _ in 0..3 {
             r.step(None);
             h.tick();
         }
@@ -464,20 +448,139 @@ fn trace_panic() {
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
     let e = ecs_cow(&mut h, 0.5, 1.0, 0.5, 11);
     let (mut pm, mut pc) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
-    for t in 1..=40 {
+    for t in 1..=24 {
         if t == 5 {
-            r.hurt(i, 1.0);
-            h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
+            r.hit(i, 1.0, [0.5, 1.0, 3.5]);
+            h.hit(e, 1.0, (0.5, 3.5));
         }
         r.step(None);
         h.tick();
         let m = &r.mobs[i];
         let (cp, d, n) = (h.world.get::<Pos>(e).unwrap().0, h.world.get::<Drive>(e).unwrap(), h.world.get::<Nav>(e).unwrap());
+        let (cv, cc) = (h.world.get::<Vel>(e).unwrap().0, h.world.get::<Contact>(e).unwrap());
         eprintln!(
-            "t={t:2} MOB step {:.3} zza {:.3} speed {:.3} attr {:.3} nodes {} panic {} | ECS step {:.3} zza {:.3} speed {:.3} nav.speed {} nodes {} panic {}",
-            xz(pm, m.position), m.ai.zza, m.ai.speed, m.movement_speed(), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()), r.names(i).contains(&"Panic"),
-            xz(pc, cp), d.zza, d.speed, n.speed, n.path.as_ref().map_or(0, |p| p.nodes.len()), h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic)
+            "t={t:2} MOB step {:.3} vy {:+.3} ground {} zza {:.2} speed {:.2} jump {} node {:?}/{} panic {} | ECS step {:.3} vy {:+.3} ground {} zza {:.2} speed {:.2} jump {} node {:?}/{} panic {}",
+            xz(pm, m.position), m.velocity.y, u8::from(m.on_ground), m.ai.zza, m.ai.speed, u8::from(m.ai.jumping), m.ai.nav.path.as_ref().map(|p| p.next), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()), u8::from(r.names(i).contains(&"Panic")),
+            xz(pc, cp), cv.y, u8::from(cc.on_ground), d.zza, d.speed, u8::from(d.jump), n.path.as_ref().map(|p| p.next), n.path.as_ref().map_or(0, |p| p.nodes.len()), u8::from(h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic))
         );
         (pm, pc) = (m.position, cp);
+    }
+}
+
+/// A burning cow 4 blocks from a pond runs to the water and puts the fire out, as a mob does (`lookForWater`).
+#[test]
+fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let (x, z) = (-39.5, -42.5);
+    let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
+    for _ in 0..3 {
+        r.step(None);
+        h.tick();
+    }
+    r.mobs[i].fire_ticks = 160;
+    ignite(&mut h.world, e, 160);
+    let (mut mout, mut cout) = (None, None);
+    let mut hp = Vec::new();
+    for t in 1..=160_i64 {
+        r.step(None);
+        h.tick();
+        if mout.is_none() && r.mobs[i].fire_ticks <= 0 {
+            mout = Some(t);
+        }
+        if cout.is_none() && h.world.get::<Burning>(e).is_none() {
+            cout = Some(t);
+        }
+        if [40, 100, 160].contains(&t) {
+            hp.push((t, mob_health(&r.mobs[i]), health(&h, e)));
+        }
+    }
+    eprintln!("burning near a pond: fire out at tick mob {mout:?}, ecs {cout:?}; health (tick, mob, ecs) {hp:?}");
+    let (mout, cout) = (mout.expect("mob never put out"), cout.expect("ecs never put out"));
+    assert!(mout < 100 && cout < 100 && (mout - cout).abs() <= 25, "mob {mout}, ecs {cout}");
+}
+
+#[test]
+#[ignore = "trace"]
+fn trace_cactus_paths() {
+    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let i = r.add(Vec3::new(-39.0, 1.0, -39.0));
+    let w = r.w;
+    let pm_mob = r.mobs[i].path_mob();
+    eprintln!("mob PathMob: pos {:?} w {} h {} ground {} water {} step {} fall {} float {} doors {} {} fences {}", pm_mob.position, pm_mob.width, pm_mob.height, pm_mob.on_ground, pm_mob.in_water, pm_mob.max_up_step, pm_mob.max_fall_distance, pm_mob.can_float, pm_mob.can_open_doors, pm_mob.can_pass_doors, pm_mob.can_walk_over_fences);
+    eprintln!("mob malus {:?}", pm_mob.malus);
+    let sp = species();
+    eprintln!("ecs species: step {} w {} h {} fall 3 malus {:?}", sp.step_height, sp.width, sp.height, sp.malus);
+    for (tx, tz) in [(-41, -39), (-39, -42), (-35, -39), (-39, -35), (-43, -43)] {
+        let a = Finder::new(w, &pm_mob, Evaluator::Walk).find(&[[tx, 1, tz]], sp.follow_range, 1, (sp.follow_range * 16.0) as i32);
+        let mut pg = pm_mob.clone();
+        pg.on_ground = true;
+        let b = Finder::new(w, &pg, Evaluator::Walk).find(&[[tx, 1, tz]], sp.follow_range, 1, (sp.follow_range * 16.0) as i32);
+        let show = |p: &Option<horizon_client_lib::mobs::path::Path>| p.as_ref().map(|p| p.nodes.iter().map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
+        eprintln!("target ({tx},{tz}): finder on_ground=false {:?}\n   on_ground=true {:?}", show(&a), show(&b));
+    }
+}
+
+/// The cactus cow tick by tick on the ecs side (`FRESH=1`: velocity zero at the start, as after a spawn).
+#[test]
+#[ignore = "trace"]
+fn trace_cactus() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let e = ecs_cow(&mut h, -39.0, 1.0, -39.0, 77);
+    if std::env::var_os("FRESH").is_some() {
+        h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
+    }
+    for t in 1..=60 {
+        h.tick();
+        if let Some(g) = h.world.get::<GoalSet>(e) {
+            let p = h.world.get::<Pos>(e).unwrap().0;
+            eprintln!(
+                "t={t} pos=({:.2},{:.2},{:.2}) ground={} vy={:.3} hp={} panic={} following={} needs={} path={}",
+                p.x, p.y, p.z, h.world.get::<Contact>(e).unwrap().on_ground, h.world.get::<Vel>(e).unwrap().0.y, health(&h, e),
+                g.is_running(Kind::Panic), h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(),
+                h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "trace"]
+fn trace_burning() {
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let (x, z) = (-39.5, -42.5);
+    let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
+    for _ in 0..3 {
+        r.step(None);
+        h.tick();
+    }
+    r.mobs[i].fire_ticks = 160;
+    ignite(&mut h.world, e, 160);
+    for t in 1..=40 {
+        r.step(None);
+        h.tick();
+        let m = &r.mobs[i];
+        let p = h.world.get::<Pos>(e).unwrap().0;
+        let s = h.world.get::<Stroll>(e).unwrap();
+        eprintln!(
+            "t={t:2} MOB ({:.2},{:.2},{:.2}) fire {} goals {:?} nodes {} | ECS ({:.2},{:.2},{:.2}) burning {} panic {} target ({:.1},{:.1}) following {} needs {} path {}",
+            m.position.x, m.position.y, m.position.z, m.fire_ticks, r.names(i), m.ai.nav.path.as_ref().map_or(0, |p| p.nodes.len()),
+            p.x, p.y, p.z, h.world.get::<Burning>(e).is_some(), h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic), s.tx, s.tz,
+            h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
+        );
     }
 }

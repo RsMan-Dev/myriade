@@ -75,6 +75,8 @@ pub struct Stroll {
     pub scheduled: bool,
     pub tx: f64,
     pub tz: f64,
+    /// The block row of the path target (1 on the slab; a water spot is one lower).
+    pub ty: i32,
     pub horizontal_range: i32,
     pub vertical_range: i32,
     /// The attempt's chance is 1 in this (`reducedTickDelay(120)`).
@@ -607,7 +609,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
             MoveTo::default(),
             Nav::default(),
             ActiveUntil(100),
-            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, horizontal_range: 10, vertical_range: 7, interval: 60 },
+            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
             (Moving, crate::goals::goals_bundle(sp)),
             Health(sp.max_health),
             HurtAt { at: 0, last: 0.0 },
@@ -760,11 +762,11 @@ fn pathfind(
     level: Res<Level>,
     table: Res<SpeciesTable>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, &SpeciesId), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &SpeciesId), With<NeedsPath>>,
 ) {
     let now = clock.0;
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, sid: &SpeciesId| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sid: &SpeciesId| {
         let sp = &table.0[sid.0 as usize];
         let mw = level.mw.0;
         let pm = PathMob {
@@ -784,8 +786,10 @@ fn pathfind(
         };
         let max_len = sp.follow_range;
         let max_visited = (max_len * 16.0).floor() as i32;
-        let target = [s.tx.floor() as i32, 1, s.tz.floor() as i32];
-        let path = Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited);
+        let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
+        // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
+        // A cow that a recoil or a jump has just lifted (upward velocity, not yet integrated) is in the air already.
+        let path = ((c.on_ground && vel.0.y <= 0.0) || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -801,10 +805,10 @@ fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, i)| one(e, p, b, c, &mut s, &mut n, i));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i)| one(e, p, b, c, &mut s, &mut n, f, v, i));
     } else {
-        for (e, p, b, c, mut s, mut n, i) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, i);
+        for (e, p, b, c, mut s, mut n, f, v, i) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i);
         }
     }
 }
@@ -870,6 +874,7 @@ fn follow(
             nav.path = None;
             s.walking = false;
             drive.zza = 0.0;
+            drive.jump = false;
             m.active = false;
             par.command_scope(|mut cmd| {
                 cmd.entity(e).remove::<Following>().insert(PathEnded);
@@ -938,7 +943,7 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     r
 }
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
-fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
+fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
     if d.jumping_op {
@@ -968,16 +973,29 @@ fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, bod
     d.speed = speed;
     d.zza = speed;
     // `MoveControl` MOVE_TO: a target above the step height and near makes the cow jump.
-    d.jump = yd > f64::from(body.step_height) && xd * xd + zd * zd < f64::from(body.width.max(1.0));
+    d.jump = yd > f64::from(body.step_height) && xd * xd + zd * zd < f64::from(body.width.max(1.0)) || stands_in_low_block(level, pos);
     d.jumping_op = d.jump;
 }
-fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+/// The second clause of the `MoveControl` jump: the cow stands in a block with a collision shape that has not
+/// reached its top (a cactus, a slab, a carpet): it jumps, unless the block is a door or a fence.
+fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
+    let mw = level.mw.0;
+    let (bx, by, bz) = (pos.0.x.floor() as i32, pos.0.y.floor() as i32, pos.0.z.floor() as i32);
+    let state = mw.world.block(bx, by, bz);
+    let top = mw.data.state(state).top;
+    if top <= 0.0 {
+        return false;
+    }
+    let name = &mw.facts.get(state).name;
+    pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
+}
+fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f)));
+        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
     } else {
         for (p, mut y, mut m, mut d, b, c, f) in &mut q {
-            move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f));
+            move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f));
         }
     }
 }
