@@ -91,7 +91,6 @@ pub mod render;
 pub mod riders;
 pub mod cow_memo;
 pub mod cow_rest;
-pub mod ecs_cow;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;
@@ -129,7 +128,7 @@ pub mod wither;
 
 #[cfg(test)]
 mod invisible_follow_tests;
-mod world;
+pub mod world;
 pub use world::{TargetInfo, VisualShape, single_player_pos, visual_clip, visual_shape};
 pub mod dragon_contacts;
 pub mod zombie_villager;
