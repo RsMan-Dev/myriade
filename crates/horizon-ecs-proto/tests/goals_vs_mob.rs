@@ -227,7 +227,7 @@ fn a_struck_cow_panics_as_a_mob_does() {
         if t == 5 {
             for &(i, e) in &cows {
                 r.hurt(i, 1.0);
-                h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+                h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
             }
         }
         r.step(None);
@@ -467,7 +467,7 @@ fn trace_panic() {
     for t in 1..=40 {
         if t == 5 {
             r.hurt(i, 1.0);
-            h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+            h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
         }
         r.step(None);
         h.tick();

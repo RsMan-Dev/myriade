@@ -49,7 +49,7 @@ fn main() {
         if t % 50 == 10 && t >= 50 {
             for _ in 0..hurt {
                 let e = cows[next(cows.len())];
-                herd.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+                herd.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
             }
             for _ in 0..love {
                 let i = next(cows.len() - 1);
