@@ -660,7 +660,9 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
+    // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
+    // this tick's physics, as a mob's hurt precedes its tick.
+    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     crate::goals::register(&mut s);
     crate::hostile::register(&mut s);
     s
@@ -777,7 +779,7 @@ fn comfortable_fall_distance(f: f32) -> i32 {
 /// that asked for a path are visited, in parallel when asked; what follows (the next module, the end of the walk)
 /// is a command.
 #[allow(clippy::type_complexity)]
-fn pathfind(
+pub(crate) fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
@@ -809,8 +811,7 @@ fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        // A cow that a recoil or a jump has just lifted (upward velocity, not yet integrated) is in the air already.
-        let path = ((c.on_ground && vel.0.y <= 0.0) || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
+        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);

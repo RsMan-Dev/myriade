@@ -174,6 +174,10 @@ fn cactus_fire_and_lava_hurt_as_a_mob_does() {
     }
 }
 
+fn target_of(spots: &[(f64, f64)], cows: &[(usize, Entity)], e: Entity, target: &[Option<(f64, f64)>]) -> Option<(f64, f64)> {
+    let _ = spots;
+    cows.iter().position(|c| c.1 == e).and_then(|k| target[k])
+}
 fn mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len().max(1) as f64
 }
@@ -583,4 +587,75 @@ fn trace_burning() {
             h.world.get::<Following>(e).is_some(), h.world.get::<NeedsPath>(e).is_some(), h.world.get::<Nav>(e).unwrap().path.as_ref().map_or(0, |p| p.nodes.len())
         );
     }
+}
+
+/// The same blow, the same selector phase and the same flight spot on both sides (the `Mob` draws its own, the ecs
+/// takes it): the positions of a struck cow, tick by tick, for the cows whose `Mob` found a spot at the tick of the
+/// blow (the others start later, after landing, with draws that cannot be read: not compared here).
+#[test]
+fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if !have_data() {
+        return;
+    }
+    let spots: Vec<(f64, f64)> = (0..6).flat_map(|i| (0..4).map(move |j| (-16.5 + 6.0 * f64::from(i), -13.5 + 8.0 * f64::from(j)))).collect();
+    // First pass: the mobs alone, to read where each one decides to flee at the tick of the blow.
+    let mut r = Ref::new(20, false);
+    let ids: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+    let mut target: Vec<Option<(f64, f64)>> = vec![None; ids.len()];
+    for t in 1..=5 {
+        if t == 5 {
+            for (k, &i) in ids.iter().enumerate() {
+                let (x, z) = spots[k];
+                r.hit(i, 1.0, [x, 1.0, z + 3.0]);
+            }
+        }
+        r.step(None);
+    }
+    for (k, &i) in ids.iter().enumerate() {
+        if r.names(i).contains(&"Panic") && let Some(p) = &r.mobs[i].ai.nav.path {
+            let n = p.nodes.last().unwrap();
+            target[k] = Some((f64::from(n.x) + 0.5, f64::from(n.z) + 0.5));
+        }
+    }
+    // Second pass: the same mobs and the ecs cows, the ecs taking the mobs' spots and phases.
+    let (mut r, mut h) = flat_pair();
+    let cows: Vec<(usize, Entity)> = spots.iter().enumerate().map(|(k, &(x, z))| (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 900 + k as u64))).collect();
+    let mut kept = Vec::new();
+    for (k, &(i, e)) in cows.iter().enumerate() {
+        h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
+        // The mob is made facing 0; the ecs cow is given the same.
+        h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
+        if let Some(t) = target[k] {
+            h.world.resource_mut::<Forced>().spots.insert((e, Kind::Panic), t);
+            kept.push((i, e));
+        }
+    }
+    assert!(kept.len() >= 4, "only {} cows start at the tick of the blow", kept.len());
+    let mut apart: Vec<Vec<f64>> = vec![Vec::new(); 61];
+    for t in 1..=60_usize {
+        if t == 5 {
+            for (k, &(i, e)) in cows.iter().enumerate() {
+                let (x, z) = spots[k];
+                r.hit(i, 1.0, [x, 1.0, z + 3.0]);
+                h.hit(e, 1.0, (x, z + 3.0));
+            }
+        }
+        r.step(None);
+        h.tick();
+        for &(i, e) in &kept {
+            apart[t].push(xz(r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0));
+        }
+    }
+    let close = |t: usize| apart[t].iter().filter(|&&d| d < 0.05).count();
+    let median = |t: usize| {
+        let mut v = apart[t].clone();
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let line: Vec<String> = [6, 10, 20, 30, 60].iter().map(|&t| format!("t{t}: {}/{} within 0.05, median {:.3}", close(t), kept.len(), median(t))).collect();
+    eprintln!("imposed spot and phase, mob vs ecs distance apart: {}", line.join(" | "));
+    // Up to the end of the first walk the two are one trajectory (the cows apart are the ones whose spot lies along an
+    // axis, where the two round the heading differently); after it each draws its own next spot, so only the
+    // first 20 ticks are asserted.
+    assert!(close(10) * 10 >= kept.len() * 7 && close(20) * 10 >= kept.len() * 6, "{line:?}");
 }

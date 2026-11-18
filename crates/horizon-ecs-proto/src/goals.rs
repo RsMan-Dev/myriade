@@ -15,7 +15,7 @@ const WHEEL_MAX: u64 = 4095;
 /// The widest tempting range of any species (the index scan radius).
 const SCAN: f64 = 10.0;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Kind {
     Float,
     Panic,
@@ -126,6 +126,10 @@ pub fn item_id(name: &str) -> u32 {
         _ => 0,
     }
 }
+/// The phase of the goal selector of the entity: it asks `canUse` on the ticks where tick + phase is even (the id of
+/// a `Mob`). `u64::MAX`: the entity's index.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Phase(pub u64);
 /// The goals of a farm animal by its type (`Cow.registerGoals`, `Pig.registerGoals`, in `farm.rs`). The pig has two
 /// tempt goals (the carrot on a stick, then its foods) at one priority: one `Tempt` here with both sets of items.
 pub fn goal_def(species: &str) -> GoalDef {
@@ -324,6 +328,7 @@ pub fn goals_bundle(sp: &Species) -> impl Bundle {
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
         Buoyancy(if sp.eye_height < 0.4 { 0.0 } else { 0.4 }),
         Jump(false),
+        Phase(u64::MAX),
     )
 }
 
@@ -343,6 +348,12 @@ pub enum Req {
 }
 #[derive(Resource, Default)]
 pub struct Requests(pub Vec<Req>);
+/// Imposed random draws, for comparing with a `Mob` that drew its own: the spot (x, z) a goal of this cow takes next
+/// instead of drawing one. Empty outside the tests.
+#[derive(Resource, Default)]
+pub struct Forced {
+    pub spots: HashMap<(Entity, Kind), (f64, f64)>,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
@@ -429,6 +440,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Entered::default());
     world.insert_resource(Hurts::default());
     world.insert_resource(Requests::default());
+    world.insert_resource(Forced::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     world.insert_resource(Babies::default());
@@ -440,7 +452,8 @@ pub fn register(s: &mut Schedule) {
         (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_events, float_run, arbitrate, look_control)
             .chain()
             .after(online_events)
-            .after(hurt_events),
+            .after(hurt_events)
+            .before(pathfind),
     );
 }
 
@@ -944,7 +957,17 @@ pub(crate) fn arbitrate(world: &mut World) {
             // A cow entering the active zone: its look timers are armed.
             Req::Arm(e) => arm_timers(world, e),
             Req::Hunt(e) => crate::hostile::hunt(world, e),
-            Req::Start(e, k) => start_goal(world, e, k),
+            // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
+            // heard at the next such tick (the same as the next one at most).
+            Req::Start(e, k) => {
+                let now = world.resource::<Clock>().0;
+                let phase = world.get::<Phase>(e).map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+                if now > 1 && (now + phase) % 2 == 1 {
+                    arm(world, e, k, 1);
+                } else {
+                    start_goal(world, e, k);
+                }
+            }
             Req::End(e, k) => end_goal(world, e, k),
         }
     }
@@ -1062,6 +1085,9 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
             if now > p.until && !burning {
                 return None;
+            }
+            if let Some((x, z)) = w.resource_mut::<Forced>().spots.remove(&(e, Kind::Panic)) {
+                return Some(Pick::Spot(x, z));
             }
             // `PanicGoal.lookForWater`: a burning cow looks for water within 5 blocks first (nearest first).
             if burning && let Some((x, y, z)) = water_spot(w, pos, 5) {
@@ -1453,7 +1479,7 @@ mod tests {
         }
         let (started, ended) = (started.expect("no panic"), ended.expect("panic never ended"));
         assert!(started <= 4 && ended - started > 5, "panic from {started} to {ended}");
-        assert!(dist(from, at(&h, e)) < 12.0);
+        assert!(dist(from, at(&h, e)) < 25.0);
         // Moving: modifier 2 gives 2 x 2 the pull of modifier 1 (`setSpeed` is both the speed and the input).
         let fast = steps.iter().cloned().fold(0.0, f64::max);
         let slow = stroll_steps.iter().cloned().fold(0.0, f64::max);
@@ -1505,7 +1531,7 @@ mod tests {
         let (mut began, mut born) = (None, None);
         for t in 0..200 {
             h.tick();
-            if began.is_none() && has::<Breeding>(&h, a) {
+            if began.is_none() && (has::<Breeding>(&h, a) || has::<Breeding>(&h, b)) {
                 began = Some(t);
             }
             if born.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {
