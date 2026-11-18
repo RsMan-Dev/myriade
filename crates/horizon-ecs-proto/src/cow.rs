@@ -96,10 +96,12 @@ pub struct Nav {
     /// `PathNavigation.timeLastRecompute` and `delayedRecompute`.
     pub last_recompute: u64,
     pub delayed: bool,
+    /// `createPath`'s accuracy: how close to the target block the path may end (1 for a spot, 0 for an entity).
+    pub reach: i32,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, last_recompute: 0, delayed: false }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, last_recompute: 0, delayed: false, reach: 1 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -841,7 +843,7 @@ pub(crate) fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, 1, max_visited)).flatten();
+        let path = (c.on_ground || fluid).then(|| Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)).flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -1603,6 +1605,7 @@ fn block_changes(
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
     mut sun: ResMut<crate::hostile::SunDirty>,
+    mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -1620,6 +1623,7 @@ fn block_changes(
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
         hazards.set(x, y, z, hazard_bit(name));
+        seen.0.push((x, y, z));
         let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
         let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
         let mut near: Vec<Entity> = Vec::new();
@@ -2006,13 +2010,17 @@ mod tests {
         }
         show(&herd, 140);
         assert!(health(&herd, lava).is_none(), "the cow in lava lives: {:?}", health(&herd, lava));
-        assert!(health(&herd, fire).is_none_or(|h| h <= 6.0), "the fire: {:?}", health(&herd, fire));
+        assert!(health(&herd, fire).is_none_or(|h| h <= species().max_health - 4.0), "the fire: {:?}", health(&herd, fire));
         for _ in 0..200 {
             herd.tick();
         }
         show(&herd, 340);
         assert!(health(&herd, snow).is_some_and(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
-        assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
+        // Still burning or dead at tick 340: a species with the panic goal flees the fire burning; one without wanders
+        // out of it by chance, and the fire ends (160 ticks) before the tick 340.
+        if species().goals.slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
+            assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
+        }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
         if species().eye_height <= 1.4 {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");

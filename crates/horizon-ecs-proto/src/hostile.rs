@@ -20,6 +20,8 @@ pub struct Attack {
     pub reach: f64,
     /// `TargetGoal.getFollowDistance`: the target is lost beyond it.
     pub follow: f64,
+    /// The height of the eyes (the line of sight starts there).
+    pub eye: f64,
     /// The tick the monster appeared at: the 20-tick grid of the melee goal's `canUse` is relative to it.
     pub phase: u64,
     pub until: i32,
@@ -33,7 +35,25 @@ pub struct Attack {
 #[component(storage = "SparseSet")]
 pub struct Aggro {
     pub player: u32,
+    /// `Mob.sees(target)` as last read (`line_of_sight_for`); re-read by `sight_eval` only when an eye changes block or a
+    /// block changes on or around the segment.
+    pub seen: bool,
+    /// The eye blocks the sight was read for (the monster's, the player's).
+    zblock: (i32, i32, i32),
+    pblock: (i32, i32, i32),
+    /// Evaluations (every other tick) without sight, and how many `TargetGoal.unseenMemoryTicks` allows (30 for the
+    /// nearest-player goal, 150 for the hurt-by goal).
+    unseen: u16,
+    memory: u16,
 }
+impl Aggro {
+    pub fn new(player: u32, memory: u16) -> Self {
+        Self { player, seen: false, zblock: (i32::MIN, 0, 0), pblock: (i32::MIN, 0, 0), unseen: 0, memory }
+    }
+}
+/// The blocks that changed this tick (`block_changes` writes, `sight_eval` reads and clears).
+#[derive(Resource, Default)]
+pub struct ChangedBlocks(pub Vec<(i32, i32, i32)>);
 /// The melee goal runs: its system visits this monster each tick.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -79,6 +99,7 @@ impl PlayerState {
 pub struct HurtBy(pub Vec<(Entity, u32)>);
 
 pub fn insert_resources(world: &mut World) {
+    world.insert_resource(ChangedBlocks::default());
     world.insert_resource(Daylight::default());
     world.insert_resource(SunDirty::default());
     world.insert_resource(SunFired::default());
@@ -86,7 +107,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(HurtBy::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((hurt_by_events, aggro_run, melee_run).chain().after(goals::hurt_events).before(arbitrate));
+    s.add_systems((hurt_by_events, sight_eval, aggro_run, melee_run).chain().after(goals::hurt_events).before(arbitrate));
     s.add_systems((sun_eval, sun_burn).chain().after(crate::cow::reindex));
 }
 
@@ -104,6 +125,7 @@ pub fn equip(world: &mut World, e: Entity, sp: &Species) {
             speed: 1.0,
             reach: 2.04_f32.sqrt() as f64 - 0.6,
             follow: f64::from(sp.follow_range),
+            eye: sp.eye_height,
             phase: now,
             until: 0,
             recalc: 0,
@@ -122,9 +144,15 @@ pub fn pick_target(w: &mut World, e: Entity) -> Option<u32> {
     let range = a.follow.max(2.0);
     let mut best: Option<(u32, f64)> = None;
     let state = w.resource::<PlayerState>();
+    let mw = w.resource::<Level>().mw.0;
+    // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
     w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
         let d = d2(pos, Vec3::new(p.x, p.y, p.z));
-        if d <= range * range && state.alive(p.id) && best.is_none_or(|b| d < b.1) {
+        if d <= range * range
+            && state.alive(p.id)
+            && best.is_none_or(|b| d < b.1)
+            && mw.line_of_sight_for(Some(pos.y), Vec3::new(pos.x, pos.y + a.eye, pos.z), Vec3::new(p.x, p.eye(), p.z))
+        {
             best = Some((p.id, d));
         }
     });
@@ -132,7 +160,7 @@ pub fn pick_target(w: &mut World, e: Entity) -> Option<u32> {
 }
 /// The target is acquired: the melee goal will look at it on its next check.
 pub fn acquire(w: &mut World, e: Entity, player: u32) {
-    w.entity_mut(e).insert(Aggro { player });
+    w.entity_mut(e).insert(Aggro::new(player, 30));
     arm_melee(w, e);
 }
 /// `TargetGoal.stop`: no target; the melee goal ends and the selector asks again from a fresh draw.
@@ -169,7 +197,7 @@ fn hurt_by_events(
         if !ps.alive(p) {
             continue;
         }
-        cmd.entity(e).insert(Aggro { player: p });
+        cmd.entity(e).insert(Aggro::new(p, 150));
         reqs.0.push(Req::Hunt(e));
         // `HurtByTargetGoal.alertOthers`: the others of the same type within the follow range (10 blocks up and down)
         // that have no target take the same one.
@@ -184,7 +212,7 @@ fn hurt_by_events(
                 && (op.0.z - pos.0.z).abs() <= a.follow + 1.0
                 && (op.0.y - pos.0.y).abs() <= 11.0
             {
-                cmd.entity(o).insert(Aggro { player: p });
+                cmd.entity(o).insert(Aggro::new(p, 30));
                 reqs.0.push(Req::Hunt(o));
             }
         });
@@ -192,16 +220,47 @@ fn hurt_by_events(
 }
 /// `TargetGoal.canContinueToUse`, asked every other tick of the monsters that have a target: alive and within the
 /// follow range of the monster, else the target is lost.
-fn aggro_run(clock: Res<Clock>, on: Res<Online>, ps: Res<PlayerState>, q: Query<(Entity, &Pos, &Aggro, &Attack)>, mut reqs: ResMut<Requests>) {
+fn aggro_run(clock: Res<Clock>, on: Res<Online>, ps: Res<PlayerState>, mut q: Query<(Entity, &Pos, &mut Aggro, &Attack)>, mut reqs: ResMut<Requests>) {
     if clock.0 % 2 != 0 {
         return;
     }
-    for (e, pos, g, a) in &q {
+    for (e, pos, mut g, a) in &mut q {
         let ok = on.get(g.player).is_some_and(|p| ps.alive(p.id) && d2(pos.0, Vec3::new(p.x, p.y, p.z)) <= a.follow * a.follow);
-        if !ok {
+        // `TargetGoal.canContinueToUse`: a target out of sight is kept for `unseenMemoryTicks` evaluations.
+        if g.seen {
+            g.unseen = 0;
+        } else {
+            g.unseen += 1;
+        }
+        if !ok || g.unseen > g.memory {
             reqs.0.push(Req::End(e, Kind::Target));
         }
     }
+}
+/// `Mob.sees` for the monsters that hunt: the line of sight is read again only when the monster's eyes or the player's
+/// change block, or a block changes on the box of the segment between them (inflated by a block); a monster that stands
+/// still, with a still player and still blocks, costs a comparison.
+fn sight_eval(
+    level: Res<Level>,
+    on: Res<Online>,
+    mut changed: ResMut<ChangedBlocks>,
+    mut q: Query<(&Pos, &mut Aggro, &Attack)>,
+) {
+    let mw = level.mw.0;
+    for (pos, mut g, a) in &mut q {
+        let Some(p) = on.get(g.player) else { continue };
+        let (zb, pb) = (eye_block(pos.0, a.eye), eye_block(Vec3::new(p.x, p.y, p.z), 1.62));
+        let mut dirty = zb != g.zblock || pb != g.pblock;
+        if !dirty && !changed.0.is_empty() {
+            let (lo, hi) = ((zb.0.min(pb.0) - 1, zb.1.min(pb.1) - 1, zb.2.min(pb.2) - 1), (zb.0.max(pb.0) + 1, zb.1.max(pb.1) + 1, zb.2.max(pb.2) + 1));
+            dirty = changed.0.iter().any(|c| (lo.0..=hi.0).contains(&c.0) && (lo.1..=hi.1).contains(&c.1) && (lo.2..=hi.2).contains(&c.2));
+        }
+        if dirty {
+            (g.zblock, g.pblock) = (zb, pb);
+            g.seen = mw.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + a.eye, pos.0.z), Vec3::new(p.x, p.eye(), p.z));
+        }
+    }
+    changed.0.clear();
 }
 
 // ---- the melee goal ---------------------------------------------------------------------------------------------
@@ -214,6 +273,18 @@ pub fn arm_melee(w: &mut World, e: Entity) {
     }
     a.armed = true;
     let wait = 20 - (now.saturating_sub(a.phase) % 20) as i32;
+    arm(w, e, Kind::Melee, wait);
+}
+/// The goal ended or its check failed: `canUse` is asked again at the next selection tick if the last ask is 20 ticks old
+/// (the case when the goal ran for a long while: it restarts at once, with a cooldown of 0), else 20 ticks after it.
+pub fn arm_melee_after(w: &mut World, e: Entity) {
+    let now = w.resource::<Clock>().0;
+    let Some(mut a) = w.get_mut::<Attack>(e) else { return };
+    if a.armed {
+        return;
+    }
+    a.armed = true;
+    let wait = if now >= a.phase + 20 { 1 } else { (a.phase + 20 - now) as i32 };
     arm(w, e, Kind::Melee, wait);
 }
 /// `canUse`: a living target and a path to it or within reach (the path is made by the pathfinder at the start; the
@@ -234,15 +305,23 @@ pub fn start_melee(w: &mut World, e: Entity, player: u32) {
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         (s.tx, s.tz) = (p.x, p.z);
     }
-    w.get_mut::<Nav>(e).unwrap().speed = speed;
+    {
+        let mut nav = w.get_mut::<Nav>(e).unwrap();
+        nav.speed = speed;
+        // `createPath(entity, 0)`: the path goes to the target's block itself.
+        nav.reach = 0;
+    }
     w.entity_mut(e).insert(NeedsPath);
 }
 /// `MeleeAttackGoal.stop`: the path is dropped; the next check is on the grid.
 pub fn stop_melee(w: &mut World, e: Entity) {
     w.entity_mut(e).remove::<Meleeing>();
+    if let Some(mut nav) = w.get_mut::<Nav>(e) {
+        nav.reach = 1;
+    }
     stop_nav(w, e);
     if w.get::<Aggro>(e).is_some() {
-        arm_melee(w, e);
+        arm_melee_after(w, e);
     }
 }
 fn player_box(p: &Player) -> Aabb {
@@ -269,7 +348,8 @@ fn melee_run(
         aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], Some(30.0));
         a.recalc = (a.recalc - 1).max(0);
         let moved = d2(at, a.path_target) >= 1.0;
-        if a.recalc <= 0 && (a.path_target == Vec3::ZERO || moved || rng.next_f64() < 0.05) {
+        // `follow_unseen` is false for the zombie: no new path while the target is not in sight.
+        if g.seen && a.recalc <= 0 && (a.path_target == Vec3::ZERO || moved || rng.next_f64() < 0.05) {
             a.path_target = at;
             a.recalc = 4 + rng.next_int(7);
             let d = d2(pos.0, at);
@@ -281,7 +361,7 @@ fn melee_run(
             go_to(&mut cmd, e, p.x, p.z, a.speed);
         }
         a.until = (a.until - 1).max(0);
-        if a.until <= 0 && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(player_box(&p)) {
+        if a.until <= 0 && g.seen && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(player_box(&p)) {
             a.until = a.interval;
             ps.hurt(clock.0, p.id, a.damage, (pos.0.x, pos.0.z));
         }
@@ -323,11 +403,10 @@ fn burn_chance(level: &Level, day: bool, b: (i32, i32, i32)) -> f64 {
     let br = f64::from(mw.brightness(b.0, b.1, b.2));
     if br > 0.5 { ((br - 0.4) * 2.0 / 30.0).min(1.0) } else { 0.0 }
 }
-/// The wait for the first success of a 1-in-`1/p` draw each tick.
-fn wait_for(rng: &mut Rng, p: f64) -> u64 {
+/// The number of failed draws before the first success of a 1-in-`1/p` draw each tick.
+fn failures_before(rng: &mut Rng, p: f64) -> u64 {
     let u = rng.next_f64().max(1.0e-12);
-    let n = (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64;
-    1 + n
+    (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64
 }
 /// Looks at the sun again for the monsters an event names and those whose eye changed block: no scan of the others.
 #[allow(clippy::type_complexity)]
@@ -336,6 +415,7 @@ fn sun_eval(
     level: Res<Level>,
     day: Res<Daylight>,
     mut dirty: ResMut<SunDirty>,
+    mut now_fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
     mut p: ParamSet<(
         Query<(Entity, &Pos, &BurnsInDay), Changed<Bounds>>,
@@ -353,8 +433,14 @@ fn sun_eval(
         b.block = eye_block(pos.0, b.eye);
         let chance = burn_chance(&level, day.0, b.block);
         if chance > 0.0 && !exposed {
-            let at = clock.0 + wait_for(&mut rng, chance);
-            wheel.push(at, e, Due::Sun);
+            // The draw of THIS tick (the monster has moved already) is the first: it succeeds at tick now + failures.
+            let at = clock.0 + failures_before(&mut rng, chance);
+            // This tick's own draw came up: the wheel of this tick has been emptied already, so it is fired by hand.
+            if at == clock.0 {
+                now_fired.0.push(e);
+            } else {
+                wheel.push(at, e, Due::Sun);
+            }
             cmd.entity(e).insert(Exposed { token: at });
         } else if chance == 0.0 && exposed {
             cmd.entity(e).remove::<Exposed>();
@@ -394,7 +480,8 @@ fn sun_burn(
         }
         let chance = burn_chance(&level, day.0, b.block);
         if chance > 0.0 {
-            let at = now + wait_for(&mut rng, chance);
+            // The next draw is the next tick's.
+            let at = now + 1 + failures_before(&mut rng, chance);
             wheel.push(at, e, Due::Sun);
             cmd.entity(e).insert(Exposed { token: at });
         } else {

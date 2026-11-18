@@ -1033,15 +1033,22 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             }
         }
         Kind::Melee => {
+            // `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
+            let phase = w.get::<Phase>(e).map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+            if now > 1 && (now + phase) % 2 == 1 {
+                arm(w, e, k, 1);
+                return;
+            }
             if let Some(mut a) = w.get_mut::<crate::hostile::Attack>(e) {
                 a.armed = false;
+                a.phase = now;
             }
             if w.get::<crate::hostile::Aggro>(e).is_none() {
                 return;
             }
             start_goal(w, e, k);
             if w.get::<GoalSet>(e).is_some_and(|g| !g.is_running(Kind::Melee)) {
-                crate::hostile::arm_melee(w, e);
+                crate::hostile::arm_melee_after(w, e);
             }
             return;
         }
