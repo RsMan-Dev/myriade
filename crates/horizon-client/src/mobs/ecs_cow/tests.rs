@@ -1,7 +1,7 @@
 //! The oracle: the same cows as `Mob`s (the existing tick) and as ECS cows, in the same world, from the
 //! same state, ticked in the same order; after every tick each cow's state, the snapshot the others read
 //! and the level's random must be equal. See `suivi/ecs-prototype.md` for what this compares and leaves out.
-use super::{cowworld::CowWorld, event::CowEvent};
+use super::{cowworld::CowWorld, event::CowEvent, plain::PlainWorld};
 use crate::{
     health::TestLevel,
     mobs::{self, Mob, MobEvent, MobWorld, PendingPushes, Seen, Who},
@@ -74,7 +74,7 @@ pub(super) struct Coverage {
 thread_local!(static PUSHES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
 
 /// One pass of the `Mob`s of a world of cows (`tick_borrowed_creatures`: the snapshot, the grid, the pushes).
-fn mob_pass(
+pub(super) fn mob_pass(
     mobs: &mut Vec<Mob>,
     w: &MobWorld,
     level: &mut crate::health::DamageLevel<'_>,
@@ -171,8 +171,15 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                 ecs.clear_goals(e);
             }
         }
+        let mut plain = PlainWorld::new();
+        for (slot, m) in cows.iter().enumerate() {
+            plain.spawn_from(m.clone());
+            if !goals {
+                plain.clear_goals(slot);
+            }
+        }
         let mut pushes = PendingPushes::default();
-        let (mut la, mut lb) = (TestLevel::new(7), TestLevel::new(7));
+        let (mut la, mut lb, mut lc) = (TestLevel::new(7), TestLevel::new(7), TestLevel::new(7));
         let mut next_id = n as u32 + 1;
         for t in 0..ticks {
             // The damage and the love of the script, to both.
@@ -182,6 +189,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                     cows[slot].damage(&mut la.level(), 3.0, src);
                     let e = ecs.order[slot];
                     ecs.damage(e, &mut lb.level(), 3.0, src);
+                    plain.damage(slot, &mut lc.level(), 3.0, src);
                 }
             }
             if t == 300 {
@@ -192,6 +200,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                         cows[slot].damage(&mut la.level(), 100.0, src);
                         let e = ecs.order[slot];
                         ecs.damage(e, &mut lb.level(), 100.0, src);
+                        plain.damage(slot, &mut lc.level(), 100.0, src);
                     }
                 }
             }
@@ -201,12 +210,14 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                         cows[slot].extra.in_love = 600;
                         let e = ecs.order[slot];
                         ecs.set_in_love(e, 600);
+                        plain.set_in_love(slot, 600);
                     }
                 }
             }
             let (mut ev_a, ev_b);
             ev_a = mob_pass(&mut cows, w, &mut la.level(), &mut pushes, items);
             ev_b = ecs.pass(w, &mut lb.level());
+            let ev_c = plain.pass(w, &mut lc.level());
             // The breedings: the child is a new cow at the end of the list.
             let mut kids: Vec<(u32, Vec3, u8, bool, Option<u8>, Arc<mobs::MobType>)> = Vec::new();
             ev_a.retain(|e| {
@@ -236,6 +247,7 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                 cows.push(c);
             }
             let mut made = 0;
+            let mut made_plain = 0usize;
             ecs.handle(ev_b, |p| {
                 let replay = seeds[made as usize].clone();
                 let c = horizon_client_render::random_source::replay_seeds(replay, || {
@@ -244,8 +256,36 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                 made += 1;
                 Some(c)
             });
+            for e in ev_c {
+                let CowEvent::Breed { parent, partner, parent_variant, .. } = e else { continue };
+                let pv = plain.facts(parent);
+                let qv = plain.facts(partner).map(|f| f.2);
+                plain.set_partner(partner);
+                if let Some((k, at, variant)) = pv {
+                    let replay = seeds[made_plain].fresh();
+                    let c = horizon_client_render::random_source::replay_seeds(replay, || {
+                        child(&mut lc.level(), n as u32 + 1 + made_plain as u32, &k, at, variant, parent_variant, qv)
+                    });
+                    made_plain += 1;
+                    plain.spawn_from(c);
+                }
+            }
             let _ = (what, &mut next_id);
             // After the tick.
+            if cows.len() != plain.len() {
+                result = Err(format!("tick {t}: {} Mobs and {} plain cows", cows.len(), plain.len()));
+                return;
+            }
+            for (slot, m) in cows.iter().enumerate() {
+                let mut diffs = plain.differences(slot, m);
+                if format!("{:?}", m.seen(None, items)) != format!("{:?}", plain.seen_of(slot)) {
+                    diffs.push("the snapshot row".into());
+                }
+                if !diffs.is_empty() {
+                    result = Err(format!("PLAIN tick {t}, cow {slot} (id {}): {}", m.id, diffs.join("; ")));
+                    return;
+                }
+            }
             if cows.len() != ecs.len() {
                 result = Err(format!("tick {t}: {} Mobs and {} ECS cows", cows.len(), ecs.len()));
                 return;
@@ -271,8 +311,8 @@ pub(super) fn run(n: usize, ticks: u32, goals: bool, what: &str) -> Result<(u32,
                 cover.fell |= m.fall_distance > 1.0;
                 cover.strolled |= m.ai.goals.is_running("Stroll");
             }
-            let (ra, rb) = (la.random().next_int(), lb.random().next_int());
-            if ra != rb {
+            let (ra, rb, rc) = (la.random().next_int(), lb.random().next_int(), lc.random().next_int());
+            if ra != rb || ra != rc {
                 result = Err(format!("tick {t}: the level's random streams differ"));
                 return;
             }

@@ -13,6 +13,8 @@ pub mod goals;
 pub mod landing;
 pub mod life;
 pub mod nav;
+pub mod parts;
+pub mod plain;
 pub mod physics;
 pub mod randpos;
 pub mod seen;
@@ -20,3 +22,5 @@ pub mod tick;
 pub mod view;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod bench;

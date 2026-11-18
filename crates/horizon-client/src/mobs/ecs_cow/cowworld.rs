@@ -41,97 +41,10 @@ impl CowWorld {
     /// A cow of the state `m` had at its creation (`Mob::new`: the constructor's draws, the paths'
     /// maluses and the species' goals are the existing code's, once, at the spawn). No `Mob` is kept.
     pub fn spawn_from(&mut self, m: Mob) -> Entity {
-        let mut goals = CowGoalSelector::default();
-        super::goals::register_cow(&mut goals, &m.kind);
+        let p = super::parts::Parts::from_mob(&m);
         let e = self
             .world
-            .spawn((
-                Ident { id: m.id, kind: m.kind.clone() },
-                Motion {
-                    position: m.position,
-                    previous: m.previous,
-                    velocity: m.velocity,
-                    yaw: m.yaw,
-                    previous_yaw: m.previous_yaw,
-                    body_yaw: m.body_yaw,
-                    previous_body_yaw: m.previous_body_yaw,
-                    head_yaw: m.head_yaw,
-                    previous_head_yaw: m.previous_head_yaw,
-                    head_pitch: m.head_pitch,
-                    previous_head_pitch: m.previous_head_pitch,
-                    on_ground: m.on_ground,
-                    horizontal_collision: m.horizontal_collision,
-                    vertical_collision_below: m.vertical_collision_below,
-                    needs_sync: m.needs_sync,
-                    sync_position: m.sync_position,
-                    fall_distance: m.fall_distance,
-                    stuck_multiplier: m.stuck_multiplier,
-                    piston: m.piston.clone(),
-                    supporting: m.supporting,
-                    climbing: m.climbing,
-                    on_climbable: m.on_climbable,
-                    no_gravity: m.no_gravity,
-                    no_physics: m.no_physics,
-                    pushed: m.pushed.clone(),
-                    limb_position: m.limb_position,
-                    limb_speed: m.limb_speed,
-                    previous_limb_speed: m.previous_limb_speed,
-                },
-                Vitals {
-                    health: m.health,
-                    hurt_time: m.hurt_time,
-                    invulnerable: m.invulnerable,
-                    invulnerable_time: m.invulnerable_time,
-                    death_time: m.death_time,
-                    impulse_grace_time: m.impulse_grace_time,
-                    absorption: m.absorption,
-                    last_hurt: m.last_hurt,
-                    dealt_absorbed: m.dealt_absorbed,
-                    last_damage: m.last_damage,
-                    accepted_hit: None,
-                    death_canceled: m.death_canceled,
-                    last_direct: m.last_direct,
-                    attacker_aim: None,
-                    creative_attacker: m.creative_attacker,
-                    projectile_motion: m.projectile_motion,
-                    invulnerable_flag: m.invulnerable_flag,
-                    combat: m.combat.clone(),
-                    removed: m.removed,
-                    despawn: m.despawn,
-                    gear_knockback_resistance: m.gear_knockback_resistance,
-                },
-                Env {
-                    fire_ticks: m.fire_ticks,
-                    ticks_frozen: m.ticks_frozen,
-                    in_powder_snow: m.in_powder_snow,
-                    air: m.air,
-                    first_tick: m.first_tick,
-                    was_eye_in_water: m.was_eye_in_water,
-                },
-                Clk {
-                    age: m.age,
-                    ambient_timer: m.ambient_timer,
-                    persistent: m.persistent,
-                    no_ai: m.no_ai,
-                    silent: m.silent,
-                    swell: m.swell,
-                    previous_swell: m.previous_swell,
-                    max_swell: m.max_swell,
-                },
-                Rand(m.random.clone()),
-                FluidsC(m.fluids),
-                AiC(*m.ai.clone()),
-                GoalsC(goals),
-                ExtraC(super::extra::CowExtra {
-                    age: m.extra.age,
-                    in_love: m.extra.in_love,
-                    forced_age_timer: m.extra.forced_age_timer,
-                    age_locked: m.extra.age_locked,
-                    variant: m.extra.variant,
-                }),
-                AttrsC(m.attrs.clone()),
-                AnimC(m.anim.clone()),
-            ))
+            .spawn((p.id, p.motion, p.vitals, p.env, p.clk, p.random, p.fluids, p.ai, p.goals, p.extra, p.attrs, p.anim))
             .id();
         self.order.push(e);
         e
