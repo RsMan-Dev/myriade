@@ -476,9 +476,10 @@ fn the_alert_reaches_the_same_zombies_at_the_same_tick_as_a_mob_s() {
 #[test]
 fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
     if !have_data() { return; }
-    let line: Vec<(f64, f64)> = (0..6).map(|i| (20.5, -3.0 + 1.2 * i as f64)).collect();
+    // 60 zombies in two columns behind the wall (z from -29 to 29).
+    let line: Vec<(f64, f64)> = (0..60).map(|i| (20.5 + 2.0 * (i % 2) as f64, -29.0 + 2.0 * (i / 2) as f64)).collect();
     let wall = |put: &mut dyn FnMut(i32, i32, i32)| {
-        for z in -10..=10 {
+        for z in -34..=34 {
             for y in 1..=3 {
                 put(8, y, z);
             }
@@ -520,7 +521,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
         (m, e)
     };
     let (m, e) = run(1);
-    eprintln!("wall from the start: acquired mob {}/6 ecs {}/6", mean_of(&m.acquired).1, mean_of(&e.acquired).1);
+    eprintln!("wall from the start: acquired mob {}/60 ecs {}/60", mean_of(&m.acquired).1, mean_of(&e.acquired).1);
     assert_eq!(mean_of(&m.acquired).1, 0, "the Mob sees through the wall?");
     assert_eq!(mean_of(&e.acquired).1, 0, "the ECS zombie sees through the wall");
     let (m, e) = run(60);

@@ -456,6 +456,12 @@ pub struct Level {
 pub struct Config {
     pub sleep: bool,
     pub parallel: bool,
+    /// EXPERIMENT (benches only): travel and push in one serial pass in the order of the entities, as the `Mob`
+    /// pass does (each entity travels, then pushes with an immediate effect on the velocity of the others).
+    pub serial: bool,
+    /// EXPERIMENT: half of the push of a pair reaches the animal of the higher index in the same tick (a nudge of its
+    /// position and a damped velocity), as the `Mob` pass does.
+    pub half_now: bool,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -697,7 +703,8 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, cramming).chain());
+    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, serial_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((apply_nudges, cramming).chain().after(apply_pushes));
     crate::goals::register(&mut s);
     crate::hostile::register(&mut s);
     s
@@ -1231,6 +1238,9 @@ fn travel(
         With<Moving>,
     >,
 ) {
+    if cfg.serial {
+        return;
+    }
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
         let sp = &table.0[sid.0 as usize];
         let mut fall = 0.0_f32;
@@ -1661,6 +1671,18 @@ fn block_changes(
     }
 }
 
+/// EXPERIMENT (`Config.half_now`): a displacement the push owes this animal in this tick.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Nudge(pub Vec3);
+/// The ground friction times the air drag of the bench world (stone, 0.6 x 0.91).
+const FRICTION: f32 = 0.546;
+fn apply_nudges(mut q: Query<(Entity, &Nudge, &mut Pos, &mut Bounds, &Body)>, mut commands: Commands) {
+    for (e, n, mut p, mut b, body) in &mut q {
+        p.0 = Vec3::new(p.0.x + n.0.x, p.0.y, p.0.z + n.0.z);
+        b.0 = box_at(p.0, body.width, body.height);
+        commands.entity(e).remove::<Nudge>();
+    }
+}
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PushIn(pub Vec3);
@@ -1676,10 +1698,14 @@ fn push(
     boxes: Query<Ref<Bounds>>,
     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), Changed<Bounds>>,
 ) {
+    if cfg.serial {
+        return;
+    }
     let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
+        let mut nudge = (0.0_f64, 0.0_f64);
         let mut overlapping = 0;
         idx.for_near(cx, cz, |o| {
             if o == e {
@@ -1702,10 +1728,19 @@ fn push(
             let pow = (1.0_f64 / dd).min(1.0);
             // `Entity.push` is called for the pair from both sides every tick (each entity runs `pushEntities`): each of the
             // two receives its impulse twice per tick.
-            xa *= pow * f64::from(0.05_f32) * 2.0;
-            za *= pow * f64::from(0.05_f32) * 2.0;
-            dv.0 -= xa;
-            dv.1 -= za;
+            let (bx, bz) = (xa * pow * f64::from(0.05_f32), za * pow * f64::from(0.05_f32));
+            xa = bx * 2.0;
+            za = bz * 2.0;
+            if cfg.half_now && e.index() > o.index() {
+                // The impulse of the lower animal's call reaches this one in the same tick (it travels after it).
+                dv.0 -= bx + f64::from(FRICTION) * bx;
+                dv.1 -= bz + f64::from(FRICTION) * bz;
+                nudge.0 -= bx;
+                nudge.1 -= bz;
+            } else {
+                dv.0 -= xa;
+                dv.1 -= za;
+            }
             if !ob.is_changed() {
                 par.command_scope(|mut cmd| {
                     cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
@@ -1723,6 +1758,11 @@ fn push(
                         cmd.entity(o).insert(Crowded);
                     });
                 }
+            });
+        }
+        if nudge != (0.0, 0.0) {
+            par.command_scope(|mut cmd| {
+                cmd.entity(e).insert(Nudge(Vec3::new(nudge.0, 0.0, nudge.1)));
             });
         }
         if dv != (0.0, 0.0) {
@@ -1780,6 +1820,77 @@ fn cramming(
             if health.0 - applied <= 0.0 {
                 dying.push(e);
             }
+        }
+    }
+}
+/// EXPERIMENT: the `Mob` pass for the physics and the pushes. The entities in the order of their creation: each one
+/// travels, then pushes every overlapping entity at once (its own velocity and the other's, which the other uses in its
+/// own travel of this tick if it comes later).
+fn serial_pass(world: &mut World) {
+    if !world.resource::<Config>().serial {
+        return;
+    }
+    let level = *world.resource::<Level>();
+    let table = world.resource::<SpeciesTable>().clone();
+    let mut ids: Vec<Entity> = world.query_filtered::<Entity, With<Moving>>().iter(world).collect();
+    ids.sort();
+    for e in ids {
+        let Ok(sid) = world.get::<SpeciesId>(e).copied().ok_or(()) else { continue };
+        let sp = table.0[sid.0 as usize];
+        let (mut pos, mut vel, yaw, mut c, mut d, body, mut bounds, fs) = (
+            *world.get::<Pos>(e).unwrap(),
+            *world.get::<Vel>(e).unwrap(),
+            *world.get::<Yaw>(e).unwrap(),
+            *world.get::<Contact>(e).unwrap(),
+            *world.get::<Drive>(e).unwrap(),
+            *world.get::<Body>(e).unwrap(),
+            *world.get::<Bounds>(e).unwrap(),
+            *world.get::<FluidState>(e).unwrap(),
+        );
+        let jumping = world.get::<crate::goals::Jump>(e).is_some_and(|j| j.0);
+        let mut fall = 0.0_f32;
+        travel_one(&level, &sp, &mut pos, &mut vel, &yaw, &mut c, &mut d, &body, &mut bounds, &fs, jumping, &mut fall);
+        *world.get_mut::<Pos>(e).unwrap() = pos;
+        *world.get_mut::<Contact>(e).unwrap() = c;
+        *world.get_mut::<Drive>(e).unwrap() = d;
+        *world.get_mut::<Bounds>(e).unwrap() = bounds;
+        // The pushes of this entity (the `Mob`'s `pushEntities`, called after its own travel).
+        let (mn, mx) = (bounds.0.min_position(), bounds.0.max_position());
+        let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        let mut near = Vec::new();
+        world.resource::<Index>().for_near(cx, cz, |o| near.push(o));
+        let mut own = (0.0_f64, 0.0_f64);
+        let mut others: Vec<(Entity, f64, f64)> = Vec::new();
+        for o in near {
+            if o == e {
+                continue;
+            }
+            let Some(ob) = world.get::<Bounds>(o).copied() else { continue };
+            if !bounds.0.intersects(ob.0) {
+                continue;
+            }
+            let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
+            let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
+            let mut dd = xa.abs().max(za.abs());
+            if dd < f64::from(0.01_f32) {
+                continue;
+            }
+            dd = dd.sqrt();
+            xa /= dd;
+            za /= dd;
+            let pow = (1.0_f64 / dd).min(1.0);
+            xa *= pow * f64::from(0.05_f32);
+            za *= pow * f64::from(0.05_f32);
+            own.0 -= xa;
+            own.1 -= za;
+            others.push((o, xa, za));
+        }
+        vel.0 = Vec3::new(vel.0.x + own.0, vel.0.y, vel.0.z + own.1);
+        *world.get_mut::<Vel>(e).unwrap() = vel;
+        for (o, xa, za) in others {
+            let mut ov = world.get_mut::<Vel>(o).unwrap();
+            ov.0 = Vec3::new(ov.0.x + xa, ov.0.y, ov.0.z + za);
+            world.entity_mut(o).insert(Moving);
         }
     }
 }
@@ -1875,7 +1986,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel });
+        world.insert_resource(Config { sleep, parallel, serial: std::env::var_os("SERIAL_PUSH").is_some(), half_now: std::env::var_os("BATCH_HALF").is_some() });
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
