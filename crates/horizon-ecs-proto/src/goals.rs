@@ -1002,6 +1002,10 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             if now > p.until && !burning {
                 return None;
             }
+            // `PanicGoal.lookForWater`: a burning cow looks for water within 5 blocks first (nearest first).
+            if burning && let Some((x, z)) = water_spot(w, pos, 5) {
+                return Some(Pick::Spot(x, z));
+            }
             let lim = w.resource::<Level>().half - 2;
             // DefaultRandomPos: 10 tries; on the slab only the standing level is a stable destination.
             let spot = with_rng(w, e, |r| {
@@ -1113,6 +1117,24 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
         }
         Kind::RandomLook => Some(Pick::Yes),
     }
+}
+/// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
+/// unless the cow stands in a block with a collision shape.
+fn water_spot(w: &World, pos: Vec3, range: i32) -> Option<(f64, f64)> {
+    use horizon_client_lib::blocks::Fluid;
+    let mw = w.resource::<Level>().mw.0;
+    let at = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
+    if mw.data.state(mw.world.block(at[0], at[1], at[2])).top != 0.0 {
+        return None;
+    }
+    mw.nearest_block(at, range, 1, |p, _| mw.fluid(p[0], p[1], p[2]) == Fluid::Water).map(|p| (f64::from(p[0]) + 0.5, f64::from(p[2]) + 0.5))
+}
+/// Sets the cow on fire for `ticks`: its damage every 20 ticks, and the panic that a burning cow has.
+pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
+    let now = world.resource::<Clock>().0;
+    world.entity_mut(e).insert(Burning { until: now + ticks });
+    world.resource_mut::<Wheel>().push(now + 20, e, Due::Burn);
+    world.resource_mut::<Requests>().0.push(Req::Start(e, Kind::Panic));
 }
 fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
     let now = w.resource::<Clock>().0;

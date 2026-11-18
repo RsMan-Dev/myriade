@@ -497,3 +497,39 @@ fn trace_panic() {
         (pm, pc) = (m.position, cp);
     }
 }
+
+/// A burning cow 4 blocks from a pond runs to the water and puts the fire out, as a mob does (`lookForWater`).
+#[test]
+fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let (x, z) = (-39.5, -42.5);
+    let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
+    for _ in 0..3 {
+        r.step(None);
+        h.tick();
+    }
+    r.mobs[i].fire_ticks = 160;
+    ignite(&mut h.world, e, 160);
+    let (mut mout, mut cout) = (None, None);
+    let mut hp = Vec::new();
+    for t in 1..=160_i64 {
+        r.step(None);
+        h.tick();
+        if mout.is_none() && r.mobs[i].fire_ticks <= 0 {
+            mout = Some(t);
+        }
+        if cout.is_none() && h.world.get::<Burning>(e).is_none() {
+            cout = Some(t);
+        }
+        if [40, 100, 160].contains(&t) {
+            hp.push((t, mob_health(&r.mobs[i]), health(&h, e)));
+        }
+    }
+    eprintln!("burning near a pond: fire out at tick mob {mout:?}, ecs {cout:?}; health (tick, mob, ecs) {hp:?}");
+    let (mout, cout) = (mout.expect("mob never put out"), cout.expect("ecs never put out"));
+    assert!(mout < 100 && cout < 100 && (mout - cout).abs() <= 25, "mob {mout}, ecs {cout}");
+}
