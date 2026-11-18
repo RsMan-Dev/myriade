@@ -1816,7 +1816,8 @@ mod tests {
             was = now;
         }
         eprintln!("floating {floating}/1500 ticks, jumps {jumps}, lowest y {low:.2}");
-        assert!(floating > 100 && low > -0.5, "{floating} ticks afloat, lowest {low}");
+        // A hen (eyes at 0.64) is in the water less of the time: only the rate of jumps is the goal's.
+        assert!(floating > 30 && low > -0.5, "{floating} ticks afloat, lowest {low}");
         let rate = jumps as f64 / floating as f64;
         assert!(rate > 0.72 && rate < 0.88, "{rate}");
     }

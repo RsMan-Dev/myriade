@@ -2005,21 +2005,34 @@ mod tests {
         }
         show(&herd, 40);
         // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
-        assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
-        assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
-        assert!(health(&herd, cactus).is_some_and(|h| h < species().max_health), "the cactus did not hurt");
+        if species().farm.fall_immune {
+            // A hen takes no fall damage (`causeFallDamage` answers no).
+            assert!(health(&herd, hurt) == Some(species().max_health) && health(&herd, dies) == Some(species().max_health), "{:?} {:?}", health(&herd, hurt), health(&herd, dies));
+        } else {
+            assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
+            assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
+        }
+        assert!(health(&herd, cactus).is_none_or(|h| h < species().max_health), "the cactus did not hurt");
         for _ in 0..100 {
             herd.tick();
         }
         show(&herd, 140);
         assert!(health(&herd, lava).is_none(), "the cow in lava lives: {:?}", health(&herd, lava));
-        assert!(health(&herd, fire).is_none_or(|h| h <= 6.0), "the fire: {:?}", health(&herd, fire));
+        // A species with a panic goal runs from the fire and dies in it; one without (the zombie) walks out of it by its
+        // stroll, which a hurt wakes: it is only hurt.
+        if crate::goals::goal_def(species().name).slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
+            assert!(health(&herd, fire).is_none_or(|h| h <= 6.0), "the fire: {:?}", health(&herd, fire));
+        } else {
+            assert!(health(&herd, fire).is_none_or(|h| h < species().max_health), "the fire: {:?}", health(&herd, fire));
+        }
         for _ in 0..200 {
             herd.tick();
         }
         show(&herd, 340);
-        assert!(health(&herd, snow).is_some_and(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
-        assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
+        assert!(health(&herd, snow).is_none_or(|h| h < species().max_health), "the powder snow: {:?}", health(&herd, snow));
+        if crate::goals::goal_def(species().name).slots.iter().any(|s| s.0 == crate::goals::Kind::Panic) {
+            assert!(herd.world.get::<Burning>(fire).is_some() || health(&herd, fire).is_none());
+        }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
         if species().eye_height <= 1.4 {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
@@ -2180,8 +2193,12 @@ mod tests {
         herd.set_block(10, 0, 10, "minecraft:air");
         herd.tick();
         assert!(moving(&herd, a) && !moving(&herd, far));
-        for _ in 0..6 {
+        // The fall of a block: 6 ticks, more for a hen (her glide cuts the fall speed).
+        for _ in 0..60 {
             herd.tick();
+            if !moving(&herd, a) {
+                break;
+            }
         }
         let y1 = herd.world.get::<Pos>(a).unwrap().0.y;
         assert!((y0 - y1 - 1.0).abs() < 1.0e-6 && !moving(&herd, a), "{y0} -> {y1}");
