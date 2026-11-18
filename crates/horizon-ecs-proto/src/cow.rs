@@ -220,6 +220,9 @@ pub enum Cause {
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
 #[derive(Resource, Default)]
 pub struct HurtCauses(pub Vec<(Entity, Cause)>);
+/// The block changes waiting for the next step: (x, y, z, block name).
+#[derive(Resource, Default)]
+pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
 /// The hazard bits of each block column (a static world here; a block change would update its column: the event).
 #[derive(Resource, Default)]
 pub struct Hazards {
@@ -250,6 +253,26 @@ impl Hazards {
             }
         }
         Self { origin, width, bits }
+    }
+    /// The hazard bits of the column (x, z) read again from the blocks (a block there changed).
+    pub fn refresh(&mut self, level: &Level, x: i32, z: i32) {
+        let mw = level.mw.0;
+        let (cx, cz) = (x - self.origin, z - self.origin);
+        if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
+            return;
+        }
+        let mut b = 0;
+        for y in 0..=1 {
+            match &*mw.facts.get(mw.world.block(x, y, z)).name {
+                "minecraft:lava" => b |= HAZ_LAVA,
+                "minecraft:fire" => b |= HAZ_FIRE,
+                "minecraft:water" => b |= HAZ_WATER,
+                "minecraft:powder_snow" => b |= HAZ_SNOW,
+                "minecraft:cactus" => b |= HAZ_CACTUS,
+                _ => {}
+            }
+        }
+        self.bits[cz as usize * self.width + cx as usize] = b;
     }
     fn at(&self, x: i32, z: i32) -> u8 {
         let (cx, cz) = (x - self.origin, z - self.origin);
@@ -381,9 +404,16 @@ pub struct Mw(pub &'static MobWorld<'static>);
 // SAFETY of the prototype: the world is only read once built, and every cache behind it is thread local.
 unsafe impl Send for Mw {}
 unsafe impl Sync for Mw {}
+/// The leaked `World` of the blocks, for the one system that changes them (`block_changes`, which runs alone in the
+/// chain: no other system holds a reference then).
+#[derive(Clone, Copy)]
+pub struct Blocks(pub *mut horizon_client_render::world::World);
+unsafe impl Send for Blocks {}
+unsafe impl Sync for Blocks {}
 #[derive(Resource, Clone, Copy)]
 pub struct Level {
     pub mw: Mw,
+    pub blocks: Blocks,
     /// The walls are at |x| or |z| = `half`.
     pub half: i32,
 }
@@ -477,8 +507,8 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             }
         }
     };
-    let (mw, types) =
-        horizon_client_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES");
+    let (mw, types, blocks_ptr) =
+        horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("HORIZON_TEST_RESOURCES");
     let chosen: &'static str = Box::leak(
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
@@ -519,7 +549,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
     let _ = TABLE.set(table.clone());
     let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
-    (Level { mw: Mw(mw), half }, species, chosen_kind.expect("a known species"))
+    (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), half }, species, chosen_kind.expect("a known species"))
 }
 /// Every species of the process (see `build_level`).
 static TABLE: std::sync::OnceLock<Vec<Species>> = std::sync::OnceLock::new();
@@ -587,7 +617,7 @@ pub fn schedule() -> Schedule {
     let mut s = Schedule::new(CowTick);
     s.set_executor(SingleThreadedExecutor::new());
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
-    s.add_systems((due, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
+    s.add_systems((due, block_changes, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, reindex, hazard_tick, wall_damage, push, apply_pushes, apply_damage).chain());
     crate::goals::register(&mut s);
     s
 }
@@ -1428,6 +1458,67 @@ fn hazard_tick(
         }
     }
 }
+/// A block was placed or removed (`ServerLevel.sendBlockUpdated`): the world takes it, the hazard column is read again,
+/// and only what it can change is woken: the cows whose box, widened by a block, meets the block get their physics
+/// (a floor that left), their suffocation and their hazard and fluid modules looked at again (their box counts as
+/// changed, so `reindex` re-evaluates them); the cows that follow a path that the change is near the middle of
+/// (`PathNavigation.shouldRecomputePath`) ask for a new path to the same spot; nobody else is touched.
+#[allow(clippy::type_complexity)]
+fn block_changes(
+    mut changes: ResMut<BlockChanges>,
+    level: Res<Level>,
+    mut hazards: ResMut<Hazards>,
+    idx: Res<Index>,
+    mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
+    mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
+    mut commands: Commands,
+) {
+    if changes.0.is_empty() {
+        return;
+    }
+    let mw = level.mw.0;
+    for (x, y, z, name) in std::mem::take(&mut changes.0) {
+        let Some(state) = mw.registry.default_state(name) else { continue };
+        // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
+        unsafe {
+            let world = &mut *level.blocks.0;
+            let _ = world.set(x, y, z, state);
+            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+        }
+        hazards.refresh(&level, x, z);
+        let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
+        let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
+        let mut near: Vec<Entity> = Vec::new();
+        idx.for_near(f64::from(x) + 0.5, f64::from(z) + 0.5, |e| near.push(e));
+        for e in near {
+            if let Ok((mut b, _, mut c)) = q.get_mut(e)
+                && b.0.intersects(reach)
+            {
+                b.set_changed();
+                // The ground it stood on is no longer known: the next step sweeps for real instead of resting.
+                c.on_ground = false;
+                commands.entity(e).insert((Moving, Recheck));
+            }
+        }
+        // The paths that run near the change.
+        for (e, pos, s, mut nav) in &mut paths {
+            let Some(path) = nav.path.as_ref().filter(|p| !p.is_done()) else { continue };
+            let Some(end) = path.nodes.last() else { continue };
+            let middle = Vec3::new(
+                (f64::from(end.x) + pos.0.x) / 2.0,
+                (f64::from(end.y) + pos.0.y) / 2.0,
+                (f64::from(end.z) + pos.0.z) / 2.0,
+            );
+            let remaining = (path.nodes.len() - path.next) as f64;
+            let c = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
+            if c.distance_squared(middle) < remaining * remaining && s.walking {
+                nav.path = None;
+                commands.entity(e).remove::<Following>().insert(NeedsPath);
+            }
+        }
+    }
+}
+
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PushIn(pub Vec3);
@@ -1570,6 +1661,7 @@ impl Herd {
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
+        world.insert_resource(BlockChanges::default());
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
@@ -1607,6 +1699,10 @@ impl Herd {
         let mut p = self.world.resource_mut::<Players>();
         p.list = players;
         p.dirty = true;
+    }
+    /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
+        self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
     }
     /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
     pub fn hit(&mut self, e: Entity, amount: f32, from: (f64, f64)) {
@@ -1883,6 +1979,79 @@ mod tests {
             .collect();
         assert_eq!(count(&mut herd), 5, "one baby, from the two cows only");
         assert_eq!(babies, vec![0], "a cow calf");
+    }
+
+    /// Block changes as events: a floor removed wakes the cow on it only; a stone put at head height suffocates; lava
+    /// put into a cow's cell adds the hazard module; a path is dropped only by a change near its middle.
+    #[test]
+    fn block_changes_wake_only_what_they_touch() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, false);
+        let mut spawn = |herd: &mut Herd, x: f64, z: f64| {
+            let e = herd.world.spawn(cow_bundle(x, z, 3 + x as u64)).id();
+            herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+            e
+        };
+        let (a, far, c, d) = (spawn(&mut herd, 10.5, 10.5), spawn(&mut herd, 30.5, 10.5), spawn(&mut herd, 20.5, 20.5), spawn(&mut herd, -20.5, 20.5));
+        for _ in 0..10 {
+            herd.tick();
+        }
+        let moving = |herd: &Herd, e: Entity| herd.world.get::<Moving>(e).is_some();
+        assert!(!moving(&herd, a) && !moving(&herd, far), "the cows are not at rest");
+        let y0 = herd.world.get::<Pos>(a).unwrap().0.y;
+        // The floor under `a` is removed: it wakes and falls a block; the cow far away is not touched.
+        herd.set_block(10, 0, 10, "minecraft:air");
+        herd.tick();
+        assert!(moving(&herd, a) && !moving(&herd, far));
+        for _ in 0..6 {
+            herd.tick();
+        }
+        let y1 = herd.world.get::<Pos>(a).unwrap().0.y;
+        assert!((y0 - y1 - 1.0).abs() < 1.0e-6 && !moving(&herd, a), "{y0} -> {y1}");
+        // A stone at head height: suffocation by the event.
+        herd.set_block(20, 2, 20, "minecraft:stone");
+        for _ in 0..15 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<InWall>(c).is_some() && herd.world.get::<Health>(c).unwrap().0 < 10.0);
+        // Lava put into the cell of a resting cow: its hazard module appears and it burns to death.
+        herd.set_block(-21, 1, 20, "minecraft:lava");
+        herd.tick();
+        assert!(herd.world.get::<Hazard>(d).is_some_and(|h| h.0 & HAZ_LAVA != 0));
+        for _ in 0..60 {
+            herd.tick();
+        }
+        assert!(herd.world.get::<Health>(d).is_none(), "the cow in lava lives");
+        assert!(herd.world.get::<Health>(far).unwrap().0 == 10.0 && !moving(&herd, far));
+        // A path is dropped by a change near its middle only.
+        let walker = {
+            let e = spawn(&mut herd, -30.5, -20.5);
+            herd.world.get_mut::<Stroll>(e).unwrap().walking = true;
+            herd.world.get_mut::<Stroll>(e).unwrap().tx = -10.5;
+            herd.world.get_mut::<Stroll>(e).unwrap().tz = -20.5;
+            herd.world.entity_mut(e).insert(NeedsPath);
+            e
+        };
+        for _ in 0..4 {
+            herd.tick();
+        }
+        let nodes = |herd: &Herd| herd.world.get::<Nav>(walker).unwrap().path.as_ref().map(|p| p.nodes.len());
+        let before = nodes(&herd).expect("a path");
+        herd.set_block(45, 1, 45, "minecraft:stone");
+        herd.tick();
+        assert_eq!(nodes(&herd).map(|n| n + 0), Some(before), "a far change dropped the path");
+        let target_before = herd.world.get::<Nav>(walker).unwrap().path.as_ref().unwrap().nodes.clone();
+        herd.set_block(-20, 1, -21, "minecraft:stone");
+        herd.set_block(-20, 2, -21, "minecraft:stone");
+        herd.tick();
+        assert!(herd.world.get::<NeedsPath>(walker).is_some() || herd.world.get::<Nav>(walker).unwrap().path.as_ref().is_some_and(|p| p.nodes != target_before));
+        for _ in 0..3 {
+            herd.tick();
+        }
+        let new_nodes = herd.world.get::<Nav>(walker).unwrap().path.as_ref().map(|p| p.nodes.clone());
+        assert!(new_nodes.is_some_and(|n| n.iter().all(|p| !(p.x == -20 && p.y == 1 && p.z == -21))), "the new path crosses the stone");
     }
 
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
