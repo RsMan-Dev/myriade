@@ -30,6 +30,8 @@ pub enum Kind {
     Target,
     /// `MeleeAttackGoal`: chase the target and strike it.
     Melee,
+    /// `EatBlockGoal` (the sheep): graze (`farm.rs`).
+    EatBlock,
 }
 /// `GoalSelector`: (goal, priority, flags) in registration order; `running` and `pending` are slot bitmasks;
 /// `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and starts when it frees.
@@ -164,6 +166,18 @@ const ZOMBIE_SLOTS: [(Kind, u8, u8); 5] = [
     (Kind::LookAtPlayer, 8, LOOK),
     (Kind::RandomLook, 8, MOVE | LOOK),
 ];
+const SHEEP_SLOTS: [(Kind, u8, u8); 9] = [
+    (Kind::Float, 0, JUMP),
+    (Kind::Panic, 1, MOVE),
+    (Kind::Breed, 2, MOVE | LOOK),
+    (Kind::Tempt(0), 3, MOVE | LOOK),
+    (Kind::FollowParent, 4, 0),
+    (Kind::EatBlock, 5, MOVE | LOOK | JUMP),
+    (Kind::Stroll, 6, MOVE),
+    (Kind::LookAtPlayer, 7, LOOK),
+    (Kind::RandomLook, 8, MOVE | LOOK),
+];
+const SHEEP_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.1, items: 1 << WHEAT }];
 const COW_TEMPTS: [TemptDef; 1] = [TemptDef { speed: 1.25, items: 1 << WHEAT }];
 const PIG_TEMPTS: [TemptDef; 2] = [
     TemptDef { speed: 1.2, items: 1 << CARROT_ON_A_STICK },
@@ -175,6 +189,7 @@ pub fn goal_def(species: &str) -> GoalDef {
     match species {
         "minecraft:pig" => GoalDef { slots: &PIG_SLOTS, look: 6.0, panic: 1.25, tempts: &PIG_TEMPTS, follow: 1.1 },
         // `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player.
+        "minecraft:sheep" => GoalDef { slots: &SHEEP_SLOTS, look: 6.0, panic: 1.25, tempts: &SHEEP_TEMPTS, follow: 1.1 },
         "minecraft:zombie" => GoalDef { slots: &ZOMBIE_SLOTS, look: 8.0, panic: 0.0, tempts: &[], follow: 0.0 },
         _ => GoalDef { slots: &COW_SLOTS, look: 6.0, panic: 2.0, tempts: &COW_TEMPTS, follow: 1.25 },
     }
@@ -253,6 +268,7 @@ pub struct GoalTimers {
     pub look: bool,
     pub random: bool,
     pub target: bool,
+    pub graze: bool,
 }
 /// `LookControl`: where to look, how fast, the eye height, the head's limits.
 #[derive(Component, Clone, Copy, Debug)]
@@ -557,6 +573,9 @@ fn arm_timers(w: &mut World, e: Entity) {
         t.target = true;
     }
     *w.get_mut::<GoalTimers>(e).unwrap() = t;
+    if !t.graze && w.get::<crate::farm::Graze>(e).is_some() {
+        crate::farm::arm_graze(w, e);
+    }
 }
 fn arm_stroll_now(w: &mut World, e: Entity) {
     let mut s = *w.get::<Stroll>(e).unwrap();
@@ -805,6 +824,7 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     // The baby is of its parents' species (the mate was checked to be the same).
     let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(a).unwrap().0 as usize];
     let baby = w.spawn(spawn_bundle(&sp, pos.x, pos.z, seed)).id();
+    crate::farm::equip(w, baby, &sp);
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active;
     make_baby(w, baby, data.baby_age);
     adopt(w, a, baby);
@@ -1026,6 +1046,16 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
             return;
         }
         Kind::Breed if w.get::<Love>(e).is_none_or(|l| l.0 <= now) => return,
+        Kind::EatBlock => {
+            // A deadline of the goal that runs (the block, the end) or an ask of one that does not.
+            if w.get::<crate::farm::Grazing>(e).is_some() {
+                crate::farm::graze_deadline(w, e);
+                return;
+            }
+            if let Some(mut t) = w.get_mut::<GoalTimers>(e) {
+                t.graze = false;
+            }
+        }
         _ => {}
     }
     start_goal(w, e, k);
@@ -1043,6 +1073,7 @@ fn start_goal(w: &mut World, e: Entity, k: Kind) {
         match k {
             Kind::Stroll => arm_stroll_now(w, e),
             Kind::LookAtPlayer | Kind::RandomLook => rearm_timer(w, e, k),
+            Kind::EatBlock => crate::farm::arm_graze(w, e),
             _ => w.get_mut::<GoalSet>(e).unwrap().pending |= b,
         }
         return;
@@ -1100,7 +1131,7 @@ fn rearm_timer(w: &mut World, e: Entity, k: Kind) {
     *w.get_mut::<GoalTimers>(e).unwrap() = t;
     arm_timers(w, e);
 }
-fn end_goal(w: &mut World, e: Entity, k: Kind) {
+pub(crate) fn end_goal(w: &mut World, e: Entity, k: Kind) {
     let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
     if !g.stop(k) {
         return;
@@ -1277,6 +1308,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             }
         },
         Kind::Melee => crate::hostile::melee_target(w, e).map(Pick::Player),
+        Kind::EatBlock => crate::farm::graze_can_use(w, e).then_some(Pick::Yes),
     }
 }
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
@@ -1300,6 +1332,12 @@ pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
 }
 fn start_effects(w: &mut World, e: Entity, k: Kind, pick: Pick) {
     let now = w.resource::<Clock>().0;
+    if k == Kind::EatBlock {
+        // `EatBlockGoal.start`: the navigation stops.
+        stop_nav(w, e);
+        crate::farm::graze_start(w, e);
+        return;
+    }
     match (k, pick) {
         (Kind::Float, _) => {
             w.entity_mut(e).insert(Floating);
@@ -1392,6 +1430,7 @@ fn stop_effects(w: &mut World, e: Entity, k: Kind) {
         }
         Kind::Target => crate::hostile::lose_target(w, e),
         Kind::Melee => crate::hostile::stop_melee(w, e),
+        Kind::EatBlock => crate::farm::graze_stop(w, e),
         Kind::RandomLook => {
             w.entity_mut(e).remove::<Scanning>();
             rearm_timer(w, e, k);
@@ -1440,7 +1479,7 @@ mod tests {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
         h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
-        *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true, target: true };
+        *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true, target: true, graze: true };
         e
     }
     fn player(h: &mut Herd, id: u32, x: f64, z: f64, item: u32) {
