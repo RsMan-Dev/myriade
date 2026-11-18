@@ -732,7 +732,9 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
         w.entity_mut(e).insert(Resting(now + data.rest)).remove::<Love>();
     }
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
-    let baby = w.spawn(cow_bundle(pos.x, pos.z, seed)).id();
+    // The baby is of its parents' species (the mate was checked to be the same).
+    let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(a).unwrap().0 as usize];
+    let baby = w.spawn(spawn_bundle(&sp, pos.x, pos.z, seed)).id();
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active;
     make_baby(w, baby, data.baby_age);
     adopt(w, a, baby);
@@ -1016,7 +1018,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             for c in near {
                 let Some(cp) = w.get::<Pos>(c) else { continue };
                 let d = d2(pos, cp.0);
-                let lovers = w.get::<Love>(c).is_some_and(|l| l.0 > now) && w.get::<GrowAt>(c).is_none() && w.get::<Panicking>(c).is_none();
+                let lovers = w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<Love>(c).is_some_and(|l| l.0 > now) && w.get::<GrowAt>(c).is_none() && w.get::<Panicking>(c).is_none();
                 if c != e && lovers && d <= b.range * b.range && best.is_none_or(|x| d < x.1) {
                     best = Some((c, d));
                 }
@@ -1053,7 +1055,7 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             for c in near {
                 let Some(cp) = w.get::<Pos>(c) else { continue };
                 let (dx, dy, dz) = ((cp.0.x - pos.x).abs(), (cp.0.y - pos.y).abs(), (cp.0.z - pos.z).abs());
-                if c != e && w.get::<GrowAt>(c).is_none() && dx <= 8.0 && dy <= 4.0 && dz <= 8.0 {
+                if c != e && w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<GrowAt>(c).is_none() && dx <= 8.0 && dy <= 4.0 && dz <= 8.0 {
                     let d = d2(pos, cp.0);
                     if best.is_none_or(|b| d <= b.1) {
                         best = Some((c, d));
