@@ -160,7 +160,77 @@ fn trace_tempt_crowd_by_cow() {
         .map(|(k, &(i, e))| (r.searches[i] - at60.0[i], h.world.get::<Nav>(e).unwrap().searches - at60.1[k], xz(r.mobs[i].position, Vec3::new(0.0, 1.0, 0.0)), xz(h.world.get::<Pos>(e).unwrap().0, Vec3::new(0.0, 1.0, 0.0))))
         .collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r.1));
+    let tempting_mob = cows.iter().filter(|&&(i, _)| r.names(i).contains(&"Tempt")).count();
+    let tempting_ecs = cows.iter().filter(|&&(_, e)| h.world.get::<Tempting>(e).is_some()).count();
+    eprintln!("cows tempting at the end: mob {tempting_mob}, ecs {tempting_ecs}");
+    for &(i, e) in cows.iter().filter(|&&(i, _)| xz(r.mobs[i].position, Vec3::new(0.0, 1.0, 0.0)) > 2.7).take(6) {
+        let m = &r.mobs[i];
+        eprintln!("mob cow at {:.2}: goals {:?}, path {:?}, speed {}", xz(m.position, Vec3::new(0.0, 1.0, 0.0)), r.names(i), m.ai.nav.path.as_ref().map(|p| (p.nodes.len(), p.next, p.is_done())), m.ai.nav.speed_modifier);
+        let _ = e;
+    }
     for (m, e, md, ed) in rows.iter().take(12) {
         eprintln!("searches in ticks 61-300: mob {m:3} (distance {md:.2}) | ecs {e:3} (distance {ed:.2})");
+    }
+}
+
+/// The ecs cow of the crowd that searches most: its ticks 100-170 one by one.
+#[test]
+#[ignore = "trace"]
+fn trace_tempt_crowd_worst_cow() {
+    if !have_data() {
+        return;
+    }
+    let (_r, mut h) = flat_pair();
+    let (item, _) = tempt_item();
+    let mut cows = Vec::new();
+    for k in 0..40 {
+        let a = f64::from(k) * 0.157 * 2.0;
+        let rad = 5.0 + f64::from(k % 4) * 1.2;
+        let (x, z) = (rad * a.cos(), rad * a.sin());
+        cows.push(ecs_cow(&mut h, x, 1.0, z, 600 + u64::from(k as u32)));
+    }
+    h.tick();
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0 });
+    let mut log: Vec<Vec<(u32, f64, bool, usize, bool, bool, bool)>> = vec![Vec::new(); cows.len()];
+    for _ in 1..=300 {
+        h.tick();
+        for (k, &e) in cows.iter().enumerate() {
+            let n = h.world.get::<Nav>(e).unwrap();
+            log[k].push((n.searches, xz(h.world.get::<Pos>(e).unwrap().0, Vec3::new(0.0, 1.0, 0.0)), h.world.get::<Following>(e).is_some(), n.path.as_ref().map_or(0, |p| p.nodes.len() - p.next.min(p.nodes.len())), n.path.as_ref().is_none_or(|p| p.is_done()), h.world.get::<Tempting>(e).is_some(), h.world.get::<Moving>(e).is_some()));
+        }
+    }
+    let worst = (0..cows.len()).max_by_key(|&k| log[k][299].0 - log[k][60].0).unwrap();
+    eprintln!("worst cow {worst}: {} searches in ticks 61-300", log[worst][299].0 - log[worst][60].0);
+    for t in 100..170 {
+        let (a, b) = (log[worst][t - 1], log[worst][t]);
+        eprintln!("t={} searches+{} dist {:.2} following {} nodes left {} path done {} tempting {} moving {}", t + 1, b.0 - a.0, b.1, b.2, b.3, b.4, b.5, b.6);
+    }
+}
+
+/// The same cow (index 31) of the same crowd, on the mob side: ticks 100-170.
+#[test]
+#[ignore = "trace"]
+fn trace_tempt_crowd_same_cow_mob() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, _h) = flat_pair();
+    let (_, name) = tempt_item();
+    let mut mobs = Vec::new();
+    for k in 0..40 {
+        let a = f64::from(k) * 0.157 * 2.0;
+        let rad = 5.0 + f64::from(k % 4) * 1.2;
+        mobs.push(r.add(Vec3::new(rad * a.cos(), 1.0, rad * a.sin())));
+    }
+    let p = player_view(Vec3::new(0.0, 1.0, 0.0), Some(name));
+    let k = 31;
+    let mut last = 0;
+    for t in 1..=300 {
+        r.step(Some(&p));
+        if (100..170).contains(&t) {
+            let m = &r.mobs[mobs[k]];
+            eprintln!("t={t} searches+{} dist {:.2} goals {:?} path {:?}", r.searches[mobs[k]] - last, xz(m.position, Vec3::new(0.0, 1.0, 0.0)), r.names(mobs[k]), m.ai.nav.path.as_ref().map(|p| (p.nodes.len() - p.next.min(p.nodes.len()), p.is_done())));
+        }
+        last = r.searches[mobs[k]];
     }
 }
