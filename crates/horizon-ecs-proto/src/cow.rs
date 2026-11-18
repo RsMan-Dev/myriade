@@ -49,6 +49,8 @@ pub struct Contact {
 pub struct Drive {
     pub zza: f32,
     pub speed: f32,
+    /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
+    pub jump: bool,
     /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
     pub jumping: bool,
 }
@@ -806,6 +808,7 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
 fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
+    d.jump = false;
     if !m.active {
         d.zza = 0.0;
         return;
@@ -820,6 +823,8 @@ fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, bod
     let speed = (m.speed_modifier * body.speed) as f32;
     d.speed = speed;
     d.zza = speed;
+    // `MoveControl` MOVE_TO: a target above the step height and near makes the cow jump.
+    d.jump = yd > f64::from(body.step_height) && xd * xd + zd * zd < f64::from(body.width.max(1.0));
 }
 fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body), With<Following>>) {
     if cfg.parallel {
@@ -898,6 +903,7 @@ fn travel_one(
 ) -> bool {
     let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
     let in_fluid = fs.in_water || fs.in_lava;
+    let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
     if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
@@ -916,6 +922,10 @@ fn travel_one(
         if deep || !c.on_ground {
             vel.0.y += if sp.can_float { f64::from(0.04_f32) } else { 0.3 };
         }
+    }
+    // `LivingEntity.jumpFromGround`: the jump power 0.42.
+    if jumping && !in_fluid && c.on_ground {
+        vel.0.y = vel.0.y.max(0.42);
     }
     if in_fluid {
         let falling = vel.0.y <= 0.0;
@@ -1140,6 +1150,7 @@ fn wall_damage(q: Query<Entity, With<InWall>>, mut queue: ResMut<DamageQueue>) {
 #[allow(clippy::type_complexity)]
 fn reindex(
     mut idx: ResMut<Index>,
+    mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
     mut commands: Commands,
@@ -1153,6 +1164,7 @@ fn reindex(
             }
             idx.insert(e, cell);
             c.0 = cell;
+            moves.0.push(e);
         }
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;

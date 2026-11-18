@@ -181,12 +181,15 @@ pub struct Look {
     pub max_head_y: f32,
     pub eye: f64,
 }
-/// The head and the body (`yBodyRot`); NaN until the head is first moved.
+/// The head and the body (`yBodyRot`) and the state of `BodyRotationControl`; `yaw` is NaN until the head first moves.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Head {
     pub yaw: f32,
     pub pitch: f32,
     pub body: f32,
+    pub stable: f32,
+    pub stable_time: i32,
+    pub at: (f64, f64),
 }
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Fluid {
@@ -241,7 +244,7 @@ pub fn cow_goals() -> impl Bundle {
         Scan { period: 50 },
         GoalTimers::default(),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: 1.3 },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0 },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
         Fluid::default(),
         Buoyancy(0.4),
         Jump(false),
@@ -345,12 +348,14 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Hurts::default());
     world.insert_resource(Requests::default());
     world.insert_resource(Online::default());
+    world.insert_resource(CellMoves::default());
+    world.insert_resource(Babies::default());
 }
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems(hurt_events.after(apply_damage));
     s.add_systems(
-        (entered_events, mother_moved, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_run, arbitrate, look_control)
+        (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_run, arbitrate, look_control)
             .chain()
             .after(online_events)
             .after(hurt_events),
@@ -417,6 +422,7 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     b.height = sizes.baby.1;
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
     world.entity_mut(e).insert(GrowAt(now + ticks));
+    world.resource_mut::<Babies>().0.push(e);
     world.resource_mut::<Wheel>().push((now + ticks).min(now + WHEEL_MAX), e, Due::Grow);
 }
 
@@ -530,6 +536,29 @@ fn mother_moved(
         }
         if m.0.is_empty() {
             cmd.entity(e).remove::<Mother>();
+        }
+    }
+}
+/// The cows that changed column of the spatial index (written by `reindex`) and the babies of the herd.
+#[derive(Resource, Default)]
+pub struct CellMoves(pub Vec<Entity>);
+#[derive(Resource, Default)]
+pub struct Babies(pub Vec<Entity>);
+/// `FollowParentGoal.canUse` looks for the nearest adult of the species within 8 x 4 x 8: a baby is woken when an
+/// adult comes within 9 blocks of it (an adult that changed column), or when it changes column itself.
+fn cell_moves(mut moves: ResMut<CellMoves>, mut babies: ResMut<Babies>, pos: Query<(&Pos, Has<GrowAt>)>, mut reqs: ResMut<Requests>) {
+    let moved = std::mem::take(&mut moves.0);
+    if moved.is_empty() {
+        return;
+    }
+    babies.0.retain(|&b| pos.get(b).is_ok_and(|(_, baby)| baby));
+    for &b in &babies.0 {
+        let bp = pos.get(b).unwrap().0.0;
+        for &m in &moved {
+            let Ok((mp, _)) = pos.get(m) else { continue };
+            if m == b || (mp.0.x - bp.x).abs() <= 9.0 && (mp.0.z - bp.z).abs() <= 9.0 {
+                reqs.0.push(Req::Start(b, Kind::FollowParent));
+            }
         }
     }
 }
@@ -660,8 +689,8 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     adopt(w, a, baby);
     if active > now {
         arm_stroll_now(w, baby);
-        arm_timers(w, baby);
     }
+    arm_timers(w, baby);
     w.resource_mut::<Requests>().0.extend([Req::End(a, Kind::Breed), Req::End(b, Kind::Breed)]);
 }
 /// `FollowParentGoal.canContinue` and `tick`: the path to the parent is made again every 10 ticks.
@@ -733,32 +762,51 @@ fn wrap(a: f32) -> f32 {
 fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
     target - wrap(target - base).clamp(-max, max)
 }
-/// `LookControl.tick` and `BodyRotationControl`: the head turns to the target (or back to the body), a head that is
-/// turned too far drags the body, a walking body is the entity's yaw. Leaves when head and body agree.
+/// `LookControl.tick` (default kind: the pitch is reset, the head turns to the target for 2 ticks after each ask,
+/// then back to the body; clamped to the body while a path is followed) and `BodyRotationControl.clientTick` (a
+/// body that moved takes the yaw; a head turned by more than 15 degrees drags the body; a head still for 10 ticks
+/// brings it back over 10 more). Leaves when the head, the pitch and the body are at rest.
 #[allow(clippy::type_complexity)]
 fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>), With<Looking>>, mut cmd: Commands) {
+    const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     for (e, pos, yaw, mut look, mut h, walking) in &mut q {
         if h.yaw.is_nan() {
-            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0 };
+            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z) };
         }
+        h.pitch = 0.0;
         if look.cooldown > 0 {
             look.cooldown -= 1;
             let (dx, dy, dz) = (look.target[0] - pos.0.x, look.target[1] - (pos.0.y + look.eye), look.target[2] - pos.0.z);
-            let ty = trig::atan2_degrees(dz, dx) - 90.0;
-            let tp = -trig::atan2_degrees(dy, (dx * dx + dz * dz).sqrt());
-            h.yaw = rotate_towards(h.yaw, ty, look.y_speed);
-            h.pitch = rotate_towards(h.pitch, tp, look.x_max);
+            let sd = (dx * dx + dz * dz).sqrt();
+            if dz.abs() > 1.0e-5 || dx.abs() > 1.0e-5 {
+                h.yaw = rotate_towards(h.yaw, trig::atan2_degrees(dz, dx) - 90.0, look.y_speed);
+            }
+            if dy.abs() > 1.0e-5 || sd > 1.0e-5 {
+                h.pitch = rotate_towards(h.pitch, -trig::atan2_degrees(dy, sd), look.x_max);
+            }
         } else {
             h.yaw = rotate_towards(h.yaw, h.body, 10.0);
-            h.pitch = rotate_towards(h.pitch, 0.0, 10.0);
         }
         if walking {
+            h.yaw = rotate_if_necessary(h.yaw, h.body, look.max_head_y);
+        }
+        let moved = (pos.0.x - h.at.0).powi(2) + (pos.0.z - h.at.1).powi(2) > ARRIVED;
+        h.at = (pos.0.x, pos.0.z);
+        if moved {
             h.body = yaw.0;
             h.yaw = rotate_if_necessary(h.yaw, h.body, look.max_head_y);
-        } else {
+            (h.stable, h.stable_time) = (h.yaw, 0);
+        } else if (h.yaw - h.stable).abs() > 15.0 {
+            (h.stable, h.stable_time) = (h.yaw, 0);
             h.body = rotate_if_necessary(h.body, h.yaw, look.max_head_y);
+        } else {
+            h.stable_time += 1;
+            if h.stable_time > 10 {
+                let f = ((h.stable_time - 10) as f32 / 10.0).clamp(0.0, 1.0);
+                h.body = rotate_if_necessary(h.body, h.yaw, look.max_head_y * (1.0 - f));
+            }
         }
-        if look.cooldown == 0 && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch.abs() < 0.01 {
+        if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {
             cmd.entity(e).remove::<Looking>();
         }
     }
@@ -804,9 +852,6 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
                 t.look = false;
             } else {
                 t.random = false;
-            }
-            if now >= active {
-                return;
             }
         }
         Kind::Breed if w.get::<Love>(e).is_none_or(|l| l.0 <= now) => return,

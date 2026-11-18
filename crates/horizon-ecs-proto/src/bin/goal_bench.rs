@@ -3,7 +3,7 @@
 //! every 50 ticks HURT cows struck and LOVE pairs of neighbours fed. Prints the wall time per tick (ticks after
 //! the first 100) and how many cows have each module active at the end.
 use horizon_ecs_proto::{
-    cow::{Clock, DamageQueue, Herd},
+    cow::{Cause, Clock, DamageQueue, Herd},
     goals::{self, Online, Player, WHEAT},
 };
 use std::time::Instant;
@@ -49,7 +49,7 @@ fn main() {
         if t % 50 == 10 && t >= 50 {
             for _ in 0..hurt {
                 let e = cows[next(cows.len())];
-                herd.world.resource_mut::<DamageQueue>().0.push((e, 1.0));
+                herd.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
             }
             for _ in 0..love {
                 let i = next(cows.len() - 1);
