@@ -73,3 +73,42 @@ fn a_crowd_in_a_pit_is_crushed_as_a_mob_s_is() {
         }
     }
 }
+
+/// Two animals overlapping in the open: their positions tick by tick on both sides (the push law and its timing).
+#[test]
+fn two_overlapping_animals_move_apart_as_a_mob_s_do() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(20, false);
+    let mut h = Herd::with_slab(20, true, false);
+    h.tick();
+    let w = f64::from(species().width);
+    let three = std::env::var_os("THREE").is_some();
+    let starts: Vec<(f64, f64)> = [(0.5, 0.5), (0.5 + 0.6 * w, 0.5), (0.5 + 0.3 * w, 0.5 + 0.5 * w)].into_iter().take(if three { 3 } else { 2 }).collect();
+    let mut ids = vec![];
+    for (i, s) in starts.iter().enumerate() {
+        r.add(Vec3::new(s.0, 1.0, s.1));
+        let e = h.world.spawn(cow_bundle(s.0, s.1, 3 + i as u64)).id();
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+        ids.push(e);
+    }
+    let mut worst: f64 = 0.0;
+    for t in 1..=60 {
+        r.step(None);
+        h.tick();
+        let m: Vec<(f64, f64)> = r.mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
+        let e: Vec<(f64, f64)> = ids.iter().map(|&e| { let p = h.world.get::<Pos>(e).unwrap().0; (p.x, p.z) }).collect();
+        if t <= 6 || t % 10 == 0 {
+            eprintln!("t={t:2} mob {:.3?} | ecs {:.3?}", m.iter().map(|p| (p.0 * 1000.0).round() / 1000.0).collect::<Vec<_>>(), e.iter().map(|p| (p.0 * 1000.0).round() / 1000.0).collect::<Vec<_>>());
+        }
+        for (a, b) in m.iter().zip(&e) {
+            worst = worst.max((a.0 - b.0).abs()).max((a.1 - b.1).abs());
+        }
+    }
+    eprintln!("largest position difference over 60 ticks: {worst:.4}");
+    // The `Mob` pass applies a push to an animal ticked later in the same tick (one impulse more before the pair is apart):
+    // the final separation is 5 % wider on the `Mob` side (order of execution, category B). Without the two impulses per
+    // tick of `Entity.push` called from both sides, the ecs would stop at half the speed.
+    assert!(worst < if three { 0.2 } else { 0.1 }, "the push law differs: {worst}");
+}

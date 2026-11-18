@@ -40,7 +40,9 @@ fn main() {
     let ticks: usize = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(200);
     let side = (n as f64).sqrt().ceil() as i32;
     let o = -f64::from(side) * spacing / 2.0;
-    let at = |i: usize| (o + (i as i32 % side) as f64 * spacing + 0.5, o + (i as i32 / side) as f64 * spacing + 0.5);
+    // A lattice with a jitter of 0.1 block (a perfect lattice cancels every push in its interior).
+    let jit = |i: usize, k: u64| (((i as u64 * 2654435761 + k * 40503) % 1000) as f64 / 1000.0 - 0.5) * 0.2;
+    let at = |i: usize| (o + (i as i32 % side) as f64 * spacing + 0.5 + jit(i, 1), o + (i as i32 / side) as f64 * spacing + 0.5 + jit(i, 2));
     let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
     if mode == "mob" {
         let (level, species, kind) = build_level(half, false);
@@ -83,6 +85,13 @@ fn main() {
         }
     } else {
         let mut herd = Herd::with_hazards(n, spacing, true, false, 42, false);
+        for i in 0..n {
+            let e = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<ActiveUntil>>().iter(&herd.world).nth(i).unwrap();
+            let p = at(i);
+            let b = *herd.world.get::<Body>(e).unwrap();
+            herd.world.get_mut::<Pos>(e).unwrap().0 = Vec3::new(p.0, 1.0, p.1);
+            herd.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(p.0, 1.0, p.1), b.width, b.height);
+        }
         let width = f64::from(species().width);
         let ids: Vec<bevy_ecs::prelude::Entity> = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<ActiveUntil>>().iter(&herd.world).collect();
         for &e in &ids {

@@ -1700,8 +1700,10 @@ fn push(
             xa /= dd;
             za /= dd;
             let pow = (1.0_f64 / dd).min(1.0);
-            xa *= pow * f64::from(0.05_f32);
-            za *= pow * f64::from(0.05_f32);
+            // `Entity.push` is called for the pair from both sides every tick (each entity runs `pushEntities`): each of the
+            // two receives its impulse twice per tick.
+            xa *= pow * f64::from(0.05_f32) * 2.0;
+            za *= pow * f64::from(0.05_f32) * 2.0;
             dv.0 -= xa;
             dv.1 -= za;
             if !ob.is_changed() {
