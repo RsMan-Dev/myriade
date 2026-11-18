@@ -1399,12 +1399,12 @@ fn fluid_update(
 fn breathing(
     level: Res<Level>,
     table: Res<SpeciesTable>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, sid) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, sid, uid) in &mut q {
         let sp = &table.0[sid.0 as usize];
         let submerged = fs.eye_in_water && {
             let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
@@ -1416,7 +1416,7 @@ fn breathing(
             consume: 1,
             refill: if drowns { 0 } else { 4 },
         };
-        let id = e.index().index();
+        let id = uid.0 as u32;
         let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, sp.name, vanilla);
         if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
@@ -1541,7 +1541,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId, &crate::goals::Uid)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -1551,7 +1551,7 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid, uid)) = q.get_mut(e) else {
             continue;
         };
         let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
@@ -1585,7 +1585,7 @@ pub(crate) fn apply_damage(
             if !stroll.scheduled && !stroll.walking {
                 // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
                 // of a panic), which the hit must not shift.
-                let mut own = Rng(((e.index().index() as u64) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
+                let mut own = Rng(((uid.0) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
                 arm_stroll(&mut wheel, clock.0, e, &mut stroll, &mut own);
             }
         }
@@ -1895,15 +1895,16 @@ fn ordered_pass(
         &SpeciesId,
         Has<Moving>,
     )>,
-    marked: Query<Entity, With<Overlapping>>,
+    marked: Query<(Entity, &crate::goals::Uid), With<Overlapping>>,
     mut commands: Commands,
 ) {
     if !cfg.ordered_push {
         return;
     }
-    let mut ids: Vec<Entity> = marked.iter().collect();
-    // The order of creation (the `Mob` herd's list order): the index of the entity (`Entity`'s own ordering is not it).
-    ids.sort_unstable_by_key(|e| e.index());
+    let mut ids: Vec<(crate::goals::Uid, Entity)> = marked.iter().map(|(e, u)| (*u, e)).collect();
+    // The order of creation (the `Mob` herd's list order): the animal's `Uid`.
+    ids.sort_unstable();
+    let ids: Vec<Entity> = ids.into_iter().map(|(_, e)| e).collect();
     stats.last = ids.len();
     stats.total += ids.len() as u64;
     stats.ticks += 1;
@@ -2111,6 +2112,7 @@ impl Herd {
         let side = (n as f64).sqrt().ceil() as i32;
         let half = slab.unwrap_or(((f64::from(side) * spacing / 2.0) as i32 + 6).max(20));
         let mut world = World::new();
+        crate::goals::reset_uids();
         let (level, species, _kind) = build_level(half, hazards);
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());

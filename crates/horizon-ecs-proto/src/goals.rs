@@ -145,9 +145,27 @@ pub fn item_id(name: &str) -> u32 {
     }
 }
 /// The phase of the goal selector of the entity: it asks `canUse` on the ticks where tick + phase is even (the id of
-/// a `Mob`). `u64::MAX`: the entity's index.
+/// a `Mob`). By default the animal's `Uid`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Phase(pub u64);
+/// The animal's number, by order of creation in its world: the seed of what is drawn by default (phase, breath). Unlike
+/// the index of the bevy entity, it does not move when a resource or another entity is added before the animals.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Uid(pub u64);
+thread_local! {
+    static NEXT_UID: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+/// Restarts the numbering (a new world, on this thread).
+pub fn reset_uids() {
+    NEXT_UID.with(|c| c.set(0));
+}
+fn next_uid() -> u64 {
+    NEXT_UID.with(|c| {
+        let n = c.get();
+        c.set(n + 1);
+        n
+    })
+}
 const COW_SLOTS: [(Kind, u8, u8); 8] = [
     (Kind::Float, 0, JUMP),
     (Kind::Panic, 1, MOVE),
@@ -306,6 +324,9 @@ pub struct Head {
     /// The angles to the look target, kept while neither the target nor the animal moves (the arc tangents are not
     /// worked out every tick of a look that lasts 40).
     pub angles: Option<([f64; 3], Vec3, Option<f32>, Option<f32>)>,
+    /// (target, position, turn speed, walking) of a look that left the head, the pitch and the body unchanged for a whole
+    /// tick with the body at rest: while the same four hold, the next ticks of the look change nothing and are skipped.
+    pub settled: Option<([f64; 3], Vec3, f32, bool)>,
 }
 /// `Mob.getFluidJumpThreshold`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -349,6 +370,7 @@ pub struct Scanning {
 
 /// The data of the goals of an animal of the species (the vanilla values of its `registerGoals`, `Animal` and `Mob`).
 pub fn goals_bundle(sp: &Species) -> impl Bundle {
+    let uid = next_uid();
     let d = sp.goals;
     (
         GoalSet::new(d.slots),
@@ -360,10 +382,11 @@ pub fn goals_bundle(sp: &Species) -> impl Bundle {
         Scan { period: 50 },
         GoalTimers::default(),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Buoyancy(if sp.eye_height < 0.4 { 0.0 } else { 0.4 }),
         Jump(false),
-        Phase(u64::MAX),
+        Uid(uid),
+        Phase(uid),
     )
 }
 
@@ -641,12 +664,13 @@ pub(crate) fn arm(w: &mut World, e: Entity, k: Kind, wait: i32) {
 }
 /// Arms the look timers of a cow that has none (1 chance in `period` per ask, one ask every 2 ticks).
 fn arm_timers(w: &mut World, e: Entity) {
-    let Some(mut t) = w.get::<GoalTimers>(e).copied() else { return };
-    let (g, s) = (*w.get::<Glance>(e).unwrap(), *w.get::<Scan>(e).unwrap());
-    let seen = {
-        let p = w.get::<Pos>(e).unwrap().0;
-        w.resource::<LazyLook>().watched(p.x, p.z)
+    // The components are read once, from one entity reference.
+    let (mut t, g, s, p, attacks, grazes) = {
+        let en = w.entity(e);
+        let Some(t) = en.get::<GoalTimers>().copied() else { return };
+        (t, *en.get::<Glance>().unwrap(), *en.get::<Scan>().unwrap(), en.get::<Pos>().unwrap().0, en.contains::<crate::hostile::Attack>(), en.contains::<crate::farm::Graze>())
     };
+    let seen = w.resource::<LazyLook>().watched(p.x, p.z);
     if !t.look && seen {
         let wait = with_rng(w, e, |r| 2 * geometric(r, g.period));
         arm(w, e, Kind::LookAtPlayer, wait);
@@ -658,13 +682,13 @@ fn arm_timers(w: &mut World, e: Entity) {
         t.random = true;
     }
     // The target selector asks every other tick, 1 in `reduced(10)` = 5.
-    if !t.target && w.get::<crate::hostile::Attack>(e).is_some() {
+    if !t.target && attacks {
         let wait = with_rng(w, e, |r| 2 * geometric(r, 5));
         arm(w, e, Kind::Target, wait);
         t.target = true;
     }
     *w.get_mut::<GoalTimers>(e).unwrap() = t;
-    if !t.graze && w.get::<crate::farm::Graze>(e).is_some() {
+    if !t.graze && grazes {
         crate::farm::arm_graze(w, e);
     }
 }
@@ -881,7 +905,7 @@ fn tempt_run(
     for ((e, pos, mut look, looking, following, asked), mut ts, inst, phase) in &mut q {
         // `TemptGoal` continues and ticks on the selector's ticks only (tick + id even): one look and at most one path
         // search every other tick, as the `Mob`.
-        let phase = phase.map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+        let phase = phase.map_or(0, |p| p.0);
         if (clock.0 + phase) % 2 == 1 && clock.0 > 1 {
             continue;
         }
@@ -934,7 +958,7 @@ fn breed_run(
         }
         // `BreedGoal` counts `loveTime` once per selector tick (its `tick` runs then): it breeds when the count reaches
         // `reducedTickDelay(60)` and the partner is within 3 blocks, and gives up at 60.
-        let phase = phase.map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+        let phase = phase.map_or(0, |p| p.0);
         let selector = |t: u64| (t + phase) % 2 == 0;
         let first = if selector(b.since) { b.since } else { b.since + 1 };
         let love_time = if now >= first { (now - first) / 2 + 1 } else { 0 };
@@ -1044,7 +1068,8 @@ fn rotate_towards(a: f32, b: f32, max: f32) -> f32 {
     a + wrap(b - a).clamp(-max, max)
 }
 fn wrap(a: f32) -> f32 {
-    let mut a = a % 360.0;
+    // `a % 360.0` is a library call: below 360 in magnitude it returns `a` itself.
+    let mut a = if a.abs() < 360.0 { a } else { a % 360.0 };
     if a >= 180.0 {
         a -= 360.0;
     }
@@ -1065,8 +1090,14 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     for (e, pos, yaw, mut look, mut h, walking) in &mut q {
         if h.yaw.is_nan() {
-            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z), angles: None };
+            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z), angles: None, settled: None };
         }
+        if look.cooldown > 0 && h.settled == Some((look.target, pos.0, look.y_speed, walking)) {
+            look.cooldown -= 1;
+            continue;
+        }
+        let before = (h.yaw, h.pitch, h.body, h.stable);
+        let aimed = look.cooldown > 0;
         h.pitch = 0.0;
         if look.cooldown > 0 {
             look.cooldown -= 1;
@@ -1109,6 +1140,7 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
                 h.body = rotate_if_necessary(h.body, h.yaw, look.max_head_y * (1.0 - f));
             }
         }
+        h.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
         if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {
             cmd.entity(e).remove::<Looking>();
         }
@@ -1149,7 +1181,7 @@ pub(crate) fn arbitrate(world: &mut World) {
             // heard at the next such tick (the same as the next one at most).
             Req::Start(e, k) => {
                 let now = world.resource::<Clock>().0;
-                let phase = world.get::<Phase>(e).map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+                let phase = world.get::<Phase>(e).map_or(0, |p| p.0);
                 if now > 1 && (now + phase) % 2 == 1 {
                     arm(world, e, k, 1);
                 } else {
@@ -1207,7 +1239,7 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
         }
         Kind::Melee => {
             // `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
-            let phase = w.get::<Phase>(e).map_or(0, |p| if p.0 == u64::MAX { e.index().index() as u64 } else { p.0 });
+            let phase = w.get::<Phase>(e).map_or(0, |p| p.0);
             if now > 1 && (now + phase) % 2 == 1 {
                 arm(w, e, k, 1);
                 return;
@@ -1244,16 +1276,22 @@ fn timer_fired(w: &mut World, e: Entity, k: Kind) {
     }
     start_goal(w, e, k);
 }
-fn bit(g: &GoalSet, k: Kind) -> u16 {
-    1 << g.at(k).unwrap()
-}
 fn start_goal(w: &mut World, e: Entity, k: Kind) {
-    let Some(g) = w.get::<GoalSet>(e) else { return };
-    if g.at(k).is_none() || g.is_running(k) {
-        return;
-    }
-    let b = bit(g, k);
-    if !g.replaceable(k) {
+    // One lookup of the selector: the slot, whether it runs, whether its flags are free.
+    let (free, b) = {
+        let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
+        let Some(i) = g.at(k) else { return };
+        if g.running >> i & 1 == 1 {
+            return;
+        }
+        let b = 1 << i;
+        let free = g.replaceable(k);
+        if free {
+            g.pending &= !b;
+        }
+        (free, b)
+    };
+    if !free {
         match k {
             Kind::Stroll => arm_stroll_now(w, e),
             Kind::LookAtPlayer | Kind::RandomLook => rearm_timer(w, e, k),
@@ -1262,7 +1300,6 @@ fn start_goal(w: &mut World, e: Entity, k: Kind) {
         }
         return;
     }
-    w.get_mut::<GoalSet>(e).unwrap().pending &= !b;
     let Some(pick) = can_use(w, e, k) else { return };
     let stopped = w.get_mut::<GoalSet>(e).unwrap().start(k);
     for s in stopped {
@@ -1303,16 +1340,12 @@ fn calm_resume(w: &mut World, e: Entity) {
     }
 }
 fn rearm_timer(w: &mut World, e: Entity, k: Kind) {
-    let g = *w.get::<Glance>(e).unwrap();
-    let s = *w.get::<Scan>(e).unwrap();
-    let mut t = *w.get::<GoalTimers>(e).unwrap();
+    let mut t = w.get_mut::<GoalTimers>(e).unwrap();
     match k {
         Kind::LookAtPlayer => t.look = false,
         Kind::Target => t.target = false,
         _ => t.random = false,
     }
-    let _ = (g, s);
-    *w.get_mut::<GoalTimers>(e).unwrap() = t;
     arm_timers(w, e);
 }
 pub(crate) fn end_goal(w: &mut World, e: Entity, k: Kind) {
