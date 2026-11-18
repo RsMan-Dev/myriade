@@ -1,0 +1,71 @@
+//! `goal-bench N TICKS PLAYERS HOLD_PCT HURT LOVE [SPACING]`, `HORIZON_TEST_RESOURCES` set: a herd of N cows with
+//! PLAYERS players on a grid, HOLD_PCT % of them holding wheat (a tenth of the holders walk back and forth), and
+//! every 50 ticks HURT cows struck and LOVE pairs of neighbours fed. Prints the wall time per tick (ticks after
+//! the first 100) and how many cows have each module active at the end.
+use horizon_ecs_proto::{
+    cow::{Clock, DamageQueue, Herd},
+    goals::{self, Online, Player, WHEAT},
+};
+use std::time::Instant;
+
+fn main() {
+    let a: Vec<String> = std::env::args().collect();
+    let arg = |i: usize, d: f64| a.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
+    let (n, ticks, players) = (arg(1, 10000.0) as usize, arg(2, 200.0) as usize, arg(3, 0.0) as usize);
+    let (hold, hurt, love, spacing) = (arg(4, 0.0) / 100.0, arg(5, 0.0) as usize, arg(6, 0.0) as usize, arg(7, 2.0));
+    let mut herd = Herd::new(n, spacing, true, false, 42);
+    let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();
+    let side = (n as f64).sqrt().ceil() * spacing;
+    let k = ((players as f64).sqrt().ceil() as usize).max(1);
+    let spot = |i: usize| {
+        let (cx, cz) = ((i % k) as f64 + 0.5, (i / k) as f64 + 0.5);
+        (-side / 2.0 + side * cx / k as f64, -side / 2.0 + side * cz / k as f64)
+    };
+    let holders = (players as f64 * hold) as usize;
+    for i in 0..players {
+        let (x, z) = spot(i);
+        herd.world.resource_mut::<Online>().set(Player { id: i as u32, x, y: 1.0, z, main: if i < holders { WHEAT } else { 0 }, off: 0 });
+    }
+    let walkers = holders / 10;
+    let mut seed = 0x9e37_79b9_u64;
+    let mut next = |m: usize| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 11) as usize % m.max(1)
+    };
+    let warm = 100.min(ticks);
+    let mut t0 = Instant::now();
+    for t in 0..ticks {
+        if t == warm {
+            t0 = Instant::now();
+        }
+        for i in 0..walkers {
+            let (x, z) = spot(i);
+            let phase = ((t / 100 + i) % 2) as f64 * 2.0 - 1.0;
+            let dx = ((t % 100) as f64 * 0.1 - 5.0) * phase;
+            herd.world.resource_mut::<Online>().set(Player { id: i as u32, x: x + dx, y: 1.0, z, main: WHEAT, off: 0 });
+        }
+        if t % 50 == 10 && t >= 50 {
+            for _ in 0..hurt {
+                let e = cows[next(cows.len())];
+                herd.world.resource_mut::<DamageQueue>().0.push((e, 1.0));
+            }
+            for _ in 0..love {
+                let i = next(cows.len() - 1);
+                goals::feed(&mut herd.world, cows[i]);
+                goals::feed(&mut herd.world, cows[i + 1]);
+            }
+        }
+        herd.tick();
+    }
+    let dt = t0.elapsed();
+    let (_, following, moving, total) = herd.counts();
+    let now = herd.world.resource::<Clock>().0;
+    let modules: Vec<String> = goals::counts(&mut herd.world).iter().map(|(k, v)| format!("{k}={v}")).collect();
+    println!(
+        "goals n={n} ticks={ticks} players={players} hold={hold} hurt={hurt} love={love} wall/tick={:.1}us cows_now={total} tick={now} following={following} moving={moving} {}",
+        dt.as_secs_f64() * 1e6 / (ticks - warm).max(1) as f64,
+        modules.join(" ")
+    );
+}
