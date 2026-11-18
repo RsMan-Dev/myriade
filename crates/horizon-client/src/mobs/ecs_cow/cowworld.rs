@@ -22,6 +22,8 @@ pub struct CowWorld {
     pub mutate_order: bool,
     /// Whether the cows spawned from now on keep and put back the outputs of their resting ticks.
     pub rest: bool,
+    /// Dense unordered pass (a measurement, not vanilla order).
+    pub dense: bool,
     snapshot: Vec<Seen>,
     next_id: u32,
 }
@@ -30,7 +32,7 @@ impl CowWorld {
     pub fn new() -> Self {
         let mut world = World::new();
         let query = world.query::<Cow>();
-        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, rest: false, snapshot: Vec::new(), next_id: 1 }
+        Self { world, order: Vec::new(), query, pushes: PendingPushes::default(), mutate_order: false, rest: false, dense: false, snapshot: Vec::new(), next_id: 1 }
     }
     pub fn len(&self) -> usize {
         self.order.len()
@@ -74,56 +76,16 @@ impl CowWorld {
         } else {
             (0..self.order.len()).collect()
         };
-        for slot in slots {
+        if self.dense {
+            // Indicative only: the table's order, not Horizon's (equal while nothing is removed).
+            for (slot, mut item) in self.query.iter_mut(&mut self.world).enumerate() {
+                visit(&mut item, slot, &mut self.pushes, &mut self.snapshot, &mut grid, w, level, &mut events, &mut keep);
+            }
+        }
+        for slot in slots.into_iter().filter(|_| !self.dense) {
             let e = self.order[slot];
             let mut item = self.query.get_mut(&mut self.world, e).expect("a cow of the order");
-            {
-                // `apply_mob_pushes`: the pushes waiting for this cow join its velocity.
-                let id = item.id.id;
-                let mut add = |v: horizon_core::geometry::Vec3| {
-                    let u = item.motion.velocity;
-                    item.motion.velocity = horizon_core::geometry::Vec3::new(u.x + v.x, u.y + v.y, u.z + v.z);
-                    item.motion.needs_sync = true;
-                };
-                if !self.pushes.list.is_empty() {
-                    self.pushes.list.retain(|(target, v)| {
-                        if *target != id {
-                            return true;
-                        }
-                        add(*v);
-                        false
-                    });
-                }
-                if !self.pushes.by_mob.is_empty()
-                    && let Some(pushes) = self.pushes.by_mob.remove(&id)
-                {
-                    pushes.into_iter().for_each(add);
-                }
-            }
-            let from = events.len();
-            let view = MobWorld {
-                others: &self.snapshot,
-                others_grid: Some(&grid),
-                ..w.clone()
-            };
-            let kept = item.tick(&view, level, &mut events);
-            // `take_mob_pushes`: the pushes of this cow's tick wait for their targets' turns.
-            let mut kept_events = from;
-            for i in from..events.len() {
-                if let CowEvent::Push { target: Who::Mob(id), velocity } = events[i] {
-                    self.pushes.push(id, horizon_core::geometry::Vec3::new(velocity[0], velocity[1], velocity[2]));
-                } else {
-                    events.swap(kept_events, i);
-                    kept_events += 1;
-                }
-            }
-            events.truncate(kept_events);
-            let mut s = item.seen();
-            s.alive &= kept;
-            s.removed |= !kept;
-            grid.update(slot, s.bounds);
-            self.snapshot[slot] = s;
-            keep[slot] = kept;
+            visit(&mut item, slot, &mut self.pushes, &mut self.snapshot, &mut grid, w, level, &mut events, &mut keep);
         }
         // The cows that left the level.
         let mut slot = 0;
@@ -237,4 +199,66 @@ impl CowWorld {
         }
         out
     }
+}
+
+/// One cow's turn of a pass (shared by the ordered pass and the dense one).
+#[allow(clippy::too_many_arguments)]
+fn visit(
+    item: &mut CowItem<'_, '_>,
+    slot: usize,
+    pushes: &mut PendingPushes,
+    snapshot: &mut [Seen],
+    grid: &mut crate::mobs::seen_grid::SeenGrid,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<CowEvent>,
+    keep: &mut [bool],
+) {
+        {
+            // `apply_mob_pushes`: the pushes waiting for this cow join its velocity.
+            let id = item.id.id;
+            let mut add = |v: horizon_core::geometry::Vec3| {
+                let u = item.motion.velocity;
+                item.motion.velocity = horizon_core::geometry::Vec3::new(u.x + v.x, u.y + v.y, u.z + v.z);
+                item.motion.needs_sync = true;
+            };
+            if !pushes.list.is_empty() {
+                pushes.list.retain(|(target, v)| {
+                    if *target != id {
+                        return true;
+                    }
+                    add(*v);
+                    false
+                });
+            }
+            if !pushes.by_mob.is_empty()
+                && let Some(pushes) = pushes.by_mob.remove(&id)
+            {
+                pushes.into_iter().for_each(add);
+            }
+        }
+        let from = events.len();
+        let view = MobWorld {
+            others: &*snapshot,
+            others_grid: Some(&*grid),
+            ..w.clone()
+        };
+        let kept = item.tick(&view, level, events);
+        // `take_mob_pushes`: the pushes of this cow's tick wait for their targets' turns.
+        let mut kept_events = from;
+        for i in from..events.len() {
+            if let CowEvent::Push { target: Who::Mob(id), velocity } = events[i] {
+                pushes.push(id, horizon_core::geometry::Vec3::new(velocity[0], velocity[1], velocity[2]));
+            } else {
+                events.swap(kept_events, i);
+                kept_events += 1;
+            }
+        }
+        events.truncate(kept_events);
+        let mut s = item.seen();
+        s.alive &= kept;
+        s.removed |= !kept;
+        grid.update(slot, s.bounds);
+        snapshot[slot] = s;
+        keep[slot] = kept;
 }

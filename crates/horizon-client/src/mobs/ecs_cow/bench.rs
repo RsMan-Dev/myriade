@@ -81,6 +81,7 @@ fn bench_cows() {
             _ => {
                 let mut ecs = CowWorld::new();
                 ecs.rest = which == "ecs_rest";
+                ecs.dense = which == "ecs_dense";
                 for m in cows {
                     ecs.spawn_from(m);
                 }
