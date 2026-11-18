@@ -2,7 +2,7 @@
 //! chunk availability, state metadata, suffocation predicates and context dispatch.
 use crate::{collision_context::CollisionContext, registry::BlockStateId};
 use horizon_core::{
-    geometry::{Aabb, BlockCollider, ShapeError, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, Axis, BlockCollider, ShapeError, ShapeOp, Vec3, VoxelShape},
     position::{BlockPos, ChunkPos},
 };
 
@@ -193,6 +193,18 @@ fn moved_block(p: BlockPos, offset: Vec3, shape: &VoxelShape) -> VoxelShape {
 enum Found {
     Cube(Vec3),
     Shape(VoxelShape),
+    /// A stored shape and the offset that moves it, known to overlap the box.
+    Moved(VoxelShape, Vec3),
+}
+
+/// Whether some box of the moved shape overlaps `bounds` by more than `MARGIN` on every axis: then the shape's
+/// join with the box is certainly not empty (the join merges coordinates within 1e-7 of each other).
+fn clearly_overlaps(shape: &VoxelShape, offset: Vec3, bounds: Aabb) -> bool {
+    const MARGIN: f64 = 1.0e-5;
+    shape.boxes().iter().any(|b| {
+        let b = b.move_by(offset);
+        Axis::ALL.into_iter().all(|a| b.max(a).min(bounds.max(a)) - b.min(a).max(bounds.min(a)) > MARGIN)
+    })
 }
 
 pub struct BlockCollisionScan<'w, 'c, W: BlockCollisionWorld> {
@@ -389,6 +401,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
         Ok(self.scan_next()?.map(|(_, found)| match found {
             Found::Cube(offset) => BlockCollider::Cube(offset),
             Found::Shape(shape) => BlockCollider::Shape(Box::new(shape)),
+            Found::Moved(shape, offset) => BlockCollider::Moved(Box::new((shape, offset))),
         }))
     }
 
@@ -399,6 +412,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                 Found::Cube(_) if self.presence_only => VoxelShape::block(),
                 Found::Cube(offset) => moved_block(position, offset, VoxelShape::block_ref()),
                 Found::Shape(shape) => shape,
+                Found::Moved(shape, offset) => shape.moved(offset),
             },
         }))
     }
@@ -524,6 +538,9 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                     .is_some_and(|b| b.move_by(offset).intersects(self.bounds))
                 {
                     continue;
+                }
+                if clearly_overlaps(&shape, offset, self.bounds) {
+                    return Ok(Some((p, Found::Moved(shape, offset))));
                 }
                 let moved = shape.moved(offset);
                 let entity_shape = match &self.entity_shape {

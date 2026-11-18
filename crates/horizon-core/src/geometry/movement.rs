@@ -63,8 +63,9 @@ pub fn try_resolve_step_movement<S: std::borrow::Borrow<VoxelShape>, E>(
 /// What a block contributes to a movement: it answers the two questions the resolution asks.
 pub trait Collider {
     fn collide(&self, axis: Axis, aabb: Aabb, amount: f64) -> f64;
-    /// The Y boundaries of the shape, ascending (`buf` holds them for a shape that has none stored).
-    fn y_coordinates<'a>(&'a self, buf: &'a mut [f64; 2]) -> &'a [f64];
+    /// The Y boundaries of the shape, ascending: how many, and the `k`th.
+    fn y_len(&self) -> usize;
+    fn y_at(&self, k: usize) -> f64;
 }
 impl Collider for VoxelShape {
     #[inline]
@@ -72,8 +73,12 @@ impl Collider for VoxelShape {
         VoxelShape::collide(self, axis, aabb, amount)
     }
     #[inline]
-    fn y_coordinates<'a>(&'a self, _: &'a mut [f64; 2]) -> &'a [f64] {
-        self.coordinates(Axis::Y)
+    fn y_len(&self) -> usize {
+        self.coordinates(Axis::Y).len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        self.coordinates(Axis::Y)[k]
     }
 }
 impl<C: Collider + ?Sized> Collider for &C {
@@ -82,8 +87,12 @@ impl<C: Collider + ?Sized> Collider for &C {
         (**self).collide(axis, aabb, amount)
     }
     #[inline]
-    fn y_coordinates<'a>(&'a self, buf: &'a mut [f64; 2]) -> &'a [f64] {
-        (**self).y_coordinates(buf)
+    fn y_len(&self) -> usize {
+        (**self).y_len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        (**self).y_at(k)
     }
 }
 struct Borrowed<S>(S);
@@ -93,8 +102,12 @@ impl<S: std::borrow::Borrow<VoxelShape>> Collider for Borrowed<S> {
         self.0.borrow().collide(axis, aabb, amount)
     }
     #[inline]
-    fn y_coordinates<'a>(&'a self, _: &'a mut [f64; 2]) -> &'a [f64] {
-        self.0.borrow().coordinates(Axis::Y)
+    fn y_len(&self) -> usize {
+        self.0.borrow().coordinates(Axis::Y).len()
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        self.0.borrow().coordinates(Axis::Y)[k]
     }
 }
 /// A block's collider: the unit cube at an integer offset (no shape is built for it), or any shape, already moved.
@@ -102,6 +115,8 @@ impl<S: std::borrow::Borrow<VoxelShape>> Collider for Borrowed<S> {
 pub enum BlockCollider {
     Cube(Vec3),
     Shape(Box<VoxelShape>),
+    /// A stored shape and the offset that moves it (the moved shape is never built).
+    Moved(Box<(VoxelShape, Vec3)>),
 }
 impl Collider for BlockCollider {
     #[inline]
@@ -109,16 +124,23 @@ impl Collider for BlockCollider {
         match self {
             Self::Cube(offset) => VoxelShape::collide_unit_cube(*offset, axis, aabb, amount),
             Self::Shape(shape) => shape.collide(axis, aabb, amount),
+            Self::Moved(m) => m.0.collide_moved(m.1, axis, aabb, amount),
         }
     }
     #[inline]
-    fn y_coordinates<'a>(&'a self, buf: &'a mut [f64; 2]) -> &'a [f64] {
+    fn y_len(&self) -> usize {
         match self {
-            Self::Cube(offset) => {
-                *buf = [0.0 + offset.y, 1.0 + offset.y];
-                buf
-            }
-            Self::Shape(shape) => shape.coordinates(Axis::Y),
+            Self::Cube(_) => 2,
+            Self::Shape(shape) => shape.coordinates(Axis::Y).len(),
+            Self::Moved(m) => m.0.coordinates(Axis::Y).len(),
+        }
+    }
+    #[inline]
+    fn y_at(&self, k: usize) -> f64 {
+        match self {
+            Self::Cube(offset) => k as f64 + offset.y,
+            Self::Shape(shape) => shape.coordinates(Axis::Y)[k],
+            Self::Moved(m) => m.0.coordinates(Axis::Y)[k] + m.1.y,
         }
     }
 }
@@ -225,9 +247,8 @@ fn borrowed_step_heights<C: Collider>(
 ) -> Vec<f32> {
     let mut heights = Vec::<f32>::with_capacity(4);
     for shape in shapes {
-        let mut buf = [0.0; 2];
-        for coordinate in shape.y_coordinates(&mut buf) {
-            let height = (*coordinate - aabb.min(Axis::Y)) as f32;
+        for k in 0..shape.y_len() {
+            let height = (shape.y_at(k) - aabb.min(Axis::Y)) as f32;
             if height < 0.0 || height == current_y {
                 continue;
             }
