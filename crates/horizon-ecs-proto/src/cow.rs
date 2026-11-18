@@ -53,6 +53,10 @@ pub struct Drive {
     pub jump: bool,
     /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
     pub jumping: bool,
+    /// `Mob.noJumpDelay`: ticks before the cow may jump again (10 after a jump, 0 when the input stops).
+    pub no_jump_delay: i32,
+    /// `MoveControl.Operation.JUMPING`: after a jump the move control only keeps the speed until the cow lands.
+    pub jumping_op: bool,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -432,6 +436,8 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
                     }
                 }
             };
+            // A low ceiling (stone at y = 3, 3 x 3) for the jump delay: a cow under it jumps for less than 10 ticks.
+            put(blocks, "minecraft:stone", -20, -20, 3);
             let mut gx = -half + 8;
             while gx + 40 < half {
                 let mut gz = -half + 8;
@@ -838,9 +844,21 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     r
 }
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
-fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body) {
+fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
+    if d.jumping_op {
+        // Operation JUMPING: the speed follows the wanted spot's modifier, the heading is kept, and the next
+        // wanted spot does not change the operation, until the cow is on the ground (or in a liquid).
+        let speed = (m.speed_modifier * body.speed) as f32;
+        d.speed = speed;
+        d.zza = speed;
+        m.active = false;
+        if landed {
+            d.jumping_op = false;
+        }
+        return;
+    }
     if !m.active {
         d.zza = 0.0;
         return;
@@ -857,13 +875,15 @@ fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, bod
     d.zza = speed;
     // `MoveControl` MOVE_TO: a target above the step height and near makes the cow jump.
     d.jump = yd > f64::from(body.step_height) && xd * xd + zd * zd < f64::from(body.width.max(1.0));
+    d.jumping_op = d.jump;
 }
-fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body), With<Following>>) {
+fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+    let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b)| move_control_one(p, &mut y, &mut m, &mut d, b));
+        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f)));
     } else {
-        for (p, mut y, mut m, mut d, b) in &mut q {
-            move_control_one(p, &mut y, &mut m, &mut d, b);
+        for (p, mut y, mut m, mut d, b, c, f) in &mut q {
+            move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f));
         }
     }
 }
@@ -913,8 +933,15 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
         }
         c.fall_distance = 0.0;
     }
-    if vertical && below {
+    // `Entity.move` ends by losing the velocity along the axes that collided (a landing, a ceiling, a wall).
+    if vertical {
         vel.0.y = 0.0;
+    }
+    if differs(wanted.x, moved.x) {
+        vel.0.x = 0.0;
+    }
+    if differs(wanted.z, moved.z) {
+        vel.0.z = 0.0;
     }
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
@@ -926,7 +953,7 @@ fn travel_one(
     vel: &mut Vel,
     yaw: &Yaw,
     c: &mut Contact,
-    d: &Drive,
+    d: &mut Drive,
     body: &Body,
     bounds: &mut Bounds,
     fs: &FluidState,
@@ -955,9 +982,16 @@ fn travel_one(
             vel.0.y += if sp.can_float { f64::from(0.04_f32) } else { 0.3 };
         }
     }
-    // `LivingEntity.jumpFromGround`: the jump power 0.42.
-    if jumping && !in_fluid && c.on_ground {
+    // `LivingEntity.handleJumping` on the ground: a jump every 10 ticks at most (`noJumpDelay`), the delay reset when
+    // the input stops; `jumpFromGround`: the jump power 0.42 (the block's factor is 1 here).
+    if d.no_jump_delay > 0 {
+        d.no_jump_delay -= 1;
+    }
+    if !jumping {
+        d.no_jump_delay = 0;
+    } else if !in_fluid && c.on_ground && d.no_jump_delay == 0 {
         vel.0.y = vel.0.y.max(0.42);
+        d.no_jump_delay = 10;
     }
     if in_fluid {
         let falling = vel.0.y <= 0.0;
@@ -1015,7 +1049,7 @@ fn travel_one(
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
-    c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
+    !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
 fn travel(
@@ -1024,14 +1058,14 @@ fn travel(
     sp: Res<Species>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
         With<Moving>,
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
-        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, d, b, &mut bb, fs, jumping, &mut fall);
+        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
         if fall > 0.0 {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall, Cause::Fall)));
@@ -1691,6 +1725,24 @@ mod tests {
             }
             last = x;
         }
+    }
+
+    /// A cow that keeps jumping under a low ceiling, tick by tick (to compare with `Mob`: the jump delay).
+    #[test]
+    #[ignore = "trace"]
+    fn trace_a_cow_jumping_under_a_ceiling() {
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let e = herd.world.spawn(cow_bundle(-19.0, -19.0, 77)).id();
+        herd.world.entity_mut(e).insert(ActiveUntil(0));
+        herd.world.entity_mut(e).remove::<crate::goals::Jump>();
+        herd.world.get_mut::<Drive>(e).unwrap().jump = true;
+        let ys: Vec<String> = (1..=40)
+            .map(|_| {
+                herd.tick();
+                format!("{:.2}", herd.world.get::<Pos>(e).unwrap().0.y)
+            })
+            .collect();
+        eprintln!("ecs jump y: {}", ys.join(" "));
     }
 
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
