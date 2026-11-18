@@ -393,8 +393,15 @@ pub struct Config {
     pub parallel: bool,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
-#[derive(Resource, Clone, Copy)]
+/// The species of an entity: an index into the `SpeciesTable`.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpeciesId(pub u8);
+/// The data of every species of the world, by `SpeciesId`: what a system needs of a species it reads here, per entity.
+#[derive(Resource, Clone)]
+pub struct SpeciesTable(pub Vec<Species>);
+#[derive(Clone, Copy)]
 pub struct Species {
+    pub id: u8,
     pub malus: [Option<f32>; PATH_TYPES],
     pub can_float: bool,
     pub can_open_doors: bool,
@@ -472,35 +479,52 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
     };
     let (mw, types) =
         horizon_client_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES");
-    let name: &'static str = Box::leak(
+    let chosen: &'static str = Box::leak(
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
-    let kind = Arc::new(types.types[name].clone());
-    let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
-    let species = Species {
-        malus: mob.ai.malus,
-        can_float: mob.ai.nav.can_float,
-        can_open_doors: mob.ai.nav.can_open_doors,
-        can_pass_doors: mob.ai.nav.can_pass_doors,
-        can_walk_over_fences: mob.ai.nav.can_walk_over_fences,
-        follow_range: mob.attrs.follow_range as f32,
-        max_health: mob.health,
-        water_slowdown: kind.water_slowdown,
-        water_efficiency: kind.water_efficiency as f32,
-        eye_height: kind.eye_height,
-        breathes_water: kind.flags.breathes_water,
-        name,
-        width: kind.width as f32,
-        height: kind.height as f32,
-        step_height: kind.step_height as f32,
-        gravity: kind.gravity,
-        speed: mob.attrs.speed,
-        baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
-        goals: crate::goals::goal_def(name),
-        knockback_resistance: mob.attrs.knockback_resistance,
-    };
+    // Every species the prototype knows, by id: the same table for the whole process.
+    let names: [&'static str; 2] = ["minecraft:cow", "minecraft:pig"];
+    let mut table: Vec<Species> = Vec::new();
+    let mut chosen_kind = None;
+    for (i, name) in names.into_iter().enumerate() {
+        let kind = Arc::new(types.types[name].clone());
+        let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
+        table.push(Species {
+            id: i as u8,
+            malus: mob.ai.malus,
+            can_float: mob.ai.nav.can_float,
+            can_open_doors: mob.ai.nav.can_open_doors,
+            can_pass_doors: mob.ai.nav.can_pass_doors,
+            can_walk_over_fences: mob.ai.nav.can_walk_over_fences,
+            follow_range: mob.attrs.follow_range as f32,
+            max_health: mob.health,
+            water_slowdown: kind.water_slowdown,
+            water_efficiency: kind.water_efficiency as f32,
+            eye_height: kind.eye_height,
+            breathes_water: kind.flags.breathes_water,
+            name,
+            width: kind.width as f32,
+            height: kind.height as f32,
+            step_height: kind.step_height as f32,
+            gravity: kind.gravity,
+            speed: mob.attrs.speed,
+            baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
+            goals: crate::goals::goal_def(name),
+            knockback_resistance: mob.attrs.knockback_resistance,
+        });
+        if name == chosen {
+            chosen_kind = Some(kind);
+        }
+    }
+    let _ = TABLE.set(table.clone());
+    let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
-    (Level { mw: Mw(mw), half }, species, kind)
+    (Level { mw: Mw(mw), half }, species, chosen_kind.expect("a known species"))
+}
+/// Every species of the process (see `build_level`).
+static TABLE: std::sync::OnceLock<Vec<Species>> = std::sync::OnceLock::new();
+pub fn species_table() -> SpeciesTable {
+    SpeciesTable(TABLE.get().expect("a level was built").clone())
 }
 
 /// The species of the process (the first world built sets it: `HORIZON_SPECIES`, `minecraft:cow` by default), for
@@ -519,6 +543,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
     (
         Pos(Vec3::new(x, 1.0, z)),
+        SpeciesId(sp.id),
         Vel(Vec3::ZERO),
         Yaw((rng.next_u32() % 360) as f32),
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed },
@@ -682,13 +707,14 @@ fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    sp: Res<Species>,
+    table: Res<SpeciesTable>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &SpeciesId), With<NeedsPath>>,
 ) {
     let now = clock.0;
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sid: &SpeciesId| {
+        let sp = &table.0[sid.0 as usize];
         let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
@@ -726,10 +752,10 @@ fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v)| one(e, p, b, c, &mut s, &mut n, f, v));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i)| one(e, p, b, c, &mut s, &mut n, f, v, i));
     } else {
-        for (e, p, b, c, mut s, mut n, f, v) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f, v);
+        for (e, p, b, c, mut s, mut n, f, v, i) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i);
         }
     }
 }
@@ -1074,17 +1100,18 @@ fn travel_one(
 fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    sp: Res<Species>,
+    table: Res<SpeciesTable>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, &SpeciesId),
         With<Moving>,
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
+        let sp = &table.0[sid.0 as usize];
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
-        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
+        let rest = travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
         if fall > 0.0 {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
@@ -1098,10 +1125,10 @@ fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j)| one(e, p, v, y, c, d, b, bb, fs, f, j));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i)| one(e, p, v, y, c, d, b, bb, fs, f, j, i));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j);
+        for (e, p, v, y, c, d, b, bb, fs, f, j, i) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j, i);
         }
     }
 }
@@ -1111,13 +1138,13 @@ fn travel(
 fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
-    sp: Res<Species>,
-    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact), With<InFluid>>,
+    table: Res<SpeciesTable>,
+    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, &SpeciesId), With<InFluid>>,
 ) {
     let level = &*level;
-    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact| {
+    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, sid: &SpeciesId| {
         let mw = level.mw.0;
-        let f = mw.fluids(b.0, pos.0.y + sp.eye_height);
+        let f = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
         *fs = FluidState {
             water: f.water,
             lava: f.lava,
@@ -1134,10 +1161,10 @@ fn fluid_update(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, b, mut v, mut fs, mut c)| one(p, b, &mut v, &mut fs, &mut c));
+        q.par_iter_mut().for_each(|(p, b, mut v, mut fs, mut c, i)| one(p, b, &mut v, &mut fs, &mut c, i));
     } else {
-        for (p, b, mut v, mut fs, mut c) in &mut q {
-            one(p, b, &mut v, &mut fs, &mut c);
+        for (p, b, mut v, mut fs, mut c, i) in &mut q {
+            one(p, b, &mut v, &mut fs, &mut c, i);
         }
     }
 }
@@ -1147,13 +1174,14 @@ fn fluid_update(
 #[allow(clippy::type_complexity)]
 fn breathing(
     level: Res<Level>,
-    sp: Res<Species>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>), Or<(With<InFluid>, With<AirLow>)>>,
+    table: Res<SpeciesTable>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, sid) in &mut q {
+        let sp = &table.0[sid.0 as usize];
         let submerged = fs.eye_in_water && {
             let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
             mw.block_name(x, y, z) != "minecraft:bubble_column"
@@ -1183,13 +1211,14 @@ fn breathing(
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
 fn wall_check(
     level: Res<Level>,
-    sp: Res<Species>,
-    q: Query<(Entity, &Pos, &Body, Has<InWall>), With<Recheck>>,
+    table: Res<SpeciesTable>,
+    q: Query<(Entity, &Pos, &Body, Has<InWall>, &SpeciesId), With<Recheck>>,
     mut commands: Commands,
 ) {
     use horizon_core::geometry::{ShapeOp, VoxelShape};
     let mw = level.mw.0;
-    for (e, pos, body, was) in &q {
+    for (e, pos, body, was, sid) in &q {
+        let sp = &table.0[sid.0 as usize];
         let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
         let inside = horizon_client_lib::mobs::ai::in_wall(
             body.width,
@@ -1282,11 +1311,11 @@ fn reindex(
 #[allow(clippy::type_complexity)]
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
-    sp: Res<Species>,
+    table: Res<SpeciesTable>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut causes: ResMut<HurtCauses>,
     mut commands: Commands,
@@ -1295,7 +1324,7 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid)) = q.get_mut(e) else {
             continue;
         };
         let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
@@ -1332,7 +1361,7 @@ pub(crate) fn apply_damage(
         }
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
         if hit.cause == Cause::Entity && !cooldown {
-            let power = 0.4_f64 * (1.0 - sp.knockback_resistance);
+            let power = 0.4_f64 * (1.0 - table.0[sid.0 as usize].knockback_resistance);
             if power > 0.0 {
                 let (mut dx, mut dz) = hit.from.map_or((0.0, 0.0), |f| (f.0 - pos.0.x, f.1 - pos.0.z));
                 while dx * dx + dz * dz < f64::from(1.0e-5_f32) {
@@ -1531,6 +1560,11 @@ impl Herd {
     }
     /// With `hazards`, 3 x 3 patches of lava, water, powder snow, fire and cactus every 48 blocks.
     pub fn with_hazards(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool) -> Self {
+        Self::with_mix(n, spacing, sleep, parallel, seed, hazards, 0)
+    }
+    /// A mixed herd: every `other_every`-th animal is of the second species (the pig), the others of the first (the
+    /// cow); 0: all of the process's default species.
+    pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
         let side = (n as f64).sqrt().ceil() as i32;
         let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
         let mut world = World::new();
@@ -1539,7 +1573,8 @@ impl Herd {
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(level);
-        world.insert_resource(species);
+        let _ = species;
+        world.insert_resource(species_table());
         world.insert_resource(Config { sleep, parallel });
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
@@ -1551,7 +1586,9 @@ impl Herd {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
             let o = -f64::from(side) * spacing / 2.0;
             let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
-            world.spawn(cow_bundle(o + cx * spacing + 0.5, o + cz * spacing + 0.5, s));
+            let table = species_table();
+            let sp = if other_every > 0 { table.0[usize::from(i % other_every == 0)] } else { species };
+            world.spawn(spawn_bundle(&sp, o + cx * spacing + 0.5, o + cz * spacing + 0.5, s));
         }
         {
             let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
@@ -1786,6 +1823,68 @@ mod tests {
             })
             .collect();
         eprintln!("ecs jump y: {}", ys.join(" "));
+    }
+
+    /// Cows and pigs in one world: each keeps its own values (size, panic speed), is tempted by its own item, the
+    /// two kinds push each other, and they do not breed with each other.
+    #[test]
+    fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
+        use crate::goals::{CARROT, Online, Panic, Player, Tempting, WHEAT, feed};
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        let mut herd = Herd::with_mix(16, 3.0, true, false, 5, false, 2);
+        let table = herd.world.resource::<SpeciesTable>().0.clone();
+        let (cow, pig) = (table[0], table[1]);
+        assert_ne!((cow.width, cow.height), (pig.width, pig.height));
+        let all: Vec<(Entity, u8)> =
+            herd.world.query::<(Entity, &SpeciesId)>().iter(&herd.world).map(|(e, i)| (e, i.0)).collect();
+        assert!(all.iter().filter(|a| a.1 == 0).count() == 8 && all.iter().filter(|a| a.1 == 1).count() == 8);
+        for &(e, id) in &all {
+            let sp = table[id as usize];
+            let b = herd.world.get::<Body>(e).unwrap();
+            assert_eq!((b.width, b.height, b.speed), (sp.width, sp.height, sp.speed), "{}", sp.name);
+            assert_eq!(herd.world.get::<Panic>(e).unwrap().speed, sp.goals.panic);
+        }
+        // A player with a carrot in the middle: the pigs are tempted, the cows are not; then with wheat, the reverse.
+        let tempted = |herd: &mut Herd, id: u8| {
+            all.iter().filter(|a| a.1 == id && herd.world.get::<Tempting>(a.0).is_some()).count()
+        };
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: CARROT, off: 0 });
+        for _ in 0..8 {
+            herd.tick();
+        }
+        let (cows_c, pigs_c) = (tempted(&mut herd, 0), tempted(&mut herd, 1));
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: WHEAT, off: 0 });
+        for _ in 0..8 {
+            herd.tick();
+        }
+        let (cows_w, pigs_w) = (tempted(&mut herd, 0), tempted(&mut herd, 1));
+        eprintln!("carrot: cows {cows_c} pigs {pigs_c}; wheat: cows {cows_w} pigs {pigs_w}");
+        assert!(cows_c == 0 && pigs_c > 0 && pigs_w == 0 && cows_w > 0);
+        // A cow and a pig in love next to each other: no baby; two cows in love: a baby.
+        let mut herd = Herd::with_mix(0, 3.0, true, false, 5, false, 0);
+        let spawn = |herd: &mut Herd, sp: &Species, x: f64| {
+            let e = herd.world.spawn(spawn_bundle(sp, x, 0.5, 9 + x as u64)).id();
+            herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+            e
+        };
+        let (c1, p1, c2, c3) = (spawn(&mut herd, &cow, 0.5), spawn(&mut herd, &pig, 2.5), spawn(&mut herd, &cow, -10.5), spawn(&mut herd, &cow, -8.5));
+        for e in [c1, p1, c2, c3] {
+            assert!(feed(&mut herd.world, e));
+        }
+        let count = |herd: &mut Herd| herd.world.query::<&SpeciesId>().iter(&herd.world).count();
+        for _ in 0..300 {
+            herd.tick();
+        }
+        let babies: Vec<u8> = herd
+            .world
+            .query_filtered::<&SpeciesId, With<GrowAt>>()
+            .iter(&herd.world)
+            .map(|i| i.0)
+            .collect();
+        assert_eq!(count(&mut herd), 5, "one baby, from the two cows only");
+        assert_eq!(babies, vec![0], "a cow calf");
     }
 
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
