@@ -327,6 +327,8 @@ pub struct Requests(pub Vec<Req>);
 #[derive(Resource, Default)]
 pub struct Forced {
     pub spots: HashMap<(Entity, Kind), (f64, f64)>,
+    /// The partner a cow in love takes instead of the nearest one.
+    pub partners: HashMap<Entity, Entity>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1080,6 +1082,11 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
                     best = Some((c, d));
                 }
             }
+            if let Some(c) = w.resource_mut::<Forced>().partners.remove(&e)
+                && w.get::<Love>(c).is_some_and(|l| l.0 > now)
+            {
+                best = Some((c, 0.0));
+            }
             match best {
                 Some((c, _)) => Some(Pick::Partner(c)),
                 None => {
@@ -1128,7 +1135,14 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
         Kind::Stroll => {
             let level = *w.resource::<Level>();
             let (mut s, mut r) = (*w.get::<Stroll>(e)?, Rng(w.get::<Rng>(e)?.0));
-            let ok = pick_spot(&level, &Pos(pos), &mut s, &mut r);
+            let forced = w.resource_mut::<Forced>().spots.remove(&(e, Kind::Stroll));
+            let ok = match forced {
+                Some((x, z)) => {
+                    (s.walking, s.tx, s.tz) = (true, x, z);
+                    true
+                }
+                None => pick_spot(&level, &Pos(pos), &mut s, &mut r),
+            };
             w.get_mut::<Rng>(e)?.0 = r.0;
             *w.get_mut::<Stroll>(e)? = s;
             if ok {
