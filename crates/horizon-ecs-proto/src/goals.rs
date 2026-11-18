@@ -1075,3 +1075,279 @@ pub fn counts(world: &mut World) -> Vec<(&'static str, usize)> {
         ("looking", n!(Looking)),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn herd() -> Option<Herd> {
+        std::env::var_os("HORIZON_TEST_RESOURCES")?;
+        Some(Herd::new(0, 6.0, true, false, 3))
+    }
+    /// A cow that does nothing by itself: always active, no stroll and no look timer armed.
+    fn cow(h: &mut Herd, x: f64, z: f64, seed: u64) -> Entity {
+        let e = h.world.spawn(cow_bundle(x, z, seed)).id();
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+        *h.world.get_mut::<GoalTimers>(e).unwrap() = GoalTimers { look: true, random: true };
+        e
+    }
+    fn player(h: &mut Herd, id: u32, x: f64, z: f64, item: u32) {
+        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: item, off: 0 });
+    }
+    fn ticks(h: &mut Herd, n: usize) {
+        for _ in 0..n {
+            h.tick();
+        }
+    }
+    fn has<T: Component>(h: &Herd, e: Entity) -> bool {
+        h.world.get::<T>(e).is_some()
+    }
+    fn at(h: &Herd, e: Entity) -> Vec3 {
+        h.world.get::<Pos>(e).unwrap().0
+    }
+    fn dist(a: Vec3, b: Vec3) -> f64 {
+        ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+    }
+    fn running(h: &Herd, e: Entity, k: Kind) -> bool {
+        h.world.get::<GoalSet>(e).unwrap().is_running(k)
+    }
+
+    /// The interruption rules of `GoalSelector`: a lower number replaces a higher one that holds a flag it needs.
+    #[test]
+    fn the_selector_interrupts_by_priority_and_flags() {
+        let mut g = GoalSet::new(&cow_slots());
+        g.start(Kind::Stroll);
+        assert!(!g.replaceable(Kind::RandomLook), "random look (7) cannot take MOVE from the stroll (5)");
+        assert!(g.replaceable(Kind::Tempt) && g.replaceable(Kind::Panic) && g.replaceable(Kind::Float));
+        g.start(Kind::LookAtPlayer);
+        assert_eq!(g.start(Kind::Panic), vec![Kind::Stroll]);
+        assert!(!g.replaceable(Kind::Tempt) && !g.replaceable(Kind::Stroll) && !g.replaceable(Kind::Breed));
+        assert!(g.is_running(Kind::LookAtPlayer), "panic holds only MOVE");
+        g.stop(Kind::Panic);
+        assert_eq!(g.start(Kind::Tempt), vec![Kind::LookAtPlayer], "tempt (3) takes LOOK from look-at-player (6)");
+        assert!(g.replaceable(Kind::FollowParent) && g.start(Kind::FollowParent).is_empty(), "no flags: never conflicts");
+        assert!(!g.replaceable(Kind::LookAtPlayer));
+        g.stop(Kind::Tempt);
+        g.start(Kind::RandomLook);
+        assert_eq!(g.start(Kind::Stroll), vec![Kind::RandomLook]);
+    }
+
+    /// A struck cow flees at the speed modifier 2 to a spot within 5 blocks, during the walk only; the stroll it
+    /// interrupted stops; a tempting player met during the panic waits for the flag and then tempts.
+    #[test]
+    fn a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals() {
+        let Some(mut h) = herd() else { return };
+        let (e, s) = (cow(&mut h, 0.5, 0.5, 11), cow(&mut h, -10.5, -10.5, 12));
+        player(&mut h, 1, 0.5, 6.5, 0);
+        ticks(&mut h, 2);
+        // The reference stroll: the same walk at modifier 1.
+        h.world.resource_mut::<Fired>().0.push((s, Kind::Stroll));
+        let mut stroll_steps = Vec::new();
+        let mut prev = at(&h, s);
+        for _ in 0..60 {
+            h.tick();
+            if has::<Following>(&h, s) {
+                stroll_steps.push(dist(prev, at(&h, s)));
+            }
+            prev = at(&h, s);
+        }
+        assert!(running(&h, s, Kind::Stroll) || stroll_steps.len() > 10);
+        // The first cow walks (stroll), is struck, and panics.
+        h.world.resource_mut::<Fired>().0.push((e, Kind::Stroll));
+        ticks(&mut h, 3);
+        assert!(running(&h, e, Kind::Stroll));
+        let from = at(&h, e);
+        h.world.resource_mut::<DamageQueue>().0.push((e, 1.0));
+        let mut steps = Vec::new();
+        let (mut started, mut ended) = (None, None);
+        let mut prev = at(&h, e);
+        for t in 0..300 {
+            h.tick();
+            let p = has::<Panicking>(&h, e);
+            if p && started.is_none() {
+                started = Some(t);
+                assert!(!running(&h, e, Kind::Stroll), "panic took MOVE from the stroll");
+                assert_eq!(h.world.get::<Nav>(e).unwrap().speed, 2.0);
+                player(&mut h, 2, 4.5, 4.5, WHEAT);
+            }
+            if p {
+                steps.push(dist(prev, at(&h, e)));
+            }
+            if started.is_some() && !p && ended.is_none() {
+                ended = Some(t);
+            }
+            prev = at(&h, e);
+            if ended.is_some() && t > ended.unwrap() + 40 {
+                break;
+            }
+        }
+        let (started, ended) = (started.expect("no panic"), ended.expect("panic never ended"));
+        assert!(started <= 4 && ended - started > 5, "panic from {started} to {ended}");
+        assert!(dist(from, at(&h, e)) < 12.0);
+        // Moving: modifier 2 gives 2 x 2 the pull of modifier 1 (`setSpeed` is both the speed and the input).
+        let fast = steps.iter().cloned().fold(0.0, f64::max);
+        let slow = stroll_steps.iter().cloned().fold(0.0, f64::max);
+        assert!(fast / slow > 3.0 && fast / slow < 4.6, "{fast} / {slow}");
+        // Player 2 held wheat in range while it panicked: tempting began after the panic, not during it.
+        assert!(running(&h, e, Kind::Tempt) || has::<Tempting>(&h, e));
+        eprintln!("panic {started}..{ended}, step {fast:.3} vs stroll {slow:.3}");
+    }
+
+    /// Wheat within 10 blocks tempts, 10.5 does not; putting it away stops, with 100 ticks of calm.
+    #[test]
+    fn wheat_tempts_within_ten_blocks_and_stops_when_put_away() {
+        let Some(mut h) = herd() else { return };
+        let (near, far) = (cow(&mut h, -8.5, 0.5, 21), cow(&mut h, -10.5, 5.5, 22));
+        ticks(&mut h, 2);
+        player(&mut h, 1, 0.5, 0.5, WHEAT);
+        ticks(&mut h, 3);
+        assert!(has::<Tempting>(&h, near), "9 blocks away");
+        assert!(!has::<Tempting>(&h, far), "11.2 blocks away");
+        assert_eq!(h.world.get::<Nav>(near).unwrap().speed, 1.25);
+        ticks(&mut h, 120);
+        let d = dist(at(&h, near), Vec3::new(0.5, 1.0, 0.5));
+        assert!(d < 3.5 && d > 1.5, "stopped {d} from the player");
+        // The player takes a step toward the far cow: it comes into range, the event wakes it.
+        player(&mut h, 1, -1.5, 1.5, WHEAT);
+        ticks(&mut h, 2);
+        assert!(has::<Tempting>(&h, far), "came into range");
+        // Wheat away: both stop within a tick; a new grab inside the 100 ticks of calm does not tempt.
+        player(&mut h, 1, -1.5, 1.5, 0);
+        ticks(&mut h, 2);
+        assert!(!has::<Tempting>(&h, near) && !has::<Tempting>(&h, far));
+        player(&mut h, 1, -1.5, 1.5, WHEAT);
+        ticks(&mut h, 50);
+        assert!(!has::<Tempting>(&h, near), "calm down");
+        ticks(&mut h, 60);
+        assert!(has::<Tempting>(&h, near), "tempted again after the calm");
+    }
+
+    /// Two cows in love: after the 60-tick delay close to each other, a baby of age -24000; both rest 6000 ticks.
+    #[test]
+    fn two_cows_in_love_make_a_baby_after_the_delay() {
+        let Some(mut h) = herd() else { return };
+        let (a, b) = (cow(&mut h, 0.5, 0.5, 31), cow(&mut h, 5.5, 0.5, 32));
+        ticks(&mut h, 2);
+        assert!(feed(&mut h.world, a) && feed(&mut h.world, b));
+        assert!(!feed(&mut h.world, a), "already in love");
+        let (mut began, mut born) = (None, None);
+        for t in 0..200 {
+            h.tick();
+            if began.is_none() && has::<Breeding>(&h, a) {
+                began = Some(t);
+            }
+            if born.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {
+                born = Some(t);
+                break;
+            }
+        }
+        let (began, born) = (began.expect("never began"), born.expect("no baby"));
+        assert!(began <= 12 && born - began >= 60 && born - began <= 100, "began {began}, born {born}");
+        let now = h.world.resource::<Clock>().0;
+        let baby = h.world.query::<(Entity, &GrowAt)>().iter(&h.world).map(|(e, g)| (e, g.0)).next().unwrap();
+        assert_eq!(baby.1, now + 24000);
+        assert!(h.world.get::<Body>(baby.0).unwrap().width < 0.5);
+        for p in [a, b] {
+            assert_eq!(h.world.get::<Resting>(p).unwrap().0, now + 6000);
+            assert!(!has::<Love>(&h, p) && !has::<Breeding>(&h, p));
+        }
+        assert!(!feed(&mut h.world, a), "resting");
+        assert_eq!(h.world.query::<&GrowAt>().iter(&h.world).count(), 1);
+    }
+
+    /// A baby 3 blocks or more from its parent follows it; closer, or beyond 8 blocks, it does not; a parent that
+    /// walks away wakes it again.
+    #[test]
+    fn a_baby_follows_its_parent_beyond_three_blocks() {
+        let Some(mut h) = herd() else { return };
+        let mom = cow(&mut h, 0.5, 0.5, 41);
+        let (far, close, lost) = (cow(&mut h, 6.5, 0.5, 42), cow(&mut h, 1.5, 1.5, 43), cow(&mut h, -12.5, 0.5, 44));
+        for b in [far, close, lost] {
+            make_baby(&mut h.world, b, 5000);
+        }
+        ticks(&mut h, 2);
+        for b in [far, close, lost] {
+            adopt(&mut h.world, mom, b);
+        }
+        ticks(&mut h, 3);
+        assert!(has::<Trailing>(&h, far));
+        assert!(!has::<Trailing>(&h, close) && !has::<Trailing>(&h, lost), "1.4 apart / 13 apart");
+        ticks(&mut h, 200);
+        assert!(dist(at(&h, far), at(&h, mom)) < 3.3 && !has::<Trailing>(&h, far));
+        // The mother walks 6 blocks: her baby is woken by her move and follows.
+        let to = Vec3::new(6.5, 1.0, 0.5);
+        h.world.get_mut::<Pos>(mom).unwrap().0 = to;
+        h.world.get_mut::<Bounds>(mom).unwrap().0 = box_at(to, 0.9, 1.4);
+        ticks(&mut h, 3);
+        assert!(has::<Trailing>(&h, far), "woken by the mother's move");
+    }
+
+    /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.
+    #[test]
+    fn cows_glance_at_a_near_player_and_look_around() {
+        let Some(mut h) = herd() else { return };
+        let mut cows = Vec::new();
+        for i in 0..15 {
+            for j in 0..13 {
+                let (x, z) = (-9.0 + 1.3 * f64::from(i), -8.0 + 1.3 * f64::from(j));
+                cows.push((cow(&mut h, x, z, 100 + cows.len() as u64), x, z));
+            }
+        }
+        for (e, _, _) in &cows {
+            *h.world.get_mut::<GoalTimers>(*e).unwrap() = GoalTimers::default();
+        }
+        player(&mut h, 1, 0.0, 0.0, 0);
+        arm_all(&mut h.world);
+        let (mut glanced, mut scanned) = (vec![false; cows.len()], 0);
+        let mut seen_scan = vec![false; cows.len()];
+        for _ in 0..150 {
+            h.tick();
+            for (i, (e, _, _)) in cows.iter().enumerate() {
+                glanced[i] |= has::<Glancing>(&h, *e);
+                seen_scan[i] |= has::<Scanning>(&h, *e);
+            }
+        }
+        let (mut near, mut near_hit, mut far_hit) = (0, 0, 0);
+        for (i, (_, x, z)) in cows.iter().enumerate() {
+            if (x * x + z * z).sqrt() <= 5.5 {
+                near += 1;
+                near_hit += usize::from(glanced[i]);
+            } else if (x * x + z * z).sqrt() > 6.5 {
+                far_hit += usize::from(glanced[i]);
+            }
+            scanned += usize::from(seen_scan[i]);
+        }
+        let (rate, scan) = (near_hit as f64 / near as f64, scanned as f64 / cows.len() as f64);
+        // 1 - 0.98^75 = 0.78 expected for a ask every 2 ticks over 150 ticks.
+        assert!(far_hit == 0 && rate > 0.62 && rate < 0.92, "near {near_hit}/{near}, far {far_hit}");
+        assert!(scan > 0.62 && scan < 0.92, "scan {scan}");
+        let turned = cows.iter().filter(|c| h.world.get::<Head>(c.0).is_some_and(|hd| !hd.yaw.is_nan())).count();
+        assert!(turned > 50, "{turned} heads moved");
+        eprintln!("glance {rate:.2}, scan {scan:.2}");
+    }
+
+    /// Deeper than 0.4 blocks in water, or in lava: a jump with 80 % each tick; out of it, none.
+    #[test]
+    fn a_cow_in_deep_water_jumps_eight_ticks_in_ten() {
+        let Some(mut h) = herd() else { return };
+        let e = cow(&mut h, 0.5, 0.5, 51);
+        ticks(&mut h, 2);
+        set_fluid(&mut h.world, e, 0.3, false);
+        ticks(&mut h, 2);
+        assert!(!has::<Floating>(&h, e), "0.3 is not deep");
+        set_fluid(&mut h.world, e, 0.5, false);
+        let mut jumps = 0;
+        for _ in 0..1000 {
+            h.tick();
+            jumps += usize::from(h.world.get::<Jump>(e).unwrap().0);
+        }
+        assert!((750..850).contains(&jumps), "{jumps} jumps in 1000 ticks");
+        set_fluid(&mut h.world, e, 0.0, false);
+        ticks(&mut h, 2);
+        assert!(!has::<Floating>(&h, e) && !h.world.get::<Jump>(e).unwrap().0);
+        set_fluid(&mut h.world, e, 0.0, true);
+        ticks(&mut h, 2);
+        assert!(has::<Floating>(&h, e), "lava");
+    }
+}
