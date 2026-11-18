@@ -370,6 +370,10 @@ impl Wheel {
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
     }
+    /// How many entries the slot of tick `at` holds.
+    pub fn due_len(&self, at: u64) -> usize {
+        self.slots[(at % WHEEL as u64) as usize].len()
+    }
 }
 const CELL: f64 = 2.0;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
