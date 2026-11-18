@@ -1756,8 +1756,16 @@ impl Herd {
     /// A mixed herd: every `other_every`-th animal is of the second species (the pig), the others of the first (the
     /// cow); 0: all of the process's default species.
     pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
+        Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None)
+    }
+    /// An empty walled slab of `half` blocks each way.
+    pub fn with_slab(half: i32, sleep: bool, hazards: bool) -> Self {
+        Self::build(0, 1.0, sleep, false, 5, hazards, 0, Some(half))
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn build(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize, slab: Option<i32>) -> Self {
         let side = (n as f64).sqrt().ceil() as i32;
-        let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
+        let half = slab.unwrap_or(((f64::from(side) * spacing / 2.0) as i32 + 6).max(20));
         let mut world = World::new();
         let (level, species, _kind) = build_level(half, hazards);
         world.insert_resource(Hazards::build(&level));
