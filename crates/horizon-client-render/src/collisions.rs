@@ -24,7 +24,7 @@ use horizon_world::{
     registry::{BlockRegistry, BlockStateId, BlockTableFile},
     world_movement::{
         CollisionCheckRequest, EntityMovementWorld, MovementRequest, no_world_collision,
-        resolve_world_movement,
+        resolve_world_movement, resolve_world_movement_lazy,
     },
 };
 use std::{io, path::Path, sync::Arc};
@@ -210,6 +210,29 @@ where
         on_ground: bool,
         context: CollisionContext<'_>,
     ) -> Result<Vec3> {
+        Ok(resolve_world_movement_lazy(
+            self,
+            MovementRequest {
+                entity: context.entity().unwrap_or(EntityIdentity(0)),
+                context,
+                bounds,
+                movement,
+                max_step,
+                on_ground,
+                candidate_budget: 1_000_000,
+            },
+        )?)
+    }
+    /// [`Self::resolve_with_context`] by the original kernel (shapes built for every block), kept as the
+    /// reference of the equality tests.
+    pub fn resolve_with_context_reference(
+        &mut self,
+        bounds: Aabb,
+        movement: Vec3,
+        max_step: f32,
+        on_ground: bool,
+        context: CollisionContext<'_>,
+    ) -> Result<Vec3> {
         Ok(resolve_world_movement(
             self,
             MovementRequest {
@@ -285,7 +308,7 @@ impl<'w> SceneCollisions<'w, '_> {
             entities,
             border,
         }
-        .resolve_with_context(bounds, movement, max_step, on_ground, context)
+        .resolve_with_context_reference(bounds, movement, max_step, on_ground, context)
     }
     /// Resolve movement with the entity's captured collision context. Most
     /// callers only need the position context; entities such as falling blocks
@@ -298,7 +321,7 @@ impl<'w> SceneCollisions<'w, '_> {
         on_ground: bool,
         context: CollisionContext<'_>,
     ) -> Result<Vec3> {
-        Ok(resolve_world_movement(
+        Ok(resolve_world_movement_lazy(
             self,
             MovementRequest {
                 entity: context.entity().unwrap_or(EntityIdentity(0)),

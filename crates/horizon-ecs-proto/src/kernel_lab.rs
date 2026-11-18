@@ -190,10 +190,16 @@ pub fn random_calls(seed: u64, n: usize) -> Vec<Call> {
     let mut r = Rng(seed ^ 0xABCD_EF01_2345_6789 | 1);
     (0..n)
         .map(|_| {
-            let (w, h) = [(0.9, 1.4), (0.6, 1.8), (0.3, 0.3), (1.4, 0.9), (0.6, 0.6)][r.below(5)];
+            let (w, h) = [(0.9, 1.4), (0.6, 1.8), (0.3, 0.3), (1.4, 0.9), (0.6, 0.6), (1.0, 1.0), (0.5, 0.5), (0.75, 1.5)]
+                [r.below(8)];
             let (x, y, z) = (r.range(-34.0, 40.0), r.range(-4.0, 14.0), r.range(-34.0, 34.0));
-            // Positions on block faces and edges are the ones that stress the thresholds.
-            let snap = |v: f64, r: &mut Rng| if r.below(4) == 0 { (v * 8.0).round() / 8.0 } else { v };
+            // Faces on the 1/8 grid, and a hair (the vanilla thresholds, 1e-7) either side of it, are the ones that
+            // stress the comparisons.
+            let snap = |v: f64, r: &mut Rng| match r.below(4) {
+                0 => (v * 8.0).round() / 8.0,
+                1 => (v * 8.0).round() / 8.0 + [-2.0e-7, -1.0e-7, -5.0e-8, 5.0e-8, 1.0e-7, 2.0e-7][r.below(6)],
+                _ => v,
+            };
             let (x, y, z) = (snap(x, &mut r), snap(y, &mut r), snap(z, &mut r));
             let bounds = Aabb::new(Vec3::new(x - w / 2.0, y, z - w / 2.0), Vec3::new(x + w / 2.0, y + h, z + w / 2.0));
             let scale = [0.05, 0.2, 0.5, 2.0, 8.0][r.below(5)];

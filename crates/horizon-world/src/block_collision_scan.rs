@@ -2,7 +2,7 @@
 //! chunk availability, state metadata, suffocation predicates and context dispatch.
 use crate::{collision_context::CollisionContext, registry::BlockStateId};
 use horizon_core::{
-    geometry::{Aabb, ShapeError, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, BlockCollider, ShapeError, ShapeOp, Vec3, VoxelShape},
     position::{BlockPos, ChunkPos},
 };
 
@@ -183,6 +183,11 @@ fn moved_block(p: BlockPos, offset: Vec3, shape: &VoxelShape) -> VoxelShape {
         cache[slot] = Some((p, moved.clone()));
         moved
     })
+}
+
+enum Found {
+    Cube(Vec3),
+    Shape(VoxelShape),
 }
 
 pub struct BlockCollisionScan<'w, 'c, W: BlockCollisionWorld> {
@@ -372,7 +377,28 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
         }
     }
 
+    /// The next block collider: the unit cube is not built, only its offset (the integer block position).
+    pub fn next_collider(
+        &mut self,
+    ) -> Result<Option<BlockCollider>, CollisionScanError<W::Error>> {
+        Ok(self.scan_next()?.map(|(_, found)| match found {
+            Found::Cube(offset) => BlockCollider::Cube(offset),
+            Found::Shape(shape) => BlockCollider::Shape(shape),
+        }))
+    }
+
     fn find_next(&mut self) -> Result<Option<BlockCollisionHit>, CollisionScanError<W::Error>> {
+        Ok(self.scan_next()?.map(|(position, found)| BlockCollisionHit {
+            position,
+            shape: match found {
+                Found::Cube(_) if self.presence_only => VoxelShape::block(),
+                Found::Cube(offset) => moved_block(position, offset, VoxelShape::block_ref()),
+                Found::Shape(shape) => shape,
+            },
+        }))
+    }
+
+    fn scan_next(&mut self) -> Result<Option<(BlockPos, Found)>, CollisionScanError<W::Error>> {
         while self.index < self.count {
             if self.index >= self.budget {
                 return Err(CollisionScanError::VisitBudget);
@@ -477,11 +503,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                 if !self.bounds.intersects_corners(offset, top) {
                     continue;
                 }
-                if self.presence_only {
-                    VoxelShape::block()
-                } else {
-                    moved_block(p, offset, &shape)
-                }
+                return Ok(Some((p, Found::Cube(offset))));
             } else {
                 // Shapes whose bounds miss the box share no volume with it:
                 // joinIsNotEmpty(AND) is false without moving them.
@@ -507,10 +529,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                 }
                 moved
             };
-            return Ok(Some(BlockCollisionHit {
-                position: p,
-                shape: moved,
-            }));
+            return Ok(Some((p, Found::Shape(moved))));
         }
         Ok(None)
     }

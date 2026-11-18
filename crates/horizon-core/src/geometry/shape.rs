@@ -194,7 +194,7 @@ impl VoxelShape {
     pub fn block() -> Self {
         Self::block_ref().clone()
     }
-    fn block_ref() -> &'static Self {
+    pub fn block_ref() -> &'static Self {
         static BLOCK: OnceLock<VoxelShape> = OnceLock::new();
         BLOCK.get_or_init(|| Self::from_cube([1, 1, 1], &[true]).expect("valid unit cube"))
     }
@@ -499,6 +499,43 @@ impl VoxelShape {
                     };
                 }
             }
+        }
+        amount
+    }
+    /// [`Self::collide`] of the unit cube moved by the integer `offset`, without building the shape: the same
+    /// arithmetic on the same coordinates (`o` and `o + 1`), bit for bit.
+    pub fn collide_unit_cube(offset: Vec3, axis: Axis, aabb: Aabb, amount: f64) -> f64 {
+        if amount.abs() < COLLISION_EPSILON {
+            return 0.0;
+        }
+        // `find_index` of the moved cube: the upper bound among its two coordinates, less one.
+        let at = |a: Axis, v: f64| {
+            let o = offset.component(a);
+            i32::from(o <= v) + i32::from(o + 1.0 <= v) - 1
+        };
+        let i = axis as usize;
+        let p = Axis::ALL[(i + 1) % 3];
+        let q = Axis::ALL[(i + 2) % 3];
+        let (p_start, p_end) = (
+            at(p, aabb.min(p) + COLLISION_EPSILON).max(0),
+            (at(p, aabb.max(p) - COLLISION_EPSILON) + 1).min(1),
+        );
+        let (q_start, q_end) = (
+            at(q, aabb.min(q) + COLLISION_EPSILON).max(0),
+            (at(q, aabb.max(q) - COLLISION_EPSILON) + 1).min(1),
+        );
+        if p_start >= p_end || q_start >= q_end {
+            return amount;
+        }
+        let o = offset.component(axis);
+        if amount > 0.0 {
+            if at(axis, aabb.max(axis) - COLLISION_EPSILON) + 1 <= 0 {
+                let distance = o - aabb.max(axis);
+                return if distance >= -COLLISION_EPSILON { java_min(amount, distance) } else { amount };
+            }
+        } else if amount < 0.0 && at(axis, aabb.min(axis) + COLLISION_EPSILON) >= 1 {
+            let distance = 1.0 + o - aabb.min(axis);
+            return if distance <= COLLISION_EPSILON { java_max(amount, distance) } else { amount };
         }
         amount
     }
