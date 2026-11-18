@@ -98,6 +98,9 @@ fn main() {
             herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
         }
         let pos = |herd: &Herd| -> Vec<(f64, f64)> { ids.iter().map(|&e| herd.world.get::<Pos>(e).map_or((0.0, 0.0), |p| (p.0.x, p.0.z))).collect() };
+        if std::env::var_os("ORDERED_PUSH").is_some() {
+            herd.set_ordered_push(true);
+        }
         let mut prev = pos(&herd);
         for t in 1..=ticks {
             herd.tick();
@@ -105,6 +108,8 @@ fn main() {
             if t % 10 == 0 || t <= 3 {
                 report("ecs", t, &prev, &now, width);
                 let (_, following, moving, total) = herd.counts();
+                let s = herd.world.resource::<OrderedStats>();
+                println!("      ordered pass: {} animals", s.last);
                 println!("      ecs modules: physics active {moving}, following {following}, of {total}");
             }
             prev = now;

@@ -138,6 +138,12 @@ pub struct Players {
     pub list: Vec<(f64, f64)>,
     prev: Vec<(f64, f64)>,
     pub dirty: bool,
+    /// The players by bin of 32 blocks (side `n`), rebuilt when one moves, the places they had before, and the
+    /// cells the last move touched (scratch buffers kept between ticks).
+    bins: Vec<Vec<(f64, f64)>>,
+    n: i64,
+    old: Vec<(f64, f64)>,
+    candidates: Vec<usize>,
 }
 /// `EntityFluidInteraction`: the fluid heights the box has, and whether the feet and the eyes are in them.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -376,6 +382,10 @@ impl Wheel {
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
     }
+    /// How many entries the slot of tick `at` holds.
+    pub fn due_len(&self, at: u64) -> usize {
+        self.slots[(at % WHEEL as u64) as usize].len()
+    }
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
@@ -387,10 +397,12 @@ pub struct Index {
     width: usize,
     cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
+    /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
+    crossed: Vec<Entity>,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width] }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new() }
     }
     fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -458,12 +470,8 @@ pub struct Level {
 pub struct Config {
     pub sleep: bool,
     pub parallel: bool,
-    /// EXPERIMENT (benches only): travel and push in one serial pass in the order of the entities, as the `Mob`
-    /// pass does (each entity travels, then pushes with an immediate effect on the velocity of the others).
-    pub serial: bool,
-    /// EXPERIMENT: half of the push of a pair reaches the animal of the higher index in the same tick (a nudge of its
-    /// position and a damped velocity), as the `Mob` pass does.
-    pub half_now: bool,
+    /// The pushes of the animals that overlap another run in the `Mob`'s order (`ordered_pass`): see `PushMode`.
+    pub ordered_push: bool,
 }
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -705,8 +713,8 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, serial_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
-    s.add_systems((apply_nudges, cramming).chain().after(apply_pushes));
+    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
     crate::hostile::register(&mut s);
@@ -745,11 +753,53 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -
     false
 }
 
-/// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are.
-/// When one moves (`Players.dirty`), the cows of the cells its old and new circles cover are tested against the
-/// players of the 3 x 3 bins of 32 blocks around them, and only the cows that enter or leave the 32 blocks are
-/// touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and its stroll attempt is armed if it
-/// had none; a leaving cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
+/// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
+/// two circles of 32 blocks (a player's place before and after, `None`: absent) and not in the other: the cells either
+/// circle touches except those both surely contain, as two runs. A superset, with a margin of a cell or two.
+fn ring_runs(origin: f64, zz: i64, n: Option<(f64, f64)>, o: Option<(f64, f64)>) -> [(i64, i64); 2] {
+    const R: f64 = 32.0;
+    const NONE: [(i64, i64); 2] = [(1, 0), (1, 0)];
+    let (zlo, zhi) = (origin + zz as f64 * CELL, origin + (zz + 1) as f64 * CELL);
+    let col = |x: f64| ((x - origin) / CELL).floor() as i64;
+    // (the cells that may touch the circle, the cells surely inside it) in this row.
+    let one = |q: Option<(f64, f64)>| -> Option<((i64, i64), Option<(i64, i64)>)> {
+        let (px, pz) = q?;
+        let dzn = if pz < zlo { zlo - pz } else if pz > zhi { pz - zhi } else { 0.0 };
+        if dzn >= R {
+            return None;
+        }
+        let half_out = (R * R - dzn * dzn).sqrt();
+        let touch = (col(px - half_out) - 1, col(px + half_out) + 1);
+        let dzf = (pz - zlo).abs().max((pz - zhi).abs());
+        let inside = (dzf < R).then(|| {
+            let half_in = (R * R - dzf * dzf).sqrt();
+            (col(px - half_in) + 2, col(px + half_in) - 2)
+        });
+        Some((touch, inside))
+    };
+    let (a, b) = (one(n), one(o));
+    let touch = match (a, b) {
+        (None, None) => return NONE,
+        (Some((t, _)), None) | (None, Some((t, _))) => t,
+        (Some((t, _)), Some((u, _))) => (t.0.min(u.0), t.1.max(u.1)),
+    };
+    let both = match (a, b) {
+        (Some((_, Some(i))), Some((_, Some(j)))) => Some((i.0.max(j.0), i.1.min(j.1))).filter(|r| r.0 <= r.1),
+        _ => None,
+    };
+    match both {
+        Some((l, r)) => [(touch.0, l - 1), (r + 1, touch.1)],
+        None => [touch, (1, 0)],
+    }
+}
+
+/// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are
+/// and the cows stay in their cells. When a player moves (`Players.dirty`), only the cows of the cells its old and
+/// new circles of 32 blocks do not both contain or both exclude are tested (the thin ring a step sweeps; a player
+/// that comes or goes sweeps its whole circle); a cow that changes cell is tested against the players as well.
+/// A test is against the players of the 3 x 3 bins of 32 blocks around the cow, and only the cows that enter or leave
+/// the 32 blocks are touched: an entering cow is active without end (`ActiveUntil(u64::MAX)`) and its stroll attempt
+/// is armed if it had none; a leaving cow stays active for 100 ticks more (the `noActionTime` it has to count up to).
 pub(crate) fn player_near(
     clock: Res<Clock>,
     mut players: ResMut<Players>,
@@ -758,63 +808,93 @@ pub(crate) fn player_near(
     mut entered: ResMut<crate::goals::Entered>,
     mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
 ) {
-    if !players.dirty {
+    const BIN: f64 = 32.0;
+    const R2: f64 = BIN * BIN;
+    if !players.dirty && idx.crossed.is_empty() {
         return;
     }
-    players.dirty = false;
-    const BIN: f64 = 32.0;
+    let idx = &mut *idx;
+    let pl = &mut *players;
     let origin = idx.origin;
     let bins = ((idx.width as f64 * CELL / BIN).ceil() as i64).max(1) + 2;
     let bin = |v: f64| (((v - origin) / BIN).floor() as i64 + 1).clamp(0, bins - 1);
-    let new = players.list.clone();
-    let old = std::mem::replace(&mut players.prev, new.clone());
-    let mut by_bin: Vec<Vec<(f64, f64)>> = vec![Vec::new(); (bins * bins) as usize];
-    for &(px, pz) in &new {
-        by_bin[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
+    let tick = clock.0 as u32 + 1;
+    pl.candidates.clear();
+    if pl.dirty {
+        pl.dirty = false;
+        // The bins hold the players as they are now.
+        pl.n = bins;
+        pl.bins.iter_mut().for_each(Vec::clear);
+        pl.bins.resize((bins * bins) as usize, Vec::new());
+        for i in 0..pl.list.len() {
+            let (px, pz) = pl.list[i];
+            pl.bins[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
+        }
+        std::mem::swap(&mut pl.prev, &mut pl.old);
+        pl.prev.clear();
+        pl.prev.extend_from_slice(&pl.list);
+        // The cells a moved player's two circles do not agree on, each once.
+        for i in 0..pl.list.len().max(pl.old.len()) {
+            let (n, o) = (pl.list.get(i).copied(), pl.old.get(i).copied());
+            if n == o {
+                continue;
+            }
+            let (mut x0, mut x1, mut z0, mut z1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+            for (px, pz) in [n, o].into_iter().flatten() {
+                (x0, x1, z0, z1) = (x0.min(px - BIN), x1.max(px + BIN), z0.min(pz - BIN), z1.max(pz + BIN));
+            }
+            let (x0, x1) = (idx.column(x0).max(0), idx.column(x1).min(idx.width as i64 - 1));
+            let (z0, z1) = (idx.column(z0).max(0), idx.column(z1).min(idx.width as i64 - 1));
+            for zz in z0..=z1 {
+                for (lo, hi) in ring_runs(origin, zz, n, o) {
+                    for xx in lo.max(x0)..=hi.min(x1) {
+                        let c = zz as usize * idx.width + xx as usize;
+                        if idx.stamp[c] != tick {
+                            idx.stamp[c] = tick;
+                            pl.candidates.push(c);
+                        }
+                    }
+                }
+            }
+        }
     }
+    let list_empty = pl.list.is_empty();
+    let (bins_n, nbins) = (pl.n, &pl.bins);
     let within = |x: f64, z: f64| {
         let (bx, bz) = (bin(x), bin(z));
         (bz - 1..=bz + 1).any(|zz| {
             (bx - 1..=bx + 1).any(|xx| {
-                (0..bins).contains(&xx)
-                    && (0..bins).contains(&zz)
-                    && by_bin[(zz * bins + xx) as usize].iter().any(|&(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0)
+                (0..bins_n).contains(&xx)
+                    && (0..bins_n).contains(&zz)
+                    && nbins[(zz * bins_n + xx) as usize].iter().any(|&(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < R2)
             })
         })
     };
-    // The cells either circle covers, each once.
-    let tick = clock.0 as u32 + 1;
-    let idx = &mut *idx;
-    let mut covered: Vec<usize> = Vec::new();
-    for &(px, pz) in new.iter().chain(old.iter()) {
-        let (x0, x1) = (idx.column(px - 32.0).max(0), idx.column(px + 32.0).min(idx.width as i64 - 1));
-        let (z0, z1) = (idx.column(pz - 32.0).max(0), idx.column(pz + 32.0).min(idx.width as i64 - 1));
-        for zz in z0..=z1 {
-            for xx in x0..=x1 {
-                let c = zz as usize * idx.width + xx as usize;
-                if idx.stamp[c] != tick {
-                    idx.stamp[c] = tick;
-                    covered.push(c);
-                }
+    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>, wheel: &mut Wheel| {
+        let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { return };
+        let (mn, mx) = (b.0.min_position(), b.0.max_position());
+        let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        if now_in && a.0 != u64::MAX {
+            a.0 = u64::MAX;
+            entered.0.push(e);
+            if !s.scheduled && !s.walking {
+                arm_stroll(wheel, clock.0, e, &mut s, &mut r);
             }
+        } else if !now_in && a.0 == u64::MAX {
+            a.0 = clock.0 + 100;
         }
-    }
-    for c in covered {
+    };
+    for &c in &pl.candidates {
         for &e in &idx.cells[c] {
-            let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { continue };
-            let (mn, mx) = (b.0.min_position(), b.0.max_position());
-            let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-            if now_in && a.0 != u64::MAX {
-                a.0 = u64::MAX;
-                entered.0.push(e);
-                if !s.scheduled && !s.walking {
-                    arm_stroll(&mut wheel, clock.0, e, &mut s, &mut r);
-                }
-            } else if !now_in && a.0 == u64::MAX {
-                a.0 = clock.0 + 100;
-            }
+            test(e, &mut active, &mut wheel);
         }
     }
+    if !list_empty {
+        for &e in &idx.crossed {
+            test(e, &mut active, &mut wheel);
+        }
+    }
+    idx.crossed.clear();
 }
 
 fn comfortable_fall_distance(f: f32) -> i32 {
@@ -1248,12 +1328,9 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, &SpeciesId),
-        With<Moving>,
+        (With<Moving>, Without<Overlapping>),
     >,
 ) {
-    if cfg.serial {
-        return;
-    }
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
         let sp = &table.0[sid.0 as usize];
         let mut fall = 0.0_f32;
@@ -1426,6 +1503,7 @@ pub(crate) fn reindex(
             idx.insert(e, cell);
             c.0 = cell;
             moves.0.push(e);
+            idx.crossed.push(e);
         }
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
@@ -1684,18 +1762,6 @@ fn block_changes(
     }
 }
 
-/// EXPERIMENT (`Config.half_now`): a displacement the push owes this animal in this tick.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Nudge(pub Vec3);
-/// The ground friction times the air drag of the bench world (stone, 0.6 x 0.91).
-const FRICTION: f32 = 0.546;
-fn apply_nudges(mut q: Query<(Entity, &Nudge, &mut Pos, &mut Bounds, &Body)>, mut commands: Commands) {
-    for (e, n, mut p, mut b, body) in &mut q {
-        p.0 = Vec3::new(p.0.x + n.0.x, p.0.y, p.0.z + n.0.z);
-        b.0 = box_at(p.0, body.width, body.height);
-        commands.entity(e).remove::<Nudge>();
-    }
-}
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PushIn(pub Vec3);
@@ -1709,16 +1775,13 @@ fn push(
     idx: Res<Index>,
     par: ParallelCommands,
     boxes: Query<Ref<Bounds>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), Changed<Bounds>>,
+    ordered: Query<(), With<Overlapping>>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>), (Changed<Bounds>, Without<Overlapping>)>,
 ) {
-    if cfg.serial {
-        return;
-    }
     let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
-        let mut nudge = (0.0_f64, 0.0_f64);
         let mut overlapping = 0;
         idx.for_near(cx, cz, |o| {
             if o == e {
@@ -1744,17 +1807,17 @@ fn push(
             let (bx, bz) = (xa * pow * f64::from(0.05_f32), za * pow * f64::from(0.05_f32));
             xa = bx * 2.0;
             za = bz * 2.0;
-            if cfg.half_now && e.index() > o.index() {
-                // The impulse of the lower animal's call reaches this one in the same tick (it travels after it).
-                dv.0 -= bx + f64::from(FRICTION) * bx;
-                dv.1 -= bz + f64::from(FRICTION) * bz;
-                nudge.0 -= bx;
-                nudge.1 -= bz;
-            } else {
-                dv.0 -= xa;
-                dv.1 -= za;
+            dv.0 -= xa;
+            dv.1 -= za;
+            // An overlap begins: in the ordered mode this one and its neighbour are handled by `ordered_pass` from the
+            // next tick (this tick's impulse was given above).
+            if cfg.ordered_push {
+                par.command_scope(|mut cmd| {
+                    cmd.entity(e).insert(Overlapping);
+                    cmd.entity(o).insert(Overlapping);
+                });
             }
-            if !ob.is_changed() {
+            if !ob.is_changed() || ordered.contains(o) {
                 par.command_scope(|mut cmd| {
                     cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
                 });
@@ -1773,11 +1836,6 @@ fn push(
                 }
             });
         }
-        if nudge != (0.0, 0.0) {
-            par.command_scope(|mut cmd| {
-                cmd.entity(e).insert(Nudge(Vec3::new(nudge.0, 0.0, nudge.1)));
-            });
-        }
         if dv != (0.0, 0.0) {
             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
             if !moving {
@@ -1792,6 +1850,137 @@ fn push(
     } else {
         for (e, b, mut v, m) in &mut movers {
             one(e, b, &mut v, m);
+        }
+    }
+}
+/// How near (blocks) another animal must come for an animal to stay in the ordered pass: a little more than the largest
+/// step of an animal in a tick.
+const ORDERED_MARGIN: f64 = 0.1;
+/// An animal that overlaps at least one other (ordered push mode): its travel and its push run in `ordered_pass`.
+#[derive(Component, Default)]
+#[component(storage = "SparseSet")]
+pub struct Overlapping;
+/// How many animals the ordered pass handled: the last tick, and the sum over the ticks (for the benches).
+#[derive(Resource, Default)]
+pub struct OrderedStats {
+    pub last: usize,
+    pub total: u64,
+    pub ticks: u64,
+}
+/// The ordered push mode (`Config.ordered_push`): the animals that overlap another travel and push in ONE pass, in the
+/// order of their creation, with the `Mob` pass's semantics: an animal travels, then pushes every animal that overlaps
+/// it (its own velocity and the other's at once); the impulse an animal gets from one that comes before it is used by
+/// its own travel of this tick (the `Mob` delivers the event at the start of its turn), and the impulse from one that
+/// comes after it by the travel of the next tick. Every other animal stays in the parallel batch systems.
+#[allow(clippy::type_complexity)]
+fn ordered_pass(
+    cfg: Res<Config>,
+    level: Res<Level>,
+    table: Res<SpeciesTable>,
+    idx: Res<Index>,
+    mut stats: ResMut<OrderedStats>,
+    mut queue: ResMut<DamageQueue>,
+    mut q: Query<(
+        Entity,
+        &mut Pos,
+        &mut Vel,
+        &Yaw,
+        &mut Contact,
+        &mut Drive,
+        &Body,
+        &mut Bounds,
+        &FluidState,
+        Has<Following>,
+        Option<&crate::goals::Jump>,
+        &SpeciesId,
+        Has<Moving>,
+    )>,
+    marked: Query<Entity, With<Overlapping>>,
+    mut commands: Commands,
+) {
+    if !cfg.ordered_push {
+        return;
+    }
+    let mut ids: Vec<Entity> = marked.iter().collect();
+    // The order of creation (the `Mob` herd's list order): the index of the entity (`Entity`'s own ordering is not it).
+    ids.sort_unstable_by_key(|e| e.index());
+    stats.last = ids.len();
+    stats.total += ids.len() as u64;
+    stats.ticks += 1;
+    let mut near: Vec<Entity> = Vec::new();
+    let mut hits: Vec<(Entity, f64, f64)> = Vec::new();
+    for e in ids {
+        // Its own travel (the batch `travel` leaves the marked animals to this pass).
+        {
+            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, following, jump, sid, _)) = q.get_mut(e) else { continue };
+            let sp = &table.0[sid.0 as usize];
+            let mut fall = 0.0_f32;
+            let jumping = jump.is_some_and(|j| j.0);
+            travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, body, &mut b, fs, jumping, &mut fall);
+            if fall > 0.0 {
+                queue.add(e, fall, Cause::Fall);
+            }
+            let _ = following;
+        }
+        // Its pushes: every animal that overlaps its box now.
+        let Ok((_, _, _, _, _, _, _, bounds, _, _, _, _, _)) = q.get(e) else { continue };
+        let b = bounds.0;
+        let (mn, mx) = (b.min_position(), b.max_position());
+        let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        near.clear();
+        hits.clear();
+        idx.for_near(cx, cz, |o| near.push(o));
+        let mut own = (0.0_f64, 0.0_f64);
+        let mut overlapping = 0;
+        let mut close = 0;
+        let wide = b.inflate(Vec3::new(ORDERED_MARGIN, 0.0, ORDERED_MARGIN));
+        // At rest (after its travel) it cannot start overlapping anything by itself: the neighbours that come to it mark it.
+        let still = q.get(e).is_ok_and(|r| r.2.0.x.abs() + r.2.0.z.abs() < 1.0e-4);
+        for &o in &near {
+            if o == e {
+                continue;
+            }
+            let Ok((_, _, _, _, _, _, _, ob, _, _, _, _, _)) = q.get(o) else { continue };
+            if !b.intersects(ob.0) {
+                // An animal that is about to overlap is in the pass too (an overlap that begins is then seen at once).
+                if !still && wide.intersects(ob.0) {
+                    close += 1;
+                    commands.entity(o).insert(Overlapping);
+                }
+                continue;
+            }
+            overlapping += 1;
+            let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
+            let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
+            let mut dd = xa.abs().max(za.abs());
+            if dd < f64::from(0.01_f32) {
+                continue;
+            }
+            dd = dd.sqrt();
+            xa /= dd;
+            za /= dd;
+            let pow = (1.0_f64 / dd).min(1.0);
+            xa *= pow * f64::from(0.05_f32);
+            za *= pow * f64::from(0.05_f32);
+            own.0 -= xa;
+            own.1 -= za;
+            hits.push((o, xa, za));
+        }
+        if let Ok((_, _, mut v, ..)) = q.get_mut(e) {
+            v.0 = Vec3::new(v.0.x + own.0, v.0.y, v.0.z + own.1);
+        }
+        for &(o, xa, za) in &hits {
+            if let Ok((_, _, mut ov, ..)) = q.get_mut(o) {
+                ov.0 = Vec3::new(ov.0.x + xa, ov.0.y, ov.0.z + za);
+            }
+            commands.entity(o).insert((Overlapping, Moving));
+        }
+        if overlapping + close == 0 {
+            commands.entity(e).remove::<Overlapping>();
+        } else if overlapping == 0 {
+            // close only
+        } else if overlapping + 1 >= MAX_ENTITY_CRAMMING {
+            commands.entity(e).insert(Crowded);
         }
     }
 }
@@ -1833,77 +2022,6 @@ fn cramming(
             if health.0 - applied <= 0.0 {
                 dying.push(e);
             }
-        }
-    }
-}
-/// EXPERIMENT: the `Mob` pass for the physics and the pushes. The entities in the order of their creation: each one
-/// travels, then pushes every overlapping entity at once (its own velocity and the other's, which the other uses in its
-/// own travel of this tick if it comes later).
-fn serial_pass(world: &mut World) {
-    if !world.resource::<Config>().serial {
-        return;
-    }
-    let level = *world.resource::<Level>();
-    let table = world.resource::<SpeciesTable>().clone();
-    let mut ids: Vec<Entity> = world.query_filtered::<Entity, With<Moving>>().iter(world).collect();
-    ids.sort();
-    for e in ids {
-        let Ok(sid) = world.get::<SpeciesId>(e).copied().ok_or(()) else { continue };
-        let sp = table.0[sid.0 as usize];
-        let (mut pos, mut vel, yaw, mut c, mut d, body, mut bounds, fs) = (
-            *world.get::<Pos>(e).unwrap(),
-            *world.get::<Vel>(e).unwrap(),
-            *world.get::<Yaw>(e).unwrap(),
-            *world.get::<Contact>(e).unwrap(),
-            *world.get::<Drive>(e).unwrap(),
-            *world.get::<Body>(e).unwrap(),
-            *world.get::<Bounds>(e).unwrap(),
-            *world.get::<FluidState>(e).unwrap(),
-        );
-        let jumping = world.get::<crate::goals::Jump>(e).is_some_and(|j| j.0);
-        let mut fall = 0.0_f32;
-        travel_one(&level, &sp, &mut pos, &mut vel, &yaw, &mut c, &mut d, &body, &mut bounds, &fs, jumping, &mut fall);
-        *world.get_mut::<Pos>(e).unwrap() = pos;
-        *world.get_mut::<Contact>(e).unwrap() = c;
-        *world.get_mut::<Drive>(e).unwrap() = d;
-        *world.get_mut::<Bounds>(e).unwrap() = bounds;
-        // The pushes of this entity (the `Mob`'s `pushEntities`, called after its own travel).
-        let (mn, mx) = (bounds.0.min_position(), bounds.0.max_position());
-        let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-        let mut near = Vec::new();
-        world.resource::<Index>().for_near(cx, cz, |o| near.push(o));
-        let mut own = (0.0_f64, 0.0_f64);
-        let mut others: Vec<(Entity, f64, f64)> = Vec::new();
-        for o in near {
-            if o == e {
-                continue;
-            }
-            let Some(ob) = world.get::<Bounds>(o).copied() else { continue };
-            if !bounds.0.intersects(ob.0) {
-                continue;
-            }
-            let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
-            let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
-            let mut dd = xa.abs().max(za.abs());
-            if dd < f64::from(0.01_f32) {
-                continue;
-            }
-            dd = dd.sqrt();
-            xa /= dd;
-            za /= dd;
-            let pow = (1.0_f64 / dd).min(1.0);
-            xa *= pow * f64::from(0.05_f32);
-            za *= pow * f64::from(0.05_f32);
-            own.0 -= xa;
-            own.1 -= za;
-            others.push((o, xa, za));
-        }
-        vel.0 = Vec3::new(vel.0.x + own.0, vel.0.y, vel.0.z + own.1);
-        *world.get_mut::<Vel>(e).unwrap() = vel;
-        for (o, xa, za) in others {
-            let mut ov = world.get_mut::<Vel>(o).unwrap();
-            ov.0 = Vec3::new(ov.0.x + xa, ov.0.y, ov.0.z + za);
-            world.entity_mut(o).insert(Moving);
         }
     }
 }
@@ -2001,7 +2119,8 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel, serial: std::env::var_os("SERIAL_PUSH").is_some(), half_now: std::env::var_os("BATCH_HALF").is_some() });
+        world.insert_resource(Config { sleep, parallel, ordered_push: false });
+        world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
         world.insert_resource(Wheel::default());
@@ -2049,6 +2168,20 @@ impl Herd {
         self.world.resource_mut::<crate::hostile::Daylight>().0 = day;
         let all: Vec<Entity> = self.world.query_filtered::<Entity, With<crate::hostile::BurnsInDay>>().iter(&self.world).collect();
         self.world.resource_mut::<crate::hostile::SunDirty>().0.extend(all);
+    }
+    /// The push mode (`Config.ordered_push`): the `Mob`'s order for the animals that overlap another, or the batch.
+    pub fn set_ordered_push(&mut self, on: bool) {
+        self.world.resource_mut::<Config>().ordered_push = on;
+        if on {
+            // The animals that exist are put in the spatial index at once (a new animal enters it after its first tick).
+            self.world.run_system_cached(reindex).unwrap();
+            // Which of the animals that exist overlap another is not known yet: the first pass looks at all of them (the ones
+            // that overlap nothing leave the set at once).
+            let all: Vec<Entity> = self.world.query_filtered::<Entity, With<Bounds>>().iter(&self.world).collect();
+            for e in all {
+                self.world.entity_mut(e).insert(Overlapping);
+            }
+        }
     }
     /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
@@ -2591,5 +2724,58 @@ mod tests {
         }
         assert!(least < 250, "{least} idle at the least with a player there");
         eprintln!("travelled {travelled}, asleep between {min_asleep} and {max_asleep} of 300");
+    }
+
+    /// The runs of `ring_runs` hold every cell where a player's two circles may disagree (checked cell by cell, by
+    /// the corners of the cells that could hold a point of one circle and not of the other).
+    #[test]
+    fn the_ring_runs_cover_every_cell_the_circles_disagree_on() {
+        let mut r = Rng(0x5eed | 1);
+        let origin = -50.0;
+        let rnd = |r: &mut Rng, a: f64, b: f64| a + (b - a) * (f64::from(r.next_u32()) / f64::from(u32::MAX));
+        for _ in 0..3000 {
+            let n = (r.next_u32() % 8 != 0).then(|| (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)));
+            let step = [0.1, 1.0, 5.0, 70.0][(r.next_u32() % 4) as usize];
+            let o = (r.next_u32() % 8 != 0).then(|| match n {
+                Some((x, z)) => (x + rnd(&mut r, -step, step), z + rnd(&mut r, -step, step)),
+                None => (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)),
+            });
+            for zz in 0..50i64 {
+                let runs = ring_runs(origin, zz, n, o);
+                for xx in 0..50i64 {
+                    // Points of the cell, a fine grid with its corners.
+                    let mut differs = false;
+                    for a in 0..=8 {
+                        for b in 0..=8 {
+                            let (x, z) = (origin + (xx as f64 + f64::from(a) / 8.0) * CELL, origin + (zz as f64 + f64::from(b) / 8.0) * CELL);
+                            let inside = |q: Option<(f64, f64)>| q.is_some_and(|(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0);
+                            differs |= inside(n) != inside(o);
+                        }
+                    }
+                    let covered = runs.iter().any(|&(lo, hi)| lo <= xx && xx <= hi);
+                    assert!(!differs || covered, "cell ({xx}, {zz}) of {n:?} -> {o:?} is not covered by {runs:?}");
+                }
+            }
+        }
+    }
+
+    /// A cow that walks out of the 32 blocks of a player that stays where it is stops being active when it changes
+    /// cell (the player moved nowhere: only the cell change tells).
+    #[test]
+    fn a_cow_leaving_a_standing_player_stops_being_active() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        let mut herd = Herd::new(0, 6.0, true, false, 3);
+        let e = herd.world.spawn(cow_bundle(0.5, 0.5, 11)).id();
+        herd.set_players(vec![(0.5, 0.5)]);
+        herd.tick();
+        herd.tick();
+        assert_eq!(herd.world.get::<ActiveUntil>(e).unwrap().0, u64::MAX, "a cow next to a player is active");
+        herd.teleport(e, Vec3::new(40.5, 1.0, 0.5));
+        herd.tick();
+        herd.tick();
+        let until = herd.world.get::<ActiveUntil>(e).unwrap().0;
+        assert!(until != u64::MAX && until <= herd.world.resource::<Clock>().0 + 100, "still active without end: {until}");
     }
 }

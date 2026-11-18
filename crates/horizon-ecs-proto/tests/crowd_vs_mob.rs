@@ -28,6 +28,9 @@ fn pit_run(n: usize) -> (Vec<usize>, Vec<usize>) {
         r.add(Vec3::new(10.5 + jx - 0.02, 1.0, 10.5 + jz - 0.02));
     }
     let mut h = Herd::with_slab(20, true, false);
+    if std::env::var_os("ORDERED_PUSH").is_some() {
+        h.set_ordered_push(true);
+    }
     pit(&mut |x, y, z| h.set_block(x, y, z, "minecraft:stone"));
     h.tick();
     let ids: Vec<Entity> = (0..n).map(|i| {
@@ -93,6 +96,10 @@ fn two_overlapping_animals_move_apart_as_a_mob_s_do() {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
         ids.push(e);
     }
+    // The animals are in the world: the first pass of the ordered mode looks at all of them.
+    if std::env::var_os("ORDERED_PUSH").is_some() {
+        h.set_ordered_push(true);
+    }
     let mut worst: f64 = 0.0;
     for t in 1..=60 {
         r.step(None);
@@ -111,4 +118,73 @@ fn two_overlapping_animals_move_apart_as_a_mob_s_do() {
     // the final separation is 5 % wider on the `Mob` side (order of execution, category B). Without the two impulses per
     // tick of `Entity.push` called from both sides, the ecs would stop at half the speed.
     assert!(worst < if three { 0.2 } else { 0.1 }, "the push law differs: {worst}");
+}
+
+fn overlapping_pairs(p: &[(f64, f64)], w: f64) -> usize {
+    let mut n = 0;
+    for i in 0..p.len() {
+        for j in i + 1..p.len() {
+            if (p[i].0 - p[j].0).abs() < w && (p[i].1 - p[j].1).abs() < w {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+/// A tight herd (400 animals, 0.8 apart, a little noise) spreads out like a `Mob` herd: the pairs that still overlap after
+/// 60 and 120 ticks, in the batch mode and in the ordered mode (which follows the `Mob`'s pass order).
+#[test]
+fn a_tight_herd_spreads_out_like_a_mob_herd() {
+    if !have_data() {
+        return;
+    }
+    let n = 400;
+    let side = 20;
+    let mut r = MobRef::new(20, false);
+    // A pitch of 0.89 body widths (0.8 for a cow): every animal overlaps its neighbours, whatever the species.
+    let pitch = 0.89 * f64::from(species().width);
+    let at = |i: usize| {
+        let jit = |k: u64| (((i as u64 * 2654435761 + k * 40503) % 1000) as f64 / 1000.0 - 0.5) * 0.2;
+        (-8.0 + (i % side) as f64 * pitch + 0.5 + jit(1) * pitch / 0.8, -8.0 + (i / side) as f64 * pitch + 0.5 + jit(2) * pitch / 0.8)
+    };
+    for i in 0..n {
+        let p = at(i);
+        r.add(Vec3::new(p.0, 1.0, p.1));
+    }
+    let w = f64::from(species().width);
+    let mut mob = vec![];
+    for t in 1..=120 {
+        r.step(None);
+        if t == 60 || t == 120 {
+            mob.push(overlapping_pairs(&r.mobs.iter().map(|m| (m.position.x, m.position.z)).collect::<Vec<_>>(), w));
+        }
+    }
+    let mut results = vec![];
+    for ordered in [false, true] {
+        let mut h = Herd::with_slab(20, true, false);
+        let ids: Vec<Entity> = (0..n).map(|i| {
+            let p = at(i);
+            let e = h.world.spawn(cow_bundle(p.0, p.1, 5 + i as u64)).id();
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+            e
+        }).collect();
+        if ordered {
+            h.set_ordered_push(true);
+        }
+        let mut pairs = vec![];
+        for t in 1..=120 {
+            h.tick();
+            if t == 60 || t == 120 {
+                pairs.push(overlapping_pairs(&ids.iter().map(|&e| { let p = h.world.get::<Pos>(e).unwrap().0; (p.x, p.z) }).collect::<Vec<_>>(), w));
+            }
+        }
+        results.push(pairs);
+    }
+    eprintln!("overlapping pairs at ticks 60 / 120: mob {mob:?}, ecs batch {:?}, ecs ordered {:?}", results[0], results[1]);
+    let off = |e: &[usize]| (e[0] as f64 - mob[0] as f64).abs() / mob[0] as f64;
+    // The ordered mode is closer to the `Mob` than the batch one (a small body, a hen, spreads out in a few ticks and
+    // both modes then differ more in absolute terms).
+    let dist = |e: &[usize]| (e[0] as f64 - mob[0] as f64).abs() + (e[1] as f64 - mob[1] as f64).abs();
+    assert!(dist(&results[1]) < dist(&results[0]), "ordered {:?}, batch {:?}, mob {mob:?}", results[1], results[0]);
+    let _ = off;
 }

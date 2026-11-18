@@ -25,6 +25,9 @@ fn main() {
         std::env::var("HAZARDS").is_ok(),
         std::env::var("MIX").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
     );
+    if std::env::var_os("ORDERED_PUSH").is_some() {
+        herd.set_ordered_push(true);
+    }
     let mut acc = [0.0_f64; 12];
     // The players stand on a grid over the slab.
     let side = (n as f64).sqrt().ceil() * spacing;
@@ -54,6 +57,9 @@ fn main() {
     for _ in 0..warm {
         herd.tick();
     }
+    *herd.world.resource_mut::<horizon_ecs_proto::cow::OrderedStats>() = Default::default();
+    let counter = horizon_ecs_proto::instr::Counter::new();
+    let i0 = counter.as_ref().map_or(0, |c| c.read());
     let t0 = Instant::now();
     for _ in warm..ticks {
         if timed {
@@ -63,10 +69,23 @@ fn main() {
         }
     }
     let dt = t0.elapsed();
+    let instr = counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64;
+    println!("instr_per_entity_tick={instr}");
     if std::env::var_os("HUNT").is_some() {
         let c = horizon_ecs_proto::goals::counts(&mut herd.world);
         let hits = herd.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
         eprintln!("hunting {:?} meleeing {:?} player hits so far {hits}", c.iter().find(|x| x.0 == "hunting"), c.iter().find(|x| x.0 == "meleeing"));
+    }
+    if std::env::var_os("COUNT_OVERLAPS").is_some() {
+        let boxes: Vec<horizon_core::geometry::Aabb> = herd.world.query::<&horizon_ecs_proto::cow::Bounds>().iter(&herd.world).map(|b| b.0).collect();
+        let n_over = (0..boxes.len()).filter(|&i| (0..boxes.len()).any(|j| j != i && boxes[i].intersects(boxes[j]))).count();
+        eprintln!("animals overlapping another at the end: {n_over} of {}", boxes.len());
+    }
+    {
+        let s = herd.world.resource::<horizon_ecs_proto::cow::OrderedStats>();
+        if s.ticks > 0 {
+            eprintln!("ordered pass: {} animals in the last tick, {:.0} on average", s.last, s.total as f64 / s.ticks as f64);
+        }
     }
     let (idle, following, moving, total) = herd.counts();
     let window = (ticks - warm).max(1);

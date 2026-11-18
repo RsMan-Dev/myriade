@@ -8,7 +8,7 @@ publish = false
 description = "Prototype: a cow as a bevy_ecs herd (data components, batch systems, sleeping), with Horizon's real block collision kernel (suivi/ecs-prototype.md section 12)"
 
 [dependencies]
-bevy_ecs = { version = "0.20.1", default-features = false, features = ["std", "multi_threaded"] }
+bevy_ecs = { version = "0.20.1", default-features = false, features = ["std", "multi_threaded", "debug"] }
 bevy_tasks = { version = "0.20.1", default-features = false, features = ["multi_threaded"] }
 horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
 horizon-client-render = { path = "../horizon-client-render" }
