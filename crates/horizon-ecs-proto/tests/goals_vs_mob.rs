@@ -190,3 +190,262 @@ fn trace_mob_cactus() {
         eprintln!("mob t={t} pos=({:.2},{:.2},{:.2}) hp={} goals={:?} last_damage={:?} age={}", m.position.x, m.position.y, m.position.z, m.health, r.names(i), m.last_damage.map(|d| d.1), m.age);
     }
 }
+
+fn mean(v: &[f64]) -> f64 {
+    v.iter().sum::<f64>() / v.len().max(1) as f64
+}
+fn flat_pair() -> (Ref, Herd) {
+    (Ref::new(20, false), Herd::new(0, 6.0, true, false, 3))
+}
+fn xz(a: Vec3, b: Vec3) -> f64 {
+    ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+}
+
+/// Struck cows: when the panic starts, how long it lasts, the peak step of the walk.
+#[test]
+fn a_struck_cow_panics_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let mut cows = Vec::new();
+    for i in 0..5 {
+        for j in 0..3 {
+            let (x, z) = (-14.5 + 7.0 * f64::from(i), -11.5 + 8.0 * f64::from(j));
+            cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 500 + cows.len() as u64)));
+        }
+    }
+    // (start, end, peak step) per cow, for the mob and the ecs.
+    let mut m = vec![(None::<i64>, None::<i64>, 0.0_f64); cows.len()];
+    let mut c = m.clone();
+    let mut prev: Vec<(Vec3, Vec3)> = cows.iter().map(|&(i, e)| (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0)).collect();
+    for t in 1..=200_i64 {
+        if t == 5 {
+            for &(i, e) in &cows {
+                r.hurt(i, 1.0);
+                h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, Cause::Entity));
+            }
+        }
+        r.step(None);
+        h.tick();
+        for (k, &(i, e)) in cows.iter().enumerate() {
+            let mp = r.names(i).contains(&"Panic");
+            let cp = h.world.get::<GoalSet>(e).unwrap().is_running(Kind::Panic);
+            let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
+            for (st, on, step) in [(&mut m[k], mp, xz(prev[k].0, a)), (&mut c[k], cp, xz(prev[k].1, b))] {
+                if on && st.0.is_none() {
+                    st.0 = Some(t);
+                }
+                if on {
+                    st.2 = st.2.max(step);
+                }
+                if !on && st.0.is_some() && st.1.is_none() {
+                    st.1 = Some(t);
+                }
+            }
+            prev[k] = (a, b);
+        }
+    }
+    let stats = |v: &[(Option<i64>, Option<i64>, f64)]| {
+        let s: Vec<f64> = v.iter().filter_map(|x| x.0).map(|x| (x - 5) as f64).collect();
+        let d: Vec<f64> = v.iter().filter_map(|x| Some((x.1? - x.0?) as f64)).collect();
+        let p: Vec<f64> = v.iter().map(|x| x.2).collect();
+        (mean(&s), s.len(), mean(&d), mean(&p))
+    };
+    let (ms, mn, md, mp) = stats(&m);
+    let (cs, cn, cd, cp) = stats(&c);
+    eprintln!("panic: mob start +{ms:.1} ({mn} cows) length {md:.1} peak step {mp:.3}; ecs start +{cs:.1} ({cn}) length {cd:.1} peak step {cp:.3}");
+    assert!(mn == cows.len() && cn == cows.len());
+    assert!((ms - cs).abs() <= 3.0, "start");
+    assert!(cd / md > 0.6 && cd / md < 1.6, "length");
+    assert!(cp / mp > 0.8 && cp / mp < 1.2, "speed");
+}
+
+/// Wheat in hand: range 9.5 / 10.5, the time to walk up, the stop distance, the calm after putting it away.
+#[test]
+fn wheat_tempts_as_it_does_a_mob() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let mi = r.add(Vec3::new(-10.5, 1.0, 0.5));
+    let e = ecs_cow(&mut h, -10.5, 1.0, 0.5, 9);
+    let (mi2, e2) = (r.add(Vec3::new(-10.5, 1.0, 8.5)), ecs_cow(&mut h, -10.5, 1.0, 8.5, 10));
+    h.tick();
+    let tempted = |r: &Ref, h: &Herd, i: usize, e: Entity| (r.names(i).contains(&"Tempt"), h.world.get::<Tempting>(e).is_some());
+    // Player 9.5 blocks from the first cow, 10.5 blocks from the second.
+    let at = Vec3::new(-1.0, 1.0, 0.5);
+    let mut p = player_view(at, Some("minecraft:wheat"));
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: WHEAT, off: 0 });
+    for _ in 0..6 {
+        r.step(Some(&p));
+        h.tick();
+    }
+    let (a, b) = (tempted(&r, &h, mi, e), tempted(&r, &h, mi2, e2));
+    eprintln!("range: cow at 9.5 mob/ecs {a:?}; cow at 10.5 {b:?}");
+    assert_eq!(a, (true, true));
+    assert_eq!(b, (false, false));
+    // Walk up: ticks until 3 blocks away, final distance after 300 ticks.
+    let (mut mt, mut ct) = (None, None);
+    for t in 7..=300 {
+        r.step(Some(&p));
+        h.tick();
+        if mt.is_none() && xz(r.mobs[mi].position, at) < 3.0 {
+            mt = Some(t);
+        }
+        if ct.is_none() && xz(h.world.get::<Pos>(e).unwrap().0, at) < 3.0 {
+            ct = Some(t);
+        }
+    }
+    let (md, cd) = (xz(r.mobs[mi].position, at), xz(h.world.get::<Pos>(e).unwrap().0, at));
+    eprintln!("walk up: mob within 3 at {mt:?}, ecs {ct:?}; final distance mob {md:.2} ecs {cd:.2}");
+    let (mt, ct) = (mt.expect("mob") as f64, ct.expect("ecs") as f64);
+    assert!((mt - ct).abs() / mt < 0.25, "time to arrive");
+    assert!((md - cd).abs() < 0.8, "stop distance");
+    // Wheat away for 4 ticks, then back: the ticks until the goal runs again.
+    p.main_hand = None;
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0 });
+    for _ in 0..4 {
+        r.step(Some(&p));
+        h.tick();
+    }
+    p.main_hand = Some("minecraft:wheat".into());
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: WHEAT, off: 0 });
+    let (mut mc, mut cc) = (None, None);
+    for t in 1..=200 {
+        r.step(Some(&p));
+        h.tick();
+        if mc.is_none() && r.names(mi).contains(&"Tempt") {
+            mc = Some(t);
+        }
+        if cc.is_none() && h.world.get::<Tempting>(e).is_some() {
+            cc = Some(t);
+        }
+    }
+    eprintln!("calm: tempted again after mob {mc:?} ticks, ecs {cc:?}");
+    let (mc, cc) = (mc.expect("mob calm") as i64, cc.expect("ecs calm") as i64);
+    assert!((mc - cc).abs() <= 6, "calm");
+}
+
+/// Two cows in love 2 and 5 blocks apart: the tick of the birth, the parents' age.
+#[test]
+fn breeding_takes_as_long_as_for_a_mob() {
+    if !have_data() {
+        return;
+    }
+    for gap in [2.0, 5.0] {
+        let (mut r, mut h) = flat_pair();
+        let (a, b) = (r.add(Vec3::new(0.5, 1.0, 0.5)), r.add(Vec3::new(0.5 + gap, 1.0, 0.5)));
+        let (ea, eb) = (ecs_cow(&mut h, 0.5, 1.0, 0.5, 1), ecs_cow(&mut h, 0.5 + gap, 1.0, 0.5, 2));
+        h.tick();
+        for i in [a, b] {
+            r.mobs[i].extra.in_love = 600;
+        }
+        assert!(feed(&mut h.world, ea) && feed(&mut h.world, eb));
+        let (mut mt, mut ct, mut ages) = (None, None, (0, 0));
+        for t in 1..=300_i64 {
+            r.step(None);
+            h.tick();
+            if mt.is_none() && r.events.iter().any(|e| matches!(e, MobEvent::Breed { .. })) {
+                mt = Some(t);
+                ages = (r.mobs[a].extra.age, r.mobs[b].extra.age);
+            }
+            if ct.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {
+                ct = Some(t);
+            }
+        }
+        let (mt, ct) = (mt.expect("mob never bred"), ct.expect("ecs never bred"));
+        let now = h.world.resource::<Clock>().0;
+        eprintln!("breed gap {gap}: mob at tick {mt}, ecs at tick {ct}; mob parents' age {}/{}; ecs rest {}", ages.0, ages.1, h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64));
+        assert!((mt - ct).abs() <= 8, "gap {gap}");
+        assert!(ages.0.max(ages.1) >= 5998, "{ages:?}");
+        assert_eq!(h.world.get::<Resting>(ea).unwrap().0 - (now - 300 + ct as u64), 6000);
+    }
+}
+
+/// A baby follows an adult from 3 blocks to 8 on each axis; nearer or farther it does not.
+#[test]
+fn a_baby_follows_at_the_same_distances_as_a_mob() {
+    if !have_data() {
+        return;
+    }
+    let mut rows = Vec::new();
+    for d in [2.5, 3.5, 7.5, 8.5, 12.0] {
+        let (mut r, mut h) = flat_pair();
+        let adult = r.add(Vec3::new(0.5, 1.0, 0.5));
+        let baby = r.add(Vec3::new(0.5 + d, 1.0, 0.5));
+        r.mobs[baby].extra.age = -24000;
+        let (ea, eb) = (ecs_cow(&mut h, 0.5, 1.0, 0.5, 3), ecs_cow(&mut h, 0.5 + d, 1.0, 0.5, 4));
+        h.tick();
+        make_baby(&mut h.world, eb, 24000);
+        h.tick();
+        adopt(&mut h.world, ea, eb);
+        for _ in 0..6 {
+            r.step(None);
+            h.tick();
+        }
+        let (m, c) = (r.names(baby).contains(&"FollowParent"), h.world.get::<Trailing>(eb).is_some());
+        let _ = adult;
+        rows.push((d, m, c));
+    }
+    eprintln!("follow parent (distance, mob, ecs): {rows:?}");
+    assert!(rows.iter().all(|r| r.1 == r.2), "{rows:?}");
+}
+
+/// The rate at which cows look at a player 6 blocks away and look around, over 150 ticks, with no player near
+/// (the look goals do not depend on `noActionTime`).
+#[test]
+fn looking_goals_start_as_often_as_a_mob_s() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let mut cows = Vec::new();
+    for i in 0..12 {
+        for j in 0..8 {
+            let (x, z) = (-7.0 + 1.3 * f64::from(i), -4.5 + 1.3 * f64::from(j));
+            cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 700 + cows.len() as u64)));
+        }
+    }
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0 });
+    arm_all(&mut h.world);
+    let p = player_view(Vec3::new(0.0, 1.0, 0.0), None);
+    let mut seen = vec![[false; 4]; cows.len()];
+    for _ in 0..150 {
+        r.step(Some(&p));
+        h.tick();
+        for (k, &(i, e)) in cows.iter().enumerate() {
+            let n = r.names(i);
+            seen[k][0] |= n.iter().any(|x| x.contains("LookAtPlayer"));
+            seen[k][1] |= n.iter().any(|x| x.contains("RandomLook"));
+            seen[k][2] |= h.world.get::<Glancing>(e).is_some();
+            seen[k][3] |= h.world.get::<Scanning>(e).is_some();
+        }
+    }
+    let rate = |col: usize| seen.iter().filter(|s| s[col]).count() as f64 / cows.len() as f64;
+    eprintln!("look at player: mob {:.2} ecs {:.2}; look around: mob {:.2} ecs {:.2}", rate(0), rate(2), rate(1), rate(3));
+    assert!((rate(0) - rate(2)).abs() < 0.2 && (rate(1) - rate(3)).abs() < 0.15);
+}
+
+/// A cow in a pond: it stays afloat as a mob does.
+#[test]
+fn a_cow_in_a_pond_floats_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = Ref::new(56, true);
+    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let (i, e) = (r.add(Vec3::new(-39.0, 3.0, -47.0)), ecs_cow(&mut h, -39.0, 3.0, -47.0, 77));
+    let (mut my, mut cy, mut n) = (0.0, 0.0, 0.0);
+    for t in 1..=400 {
+        r.step(None);
+        h.tick();
+        if t > 60 {
+            my += r.mobs[i].position.y;
+            cy += h.world.get::<Pos>(e).unwrap().0.y;
+            n += 1.0;
+        }
+    }
+    eprintln!("pond, mean height over ticks 61..400: mob {:.2}, ecs {:.2}", my / n, cy / n);
+    assert!((my - cy).abs() / n < 0.3, "afloat at the same height");
+}

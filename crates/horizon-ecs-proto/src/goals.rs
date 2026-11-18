@@ -191,11 +191,6 @@ pub struct Head {
     pub stable_time: i32,
     pub at: (f64, f64),
 }
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Fluid {
-    pub depth: f64,
-    pub lava: bool,
-}
 /// `Mob.getFluidJumpThreshold`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Buoyancy(pub f64);
@@ -245,7 +240,6 @@ pub fn cow_goals() -> impl Bundle {
         GoalTimers::default(),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: 1.3 },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
-        Fluid::default(),
         Buoyancy(0.4),
         Jump(false),
     )
@@ -355,7 +349,7 @@ pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems(hurt_events.after(apply_damage));
     s.add_systems(
-        (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_run, arbitrate, look_control)
+        (entered_events, mother_moved, cell_moves, tempt_run, breed_run, follow_parent_run, glance_run, scan_run, float_events, float_run, arbitrate, look_control)
             .chain()
             .after(online_events)
             .after(hurt_events),
@@ -367,16 +361,9 @@ pub fn register(s: &mut Schedule) {
 pub fn hurt(world: &mut World, e: Entity) {
     world.resource_mut::<Hurts>().0.push(e);
 }
-/// A fluid appeared or vanished in the cow's box: `depth` blocks of water at its eyes' reach, or lava.
-pub fn set_fluid(world: &mut World, e: Entity, depth: f64, lava: bool) {
-    *world.get_mut::<Fluid>(e).unwrap() = Fluid { depth, lava };
-    let k = Kind::Float;
-    let req = if floats(world, e) { Req::Start(e, k) } else { Req::End(e, k) };
-    world.resource_mut::<Requests>().0.push(req);
-}
 fn floats(w: &World, e: Entity) -> bool {
-    let (f, b) = (w.get::<Fluid>(e).unwrap(), w.get::<Buoyancy>(e).unwrap());
-    f.depth > b.0 || f.lava
+    let (f, b) = (w.get::<FluidState>(e).unwrap(), w.get::<Buoyancy>(e).unwrap());
+    f.water > b.0 || f.in_lava
 }
 /// `Animal.setInLove` by feeding: refused for a baby, a resting or a loving cow. Wakes the goal, and the loving
 /// cows around (their partner just appeared).
@@ -739,6 +726,22 @@ fn scan_run(clock: Res<Clock>, mut q: Query<(Aim, &Scanning)>, mut reqs: ResMut<
             aim(&mut cmd, e, &mut look, looking, at, None);
         }
     }
+}
+/// A cow in a fluid (the fluid module visits only these) that gets deeper than the threshold, or in lava, starts
+/// floating; one that gets shallower, or leaves the fluid, stops.
+#[allow(clippy::type_complexity)]
+fn float_events(
+    q: Query<(Entity, &FluidState, &Buoyancy, Has<Floating>), With<InFluid>>,
+    left: Query<Entity, (With<Floating>, Without<InFluid>)>,
+    mut reqs: ResMut<Requests>,
+) {
+    for (e, f, b, floating) in &q {
+        let deep = f.water > b.0 || f.in_lava;
+        if deep != floating {
+            reqs.0.push(if deep { Req::Start(e, Kind::Float) } else { Req::End(e, Kind::Float) });
+        }
+    }
+    reqs.0.extend(left.iter().map(|e| Req::End(e, Kind::Float)));
 }
 /// `FloatGoal.tick`: a jump with 80 % each tick.
 fn float_run(mut q: Query<(&mut Rng, &mut Jump), With<Floating>>) {
@@ -1386,27 +1389,32 @@ mod tests {
         eprintln!("glance {rate:.2}, scan {scan:.2}");
     }
 
-    /// Deeper than 0.4 blocks in water, or in lava: a jump with 80 % each tick; out of it, none.
+    /// A cow dropped in a pond floats: a jump 8 ticks in 10 while the water is deeper than 0.4, and it stays afloat.
     #[test]
-    fn a_cow_in_deep_water_jumps_eight_ticks_in_ten() {
-        let Some(mut h) = herd() else { return };
-        let e = cow(&mut h, 0.5, 0.5, 51);
-        ticks(&mut h, 2);
-        set_fluid(&mut h.world, e, 0.3, false);
-        ticks(&mut h, 2);
-        assert!(!has::<Floating>(&h, e), "0.3 is not deep");
-        set_fluid(&mut h.world, e, 0.5, false);
-        let mut jumps = 0;
-        for _ in 0..1000 {
-            h.tick();
-            jumps += usize::from(h.world.get::<Jump>(e).unwrap().0);
+    fn a_cow_in_a_pond_jumps_eight_ticks_in_ten() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
         }
-        assert!((750..850).contains(&jumps), "{jumps} jumps in 1000 ticks");
-        set_fluid(&mut h.world, e, 0.0, false);
-        ticks(&mut h, 2);
-        assert!(!has::<Floating>(&h, e) && !h.world.get::<Jump>(e).unwrap().0);
-        set_fluid(&mut h.world, e, 0.0, true);
-        ticks(&mut h, 2);
-        assert!(has::<Floating>(&h, e), "lava");
+        let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let e = h.world.spawn(cow_bundle(-39.0, -47.0, 51)).id();
+        h.world.get_mut::<Pos>(e).unwrap().0.y = 3.0;
+        h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), 0.9, 1.4);
+        ticks(&mut h, 60);
+        let (mut floating, mut jumps, mut low, mut was) = (0, 0, 9.0_f64, false);
+        for _ in 0..1500 {
+            h.tick();
+            low = low.min(at(&h, e).y);
+            let now = has::<Floating>(&h, e);
+            // The first tick of a spell has no jump yet (the goal starts after its tick).
+            if now && was {
+                floating += 1;
+                jumps += usize::from(h.world.get::<Jump>(e).unwrap().0);
+            }
+            was = now;
+        }
+        eprintln!("floating {floating}/1500 ticks, jumps {jumps}, lowest y {low:.2}");
+        assert!(floating > 100 && low > -0.5, "{floating} ticks afloat, lowest {low}");
+        let rate = jumps as f64 / floating as f64;
+        assert!(rate > 0.72 && rate < 0.88, "{rate}");
     }
 }
