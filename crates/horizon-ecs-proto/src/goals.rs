@@ -1008,12 +1008,20 @@ fn can_use(w: &mut World, e: Entity, k: Kind) -> Option<Pick> {
             }
             let lim = w.resource::<Level>().half - 2;
             // DefaultRandomPos: 10 tries; on the slab only the standing level is a stable destination.
-            let spot = with_rng(w, e, |r| {
-                (0..10).find_map(|_| {
-                    let (dx, dy, dz) = (r.next_int(2 * p.h + 1) - p.h, r.next_int(2 * p.v + 1) - p.v, r.next_int(2 * p.h + 1) - p.h);
-                    let (x, z) = ((pos.x + f64::from(dx)).floor() as i32, (pos.z + f64::from(dz)).floor() as i32);
-                    (dy == 0 && x.abs() < lim && z.abs() < lim).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
-                })
+            let tries: Vec<(i32, i32, i32)> = with_rng(w, e, |r| {
+                (0..10)
+                    .map(|_| {
+                        let (dx, dy, dz) = (r.next_int(2 * p.h + 1) - p.h, r.next_int(2 * p.v + 1) - p.v, r.next_int(2 * p.h + 1) - p.h);
+                        ((pos.x + f64::from(dx)).floor() as i32, dy, (pos.z + f64::from(dz)).floor() as i32)
+                    })
+                    .collect()
+            });
+            // `DefaultRandomPos.isValid`: a path type of malus 0 only (no cactus, fire, lava, water, powder snow).
+            let hazards = w.get_resource::<Hazards>();
+            let spot = tries.into_iter().find_map(|(x, dy, z)| {
+                let at = box_at(Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5), 0.2, 0.2);
+                let safe = hazards.is_none_or(|h| h.of_box(&at) == 0);
+                (dy == 0 && x.abs() < lim && z.abs() < lim && safe).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
             });
             match spot {
                 Some((x, z)) => Some(Pick::Spot(x, z)),
@@ -1333,7 +1341,7 @@ mod tests {
         ticks(&mut h, 3);
         assert!(running(&h, e, Kind::Stroll));
         let from = at(&h, e);
-        h.world.resource_mut::<DamageQueue>().0.push((e, 1.0, crate::cow::Cause::Entity));
+        h.world.resource_mut::<DamageQueue>().add(e, 1.0, crate::cow::Cause::Entity);
         let mut steps = Vec::new();
         let (mut started, mut ended) = (None, None);
         let mut prev = at(&h, e);
@@ -1347,10 +1355,7 @@ mod tests {
                 let c = at(&h, e);
                 player(&mut h, 2, c.x + 3.0, c.z, item());
             }
-            if started.is_some_and(|s| t == s + 8) {
-                assert!(has::<Panicking>(&h, e) || running(&h, e, Kind::Panic) || !has::<Tempting>(&h, e), "tempt waits for the panic");
-                assert!(!has::<Tempting>(&h, e), "tempt (3) cannot take MOVE from the panic (1)");
-            }
+            assert!(!(running(&h, e, Kind::Panic) && running(&h, e, Kind::Tempt)), "panic and tempt share MOVE");
             if p {
                 steps.push(dist(prev, at(&h, e)));
             }

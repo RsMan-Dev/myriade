@@ -53,6 +53,10 @@ pub struct Drive {
     pub jump: bool,
     /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
     pub jumping: bool,
+    /// `Mob.noJumpDelay`: ticks before the cow may jump again (10 after a jump, 0 when the input stops).
+    pub no_jump_delay: i32,
+    /// `MoveControl.Operation.JUMPING`: after a jump the move control only keeps the speed until the cow lands.
+    pub jumping_op: bool,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -152,9 +156,6 @@ pub struct Recheck;
 /// The head of the cow is in a suffocating block: it hurts every tick until that stops.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct InWall;
-/// What a hit pushes: the cows to knock back, from where (`LivingEntity.knockback`, strength 0.4).
-#[derive(Resource, Default)]
-pub struct Knockbacks(pub Vec<(Entity, f64, f64)>);
 /// `LivingEntity.health`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Health(pub f32);
@@ -183,7 +184,24 @@ pub const HAZ_SNOW: u8 = 8;
 pub const HAZ_CACTUS: u8 = 16;
 /// The damage waiting to be applied (what hurts a cow only queues it: a command).
 #[derive(Resource, Default)]
-pub struct DamageQueue(pub Vec<(Entity, f32, Cause)>);
+pub struct DamageQueue(pub Vec<Hit>);
+/// One hit: who, how much, what kind, and from where when an entity did it (the knockback comes from it).
+#[derive(Clone, Copy, Debug)]
+pub struct Hit {
+    pub target: Entity,
+    pub amount: f32,
+    pub cause: Cause,
+    /// The attacker's position (x, z); `None` for an attacker without one or an environmental cause.
+    pub from: Option<(f64, f64)>,
+}
+impl DamageQueue {
+    pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
+        self.0.push(Hit { target, amount, cause, from: None });
+    }
+    pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
+        self.0.push(Hit { target, amount, cause, from: Some(from) });
+    }
+}
 /// What hurt (`DamageType`): `Panic` reads it (`#panic_environmental_causes`: cactus, freeze, hot_floor, in_fire, lava,
 /// lightning_bolt, on_fire).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -397,6 +415,8 @@ pub struct Species {
     pub speed: f64,
     pub baby: (f32, f32),
     pub goals: crate::goals::GoalDef,
+    /// `Attributes.KNOCKBACK_RESISTANCE`.
+    pub knockback_resistance: f64,
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
@@ -432,6 +452,8 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
                     }
                 }
             };
+            // A low ceiling (stone at y = 3, 3 x 3) for the jump delay: a cow under it jumps for less than 10 ticks.
+            put(blocks, "minecraft:stone", -20, -20, 3);
             let mut gx = -half + 8;
             while gx + 40 < half {
                 let mut gz = -half + 8;
@@ -475,6 +497,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         speed: mob.attrs.speed,
         baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
         goals: crate::goals::goal_def(name),
+        knockback_resistance: mob.attrs.knockback_resistance,
     };
     let _ = SPECIES.set(species);
     (Level { mw: Mw(mw), half }, species, kind)
@@ -840,9 +863,21 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     r
 }
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
-fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body) {
+fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
+    if d.jumping_op {
+        // Operation JUMPING: the speed follows the wanted spot's modifier, the heading is kept, and the next
+        // wanted spot does not change the operation, until the cow is on the ground (or in a liquid).
+        let speed = (m.speed_modifier * body.speed) as f32;
+        d.speed = speed;
+        d.zza = speed;
+        m.active = false;
+        if landed {
+            d.jumping_op = false;
+        }
+        return;
+    }
     if !m.active {
         d.zza = 0.0;
         return;
@@ -859,13 +894,15 @@ fn move_control_one(pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, bod
     d.zza = speed;
     // `MoveControl` MOVE_TO: a target above the step height and near makes the cow jump.
     d.jump = yd > f64::from(body.step_height) && xd * xd + zd * zd < f64::from(body.width.max(1.0));
+    d.jumping_op = d.jump;
 }
-fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body), With<Following>>) {
+fn move_control(cfg: Res<Config>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+    let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b)| move_control_one(p, &mut y, &mut m, &mut d, b));
+        q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f)));
     } else {
-        for (p, mut y, mut m, mut d, b) in &mut q {
-            move_control_one(p, &mut y, &mut m, &mut d, b);
+        for (p, mut y, mut m, mut d, b, c, f) in &mut q {
+            move_control_one(p, &mut y, &mut m, &mut d, b, landed(c, f));
         }
     }
 }
@@ -915,8 +952,15 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
         }
         c.fall_distance = 0.0;
     }
-    if vertical && below {
+    // `Entity.move` ends by losing the velocity along the axes that collided (a landing, a ceiling, a wall).
+    if vertical {
         vel.0.y = 0.0;
+    }
+    if differs(wanted.x, moved.x) {
+        vel.0.x = 0.0;
+    }
+    if differs(wanted.z, moved.z) {
+        vel.0.z = 0.0;
     }
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
@@ -928,7 +972,7 @@ fn travel_one(
     vel: &mut Vel,
     yaw: &Yaw,
     c: &mut Contact,
-    d: &Drive,
+    d: &mut Drive,
     body: &Body,
     bounds: &mut Bounds,
     fs: &FluidState,
@@ -957,9 +1001,16 @@ fn travel_one(
             vel.0.y += if sp.can_float { f64::from(0.04_f32) } else { 0.3 };
         }
     }
-    // `LivingEntity.jumpFromGround`: the jump power 0.42.
-    if jumping && !in_fluid && c.on_ground {
+    // `LivingEntity.handleJumping` on the ground: a jump every 10 ticks at most (`noJumpDelay`), the delay reset when
+    // the input stops; `jumpFromGround`: the jump power 0.42 (the block's factor is 1 here).
+    if d.no_jump_delay > 0 {
+        d.no_jump_delay -= 1;
+    }
+    if !jumping {
+        d.no_jump_delay = 0;
+    } else if !in_fluid && c.on_ground && d.no_jump_delay == 0 {
         vel.0.y = vel.0.y.max(0.42);
+        d.no_jump_delay = 10;
     }
     if in_fluid {
         let falling = vel.0.y <= 0.0;
@@ -1017,7 +1068,7 @@ fn travel_one(
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
-    c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
+    !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
 fn travel(
@@ -1026,17 +1077,17 @@ fn travel(
     sp: Res<Species>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>),
         With<Moving>,
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, d: &Drive, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
-        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, d, b, &mut bb, fs, jumping, &mut fall);
+        let rest = travel_one(&level, &sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
         if fall > 0.0 {
             par.command_scope(|mut cmd| {
-                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().0.push((e, fall, Cause::Fall)));
+                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
@@ -1118,7 +1169,7 @@ fn breathing(
         if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
         {
-            queue.0.push((e, damage, Cause::Drown));
+            queue.add(e, damage, Cause::Drown);
         }
         if air.0 < 300 && !low {
             commands.entity(e).insert(AirLow);
@@ -1175,7 +1226,7 @@ fn wall_check(
 }
 fn wall_damage(q: Query<Entity, With<InWall>>, mut queue: ResMut<DamageQueue>) {
     for e in &q {
-        queue.0.push((e, 1.0, Cause::InWall));
+        queue.add(e, 1.0, Cause::InWall);
     }
 }
 
@@ -1221,53 +1272,81 @@ fn reindex(
     }
 }
 
-/// `LivingEntity.hurt`: the queued damage is applied; within 10 ticks of a hurt only a larger hit counts, by the
-/// difference; a cow at 0 health dies (leaves the index and the world).
+/// `LivingEntity.hurtServer` for the queued hits: within 10 ticks of a hurt only a larger hit counts, by the
+/// difference; a cow at 0 health dies (leaves the index and the world). The effects `Mob` attaches to a hit that goes
+/// through are applied here, in the same path (read in `mobs.rs` `hurt_server`): the knockback of an entity's hit
+/// (0.4 away from the attacker, or a random direction when it has no position, scaled by the species' resistance,
+/// a hop on the ground; no knockback for the environmental causes nor for a hit inside the cooldown), the end of
+/// love (`Animal.actuallyHurt`), and `noActionTime` back to 0 (`ai::after_hurt`: the stroll goal is allowed again for
+/// 100 ticks). The goals read the hit through `Hurts` and `HurtCauses` (Panic).
+#[allow(clippy::type_complexity)]
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
+    sp: Res<Species>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
-    mut knock: ResMut<Knockbacks>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell)>,
-    mut bodies: Query<(&mut Vel, &Contact)>,
+    mut wheel: ResMut<Wheel>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut causes: ResMut<HurtCauses>,
     mut commands: Commands,
 ) {
-    for (e, dx, dz) in std::mem::take(&mut knock.0) {
-        // `LivingEntity.knockback(0.4, dx, dz)`: away from the attacker, a hop when on the ground.
-        let Ok((mut v, c)) = bodies.get_mut(e) else { continue };
-        let l = (dx * dx + dz * dz).sqrt();
-        if l >= 1.0e-5 {
-            let (nx, nz) = (dx / l * 0.4, dz / l * 0.4);
-            let y = if c.on_ground { (v.0.y / 2.0 + 0.4).min(0.4) } else { v.0.y };
-            v.0 = Vec3::new(v.0.x / 2.0 - nx, y, v.0.z / 2.0 - nz);
-            commands.entity(e).insert(Moving);
-        }
-    }
     // The causes of the previous step were read by the goals (they run after this system in the chain).
     causes.0.clear();
-    for (e, amount, cause) in std::mem::take(&mut queue.0) {
-        let Ok((mut h, mut hurt, cell)) = q.get_mut(e) else { continue };
-        let applied = if clock.0 < hurt.at + 10 && hurt.at != 0 {
-            if amount <= hurt.last {
+    for hit in std::mem::take(&mut queue.0) {
+        let e = hit.target;
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following)) = q.get_mut(e) else {
+            continue;
+        };
+        let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
+        let applied = if cooldown {
+            if hit.amount <= hurt.last {
                 continue;
             }
-            amount - hurt.last
+            hit.amount - hurt.last
         } else {
-            amount
+            hit.amount
         };
-        *hurt = HurtAt { at: clock.0, last: amount };
+        *hurt = HurtAt { at: clock.0, last: hit.amount };
         h.0 -= applied;
         if h.0 <= 0.0 {
             if cell.0 != u32::MAX {
                 idx.remove(e, cell.0);
             }
             commands.entity(e).despawn();
-        } else {
-            hurts.0.push(e);
-            causes.0.push((e, cause));
+            continue;
         }
+        hurts.0.push(e);
+        causes.0.push((e, hit.cause));
+        // `Animal.actuallyHurt`: damage taken ends love.
+        commands.entity(e).remove::<crate::goals::Love>();
+        // `ai::after_hurt`: `noActionTime = 0`.
+        if active.0 != u64::MAX {
+            active.0 = active.0.max(clock.0 + 100);
+            if !stroll.scheduled && !stroll.walking {
+                // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
+                // of a panic), which the hit must not shift.
+                let mut own = Rng(((e.index().index() as u64) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
+                arm_stroll(&mut wheel, clock.0, e, &mut stroll, &mut own);
+            }
+        }
+        // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
+        if hit.cause == Cause::Entity && !cooldown {
+            let power = 0.4_f64 * (1.0 - sp.knockback_resistance);
+            if power > 0.0 {
+                let (mut dx, mut dz) = hit.from.map_or((0.0, 0.0), |f| (f.0 - pos.0.x, f.1 - pos.0.z));
+                while dx * dx + dz * dz < f64::from(1.0e-5_f32) {
+                    dx = (rng.next_f64() - rng.next_f64()) * 0.01;
+                    dz = (rng.next_f64() - rng.next_f64()) * 0.01;
+                }
+                let l = (dx * dx + dz * dz).sqrt();
+                let (kx, kz) = (dx / l * power, dz / l * power);
+                let y = if c.on_ground { (v.0.y / 2.0 + power).min(0.4) } else { v.0.y };
+                v.0 = Vec3::new(v.0.x / 2.0 - kx, y, v.0.z / 2.0 - kz);
+                commands.entity(e).insert(Moving);
+            }
+        }
+        let _ = following;
     }
 }
 /// The module of the cows that overlap a hazard (only they are visited): lava ignites 15 s and hurts 4, fire ignites
@@ -1305,19 +1384,19 @@ fn hazard_tick(
             }
         }
         if f & HAZ_LAVA != 0 {
-            queue.0.push((e, 4.0, Cause::Lava));
+            queue.add(e, 4.0, Cause::Lava);
         }
         if f & HAZ_FIRE != 0 {
             // `FireBlock.entityInside`: the fire hurts 1 as well as setting alight.
-            queue.0.push((e, 1.0, Cause::InFire));
+            queue.add(e, 1.0, Cause::InFire);
         }
         if f & HAZ_CACTUS != 0 {
-            queue.0.push((e, 1.0, Cause::Cactus));
+            queue.add(e, 1.0, Cause::Cactus);
         }
         if f & HAZ_SNOW != 0 {
             frozen.0 = (frozen.0 + 1).min(140);
             if frozen.0 >= 140 && now % 40 == 0 {
-                queue.0.push((e, 1.0, Cause::Freeze));
+                queue.add(e, 1.0, Cause::Freeze);
             }
         }
     }
@@ -1417,7 +1496,7 @@ pub(crate) fn due(
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
                     if clock.0 < burning.until {
-                        queue.0.push((e2, 1.0, Cause::OnFire));
+                        queue.add(e2, 1.0, Cause::OnFire);
                         wheel.push((clock.0 + 20).min(clock.0 + WHEEL as u64 - 1), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
@@ -1458,7 +1537,6 @@ impl Herd {
         let (level, species, _kind) = build_level(half, hazards);
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
-        world.insert_resource(Knockbacks::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(level);
         world.insert_resource(species);
@@ -1495,12 +1573,9 @@ impl Herd {
         p.list = players;
         p.dirty = true;
     }
-    /// A hit from `from` (x, z): `amount` damage and the knockback away from it (the damage a player does).
+    /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
     pub fn hit(&mut self, e: Entity, amount: f32, from: (f64, f64)) {
-        let p = self.world.get::<Pos>(e).unwrap().0;
-        self.world.resource_mut::<DamageQueue>().0.push((e, amount, Cause::Entity));
-        // `knockback(0.4, attacker - victim)`: the direction TOWARD the attacker, the push is the other way.
-        self.world.resource_mut::<Knockbacks>().0.push((e, from.0 - p.x, from.1 - p.z));
+        self.world.resource_mut::<DamageQueue>().add_from(e, amount, Cause::Entity, from);
     }
     /// Puts the cow at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.
     pub fn teleport(&mut self, e: Entity, at: Vec3) {
@@ -1693,6 +1768,24 @@ mod tests {
             }
             last = x;
         }
+    }
+
+    /// A cow that keeps jumping under a low ceiling, tick by tick (to compare with `Mob`: the jump delay).
+    #[test]
+    #[ignore = "trace"]
+    fn trace_a_cow_jumping_under_a_ceiling() {
+        let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let e = herd.world.spawn(cow_bundle(-19.0, -19.0, 77)).id();
+        herd.world.entity_mut(e).insert(ActiveUntil(0));
+        herd.world.entity_mut(e).remove::<crate::goals::Jump>();
+        herd.world.get_mut::<Drive>(e).unwrap().jump = true;
+        let ys: Vec<String> = (1..=40)
+            .map(|_| {
+                herd.tick();
+                format!("{:.2}", herd.world.get::<Pos>(e).unwrap().0.y)
+            })
+            .collect();
+        eprintln!("ecs jump y: {}", ys.join(" "));
     }
 
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
