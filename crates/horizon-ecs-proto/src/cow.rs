@@ -2302,6 +2302,8 @@ mod tests {
             assert!(y > 1.5, "the cow floats up: y = {y}");
         }
         // Fire in the cell of the second cow, then water over it: the burning stops.
+        // (The burner stands still for this: a panic that runs from the fire is the goals' business, not the hazards'.)
+        herd.world.entity_mut(burner).remove::<crate::goals::Panic>();
         herd.set_block(-11, 1, 10, "minecraft:fire");
         for _ in 0..3 {
             herd.tick();

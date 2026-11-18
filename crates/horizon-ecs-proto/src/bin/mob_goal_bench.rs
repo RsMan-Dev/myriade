@@ -31,6 +31,18 @@ fn main() {
             let o = -f64::from(side) * spacing / 2.0;
             let mut m = Mob::new(i as u32 + 1, kind.clone(), Vec3::new(o + cx * spacing + 0.5, 1.0, o + cz * spacing + 0.5), ((i * 37) % 360) as f32);
             m.persistent = true;
+            // SCOPE: only the goals the ECS zombie has (melee, stroll, the two looks; hurt-by and nearest player).
+            if std::env::var_os("SCOPE").is_some() {
+                use horizon_client_lib::mobs::goals::*;
+                m.ai.goals.clear();
+                m.ai.targets.clear();
+                m.ai.goals.add(3, MeleeAttack::new(1.0, false).zombie());
+                m.ai.goals.add(7, Stroll::avoiding_water(1.0));
+                m.ai.goals.add(8, LookAtPlayer::new(8.0));
+                m.ai.goals.add(8, RandomLookAround::default());
+                m.ai.targets.add(1, HurtByTarget::new());
+                m.ai.targets.add(2, NearestTarget::player(true));
+            }
             m
         })
         .collect();
@@ -125,7 +137,7 @@ fn main() {
                 others_solid: Some(&[]),
                 nearest_player: near.map(|i| Vec3::new(list[i].0, 1.0, list[i].1)),
                 player: near.map(|i| views[i].clone()),
-                game_time: t as i64,
+                game_time: t as i64 + 1,
                 ..w.clone()
             };
             let kept = mobs::ai::tick(&mut mobs[slot], &view, &mut level, &mut events);
