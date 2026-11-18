@@ -132,12 +132,12 @@ where
         request.on_ground,
         &mut shapes,
         |bounds, out| {
-            out.extend(entities.iter().cloned().map(BlockCollider::Shape));
+            out.extend(entities.iter().cloned().map(|s| BlockCollider::Shape(Box::new(s))));
             if let Some(border) = world
                 .movement_border(request.entity, bounds)
                 .map_err(CollisionScanError::World)?
             {
-                out.push(BlockCollider::Shape(border));
+                out.push(BlockCollider::Shape(Box::new(border)));
             }
             let mut scan =
                 BlockCollisionScan::new(world, request.context, bounds, false, candidate_budget)?;

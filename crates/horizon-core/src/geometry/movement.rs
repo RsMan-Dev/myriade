@@ -101,7 +101,7 @@ impl<S: std::borrow::Borrow<VoxelShape>> Collider for Borrowed<S> {
 #[derive(Clone, Debug)]
 pub enum BlockCollider {
     Cube(Vec3),
-    Shape(VoxelShape),
+    Shape(Box<VoxelShape>),
 }
 impl Collider for BlockCollider {
     #[inline]

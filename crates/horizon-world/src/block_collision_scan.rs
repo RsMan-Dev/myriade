@@ -388,7 +388,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
     ) -> Result<Option<BlockCollider>, CollisionScanError<W::Error>> {
         Ok(self.scan_next()?.map(|(_, found)| match found {
             Found::Cube(offset) => BlockCollider::Cube(offset),
-            Found::Shape(shape) => BlockCollider::Shape(shape),
+            Found::Shape(shape) => BlockCollider::Shape(Box::new(shape)),
         }))
     }
 
