@@ -2453,6 +2453,7 @@ dependencies = [
  "horizon-client-render",
  "horizon-core",
  "horizon-world",
+ "libc",
 ]
 
 [[package]]
