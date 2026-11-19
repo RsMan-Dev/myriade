@@ -68,3 +68,10 @@ ou `arm(w, e, slot, 2)` dans `stop` tant que la condition de départ tient. Un b
 Le monde fuité du prototype est éclairé par le vrai moteur de Horizon (`light_chunk` à la construction, `relight` après chaque
 changement de bloc de `block_changes`) : `can_see_sky`, `brightness` et `precipitation_at` voient un toit posé ou retiré
 (test : `a_roof_over_a_zombie_stops_the_sun_and_removing_it_lets_it_burn`).
+
+## Le temps (horloge propre à l'entité)
+
+Un module lit le temps par `cow::now_of(w, e)` (dans un système : `clock.of(e)`) et arme par `cow::arm_at(w, e, local, due)` ou
+`goals::arm`, JAMAIS par la ressource d'horloge du monde (`Clock.0`) : le temps d'une créature s'arrête pendant son gel
+(chunk non simulé). Restent en temps du monde : la roue elle-même, la grille de 20 ticks de `MeleeAttackGoal.canUse`, la phase du
+sélecteur (un tick sur deux), le journal des coups, `Daylight`.
