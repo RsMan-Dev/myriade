@@ -150,6 +150,30 @@ fn pathfind(
     }
 }
 
+/// Whether a flying path from where the animal is reaches the block `target` (`createPath(pos, reach).reached`): the search `pathfind` makes,
+/// without touching the animal (the bee asks it of every flower near it).
+pub fn reaches(w: &World, e: Entity, target: [i32; 3], reach: i32) -> bool {
+    let (Some(pos), Some(body), Some(c), Some(sp)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Contact>(e), w.get::<NavParams>(e)) else { return false };
+    let level = w.resource::<Level>();
+    let pm = PathMob {
+        position: pos.0,
+        width: body.width,
+        height: body.height,
+        on_ground: c.on_ground,
+        in_water: w.get::<FluidState>(e).is_some_and(|f| f.in_water),
+        max_up_step: body.step_height,
+        max_fall_distance: comfortable_fall_distance(0.0),
+        malus: sp.malus,
+        can_float: sp.can_float,
+        can_open_doors: sp.can_open_doors,
+        can_pass_doors: sp.can_pass_doors,
+        can_walk_over_fences: sp.can_walk_over_fences,
+        stands_on_lava: false,
+    };
+    let max_len = sp.follow_range;
+    Finder::new(level.mw.0, &pm, Evaluator::Fly).find(&[target], max_len, reach, (max_len * 16.0).floor() as i32).is_some_and(|p| p.reached)
+}
+
 /// `followThePath` of the air: the node is reached within 1.0 vertically, the position is the animal's own, a node seen in a straight
 /// line (clear of blocks, fluids included) is taken at once, and the wanted height is the node's.
 #[allow(clippy::type_complexity)]

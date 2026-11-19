@@ -32,6 +32,7 @@ pub mod strider;
 pub mod turtle;
 pub mod vex;
 pub mod squid;
+pub mod bee;
 pub mod dolphin;
 pub mod axolotl;
 pub mod drowned;
@@ -90,6 +91,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &rabbit::DEF,
     &turtle::DEF,
     &squid::DEF,
+    &bee::DEF,
     &dolphin::DEF,
     &axolotl::DEF,
     &drowned::DEF,
@@ -491,6 +493,7 @@ mod tests {
         ("minecraft:dolphin", &[]),
         ("minecraft:axolotl", &[]),
         ("minecraft:drowned", &[]),
+        ("minecraft:bee", &[("bee_enter_hive", 1), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8)]),

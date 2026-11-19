@@ -877,6 +877,7 @@ pub(crate) fn arbitrate(world: &mut World) {
     crate::behaviours::flier_goals::tick_all(world);
     crate::behaviours::squid_goals::tick_all(world);
     crate::locomotion::climb::tick_all(world);
+    crate::behaviours::bee::tick_all(world);
     world.resource_mut::<CellMoves>().0.clear();
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
