@@ -16,8 +16,9 @@ impl Params {
 }
 /// The second draw of a cycle: `nextInt(10) == 0`.
 const ONE_IN: i32 = 10;
-/// `stand_if_possible`: `counter = 20`, the rear lasts those ticks.
-const STAND_TICKS: u64 = 20;
+/// `stand_if_possible`: `counter = 20`; `AbstractHorse.tick` lowers it in the tick it is set (after the goals), so a
+/// sample taken after each tick sees 19 ticks up (measured against a `Mob` horse: `pilot_vs_mob.rs`, stand_4).
+const STAND_TICKS: u64 = 19;
 
 /// The counter of the cycle (`next`, `-interval` between two cycles); `armed`: its deadline is in the wheel.
 #[derive(Component, Clone, Copy, Debug)]
@@ -35,18 +36,14 @@ pub struct Standing {
 pub static MODULE: Module = Module {
     name: "random_stand",
     flags: 0,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
     fired,
     can_use,
     start,
     stop,
-    systems: no_systems,
+    requires: &[Cap::Goals],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let interval = params::<Params>(p).interval;
@@ -171,13 +168,24 @@ mod tests {
         }
         assert!(rears >= 1, "no rear in 60 000 ticks");
     }
-    /// A deadline that comes up while the animal rears does not start the goal again.
+    /// A deadline that comes up while the animal rears does not start the goal again. The control: with the same
+    /// deadlines and no rear going on, the goal does start (else the test would pass for a goal that never starts).
     #[test]
     fn a_standing_animal_does_not_start_the_goal() {
         let (mut herd, e) = resting();
+        let mut started = false;
+        for _ in 0..400 {
+            fire(&mut herd.world, e, &MODULE);
+            herd.tick();
+            if herd.world.get::<Standing>(e).is_some() {
+                started = true;
+                break;
+            }
+        }
+        assert!(started, "a forced deadline never starts the goal when the animal is free");
         let now = herd.world.resource::<Clock>().0;
         herd.world.entity_mut(e).insert(Standing { until: now + 1000 });
-        for _ in 0..20 {
+        for _ in 0..400 {
             fire(&mut herd.world, e, &MODULE);
             herd.tick();
             assert_eq!(herd.world.get::<Standing>(e).unwrap().until, now + 1000, "a second rear started");

@@ -31,6 +31,8 @@ fn ecs_with(h: &mut Herd, entries: &'static [Entry], x: f64, z: f64, seed: u64) 
     sp.goals = horizon_ecs_proto::species::Config { entries };
     let e = spawn_species(&mut h.world, &sp, x, z, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    // The animal enters the active zone: its modules arm their first deadlines.
+    h.world.resource_mut::<Entered>().0.push(e);
     e
 }
 fn mob_add(r: &mut MobRef, kind: Arc<mobs::MobType>, at: Vec3, clear: bool) -> usize {
@@ -806,4 +808,116 @@ fn trace_avoid_from_start() {
         let n = h.world.get::<Nav>(e).unwrap();
         eprintln!("trace t={t} running {g} pos ({:.2},{:.2},{:.2}) path {} needs {}", p.x, p.y, p.z, n.path.is_some(), h.world.get::<NeedsPath>(e).is_some());
     }
+}
+
+/// The law of the first rear, from the rule of `RandomStandGoal.canUse` itself (a counter from -400, one ask every other
+/// tick, `nextInt(1000) < counter` then `nextInt(10) == 0`) simulated apart, against 2000 ECS horses.
+#[test]
+fn stand_3_first_rear_law() {
+    if !have_data() {
+        return;
+    }
+    let _ = MobRef::new(20, false);
+    let horizon = 50_000usize;
+    let mut rng = horizon_ecs_proto::cow::Rng(0x9e37_79b9_7f4a_7c15);
+    let mut sim = Vec::new();
+    for _ in 0..4000 {
+        let (mut next, mut ticks) = (-400i32, 0usize);
+        loop {
+            ticks += 2;
+            next += 1;
+            if next > 0 && rng.next_int(1000) < next {
+                next = -400;
+                if rng.next_int(10) == 0 {
+                    break;
+                }
+            }
+        }
+        if ticks < horizon {
+            sim.push(ticks as f64);
+        }
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT)]);
+    let mut h = Herd::with_slab(20, false, false);
+    let es: Vec<Entity> = (0..2000).map(|k| ecs_with(&mut h, entries, -15.0 + 2.0 * (k % 16) as f64 + 0.5, -9.0 + 0.01 * k as f64, 100 + k as u64)).collect();
+    let mut first: Vec<Option<usize>> = vec![None; es.len()];
+    for t in 0..horizon {
+        h.tick();
+        for (k, &e) in es.iter().enumerate() {
+            if first[k].is_none() && h.world.get::<random_stand::Standing>(e).is_some() {
+                first[k] = Some(t);
+            }
+        }
+    }
+    let ecs: Vec<f64> = first.iter().flatten().map(|&t| t as f64).collect();
+    eprintln!("stand_3 first rear before {horizon}: rule simulated mean {:.0} (n {}), ecs mean {:.0} (n {})", mean(&sim), sim.len(), mean(&ecs), ecs.len());
+    assert!((mean(&sim) - mean(&ecs)).abs() / mean(&sim) < 0.08, "the first rear comes at another time");
+}
+
+/// Duration of the rear: the ticks (sampled after each tick) during which the animal is up, and the end of the first one.
+#[test]
+fn stand_4_rear_lasts_twenty_ticks_and_does_not_chain() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(20, false);
+    let horse = mob_kind("minecraft:horse");
+    let ids: Vec<usize> = (0..60).map(|k| mob_add(&mut r, horse.clone(), Vec3::new(-15.0 + 2.0 * (k % 16) as f64 + 0.5, 1.0, -9.0 + 3.0 * (k / 16) as f64 + 0.5), false)).collect();
+    let mut runs: Vec<usize> = Vec::new();
+    let mut cur = vec![0usize; ids.len()];
+    for _ in 0..20_000 {
+        r.step(None);
+        for (k, &i) in ids.iter().enumerate() {
+            if r.mobs[i].extra.counter > 0 {
+                cur[k] += 1;
+            } else if cur[k] > 0 {
+                runs.push(cur[k]);
+                cur[k] = 0;
+            }
+        }
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT)]);
+    let mut h = Herd::with_slab(20, false, false);
+    let es: Vec<Entity> = (0..600).map(|k| ecs_with(&mut h, entries, -15.0 + 2.0 * (k % 16) as f64 + 0.5, -9.0 + 0.05 * k as f64, 200 + k as u64)).collect();
+    let mut eruns: Vec<usize> = Vec::new();
+    let mut ecur = vec![0usize; es.len()];
+    for _ in 0..20_000 {
+        h.tick();
+        let now = h.world.resource::<Clock>().0;
+        for (k, &e) in es.iter().enumerate() {
+            if h.world.get::<random_stand::Standing>(e).is_some_and(|s| now < s.until) {
+                ecur[k] += 1;
+            } else if ecur[k] > 0 {
+                eruns.push(ecur[k]);
+                ecur[k] = 0;
+            }
+        }
+    }
+    let hist = |v: &[usize]| {
+        let mut m = std::collections::BTreeMap::new();
+        for &x in v {
+            *m.entry(x).or_insert(0) += 1;
+        }
+        m
+    };
+    eprintln!("stand_4 duration of a rear (ticks seen up -> count): mob {:?} ecs {:?}", hist(&runs), hist(&eruns));
+    assert!(!runs.is_empty() && !eruns.is_empty());
+    assert_eq!(hist(&runs).keys().collect::<Vec<_>>(), hist(&eruns).keys().collect::<Vec<_>>(), "durations differ");
+}
+/// The rate of rears on grass (the horse grazes and refuses to rear while it eats) against stone: the Mob loses the rears
+/// asked during a meal, the ECS horse has no meal. Slow: `--ignored`.
+#[test]
+#[ignore = "slow, and C: no Immobile service in the framework (a grazing horse does not rear)"]
+fn stand_5_grazing_horse_rears_less() {
+    if !have_data() {
+        return;
+    }
+    let (n, ticks) = (150, 40_000);
+    let (ms, es) = horse_run(n, ticks, false);
+    let (mg, eg) = horse_run(n, ticks, true);
+    eprintln!(
+        "stand_5 rears per 10000 ticks per horse: stone mob {:.3} ecs {:.3}; grass mob {:.3} ecs {:.3}",
+        rate(&ms, ticks), rate(&es, ticks), rate(&mg, ticks), rate(&eg, ticks)
+    );
+    assert!((rate(&mg, ticks) - rate(&eg, ticks)).abs() / rate(&mg, ticks) < 0.05);
 }
