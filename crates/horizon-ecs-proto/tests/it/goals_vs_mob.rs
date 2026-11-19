@@ -894,6 +894,8 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
     }
     // 4 repeats: other ids for the Mob (dummies first: its seed comes from its id), other seeds for the ecs animals.
     let (mut mob_runs, mut ecs_runs) = (Vec::new(), Vec::new());
+    // Episodes of looking (lengths) and the gaps between them, per side.
+    let (mut dur_m, mut dur_e, mut gap_m, mut gap_e): (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) = Default::default();
     for rep in 0..4_usize {
         let (mut r, mut h) = flat_pair();
         let spots: Vec<(f64, f64)> = (0..8).flat_map(|i| (0..5).map(move |j| (-14.5 + 4.0 * f64::from(i), -12.5 + 5.0 * f64::from(j)))).collect();
@@ -905,16 +907,40 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
             horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
         }
         let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
+        let (mut seen_m, mut seen_e) = (vec![Vec::new(); 40], vec![Vec::new(); 40]);
         for _ in 0..1200 {
             for &i in mobs.iter().chain(&dummies) {
                 r.mobs[i].ai.no_action_time = 0;
             }
             r.step(None);
             h.tick();
+            for (k, &i) in mobs.iter().enumerate() {
+                seen_m[k].push(r.names(i).contains(&"RandomLookAround"));
+            }
+            for (k, &e) in cows.iter().enumerate() {
+                seen_e[k].push(h.world.get::<random_look::Scanning>(e).is_some());
+            }
             mob_ticks += mobs.iter().filter(|&&i| r.names(i).contains(&"RandomLookAround")).count();
             ecs_ticks += cows.iter().filter(|&&e| h.world.get::<random_look::Scanning>(e).is_some()).count();
         }
         eprintln!("rep {rep}: ticks looking around: Mob {mob_ticks}, ecs {ecs_ticks} (40 animals, 1200 ticks)");
+        // Complete episodes only (neither cut by the start nor by the end of the run).
+        let split = |v: &[bool], dur: &mut Vec<f64>, gap: &mut Vec<f64>| {
+            let mut edges = Vec::new();
+            for t in 1..v.len() {
+                if v[t] != v[t - 1] {
+                    edges.push((t, v[t]));
+                }
+            }
+            for w in edges.windows(2) {
+                let len = (w[1].0 - w[0].0) as f64;
+                if w[0].1 { dur.push(len) } else { gap.push(len) }
+            }
+        };
+        for k in 0..40 {
+            split(&seen_m[k], &mut dur_m, &mut gap_m);
+            split(&seen_e[k], &mut dur_e, &mut gap_e);
+        }
         mob_runs.push(mob_ticks as f64);
         ecs_runs.push(ecs_ticks as f64);
     }
@@ -924,6 +950,11 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
     };
     let (mm, me) = (mob_runs.iter().sum::<f64>() / 4.0, ecs_runs.iter().sum::<f64>() / 4.0);
     eprintln!("mean over 4 repeats: Mob {mm:.0} (sd {:.0}), ecs {me:.0} (sd {:.0}); ratio {:.3}", sd(&mob_runs), sd(&ecs_runs), me / mm);
+    let ms = |v: &[f64]| {
+        let m = v.iter().sum::<f64>() / v.len().max(1) as f64;
+        (v.len(), m, (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len().max(2).saturating_sub(1) as f64).sqrt())
+    };
+    eprintln!("episodes (n, mean, sd): look Mob {:?} ecs {:?}; gap Mob {:?} ecs {:?}", ms(&dur_m), ms(&dur_e), ms(&gap_m), ms(&gap_e));
     assert!(mm > 500.0, "the Mob hardly looks around: {mm}");
     assert!(me >= mm * 0.85 && me <= mm * 1.18, "Mob {mm} ecs {me}");
 }
