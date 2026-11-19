@@ -570,8 +570,8 @@ mod tests {
         let reg = registry();
         let late = reg.species.len() - 1;
         let name = reg.species[late].name;
-        let names = [name];
-        let set = crate::behaviours::avoid_entity::species_mask(crate::behaviours::avoid_entity::Avoid::Named(&names));
+        let names: &'static [&'static str] = Box::leak(Box::new([name]));
+        let set = crate::behaviours::avoid_entity::species_mask(crate::behaviours::avoid_entity::Avoid::Named(names));
         assert!(set.contains(late as u8));
         assert!(!set.contains((late % 64) as u8), "{name} (id {late}) aliased onto id {}", late % 64);
     }
