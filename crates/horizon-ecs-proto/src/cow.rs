@@ -501,6 +501,8 @@ impl Wheel {
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
+/// The side of a block of columns of the index, in columns.
+const BLOCK: usize = 8;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -510,13 +512,17 @@ pub struct Index {
     pub(crate) cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
-    pub(crate) crossed: Vec<Entity>,
+    pub(crate) crossed: Vec<(Entity, u32)>,
     /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
     pub zone: crate::zone::Zone,
+    /// How many animals each block of 8 x 8 columns holds (`player_near` looks only at the blocks that hold some).
+    /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
+    blocks: Vec<u64>,
+    bw: usize,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK) }
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -528,11 +534,23 @@ impl Index {
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
         self.cells[cell as usize].push(e);
+        let (b, bit) = self.block_of(cell);
+        self.blocks[b] |= bit;
+    }
+    #[inline]
+    fn block_of(&self, cell: u32) -> (usize, u64) {
+        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
+        ((cz / BLOCK) * self.bw + cx / BLOCK, 1 << ((cz % BLOCK) * BLOCK + cx % BLOCK))
     }
     pub fn remove(&mut self, e: Entity, cell: u32) {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+            let emptied = list.is_empty();
+            if emptied {
+                let (b, bit) = self.block_of(cell);
+                self.blocks[b] &= !bit;
+            }
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
@@ -890,42 +908,6 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
 /// two circles of 32 blocks (a player's place before and after, `None`: absent) and not in the other: the cells either
 /// circle touches except those both surely contain, as two runs. A superset, with a margin of a cell or two.
-fn ring_runs(origin: f64, zz: i64, n: Option<(f64, f64)>, o: Option<(f64, f64)>) -> [(i64, i64); 2] {
-    const R: f64 = 32.0;
-    const NONE: [(i64, i64); 2] = [(1, 0), (1, 0)];
-    let (zlo, zhi) = (origin + zz as f64 * CELL, origin + (zz + 1) as f64 * CELL);
-    let col = |x: f64| ((x - origin) / CELL).floor() as i64;
-    // (the cells that may touch the circle, the cells surely inside it) in this row.
-    let one = |q: Option<(f64, f64)>| -> Option<((i64, i64), Option<(i64, i64)>)> {
-        let (px, pz) = q?;
-        let dzn = if pz < zlo { zlo - pz } else if pz > zhi { pz - zhi } else { 0.0 };
-        if dzn >= R {
-            return None;
-        }
-        let half_out = (R * R - dzn * dzn).sqrt();
-        let touch = (col(px - half_out) - 1, col(px + half_out) + 1);
-        let dzf = (pz - zlo).abs().max((pz - zhi).abs());
-        let inside = (dzf < R).then(|| {
-            let half_in = (R * R - dzf * dzf).sqrt();
-            (col(px - half_in) + 2, col(px + half_in) - 2)
-        });
-        Some((touch, inside))
-    };
-    let (a, b) = (one(n), one(o));
-    let touch = match (a, b) {
-        (None, None) => return NONE,
-        (Some((t, _)), None) | (None, Some((t, _))) => t,
-        (Some((t, _)), Some((u, _))) => (t.0.min(u.0), t.1.max(u.1)),
-    };
-    let both = match (a, b) {
-        (Some((_, Some(i))), Some((_, Some(j)))) => Some((i.0.max(j.0), i.1.min(j.1))).filter(|r| r.0 <= r.1),
-        _ => None,
-    };
-    match both {
-        Some((l, r)) => [(touch.0, l - 1), (r + 1, touch.1)],
-        None => [touch, (1, 0)],
-    }
-}
 
 /// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are
 /// and the cows stay in their cells. When a player moves (`Players.dirty`), only the cows of the cells its old and
@@ -979,11 +961,40 @@ pub(crate) fn player_near(
             }
             let (x0, x1) = (idx.column(x0).max(0), idx.column(x1).min(idx.width as i64 - 1));
             let (z0, z1) = (idx.column(z0).max(0), idx.column(z1).min(idx.width as i64 - 1));
-            for zz in z0..=z1 {
-                for (lo, hi) in ring_runs(origin, zz, n, o) {
-                    for xx in lo.max(x0)..=hi.min(x1) {
+            // A rectangle of columns the two circles agree on (inside both, or outside both) holds no animal whose state
+            // changes: only the blocks and the columns that hold an animal and are not so are looked at.
+            let agree = |cx0: f64, cx1: f64, cz0: f64, cz1: f64| -> bool {
+                let (mut inside, mut outside) = (true, true);
+                for q in [n, o] {
+                    let Some((px, pz)) = q else { inside = false; continue };
+                    let (nx, nz) = (px.clamp(cx0, cx1) - px, pz.clamp(cz0, cz1) - pz);
+                    let (fx, fz) = ((px - cx0).abs().max((px - cx1).abs()), (pz - cz0).abs().max((pz - cz1).abs()));
+                    inside &= fx * fx + fz * fz < R2;
+                    outside &= nx * nx + nz * nz >= R2;
+                }
+                inside || outside
+            };
+            let b = BLOCK as i64;
+            for bz in z0 / b..=z1 / b {
+                for bx in x0 / b..=x1 / b {
+                    if idx.blocks[(bz * idx.bw as i64 + bx) as usize] == 0 {
+                        continue;
+                    }
+                    let (bx0, bz0) = (origin + (bx * b) as f64 * CELL, origin + (bz * b) as f64 * CELL);
+                    if agree(bx0, bx0 + b as f64 * CELL, bz0, bz0 + b as f64 * CELL) {
+                        continue;
+                    }
+                    let mut bits = idx.blocks[(bz * idx.bw as i64 + bx) as usize];
+                    while bits != 0 {
+                        let k = bits.trailing_zeros() as i64;
+                        bits &= bits - 1;
+                        let (xx, zz) = (bx * b + k % b, bz * b + k / b);
                         let c = zz as usize * idx.width + xx as usize;
-                        if idx.stamp[c] != tick {
+                        if idx.stamp[c] == tick {
+                            continue;
+                        }
+                        let (cx0, cz0) = (origin + xx as f64 * CELL, origin + zz as f64 * CELL);
+                        if !agree(cx0, cx0 + CELL, cz0, cz0 + CELL) {
                             idx.stamp[c] = tick;
                             pl.candidates.push(c);
                         }
@@ -1024,8 +1035,14 @@ pub(crate) fn player_near(
         }
     }
     if !list_empty {
-        for &e in &idx.crossed {
-            test(e, &mut active, &mut wheel);
+        for &(e, cell) in &idx.crossed {
+            // A column more or less changes nothing for an animal with no player within a bin of it.
+            let (cx, cz) = ((cell as usize % idx.width) as f64 + 0.5 + origin / CELL, (cell as usize / idx.width) as f64 + 0.5 + origin / CELL);
+            let (bx, bz) = (bin(cx * CELL), bin(cz * CELL));
+            let near = (bz - 1..=bz + 1).any(|zz| (bx - 1..=bx + 1).any(|xx| (0..bins_n).contains(&xx) && (0..bins_n).contains(&zz) && !nbins[(zz * bins_n + xx) as usize].is_empty()));
+            if near {
+                test(e, &mut active, &mut wheel);
+            }
         }
     }
     idx.crossed.clear();
@@ -1637,7 +1654,7 @@ pub(crate) fn reindex(
             idx.insert(e, cell);
             c.0 = cell;
             moves.0.push(e);
-            idx.crossed.push(e);
+            idx.crossed.push((e, cell));
         }
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
@@ -3094,38 +3111,6 @@ mod tests {
         eprintln!("travelled {travelled}, asleep between {min_asleep} and {max_asleep} of 300");
     }
 
-    /// The runs of `ring_runs` hold every cell where a player's two circles may disagree (checked cell by cell, by
-    /// the corners of the cells that could hold a point of one circle and not of the other).
-    #[test]
-    fn the_ring_runs_cover_every_cell_the_circles_disagree_on() {
-        let mut r = Rng(0x5eed | 1);
-        let origin = -50.0;
-        let rnd = |r: &mut Rng, a: f64, b: f64| a + (b - a) * (f64::from(r.next_u32()) / f64::from(u32::MAX));
-        for _ in 0..3000 {
-            let n = (r.next_u32() % 8 != 0).then(|| (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)));
-            let step = [0.1, 1.0, 5.0, 70.0][(r.next_u32() % 4) as usize];
-            let o = (r.next_u32() % 8 != 0).then(|| match n {
-                Some((x, z)) => (x + rnd(&mut r, -step, step), z + rnd(&mut r, -step, step)),
-                None => (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)),
-            });
-            for zz in 0..50i64 {
-                let runs = ring_runs(origin, zz, n, o);
-                for xx in 0..50i64 {
-                    // Points of the cell, a fine grid with its corners.
-                    let mut differs = false;
-                    for a in 0..=8 {
-                        for b in 0..=8 {
-                            let (x, z) = (origin + (xx as f64 + f64::from(a) / 8.0) * CELL, origin + (zz as f64 + f64::from(b) / 8.0) * CELL);
-                            let inside = |q: Option<(f64, f64)>| q.is_some_and(|(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0);
-                            differs |= inside(n) != inside(o);
-                        }
-                    }
-                    let covered = runs.iter().any(|&(lo, hi)| lo <= xx && xx <= hi);
-                    assert!(!differs || covered, "cell ({xx}, {zz}) of {n:?} -> {o:?} is not covered by {runs:?}");
-                }
-            }
-        }
-    }
 
     /// A cow that walks out of the 32 blocks of a player that stays where it is stops being active when it changes
     /// cell (the player moved nowhere: only the cell change tells).

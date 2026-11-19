@@ -222,7 +222,7 @@ pub fn zone_step(world: &mut World) {
             }
         }
         // A creature that walked into a chunk that does not tick goes to sleep (its tick that moved it was its last).
-        for &e in &idx.crossed {
+        for &(e, _) in &idx.crossed {
             let Some(c) = world.get::<crate::cow::Cell>(e) else { continue };
             if !idx.zone.simulated_cell(c.0) && !world.entity(e).contains::<Dormant>() {
                 slept.push(e);
@@ -328,8 +328,12 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
     // The world may have changed under it while it slept (a block, a fluid): its physics looks again.
     em.insert(Moving);
     world.resource_mut::<Clock>().sleep_for(e, now - since);
+    // The melee check keeps its time in the WORLD's (vanilla's `lastCanUseCheck` against `getGameTime`): after 20 ticks or more
+    // asleep the last ask is old and `canUse` is asked at once, as the `Mob` does.
+    let melee = world.get::<crate::hostile::Attack>(e).filter(|_| now - since >= 20).map(|a| a.melee_slot);
     let mut wh = world.resource_mut::<Wheel>();
     for (rem, due) in wheel {
-        wh.push(now + rem, e, due);
+        let stale = matches!((due, melee), (Due::Goal(s), Some(m)) if s == m);
+        wh.push(if stale { now + 1 } else { now + rem }, e, due);
     }
 }
