@@ -52,6 +52,10 @@ pub struct Contact {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Drive {
     pub zza: f32,
+    /// The vertical input (`yya`: a flier's, from `FlyingMoveControl`).
+    pub yya: f32,
+    /// `Entity.setNoGravity` of a flier while its move control has a spot to go to (`locomotion/fly.rs`).
+    pub no_gravity: bool,
     /// The sideways input (`xxa`).
     pub xxa: f32,
     pub speed: f32,
@@ -664,6 +668,11 @@ pub struct Species {
     pub step_height: f32,
     pub gravity: f64,
     pub speed: f64,
+    /// `Attributes.FLYING_SPEED` and the `air_speed` of the type (`LivingEntity.getFlyingSpeed`).
+    pub flying_speed: f64,
+    pub air_speed: f32,
+    /// `EntityType` flag: the vertical drag is the horizontal one (0.91) rather than 0.98 (a flier of the air).
+    pub omnidirectional: bool,
     pub baby: (f32, f32),
     pub goals: crate::species::Config,
     /// The farm behaviours of the species (`farm.rs`).
@@ -806,6 +815,9 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             step_height: kind.step_height as f32,
             gravity: kind.gravity,
             speed: mob.attrs.speed,
+            flying_speed: horizon_client_lib::mobs::finalize::value(&mob, horizon_client_lib::mobs::finalize::Attr::FlyingSpeed),
+            air_speed: kind.air_speed,
+            omnidirectional: kind.flags.omnidirectional,
             baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
             goals: crate::species::config(name),
             farm: crate::farm::farm_def(name),
@@ -907,7 +919,6 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
 pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
     (
         Yaw(yaw),
-        crate::locomotion::WalkMode,
         crate::locomotion::Modes(sp.modes),
         Drive::default(),
         MoveTo::default(),
@@ -1217,7 +1228,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Without<crate::locomotion::SwimMode>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
@@ -1282,7 +1293,7 @@ pub(crate) fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<crate::locomotion::SwimMode>)>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1478,7 +1489,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Without<crate::locomotion::SwimMode>)>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1663,7 +1674,7 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
-        (With<Moving>, Without<Overlapping>, Without<crate::locomotion::SwimMode>),
+        (With<Moving>, Without<Overlapping>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {

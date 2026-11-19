@@ -79,6 +79,8 @@ pub enum Pick {
     LandAway { min_h: f64, max_h: f64, v: i32, from: [f64; 3] },
     /// `LandRandomPos.getPosTowards(mob, h, v, to)`.
     LandTowards { h: i32, v: i32, to: [f64; 3] },
+    /// `Mob.flying_stroll_pos`: `HoverRandomPos(8, 7, 3, 1)` in the half circle of the view `(xd, zd)`, else `AirAndWaterRandomPos(8, 4, -2)`.
+    Flying { xd: f64, zd: f64 },
 }
 impl Rng {
     /// `RandomSource.nextFloat`.
@@ -99,6 +101,11 @@ impl Spotter<'_> {
     }
     /// `RandomPos.generateRandomDirectionWithinRadians`.
     fn direction_within(&mut self, min: f64, max: f64, v: i32, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
+        self.direction_within_height(min, max, v, 0, xd, zd, max_rad)
+    }
+    /// The same with the flying height added to the vertical offset (`RandomPos.generateRandomDirectionWithinRadians`).
+    #[allow(clippy::too_many_arguments)]
+    fn direction_within_height(&mut self, min: f64, max: f64, v: i32, fly_height: i32, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
         let center = horizon_core::geometry::trig::atan2(zd, xd) - f64::from(std::f32::consts::FRAC_PI_2);
         let yrad = center + f64::from(2.0 * self.rng.next_float() - 1.0) * max_rad;
         let dist = (min + self.rng.next_f64().sqrt() * (max - min)) * f64::from(std::f32::consts::SQRT_2);
@@ -107,7 +114,7 @@ impl Spotter<'_> {
         if xt.abs() > max || zt.abs() > max {
             return None;
         }
-        let yt = self.rng.next_int(2 * v + 1) - v;
+        let yt = self.rng.next_int(2 * v + 1) - v + fly_height;
         Some([xt.floor() as i32, yt, zt.floor() as i32])
     }
     /// The offset is a block offset: it is rounded first, then added to the position and rounded again.
@@ -163,8 +170,57 @@ impl Spotter<'_> {
                 }
                 self.land_up_out_of_solid(p)
             }
-            Pick::LandAway { .. } | Pick::LandTowards { .. } => unreachable!("drawn by `pick_in_direction`"),
+            Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } => unreachable!("drawn by `pick`"),
         }
+    }
+    /// `HoverRandomPos.generateRandomPos(8, 7, 3, 1)`: a stable spot (a solid with a sturdy top) raised 1..=3 blocks above the ground, out of water.
+    fn hover(&mut self, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
+        let d = self.direction_within(0.0, 8.0, 7, xd, zd, max_rad)?;
+        let p = self.toward(d);
+        let mw = self.mw;
+        let sturdy = horizon_client_lib::mobs::data::STURDY_TOP;
+        if !self.in_height(p) || mw.data.state(mw.world.block(p[0], p[1], p[2])).flags & sturdy == 0 {
+            return None;
+        }
+        let above = self.rng.next_int(3) + 1;
+        let p = self.move_up_to_above_solid(p, above);
+        let water = mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water;
+        (!water && self.malus_is_zero(p)).then_some(p)
+    }
+    fn move_up_to_above_solid(&self, mut p: [i32; 3], above: i32) -> [i32; 3] {
+        let mw = self.mw;
+        if !mw.solid(p[0], p[1], p[2]) {
+            return p;
+        }
+        p[1] += 1;
+        while p[1] < mw.world.top_y() && mw.solid(p[0], p[1], p[2]) {
+            p[1] += 1;
+        }
+        let first = p[1];
+        while p[1] < mw.world.top_y() && p[1] - first < above {
+            p[1] += 1;
+            if mw.solid(p[0], p[1], p[2]) {
+                p[1] -= 1;
+                break;
+            }
+        }
+        p
+    }
+    /// `AirAndWaterRandomPos.generateRandomPos(8, 4, -2)`.
+    fn air_and_water(&mut self, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
+        let d = self.direction_within_height(0.0, 8.0, 4, -2, xd, zd, max_rad)?;
+        let mut p = self.toward(d);
+        if !self.in_height(p) {
+            return None;
+        }
+        let mw = self.mw;
+        if mw.solid(p[0], p[1], p[2]) {
+            p[1] += 1;
+            while p[1] < mw.world.top_y() && mw.solid(p[0], p[1], p[2]) {
+                p[1] += 1;
+            }
+        }
+        self.malus_is_zero(p).then_some(p)
     }
     /// `LandRandomPos.getPosInDirection`: ten tries within a quarter turn of the direction `(xd, zd)`.
     fn land_in_direction(&mut self, min_h: f64, max_h: f64, v: i32, xd: f64, zd: f64) -> Option<[f64; 3]> {
@@ -206,6 +262,10 @@ impl Spotter<'_> {
             Pick::LandTowards { h, v, to } => {
                 let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
                 self.land_in_direction(0.0, f64::from(h), v, xd, zd)
+            }
+            Pick::Flying { xd, zd } => {
+                let max_rad = f64::from(std::f32::consts::FRAC_PI_2);
+                self.best_of_ten(|s| s.hover(xd, zd, max_rad)).or_else(|| self.best_of_ten(|s| s.air_and_water(xd, zd, max_rad)))
             }
             other => self.best_of_ten(|s| s.candidate(other)),
         }

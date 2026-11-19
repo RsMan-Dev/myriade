@@ -499,6 +499,8 @@ pub struct Events {
     pub left_fluid: Ev,
     /// The feet reached the ground after being in the air.
     pub landed: Ev,
+    /// The active mode of locomotion changed (`locomotion::switch`: a fluid, or a goal that takes off or lands).
+    pub mode_changed: Ev,
     /// A baby grew up (same as `farm::Grown`, readable by several).
     pub grew: Ev,
     /// A grazing animal ate its block (`eat_block`).
@@ -511,7 +513,7 @@ pub struct Events {
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.mode_changed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
             ev.swap();
         }
     }

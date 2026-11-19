@@ -19,9 +19,10 @@ pub mod sheep;
 pub mod templates;
 pub mod zombie;
 pub mod cod;
+pub mod parrot;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &cod::DEF];
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &cod::DEF, &parrot::DEF];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -363,6 +364,7 @@ mod tests {
                 "minecraft:sheep" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 2), f(&tempt::MODULE, 3), f(&follow_parent::MODULE, 4), f(&eat_block::MODULE, 5), f(&stroll::MODULE, 6), f(&look_at_player::MODULE, 7), f(&random_look::MODULE, 8)],
                 "minecraft:chicken" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 2), f(&tempt::MODULE, 3), f(&follow_parent::MODULE, 4), f(&stroll::MODULE, 5), f(&look_at_player::MODULE, 6), f(&random_look::MODULE, 7)],
                 "minecraft:cod" => vec![f(&fish_swim::MODULE, 4)],
+                "minecraft:parrot" => vec![f(&fly_stroll::MODULE, 2)],
                 "minecraft:skeleton" => vec![f(&hurt_by::MODULE, 1), f(&nearest_target::MODULE, 2), f(&stroll::MODULE, 5), f(&look_at_player::MODULE, 6), f(&random_look::MODULE, 6), f(&ranged_bow::MODULE, 4)],
                 _ => vec![f(&hurt_by::MODULE, 1), f(&nearest_target::MODULE, 2), f(&melee::MODULE, 3), f(&stroll::MODULE, 7), f(&look_at_player::MODULE, 8), f(&random_look::MODULE, 8)],
             }
