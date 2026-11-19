@@ -3,6 +3,7 @@
 //! de la case visée (approximation, voir `villager-divers.md`).
 use super::block_reach::{no_blocks_above, pick_in_reach, walk_to};
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::MobWorld;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {

@@ -43,8 +43,8 @@ pub fn start(w: &mut World, e: Entity) {
     super::hunt_speed::refresh(w, e);
     let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
     w.resource_mut::<Events>().host.sound("entity.ravager.roar", at, 1.0, 1.0);
-    after(w, e, HIT_AT, hit);
-    after(w, e, END_AT, end);
+    crate::cow::after(w, e, HIT_AT, hit);
+    crate::cow::after(w, e, END_AT, end);
 }
 fn end(w: &mut World, e: Entity) {
     release(w, e, OCC_ROARING);
@@ -55,9 +55,10 @@ fn hit(w: &mut World, e: Entity) {
     let Some(r) = w.get::<Roar>(e).map(|r| r.0) else { return };
     let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return };
     let from = (at.x, at.z);
-    let area = reach_box(w, e, r.range);
+    let area = crate::area::reach_box(w, e, r.range);
+    use crate::area::*;
     for p in players_in(w, area) {
-        hurt_player(w, p, r.damage);
+        hurt_player(w, p, r.damage, e);
         push_player(w, p, fling(from, player_xz(w, p), r.fling));
     }
     for c in creatures_in(w, area, e) {

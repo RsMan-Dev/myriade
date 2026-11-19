@@ -2,6 +2,7 @@
 //! table `map` (ex. `neoforge:acceptable_villager_distances`), chargée depuis les données : rien n'est recopié ici.
 //! Une entité sans distance dans la table n'est pas une menace.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::{Index, Pos, SpeciesId};
 use std::collections::BTreeMap;
 

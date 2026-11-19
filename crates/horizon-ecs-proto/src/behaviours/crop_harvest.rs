@@ -5,6 +5,7 @@ use super::block_reach::{block_at, look_block, pick_in_reach, walk_to, Pred};
 use crate::behaviours::Cap;
 use crate::blocks;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 

@@ -2,6 +2,7 @@
 //! Réessai à attente croissante (`Retry`, comme `villager_brain.rs:1330`). La perte est événementielle : `lose_claims`
 //! ne lit que les points sortis du registre (`removed()`) et n'atteint que les entités qui les tiennent (`ClaimIndex`).
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Pos, Rng};
 use crate::poi::PoiRegistry;
 use horizon_world::poi::PoiType;

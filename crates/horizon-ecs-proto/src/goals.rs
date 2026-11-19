@@ -708,6 +708,10 @@ impl Events {
 }
 
 // ---- the wheel and the helpers the modules use --------------------------------------------------------------
+/// One draw of the entity's own generator against the probability `p`.
+pub(crate) fn chance(w: &mut World, e: Entity, p: f64) -> bool {
+    with_rng(w, e, |r| r.next_f64() < p)
+}
 pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> T) -> T {
     f(&mut w.get_mut::<Rng>(e).unwrap())
 }

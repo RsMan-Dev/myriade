@@ -1,6 +1,7 @@
 //! Flâne près d'un bloc mémorisé (`StrollAroundPoi`, `villager_brain.rs:1239`) : ne démarre que si l'on est à moins de `max_dist`
 //! du bloc, puis marche vers un point tiré au hasard autour de soi (8 horizontal, 6 vertical : `land_random_pos(cx.w, 8, 6)`).
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use crate::goals::*;
 

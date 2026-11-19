@@ -2,6 +2,7 @@
 //! poursuit à vitesse 0,6, distance d'arrivée 1 (`villager_brain.rs:2632-2640`). Le camarade est un paramètre (`friends`,
 //! mémoire de liste d'entités : les bébés proches, interface supposée) ; la cible est l'interaction (`INTERACTION_TARGET`).
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_play_tag",

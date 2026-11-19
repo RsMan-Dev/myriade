@@ -5,6 +5,7 @@ use super::block_reach::walk_to;
 use super::bell_heard::HEARD_BELL;
 use super::raid;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::goals::with_rng;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {

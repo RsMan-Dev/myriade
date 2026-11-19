@@ -1,6 +1,7 @@
 //! Marche jusqu'au bloc d'une mémoire (`WalkTarget` de `walk_to_block_memory`, `villager_brain.rs:3629`) et s'arrête à `range`
 //! horizontal du centre. Sert au poste de travail, à la cloche, au lit.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 
 pub struct Params {

@@ -37,7 +37,7 @@ pub fn on_strike(w: &mut World, e: Entity) {
     let host = &mut w.resource_mut::<Events>().host;
     host.sound(b.sound, at, 1.0, 1.0);
     host.entity_event(e, b.event);
-    after(w, e, b.ticks, release_bite);
+    crate::cow::after(w, e, b.ticks, release_bite);
 }
 fn release_bite(w: &mut World, e: Entity) {
     release(w, e, OCC_BITING);

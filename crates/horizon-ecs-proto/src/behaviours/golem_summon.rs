@@ -2,6 +2,7 @@
 //! `NEEDED` villageois de la boîte (10 blocs autour de a) ont dormi dans le jour et n'ont pas vu de golem, un golem apparaît
 //! sur une colonne trouvée près de a (10 essais, `summon_golem`), et ces villageois ne veulent plus d'autre golem 599 ticks.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::*;
 use crate::goals::{self, Events};
 use horizon_client_lib::mobs::{

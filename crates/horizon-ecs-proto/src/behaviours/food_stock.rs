@@ -2,6 +2,7 @@
 //! qui est digéré. Les points de l'inventaire viennent de `food_inventory::points`, lus dans les données.
 use crate::behaviours::food_inventory::{self as inv, Stock};
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Level;
 use horizon_client_lib::items::Items;
 

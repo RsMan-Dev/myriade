@@ -1,6 +1,7 @@
 //! Une cloche sonnée : chaque entité avec un cerveau dans 32 blocs garde l'heure de la sonnerie (`HEARD_BELL`).
 //! Système événementiel : ne tourne que si `BellRings` n'est pas vide ; l'événement vient du bloc cloche (à câbler).
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Index};
 
 pub static HEARD_BELL: MemKey = MemKey::new("minecraft:heard_bell_time", Shape::Int);

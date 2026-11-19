@@ -1,6 +1,7 @@
 //! Statut du raid vu par le villageois (`villager.rs:394-404`, `RAID_*` 328-341). Le statut est écrit par l'hôte aux
 //! débuts et fins de raid (mémoire `RAID_STATUS`, entier) : interface déclarée, à brancher sur `game/mobs/raids/mod.rs`.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 
 pub static RAID_STATUS: MemKey = MemKey::new("horizon:raid_status", Shape::Int);
 

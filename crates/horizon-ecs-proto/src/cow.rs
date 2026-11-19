@@ -490,6 +490,19 @@ pub fn arm_at(w: &mut World, e: Entity, local: u64, d: Due) {
     let at = w.resource::<Clock>().at(e, local);
     w.resource_mut::<Wheel>().push(at, e, d);
 }
+/// The functions `after` can call, each registered once.
+#[derive(Resource, Default)]
+pub struct Callbacks(Vec<fn(&mut World, Entity)>);
+/// Calls `f(w, e)` once, `ticks` ticks of the entity's own time from now: a deadline on the wheel, no tick in between.
+pub fn after(w: &mut World, e: Entity, ticks: i32, f: fn(&mut World, Entity)) {
+    let cb = &mut w.get_resource_or_insert_with(Callbacks::default).0;
+    let i = cb.iter().position(|&g| g as usize == f as usize).unwrap_or_else(|| {
+        cb.push(f);
+        cb.len() - 1
+    });
+    let at = now_of(w, e) + ticks.max(0) as u64;
+    arm_at(w, e, at, Due::Call(i as u16));
+}
 /// The entity's own time.
 pub fn now_of(w: &World, e: Entity) -> u64 {
     w.resource::<Clock>().of(e)
@@ -506,6 +519,8 @@ pub enum Due {
     /// A sensor of the brain is due (its rank in the plan), and a memory's time is up (its slot and the token it had).
     Sensor(u8),
     Forget(u16, u32),
+    /// A module's function runs for the entity (`after`): the index in `Callbacks`.
+    Call(u16),
     /// The brain has something to do (a timed behaviour's end).
     BrainWake,
     /// A resting item's deadline (its last tick, its merge check), with the token it was armed with (`item.rs`).
@@ -3446,6 +3461,10 @@ pub(crate) fn due(
             Due::OrbCheck(t) => commands.queue(move |w: &mut World| crate::orb::check_due(w, e, t)),
             Due::ItemCheck(t) => commands.queue(move |w: &mut World| crate::item::check_due(w, e, t)),
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
+            Due::Call(i) => commands.queue(move |w: &mut World| {
+                let f = w.resource::<Callbacks>().0[usize::from(i)];
+                f(w, e);
+            }),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),

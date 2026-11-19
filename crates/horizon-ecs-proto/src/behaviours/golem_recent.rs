@@ -1,5 +1,6 @@
 //! Capteur : un golem d'une espèce donnée vu parmi les `MOBS` ; la mémoire dure 599 ticks après la dernière vue.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::SpeciesId;
 
 pub struct Params {

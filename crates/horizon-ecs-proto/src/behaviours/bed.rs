@@ -1,6 +1,7 @@
 //! Un lit pour un dormeur : la mémoire du lit le plus proche (`NEAREST_BED`), le composant `Sleeping` (rare) et la place
 //! occupée (`bed_taken`, lu sur les autres dormeurs). Position du couché : `pos_to_bed` (`bed_geometry`) n'existe pas dans l'ECS.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use horizon_core::geometry::Vec3;
 

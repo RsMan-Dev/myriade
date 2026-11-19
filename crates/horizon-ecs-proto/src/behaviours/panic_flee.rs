@@ -2,6 +2,7 @@
 //! `villager_brain.rs:3208`, `PanicTrigger` `1485-1500`). Ce module écrit `IS_PANICKING` ; la fuite elle-même est
 //! `brain::behaviours::walk_away`, configurée par l'espèce. La mémoire de menace est un paramètre (la condition Mob est un OU).
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_panic",

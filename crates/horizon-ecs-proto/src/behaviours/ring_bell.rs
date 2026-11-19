@@ -5,6 +5,7 @@ use super::bell_heard::BellRings;
 use super::block_reach::{block_at, centre_dist_sq};
 use crate::blocks;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use crate::goals::{with_rng, Events};
 

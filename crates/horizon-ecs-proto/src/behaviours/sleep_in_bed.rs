@@ -3,6 +3,7 @@
 use super::bed::*;
 use super::reach_block::block_centre;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::now_of;
 
 pub struct Params {

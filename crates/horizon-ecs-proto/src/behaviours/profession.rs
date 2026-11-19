@@ -2,6 +2,7 @@
 //! perdu (`on_lost`). Écrit par ces deux événements seulement ; aucun parcours.
 //! Le choix d'un poste et l'ordre de la table des métiers (`villager_professions.rs`) restent à la charge du tronc.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::poi::PoiRegistry;
 use horizon_world::poi::PoiType;
 

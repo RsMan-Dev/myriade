@@ -23,7 +23,6 @@ pub static DEF: Def = Def {
         Entry::new(&melee::MODULE, 4, &melee::Params { speed: 1.0, follow_unseen: true, ..melee::Params::DEFAULT }),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.4, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
-        Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, mobs: true, ..look_at_player::Params::DEFAULT }),
     ],
     caps: Some(&[crate::behaviours::Cap::Transform, crate::behaviours::Cap::Solid, crate::behaviours::Cap::Body, crate::behaviours::Cap::Living, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head, crate::behaviours::Cap::Targets, crate::behaviours::Cap::Locomotion]),
     // The raider's seat (`Ravager.getPassengers`): a carrier that only takes creatures, one seat at the centre.

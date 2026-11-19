@@ -305,6 +305,10 @@ pub mod fox_stroll_village;
 pub mod try_find_water;
 pub mod drowned_go_to_beach;
 pub mod drowned_swim_up;
+pub mod strike_pause;
+pub mod shield_stun;
+pub mod ravager_roar;
+pub mod hunt_speed;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -425,4 +429,8 @@ pub static TABLE: &[&Module] = &[
     &try_find_water::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_swim_up::MODULE,
+    &strike_pause::MODULE,
+    &shield_stun::MODULE,
+    &ravager_roar::MODULE,
+    &hunt_speed::MODULE,
 ];

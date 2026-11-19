@@ -3,6 +3,7 @@
 //! n'entre dans `NEAREST_BED` qu'une fois atteint, comme le chemin `reached` du `Mob`.
 use super::poi_claim::block_of;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::{now_of, GrowAt, Pos, Rng};
 use crate::poi::PoiRegistry;
 use horizon_world::poi::PoiType;

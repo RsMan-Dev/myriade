@@ -1,6 +1,7 @@
 //! Capteur : les bébés d'une espèce visibles (`VISIBLE_MOBS` filtrée par `baby`), pour le jeu et la réunion des parents.
 //! Lit la liste du capteur `living` (même cadence) ; ne refait aucun parcours.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::targeting;
 
 pub struct Params {

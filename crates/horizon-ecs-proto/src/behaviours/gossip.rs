@@ -2,6 +2,7 @@
 //! jour, l'échange à la rencontre. Indexé par identifiant de joueur (`u32`). Un villageois sans commérage n'a pas `Gossips` ;
 //! la décroissance est planifiée par le souvenir `GOSSIP_DAY`, qui expire à l'échéance et réveille le cerveau.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::now_of;
 use std::collections::BTreeMap;
 

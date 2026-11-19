@@ -53,7 +53,7 @@ fn on_target(w: &mut World, e: Entity) {
 pub fn refresh(w: &mut World, e: Entity) {
     let now = w.resource::<crate::cow::Clock>().0;
     let busy = is_occupied(w, e, BUSY);
-    let hunting = w.get::<Target>(e).is_some();
+    let hunting = w.get::<crate::targeting::Target>(e).is_some();
     let Some(mut p) = w.get_mut::<Pace>(e) else { return };
     p.base = speed_from(&p, now);
     p.since = now;

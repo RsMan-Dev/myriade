@@ -3,6 +3,7 @@
 //! (`no_blocks_above`, `villager_brain.rs:2497-2529`).
 use crate::blocks;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use crate::goals::with_rng;
 use horizon_client_lib::mobs::MobWorld;

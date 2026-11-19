@@ -2,6 +2,7 @@
 //! mémoire d'activité jusqu'à sa fin (TTL) ; l'expiration réveille le cerveau, qui relance ce comportement : l'heure n'est jamais
 //! relue entre deux tranches. Pas d'horloge du jour dans l'ECS (`Clock` mesure le temps d'entité) : `Times` est à brancher par le cadre.
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::GrowAt;
 
 #[derive(Resource, Default, Clone, Copy)]

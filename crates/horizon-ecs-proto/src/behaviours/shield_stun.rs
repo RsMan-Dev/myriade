@@ -31,7 +31,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 /// `blockedByItem`: not while roaring (no draw then), else one draw; true when the blow stuns.
 pub fn on_blocked(w: &mut World, e: Entity) -> bool {
     let Some(s) = w.get::<Stun>(e).map(|s| s.0) else { return false };
-    if is_occupied(w, e, super::ravager_roar::OCC_ROARING) || !crate::rng::chance(w, e, s.chance) {
+    if is_occupied(w, e, super::ravager_roar::OCC_ROARING) || !chance(w, e, f64::from(s.chance)) {
         return false;
     }
     occupy(w, e, OCC_STUNNED);
@@ -42,7 +42,7 @@ pub fn on_blocked(w: &mut World, e: Entity) -> bool {
     host.sound("entity.ravager.stunned", at, 1.0, 1.0);
     // The vanilla stars (one tick in six over the stun) come as one burst of their count, at the stun: no tick reads them.
     host.particles("entity_effect", at, [0.3, 0.5, 0.3], 0.0, s.ticks as u32 / 6);
-    after(w, e, s.ticks, end_stun);
+    crate::cow::after(w, e, s.ticks, end_stun);
     true
 }
 fn end_stun(w: &mut World, e: Entity) {

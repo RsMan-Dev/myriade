@@ -2,6 +2,7 @@
 //! est vide. Les points de nourriture viennent des données (`villager::food_points`). Ramasser, manger, partager.
 use crate::behaviours::food_stock::{self as stock, Food};
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use horizon_client_lib::{items::Items, mobs::villager::food_points};
 
 pub const SLOTS: usize = 8;

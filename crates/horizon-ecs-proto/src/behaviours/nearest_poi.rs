@@ -2,6 +2,7 @@
 //! dans un rayon. Planifié par `SensorEntry::new(&SENSOR, période)` ; il n'écrit que sur résultat.
 use super::poi_claim::block_of;
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::poi::PoiRegistry;
 use horizon_world::poi::PoiType;
 

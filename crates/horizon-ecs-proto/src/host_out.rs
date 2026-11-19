@@ -10,6 +10,10 @@ pub enum HostEvent {
     SetBlock { pos: [i32; 3], state: BlockStateId },
     Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32 },
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
+    /// A velocity added to a player (`MobEvent::Push`).
+    /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
+    EntityEvent { entity: bevy_ecs::entity::Entity, code: u8 },
+    PushPlayer { player: u32, velocity: [f64; 3] },
 }
 
 #[derive(Default)]
@@ -29,6 +33,12 @@ impl HostOut {
     /// `MobEvent::LevelParticles`.
     pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {
         self.out.push(HostEvent::Particles { kind, at, spread, speed, count });
+    }
+    pub fn entity_event(&mut self, entity: bevy_ecs::entity::Entity, code: u8) {
+        self.out.push(HostEvent::EntityEvent { entity, code });
+    }
+    pub fn push_player(&mut self, player: u32, velocity: [f64; 3]) {
+        self.out.push(HostEvent::PushPlayer { player, velocity });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

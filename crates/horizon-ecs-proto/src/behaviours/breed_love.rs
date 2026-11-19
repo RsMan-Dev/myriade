@@ -4,6 +4,7 @@
 use crate::behaviours::bed::{bed_taken, NEAREST_BED};
 use crate::behaviours::{food_inventory, food_stock};
 use crate::brain::*;
+use bevy_ecs::prelude::*;
 use crate::cow::*;
 use crate::goals::{self, Events};
 use horizon_client_lib::items::Items;
