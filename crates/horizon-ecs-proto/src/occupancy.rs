@@ -64,10 +64,48 @@ pub struct Section {
     large_x: AtomicU16,
     /// Which of the 26 neighbours hold such a shape (bit `rel` of the neighbour's offset: (dx + 1) * 9 + (dy + 1) * 3 + dz + 1).
     halo: AtomicU32,
+    /// How many times `changed` has written a cell of this section: a reader's cached classification of the section is good while it is the same.
+    version: AtomicU32,
+}
+/// The bits of [`Section::cell`].
+pub mod cell {
+    /// A plain unit cube.
+    pub const FULL: u8 = 1;
+    /// A cube, a fixed shape or a hard cell: the cells the scan reads in a box's own cells.
+    pub const NEAR: u8 = 2;
+    /// A fixed shape that is not a cube.
+    pub const SHAPED: u8 = 4;
+    /// A shape that reaches out of its cell.
+    pub const LARGE: u8 = 8;
+    /// A cell the kernel is asked about (scaffolding, powder snow, shulker box, piston in motion...).
+    pub const HARD: u8 = 16;
+    /// A moving piston.
+    pub const PISTON: u8 = 32;
+    /// Water or lava.
+    pub const LIQUID: u8 = 64;
 }
 impl Section {
+    /// The class bits of the cell (lx, ly, lz) of the section, each in 0..16 (see [`cell`]); 0 is air or a cell with no collision.
+    #[inline]
+    pub fn cell(&self, lx: usize, ly: usize, lz: usize) -> u8 {
+        let (row, bit) = (((ly & 15) << 4) | (lz & 15), 1u16 << (lx & 15));
+        let has = |w: &[u16; 256], v: u8| if w[row] & bit != 0 { v } else { 0 };
+        has(&self.full, cell::FULL) | has(&self.near, cell::NEAR) | has(&self.shaped, cell::SHAPED) | has(&self.large, cell::LARGE) | has(&self.hard, cell::HARD) | has(&self.piston, cell::PISTON) | has(&self.liquid, cell::LIQUID)
+    }
+    /// The section's change counter (3 instructions to read): equal to the one a reader noted, nothing in the section changed since.
+    #[inline]
+    pub fn version(&self) -> u32 {
+        self.version.load(Relaxed)
+    }
+    /// The section's summary: 1 holds cells, 2 a shape that is not a cube or a hard cell, 4 a shape reaching out of its cell or a moving piston,
+    /// 8 a liquid, 16 a neighbour holds such a reaching shape. Bits only turn on.
+    #[inline]
+    pub fn summary(&self) -> u8 {
+        self.flags.load(Relaxed)
+    }
+
     fn void() -> Self {
-        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0) }
+        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0), version: AtomicU32::new(0) }
     }
     fn refresh_flags(&self) {
         let own = u8::from(self.any_cells) | u8::from(self.any_shaped || self.any_hard) << 1 | u8::from(self.any_large || self.any_piston) << 2 | u8::from(self.any_liquid) << 3;
@@ -149,7 +187,7 @@ impl Section {
         }
     }
 }
-static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0) };
+static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0), version: AtomicU32::new(0) };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Class {
@@ -370,6 +408,25 @@ impl Occupancy {
         let s = get_or_build(map, table, world, binding, k);
         &**s as *const Section
     }
+    /// The masks of section `k` (x, y, z in section units), built from the blocks on its first read, then read with no lock through the
+    /// thread's cache. The reference holds until `clear` (watch [`Occupancy::generation`]); its `version` changes with each `changed` in it.
+    ///
+    /// # Safety
+    /// `clear` must not run while the reference is in use, and `changed` must not run on another thread while its words are read (the same
+    /// contract the lock-free collision path has).
+    pub unsafe fn section_masks(&self, world: &World, binding: &Binding<'_>, k: [i32; 3]) -> &Section {
+        // SAFETY: the pointer is a box of the map's, kept until `clear`, by the caller's contract.
+        unsafe { &*fast::section_ptr(self, world, binding, k) }
+    }
+    /// How many times the masks were dropped by `clear`: a reader's references from an earlier value are gone.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Relaxed)
+    }
+    /// The class bits of the block cell (x, y, z) (see [`cell`]); the section is built on first read. Same contract as [`Occupancy::section_masks`].
+    pub fn cell_at(&self, world: &World, binding: &Binding<'_>, x: i32, y: i32, z: i32) -> u8 {
+        // SAFETY: as documented.
+        unsafe { self.section_masks(world, binding, [x >> 4, y >> 4, z >> 4]) }.cell((x & 15) as usize, (y & 15) as usize, (z & 15) as usize)
+    }
     /// The block at (x, y, z) has just been written: its cell takes the class of its new state (the bits of its row), if the
     /// section has a mask. Nothing else is touched. Whoever writes blocks calls this (and after replacing a chunk, `clear`).
     pub fn changed(&self, world: &World, binding: &Binding<'_>, x: i32, y: i32, z: i32) {
@@ -379,6 +436,7 @@ impl Occupancy {
         let class = table.class_of(binding, world.block(x, y, z));
         let before = section.flags.load(Relaxed) & 4;
         section.set((((y & 15) << 4) | (z & 15)) as usize, 1 << (x & 15), class);
+        section.version.fetch_add(1, Relaxed);
         if before == 0 && section.flags.load(Relaxed) & 4 != 0 {
             mark_halo(map, [x >> 4, y >> 4, z >> 4]);
         }

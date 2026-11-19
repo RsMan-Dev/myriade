@@ -225,6 +225,23 @@ fn cells(lo: [f64; 3], hi: [f64; 3]) -> Option<(i32, i32, i32, i32, i32, i32)> {
     }
 }
 
+/// The section `k` through the thread's cache (built on its first read): the pointer holds until `clear`.
+pub(super) fn section_ptr(occ: &Occupancy, world: &World, binding: &Binding<'_>, k: [i32; 3]) -> *const Section {
+    TL.with(|tl| {
+        // SAFETY: the thread's own cache, not shared; `fetch` does not call back into this function.
+        let tl = unsafe { &mut *tl.get() };
+        let generation = occ.generation.load(Relaxed);
+        if tl.owner != occ.id || tl.generation != generation {
+            tl.owner = occ.id;
+            tl.generation = generation;
+            tl.recent = [(0, std::ptr::null()); SLOTS];
+        }
+        let key = super::key(k);
+        let slot = (key.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 56) as usize;
+        if tl.recent[slot].0 == key && !tl.recent[slot].1.is_null() { tl.recent[slot].1 } else { fetch(&mut tl.recent, occ, world, binding, key, k, slot) }
+    })
+}
+
 pub(super) fn resolve(occ: &Occupancy, scene: &SceneCollisions<'_, '_>, bounds: Aabb, movement: Vec3, max_step: f32, on_ground: bool) -> Option<Vec3> {
     TL.with(|tl| {
         // SAFETY: the thread's own cache, not shared; nothing below calls back into this function.

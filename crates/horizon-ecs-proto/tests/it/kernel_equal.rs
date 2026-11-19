@@ -166,6 +166,42 @@ fn a_large_hard_cell_in_the_ring_sends_the_call_to_the_kernel() {
     assert_eq!(declined, calls, "the lock-free path answered a call with a large hard cell in the ring");
 }
 
+/// The public cell reader and the section version: a cell reads the class of its block (cube, shape, hard, liquid, air) in a world of every kind
+/// of block, and a write through `changed` moves the section's version and the cell's bits.
+#[test]
+fn the_cell_reader_tells_the_class_of_each_block_and_the_version_moves_on_a_write() {
+    use horizon_ecs_proto::occupancy::cell;
+    let (world, ptr) = hard_world(2, None);
+    let occ = occupancy_of(world);
+    let mut seen = [0u32; 5];
+    for x in -14..14 {
+        for z in -14..14 {
+            for y in 0..6 {
+                let s = world.world.block(x, y, z);
+                let (class, bits) = (occ.probe_class(world.collision, s), occ.cell_at(world.world, world.collision, x, y, z));
+                seen[class as usize] += 1;
+                match class {
+                    0 => assert_eq!(bits & (cell::FULL | cell::NEAR | cell::HARD | cell::LIQUID), 0, "{x} {y} {z}"),
+                    1 => assert_eq!(bits & (cell::FULL | cell::NEAR), cell::FULL | cell::NEAR, "{x} {y} {z}"),
+                    2 => assert!(bits & cell::SHAPED != 0 || bits & cell::NEAR != 0, "{x} {y} {z}: {bits}"),
+                    3 => assert_eq!(bits & (cell::FULL | cell::HARD), cell::HARD, "{x} {y} {z}"),
+                    _ => assert!(bits & cell::LIQUID != 0, "{x} {y} {z}"),
+                }
+            }
+        }
+    }
+    assert!(seen.iter().all(|n| *n > 0), "a class is missing from the world: {seen:?}");
+    // SAFETY: nothing else runs on this world.
+    let section = unsafe { occ.section_masks(world.world, world.collision, [0, 0, 0]) };
+    let (v, g) = (section.version(), occ.generation());
+    let stone = world.registry.default_state("minecraft:stone").unwrap();
+    unsafe { change_block(world, ptr, 3, 4, 5, stone) };
+    assert_eq!(section.version(), v + 1);
+    assert_eq!(occ.cell_at(world.world, world.collision, 3, 4, 5) & cell::FULL, cell::FULL);
+    occ.clear();
+    assert_eq!(occ.generation(), g + 1);
+}
+
 /// Water and lava are empty for a body with no subject and the kernel's business for one that stands on fluids (a strider): both
 /// equal the reference bit for bit over liquid-rich worlds and over calls built on the liquid cells.
 #[test]
