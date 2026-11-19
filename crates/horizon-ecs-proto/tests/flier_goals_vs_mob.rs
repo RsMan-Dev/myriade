@@ -82,7 +82,7 @@ fn a_vex_drifts_near_its_origin_as_a_mob_does() {
 }
 
 /// With a player in the box: the phantoms take it for a target, circle above it and dive. The first dive (tick) and the number of dives in the
-/// first 400 ticks (the `Mob`'s flag, the ecs `Diving`), 24 phantoms on each side, the means. The player is not hurt on the `Mob` side (the
+/// first 1000 ticks (the `Mob`'s flag, the ecs `Diving`), 24 phantoms on each side, the means. The player is not hurt on the `Mob` side (the
 /// harness), so the ecs player is immortal.
 #[test]
 fn the_phantoms_take_the_player_and_dive_at_the_cadence_of_the_mob() {
@@ -111,9 +111,22 @@ fn the_phantoms_take_the_player_and_dive_at_the_cadence_of_the_mob() {
     let view = player_view(at, None);
     let (mut mfirst, mut efirst, mut mdives, mut edives) = (vec![None; n], vec![None; n], vec![0; n], vec![0; n]);
     let (mut mflag, mut eflag) = (vec![false; n], vec![false; n]);
-    for t in 1..=400_i64 {
+    for t in 1..=std::env::var("TICKS").ok().and_then(|v| v.parse().ok()).unwrap_or(1000_i64) {
         r.step(Some(&view));
         h.tick();
+        if std::env::var_os("TRACE6").is_some() {
+            let (i, e) = ids[0];
+            let mt = (r.mobs[i].ai.target.is_some(), r.mobs[i].extra.flag);
+            let et = (h.world.get::<horizon_ecs_proto::targeting::Target>(e).is_some(), h.world.get::<horizon_ecs_proto::behaviours::flier_goals::Diving>(e).is_some());
+            thread_local!(static LAST: std::cell::Cell<((bool, bool), (bool, bool))> = const { std::cell::Cell::new(((false, false), (false, false))) });
+            if std::env::var_os("TRACE7").is_some() && (245..=330).contains(&t) && t % 5 == 0 {
+                eprintln!("t={t} ECS target {} dive {} strategy {} sweeping {} circling {}", et.0, et.1, h.world.get::<horizon_ecs_proto::behaviours::flier_goals::Strategy>(e).is_some(), h.world.get::<horizon_ecs_proto::behaviours::flier_goals::Sweeping>(e).is_some(), h.world.get::<horizon_ecs_proto::behaviours::flier_goals::Circling>(e).is_some());
+            }
+            if LAST.with(|l| l.get()) != (mt, et) {
+                LAST.with(|l| l.set((mt, et)));
+                eprintln!("t={t} MOB target {} dive {} y {:.1} | ECS target {} dive {} y {:.1}", mt.0, mt.1, r.mobs[i].position.y, et.0, et.1, h.world.get::<Pos>(e).unwrap().0.y);
+            }
+        }
         for (k, &(i, e)) in ids.iter().enumerate() {
             let (m, c) = (r.mobs[i].extra.flag, h.world.get::<horizon_ecs_proto::behaviours::flier_goals::Diving>(e).is_some());
             if m && !mflag[k] {
@@ -132,4 +145,6 @@ fn the_phantoms_take_the_player_and_dive_at_the_cadence_of_the_mob() {
     eprintln!("phantom dives: mob {mn}/{n} first at {:.0}, {} dives | ecs {en}/{n} first at {:.0}, {} dives", mean(&mfirst), mdives.iter().sum::<i32>(), mean(&efirst), edives.iter().sum::<i32>());
     assert!(mn > 12 && en > 12, "most phantoms dive");
     assert!((mean(&mfirst) - mean(&efirst)).abs() < 0.3 * mean(&mfirst).max(mean(&efirst)), "the first dive");
+    let (a, b) = (f64::from(mdives.iter().sum::<i32>()), f64::from(edives.iter().sum::<i32>()));
+    assert!((a - b).abs() < 0.1 * a, "the dives in the run: mob {a}, ecs {b}");
 }

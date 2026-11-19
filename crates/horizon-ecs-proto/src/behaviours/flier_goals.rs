@@ -214,6 +214,8 @@ fn scan_start(w: &mut World, e: Entity, i: Inst) {
     if let Some(id) = scan_pick(w, e) {
         let mut t = Target::new(Who::Player(id), 0, i.slot);
         t.must_see = true;
+        // `PhantomAttackPlayerTargetGoal.canContinueToUse` has no follow range (the generic target goal's would end it above 16 blocks).
+        t.follow_scale = 1.0e6;
         targeting::set_target(w, e, t);
     }
 }
