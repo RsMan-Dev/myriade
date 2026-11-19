@@ -48,6 +48,11 @@ fn has_rider(w: &World, e: Entity) -> bool {
 fn is_mounted(w: &World, e: Entity) -> bool {
     w.get::<crate::mount::Riding>(e).is_some()
 }
+/// `horizon:dark_enough`: the light at its eyes is under half (`brightness < 0.5`: the spider's gate, `hostile.rs` `dark_enough`).
+fn dark_enough(w: &World, e: Entity) -> bool {
+    let (Some(p), Some(eye), Some(level)) = (w.get::<Pos>(e), w.get::<crate::targeting::Eye>(e), w.get_resource::<crate::cow::Level>()) else { return false };
+    level.mw.0.brightness(p.0.x.floor() as i32, (p.0.y + eye.0).floor() as i32, p.0.z.floor() as i32) < crate::behaviours::melee::BRIGHT
+}
 /// `horizon:is_leashed`: it is on a lead (`leash::Leash`).
 fn is_leashed(w: &World, e: Entity) -> bool {
     crate::leash::is_leashed(w, e)
@@ -113,6 +118,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:is_mounted", is_mounted),
     ("horizon:is_sitting", is_sitting),
     ("horizon:is_leashed", is_leashed),
+    ("horizon:dark_enough", dark_enough),
     ("ocelot:trusting", ocelot_trusting),
     ("panda:acts", panda_acts),
     ("panda:avoids", panda_avoids),

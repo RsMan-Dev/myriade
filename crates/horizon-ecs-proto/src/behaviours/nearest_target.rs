@@ -36,9 +36,13 @@ pub struct Params {
     pub hostile: bool,
     /// The distance of the search in blocks, instead of the follow range times `follow_scale`.
     pub range: Option<f64>,
+    /// A condition on the creature (`Prey::Filter`: the llama's untamed wolf), read for each candidate.
+    pub candidate_when: Option<fn(&World, Entity) -> bool>,
+    /// Candidates further than this in height from the attacker's feet are not picked (the slime's player target: `|dy| <= 4`).
+    pub max_dy: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, candidate_when: None, max_dy: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -175,6 +179,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
+                && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
@@ -192,11 +197,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) || n.p.candidate_when.is_some_and(|f| !f(w, c)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
-            if dx <= range && dy <= range && dz <= range {
+            if dx <= range && dy <= range && dz <= range && n.p.max_dy.is_none_or(|m| (cp.0.y - pos.y).abs() <= m) {
                 let d = dx * dx + dy * dy + dz * dz;
                 cands.push((d, c, cp.0, w.get::<targeting::Eye>(c).map_or(1.0, |l| l.0)));
             }
