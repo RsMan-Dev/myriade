@@ -706,11 +706,18 @@ fn update_activity(w: &mut World, e: Entity, plan: &'static Plan) {
 // ---- the services the modules use -------------------------------------------------------------------------------------
 /// `NearestVisibleLivingEntities.findClosest`: the first of `visible_mobs` that passes the filter and the sight test.
 pub fn find_closest(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bool) -> Option<Who> {
-    let list = match get(w, e, &VISIBLE_MOBS) {
-        Some(MemValue::Whos(l)) => l.clone(),
-        _ => return None,
-    };
-    list.into_iter().find(|&who| filter(w, who) && visible_test(w, e, who))
+    // The list is read one entry at a time (no copy of the list: this runs at every step of an awake brain).
+    let mut i = 0;
+    loop {
+        let who = match get(w, e, &VISIBLE_MOBS) {
+            Some(MemValue::Whos(l)) => *l.get(i)?,
+            _ => return None,
+        };
+        if filter(w, who) && visible_test(w, e, who) {
+            return Some(who);
+        }
+        i += 1;
+    }
 }
 /// `NearestVisibleLivingEntities.contains`.
 pub fn visible_contains(w: &mut World, e: Entity, who: Who) -> bool {

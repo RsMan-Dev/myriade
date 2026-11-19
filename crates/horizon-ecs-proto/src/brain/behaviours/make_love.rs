@@ -58,13 +58,26 @@ pub struct SpawnAt(pub u64);
 
 /// `AnimalMakeLove.findValidBreedPartner`: the nearest visible creature that can mate with it.
 fn partner(w: &mut World, e: Entity, p: &Params) -> Option<Entity> {
-    match find_closest(w, e, |w, who| matches!(who, Who::Entity(x) if can_mate(w, e, x) && (p.ready)(w, e) && (p.ready)(w, x)))? {
+    match find_closest(w, e, |w, who| matches!(who, Who::Entity(x) if can_mate(w, e, x) && free_for(w, x, e) && (p.ready)(w, e) && (p.ready)(w, x)))? {
         Who::Entity(p) => Some(p),
         Who::Player(_) => None,
     }
 }
 
+/// A love target is addressed to ONE animal, which is free: one that is already on its way to another is not taken from it.
+fn free_for(w: &World, partner: Entity, e: Entity) -> bool {
+    match get(w, partner, &BREED_TARGET) {
+        None => true,
+        Some(MemValue::Who(Who::Entity(x))) => *x == e,
+        Some(_) => false,
+    }
+}
+
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
+    // Not in love: no search (the common case, at every step of an awake brain).
+    if w.get::<Love>(e).is_none_or(|l| l.0 <= now_of(w, e)) {
+        return false;
+    }
     partner(w, e, c.get::<Params>()).is_some()
 }
 

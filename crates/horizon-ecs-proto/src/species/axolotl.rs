@@ -8,14 +8,13 @@
 //! playing dead (`brain::behaviours::play_dead::is_playing_dead` is there to read).
 use super::Def;
 use crate::behaviours::{breed, Cap, Entry};
-use crate::brain::behaviours::{countdown, find_liquid, follow_adult, follow_temptation, forget_memory, gate_all, look_at_player_sometimes, look_at_target_sink, make_love, melee_attack, move_to_target_sink, play_dead, run_one, set_walk_target_from_attack_target, start_attacking, stay_in_fluid, stop_attacking_if_target_invalid, stroll, swim_stroll, walk_to_look_target};
+use crate::brain::behaviours::{find_liquid, follow_adult, follow_temptation, forget_memory, gate_all, look_at_player_sometimes, look_at_target_sink, make_love, melee_attack, move_to_target_sink, play_dead, run_one, set_walk_target_from_attack_target, start_attacking, stay_in_fluid, stop_attacking_if_target_invalid, stroll, swim_stroll, walk_to_look_target};
 use crate::brain::sensors::{adult, attackables, hurt_by, living, tempting};
 use crate::brain::*;
 use crate::locomotion::{swim, walk, Medium};
 use crate::rules::RuleEntry;
 
 const FOOD: &[&str] = &["minecraft:tropical_fish_bucket"];
-const COUNTDOWN_TEMPTATION: countdown::Params = countdown::Params { key: &TEMPTATION_COOLDOWN_TICKS };
 const START_ATTACK: start_attacking::Params = start_attacking::Params { finder: start_attacking::Finder::Attackable, ..start_attacking::Params::DEFAULT };
 const STOP_ATTACK: stop_attacking_if_target_invalid::Params = stop_attacking_if_target_invalid::Params { not_playing_dead: true, hunting_cooldown: Some(2400), ..stop_attacking_if_target_invalid::Params::DEFAULT };
 const CHASE: set_walk_target_from_attack_target::Params = set_walk_target_from_attack_target::Params { speed: 0.6, dry_speed: Some(0.15) };
@@ -78,7 +77,6 @@ pub static DEF: Def = Def {
                 ],
             },
             BEntry { behaviour: &melee_attack::BEHAVIOUR, activity: "fight", priority: 2, params: &BITE, needs: &[(&ATTACK_TARGET, Need::Present), (&ATTACK_COOLING_DOWN, Need::Absent)], duration: None, kids: &[] },
-            BEntry { behaviour: &countdown::BEHAVIOUR, activity: "core", priority: 3, params: &COUNTDOWN_TEMPTATION, needs: &[(&TEMPTATION_COOLDOWN_TICKS, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &start_attacking::BEHAVIOUR, activity: "idle", priority: 3, params: &START_ATTACK, needs: &[(&ATTACK_TARGET, Need::Absent), (&BREED_TARGET, Need::Absent), (&attackables::NEAREST_ATTACKABLE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &find_liquid::BEHAVIOUR, activity: "idle", priority: 3, params: &find_liquid::Params::DEFAULT, needs: &[(&WALK_TARGET, Need::Absent), (&ATTACK_TARGET, Need::Absent)], duration: None, kids: &[] },
             BEntry { behaviour: &forget_memory::BEHAVIOUR, activity: "fight", priority: 3, params: &FORGET_TARGET, needs: &[(&BREED_TARGET, Need::Present), (&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },

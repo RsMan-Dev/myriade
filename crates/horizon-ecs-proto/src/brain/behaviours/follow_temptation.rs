@@ -58,7 +58,8 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
 }
 
 fn stop(w: &mut World, e: Entity, _: &Ctx) {
-    set(w, e, &TEMPTATION_COOLDOWN_TICKS, MemValue::Int(COOLDOWN_TICKS), None);
+    // The cooldown is a memory that expires (a deadline of the wheel), not a count written each tick.
+    set(w, e, &TEMPTATION_COOLDOWN_TICKS, MemValue::Int(COOLDOWN_TICKS), Some(COOLDOWN_TICKS as u64));
     erase(w, e, &WALK_TARGET);
     erase(w, e, &LOOK_TARGET);
 }

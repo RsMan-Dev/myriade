@@ -31,7 +31,7 @@ fn pairs(n: usize, gap: f64, seed: u64) -> Pair {
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let mut ids = Vec::new();
     for k in 0..n {
-        let (x, z) = (-50.0 + 30.0 * (k % 4) as f64 + 0.5, -40.0 + 30.0 * (k / 4) as f64 + 0.5);
+        let (x, z) = (-50.0 + 12.0 * (k % 4) as f64 + 0.5, -40.0 + 12.0 * (k / 4) as f64 + 0.5);
         let mut one = |dx: f64, salt: u32| {
             let i = r.add_id(Vec3::new(x + dx, 1.0, z), ((k as u32 * 2 + salt + 1).wrapping_mul(0x9E37_79B1) >> 4) | 1);
             let e = spawn_species(&mut h.world, &sp, x + dx, z, (k as u64 * 2 + u64::from(salt) + 1 + seed * 1000).wrapping_mul(0x9E37_79B9_7F4A_7C15));
@@ -61,7 +61,9 @@ impl Pair {
         for ev in fresh {
             match ev {
                 MobEvent::BreedTarget { mob, partner } => {
-                    if let Some(m) = self.r.mobs.iter_mut().find(|m| m.id == mob) {
+                    // A love target is addressed to one animal, and to a free one.
+                    let free = |m: &horizon_client_lib::mobs::Mob| !animal_brain::describe(m).is_some_and(|(a, b)| format!("{a};{b}").contains("breed_target="));
+                    if let Some(m) = self.r.mobs.iter_mut().find(|m| m.id == mob && free(m)) {
                         animal_brain::set_breed_partner(m, partner);
                     }
                 }
@@ -77,8 +79,7 @@ impl Pair {
     }
 }
 
-/// One scene of 16 pairs 2 blocks apart (the birth needs less than 3), both in love, 30 blocks between pairs (the sight of an axolotl is 16:
-/// pairs closer take each other as partners when one has bred): the tick of the first baby on each side and the tick the first
+/// One scene of 16 pairs 2 blocks apart (the birth needs less than 3), both in love, 12 blocks between pairs (inside the sight of an axolotl): the tick of the first baby on each side and the tick the first
 /// `breed_target` appears.
 fn scene(seed: u64) -> Vec<[Option<i64>; 4]> {
     let mut p = pairs(16, 2.0, seed);
