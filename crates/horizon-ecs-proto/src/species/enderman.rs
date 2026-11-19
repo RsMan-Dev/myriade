@@ -22,5 +22,6 @@ pub static DEF: Def = Def {
         Entry::new(&take_block::MODULE, 11, &take_block::Params::DEFAULT),
         Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN),
     ],
+    rules: &[crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
     ..Def::EMPTY
 };

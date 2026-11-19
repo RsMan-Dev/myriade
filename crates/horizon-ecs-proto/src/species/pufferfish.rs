@@ -29,5 +29,6 @@ pub static DEF: Def = Def {
             ..pufferfish_puff::Params::DEFAULT
         },
     )],
+        rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::PUFFERFISH)],
     ..Def::EMPTY
 };

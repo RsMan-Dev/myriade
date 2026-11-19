@@ -79,6 +79,8 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+/// `LivingEntity.getVisibilityPercent` of an invisible target with no armour: `0.7 * 0.1`.
+const INVISIBLE: f64 = 0.07;
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mw = w.resource::<Level>().mw.0;
@@ -159,9 +161,16 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if n.p.players {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
         let ps = w.resource::<crate::hostile::PlayerState>();
+        // No player has an effect (the usual): the list is not asked per candidate.
+        let any_effect = !w.resource::<crate::effects::PlayerEffects>().0.is_empty();
         let mut best: Option<(u32, f64)> = None;
         w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
-            let reach = targeting::sight_range(range, ps.visibility(p.id));
+            let reach = if any_effect {
+                let seen = if crate::effects::player_has(w, p.id, crate::effects::Kind::Invisibility) { INVISIBLE } else { 1.0 };
+                targeting::sight_range(range, ps.visibility(p.id) * seen)
+            } else {
+                targeting::sight_range(range, ps.visibility(p.id))
+            };
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
@@ -194,7 +203,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         cands.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for (_, c, cp, ceye) in cands {
             let feet = d2(pos, cp);
-            if feet > targeting::sight_range(range, 1.0).powi(2) || n.p.beyond_sqr.is_some_and(|d| feet <= d) {
+            let vis = if w.get::<crate::effects::Invisible>(c).is_some() { INVISIBLE } else { 1.0 };
+            if feet > targeting::sight_range(range, vis).powi(2) || n.p.beyond_sqr.is_some_and(|d| feet <= d) {
                 continue;
             }
             if mw.line_of_sight_for(Some(pos.y), from, Vec3::new(cp.x, cp.y + ceye, cp.z)) {

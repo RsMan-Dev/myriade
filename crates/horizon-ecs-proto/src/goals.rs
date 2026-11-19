@@ -567,6 +567,7 @@ pub fn insert_resources(world: &mut World) {
     crate::orb::insert_resources(world);
     crate::poi::insert_resources(world);
     crate::explosion::insert_resources(world);
+    crate::effects::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
@@ -1672,6 +1673,9 @@ mod tests {
     /// A cow dropped in a pond floats: a jump 8 ticks in 10 while the water is deeper than 0.4, and it stays afloat.
     #[test]
     fn a_cow_in_a_pond_jumps_eight_ticks_in_ten() {
+    if crate::cow::skip_unless_farm_goals("a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
+        return;
+    }
     if crate::cow::skip_unless_walker("a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
         return;
     }

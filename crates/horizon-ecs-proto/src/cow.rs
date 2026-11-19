@@ -776,6 +776,8 @@ pub struct Species {
     pub max_health: f32,
     pub water_slowdown: f32,
     pub lava_walker: bool,
+    /// `EntityTypeTags.UNDEAD` (the type's flag): poison and regeneration do nothing to it, healing hurts and harming heals.
+    pub undead: bool,
     pub water_efficiency: f32,
     pub eye_height: f64,
     pub breathes_water: bool,
@@ -935,6 +937,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             max_health: mob.health,
             water_slowdown: kind.water_slowdown,
             lava_walker: kind.flags.lava_walker,
+            undead: kind.flags.undead,
             water_efficiency: kind.water_efficiency as f32,
             eye_height: kind.eye_height,
             breathes_water: kind.flags.breathes_water,
@@ -1188,6 +1191,9 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
+        if sp.undead {
+            e.insert(crate::effects::Undead);
+        }
     }
     if has(crate::behaviours::Cap::Locomotion) {
         e.insert(locomotion_bundle(sp, yaw));
@@ -2129,12 +2135,16 @@ pub(crate) fn fluid_update(
 #[allow(clippy::type_complexity)]
 fn breathing(
     level: Res<Level>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid, Has<crate::behaviours::ender_teleport::WaterSensitive>), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, wet) in &mut q {
+        // `Enderman.aiStep`: the water hurts it (1 a tick, through the invulnerability window), and the hurt sends it away.
+        if wet && fs.in_water {
+            queue.add(e, 1.0, Cause::Drown);
+        }
         let submerged = fs.eye_in_water && {
             let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + fp.eye_height).floor() as i32, pos.0.z.floor() as i32);
             mw.block_name(x, y, z) != "minecraft:bubble_column"

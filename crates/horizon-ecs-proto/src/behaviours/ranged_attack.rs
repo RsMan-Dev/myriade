@@ -176,7 +176,10 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
             Who::Player(_) => 20.0,
         };
         use crate::effects::{Brew, Kind};
-        let has = |w: &World, kind| matches!(who, Who::Entity(t) if crate::effects::has(w, t, kind));
+        let has = |w: &World, kind| match who {
+            Who::Entity(t) => crate::effects::has(w, t, kind),
+            Who::Player(id) => crate::effects::player_has(w, id, kind),
+        };
         let (slow, poison, weak) = (has(w, Kind::Slowness), has(w, Kind::Poison), has(w, Kind::Weakness));
         static SLOW: [Brew; 1] = [Brew::Timed(Kind::Slowness, 0, 1800)];
         static POISON: [Brew; 1] = [Brew::Timed(Kind::Poison, 0, 900)];

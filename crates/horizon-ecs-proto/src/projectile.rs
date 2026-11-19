@@ -46,6 +46,8 @@ pub enum OnHit {
     Nothing,
     /// The creature it hits burns for this many ticks (`igniteForSeconds`).
     Ignite(u64),
+    /// The creature it hits takes this effect (a tipped arrow): kind, level, ticks.
+    Effect(crate::effects::Kind, i32, i32),
     /// An explosion of this power where it ends, on a creature or a block; with fire or not (`LargeFireball.onHit`). The frame has no
     /// explosion yet: `Events.exploded` says it, the damage in the radius and the blocks are the explosion capability's.
     Explode { power: i32, fire: bool },
@@ -245,6 +247,11 @@ pub fn fly(
                 events.projectile_hit.push(t);
                 if let OnHit::Ignite(ticks) = f.hit {
                     commands.queue(move |w: &mut World| crate::cow::set_on_fire(w, t, ticks));
+                }
+                if let OnHit::Effect(kind, amp, ticks) = f.hit {
+                    commands.queue(move |w: &mut World| {
+                        crate::effects::add(w, t, kind, amp, ticks);
+                    });
                 }
             }
             if let OnHit::Explode { power, fire } = f.hit {
