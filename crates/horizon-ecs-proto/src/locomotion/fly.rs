@@ -24,12 +24,19 @@ pub enum Control {
     Float,
     /// None: a goal or a rule moves the animal itself (a bat's flutter).
     None,
+    /// `VexMoveControl`: accelerate straight at the wanted point (`MoveTo`, kept until reached: the animal then stops and the control sleeps),
+    /// no path. With `noclip` the move goes through blocks.
+    Direct,
+    /// `PhantomMoveControl`: bank toward the wanted point (`MoveTo` is the goal's `vector`), faster on a straight line, turned back by a wall.
+    Bank,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub control: Control,
     /// `LivingEntity.travelFlying` (no gravity at all, the animal is a `flying` type) instead of `travelInAir` with the gravity off while it moves.
     pub free: bool,
+    /// The move ignores the blocks (`noPhysics`: a vex).
+    pub noclip: bool,
     /// The vertical speed kept each tick after the move (a bat: 0.6); 1 keeps it all.
     pub damp_y: f64,
     /// `FlyingMoveControl.maxTurn`: the degrees a tick the pitch turns by.
@@ -41,13 +48,14 @@ pub struct Params {
     pub glide: f64,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { control: Control::Path, free: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0 };
+    pub const DEFAULT: Params = Params { control: Control::Path, free: false, noclip: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0 };
 }
 /// What the flight reads of the animal (from its species, once).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct FlyParams {
     pub control: Control,
     pub free: bool,
+    pub noclip: bool,
     pub damp_y: f64,
     pub max_turn: f32,
     pub hovers: bool,
@@ -72,7 +80,15 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     if p.control == Control::Float {
         w.entity_mut(e).insert((FloatState(0), Moving));
     }
-    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
+    if p.control == Control::Bank {
+        // `PhantomMoveControl`'s speed starts at the movement speed attribute.
+        let sp0 = w.get::<Body>(e).map_or(0.1, |b| b.speed as f32);
+        if let Some(mut d) = w.get_mut::<Drive>(e) {
+            d.speed = sp0;
+        }
+        w.entity_mut(e).insert(Moving);
+    }
+    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, noclip: p.noclip, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
 }
 
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
@@ -82,6 +98,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
         move_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
         float_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
+        (direct_control, bank_control).after(crate::cow::move_control).before(crate::cow::fluid_update),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
 }
@@ -286,6 +303,96 @@ fn float_control(level: Res<Level>, mut q: Query<(&Pos, &Bounds, &mut Vel, &mut 
     }
 }
 
+/// The goal's wish: fly to this point (the controls `Direct` and `Bank` read it). The animal moves from now on.
+pub fn steer_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
+    if let Some(mut m) = w.get_mut::<MoveTo>(e) {
+        *m = MoveTo { active: true, x: at[0], y: at[1], z: at[2], speed_modifier: speed };
+    }
+    w.entity_mut(e).insert(Moving);
+}
+/// `VexMoveControl.tick` and the stop of an animal at rest: the tiny motions are dropped first (`aiStep`); a wanted point reached (nearer than
+/// the mean size of the box) halves the speed and is forgotten; with nothing wanted and no motion left the animal leaves the physics
+/// (`Moving`) until a goal steers it again: a resting vex costs nothing.
+#[allow(clippy::type_complexity)]
+fn direct_control(mut q: Query<(Entity, &Pos, &Bounds, &mut Vel, &mut MoveTo, &mut Yaw, &FlyParams), (With<FlyMode>, With<Moving>)>, mut cmd: Commands) {
+    for (e, pos, b, mut v, mut m, mut yaw, fp) in &mut q {
+        if fp.control != Control::Direct {
+            continue;
+        }
+        drop_tiny_motion(&mut v);
+        if !m.active {
+            if v.0 == Vec3::ZERO {
+                cmd.entity(e).remove::<Moving>();
+            }
+            continue;
+        }
+        let d = Vec3::new(m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+        let len = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt();
+        let (lo, hi) = (b.0.min_position(), b.0.max_position());
+        let size = ((hi.x - lo.x) + (hi.y - lo.y) + (hi.z - lo.z)) / 3.0;
+        if len < size {
+            m.active = false;
+            v.0 = v.0.scale(0.5);
+            continue;
+        }
+        v.0 = v.0.add_vector(d.scale(m.speed_modifier * 0.05 / len));
+        // Faces along the motion (the `Mob` faces its target when it has one: the heading is not what moves it).
+        yaw.0 = -(v.0.x.atan2(v.0.z) as f32).to_degrees();
+    }
+}
+fn wrap_degrees(d: f32) -> f32 {
+    let r = d.rem_euclid(360.0);
+    if r >= 180.0 { r - 360.0 } else { r }
+}
+fn approach(from: f32, to: f32, step: f32) -> f32 {
+    if from < to { (from + step).min(to) } else { (from - step).max(to) }
+}
+/// `PhantomMoveControl.tick`: turns toward the wanted point by at most 4 degrees a tick; on a straight line the speed grows toward 1.8, in a
+/// turn it falls toward 0.2; a wall turns it round and slows it to 0.1. The speed is `Drive.speed`.
+#[allow(clippy::type_complexity)]
+fn bank_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &MoveTo, &mut Drive, &Contact, &FlyParams), (With<FlyMode>, With<Moving>)>) {
+    use horizon_core::geometry::trig::Mth;
+    for (pos, mut vel, mut yaw, m, mut d, c, fp) in &mut q {
+        if fp.control != Control::Bank {
+            continue;
+        }
+        drop_tiny_motion(&mut vel);
+        let mut speed = d.speed;
+        if c.horizontal {
+            yaw.0 += 180.0;
+            speed = 0.1;
+        }
+        let (mut dx, dy, mut dz) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+        let mut sd = (dx * dx + dz * dz).sqrt();
+        if sd.abs() > 1.0e-5 {
+            let scale = 1.0 - (dy * 0.7).abs() / sd;
+            dx *= scale;
+            dz *= scale;
+            sd = (dx * dx + dz * dz).sqrt();
+            let sd2 = (dx * dx + dz * dz + dy * dy).sqrt();
+            let prev = yaw.0;
+            let angle = dz.atan2(dx) as f32;
+            let a = wrap_degrees(yaw.0 + 90.0);
+            let b = wrap_degrees(angle.to_degrees());
+            let diff = wrap_degrees(b - a);
+            yaw.0 = a + diff.clamp(-4.0, 4.0) - 90.0;
+            if wrap_degrees(prev - yaw.0).abs() < 3.0 {
+                speed = approach(speed, 1.8, 0.005 * (1.8 / speed));
+            } else {
+                speed = approach(speed, 0.2, 0.025);
+            }
+            let x_rot = -((-dy).atan2(sd) as f32).to_degrees();
+            let move_angle = (yaw.0 + 90.0).to_radians();
+            let tx = f64::from(speed * move_angle.mcos()) * (dx / sd2).abs();
+            let tz = f64::from(speed * move_angle.msin()) * (dz / sd2).abs();
+            let ty = f64::from(speed * x_rot.to_radians().msin()) * (dy / sd2).abs();
+            let v = vel.0;
+            vel.0 = Vec3::new(v.x + (tx - v.x) * 0.2, v.y + (ty - v.y) * 0.2, v.z + (tz - v.z) * 0.2);
+        }
+        d.speed = speed;
+    }
+}
+
 /// `LivingEntity.travelInAir` of a flier: the walk's with the vertical input and, while the move control says so, no gravity; in a
 /// fluid it is the walk's travel. Then the glide of a parrot (`Parrot.calculateFlapping`).
 #[allow(clippy::type_complexity)]
@@ -307,6 +414,15 @@ pub(crate) fn travel(
         }
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
+        if fp.noclip {
+            // `noPhysics`: straight through the blocks, the air's friction.
+            p.0 = p.0.add_vector(v.0);
+            bb.0 = bb.0.move_by(v.0);
+            let u = v.0;
+            v.0 = Vec3::new(u.x * 0.91, u.y * 0.98, u.z * 0.91);
+            c.on_ground = false;
+            continue;
+        }
         if fp.free {
             // `LivingEntity.travelFlying`: no gravity, the drag of the medium (0.91 in the air, 0.8 in water, 0.5 in lava).
             drop_tiny(&mut v, fp);
