@@ -207,7 +207,7 @@ pub fn floor_level(w: &MobWorld, x: i32, y: i32, z: i32) -> f64 {
     f64::from(below) + f64::from(w.data.state(w.world.block(x, below, z)).top)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub x: i32,
     pub y: i32,
@@ -523,7 +523,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 PathType::Damaging => PathType::Damaging,
                 PathType::Cocoa => PathType::Cocoa,
                 PathType::Fence => {
-                    if [x, below_y, z] != self.mob.block_position() {
+                    if [x, below_y, z] != block_pos(self.mob) {
                         PathType::Fence
                     } else {
                         t
@@ -541,7 +541,7 @@ impl<'a, 'w> Finder<'a, 'w> {
     fn within_bb(&self, x: i32, y: i32, z: i32) -> Vec<PathType> {
         bump(19);
         let mut out = Vec::with_capacity(4);
-        let mp = self.mob.block_position();
+        let mp = block_pos(self.mob);
         for dx in 0..self.entity_width {
             for dy in 0..self.entity_height {
                 for dz in 0..self.entity_depth {
@@ -1487,7 +1487,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 }
             }
             nodes.reverse();
-            Some(Path::new(nodes, t.pos, reached))
+            Some(make_path(nodes, t.pos, reached))
         };
         if !reached.is_empty() {
             reached
@@ -1543,4 +1543,14 @@ fn vanilla_adjacent(t: PathType) -> Option<PathType> {
         PathType::DamageCautious => Some(PathType::DamageCautious),
         _ => None,
     }
+}
+
+fn block_pos(m: &PathMob) -> [i32; 3] {
+    [m.position.x.floor() as i32, m.position.y.floor() as i32, m.position.z.floor() as i32]
+}
+fn make_path(nodes: Vec<PathNode>, target: [i32; 3], reached: bool) -> Path {
+    let dist_to_target = nodes.last().map_or(f32::MAX, |n| {
+        ((n.x - target[0]).abs() + (n.y - target[1]).abs() + (n.z - target[2]).abs()) as f32
+    });
+    Path { nodes, next: 0, target, dist_to_target, reached }
 }

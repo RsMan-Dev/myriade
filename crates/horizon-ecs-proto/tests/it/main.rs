@@ -20,6 +20,7 @@ mod goals_vs_mob;
 mod hop_vs_mob;
 mod item_vs_original;
 mod kernel_equal;
+mod path_equal;
 mod lava_vs_mob;
 mod lazy_look;
 mod long_jump_vs_mob;
