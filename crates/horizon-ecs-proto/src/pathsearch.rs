@@ -327,6 +327,7 @@ thread_local! {
 const GW: usize = 97;
 const GH: usize = 17;
 const TAB: usize = 9 * 9 * 3;
+const NONE: u32 = u32::MAX;
 
 /// One pathfinding query: the node arena, open set and per-query caches.
 pub struct Finder<'a, 'w> {
@@ -337,6 +338,9 @@ pub struct Finder<'a, 'w> {
     index: FxHashMap<(i32, i32, i32), u32>,
     heap: Vec<(f32, u32)>,
     grid: Vec<u64>,
+    /// `grid`'s buffer, for the reads through `&self`.
+    gp: *mut u64,
+    jh: f64,
     use_grid: bool,
     stamp: u32,
     gox: i32,
@@ -440,8 +444,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             grid = vec![0u64; GW * GW * GH];
         }
         if !grid.is_empty() {
-            stamp = stamp.wrapping_add(1);
-            if stamp == 0 {
+            stamp += 1;
+            if stamp > 0xFFFF {
                 grid.iter_mut().for_each(|e| *e = 0);
                 stamp = 1;
             }
@@ -468,6 +472,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             index,
             heap,
             use_grid: !grid.is_empty(),
+            gp: grid.as_mut_ptr(),
+            jh: f64::from(mob.max_up_step).max(1.125),
             grid,
             stamp,
             gox: mp[0].wrapping_sub(GW as i32 / 2),
@@ -555,22 +561,30 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// WalkNodeEvaluator.getFloorLevel(level, pos).
     pub fn static_floor(&self, x: i32, y: i32, z: i32) -> f64 {
-        let _g = sec(9);
         let below = y.saturating_sub(1);
         if self.use_layer {
+            let slot = self.slot(x, y, z);
+            if let Some(p) = slot {
+                // SAFETY: a grid cell.
+                let c = unsafe { (*p >> 56) as u8 };
+                if c < 0xFE {
+                    return f64::from(below) + f64::from(c) / 16.0;
+                }
+            }
             let idx = layer_idx(x, below, z);
             let sect = self.sect(x, below, z);
             // SAFETY: as in `path_type`.
             let cell = unsafe { &mut (*sect).top[idx] };
-            if *cell < 0xFE {
-                return f64::from(below) + f64::from(*cell) / 16.0;
-            }
-            let top = self.state(x, below, z).top;
             if *cell == 0xFF {
+                let top = self.state(x, below, z).top;
                 let q = top * 16.0;
                 *cell = if q >= 0.0 && q < 250.0 && q.fract() == 0.0 { q as u8 } else { 0xFE };
             }
-            return f64::from(below) + f64::from(top);
+            let c = *cell;
+            if let Some(p) = slot {
+                unsafe { *p = (*p & !(0xFFu64 << 56)) | (u64::from(c) << 56) };
+            }
+            return if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) };
         }
         f64::from(below) + f64::from(self.state(x, below, z).top)
     }
@@ -807,11 +821,22 @@ impl<'a, 'w> Finder<'a, 'w> {
         let _g = sec(10);
         bump(7);
         if self.use_layer {
+            let slot = self.slot(x, y, z);
+            if let Some(p) = slot {
+                // SAFETY: a grid cell.
+                let v = unsafe { (*p >> 48) as u8 };
+                if v != 0 {
+                    return PathType::ALL[usize::from(v - 1)];
+                }
+            }
             let idx = layer_idx(x, y, z);
             let sect = self.psect(x, y, z);
             // SAFETY: as in `path_type`; the boxes of the profile map are never moved.
             let v = unsafe { (*sect)[idx] };
             if v != 0 {
+                if let Some(p) = slot {
+                    unsafe { *p = (*p & !(0xFFu64 << 48)) | (u64::from(v) << 48) };
+                }
                 return PathType::ALL[usize::from(v - 1)];
             }
             bump(8);
@@ -820,6 +845,9 @@ impl<'a, 'w> Finder<'a, 'w> {
             if !self.saw_rail.get() {
                 // SAFETY: as above.
                 unsafe { (*sect)[idx] = t as u8 + 1 };
+                if let Some(p) = slot {
+                    unsafe { *p = (*p & !(0xFFu64 << 48)) | (u64::from(t as u8 + 1) << 48) };
+                }
             }
             return t;
         }
@@ -832,22 +860,36 @@ impl<'a, 'w> Finder<'a, 'w> {
         t
     }
     // --- node arena -------------------------------------------------------
+    /// The grid cell of (x, y, z) for this search, reset when it is from an older one; None outside the grid.
+    /// A cell: node index (low 32 bits, NONE if none), search stamp (16), type + 1 (8, 0 unread), floor code (8, 0xFF unread).
+    #[inline(always)]
+    fn slot(&self, x: i32, y: i32, z: i32) -> Option<*mut u64> {
+        let (dx, dy, dz) = (x.wrapping_sub(self.gox) as u32 as usize, y.wrapping_sub(self.goy) as u32 as usize, z.wrapping_sub(self.goz) as u32 as usize);
+        if !self.use_grid || dx >= GW || dz >= GW || dy >= GH {
+            return None;
+        }
+        // SAFETY: in range of the grid, whose buffer lives as long as `self`.
+        unsafe {
+            let p = self.gp.add((dy * GW + dz) * GW + dx);
+            if ((*p >> 32) as u16) != self.stamp as u16 {
+                *p = (0xFFu64 << 56) | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
+            }
+            Some(p)
+        }
+    }
     fn node(&mut self, x: i32, y: i32, z: i32) -> u32 {
         bump(5);
-        if self.use_grid {
-            let (dx, dy, dz) = (x.wrapping_sub(self.gox) as u32, y.wrapping_sub(self.goy) as u32, z.wrapping_sub(self.goz) as u32);
-            if (dx as usize) < GW && (dz as usize) < GW && (dy as usize) < GH {
-                let slot = (dy as usize * GW + dz as usize) * GW + dx as usize;
-                let e = self.grid[slot];
-                if (e >> 32) as u32 == self.stamp {
-                    return e as u32;
-                }
-                let i = self.nodes.len() as u32;
-                bump(6);
-                self.nodes.push(Node::new(x, y, z));
-                self.grid[slot] = (u64::from(self.stamp) << 32) | u64::from(i);
-                return i;
+        if let Some(p) = self.slot(x, y, z) {
+            // SAFETY: `slot` gives a cell of the grid.
+            let e = unsafe { *p };
+            if e as u32 != NONE {
+                return e as u32;
             }
+            let i = self.nodes.len() as u32;
+            bump(6);
+            self.nodes.push(Node::new(x, y, z));
+            unsafe { *p = (e & !0xFFFF_FFFF) | u64::from(i) };
+            return i;
         }
         if let Some(i) = self.index.get(&(x, y, z)) {
             return *i;
@@ -1037,6 +1079,27 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
+        if self.use_layer && !Self::partial_collision(current) {
+            // Common case, all read from the grid cell: solid floor, walkable cell, node already there.
+            if let Some(p) = self.slot(x, y, z) {
+                // SAFETY: a grid cell.
+                let e = unsafe { *p };
+                let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
+                if c < 0xFE && idx != NONE && ty == PathType::Walkable as u8 + 1 {
+                    if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
+                        return None;
+                    }
+                    let cost = self.mt[PathType::Walkable as usize];
+                    if cost >= 0.0 {
+                        let node = &mut self.nodes[idx as usize];
+                        node.kind = PathType::Walkable;
+                        node.cost_malus = node.cost_malus.max(cost);
+                        return Some(idx);
+                    }
+                    return None;
+                }
+            }
+        }
         let _g = sec(2);
         let amphibious = matches!(self.eval, Evaluator::Amphibious { .. });
         bump(2);
@@ -1832,28 +1895,27 @@ pub fn layer_changed(x: i32, y: i32, z: i32) {
                 }
             }
         }
-        fn each(a: [i32; 3], b: [i32; 3], mut g: impl FnMut(usize)) {
+        // Rows of the box inside one section: `g(start, end)` over the cell indices of each row.
+        fn each(a: [i32; 3], b: [i32; 3], mut g: impl FnMut(usize, usize)) {
             for yy in a[1]..=b[1] {
                 for zz in a[2]..=b[2] {
                     let base = (((yy & 15) << 8) | ((zz & 15) << 4)) as usize;
-                    for xx in a[0]..=b[0] {
-                        g(base | (xx & 15) as usize);
-                    }
+                    g(base | (a[0] & 15) as usize, (base | (b[0] & 15) as usize) + 1);
                 }
             }
         }
         boxes([x - 6, y - 6, z - 6], [x + 1, y + 3, z + 1], |key, a, b| {
             for &p in &l.profiles {
                 if let Some(v) = l.pmap.get_mut(&(p, key)) {
-                    each(a, b, |i| v[i] = 0);
+                    each(a, b, |i, j| v[i..j].fill(0));
                 }
             }
         });
         boxes([x - 1, y - 1, z - 1], [x + 1, y + 2, z + 1], |key, a, b| {
             if let Some(sct) = l.map.get_mut(&key) {
-                each(a, b, |i| {
-                    sct.stat[i] = 0;
-                    sct.top[i] = 0xFF;
+                each(a, b, |i, j| {
+                    sct.stat[i..j].fill(0);
+                    sct.top[i..j].fill(0xFF);
                 });
             }
         });

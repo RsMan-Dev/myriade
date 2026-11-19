@@ -51,6 +51,7 @@ impl Rng {
 
 fn main() {
     if std::env::var_os("OWN").is_some() { horizon_ecs_proto::pathsearch::USE_OWN.store(true, std::sync::atomic::Ordering::Relaxed); }
+    eprintln!("path search: {}", if horizon_ecs_proto::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) { "OWN (pathsearch.rs)" } else { "Horizon Finder" });
     if std::env::var_os("NOLAYER").is_some() { horizon_ecs_proto::pathsearch::LAYER_ON.store(false, std::sync::atomic::Ordering::Relaxed); }
     let a: Vec<String> = std::env::args().collect();
     let scene = a.get(1).map_or("rest", String::as_str);
