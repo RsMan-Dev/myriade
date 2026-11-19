@@ -312,6 +312,10 @@ impl Hazards {
         }
         h
     }
+    /// The world holds no turtle egg at all.
+    pub fn eggs_empty(&self) -> bool {
+        self.eggs.is_empty()
+    }
     /// A turtle egg lies in the box `lo..=hi` (cells).
     pub fn egg_in(&self, lo: [i32; 3], hi: [i32; 3]) -> bool {
         self.eggs.range([lo[0], i32::MIN, i32::MIN]..=[hi[0], i32::MAX, i32::MAX]).any(|p| (lo[1]..=hi[1]).contains(&p[1]) && (lo[2]..=hi[2]).contains(&p[2]))

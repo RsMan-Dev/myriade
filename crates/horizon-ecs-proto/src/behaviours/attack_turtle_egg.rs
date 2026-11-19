@@ -47,9 +47,20 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(EggHunt { walk: MoveToBlock::new(p.speed, p.range, p.vertical), since_reached: 0, accepted: p.accepted });
 }
-/// `next_start` is 0 at creation: the first ask searches.
+/// The hunter waits for an egg to appear: no deadline, nothing asked while the world holds none (`parked_wake` re-arms it).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Parked;
+fn no_egg_anywhere(w: &World) -> bool {
+    w.get_resource::<Hazards>().is_some_and(|h| h.eggs_empty())
+}
+/// `next_start` is 0 at creation: the first ask searches, unless the world holds no egg: then it waits for one.
 fn arm(w: &mut World, e: Entity, inst: Inst) {
-    crate::goals::arm(w, e, inst.slot, 1);
+    if no_egg_anywhere(w) {
+        w.entity_mut(e).insert(Parked);
+    } else {
+        crate::goals::arm(w, e, inst.slot, 1);
+    }
 }
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a running goal has none.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -69,6 +80,10 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let found = !nothing && w.get_mut::<EggHunt>(e).unwrap().walk.find_nearest(base, mw, egg_target);
     if found {
         return true;
+    }
+    if no_egg_anywhere(w) {
+        w.entity_mut(e).insert(Parked);
+        return false;
     }
     let k = reduced(200 + with_rng(w, e, |r| r.next_int(200)));
     crate::goals::arm(w, e, inst.slot, 2 * (k + 1));
@@ -99,6 +114,20 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(trample_run.in_set(slot));
+    // An egg appeared (the hazards changed): the parked hunters ask again after the delay of a search that found nothing.
+    s.add_systems(parked_wake.in_set(slot).run_if(bevy_ecs::schedule::common_conditions::resource_changed::<Hazards>));
+}
+fn parked_wake(w: &mut World, q: &mut QueryState<Entity, With<Parked>>) {
+    if no_egg_anywhere(w) {
+        return;
+    }
+    let parked: Vec<Entity> = q.iter(w).collect();
+    for e in parked {
+        w.entity_mut(e).remove::<Parked>();
+        let Some(slot) = slot_of(w, e, &MODULE) else { continue };
+        let k = reduced(200 + with_rng(w, e, |r| r.next_int(200)));
+        crate::goals::arm(w, e, slot, 2 * (k + 1));
+    }
 }
 /// The tick of every running goal of this kind (a query of the marker only: nothing when no zombie runs).
 fn trample_run(w: &mut World, q: &mut QueryState<Entity, With<Trampling>>) {
