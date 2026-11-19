@@ -78,9 +78,9 @@ pub fn absorb(amount: f32, armor: f32, toughness: f32) -> f32 {
     let effective = (armor - amount / t).clamp(armor * 0.2, 20.0);
     amount * (1.0 - effective / 25.0)
 }
-/// Whether a kind of hurt is stopped by armor (the others are in `#bypasses_armor`): a blow, fire, lava, cactus, an explosion.
+/// Whether a kind of hurt is stopped by armor (the others are in `#bypasses_armor`): a blow, flames, lava, cactus, an explosion; `on_fire` is in the tag, as data shows.
 pub fn armor_applies(cause: Cause) -> bool {
-    matches!(cause, Cause::Entity | Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Blast)
+    matches!(cause, Cause::Entity | Cause::Cactus | Cause::InFire | Cause::Lava | Cause::Blast)
 }
 
 /// What a player's item may be put on: which slots the entity accepts from a hand, and whether it must be tame and grown up.
