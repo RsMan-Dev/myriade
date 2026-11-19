@@ -432,6 +432,11 @@ fn states_named(registry: &BlockRegistry, names: &[&str]) -> Vec<Vec<BlockStateI
 /// hard blocks (`only`: that one name, every column of the layer y = 1 holds one; None: all of `HARD`), with the lids of the
 /// shulker boxes and the pistons in motion the world keeps for them. The pointer lets a test change blocks.
 pub fn hard_world(seed: u64, only: Option<&str>) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+    hard_world_sized(seed, only, 14)
+}
+
+/// [`hard_world`] over x, z in [-half, half) (half at most 32).
+pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
     let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -2, 2);
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -442,8 +447,8 @@ pub fn hard_world(seed: u64, only: Option<&str>) -> (&'static MobWorld<'static>,
         };
         assert!(!hard.is_empty(), "no state named {only:?}");
         let mut r = Rng(seed | 1);
-        for x in -14..14 {
-            for z in -14..14 {
+        for x in -half..half {
+            for z in -half..half {
                 w.set(x, 0, z, stone).unwrap();
                 for y in 1..6 {
                     let kind = if only.is_some() && y == 1 { 99 } else { r.below(100) };

@@ -18,7 +18,7 @@
 //! hard cells met. The whole kernel runs only when the box is too big or not finite (`Err` from `collect`); nothing else is left to it
 //! (a world border and entity colliders do not go through here).
 use horizon_client_render::collisions::SceneCollisions;
-use horizon_core::position::BlockPos;
+use horizon_core::{position::BlockPos, random::position_seed};
 use horizon_world::{collision_context::{CollisionContext, CollisionEntity, CollisionItem, EntityContextKind}, entity_obstruction::EntityIdentity};
 use horizon_core::geometry::{try_resolve_step_movement_in, Aabb, Axis, Collider, ShapeOp, Vec3, VoxelShape};
 use horizon_world::registry::BlockStateId;
@@ -80,7 +80,8 @@ impl Section {
                 self.near[row] |= bit;
                 self.any_cells = true;
             }
-            Class::Shaped { large, .. } => {
+            Class::Shaped { .. } | Class::Column { .. } => {
+                let large = matches!(class, Class::Shaped { large: true, .. });
                 self.shaped[row] |= bit;
                 self.any_shaped = true;
                 self.near[row] |= bit;
@@ -124,6 +125,10 @@ enum Class {
     Cube,
     /// A fixed shape (index in the table, from 0), large when it reaches out of its cell.
     Shaped { shape: u32, large: bool },
+    /// A fixed shape moved by an offset that is a pure function of the column (x, z): bamboo, pointed dripstone, sulfur spike
+    /// (`DynamicSupport::offset`). `slot` indexes the table's moved shapes of this state, 256 per slot (one per offset). The kernel flags these states large (no cached shape), but the moved shape never leaves its cell
+    /// (a test checks every offset): such a shape cannot meet a box in a ring cell, so the ring is not read for it.
+    Column { slot: u32 },
     /// The kernel is asked for the shape of this one cell (entity context, world, block entity, column offset); `large` and
     /// `piston`: the scan keeps it on the outer layers too (`CollisionBlock`).
     Hard { large: bool, piston: bool },
@@ -137,6 +142,7 @@ fn encode(c: Class) -> u32 {
         Class::Hard { large, piston } => 3 | u32::from(large) << 3 | u32::from(piston) << 4,
         Class::Liquid { large } => 4 | u32::from(large) << 3,
         Class::Shaped { shape, large } => 5 | u32::from(large) << 3 | shape << 5,
+        Class::Column { slot } => 6 | slot << 5,
     }
 }
 fn decode(n: u32) -> Class {
@@ -146,6 +152,7 @@ fn decode(n: u32) -> Class {
         2 => Class::Cube,
         3 => Class::Hard { large, piston },
         4 => Class::Liquid { large },
+        6 => Class::Column { slot: n >> 5 },
         _ => Class::Shaped { shape: n >> 5, large },
     }
 }
@@ -225,6 +232,9 @@ struct Table {
     /// The distinct fixed shapes, by address in the registry's own cache (nothing is copied; the registry outlives the masks).
     shapes: Vec<usize>,
     shape_at: HashMap<usize, u32>,
+    /// Per column-offset state (`Class::Column`): the shapes the kernel gave, moved, by offset key (an address in `column_shapes`, 0: not met).
+    columns: Vec<Option<Box<[usize; 256]>>>,
+    column_shapes: Vec<Box<VoxelShape>>,
     /// States classified (first encounters), for the measurements.
     met: u64,
 }
@@ -261,6 +271,13 @@ impl Table {
         }
         if block.empty_shape || block.moving_piston {
             return hard;
+        }
+        // Bamboo and the pointed stalactites: no cached shape, a fixed shape moved by an offset of the column.
+        if matches!(binding.cached_shapes().cached_shape(s), Ok(None))
+            && matches!(binding.registry().state(s).map(|st| st.name.as_str()), Some("minecraft:bamboo" | "minecraft:pointed_dripstone" | "minecraft:sulfur_spike"))
+        {
+            self.columns.push(None);
+            return Class::Column { slot: self.columns.len() as u32 - 1 };
         }
         let Ok(Some(shape)) = binding.cached_shapes().cached_shape(s) else { return hard };
         if shape.is_empty() || shape.is_block() || shape.bounds().is_none() {
@@ -322,6 +339,7 @@ impl Occupancy {
             Class::Cube => "cube",
             Class::Shaped { large: false, .. } => "shaped",
             Class::Shaped { large: true, .. } => "large shaped",
+            Class::Column { .. } => "column",
             Class::Hard { .. } => "hard",
             Class::Liquid { .. } => "liquid",
         }
@@ -331,7 +349,7 @@ impl Occupancy {
         match self.inner.lock().unwrap().table.class_of(binding, s) {
             Class::Empty => 0,
             Class::Cube => 1,
-            Class::Shaped { .. } => 2,
+            Class::Shaped { .. } | Class::Column { .. } => 2,
             Class::Hard { .. } => 3,
             Class::Liquid { .. } => 4,
         }
@@ -530,9 +548,13 @@ fn collect(map: &mut Map, recent: &mut [(u64, usize); 64], table: &mut Table, he
                     ask(scene, context, x, y, z, b, out, held)?;
                     continue;
                 }
-                let Class::Shaped { shape, .. } = table.class_of(binding, world.block(x, y, z)) else { return Err(()) };
-                // SAFETY: as `Occ::shape`.
-                let shape: &VoxelShape = unsafe { &*(table.shapes[shape as usize] as *const VoxelShape) };
+                let shape_ptr = match table.class_of(binding, world.block(x, y, z)) {
+                    Class::Shaped { shape, .. } => table.shapes[shape as usize],
+                    Class::Column { slot } => column_shape(table, scene, slot, x, y, z)?,
+                    _ => return Err(()),
+                };
+                // SAFETY: as `Occ::shape`: the registry's cache or `column_shapes` (boxed, never freed or moved).
+                let shape: &VoxelShape = unsafe { &*(shape_ptr as *const VoxelShape) };
                 // `examine`: the shape's bounds, moved, must meet the box; and it must overlap it clearly (else the kernel joins).
                 if !shape.bounds().is_some_and(|sb| sb.move_by(offset).intersects(b)) {
                     continue;
@@ -582,6 +604,39 @@ fn collect(map: &mut Map, recent: &mut [(u64, usize); 64], table: &mut Table, he
         }
     }
     Ok(())
+}
+
+/// The offset key of a column: the two 4-bit values `DynamicSupport::offset` takes from `position_seed(x, 0, z)` (shifts 0 and 8);
+/// bamboo and the stalactites are moved by a pure function of them.
+#[inline]
+fn column_key(x: i32, z: i32) -> usize {
+    let seed = position_seed(BlockPos::new(x, 0, z));
+    ((seed & 15) | (seed >> 8 & 15) << 4) as usize
+}
+
+/// The kernel's moved shape of a column-offset state at the offset of column (x, z): asked once per (state, offset), then kept.
+#[inline]
+fn column_shape(table: &mut Table, scene: &mut SceneCollisions<'_, '_>, slot: u32, x: i32, y: i32, z: i32) -> Result<usize, ()> {
+    let key = column_key(x, z);
+    if let Some(Some(a)) = table.columns.get(slot as usize) {
+        if a[key] != 0 {
+            return Ok(a[key]);
+        }
+    }
+    column_shape_first(table, scene, slot, key, x, y, z)
+}
+#[cold]
+#[inline(never)]
+fn column_shape_first(table: &mut Table, scene: &mut SceneCollisions<'_, '_>, slot: u32, key: usize, x: i32, y: i32, z: i32) -> Result<usize, ()> {
+    let (world, binding) = (scene.world, scene.binding);
+    let state = world.block(x, y, z);
+    // The shape depends on the column alone (no contextual rule, no block entity), so any context and this cell's own answer will do.
+    let shape = binding.collision_shape_with_context(scene, state, BlockPos::new(x, y, z), &CollisionContext::position(f64::from(y))).map_err(|_| ())?;
+    table.column_shapes.push(Box::new(shape));
+    let p = table.column_shapes.last().map(|b| &**b as *const VoxelShape as usize).ok_or(())?;
+    let a = table.columns.get_mut(slot as usize).ok_or(())?.get_or_insert_with(|| Box::new([0; 256]));
+    a[key] = p;
+    Ok(p)
 }
 
 /// A shape whose bounds meet the box without overlapping it clearly: the kernel moves it and keeps it only if its join with the
