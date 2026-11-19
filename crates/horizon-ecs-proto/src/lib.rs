@@ -11,3 +11,4 @@ pub mod hostile;
 pub mod kernel_lab;
 pub mod profile;
 pub mod species;
+pub mod targeting;

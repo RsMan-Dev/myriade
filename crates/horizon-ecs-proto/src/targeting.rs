@@ -1,0 +1,169 @@
+//! The target of an attacker, a service of the framework: a creature or a player that an attack module (melee, leap,
+//! later a ranged attack) reads without knowing which module set it. `Target` is the current target with the memory of
+//! the last sight; the modules that choose a target (`nearest_target`, `hurt_by`) write it with `set_target`, the
+//! systems here keep it honest (`TargetGoal.canContinueToUse`) and clear it when it stops being valid.
+use crate::cow::*;
+use crate::goals::*;
+use crate::hostile::{ChangedBlocks, PlayerState};
+use bevy_ecs::{prelude::*, system::SystemParam};
+use horizon_core::geometry::{Aabb, Vec3};
+
+/// Whom an attack is aimed at: a player of the bench's list, or a creature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Who {
+    Player(u32),
+    Entity(Entity),
+}
+/// The current target of an attacker: whom, the last line-of-sight reading, the unseen evaluations counted (every other
+/// tick) against `memory` (`unseenMemoryTicks` / 2), and the goal (rank in the selector) that holds it (`u8::MAX`: none).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Target {
+    pub who: Who,
+    /// `Mob.sees(target)` as last read; re-read by `sight_eval` only when an eye changes block or a block changes on or
+    /// around the segment.
+    pub seen: bool,
+    zblock: (i32, i32, i32),
+    pblock: (i32, i32, i32),
+    unseen: u16,
+    pub memory: u16,
+    pub slot: u8,
+    /// `TargetGoal.mustSee`: a target out of sight is lost after `memory` evaluations; else it is kept while in range.
+    pub must_see: bool,
+    /// `TargetGoal.getFollowDistance` as a fraction of the follow range.
+    pub follow_scale: f64,
+}
+impl Target {
+    pub fn new(who: Who, memory: u16, slot: u8) -> Self {
+        Self { who, seen: false, zblock: (i32::MIN, 0, 0), pblock: (i32::MIN, 0, 0), unseen: 0, memory, slot, must_see: true, follow_scale: 1.0 }
+    }
+    pub fn player(id: u32, memory: u16) -> Self {
+        Self::new(Who::Player(id), memory, u8::MAX)
+    }
+}
+/// The height of the eyes above the feet (the line of sight starts there): a capability component of the targeting service.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Eye(pub f64);
+/// How far the animal follows a target (`Attributes.FOLLOW_RANGE`): a capability component of the targeting service.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FollowRange(pub f64);
+/// The functions called when an attacker gets a target (an attack module arms its first check there).
+#[derive(Resource, Default)]
+pub struct TargetWatchers(pub Vec<fn(&mut World, Entity)>);
+
+/// What a target is, for the rules that read it.
+#[derive(Clone, Copy, Debug)]
+pub struct Info {
+    pub pos: Vec3,
+    pub eye: f64,
+    pub bounds: Aabb,
+    pub baby: bool,
+    /// The species id of a creature (`u8::MAX` for a player).
+    pub species: u8,
+    pub player: bool,
+    /// A player that cannot be targeted (creative, spectator) or a creature that is dead.
+    pub exempt: bool,
+}
+pub fn player_box(p: &Player) -> Aabb {
+    Aabb::new(Vec3::new(p.x - 0.3, p.y, p.z - 0.3), Vec3::new(p.x + 0.3, p.y + 1.8, p.z + 0.3))
+}
+/// The reading of a target from the resources and a creature lookup.
+fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<(Vec3, Aabb, u8, bool, f64)>) -> Option<Info> {
+    match who {
+        Who::Player(id) => {
+            let p = on.get(id)?;
+            if !ps.alive(id) {
+                return None;
+            }
+            Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: ps.creative(id) || ps.spectator(id) })
+        }
+        Who::Entity(e) => {
+            let (pos, bounds, sid, baby, eye) = ent(e)?;
+            Some(Info { pos, eye: pos.y + eye, bounds, baby, species: sid, player: false, exempt: false })
+        }
+    }
+}
+/// The targets of a system: players, creatures, their rules.
+#[derive(SystemParam)]
+pub struct Targets<'w, 's> {
+    pub on: Res<'w, Online>,
+    pub ps: Res<'w, PlayerState>,
+    ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>, &'static Eye)>,
+}
+impl Targets<'_, '_> {
+    pub fn info(&self, who: Who) -> Option<Info> {
+        read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l)| (p.0, b.0, s.0, g, l.0)))
+    }
+}
+/// [`Targets::info`] for the code that holds the world.
+pub fn info(w: &World, who: Who) -> Option<Info> {
+    read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
+        Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some(), w.get::<Eye>(e)?.0))
+    })
+}
+/// `TargetingConditions`: the range an attacker sees a target at: the follow range, scaled by the target's visibility,
+/// never under 2 blocks.
+pub fn sight_range(range: f64, visibility: f64) -> f64 {
+    (range * visibility.clamp(0.0, 10.0)).max(2.0)
+}
+/// The attacker takes `who` as its target (the goal `slot` holds it): the attack modules are told.
+pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
+    t.seen = false;
+    w.entity_mut(e).insert(t);
+    let watchers = w.resource::<TargetWatchers>().0.clone();
+    for f in watchers {
+        f(w, e);
+    }
+}
+/// The attacker has no target any more.
+pub fn clear_target(w: &mut World, e: Entity) {
+    w.entity_mut(e).remove::<Target>();
+}
+/// `Mob.sees` for the attackers that have a target: the line of sight is read again only when the attacker's eyes or the
+/// target's change block, or a block changes on the box of the segment between them (inflated by a block); an attacker
+/// that stands still, with a still target and still blocks, costs a comparison.
+pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlocks>, mut q: Query<(&Pos, &Eye, &mut Target)>) {
+    let mw = level.mw.0;
+    let block = |p: Vec3, eye: f64| (p.x.floor() as i32, (p.y + eye).floor() as i32, p.z.floor() as i32);
+    for (pos, look, mut g) in &mut q {
+        let Some(i) = tg.info(g.who) else { continue };
+        let (zb, pb) = (block(pos.0, look.0), (i.pos.x.floor() as i32, i.eye.floor() as i32, i.pos.z.floor() as i32));
+        let mut dirty = zb != g.zblock || pb != g.pblock;
+        if !dirty && !changed.0.is_empty() {
+            let (lo, hi) = ((zb.0.min(pb.0) - 1, zb.1.min(pb.1) - 1, zb.2.min(pb.2) - 1), (zb.0.max(pb.0) + 1, zb.1.max(pb.1) + 1, zb.2.max(pb.2) + 1));
+            dirty = changed.0.iter().any(|c| (lo.0..=hi.0).contains(&c.0) && (lo.1..=hi.1).contains(&c.1) && (lo.2..=hi.2).contains(&c.2));
+        }
+        if dirty {
+            (g.zblock, g.pblock) = (zb, pb);
+            g.seen = mw.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + look.0, pos.0.z), Vec3::new(i.pos.x, i.eye, i.pos.z));
+        }
+    }
+    changed.0.clear();
+}
+/// `TargetGoal.canContinueToUse`, asked every other tick of the attackers that have a target: alive, not creative, within
+/// the follow range, and (with `must_see`) seen at least once in `memory` evaluations; else the target is lost.
+pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Pos, &FollowRange, &mut Target)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+    if clock.0 % 2 != 0 {
+        return;
+    }
+    for (e, pos, range, mut g) in &mut q {
+        let follow = range.0 * g.follow_scale;
+        let ok = tg.info(g.who).is_some_and(|i| !i.exempt && d2(pos.0, i.pos) <= follow * follow);
+        if g.seen {
+            g.unseen = 0;
+        } else {
+            g.unseen += 1;
+        }
+        if !ok || (g.must_see && g.unseen > g.memory) {
+            if g.slot == u8::MAX {
+                cmd.entity(e).remove::<Target>();
+            } else {
+                reqs.0.push(Req::End(e, g.slot));
+            }
+        }
+    }
+}
+/// The framework's systems of the targeting service (registered by the modules that choose targets, once).
+pub fn register(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
+    s.add_systems((sight_eval, target_continue).chain().after(apply_damage).in_set(slot));
+}

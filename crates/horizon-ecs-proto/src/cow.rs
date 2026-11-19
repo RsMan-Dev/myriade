@@ -210,15 +210,19 @@ pub struct Hit {
     pub cause: Cause,
     /// The attacker's position (x, z); `None` for an attacker without one or an environmental cause.
     pub from: Option<(f64, f64)>,
-    /// The player that did it (an entity of the bench's `Online` list), for the target of a `HurtByTarget`.
-    pub by: Option<u32>,
+    /// Who did it (a player of the bench's `Online` list, or a creature), for the target of a `HurtByTarget`.
+    pub by: Option<crate::targeting::Who>,
 }
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
         self.0.push(Hit { target, amount, cause, from: None, by: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(player) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)) });
+    }
+    /// A blow of a creature standing at `from`: the victim may take it as its target.
+    pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)) });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
         self.0.push(Hit { target, amount, cause, from: Some(from), by: None });
