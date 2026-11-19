@@ -122,7 +122,6 @@ pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(ridden_drive.after(move_control).before(travel));
-    s.add_systems(ridden_seats.after(travel).before(reindex));
 }
 fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
@@ -294,8 +293,14 @@ fn ridden_drive(
     clock: Res<Clock>,
     mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), With<Ridden>>,
     targets: Query<(), With<crate::targeting::Target>>,
+    level: Res<Level>,
+    on: Res<Online>,
+    mut held: Query<crate::leash::Held, crate::leash::HeldFilter>,
+    holders: Query<(&Pos, &Bounds, Option<&Vel>, Option<&Yaw>), (Without<crate::leash::Leash>, Without<Ridden>)>,
     mut commands: Commands,
 ) {
+    // The lead (no system of its own: this one runs every tick anyway).
+    crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
     for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture) in &mut q {
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();
@@ -397,14 +402,16 @@ fn ridden_drive(
     }
 }
 /// After the move: the riders sit where the mount is (a player of the bench, a creature put at the seat and turned with the mount); a creature
-/// rider that is gone gets off.
-fn ridden_seats(
-    q: Query<(Entity, &Mount, &Yaw, &Body, &Pos), With<Ridden>>,
-    mut riders: Query<(&mut Pos, Option<&mut Yaw>), (With<Riding>, Without<Ridden>)>,
-    mut on: ResMut<Online>,
-    mut commands: Commands,
+/// rider that is gone gets off. Not a system of its own (see `leash::tick`): `cow::apply_pushes` calls it each tick with its parameters; the
+/// riders' cells are read again by the next tick's `reindex`.
+#[allow(clippy::type_complexity)]
+pub(crate) fn seats(
+    q: &Query<(Entity, &Mount, &Yaw, &Body, &Pos), With<Ridden>>,
+    riders: &mut Query<(&mut Pos, Option<&mut Yaw>), (With<Riding>, Without<Ridden>)>,
+    on: &mut Online,
+    commands: &mut Commands,
 ) {
-    for (e, m, yaw, body, pos) in &q {
+    for (e, m, yaw, body, pos) in q.iter() {
         for (k, who) in [m.rider, m.passenger].into_iter().enumerate() {
             let at = seat_at(pos.0, yaw.0, body, m.seats.get(k).copied().unwrap_or(0.0), m.seat_height);
             match who {

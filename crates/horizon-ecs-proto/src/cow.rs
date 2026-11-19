@@ -1330,7 +1330,6 @@ pub fn schedule() -> Schedule {
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
-    crate::leash::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -3076,11 +3075,20 @@ fn cramming(
     }
 }
 /// The half of a push a cow that did not move is owed: its velocity changes, its physics is active.
-fn apply_pushes(mut q: Query<(Entity, &PushIn, &mut Vel)>, mut commands: Commands) {
+#[allow(clippy::type_complexity)]
+fn apply_pushes(
+    mut q: Query<(Entity, &PushIn, &mut Vel)>,
+    mut commands: Commands,
+    mut on: ResMut<crate::goals::Online>,
+    mounts: Query<(Entity, &crate::mount::Mount, &Yaw, &Body, &Pos), With<crate::mount::Ridden>>,
+    mut riders: Query<(&mut Pos, Option<&mut Yaw>), (With<crate::mount::Riding>, Without<crate::mount::Ridden>)>,
+) {
     for (e, p, mut v) in &mut q {
         v.0 = Vec3::new(v.0.x + p.0.x, v.0.y, v.0.z + p.0.z);
         commands.entity(e).remove::<PushIn>();
     }
+    // The seats: no system of their own, so no cost when nothing is ridden (the queries are sparse sets).
+    crate::mount::seats(&mounts, &mut riders, &mut on, &mut commands);
 }
 
 /// What is due at this tick in the timer wheel: a stroll attempt (a spot is picked, or the attempt fails and is

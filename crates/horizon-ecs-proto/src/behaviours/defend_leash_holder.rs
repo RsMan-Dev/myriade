@@ -26,12 +26,12 @@ pub struct Defender {
     handled: u64,
     attacker: Option<Who>,
 }
-pub static MODULE: Module = Module { name: "defend_leash_holder", flags: TARGET, equip, can_use, start, stop, systems, requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "defend_leash_holder", flags: TARGET, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Defender { p: *params::<Params>(p), slot: inst.slot, handled: u64::MAX, attacker: None });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(wake.in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, wake);
 }
 /// The holder was hurt by an entity: the creatures it holds look at who did it; a lead put on a creature: it looks at once.
 fn wake(ev: Res<Events>, leashes: Option<Res<crate::leash::Leashes>>, q: Query<&Defender>, mut reqs: ResMut<Requests>) {

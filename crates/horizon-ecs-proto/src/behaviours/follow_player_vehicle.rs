@@ -45,7 +45,7 @@ pub struct Escorts(pub Vec<Escort>);
 #[component(storage = "SparseSet")]
 pub struct Escorting(pub u8);
 
-pub static MODULE: Module = Module { name: "follow_player_vehicle", flags: 0, equip, can_use, start, stop, systems, requires: &[Cap::Body, Cap::Goals, Cap::Locomotion], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "follow_player_vehicle", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let s = Escort { p: *params::<Params>(p), slot: inst.slot, following: false, leading: false, recalc: 0 };
     match w.get_mut::<Escorts>(e) {
@@ -55,8 +55,8 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         }
     }
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(escort_events.in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, escort_events);
 }
 /// The vehicle of a player moved (or stopped): the creatures around it look again; each escort runs its step (one registered system).
 #[allow(clippy::type_complexity)]
