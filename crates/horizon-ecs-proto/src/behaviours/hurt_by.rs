@@ -66,15 +66,16 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, ignore, called_by: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((hurt_events.after(apply_damage), shot_ends).in_set(slot));
+    s.add_systems(hurt_events.after(apply_damage).in_set(slot));
 }
-/// A creature that shot while its hunt (this goal's target) runs ends the hunt: `ends_on_shot`.
-fn shot_ends(q: Query<(Entity, &HurtByGoal, Option<&Target>), Changed<crate::behaviours::ranged_attack::DidShot>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
-    for (e, g, t) in &q {
-        if g.p.ends_on_shot && t.is_some_and(|t| t.slot == g.slot) {
-            cmd.entity(e).remove::<crate::behaviours::ranged_attack::DidShot>();
-            reqs.0.push(Req::End(e, g.slot));
-        }
+/// `DidShot` was just set (the hook of the component, so no system runs when nobody shoots): a creature that shoots while its hunt
+/// (this goal's target) runs ends the hunt, `ends_on_shot`.
+pub(crate) fn on_shot(w: &mut bevy_ecs::world::DeferredWorld, e: Entity) {
+    let Some(g) = w.get::<HurtByGoal>(e) else { return };
+    let (ends, slot) = (g.p.ends_on_shot, g.slot);
+    if ends && w.get::<Target>(e).is_some_and(|t| t.slot == slot) {
+        w.commands().entity(e).remove::<crate::behaviours::ranged_attack::DidShot>();
+        w.resource_mut::<Requests>().0.push(Req::End(e, slot));
     }
 }
 /// A creature was hurt by a player or a creature: the goal is woken at the selector's next tick.
