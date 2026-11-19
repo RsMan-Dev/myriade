@@ -148,6 +148,7 @@ pub mod look_at_player;
 pub mod melee;
 pub mod panic;
 pub mod random_look;
+pub mod random_stand;
 pub mod stroll;
 pub mod target;
 pub mod tempt;
@@ -159,6 +160,7 @@ pub static TABLE: &[&Module] = &[
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,
+    &random_stand::MODULE,
     &float::MODULE,
     &panic::MODULE,
     &target::MODULE,
