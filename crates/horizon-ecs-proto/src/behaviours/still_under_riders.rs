@@ -30,6 +30,10 @@ pub struct Above;
 #[component(storage = "SparseSet")]
 pub struct Leaving;
 
+/// The goal slot of the module on the animal.
+#[derive(Component, Clone, Copy, Debug)]
+struct Slot(u8);
+
 pub static MODULE: Module = Module {
     name: "still_under_riders",
     flags: MOVE,
@@ -43,25 +47,25 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert((PlayerWatch::new(p.reach), p));
+    w.entity_mut(e).insert((PlayerWatch::new(p.reach as f32), p, Slot(inst.slot)));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(watched.in_set(slot));
 }
 /// A player enters the watch: the goal starts; a player leaves: the goal ends (its stop starts the countdown).
-fn watched(ev: Res<Events>, mut reqs: ResMut<Requests>, mut commands: Commands, q: Query<(), With<PlayerWatch>>) {
+fn watched(ev: Res<Events>, mut reqs: ResMut<Requests>, mut commands: Commands, q: Query<&Slot, With<PlayerWatch>>) {
     for (e, _) in ev.player_entered.iter() {
-        if q.get(e).is_ok() {
+        if let Ok(s) = q.get(e) {
             commands.entity(e).insert(Above);
-            reqs.0.push(Req::Start(e, GoalSlot(0)));
+            reqs.0.push(Req::Start(e, s.0));
         }
     }
     for (e, _) in ev.player_left.iter() {
-        if q.get(e).is_ok() {
+        if let Ok(s) = q.get(e) {
             commands.entity(e).remove::<Above>().insert(Leaving);
-            reqs.0.push(Req::End(e, GoalSlot(0)));
+            reqs.0.push(Req::End(e, s.0));
         }
     }
 }

@@ -84,6 +84,7 @@ pub mod polar_bear;
 pub mod ravager;
 pub mod hoglin;
 pub mod fox;
+pub mod happy_ghast;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -146,6 +147,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &ravager::DEF,
     &hoglin::DEF,
     &fox::DEF,
+    &happy_ghast::DEF,
+    &happy_ghast::BABY,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

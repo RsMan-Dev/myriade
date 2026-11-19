@@ -29,10 +29,10 @@ fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Intera
     if w.get::<Harness>(e).is_some() || w.get::<GrowAt>(e).is_some() || !is_harness(i.item) {
         return no_interact(w, e, p, i);
     }
-    let item: Arc<str> = Arc::from(crate::goals::item_name(i.item).unwrap_or_default());
+    let item: Arc<str> = Arc::from(crate::items::item_name(i.item).unwrap_or_default());
     w.entity_mut(e).insert(Harness { item });
     true
 }
 fn is_harness(item: u32) -> bool {
-    crate::goals::item_name(item).is_some_and(|n| n.ends_with("_harness"))
+    crate::items::item_name(item).is_some_and(|n| n.ends_with("_harness"))
 }

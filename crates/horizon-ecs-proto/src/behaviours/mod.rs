@@ -316,6 +316,11 @@ pub mod variant;
 pub mod defend_trusted;
 pub mod shelter;
 pub mod lookout;
+pub mod harness_worn;
+pub mod still_under_riders;
+pub mod heal_weather;
+pub mod square_or_face;
+pub mod fly_steer;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -445,4 +450,7 @@ pub static TABLE: &[&Module] = &[
     &defend_trusted::MODULE,
     &shelter::MODULE,
     &lookout::MODULE,
+    &still_under_riders::MODULE,
+    &heal_weather::MODULE,
+    &square_or_face::MODULE,
 ];

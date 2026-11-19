@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
-    rules: &[RuleEntry::new(&harness_worn::RULE, &())],
+    rules: &[RuleEntry::new(&harness_worn::RULE, &()), RuleEntry::new(&fly_steer::RULE, &fly_steer::Params::DEFAULT)],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

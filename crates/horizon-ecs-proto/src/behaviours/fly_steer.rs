@@ -37,6 +37,13 @@ pub fn drive(w: &mut World) {
         let strafe = f64::from(input.strafe);
         vel.0.x = (-sin * forward + cos * strafe) * p.speed;
         vel.0.z = (cos * forward + sin * strafe) * p.speed;
-        vel.0.y = if input.jump { p.climb } else { -p.sink };
+        vel.0.y = if input.jump > 0.0 { p.climb } else { -p.sink };
     }
+}
+
+/// The rule that makes a mount fly under its rider's steer, with the species' constants.
+pub static RULE: crate::rules::Rule = crate::rules::Rule { name: "fly_steer", equip, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+    let p = *crate::behaviours::params::<Params>(p);
+    w.entity_mut(e).insert((FlyingSteer, p));
 }

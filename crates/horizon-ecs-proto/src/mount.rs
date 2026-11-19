@@ -121,7 +121,7 @@ impl RideParams {
 pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(ridden_drive.after(move_control).before(travel));
+    s.add_systems((ridden_drive, crate::behaviours::fly_steer::drive).after(move_control).before(travel));
 }
 fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
@@ -292,7 +292,7 @@ fn creature_steer(w: &mut World, mount: Entity) {
 #[allow(clippy::type_complexity)]
 fn ridden_drive(
     clock: Res<Clock>,
-    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), With<Ridden>>,
+    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), (With<Ridden>, Without<crate::behaviours::fly_steer::FlyingSteer>)>,
     targets: Query<(), With<crate::targeting::Target>>,
     level: Res<Level>,
     on: Res<Online>,
