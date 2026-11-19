@@ -9,6 +9,28 @@ use bevy_ecs::prelude::*;
 use horizon_client_lib::entities::ExperienceOrb;
 use horizon_core::geometry::{Aabb, Vec3};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+
+/// A multiplicative hash for the small integer keys of the orb index (SipHash costs ten times more per lookup).
+#[derive(Default)]
+pub struct Fx(u64);
+impl Hasher for Fx {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.write_u64(u64::from(b));
+        }
+    }
+    fn write_i32(&mut self, i: i32) {
+        self.write_u64(i as u32 as u64);
+    }
+    fn write_u64(&mut self, i: u64) {
+        self.0 = (self.0.rotate_left(5) ^ i).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+type Cells = HashMap<[i32; 3], Vec<Entity>, BuildHasherDefault<Fx>>;
 
 /// An orb: its value, how many merged into it, when it was made (own time), and what it follows.
 #[derive(Component, Clone, Copy, Debug)]
@@ -47,7 +69,7 @@ pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::li
 }
 #[derive(Resource, Default)]
 pub struct OrbIndex {
-    cells: HashMap<[i32; 3], Vec<Entity>>,
+    cells: Cells,
     next_id: u32,
     token: u32,
     awake: usize,
@@ -109,6 +131,7 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             Vel(velocity),
             crate::goals::Uid(crate::goals::next_uid()),
             OwnTime,
+            PushFree,
             Body { width: 0.5, height: 0.5, step_height: 0.0, gravity: 0.03, speed: 0.0, fall_factor: 1.0, object: true, orb: true, lava_walker: false },
             Bounds(ExperienceOrb::box_at(at)),
             Cell(u32::MAX),
@@ -117,7 +140,6 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             FluidState::default(),
             Recheck,
             Moving,
-            PlayerWatch::new(REACH as f32),
         ))
         .id();
     world.entity_mut(e).insert((
@@ -137,8 +159,11 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
     // A player already within reach: the attraction starts with its first tick (the watch tells only about what comes later).
     let mut near = false;
     world.resource::<Online>().for_near(at.x, at.z, REACH, |p| near |= (p.x - at.x).powi(2) + (p.y - at.y).powi(2) + (p.z - at.z).powi(2) <= REACH * REACH);
+    // The watch tells when a player comes; an orb already drawn does not need it (it looks again at its tick 1 modulo 20).
     if near {
         world.entity_mut(e).insert(Attracted);
+    } else {
+        world.entity_mut(e).insert(PlayerWatch::new(REACH as f32));
     }
     enter_index(world, e);
     arm_expire(world, e);
@@ -224,6 +249,10 @@ pub fn check_due(world: &mut World, e: Entity, token: u32) {
         return;
     }
     world.get_mut::<Orb>(e).unwrap().check = 0;
+    // A moving orb scans in `orb_moved`, after its move (`ExperienceOrb.tick` moves, then scans) and with the re-arm there.
+    if world.get::<OrbAwake>(e).is_some() {
+        return;
+    }
     scan_for_merges(world, e);
     if world.get::<Orb>(e).is_some() && !partners(world, e).is_empty() {
         arm_check(world, e);
@@ -256,20 +285,21 @@ fn scan_for_merges(world: &mut World, e: Entity) {
         me.age_base = now.saturating_sub((now - me.age_base).min(age));
         world.entity_mut(o).despawn();
     }
-    if !partners(world, e).is_empty() || world.get::<Orb>(e).is_some() {
+    if world.get::<Orb>(e).is_some() {
         arm_expire(world, e);
     }
 }
 
 /// The attraction: a player within 8 blocks (the watch says when one comes) draws the orb each tick it follows it. It follows the nearest
 /// one found at its tick 1 modulo 20, and lets it go when it is further than 8 blocks.
-fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query<(Entity, &Pos, &mut Vel, &mut Orb), With<Attracted>>, mut commands: Commands, watch: Query<(), With<Orb>>) {
+fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query<(Entity, &Pos, &mut Vel, &mut Orb, Has<Moving>), With<Attracted>>, mut commands: Commands, watch: Query<(), With<Orb>>) {
     for (e, _) in ev.player_entered.iter() {
         if watch.get(e).is_ok() {
-            commands.entity(e).insert((Attracted, Moving));
+            // Drawn: the watch is not needed until it lets go (the look of its tick 1 modulo 20 puts it back).
+            commands.entity(e).insert((Attracted, Moving)).remove::<PlayerWatch>();
         }
     }
-    for (e, pos, mut vel, mut orb) in &mut q {
+    for (e, pos, mut vel, mut orb, moving) in &mut q {
         let ticks = clock.of(e) - orb.born;
         if let Some(id) = orb.following
             && on.get(id).is_none_or(|p| (p.x - pos.0.x).powi(2) + (p.y - pos.0.y).powi(2) + (p.z - pos.0.z).powi(2) > REACH * REACH)
@@ -289,7 +319,7 @@ fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query
         let Some(p) = orb.following.and_then(|id| on.get(id)) else {
             // Nobody to follow after the look of its tick 1: the watch puts it back in the list when a player comes.
             if ticks % 20 == 1 {
-                commands.entity(e).remove::<Attracted>();
+                commands.entity(e).remove::<Attracted>().insert(PlayerWatch::new(REACH as f32));
             }
             continue;
         };
@@ -299,24 +329,26 @@ fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query
         if power > 0.0 && length > 1e-6 {
             let power = power * power;
             vel.0 = Vec3::new(vel.0.x + d.x / length * power * 0.1, vel.0.y + d.y / length * power * 0.1, vel.0.z + d.z / length * power * 0.1);
-            commands.entity(e).insert(Moving);
+            if !moving {
+                commands.entity(e).insert(Moving);
+            }
         }
     }
 }
 /// Each tick, the orbs that move: the cell they are in, and the tick-1-modulo-20 scan for merges.
-fn orb_moved(world: &mut World) {
+fn orb_moved(world: &mut World, mut cached: Local<Option<QueryState<(Entity, &Orb, &Pos, Has<Moving>), With<OrbAwake>>>>) {
     if world.resource::<OrbIndex>().awake == 0 {
         return;
     }
-    let mut list: Vec<(u32, Entity)> = world.query_filtered::<(Entity, &Orb), With<OrbAwake>>().iter(world).map(|(e, o)| (o.id, e)).collect();
-    list.sort_unstable();
-    for (_, e) in list {
-        let Some(p) = world.get::<Pos>(e).map(|p| p.0) else { continue };
+    let state = cached.get_or_insert_with(|| world.query_filtered());
+    // One pass reads what the loop needs; the order is the orbs' ids.
+    let mut list: Vec<(u32, Entity, Vec3, bool, [i32; 3], u64, bool)> =
+        state.iter(world).map(|(e, o, p, m)| (o.id, e, p.0, m, o.cell, o.born, o.check != 0)).collect();
+    list.sort_unstable_by_key(|l| l.0);
+    for (_, e, p, moving, old, born, pending) in list {
         let now = now_of(world, e);
         let cell = cell_of(p);
-        let resting = world.get::<Moving>(e).is_none();
-        let Some(o) = world.get::<Orb>(e) else { continue };
-        let (old, ticks, pending) = (o.cell, now - o.born, o.check != 0);
+        let ticks = now - born;
         if old != cell {
             let mut ix = world.resource_mut::<OrbIndex>();
             if let Some(v) = ix.cells.get_mut(&old) {
@@ -328,10 +360,10 @@ fn orb_moved(world: &mut World) {
         if ticks % 20 == 1 {
             scan_for_merges(world, e);
         }
-        if world.get::<Orb>(e).is_some() && !pending {
+        if !pending && world.get::<Orb>(e).is_some() {
             arm_check(world, e);
         }
-        if resting && world.get::<Orb>(e).is_some() {
+        if !moving && world.get::<Orb>(e).is_some() {
             world.entity_mut(e).remove::<OrbAwake>();
         }
     }
