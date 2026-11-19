@@ -11,6 +11,7 @@ pub mod goals;
 pub mod instr;
 pub mod item;
 pub mod item_reference;
+pub mod loot;
 pub mod hostile;
 pub mod kernel_lab;
 pub mod move_to_block;

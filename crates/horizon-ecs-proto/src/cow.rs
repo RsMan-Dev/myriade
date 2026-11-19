@@ -1967,7 +1967,13 @@ pub(crate) fn apply_damage(
             if cell.0 != u32::MAX {
                 idx.remove(e, cell.0);
             }
-            commands.entity(e).despawn();
+            // What it leaves on the ground (`LivingEntity.die`), then it goes.
+            commands.queue(move |w: &mut World| {
+                crate::loot::on_death(w, e);
+                if let Ok(mut m) = w.get_entity_mut(e) {
+                    m.despawn();
+                }
+            });
             continue;
         }
         hurts.0.push(e);

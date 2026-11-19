@@ -317,3 +317,55 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
         horizontal_collision: false,
     }
 }
+
+// ---- what the rest of the frame does with the items on the ground -------------------------------------------------------
+/// `Entity.spawnAtLocation`: a stack at `at`, thrown as `ItemEntity`'s constructor throws it (`nextDouble() * 0.2 - 0.1` sideways, 0.2 up
+/// from `random`) and not to be picked up for 10 ticks.
+pub fn spawn_at_location(world: &mut World, stack: ItemStack, at: Vec3, random: &mut impl horizon_core::random::RandomSource) -> Entity {
+    let v = Vec3::new(random.next_double() * 0.2 - 0.1, 0.2, random.next_double() * 0.2 - 0.1);
+    drop_item(world, stack, at, v, 10)
+}
+/// The items on the ground whose box meets `area` (`level.getEntitiesOfClass(ItemEntity.class, area)`, in the order they joined).
+pub fn items_in(world: &World, area: Aabb) -> Vec<Entity> {
+    let mut v: Vec<(u32, Entity)> = world
+        .resource::<ItemIndex>()
+        .near(area)
+        .into_iter()
+        .filter_map(|e| {
+            let (p, it) = (world.get::<Pos>(e)?, world.get::<Item>(e)?);
+            box_at(p.0).intersects(area).then_some((it.id, e))
+        })
+        .collect();
+    v.sort_unstable();
+    v.into_iter().map(|x| x.1).collect()
+}
+/// `!ItemEntity.hasPickUpDelay()`.
+pub fn pickable(world: &World, item: Entity) -> bool {
+    world.get::<Item>(item).is_some_and(|it| it.ready_at.is_some_and(|r| now_of(world, item) >= r))
+}
+/// A creature takes `count` of the stack of `item` (`Fox.pickUpItem` takes one): what it took, or `None` when it is not to be picked up yet.
+/// The item is gone when its stack is used up, and the creature is in `Events.picked_up` (read at the next tick).
+pub fn pick_up(world: &mut World, creature: Entity, item: Entity, count: u32) -> Option<ItemStack> {
+    if !pickable(world, item) || count == 0 {
+        return None;
+    }
+    let mut it = world.get_mut::<Item>(item)?;
+    let n = count.min(it.stack.count);
+    let mut taken = it.stack.clone();
+    taken.count = n;
+    it.stack.count -= n;
+    let empty = it.stack.count == 0;
+    if empty {
+        world.entity_mut(item).despawn();
+    }
+    world.resource_mut::<crate::goals::Events>().picked_up.push(creature);
+    Some(taken)
+}
+/// `LivingEntity.drop` of the main hand: the stack in the hand goes out at the creature's mouth, thrown as `spawn_at_location` throws it.
+pub fn drop_main_hand(world: &mut World, e: Entity, random: &mut impl horizon_core::random::RandomSource) -> Option<Entity> {
+    let stack = crate::goals::main_hand(world, e)?.clone();
+    let at = world.get::<Pos>(e)?.0;
+    let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
+    crate::goals::set_main_hand(world, e, None);
+    Some(spawn_at_location(world, stack, Vec3::new(at.x, at.y + eye - 0.3, at.z), random))
+}
