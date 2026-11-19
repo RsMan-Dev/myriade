@@ -555,9 +555,10 @@ fn flee_2_burning_animal_walks_to_the_spot_at_the_first_selector_tick() {
         return;
     }
     let n = 12;
+    // 12 animals 3 blocks apart reach x 21.5: the slab is 24 wide each way (on one of 20 the last stood in the void, fell and was removed).
     let pos = |k: usize| (-12.0 + 3.0 * k as f64 + 0.5, 0.5);
-    let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut r = MobRef::new(24, false);
+    let mut h = Herd::with_slab(24, false, false);
     let open: Vec<(i32, i32)> = (0..n).map(|k| (pos(k).0.floor() as i32, 0)).collect();
     shade_both(&r, &h, &open);
     let entries: &'static [Entry] = leak([Entry::new(&flee_sun::MODULE, 3, &flee_sun::Params::DEFAULT)]);

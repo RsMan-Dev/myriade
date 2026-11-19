@@ -20,6 +20,7 @@ pub mod loot;
 pub mod mount;
 pub mod orb;
 pub mod pathsearch;
+pub mod host_out;
 pub mod hostile;
 pub mod kernel_lab;
 pub mod locomotion;
