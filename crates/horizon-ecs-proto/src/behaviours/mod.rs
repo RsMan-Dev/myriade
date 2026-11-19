@@ -222,6 +222,8 @@ pub mod fox_stalk_prey;
 pub mod fox_pounce;
 pub mod fox_sleep;
 pub mod fox_eat_berries;
+pub mod fox_search_for_items;
+pub mod fox_pick_up_loot;
 pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
@@ -288,6 +290,8 @@ pub static TABLE: &[&Module] = &[
     &ghast_look::MODULE,
     &fox_sleep::MODULE,
     &fox_eat_berries::MODULE,
+    &fox_search_for_items::MODULE,
+    &fox_pick_up_loot::MODULE,
     &attack_turtle_egg::MODULE,
     &brute_stroll_home::MODULE,
     &silverfish_merge::MODULE,

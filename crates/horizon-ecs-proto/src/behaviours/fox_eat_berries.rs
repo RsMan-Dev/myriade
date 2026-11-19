@@ -2,11 +2,14 @@
 //! within 12 blocks and, once it has waited 40 game ticks at it, picks it. The search is a deadline of the wheel: after a
 //! search the next one comes `reduced(200 + U(200))` asks later, the asks counted from the end of a goal (the `Mob` does
 //! not ask while the goal runs). Not ported, no service yet: the berries on the ground and in the hand, the bush going
-//! back to age 1 (block states with properties), the sniff sound.
+//! back to age 1, the berries on the ground and in the mouth, fiche 41. Not ported: the sniff sound, `GameEvent`s.
 use super::fox_state::{self as fs, SITTING, SLEEPING};
 use super::*;
+use crate::blocks::set_state;
 use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
+use horizon_client_lib::items::ItemStack;
 use horizon_client_lib::mobs::MobWorld;
+use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -15,15 +18,18 @@ pub struct Params {
     pub vertical: i32,
     /// The game ticks the fox waits at the bush before it picks it.
     pub wait: i32,
+    /// The delay of the berries that fall on the ground (`spawn_item_own`).
+    pub drop_delay: i64,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.2_f32 as f64, range: 12, vertical: 1, wait: 40 };
+    pub const DEFAULT: Self = Self { speed: 1.2_f32 as f64, range: 12, vertical: 1, wait: 40, drop_delay: 10 };
 }
-/// The goal's data: its rank and its wait.
+/// The goal's data: its rank, its wait and the delay of the berries it drops.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BerryDef {
     pub slot: u8,
     pub wait: i32,
+    pub drop_delay: i64,
 }
 /// The next search: the local time it may run at, and the `next_start` drawn by the last search.
 #[derive(Component, Clone, Copy, Debug)]
@@ -59,7 +65,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     fs::ensure(w, e);
     let p = *params::<Params>(p);
     w.entity_mut(e).insert((
-        BerryDef { slot: inst.slot, wait: p.wait },
+        BerryDef { slot: inst.slot, wait: p.wait, drop_delay: p.drop_delay },
         MoveToBlock::new(p.speed, p.range, p.vertical),
         BerrySearch { due: 0, next: 0 },
     ));
@@ -182,17 +188,41 @@ fn tick_once(w: &mut World, e: Entity, slot: u8) {
         end_goal(w, e, slot);
     }
 }
-/// `EatBerriesGoal.pick`: a sweet berry bush gives 1 + U(2) berries, one more at age 3; glow berries give one. The
-/// berries on the ground and the bush's age are not written (no service): see the notes.
+/// `EatBerriesGoal.pick` (`mobs/fox.rs:1459-1514`): a sweet berry bush gives `1 + U(2)` berries, one more at age 3; the first one goes
+/// into an empty mouth, the others fall at the block's centre; the bush goes back to age 1. A cave vine gives one glow berry and
+/// loses its berries.
 fn pick(w: &mut World, e: Entity, b: [i32; 3]) {
-    let (sweet, age) = {
+    let (sweet, age, plant) = {
         let mw = w.resource::<Level>().mw.0;
         let name = mw.block_name(b[0], b[1], b[2]);
         let age = mw.prop(b[0], b[1], b[2], "age").and_then(|a| a.parse::<i32>().ok()).unwrap_or(0);
-        (name == "minecraft:sweet_berry_bush", age)
+        (name == "minecraft:sweet_berry_bush", age, name == "minecraft:cave_vines_plant")
     };
-    let count = if sweet { 1 + with_rng(w, e, |r| r.next_int(2)) + i32::from(age == 3) } else { 1 };
-    w.entity_mut(e).insert(Picked(count));
+    let delay = w.get::<BerryDef>(e).unwrap().drop_delay;
+    let center = Vec3::new(f64::from(b[0]) + 0.5, f64::from(b[1]) + 0.5, f64::from(b[2]) + 0.5);
+    if sweet {
+        let count = 1 + with_rng(w, e, |r| r.next_int(2)) + i32::from(age == 3);
+        let mut rest = count;
+        if main_hand(w, e).is_none() {
+            set_main_hand(w, e, Some(ItemStack::new("minecraft:sweet_berries", 1)));
+            rest -= 1;
+        }
+        if rest > 0 {
+            toss(w, e, "minecraft:sweet_berries", rest as u32, center, delay);
+        }
+        set_state(w, b, "minecraft:sweet_berry_bush", &[("age", "1")]);
+        w.entity_mut(e).insert(Picked(count));
+    } else {
+        toss(w, e, "minecraft:glow_berries", 1, center, delay);
+        let name = if plant { "minecraft:cave_vines_plant" } else { "minecraft:cave_vines" };
+        set_state(w, b, name, &[("berries", "false")]);
+        w.entity_mut(e).insert(Picked(1));
+    }
+}
+/// `spawn_item_own`: the stack thrown as `ItemEntity`'s constructor throws it, from the fox's own random.
+fn toss(w: &mut World, e: Entity, name: &str, count: u32, at: Vec3, delay: i64) {
+    let (a, b) = with_rng(w, e, |r| (r.next_f64(), r.next_f64()));
+    crate::item::drop_item(w, ItemStack::new(name, count), at, Vec3::new(a * 0.2 - 0.1, 0.2, b * 0.2 - 0.1), delay);
 }
 
 #[cfg(test)]
