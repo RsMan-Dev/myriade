@@ -6,3 +6,5 @@ rabbit ## bounds along its path (hop mode)
 silverfish ## wanders and searches paths (pathfind 100 000 instr per search, 3 per tick at 2 000)
 enderman ## goals asked at the vanilla cadence (1/10 per tick): arbitrate visits 10 % of the herd per tick
 zoglin ## walks all the time (18 visits of travel per tick at 2 000)
+phantom ## circles and dives all the time (a flier moves by `Bank`/`Direct`); Mob 40 170 vs ECS 8 669 per creature and tick
+vex ## flies at a random point and charges all the time; Mob 26 757 vs ECS 1 942

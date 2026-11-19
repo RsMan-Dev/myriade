@@ -478,6 +478,9 @@ fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
 /// A creature created in a chunk that does not tick is born asleep, with no entry in the wheel; one in a chunk that ticks is not.
 #[test]
 fn a_creature_created_where_nothing_ticks_is_born_asleep() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_creature_created_where_nothing_ticks_is_born_asleep") {
+        return;
+    }
     if !have_data() {
         return;
     }

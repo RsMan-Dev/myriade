@@ -30,6 +30,10 @@ pub mod ghast;
 pub mod bat;
 pub mod strider;
 pub mod turtle;
+pub mod vex;
+pub mod squid;
+pub mod glow_squid;
+pub mod phantom;
 pub mod armadillo;
 pub mod creeper;
 pub mod endermite;
@@ -80,6 +84,10 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &snow_golem::DEF,
     &rabbit::DEF,
     &turtle::DEF,
+    &squid::DEF,
+    &glow_squid::DEF,
+    &vex::DEF,
+    &phantom::DEF,
     &slime::DEF,
     &magma_cube::DEF,
     &bat::DEF,
@@ -468,6 +476,10 @@ mod tests {
         ("minecraft:tadpole", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4)]),
         ("minecraft:snow_golem", &[("nearest_target", 1), ("ranged_attack", 1), ("stroll", 2), ("snow_trail", 255), ("look_at_player", 3), ("random_look", 4)]),
         ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
+        ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
+        ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
+        ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8)]),
+        ("minecraft:phantom", &[("phantom_attack_player_target", 1), ("phantom_attack_strategy", 1), ("phantom_sweep_attack", 2), ("phantom_circle_around_anchor", 3)]),
         ("minecraft:turtle", &[("panic", 0), ("turtle_lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("fly_stroll", 2), ("follow_mob", 3)]),
         ("minecraft:ghast", &[("float_around", 5)]),

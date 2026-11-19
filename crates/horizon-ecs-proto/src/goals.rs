@@ -874,6 +874,8 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 // ---- the selector: start and stop, with the locks -------------------------------------------------------------
 pub(crate) fn arbitrate(world: &mut World) {
     crate::farm::on_grown(world);
+    crate::behaviours::flier_goals::tick_all(world);
+    crate::behaviours::squid_goals::tick_all(world);
     world.resource_mut::<CellMoves>().0.clear();
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);

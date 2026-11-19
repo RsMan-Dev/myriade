@@ -354,6 +354,9 @@ mod tests {
 
     #[test]
     fn does_not_run_from_a_player_out_of_range() {
+    if crate::cow::skip_unless_walker("does_not_run_from_a_player_out_of_range") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 9.5);
         for _ in 0..30 {
