@@ -422,6 +422,9 @@ pub enum Due {
     Egg,
     /// A stuck projectile's life is over (`projectile.rs`).
     Expire,
+    /// A sensor of the brain is due (its rank in the plan), and a memory's time is up (its slot and the token it had).
+    Sensor(u8),
+    Forget(u16, u32),
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -660,6 +663,8 @@ pub struct Species {
     pub walk: crate::spots::WalkValue,
     /// The capabilities of the configuration (its sections): the entity is made of these only.
     pub caps: &'static [crate::behaviours::Cap],
+    /// The brain of the species, resolved (None: it has none).
+    pub brain: Option<&'static crate::brain::Plan>,
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -794,6 +799,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             burns_in_day: kind.flags.burns_in_day,
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
+            brain: crate::species::registry().by_name(name).unwrap().brain,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -942,6 +948,11 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     if has(crate::behaviours::Cap::Goals) {
         e.insert(goals_part(sp, uid, rng));
     }
+    if has(crate::behaviours::Cap::Brain)
+        && let Some(plan) = sp.brain
+    {
+        e.insert(crate::brain::bundle(plan));
+    }
     e.id()
 }
 /// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
@@ -968,6 +979,7 @@ pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64)
     enter_index(world, e);
     crate::hostile::equip(world, e, sp);
     crate::farm::equip(world, e, sp);
+    crate::brain::start(world, e);
     e
 }
 /// An animal of the species the process was built for (see `species`).
@@ -998,6 +1010,7 @@ pub fn schedule() -> Schedule {
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
     crate::projectile::register(&mut s);
+    crate::brain::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1895,6 +1908,7 @@ pub(crate) fn apply_damage(
         }
         hurts.0.push(e);
         causes.0.push((e, hit.cause));
+        commands.entity(e).insert(crate::brain::LastDamage { at: clock.of(e), panic: !matches!(hit.cause, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming), by: hit.by });
         if let Some(p) = hit.by {
             by.0.push((e, p));
         }
@@ -2591,6 +2605,8 @@ pub(crate) fn due(
             Due::Goal(k) => fired.0.push((e, k)),
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
             Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
+            Due::Sensor(i) => commands.queue(move |w: &mut World| crate::brain::sensor_due(w, e, i)),
+            Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {

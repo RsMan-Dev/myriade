@@ -2,6 +2,7 @@
 //! `flat`: the first throwaway herd (ground = the plane y = 0). `cow`: a cow with Horizon's real block
 //! collision kernel and the stroll / move-control / travel formulas of the real cow.
 pub mod behaviours;
+pub mod brain;
 pub mod cow;
 pub mod farm;
 pub mod flat;

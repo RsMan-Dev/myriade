@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod chicken;
+pub mod copper_golem;
 pub mod cow;
 pub mod pig;
 pub mod skeleton;
@@ -19,7 +20,7 @@ pub mod templates;
 pub mod zombie;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF];
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -50,12 +51,17 @@ pub struct Def {
     /// The capabilities of the entity (`None`: the reference's, or all of `Cap::ALL` at the root). A section the entity
     /// has no capability for is not read; a module that requires a missing capability is a startup error.
     pub caps: Option<&'static [Cap]>,
+    /// The brain (own, or the reference's when empty).
+    pub brain: crate::brain::BrainDef,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None, brain: crate::brain::BrainDef::EMPTY };
+    fn brain_def(&self) -> crate::brain::BrainDef {
+        if self.brain.is_empty() { self.reference.map_or(crate::brain::BrainDef::EMPTY, |r| r.brain_def()) } else { self.brain }
+    }
     fn capabilities(&self) -> &'static [Cap] {
         self.caps.or_else(|| self.reference.map(|r| r.capabilities())).unwrap_or(ALL_CAPS)
     }
@@ -83,6 +89,7 @@ pub struct Resolved {
     pub name: &'static str,
     pub config: Config,
     pub caps: &'static [Cap],
+    pub brain: Option<&'static crate::brain::Plan>,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -165,7 +172,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities() });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities(), brain: None });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -183,6 +190,13 @@ impl Builder {
                 if let Some(c) = e.module.requires.iter().find(|c| !caps.contains(c)) {
                     return Err(Error(format!("species `{}`: module `{}` requires the capability {c:?}, which the species does not have", d.name, e.module.name)));
                 }
+            }
+        }
+        for ((_, d), r) in self.defs.iter().zip(species.iter_mut()) {
+            let def = d.brain_def();
+            if !def.is_empty() {
+                let plan = crate::brain::Plan::build(&def, r.caps).map_err(|m| Error(format!("species `{}`: brain: {m}", d.name)))?;
+                r.brain = Some(Box::leak(Box::new(plan)));
             }
         }
         for (r, (list, _)) in species.iter_mut().zip(lists) {
@@ -308,6 +322,9 @@ mod tests {
             }
         };
         for name in names() {
+            if name == "minecraft:copper_golem" {
+                continue; // its behaviours are a brain, not a selector
+            }
             let got: Flat = config(name).entries.iter().map(|e| (e.module, e.priority)).collect();
             let want = flat(name);
             assert_eq!(got.len(), want.len(), "{name}");

@@ -89,6 +89,8 @@ pub enum Cap {
     Living,
     Goals,
     Targets,
+    /// Memories, sensors, activities and behaviours (`brain`): needs `Goals` (its random stream, its look).
+    Brain,
     /// Walking, paths, the move control.
     Locomotion,
 }
