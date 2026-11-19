@@ -250,6 +250,10 @@ pub mod follow_flock_leader;
 pub mod pufferfish_puff;
 pub mod raid_garden;
 pub mod follow_mob;
+pub mod turtle_state;
+pub mod turtle_go_to_water;
+pub mod turtle_travel;
+pub mod turtle_stroll;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -310,4 +314,7 @@ pub static TABLE: &[&Module] = &[
     &pufferfish_puff::MODULE,
     &raid_garden::MODULE,
     &follow_mob::MODULE,
+    &turtle_go_to_water::MODULE,
+    &turtle_travel::MODULE,
+    &turtle_stroll::MODULE,
 ];
