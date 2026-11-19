@@ -2093,7 +2093,14 @@ pub(crate) fn travel(
         // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
         if p.0.y < void_y {
             par.command_scope(|mut cmd| {
-                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, 4.0, Cause::OutOfWorld));
+                cmd.queue(move |w: &mut World| {
+                    // An experience orb is not alive: it is discarded (`Entity.checkBelowWorld`), a creature is hurt.
+                    if w.get::<crate::orb::Orb>(e).is_some() {
+                        w.despawn(e);
+                    } else {
+                        w.resource_mut::<DamageQueue>().add(e, 4.0, Cause::OutOfWorld);
+                    }
+                });
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
@@ -3898,8 +3905,17 @@ mod tests {
         }
         let now: Vec<Vec3> = herd.world.query::<&Pos>().iter(&herd.world).map(|p| p.0).collect();
         let travelled = start.iter().zip(&now).filter(|(a, b)| (a.x - b.x).abs() + (a.z - b.z).abs() > 3.0).count();
-        for p in &now {
-            assert!(p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2, "{p:?}");
+        // The wall of the slab holds the walkers. An animal that leaps (the goat up to 5 blocks, the frog 2) can go over it, as in the `Mob` (a leap
+        // lands on any block with a solid one below it); what it may not do is stay under the world: there it is hurt 4 a tick and dies
+        // (`Cause::OutOfWorld`), so no creature is left below it. The other species stay on the slab, on its ground.
+        let void_y = f64::from(herd.world.resource::<Level>().mw.0.world.bottom_y() - 64);
+        let rows: Vec<(Vec3, bool)> = herd.world.query::<(&Pos, Has<crate::behaviours::long_jump::LongJumpState>)>().iter(&herd.world).map(|(p, l)| (p.0, l)).collect();
+        for (p, leaps) in rows {
+            if leaps {
+                assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite() && p.y >= void_y, "a leaper under the world is still there: {p:?}");
+            } else {
+                assert!(p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2, "{p:?}");
+            }
         }
         assert!(travelled > 100, "only {travelled} cows travelled more than 3 blocks");
         assert!(max_asleep > 30 && min_asleep < 300, "{min_asleep}..{max_asleep} asleep of 300");
@@ -3908,7 +3924,14 @@ mod tests {
         for _ in 0..400 {
             herd.tick();
         }
-        assert!(herd.counts().0 >= 295, "{} asleep after the player left", herd.counts().0);
+        // On the slab (a leaper that went over the wall is where its leap took it, not on the ground of the test: it is left out of both counts).
+        let on_slab = |herd: &mut Herd| -> (usize, usize) {
+            let rows: Vec<(Vec3, bool, bool)> = herd.world.query::<(&Pos, Has<Moving>, Has<Following>)>().iter(&herd.world).map(|(p, m, f)| (p.0, m, f)).collect();
+            let here: Vec<&(Vec3, bool, bool)> = rows.iter().filter(|(p, _, _)| p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2).collect();
+            (here.iter().filter(|(_, m, f)| !m && !f).count(), here.len())
+        };
+        let (idle, here) = on_slab(&mut herd);
+        assert!(idle * 300 >= here * 295, "{idle} of {here} on the slab asleep after the player left");
         // And the player comes back: the cows around it wake.
         herd.set_players(vec![(0.0, 0.0)]);
         let mut least = 300;
