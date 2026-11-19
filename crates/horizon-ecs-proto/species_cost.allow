@@ -9,3 +9,6 @@ zoglin ## walks all the time (18 visits of travel per tick at 2 000)
 phantom ## circles and dives all the time (a flier moves by `Bank`/`Direct`); Mob 40 170 vs ECS 8 669 per creature and tick
 vex ## flies at a random point and charges all the time; Mob 26 757 vs ECS 1 942
 cave_spider ## the climb wish never ends: the Mob pushes at the CORNER of the target block (0.707 from its centre) and the cave spider's width is 0.7, so `closerToCenterThan(width)` never holds (vanilla's own quirk); the tick is ~240 instr per wish
+dolphin ## swims every tick (the smooth control and the travel of the water run each tick: a mover; 1 360 instr per creature and tick, as the turtle's)
+axolotl ## swims every tick (same control and travel as the dolphin)
+drowned ## swims every tick (its control and the travel of the water run each tick)
