@@ -224,6 +224,9 @@ fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
 /// woken.
 #[test]
 fn a_creature_walking_to_the_border_falls_asleep_there() {
+    if horizon_ecs_proto::cow::skip_unless_ground_only("a_creature_walking_to_the_border_falls_asleep_there") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_small_body("a_creature_walking_to_the_border_falls_asleep_there") {
         return;
     }

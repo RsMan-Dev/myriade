@@ -189,3 +189,14 @@ Un mode du sol (`Medium::Ground`) à côté de `walk`, `swim`, `fly` : le corps 
 ## Points d'intérêt et village (`poi.rs`)
 
 `PoiRegistry` (ressource) : les blocs que les villageois visitent (lits, postes de travail, cloche), leur type (`horizon_world::poi`, que le `Mob` lit aussi), leurs tickets (`acquire`, `release`, `max_tickets` du type : 1 pour un poste, 32 pour une cloche), la recherche des points proches (`in_range(centre, rayon, libres, filtre)` : le plus proche d'abord, égalités par bloc de 16 en z puis x, puis y, z, x), la distance d'un lieu au village en sections (`sections_to_village`, au plus 7 : le plus grand écart sur les trois axes à la section la plus proche qui a un point de village : maison, poste, point de rencontre) et `is_village` (à une section au plus). Le registre est écrit par ÉVÉNEMENTS : un bloc qui a changé (`ChangedBlocks`) est relu, un point apparaît ou part, `added()` et `removed()` donnent ceux du tick d'avant ; rien ne parcourt le monde chaque tick (le monde du banc est indexé une fois au premier tick ; un serveur indexerait chaque bloc de 16 à son chargement). Prédicat nommé `horizon:in_village` pour `Entry::when`. Le registre ne dit pas qui est villageois ni ce que sait un villageois de ses lits (c'est le cerveau).
+
+
+## Règle pour les modules nouveaux : pas de système de plus
+
+Chaque module dont `systems` ajoute un système au planning coûte ~1 000 instructions par tick **même sans porteur** (sa condition d'exécution,
+et sa place dans la chaîne des `GoalSlot`) : mesuré le 2026-11-19, le planning à vide (0 créature) coûte 124 266 instr/tick, et 46 608
+sans aucun système de module (77 658 pour les modules, soit ~62 %). Un module nouveau n'ajoute donc PAS de système : ses ticks sont
+appelés depuis un point existant (modèle `flier_goals::tick_all`, appelé par `arbitrate`), sur les entités qui portent le marqueur de son
+but en marche (`With<Diving>`...), et ne coûtent rien quand aucune ne le porte. Les événements réveillent le but (`Req::Start`), les
+délais sont des échéances de la roue. Un module qui a vraiment besoin d'un ordre propre (avant `pathfind`, après `apply_damage`) le dit et
+le justifie dans son en-tête ; la barrière (`bilan_check.sh`, ligne « schedule at rest ») refuse la dérive.

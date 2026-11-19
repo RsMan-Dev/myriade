@@ -1,12 +1,1 @@
-cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 5 ## `arbitrate` of the cow scenes: +10 % visits (264 -> 291) and +8 % per visit (23 400 -> 25 200) between 2dbc7394eb and the tame merge, cause not found by perf (functions folded by the compiler); the other systems equal; the earlier +1.3 % came from `player_watch` (fixed: an index scan per moving player even with no watcher)
-pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 5 ## same, pig: +1.8 % of the pilot merge, +2.3 % of the brain merge (measured with the wheat item)
-zombie chase crowded (2000, spacing 2, 1000 players)|ecs ## 2 ## same merges: +1.06 % at the merge, the chase cost follows the same code layout effect
-pig active(1000 players, no solicitation)|ecs-eager ## 2 ## same
-crowd 0.5 (cow, 2000, 0 player)|batch ## 3 ## same: `push` changed for the items
-crowd 0.8 (cow, 2000, 0 player)|batch ## 3 ## same
-zone near ring (cow, 6, 10)|ecs ## 3 ## same
-sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 5 ## per-creature drift of the solicited/active/chase scenes (not the fixed cost, which is now its own line): the open `arbitrate` drift, +visits and +per-visit since 2dbc7394eb, not yet split by request type
-chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 6 ## per-creature drift of the solicited/active/chase scenes (not the fixed cost, which is now its own line): the open `arbitrate` drift, +visits and +per-visit since 2dbc7394eb, not yet split by request type
-zombie active(1000 players, no solicitation)|ecs ## 2 ## per-creature drift of the solicited/active/chase scenes (not the fixed cost, which is now its own line): the open `arbitrate` drift, +visits and +per-visit since 2dbc7394eb, not yet split by request type
-zombie active(1000 players, no solicitation)|ecs-eager ## 2 ## per-creature drift of the solicited/active/chase scenes (not the fixed cost, which is now its own line): the open `arbitrate` drift, +visits and +per-visit since 2dbc7394eb, not yet split by request type
-zombie chase clear (1024, spacing 6, 1024 players)|ecs ## 2 ## per-creature drift of the solicited/active/chase scenes (not the fixed cost, which is now its own line): the open `arbitrate` drift, +visits and +per-visit since 2dbc7394eb, not yet split by request type
+# line ## percent of step allowed ## cause named BEFORE the merge (bilan_check.sh rule (a))
