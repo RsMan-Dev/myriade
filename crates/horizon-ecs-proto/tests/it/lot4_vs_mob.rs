@@ -188,7 +188,7 @@ fn reach_cat_bed_and_turtle_egg() {
                 h.set_block(x, 0, z, "minecraft:sand");
             }
         }
-        horizon_ecs_proto::goals::wake(&mut h.world, e, &horizon_ecs_proto::behaviours::turtle_lay_egg::MODULE);
+        horizon_ecs_proto::behaviours::lay_egg::load(&mut h.world, e);
         let (mut tm, mut te) = (None, None);
         let (mut xm, mut xe) = (0.0f64, 0.0f64);
         for t in 0..1500 {
@@ -203,7 +203,7 @@ fn reach_cat_bed_and_turtle_egg() {
             if tm.is_none() && !r.mobs[i].extra.flag {
                 tm = Some(t);
             }
-            if te.is_none() && !horizon_ecs_proto::behaviours::turtle_state::get(&h.world, e).has_egg {
+            if te.is_none() && h.world.get::<horizon_ecs_proto::behaviours::lay_egg::Carrying>(e).is_none() {
                 te = Some(t);
             }
         }

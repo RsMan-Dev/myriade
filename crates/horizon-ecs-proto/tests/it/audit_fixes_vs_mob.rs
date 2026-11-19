@@ -45,7 +45,7 @@ fn cost_of_a_turtle_with_an_egg_and_no_sand() {
     for e in &es {
         turtle_state::update(&mut h.world, *e, |t| t.has_egg = true);
         h.world.get_mut::<ActiveUntil>(*e).unwrap().0 = u64::MAX;
-        wake(&mut h.world, *e, &turtle_lay_egg::MODULE);
+        horizon_ecs_proto::behaviours::lay_egg::load(&mut h.world, *e);
     }
     for _ in 0..200 {
         h.tick();

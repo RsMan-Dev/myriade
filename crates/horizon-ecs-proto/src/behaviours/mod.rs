@@ -280,7 +280,8 @@ pub mod turtle_state;
 pub mod turtle_go_to_water;
 pub mod turtle_travel;
 pub mod turtle_stroll;
-pub mod turtle_lay_egg;
+pub mod lay_egg;
+pub mod spear_use;
 pub mod turtle_go_home;
 pub mod snow_trail;
 pub mod beg;
@@ -399,7 +400,8 @@ pub static TABLE: &[&Module] = &[
     &turtle_go_to_water::MODULE,
     &turtle_travel::MODULE,
     &turtle_stroll::MODULE,
-    &turtle_lay_egg::MODULE,
+    &lay_egg::MODULE,
+    &spear_use::MODULE,
     &turtle_go_home::MODULE,
     &snow_trail::MODULE,
     &beg::MODULE,

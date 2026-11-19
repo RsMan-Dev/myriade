@@ -65,3 +65,5 @@ mod equipment_vs_mob;
 mod leash_vs_mob;
 mod mount2_vs_mob;
 mod vehicle_vs_mob;
+mod lay_egg_vs_mob;
+mod spear_vs_mob;

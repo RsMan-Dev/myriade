@@ -154,7 +154,8 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     if s.engage >= 0 && s.used > k.delay_ticks {
-        stab(w, e, &mut s, &k, who, s.used - k.delay_ticks);
+        let used = s.used - k.delay_ticks;
+        stab(w, e, &mut s, &k, who, used);
     }
     if s.fleeing > 0 {
         s.fleeing += 1;
@@ -194,8 +195,8 @@ fn finish(w: &mut World, e: Entity, mut s: Spear) {
 /// A spot at a distance between `min` and `max` of the target, as `land_random_pos_away_between` (the minimum is at least
 /// `floor` and the maximum at least `ceil`, the vertical reach 7).
 fn spot(w: &mut World, e: Entity, at: [f64; 3], min: f64, max: f64, floor: f64, ceil: f64) -> Option<[f64; 3]> {
-    let h_min = min.max(floor).floor() as i32;
-    let h_max = max.max(ceil).floor() as i32;
+    let h_min = min.max(floor).floor();
+    let h_max = max.max(ceil).floor();
     spots::pick_for(w, e, Pick::LandAway { min_h: h_min, max_h: h_max, v: 7, from: at })
 }
 /// The stab of the window: the targets the reach allows, once in their contact cooldown; each one gets its damage.
