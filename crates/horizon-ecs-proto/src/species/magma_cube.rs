@@ -1,5 +1,5 @@
 //! `MagmaCube`: the slime's bounds with a wait of four times as long, and armor by size (not ported). Targets: the iron golem at 3
-//! (`cube.rs:47`, the same register as the slime). `attend : nearest_target hauteur |dy| <= 4` for the nearest player at 1 (`cube.rs:37-44`).
+//! (`cube.rs:47`, the same register as the slime). the nearest player at 1 within 4 blocks of height (`cube.rs:37-44`, `max_dy`).
 use super::Def;
 use crate::behaviours::{cube_attack, float, nearest_target, Entry};
 use crate::locomotion::{hop, Medium};
@@ -7,7 +7,7 @@ use crate::locomotion::{hop, Medium};
 pub static DEF: Def = Def {
     name: "minecraft:magma_cube",
     targets: &[
-        Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, ..nearest_target::Params::PLAYER }),
+        Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, max_dy: Some(4.0), ..nearest_target::Params::PLAYER }),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT }),
     ],
     goals: &[

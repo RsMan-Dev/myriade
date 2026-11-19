@@ -48,6 +48,11 @@ fn has_rider(w: &World, e: Entity) -> bool {
 fn is_mounted(w: &World, e: Entity) -> bool {
     w.get::<crate::mount::Riding>(e).is_some()
 }
+/// `horizon:dark_enough`: the light at its eyes is under half (`brightness < 0.5`: the spider's gate, `hostile.rs` `dark_enough`).
+fn dark_enough(w: &World, e: Entity) -> bool {
+    let (Some(p), Some(eye), Some(level)) = (w.get::<Pos>(e), w.get::<crate::targeting::Eye>(e), w.get_resource::<crate::cow::Level>()) else { return false };
+    level.mw.0.brightness(p.0.x.floor() as i32, (p.0.y + eye.0).floor() as i32, p.0.z.floor() as i32) < crate::behaviours::melee::BRIGHT
+}
 /// `horizon:is_leashed`: it is on a lead (`leash::Leash`).
 fn is_leashed(w: &World, e: Entity) -> bool {
     crate::leash::is_leashed(w, e)
@@ -113,6 +118,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:is_mounted", is_mounted),
     ("horizon:is_sitting", is_sitting),
     ("horizon:is_leashed", is_leashed),
+    ("horizon:dark_enough", dark_enough),
     ("ocelot:trusting", ocelot_trusting),
     ("panda:acts", panda_acts),
     ("panda:avoids", panda_avoids),
@@ -123,3 +129,23 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
 ];
+
+#[cfg(test)]
+mod dark_tests {
+    use super::*;
+    use crate::cow::{species, spawn_species, Herd};
+
+    /// `dark_enough`: true at night, false by day, for the same creature in the same open world.
+    #[test]
+    fn dark_enough_follows_the_light_at_the_eyes() {
+        if crate::cow::skip_unless_walker("dark_enough") {
+            return;
+        }
+        let mut h = Herd::with_slab(20, false, false);
+        let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 1);
+        for day in [true, false] {
+            h.set_daylight(day);
+            assert_eq!(dark_enough(&h.world, e), !day, "day {day}");
+        }
+    }
+}

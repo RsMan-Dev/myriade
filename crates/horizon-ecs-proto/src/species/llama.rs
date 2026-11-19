@@ -1,17 +1,27 @@
 //! `Llama.registerGoals` as far as the frame goes: float, run around like crazy (1: the taming of a ridden llama), the caravan (2: `follow_caravan`,
-//! on a lead), panic, breed (wheat and hay bales), tempt (hay bale), follow the parent, stroll, look. Left out, with the reason: the spit (`RangedAttack`:
-//! the spit projectile is absent) and the two target goals that serve it (`LlamaHurtBy`, the wolves). A llama that is not the one of a trader: its panic is 1.2.
+//! on a lead), panic, breed (wheat and hay bales), tempt (hay bale), follow the parent, stroll, look. Targets: `LlamaHurtBy` (`hurt_by` that the llama's
+//! own spit ends: `ends_on_shot`) and the untamed wolf (2, every 16 ticks, a quarter of the range; the path reach of the `Mob`'s `.reach()` is not modelled,
+//! as in the polar bear). Left out: nothing of the goals (the spit is `ranged_attack`). A llama that is not the one of a trader: its panic is 1.2.
 //! It takes a lead (`leash::LEASH`, `followLeashSpeed` 2,0) and a rider (a seat, no saddle: it is not steered).
 use super::Def;
-use crate::behaviours::{breed, float, follow_caravan, follow_parent, look_at_player, panic, random_look, ranged_attack, run_around_like_crazy, stroll, tempt, Cap, Entry};
+use crate::behaviours::{hurt_by, nearest_target, breed, float, follow_caravan, follow_parent, look_at_player, panic, random_look, ranged_attack, run_around_like_crazy, stroll, tempt, Cap, Entry};
 use crate::leash::{LeashParams, LEASH};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 
 const FOOD: &[&str] = &["minecraft:wheat", "minecraft:hay_block"];
 
+/// `Prey::Filter(wolf && !tame)` of the llama's second target (`llama.rs:78-87`).
+fn untamed(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
+    !w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some())
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:llama",
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { ends_on_shot: true, ..hurt_by::Params::DEFAULT }),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { types: &["minecraft:wolf"], candidate_when: Some(untamed), must_see: false, interval: 16, follow_scale: 0.25, ..nearest_target::Params::DEFAULT }),
+    ],
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&run_around_like_crazy::MODULE, 1, &run_around_like_crazy::Params::DEFAULT),

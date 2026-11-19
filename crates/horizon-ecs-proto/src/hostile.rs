@@ -332,13 +332,23 @@ pub fn stop_melee(w: &mut World, e: Entity) {
 #[allow(clippy::type_complexity)]
 pub fn melee_run(
     clock: Res<Clock>,
+    level: Res<Level>,
     tg: targeting::Targets,
     mut dq: ResMut<DamageQueue>,
-    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>), With<Meleeing>>,
+    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>, Option<(&crate::behaviours::melee::QuitsInLight, &targeting::Eye)>), With<Meleeing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects, quits) in &mut q {
+        // `SpiderAttackGoal.canContinue`: in light, one chance in n per tick to give up and forget the target.
+        if let Some((n, eye)) = quits {
+            let (x, y, z) = eye_block(pos.0, eye.0);
+            if level.mw.0.brightness(x, y, z) >= crate::behaviours::melee::BRIGHT && rng.next_int(n.0) == 0 {
+                cmd.queue(move |w: &mut World| targeting::clear_target(w, e));
+                reqs.0.push(Req::End(e, a.melee_slot));
+                continue;
+            }
+        }
         let Some((g, i)) = g.and_then(|g| tg.info(g.who).map(|i| (g, i))) else {
             reqs.0.push(Req::End(e, a.melee_slot));
             continue;
