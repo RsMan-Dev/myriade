@@ -3,7 +3,7 @@
 //! raiders' blows are not retaliated against: not ported), the owner's target (2), the nearest player (3). `attend : look_at_player des
 //! mobs` (`vex.rs:32`, range 8 at 10: the module looks at players only).
 use super::Def;
-use crate::behaviours::{flier_goals as g, float, hurt_by, look_at_player, nearest_target, Cap, Entry};
+use crate::behaviours::{flier_goals as g, float, hurt_by, limited_life, look_at_player, nearest_target, Cap, Entry};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
@@ -18,6 +18,7 @@ pub static DEF: Def = Def {
         Entry::new(&g::VEX_CHARGE, 4, &g::Params::DEFAULT),
         Entry::new(&g::VEX_RANDOM_MOVE, 8, &g::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1 }),
+        Entry::new(&limited_life::MODULE, 10, &()),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Direct, noclip: true, ..fly::Params::DEFAULT }))],

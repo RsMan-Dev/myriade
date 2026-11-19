@@ -224,6 +224,7 @@ pub mod panic;
 pub mod random_look;
 pub mod random_stand;
 pub mod guardian_beam;
+pub mod limited_life;
 pub mod ranged_bow;
 pub mod spell_casting;
 pub mod spell_use;
@@ -326,6 +327,7 @@ pub static TABLE: &[&Module] = &[
     &nearest_target::MODULE,
     &melee::MODULE,
     &guardian_beam::MODULE,
+    &limited_life::MODULE,
     &ranged_bow::MODULE,
     &spell_casting::MODULE,
     &spell_use::MODULE,

@@ -15,7 +15,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Drowned, sinks: false, ..swim::Params::DEFAULT }))],
     spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::Monster, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::Drowned, cluster: 4, far: false, peaceful: false, liquid: true, despawn: crate::despawn::DespawnDef::MOB }), despawn: Some(crate::despawn::DespawnDef::MOB),
     ..Def::EMPTY

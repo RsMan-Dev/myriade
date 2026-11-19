@@ -7,7 +7,7 @@
 //! 120 s of life), `Fangs` (a ring of 13 when the target is within 3 blocks, else a line of 16: they bite 6 magic damage when their
 //! delay `+ 9` ticks is over, everything but the caster and its `allies`), `Disappear` (invisible for 60 s).
 //! Not done: the wololo and the blindness spells (no sheep colour in the ECS, no blindness effect), the sounds, the game event of each
-//! vex, the fangs' own entity (a record of this module: they cease with the last carrier of the module), the fang floor test counts any
+//! vex, the fang floor test counts any
 //! solid block with air above.
 use super::spell_casting::Casting;
 use super::*;
@@ -34,8 +34,6 @@ pub struct Params {
     pub interval: i64,
 }
 impl Params {
-    pub const VEXES: Self = Self { spell: Spell::Vexes { species: "minecraft:vex" }, id: 1, warmup: 20, casting: 100, interval: 340 };
-    pub const FANGS: Self = Self { spell: Spell::Fangs { allies: &["minecraft:evoker", "minecraft:vex", "minecraft:pillager", "minecraft:vindicator", "minecraft:illusioner", "minecraft:ravager", "minecraft:witch"] }, id: 2, warmup: 20, casting: 40, interval: 100 };
     pub const MIRROR: Self = Self { spell: Spell::Disappear, id: 4, warmup: 20, casting: 20, interval: 340 };
 }
 /// The entries of the caster: their ranks, the spell being warmed up (`running`: the entry's `nth`) and its warm-up.
@@ -50,13 +48,10 @@ pub struct Spells {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Spelling;
-/// The fangs waiting to bite, and the summoned creatures that run out of life: records of the module, created at first use.
-#[derive(Resource, Default)]
-struct Pending {
-    fangs: Vec<Fang>,
-    vexes: Vec<(u64, Entity)>,
-}
-struct Fang {
+/// A fang (`EvokerFangs`): its own entity, a component of the spot, the owner and the countdown (`warmup`, which bites at -8). It is not a
+/// creature: only this module's tick knows it, and each fang holds one carrier of the module (`Carriers`) so that the tick goes on until it is gone.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Fang {
     at: Vec3,
     delay: i32,
     owner: Entity,
@@ -125,9 +120,6 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// `canContinueToUse`: a living target and a warm-up not over.
 fn tick(w: &mut World) {
-    if !w.contains_resource::<Pending>() {
-        w.insert_resource(Pending::default());
-    }
     crate::goals::tick_state(w, warm);
     pending(w);
 }
@@ -170,7 +162,7 @@ fn summon(w: &mut World, e: Entity, species: &'static str) {
         w.get_mut::<Pos>(v).unwrap().0 = at;
         w.entity_mut(v).insert(crate::tame::Owner(Some(Who::Entity(e))));
         crate::goals::arm_timers(w, v);
-        w.resource_mut::<Pending>().vexes.push((now + life as u64, v));
+        w.entity_mut(v).insert(crate::behaviours::limited_life::Lifespan(now + life as u64));
     }
 }
 /// `EvokerAttackSpellGoal.performSpellCasting`: a ring of 5 and a ring of 8 (delay 3) near, else a line of 16 (delay 0 to 15).
@@ -198,7 +190,10 @@ fn fangs(w: &mut World, e: Entity, allies: &'static [&'static str]) {
     }
     for (x, z, delay) in spots {
         if let Some(y) = floor(w, x, z, min_y, max_y) {
-            w.resource_mut::<Pending>().fangs.push(Fang { at: Vec3::new(x, y, z), delay, owner: e, allies });
+            w.spawn(Fang { at: Vec3::new(x, y, z), delay, owner: e, allies });
+            if let Some(i) = crate::species::registry().module_id(&MODULE) {
+                w.resource_mut::<Carriers>().0[i] += 1;
+            }
         }
     }
 }
@@ -216,37 +211,29 @@ fn floor(w: &World, x: f64, z: f64, min_y: f64, max_y: f64) -> Option<f64> {
     }
     None
 }
-/// The fangs count down and bite when `warmup` reaches -8 (`EvokerFangs.tick`); the vexes past their life take 1 damage a tick.
+/// The fangs count down and bite when `warmup` reaches -8 (`EvokerFangs.tick`), then are removed.
 fn pending(w: &mut World) {
-    let now = w.resource::<Clock>().0;
     let mut bites: Vec<(Vec3, Entity, &'static [&'static str])> = Vec::new();
-    {
-        let mut p = w.resource_mut::<Pending>();
-        p.fangs.retain_mut(|f| {
-            f.delay -= 1;
-            if f.delay == -8 {
-                bites.push((f.at, f.owner, f.allies));
-            }
-            f.delay > -8
-        });
+    let mut gone: Vec<Entity> = Vec::new();
+    for (f, mut fang) in w.query::<(Entity, &mut Fang)>().iter_mut(w) {
+        fang.delay -= 1;
+        if fang.delay == -8 {
+            bites.push((fang.at, fang.owner, fang.allies));
+        }
+        if fang.delay <= -8 {
+            gone.push(f);
+        }
+    }
+    for f in gone {
+        w.despawn(f);
+        if let Some(i) = crate::species::registry().module_id(&MODULE) {
+            let c = &mut w.resource_mut::<Carriers>().0[i];
+            *c = c.saturating_sub(1);
+        }
     }
     for (at, owner, allies) in bites {
         bite(w, at, owner, allies);
     }
-    let late: Vec<Entity> = {
-        let mut p = w.resource_mut::<Pending>();
-        p.vexes.iter().filter(|(t, _)| *t <= now).map(|(_, v)| *v).collect()
-    };
-    let mut alive = Vec::new();
-    for v in late {
-        if w.get::<Health>(v).is_some_and(|h| h.0 > 0.0) {
-            let at = w.get::<Pos>(v).map(|p| (p.0.x, p.0.z));
-            w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 1.0, cause: Cause::Magic, from: at, by: None });
-            alive.push(v);
-        }
-    }
-    let mut p = w.resource_mut::<Pending>();
-    p.vexes.retain(|(t, v)| *t > now || alive.contains(v));
 }
 /// `EvokerFangs.dealDamageTo`: 6 of indirect magic to everything alive in the box (0.5 wide inflated 0.2 sideways, 0.8 high) but the
 /// owner and its allies; a missing owner hurts everyone.
