@@ -19,6 +19,10 @@ struct Scene {
     ecs: Entity,
     seen: std::collections::HashSet<Entity>,
     hits_seen: usize,
+    /// The amount of the beam's magic damage (the one channel both sides are compared on): 1, or 3 for the elder.
+    magic: f32,
+    /// Every event of the Mob that touches a player, with its tick (diagnostic).
+    trace: Vec<(i64, String)>,
 }
 /// The species of the process at `at`, the player at `player` (the target on both sides), `main`: the item in hand (name, ECS id).
 fn scene(at: Vec3, player: Vec3, main: Option<(&str, u32)>, water: bool) -> Scene {
@@ -49,7 +53,7 @@ fn scene(at: Vec3, player: Vec3, main: Option<(&str, u32)>, water: bool) -> Scen
     h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
     h.world.resource_mut::<PlayerState>().immortal = true;
     set_target(&mut h.world, ecs, Target::player(1, 30));
-    Scene { r, h, mob, ecs, seen: Default::default(), hits_seen: 0 }
+    Scene { r, h, mob, ecs, seen: Default::default(), hits_seen: 0, magic: if is("minecraft:elder_guardian") { 3.0 } else { 1.0 }, trace: Vec::new() }
 }
 /// What each side did in one tick.
 #[derive(Default, Debug, Clone, Copy)]
@@ -70,9 +74,13 @@ impl Scene {
         self.h.tick();
         let mut t = Tick::default();
         for e in &self.r.events[from..] {
+            let d = format!("{e:?}");
+            if d.contains("Player") || d.starts_with("Damage") || d.starts_with("Attack") || d.contains("crossbow") {
+                self.trace.push((self.r.t, d.chars().take(110).collect()));
+            }
             match e {
                 MobEvent::CrossbowShot { .. } | MobEvent::Projectile(_) => t.mob_shot += 1,
-                MobEvent::DamagePlayer { amount, .. } => t.mob_dmg += amount,
+                MobEvent::DamagePlayer { amount, kind, .. } if kind.ends_with("indirect_magic") => t.mob_dmg += amount,
                 MobEvent::Fangs { .. } => t.mob_fangs += 1,
                 MobEvent::SpawnKind { .. } => t.mob_vex += 1,
                 _ => {}
@@ -83,7 +91,7 @@ impl Scene {
         self.seen.extend(new.iter().copied());
         t.ecs_shot = new.len() as u32;
         let ps = self.h.world.resource::<PlayerState>();
-        t.ecs_dmg = ps.hits[self.hits_seen..].iter().map(|h| h.amount).sum();
+        t.ecs_dmg = ps.hits[self.hits_seen..].iter().filter(|h| (h.amount - self.magic).abs() < 1e-3).map(|h| h.amount).sum();
         self.hits_seen = ps.hits.len();
         let mut f = self.h.world.query::<(Entity, &spell_use::Fang)>();
         let nf: Vec<Entity> = f.iter(&self.h.world).map(|x| x.0).filter(|e| !self.seen.contains(e)).collect();
@@ -117,8 +125,17 @@ fn the_pillager_shoots_its_crossbow_as_a_mob_does() {
     }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:crossbow", CROSSBOW)), false);
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
-    let v = run(&mut s, &view, 200);
+    let mut v = Vec::new();
+    for t in 1..=200 {
+        v.push(s.step(&view));
+        if t % 10 == 0 && t <= 120 {
+            eprintln!("t={t}: mob x {:.2} / ecs x {:.2}", s.r.mobs[s.mob].position.x, s.h.world.get::<Pos>(s.ecs).unwrap().0.x);
+        }
+    }
     let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
+    for (t, d) in &s.trace {
+        eprintln!("mob event t={t}: {d}");
+    }
     close(&m, &e, 4, "crossbow bolts");
     assert!((m.len() as i64 - e.len() as i64).abs() <= 1, "mob {m:?}, ecs {e:?}");
     let mut q = s.h.world.query::<(&Pos, &Vel, &Projectile)>();
@@ -139,6 +156,12 @@ fn the_guardian_beam_hurts_as_a_mob_does() {
     close(&m, &e, 6, "beam hits");
     let (md, ed): (f32, f32) = (v.iter().map(|t| t.mob_dmg).take_while(|_| true).sum(), v.iter().map(|t| t.ecs_dmg).sum());
     eprintln!("damage in 200 ticks: mob {md}, ecs {ed}");
+    for (t, d) in &s.trace {
+        eprintln!("mob event t={t}: {d}");
+    }
+    for h in &s.h.world.resource::<PlayerState>().hits {
+        eprintln!("ecs hit tick {}: {}", h.tick, h.amount);
+    }
     assert!((m.len() as i64 - e.len() as i64).abs() <= 1, "mob {m:?}, ecs {e:?}");
     let first = |f: fn(&Tick) -> f32| v.iter().map(f).find(|d| *d > 0.0).unwrap();
     assert_eq!(first(|t| t.mob_dmg), first(|t| t.ecs_dmg));
