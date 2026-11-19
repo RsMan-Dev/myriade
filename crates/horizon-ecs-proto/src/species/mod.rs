@@ -38,6 +38,7 @@ pub mod wandering_trader;
 pub mod zombie;
 pub mod cod;
 pub mod parrot;
+pub mod allay;
 pub mod ghast;
 pub mod bat;
 pub mod strider;
@@ -85,7 +86,7 @@ pub mod polar_bear;
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF,
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &allay::DEF, &ghast::DEF, &wolf::DEF,
     &cat::DEF,
     &ocelot::DEF, &llama::DEF,
     &armadillo::DEF,
@@ -615,6 +616,7 @@ mod tests {
         ("minecraft:phantom", &[("phantom_attack_player_target", 1), ("phantom_attack_strategy", 1), ("phantom_sweep_attack", 2), ("phantom_circle_around_anchor", 3)]),
         ("minecraft:turtle", &[("panic", 0), ("turtle_lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("panic", 0), ("float", 0), ("look_at_player", 1), ("sit_when_ordered", 2), ("follow_owner", 2), ("fly_stroll", 2), ("land_on_shoulder", 3), ("follow_mob", 3)]),
+        ("minecraft:allay", &[("animal_panic", 0), ("stay_close_to_owner", 3), ("give_to_owner", 2), ("fly_stroll", 4), ("look_at_player", 5), ("random_look", 6)]),
         ("minecraft:giant", &[]),
         ("minecraft:mannequin", &[]),
         ("minecraft:ghast", &[("nearest_target", 1), ("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
