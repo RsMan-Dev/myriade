@@ -184,3 +184,87 @@ fn own_search_is_node_for_node_the_finder() {
     assert!(total > 0);
     assert!(dev.is_empty(), "{} of {total} searches differ:\n{}", dev.len(), dev.iter().take(8).cloned().collect::<Vec<_>>().join("\n"));
 }
+
+/// The layer is dropped around a changed block: after placing and removing blocks (stone, fences, doors, water), the own search
+/// (layer warm before each change) gives the paths of Horizon's `Finder`, which reads the blocks every time.
+#[test]
+fn own_search_follows_block_changes() {
+    if !have_data() {
+        return;
+    }
+    let (mw, _, world) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |blocks, registry| {
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        for cx in -4..4 {
+            for cz in -4..4 {
+                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+            }
+        }
+        for x in -20..20 {
+            for z in -20..20 {
+                for y in -2..=0 {
+                    blocks.set(x, y, z, stone).unwrap();
+                }
+            }
+        }
+    })
+    .expect("HORIZON_TEST_RESOURCES");
+    let _ = build_level_with(0, |_, _| {});
+    let table = species_table().0;
+    let kinds = ["minecraft:stone", "minecraft:oak_fence", "minecraft:oak_door", "minecraft:water", "minecraft:oak_fence_gate", "minecraft:air"];
+    let mut dev = Vec::new();
+    let mut r = Rng(0x5EED_0001);
+    let mut total = 0usize;
+    for name in ["minecraft:zombie", "minecraft:cow"] {
+        let Some(sp) = table.iter().find(|s| s.name == name).copied() else { continue };
+        let mut round = 0;
+        loop {
+            for q in 0..10 {
+                let (x, z) = (-18 + (r.unit() * 36.0) as i32, -18 + (r.unit() * 36.0) as i32);
+                let (tx, tz) = (-18 + (r.unit() * 36.0) as i32, -18 + (r.unit() * 36.0) as i32);
+                let pm = PathMob {
+                    position: Vec3::new(x as f64 + 0.5, 1.0, z as f64 + 0.5),
+                    width: sp.width,
+                    height: sp.height,
+                    on_ground: true,
+                    in_water: false,
+                    max_up_step: 0.6,
+                    max_fall_distance: 3,
+                    malus: sp.malus,
+                    can_float: sp.can_float,
+                    can_open_doors: sp.can_open_doors,
+                    can_pass_doors: sp.can_pass_doors,
+                    can_walk_over_fences: sp.can_walk_over_fences,
+                    stands_on_lava: false,
+                };
+                let target = [[tx, 1, tz]];
+                let a = Finder::new(mw, &pm, Evaluator::Walk).find(&target, sp.follow_range, 1, 560);
+                let b = horizon_ecs_proto::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).find(&target, sp.follow_range, 1, 560);
+                total += 1;
+                let same = match (&a, &b) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => a.nodes == b.nodes && a.reached == b.reached && a.dist_to_target == b.dist_to_target,
+                    _ => false,
+                };
+                if !same {
+                    dev.push(format!("{name} round {round} q {q} ({x},{z})->({tx},{tz})"));
+                }
+            }
+            round += 1;
+            if round > 40 {
+                break;
+            }
+            // Change a few blocks, then tell the layer.
+            for _ in 0..6 {
+                let (x, z) = (-18 + (r.unit() * 36.0) as i32, -18 + (r.unit() * 36.0) as i32);
+                let y = if r.unit() < 0.15 { 0 } else { 1 };
+                let k = kinds[(r.unit() * kinds.len() as f64) as usize % kinds.len()];
+                let state = mw.registry.default_state(k).unwrap();
+                // SAFETY: no search is running; the world is a leaked test world nobody else reads meanwhile.
+                unsafe { (*world).set(x, y, z, state).unwrap() };
+                horizon_ecs_proto::pathsearch::layer_changed(x, y, z);
+            }
+        }
+    }
+    assert!(total > 0);
+    assert!(dev.is_empty(), "{} of {total} searches differ:\n{}", dev.len(), dev.iter().take(8).cloned().collect::<Vec<_>>().join("\n"));
+}

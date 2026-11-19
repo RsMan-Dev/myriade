@@ -113,6 +113,13 @@ fn main() {
             println!("  SEC {n:>32}: calls/node {:>6.2} overhead/guard {} corrected {:>8.0}/search {:>7.0}/opened node", c / opened, ps::ovh(i), (v - c * ps::ovh(i) as f64) / iters as f64, (v - c * ps::ovh(i) as f64) / opened);
         }
     }
+    if std::env::var_os("INVAL").is_some() {
+        let c = Counter::new();
+        let mut r2 = Rng(99);
+        let c0 = c.read();
+        for _ in 0..2000 { horizon_ecs_proto::pathsearch::layer_changed(r2.range(-40.0, 40.0) as i32, r2.range(0.0, 3.0) as i32, r2.range(-40.0, 40.0) as i32); }
+        println!("layer_changed: {} instr per block change (layer {:?})", (c.read() - c0) / 2000, horizon_ecs_proto::pathsearch::layer_size());
+    }
     println!("layer: {:?} (sections, bytes)", horizon_ecs_proto::pathsearch::layer_size());
     println!("{case} iters={iters} follow_range={} found={ok} avg_nodes={:.1} instr/search={} checksum={sum:x}", sp.follow_range, nodes as f64 / ok.max(1) as f64, instr / iters as u64);
 }

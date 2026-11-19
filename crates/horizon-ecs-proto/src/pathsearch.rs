@@ -10,7 +10,7 @@ use horizon_core::position::BlockPos;
 pub static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub const NAMES: [&str; 24] = ["opened", "neighbours_pushed", "find_accepted", "try_jump", "first_ground", "node()", "node_new", "cached()", "cached_miss", "path_type()", "path_type_miss(statics)", "static()", "from_state", "from_state_miss(world cache)", "block_read_floor", "block_read_other", "block_read_neigh", "check_neigh", "check_neigh_scan", "within_bb(alloc)", "has_collisions", "has_collisions_miss", "heap_ops(ins/pop/chg)", "heap_steps"];
 pub static C: [std::sync::atomic::AtomicU64; 24] = [const { std::sync::atomic::AtomicU64::new(0) }; 24];
-pub const SEC: [&str; 16] = ["path_type_of_mob(miss)", "compute_path_type(static miss)", "find_accepted", "walk_neighbors", "heap ops", "within_bb", "has_collisions", "can_reach_no_collision", "find (whole)", "static_floor", "cached()", "node()", "jump_height", "malus", "path_type()", "best_h"];
+pub const SEC: [&str; 16] = ["path_type_of_mob(miss)", "compute_path_type(static miss)", "find_accepted", "walk_neighbors", "heap ops", "within_bb", "loop: neighbours", "heap_pop", "find (whole)", "static_floor", "cached()", "after loop", "start()", "node()", "path_type()", "best_h"];
 pub static ACC: [std::sync::atomic::AtomicU64; 16] = [const { std::sync::atomic::AtomicU64::new(0) }; 16];
 thread_local! { static CTR: Option<crate::instr::Counter> = crate::instr::Counter::new(); }
 pub struct Sec(usize, u64);
@@ -27,7 +27,11 @@ pub fn calibrate(i: usize) -> u64 {
     CNT[i].store(n, std::sync::atomic::Ordering::Relaxed);
     o
 }
+/// The counters and guards exist only in a build with `PATH_PROBE` set in the environment (they cost instructions on the hot path).
+const PROBE: bool = option_env!("PATH_PROBE").is_some();
+#[inline(always)]
 fn sec(i: usize) -> Option<Sec> {
+    if !PROBE { return None; }
     if MASK.load(std::sync::atomic::Ordering::Relaxed) & (1 << i) == 0 { return None; }
     CTR.with(|c| c.as_ref().map(|c| Sec(i, c.read())))
 }
@@ -38,7 +42,7 @@ impl Drop for Sec {
 }
 #[inline(always)]
 fn bump(i: usize) {
-    if ON.load(std::sync::atomic::Ordering::Relaxed) {
+    if PROBE && ON.load(std::sync::atomic::Ordering::Relaxed) {
         C[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -283,7 +287,9 @@ impl Node {
 pub struct FinderBuffers {
     pub nodes: Vec<Node>,
     pub index: FxHashMap<(i32, i32, i32), u32>,
-    pub heap: Vec<u32>,
+    pub heap: Vec<(f32, u32)>,
+    pub grid: Vec<u64>,
+    pub stamp: u32,
     pub types: FxHashMap<(i32, i32, i32), PathType>,
     pub statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     pub collisions: FxHashMap<[u64; 6], bool>,
@@ -295,6 +301,8 @@ impl FinderBuffers {
             nodes: Vec::with_capacity(256),
             index: FxHashMap::default(),
             heap: Vec::with_capacity(256),
+            grid: Vec::new(),
+            stamp: 0,
             types: FxHashMap::default(),
             statics: std::cell::RefCell::new(FxHashMap::default()),
             collisions: FxHashMap::default(),
@@ -315,6 +323,11 @@ thread_local! {
     static TLS_BUFFERS: std::cell::RefCell<FinderBuffers> = std::cell::RefCell::new(FinderBuffers::new());
 }
 
+/// The node table is a direct grid GW x GW x GH around the mob (a stamp per search, no clearing); the sections table TAB cells.
+const GW: usize = 97;
+const GH: usize = 17;
+const TAB: usize = 9 * 9 * 3;
+
 /// One pathfinding query: the node arena, open set and per-query caches.
 pub struct Finder<'a, 'w> {
     w: &'a MobWorld<'w>,
@@ -322,15 +335,25 @@ pub struct Finder<'a, 'w> {
     eval: Evaluator,
     nodes: Vec<Node>,
     index: FxHashMap<(i32, i32, i32), u32>,
-    heap: Vec<u32>,
+    heap: Vec<(f32, u32)>,
+    grid: Vec<u64>,
+    use_grid: bool,
+    stamp: u32,
+    gox: i32,
+    goy: i32,
+    goz: i32,
+    mt: [f32; PathType::COUNT],
+    sx0: i32,
+    sy0: i32,
+    sz0: i32,
+    st: [std::cell::Cell<*mut Sect>; TAB],
+    pt: [std::cell::Cell<*mut [u8; 4096]>; TAB],
     types: FxHashMap<(i32, i32, i32), PathType>,
     /// `path_type` of each position asked during this query: it reads up to
     /// 26 blocks, and overlapping mob boxes ask for the same positions.
     statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     collisions: FxHashMap<[u64; 6], bool>,
     use_layer: bool,
-    memo: std::cell::Cell<(u64, *mut Sect)>,
-    pmemo: std::cell::Cell<(u64, *mut [u8; 4096])>,
     saw_rail: std::cell::Cell<bool>,
     profile: u64,
     entity_width: i32,
@@ -351,6 +374,8 @@ impl<'a, 'w> Drop for Finder<'a, 'w> {
                 buf.nodes = std::mem::take(&mut self.nodes);
                 buf.index = std::mem::take(&mut self.index);
                 buf.heap = std::mem::take(&mut self.heap);
+                buf.grid = std::mem::take(&mut self.grid);
+                buf.stamp = self.stamp;
                 buf.types = std::mem::take(&mut self.types);
                 buf.statics = std::mem::take(&mut self.statics);
                 buf.collisions = std::mem::take(&mut self.collisions);
@@ -385,13 +410,15 @@ impl<'a, 'w> Finder<'a, 'w> {
                 table[id as usize] = 0;
             }
         });
-        let (nodes, index, heap, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
+        let (nodes, index, heap, mut grid, mut stamp, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
                 buf.clear();
                 (
                     std::mem::take(&mut buf.nodes),
                     std::mem::take(&mut buf.index),
                     std::mem::take(&mut buf.heap),
+                    std::mem::take(&mut buf.grid),
+                    buf.stamp,
                     std::mem::take(&mut buf.types),
                     std::mem::take(&mut buf.statics),
                     std::mem::take(&mut buf.collisions),
@@ -401,12 +428,38 @@ impl<'a, 'w> Finder<'a, 'w> {
                     Vec::with_capacity(128),
                     FxHashMap::default(),
                     Vec::with_capacity(128),
+                    Vec::new(),
+                    0,
                     FxHashMap::default(),
                     std::cell::RefCell::new(FxHashMap::default()),
                     FxHashMap::default(),
                 )
             }
         });
+        if grid.is_empty() && TLS_BUFFERS.with(|c| c.try_borrow_mut().is_ok()) {
+            grid = vec![0u64; GW * GW * GH];
+        }
+        if !grid.is_empty() {
+            stamp = stamp.wrapping_add(1);
+            if stamp == 0 {
+                grid.iter_mut().for_each(|e| *e = 0);
+                stamp = 1;
+            }
+        }
+        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
+        if use_layer {
+            layer_evict();
+        }
+        let mp = block_pos(mob);
+        let mut mt = [0.0f32; PathType::COUNT];
+        for t in PathType::ALL {
+            mt[t as usize] = match (eval, t) {
+                (Evaluator::Amphibious { .. }, PathType::Water) => 0.0,
+                (Evaluator::Amphibious { .. }, PathType::Walkable) => 6.0,
+                (Evaluator::Amphibious { .. }, PathType::WaterBorder) => 4.0,
+                _ => mob.malus(t),
+            };
+        }
         Self {
             w,
             mob,
@@ -414,12 +467,22 @@ impl<'a, 'w> Finder<'a, 'w> {
             nodes,
             index,
             heap,
+            use_grid: !grid.is_empty(),
+            grid,
+            stamp,
+            gox: mp[0].wrapping_sub(GW as i32 / 2),
+            goy: mp[1].wrapping_sub(GH as i32 / 2),
+            goz: mp[2].wrapping_sub(GW as i32 / 2),
+            mt,
+            sx0: (mp[0] >> 4) - 4,
+            sy0: (mp[1] >> 4) - 1,
+            sz0: (mp[2] >> 4) - 4,
+            st: [const { std::cell::Cell::new(std::ptr::null_mut()) }; TAB],
+            pt: [const { std::cell::Cell::new(std::ptr::null_mut()) }; TAB],
             types,
             statics,
             collisions,
-            use_layer: LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0,
-            memo: std::cell::Cell::new((u64::MAX, std::ptr::null_mut())),
-            pmemo: std::cell::Cell::new((u64::MAX, std::ptr::null_mut())),
+            use_layer,
             saw_rail: std::cell::Cell::new(false),
             profile: profile_of(mob),
             entity_width: (mob.width + 1.0).floor() as i32,
@@ -429,17 +492,9 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// Mob.getPathfindingMalus; AmphibiousNodeEvaluator.prepare overrides three
     /// maluses for the duration of the query.
+    #[inline(always)]
     fn malus(&self, t: PathType) -> f32 {
-        let _g = sec(13);
-        if let Evaluator::Amphibious { .. } = self.eval {
-            match t {
-                PathType::Water => return 0.0,
-                PathType::Walkable => return 6.0,
-                PathType::WaterBorder => return 4.0,
-                _ => {}
-            }
-        }
-        self.mob.malus(t)
+        self.mt[t as usize]
     }
     /// The static `PathType` of a position under this finder's evaluator,
     /// through the world's cached classification. One classification per
@@ -467,20 +522,44 @@ impl<'a, 'w> Finder<'a, 'w> {
         bump(15);
         self.w.facts.is_air(self.w.world.block(x, y, z))
     }
+    /// The layer's section of a cell: from the per-search table when it is within reach of the mob, else from the layer.
+    #[inline(always)]
+    fn sect(&self, x: i32, y: i32, z: i32) -> *mut Sect {
+        let (a, b, c) = (((x >> 4) - self.sx0) as u32, ((z >> 4) - self.sz0) as u32, ((y >> 4) - self.sy0) as u32);
+        if a < 9 && b < 9 && c < 3 {
+            let cell = &self.st[((a * 9 + b) * 3 + c) as usize];
+            let p = cell.get();
+            if !p.is_null() {
+                return p;
+            }
+            let p = LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)));
+            cell.set(p);
+            return p;
+        }
+        LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)))
+    }
+    #[inline(always)]
+    fn psect(&self, x: i32, y: i32, z: i32) -> *mut [u8; 4096] {
+        let (a, b, c) = (((x >> 4) - self.sx0) as u32, ((z >> 4) - self.sz0) as u32, ((y >> 4) - self.sy0) as u32);
+        if a < 9 && b < 9 && c < 3 {
+            let cell = &self.pt[((a * 9 + b) * 3 + c) as usize];
+            let p = cell.get();
+            if !p.is_null() {
+                return p;
+            }
+            let p = LAYER.with(|l| l.borrow_mut().profile_section(self.profile, layer_key(x, y, z)));
+            cell.set(p);
+            return p;
+        }
+        LAYER.with(|l| l.borrow_mut().profile_section(self.profile, layer_key(x, y, z)))
+    }
     /// WalkNodeEvaluator.getFloorLevel(level, pos).
     pub fn static_floor(&self, x: i32, y: i32, z: i32) -> f64 {
         let _g = sec(9);
         let below = y.saturating_sub(1);
         if self.use_layer {
-            let (key, idx) = (layer_key(x, below, z), layer_idx(x, below, z));
-            let (k, p) = self.memo.get();
-            let sect = if k == key && !p.is_null() {
-                p
-            } else {
-                let p = LAYER.with(|l| l.borrow_mut().section(key));
-                self.memo.set((key, p));
-                p
-            };
+            let idx = layer_idx(x, below, z);
+            let sect = self.sect(x, below, z);
             // SAFETY: as in `path_type`.
             let cell = unsafe { &mut (*sect).top[idx] };
             if *cell < 0xFE {
@@ -531,15 +610,8 @@ impl<'a, 'w> Finder<'a, 'w> {
         let _g = sec(14);
         bump(9);
         if self.use_layer {
-            let (key, idx) = (layer_key(x, y, z), layer_idx(x, y, z));
-            let (k, p) = self.memo.get();
-            let sect = if k == key && !p.is_null() {
-                p
-            } else {
-                let p = LAYER.with(|l| l.borrow_mut().section(key));
-                self.memo.set((key, p));
-                p
-            };
+            let idx = layer_idx(x, y, z);
+            let sect = self.sect(x, y, z);
             // SAFETY: the box lives in the layer map and is neither moved nor dropped while a search runs (`changed`/`clear` are called between searches).
             let cell = unsafe { &mut (*sect).stat[idx] };
             if *cell != 0 {
@@ -735,16 +807,8 @@ impl<'a, 'w> Finder<'a, 'w> {
         let _g = sec(10);
         bump(7);
         if self.use_layer {
-            let (key, idx) = (layer_key(x, y, z), layer_idx(x, y, z));
-            let (k, p) = self.pmemo.get();
-            let sect = if k == key && !p.is_null() {
-                p
-            } else {
-                let profile = self.profile;
-                let p = LAYER.with(|l| l.borrow_mut().profile_section(profile, key));
-                self.pmemo.set((key, p));
-                p
-            };
+            let idx = layer_idx(x, y, z);
+            let sect = self.psect(x, y, z);
             // SAFETY: as in `path_type`; the boxes of the profile map are never moved.
             let v = unsafe { (*sect)[idx] };
             if v != 0 {
@@ -769,8 +833,22 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     // --- node arena -------------------------------------------------------
     fn node(&mut self, x: i32, y: i32, z: i32) -> u32 {
-        let _g = sec(11);
         bump(5);
+        if self.use_grid {
+            let (dx, dy, dz) = (x.wrapping_sub(self.gox) as u32, y.wrapping_sub(self.goy) as u32, z.wrapping_sub(self.goz) as u32);
+            if (dx as usize) < GW && (dz as usize) < GW && (dy as usize) < GH {
+                let slot = (dy as usize * GW + dz as usize) * GW + dx as usize;
+                let e = self.grid[slot];
+                if (e >> 32) as u32 == self.stamp {
+                    return e as u32;
+                }
+                let i = self.nodes.len() as u32;
+                bump(6);
+                self.nodes.push(Node::new(x, y, z));
+                self.grid[slot] = (u64::from(self.stamp) << 32) | u64::from(i);
+                return i;
+            }
+        }
         if let Some(i) = self.index.get(&(x, y, z)) {
             return *i;
         }
@@ -907,7 +985,6 @@ impl<'a, 'w> Finder<'a, 'w> {
         n
     }
     fn jump_height(&self) -> f64 {
-        let _g = sec(12);
         f64::from(self.mob.max_up_step).max(1.125)
     }
     fn partial_collision(t: PathType) -> bool {
@@ -1391,32 +1468,30 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     // --- binary heap (vanilla BinaryHeap) --------------------------------
     fn heap_insert(&mut self, n: u32) {
-        let _g = sec(4);
         bump(22);
         let i = self.heap.len();
-        self.heap.push(n);
+        self.heap.push((self.nodes[n as usize].f, n));
         self.nodes[n as usize].heap = i as i32;
         self.up_heap(i);
     }
     fn heap_pop(&mut self) -> u32 {
-        let _g = sec(4);
         bump(22);
-        let popped = self.heap[0];
-        let last = self.heap.pop().unwrap_or(popped);
+        let popped = self.heap[0].1;
+        let last = self.heap.pop().unwrap_or((0.0, popped));
         if !self.heap.is_empty() {
             self.heap[0] = last;
-            self.nodes[last as usize].heap = 0;
+            self.nodes[last.1 as usize].heap = 0;
             self.down_heap(0);
         }
         self.nodes[popped as usize].heap = -1;
         popped
     }
     fn change_cost(&mut self, n: u32, cost: f32) {
-        let _g = sec(4);
         bump(22);
         let old = self.nodes[n as usize].f;
         self.nodes[n as usize].f = cost;
         let i = self.nodes[n as usize].heap as usize;
+        self.heap[i].0 = cost;
         if cost < old {
             self.up_heap(i);
         } else {
@@ -1424,25 +1499,23 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
     }
     fn up_heap(&mut self, mut i: usize) {
-        let node = self.heap[i];
-        let cost = self.nodes[node as usize].f;
+        let entry = self.heap[i];
         while i > 0 {
             bump(23);
             let parent_i = (i - 1) >> 1;
             let parent = self.heap[parent_i];
-            if cost >= self.nodes[parent as usize].f {
+            if entry.0 >= parent.0 {
                 break;
             }
             self.heap[i] = parent;
-            self.nodes[parent as usize].heap = i as i32;
+            self.nodes[parent.1 as usize].heap = i as i32;
             i = parent_i;
         }
-        self.heap[i] = node;
-        self.nodes[node as usize].heap = i as i32;
+        self.heap[i] = entry;
+        self.nodes[entry.1 as usize].heap = i as i32;
     }
     fn down_heap(&mut self, mut i: usize) {
-        let node = self.heap[i];
-        let cost = self.nodes[node as usize].f;
+        let entry = self.heap[i];
         let size = self.heap.len();
         loop {
             bump(23);
@@ -1452,33 +1525,25 @@ impl<'a, 'w> Finder<'a, 'w> {
                 break;
             }
             let left = self.heap[left_i];
-            let left_cost = self.nodes[left as usize].f;
-            let (right, right_cost) = if right_i >= size {
-                (u32::MAX, f32::INFINITY)
-            } else {
-                (
-                    self.heap[right_i],
-                    self.nodes[self.heap[right_i] as usize].f,
-                )
-            };
-            if left_cost < right_cost {
-                if left_cost >= cost {
+            let right = if right_i >= size { (f32::INFINITY, u32::MAX) } else { self.heap[right_i] };
+            if left.0 < right.0 {
+                if left.0 >= entry.0 {
                     break;
                 }
                 self.heap[i] = left;
-                self.nodes[left as usize].heap = i as i32;
+                self.nodes[left.1 as usize].heap = i as i32;
                 i = left_i;
             } else {
-                if right_cost >= cost {
+                if right.0 >= entry.0 {
                     break;
                 }
                 self.heap[i] = right;
-                self.nodes[right as usize].heap = i as i32;
+                self.nodes[right.1 as usize].heap = i as i32;
                 i = right_i;
             }
         }
-        self.heap[i] = node;
-        self.nodes[node as usize].heap = i as i32;
+        self.heap[i] = entry;
+        self.nodes[entry.1 as usize].heap = i as i32;
     }
     // --- PathFinder.findPath ------------------------------------------------
     fn best_h(&self, n: u32, targets: &mut [Target]) -> f32 {
@@ -1504,7 +1569,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         max_visited: i32,
     ) -> Option<Path> {
         let _g = sec(8);
+        let g12 = sec(12);
         let from = self.start()?;
+        drop(g12);
         let mut targets: Vec<Target> = positions
             .iter()
             .map(|p| {
@@ -1540,7 +1607,9 @@ impl<'a, 'w> Finder<'a, 'w> {
                 break;
             }
             bump(0);
+            let g7 = sec(7);
             let current = self.heap_pop();
+            drop(g7);
             self.nodes[current as usize].closed = true;
             let mut any = false;
             for t in targets.iter_mut() {
@@ -1563,22 +1632,22 @@ impl<'a, 'w> Finder<'a, 'w> {
                 Evaluator::Swim { .. } => self.swim_neighbors(current, &mut neighbors),
                 Evaluator::Fly => self.fly_neighbors(current, &mut neighbors),
             }
+            let g6 = sec(6);
+            let (cx, cy, cz, cg, cw) = {
+                let c = &self.nodes[current as usize];
+                (c.x, c.y, c.z, c.g, c.walked)
+            };
             for &neighbor in &neighbors {
                 bump(1);
-                let (cx, cy, cz, cg, cw) = {
-                    let c = &self.nodes[current as usize];
-                    (c.x, c.y, c.z, c.g, c.walked)
-                };
-                let distance = self.nodes[neighbor as usize].distance(cx, cy, cz);
+                let nn = &mut self.nodes[neighbor as usize];
+                let distance = nn.distance(cx, cy, cz);
                 let walked = cw + distance;
-                self.nodes[neighbor as usize].walked = walked;
-                let tentative = cg + distance + self.nodes[neighbor as usize].cost_malus;
-                let in_open = self.nodes[neighbor as usize].heap >= 0;
-                if walked < max_path_length
-                    && (!in_open || tentative < self.nodes[neighbor as usize].g)
-                {
-                    self.nodes[neighbor as usize].came_from = Some(current);
-                    self.nodes[neighbor as usize].g = tentative;
+                nn.walked = walked;
+                let tentative = cg + distance + nn.cost_malus;
+                let in_open = nn.heap >= 0;
+                if walked < max_path_length && (!in_open || tentative < nn.g) {
+                    nn.came_from = Some(current);
+                    nn.g = tentative;
                     let h = self.best_h(neighbor, &mut targets) * 1.5;
                     self.nodes[neighbor as usize].h = h;
                     if in_open {
@@ -1589,7 +1658,9 @@ impl<'a, 'w> Finder<'a, 'w> {
                     }
                 }
             }
+            drop(g6);
         }
+        let g11 = sec(11);
         let reached: Vec<&Target> = targets.iter().filter(|t| t.reached).collect();
         let build = |s: &Self, t: &Target, reached: bool| -> Option<Path> {
             let mut n = t.best?;
@@ -1610,7 +1681,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             nodes.reverse();
             Some(make_path(nodes, t.pos, reached))
         };
-        if !reached.is_empty() {
+        let out = if !reached.is_empty() {
             reached
                 .iter()
                 .filter_map(|t| build(&self, t, true))
@@ -1624,7 +1695,9 @@ impl<'a, 'w> Finder<'a, 'w> {
                         .total_cmp(&b.dist_to_target)
                         .then(a.nodes.len().cmp(&b.nodes.len()))
                 })
-        }
+        };
+        drop(g11);
+        out
     }
 }
 
@@ -1715,9 +1788,11 @@ pub struct Layer {
     map: FxHashMap<u64, Box<Sect>>,
     /// By (profile, section): the type a mob of that profile gives a cell (`path_type_of_mob`), one byte a block like `stat`.
     pmap: FxHashMap<(u64, u64), Box<[u8; 4096]>>,
+    /// The profiles that have a section in `pmap`.
+    profiles: Vec<u64>,
 }
 thread_local! {
-    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { map: FxHashMap::default(), pmap: FxHashMap::default() });
+    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
 }
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
     (((x >> 4) as u64) & 0x1F_FFFF) | ((((z >> 4) as u64) & 0x1F_FFFF) << 21) | ((((y >> 4) as u64) & 0x1F_FFFF) << 42)
@@ -1727,59 +1802,87 @@ fn layer_idx(x: i32, y: i32, z: i32) -> usize {
 }
 impl Layer {
     fn profile_section(&mut self, profile: u64, key: u64) -> *mut [u8; 4096] {
+        if !self.profiles.contains(&profile) {
+            self.profiles.push(profile);
+        }
         &mut **self.pmap.entry((profile, key)).or_insert_with(|| Box::new([0u8; 4096])) as *mut [u8; 4096]
     }
     fn section(&mut self, key: u64) -> *mut Sect {
         &mut **self.map.entry(key).or_insert_with(|| Box::new(Sect { stat: [0; 4096], top: [0xFF; 4096] })) as *mut Sect
     }
 }
-/// The block at (x, y, z) changed: the types of the cells that read it (itself, its 26 neighbours, the cell above) are forgotten.
+/// The block at (x, y, z) changed: the types of the cells that read it (itself, its 26 neighbours, the cell above) are forgotten,
+/// and a mob's types of the cells whose box (up to 5 wide and 5 tall) or neighbourhood reaches it.
 pub fn layer_changed(x: i32, y: i32, z: i32) {
     LAYER.with(|l| {
         let mut l = l.borrow_mut();
-        // A mob's type of a cell reads the cells of its box (up to 4 wide and 4 tall here) and their types: a wider ring.
-        let mut keys: Vec<u64> = Vec::new();
-        for cx in [x - 6, x + 1] {
-            for cy in [y - 6, y + 3] {
-                for cz in [z - 6, z + 1] {
-                    let k = layer_key(cx, cy, cz);
-                    if !keys.contains(&k) {
-                        keys.push(k);
+        let l = &mut *l;
+        // Visits the cells of the box, section by section: `f(key, section, cells)` with the ranges clipped to the section.
+        fn boxes(lo: [i32; 3], hi: [i32; 3], mut f: impl FnMut(u64, [i32; 3], [i32; 3])) {
+            for sx in (lo[0] >> 4)..=(hi[0] >> 4) {
+                for sy in (lo[1] >> 4)..=(hi[1] >> 4) {
+                    for sz in (lo[2] >> 4)..=(hi[2] >> 4) {
+                        let (bx, by, bz) = (sx << 4, sy << 4, sz << 4);
+                        f(
+                            layer_key(bx, by, bz),
+                            [lo[0].max(bx), lo[1].max(by), lo[2].max(bz)],
+                            [hi[0].min(bx + 15), hi[1].min(by + 15), hi[2].min(bz + 15)],
+                        );
                     }
                 }
             }
         }
-        for ((_, k), v) in l.pmap.iter_mut() {
-            if !keys.contains(k) {
-                continue;
-            }
-            for dx in -6..=1 {
-                for dy in -6..=3 {
-                    for dz in -6..=1 {
-                        let (cx, cy, cz) = (x + dx, y + dy, z + dz);
-                        if layer_key(cx, cy, cz) == *k {
-                            v[layer_idx(cx, cy, cz)] = 0;
-                        }
+        fn each(a: [i32; 3], b: [i32; 3], mut g: impl FnMut(usize)) {
+            for yy in a[1]..=b[1] {
+                for zz in a[2]..=b[2] {
+                    let base = (((yy & 15) << 8) | ((zz & 15) << 4)) as usize;
+                    for xx in a[0]..=b[0] {
+                        g(base | (xx & 15) as usize);
                     }
                 }
             }
         }
-        for dx in -1..=1 {
-            for dy in -1..=2 {
-                for dz in -1..=1 {
-                    let (cx, cy, cz) = (x + dx, y + dy, z + dz);
-                    if let Some(s) = l.map.get_mut(&layer_key(cx, cy, cz)) {
-                        s.stat[layer_idx(cx, cy, cz)] = 0;
-                        s.top[layer_idx(cx, cy, cz)] = 0xFF;
-                    }
+        boxes([x - 6, y - 6, z - 6], [x + 1, y + 3, z + 1], |key, a, b| {
+            for &p in &l.profiles {
+                if let Some(v) = l.pmap.get_mut(&(p, key)) {
+                    each(a, b, |i| v[i] = 0);
                 }
             }
-        }
+        });
+        boxes([x - 1, y - 1, z - 1], [x + 1, y + 2, z + 1], |key, a, b| {
+            if let Some(sct) = l.map.get_mut(&key) {
+                each(a, b, |i| {
+                    sct.stat[i] = 0;
+                    sct.top[i] = 0xFF;
+                });
+            }
+        });
     });
 }
 /// Drops the whole layer (a chunk replaced, a world reloaded).
 pub fn layer_clear() {
-    LAYER.with(|l| l.borrow_mut().map.clear());
+    LAYER.with(|l| {
+        let mut l = l.borrow_mut();
+        l.map.clear();
+        l.pmap.clear();
+        l.profiles.clear();
+    });
+}
+/// The most bytes the layer keeps (per thread) before the next search starts by dropping the types per profile (they are re-derived
+/// from `stat`), then the sections if that is not enough.
+pub static LAYER_CAP: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(256 << 20);
+fn layer_evict() {
+    LAYER.with(|l| {
+        let mut l = l.borrow_mut();
+        let cap = LAYER_CAP.load(std::sync::atomic::Ordering::Relaxed);
+        if l.map.len() * 8192 + l.pmap.len() * 4096 > cap {
+            l.pmap.clear();
+            l.profiles.clear();
+            if l.map.len() * 8192 > cap {
+                l.map.clear();
+            }
+        }
+    });
 }
 /// (sections held, bytes).
 pub fn layer_size() -> (usize, usize) {

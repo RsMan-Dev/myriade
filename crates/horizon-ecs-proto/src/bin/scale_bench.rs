@@ -255,6 +255,7 @@ fn main() {
         for x in rows.iter().take(25) { eprintln!("  {:>10.0} {:>7.1}/ent visited {:>8.0}  {}", x.1, x.1 / n as f64, x.2, x.0); }
     }
     let nt = ticks as f64;
+    eprintln!("layer (main thread): {:?} (sections, bytes)", horizon_ecs_proto::pathsearch::layer_size());
     println!(
         "scene={scene} n={n} threads={threads} ticks={ticks} warm={warm} players={npl} spacing={spacing} | wall ms/tick: median={:.3} p99={:.3} mean={mean:.3} max={:.3} | instr/tick={:.0} median={} instr/entity/tick={:.1} | rss_MB={} rss_before_window_MB={} hwm_MB={} rss_empty_MB={} | build_s={build_s:.1} | entities {before}->{after} animals {animals0}->{animals1} asleep={asleep} awake-ish idle={idle}/{total} following={following} moving={moving} | checksum={h:016x}",
         q(0.5),
