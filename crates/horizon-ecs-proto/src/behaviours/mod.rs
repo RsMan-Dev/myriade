@@ -309,6 +309,8 @@ pub mod strike_pause;
 pub mod shield_stun;
 pub mod ravager_roar;
 pub mod hunt_speed;
+pub mod headbutt;
+pub mod ambient_sound;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -433,4 +435,6 @@ pub static TABLE: &[&Module] = &[
     &shield_stun::MODULE,
     &ravager_roar::MODULE,
     &hunt_speed::MODULE,
+    &headbutt::MODULE,
+    &ambient_sound::MODULE,
 ];

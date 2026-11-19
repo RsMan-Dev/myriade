@@ -39,7 +39,7 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
         erase(w, e, &NEAREST_REPELLENT);
     } else {
         let mw = world_of(w);
-        match mw.nearest_block(at, p.horizontal, p.vertical, |_, name| mw.block_tag(p.block_tag, name)) {
+        match mw.nearest_block(at, p.horizontal, p.vertical, |_, name| mw.has_tag(p.block_tag, name)) {
             Some(spot) => set(w, e, &NEAREST_REPELLENT, MemValue::Block(spot), None),
             None => erase(w, e, &NEAREST_REPELLENT),
         }

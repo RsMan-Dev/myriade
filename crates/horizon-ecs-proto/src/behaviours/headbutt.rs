@@ -39,7 +39,9 @@ fn unit(w: &mut World, e: Entity) -> f64 {
 }
 
 fn hit(w: &mut World, e: Entity) {
-    crate::behaviours::act_phase::sound(w, e, "entity.hoglin.attack", 1.0, 1.0);
+    if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
+        w.resource_mut::<crate::goals::Events>().host.sound("entity.hoglin.attack", [p.x, p.y, p.z], 1.0, 1.0);
+    }
     let Some(Headbutt(knockback)) = w.get::<Headbutt>(e).copied() else { return };
     let Some(Who::Entity(t)) = w.get::<Target>(e).map(|t| t.who) else { return };
     let (Some(from), Some(to)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Pos>(t).map(|p| p.0)) else { return };
@@ -50,7 +52,7 @@ fn hit(w: &mut World, e: Entity) {
     let angle = ((unit(w, e) * 21.0).floor().min(20.0) - 10.0).to_radians();
     let scale = knockback * (unit(w, e) * 0.5 + 0.2);
     let up = knockback * unit(w, e) * 0.5;
-    let push = away.normalize().scale(scale).rotate_y(angle);
+    let push = away.normalize().scale(scale).rotate_y(angle as f32);
     if let Some(mut v) = w.get_mut::<Vel>(t) {
         v.0 = Vec3::new(push.x, up, push.z);
     }

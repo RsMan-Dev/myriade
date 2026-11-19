@@ -4,7 +4,7 @@
 //! when idle; an `AVOID_TARGET` makes it retreat at 1.3 to 15 blocks. The zoglin conversion and its ambient sound are goals.
 //! Left out (see `suivi/ecs-portage/reste/hoglin.md`): the retreat and fight sounds, the baby recoil, the walk value.
 use super::Def;
-use crate::behaviours::{ambient_sound, breed, convert_timer, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
+use crate::behaviours::{ambient_sound, breed, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
 use crate::brain::behaviours::{pacify, walk_away};
 use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, repellent_and_adult};
 use crate::brain::*;
@@ -43,7 +43,6 @@ pub static DEF: Def = Def {
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params::DEFAULT).when(&NOT_RETREATING),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.4, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
-        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300 }),
         Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.hoglin.ambient"], min: 80, max: 400 }),
     ],
     changes: &[],

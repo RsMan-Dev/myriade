@@ -37,7 +37,7 @@ fn delay(w: &mut World, e: Entity) -> i32 {
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let d = delay(w, e);
-    goals::arm(w, e, inst.slot, d);
+    arm_at(w, e, now_of(w, e) + d as u64, Due::Goal(inst.slot));
 }
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
     true
