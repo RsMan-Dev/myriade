@@ -458,7 +458,7 @@ pub(crate) fn travel(
     }
 }
 /// `Entity.moveRelative` with a vertical input.
-fn move_relative_3d(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32, zza: f32) {
+pub(crate) fn move_relative_3d(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32, zza: f32) {
     let input = Vec3::new(f64::from(xxa), f64::from(yya), f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {

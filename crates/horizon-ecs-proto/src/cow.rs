@@ -81,6 +81,11 @@ pub struct Drive {
     /// the last tick (`locomotion/climb.rs`).
     pub climber: bool,
     pub climbing: bool,
+    /// `LivingEntity.shouldDiscardFriction`: the velocity keeps its horizontal part and takes the vertical one without drag while it is set (a
+    /// long jump of a frog or a goat: the goal sets and clears it).
+    pub discard_friction: bool,
+    /// `Mob.xRot` of a swimmer steered by `SmoothSwimmingMoveControl` (the pitch the inputs follow).
+    pub pitch: f32,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -1627,7 +1632,7 @@ pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: 
     d.xxa = right;
 }
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
-fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
+pub(crate) fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
     d.xxa = 0.0;
@@ -1937,9 +1942,13 @@ pub(crate) fn travel_one(
         // `Spider.tick`: climbing while pressed against a wall.
         d.climbing = c.horizontal;
     }
+    let y = movement.y - body.gravity;
+    if d.discard_friction {
+        vel.0 = Vec3::new(movement.x, y, movement.z);
+        return false;
+    }
     let drag = 0.91_f32;
     let f = friction * drag;
-    let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
     !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
