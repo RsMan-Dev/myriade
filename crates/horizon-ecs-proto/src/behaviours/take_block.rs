@@ -4,8 +4,11 @@
 //! carries nothing. The goal ticks once, at its start (as the `Mob`, which has no `canContinueToUse`): the block goes
 //! (air through `BlockChanges`), the block is carried, and the drop goal is armed.
 use super::*;
-use crate::{cow::*, goals::*};
+use crate::{blocks, cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use horizon_client_lib::mobs::MobWorld;
+use horizon_world::registry::BlockStateId;
+use std::{collections::BTreeMap, sync::Mutex};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -13,18 +16,24 @@ pub struct Params {
     pub asks: i32,
     /// The block tag of the blocks an enderman may take.
     pub holdable: &'static str,
+    /// The block keeps its properties when taken (`enderman.rs:30`: the `BlockState` is carried whole).
+    pub keep_props: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { asks: 10, holdable: "minecraft:enderman_holdable" };
+    pub const DEFAULT: Self = Self { asks: 10, holdable: "minecraft:enderman_holdable", keep_props: true };
 }
-/// The block the enderman carries, by name (the state's properties are not kept: DOUBT).
+/// The block the enderman carries, by name (`None`: nothing).
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Carried(pub Option<&'static str>);
+/// The properties the carried block had when taken (`'static`: `blocks::set_state` takes them so); empty when not kept.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct CarriedProps(pub &'static [(&'static str, &'static str)]);
 /// The draw of this goal: its parameters and whether its deadline is in the wheel.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Taking {
     pub asks: i32,
     pub holdable: &'static str,
+    pub keep_props: bool,
     pub armed: bool,
     pub slot: u8,
 }
@@ -43,7 +52,7 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert(Taking { asks: p.asks, holdable: p.holdable, armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(Taking { asks: p.asks, holdable: p.holdable, keep_props: p.keep_props, armed: false, slot: inst.slot });
     if w.get::<Carried>(e).is_none() {
         w.entity_mut(e).insert(Carried(None));
     }
@@ -73,27 +82,46 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Carried>(e).is_some_and(|c| c.0.is_none()) && mob_griefing(w)
 }
-fn block_at(w: &World, x: i32, y: i32, z: i32) -> &'static str {
-    let mw = w.resource::<Level>().mw.0;
-    &mw.facts.get(mw.world.block(x, y, z)).name
+/// The properties of the block state `id` as `'static` pairs, read from the registry (which lives as long as the world).
+/// `blocks::set_state` takes `'static` properties: each state is copied once and kept, so the set kept is bounded by the
+/// block states (DOUBT: the framework should take the state's id or owned properties).
+fn held_props(mw: &'static MobWorld<'static>, id: BlockStateId) -> &'static [(&'static str, &'static str)] {
+    static KEPT: Mutex<BTreeMap<BlockStateId, &'static [(&'static str, &'static str)]>> = Mutex::new(BTreeMap::new());
+    let mut kept = KEPT.lock().unwrap_or_else(|poison| poison.into_inner());
+    kept.entry(id).or_insert_with(|| {
+        let pairs: Vec<(&'static str, &'static str)> = mw
+            .registry
+            .state(id)
+            .into_iter()
+            .flat_map(|s| s.properties.iter())
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        Box::leak(pairs.into_boxed_slice())
+    })
 }
 /// `EndermanTakeBlockGoal.tick`: three draws (x, y, z) in the box, the block must be holdable and reachable.
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Pos>(e).unwrap().0;
-    let tag = w.get::<Taking>(e).unwrap().holdable;
+    let (tag, keep_props) = {
+        let t = w.get::<Taking>(e).unwrap();
+        (t.holdable, t.keep_props)
+    };
     let (u0, u1, u2) = with_rng(w, e, |r| (r.next_f64(), r.next_f64(), r.next_f64()));
     let x = (p.x - 2.0 + u0 * 4.0).floor() as i32;
     let y = (p.y + u1 * 3.0).floor() as i32;
     let z = (p.z - 2.0 + u2 * 4.0).floor() as i32;
-    let name = block_at(w, x, y, z);
     let mw = w.resource::<Level>().mw.0;
+    let id = mw.world.block(x, y, z);
+    let name: &'static str = &mw.facts.get(id).name;
     if mw.has_tag(tag, name) {
         // Reachable: the outline clip from the column's centre at the block's height hits this block first.
         let from = Vec3::new(p.x.floor() + 0.5, f64::from(y) + 0.5, p.z.floor() + 0.5);
         let to = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
         if !mw.outline_hit(from, to).is_some_and(|hit| hit != [x, y, z]) {
             w.resource_mut::<BlockChanges>().0.push((x, y, z, "minecraft:air"));
+            let props = if keep_props { held_props(mw, id) } else { &[] };
             w.get_mut::<Carried>(e).unwrap().0 = Some(name);
+            w.entity_mut(e).insert(CarriedProps(props));
             crate::behaviours::leave_block::arm_leave(w, e);
         }
     }
@@ -154,5 +182,27 @@ mod tests {
             }
         }
         assert_eq!(carried(&h, e), Some("minecraft:dirt"), "dirt in reach is taken");
+    }
+    /// The properties are kept: a grass block with `snowy=true` is taken with that property (the control: dirt has none).
+    #[test]
+    fn a_taken_block_keeps_its_properties() {
+        let Some(mut h) = herd() else { return };
+        let e = enderman(&mut h);
+        h.tick();
+        let p = h.world.get::<Pos>(e).unwrap().0;
+        let (x, y, z) = (p.x.floor() as i32 - 1, p.y.floor() as i32 + 1, p.z.floor() as i32);
+        blocks::set_state(&mut h.world, [x, y, z], "minecraft:grass_block", &[("snowy", "true")]);
+        h.tick();
+        assert_eq!(blocks::property(blocks::world_of(&h.world), [x, y, z], "snowy").as_deref(), Some("true"), "the grass block is not placed with snowy=true");
+        for _ in 0..600 {
+            crate::goals::fire(&mut h.world, e, &MODULE);
+            h.tick();
+            if carried(&h, e).is_some() {
+                break;
+            }
+        }
+        assert_eq!(carried(&h, e), Some("minecraft:grass_block"), "the grass block in reach is not taken");
+        let props = h.world.get::<CarriedProps>(e).unwrap().0;
+        assert_eq!(props, &[("snowy", "true")][..], "the taken block lost its properties");
     }
 }
