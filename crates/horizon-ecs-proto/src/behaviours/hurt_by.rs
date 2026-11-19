@@ -23,9 +23,11 @@ pub struct Params {
     pub ends_on_shot: bool,
     /// `PolarBearHurtByTargetGoal`: the others are alerted only when THIS creature is a baby (a cub calls the adults; combine with `alert_when`).
     pub alert_if_baby: bool,
+    /// Attackers of these species (names) are never answered (`HurtByTarget.ignoring`: the drowned ignore the drowned, the dolphin the guardians).
+    pub ignoring: &'static [&'static str],
 }
 impl Params {
-    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None, ends_on_shot: false, alert_if_baby: false };
+    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None, ends_on_shot: false, alert_if_baby: false, ignoring: &[] };
     pub const ALERT: Self = Self { alert: true, ..Self::DEFAULT };
 }
 /// The state: the last hit (who, tick) and the one the goal answered, the kinds resolved to masks.
@@ -37,6 +39,7 @@ pub struct HurtByGoal {
     handled: u64,
     alert_types: crate::species::SpeciesSet,
     alert_except: crate::species::SpeciesSet,
+    ignore: crate::species::SpeciesSet,
     /// A target an alerted creature takes (written by the one that called it).
     called_by: Option<Who>,
 }
@@ -59,8 +62,8 @@ fn mask_of(w: &World, names: &[&str]) -> crate::species::SpeciesSet {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    let (alert_types, alert_except) = (mask_of(w, p.alert_types), mask_of(w, p.alert_except));
-    w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, called_by: None });
+    let (alert_types, alert_except, ignore) = (mask_of(w, p.alert_types), mask_of(w, p.alert_except), mask_of(w, p.ignoring));
+    w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, ignore, called_by: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((hurt_events.after(apply_damage), shot_ends).in_set(slot));
@@ -93,6 +96,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         return false;
     }
     if g.p.spare_owner && w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(who)) {
+        return false;
+    }
+    if let Who::Entity(o) = who
+        && w.get::<SpeciesId>(o).is_some_and(|s| g.ignore.contains(s.0))
+    {
         return false;
     }
     match targeting::info(w, who) {
@@ -223,5 +231,34 @@ mod tests {
         }
         assert!(h.world.get::<Target>(victim).is_none(), "the held shot ended the hunt");
         assert!(h.world.get::<DidShot>(victim).is_none(), "and was consumed");
+    }
+
+    /// `PolarBearHurtByTargetGoal`: only a hurt cub calls the others; an adult hit the same way calls nobody (the witness).
+    #[test]
+    fn only_a_hurt_baby_alerts_the_others() {
+        static P: Params = Params { alert_if_baby: true, ..Params::DEFAULT };
+        if crate::cow::skip_unless_walker("hurt_by") {
+            return;
+        }
+        for baby in [false, true] {
+            let mut h = Herd::with_slab(20, false, false);
+            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, &P)].into_boxed_slice());
+            let mut sp = *species();
+            sp.goals = Config { entries };
+            let victim = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+            let ally = spawn_species(&mut h.world, &sp, 2.5, 0.5, 8);
+            let hitter = spawn_species(&mut h.world, &sp, 6.5, 0.5, 9);
+            if baby {
+                h.world.entity_mut(victim).insert(GrowAt(u64::MAX));
+            }
+            for _ in 0..5 {
+                h.tick();
+            }
+            h.world.resource_mut::<HurtBy>().0.push((victim, Who::Entity(hitter)));
+            for _ in 0..4 {
+                h.tick();
+            }
+            assert_eq!(h.world.get::<Target>(ally).map(|t| t.who), baby.then_some(Who::Entity(hitter)), "baby {baby}: the ally's target");
+        }
     }
 }
