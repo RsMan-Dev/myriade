@@ -103,8 +103,13 @@ fn a_magma_cube_has_the_numbers_of_its_size_and_splits_as_the_original() {
         assert_eq!(h.world.get::<Size>(e).unwrap().0, size);
     }
     // The split: a size 4 cube dies; its children are of size 2, 2 to 4 of them, at the offsets of the original.
+    // The cubes of the size checks above are still in the world: they would count as children of the first death.
+    let left: Vec<Entity> = h.world.query_filtered::<Entity, With<Size>>().iter(&h.world).collect();
+    for id in left {
+        h.world.entity_mut(id).despawn();
+    }
     let mut counts = [0usize; 6];
-    for k in 0..200 {
+    for k in 0..2000 {
         let e = spawn_sized(&mut h.world, species(), 0.5 + (k % 20) as f64 * 2.0, 0.5, 100 + k as u64, 4);
         h.hit(e, 10_000.0, (0.0, 0.0));
         h.tick();
@@ -115,17 +120,19 @@ fn a_magma_cube_has_the_numbers_of_its_size_and_splits_as_the_original() {
             h.world.entity_mut(id).despawn();
         }
     }
-    eprintln!("children of a size 4 cube, over 200 deaths: {counts:?}");
-    assert!(counts[2] > 40 && counts[3] > 40 && counts[4] > 40 && counts[0] + counts[1] == 0 && counts[5] <= 2, "{counts:?}");
+    eprintln!("children of a size 4 cube, over 2000 deaths: {counts:?}");
+    assert!(counts[0] + counts[1] == 0 && counts[5] == 0, "{counts:?}");
+    // `2 + nextInt(3)` is uniform: each of the three within 6 standard deviations (about 25) of a third.
+    assert!(counts[2..5].iter().all(|&c| (c as i64 - 667).abs() < 150), "{counts:?}");
     // The children of the original: the same law.
     let mut mc = [0usize; 6];
-    for k in 0..200 {
+    for k in 0..2000 {
         let pi = r.add_id(Vec3::new(0.5, 1.0, 0.5), 9000 + k);
         let mut parent = r.mobs[pi].clone();
         horizon_client_lib::mobs::cube::set_size(&mut parent, 4);
         mc[(horizon_client_lib::mobs::cube::split_count(&mut parent) as usize).min(5)] += 1;
     }
     eprintln!("the original: {mc:?}");
-    assert!(mc[2] > 40 && mc[3] > 40 && mc[4] > 40);
+    assert!(mc[2..5].iter().all(|&c| (c as i64 - 667).abs() < 150), "{mc:?}");
     let _ = set_size;
 }

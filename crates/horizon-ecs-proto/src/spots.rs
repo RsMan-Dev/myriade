@@ -85,7 +85,14 @@ fn stable_for(kind: Stable, mw: &MobWorld, p: [i32; 3]) -> bool {
 }
 
 /// What a draw needs of the entity: where it is, its stream, its path maluses and its preference.
+/// `PathfinderMob.restrictTo(center, radius)`: where the entity belongs (its home): the positions it picks stay within it while it is near.
+#[derive(bevy_ecs::prelude::Component, Clone, Copy, Debug)]
+pub struct Home {
+    pub center: [i32; 3],
+    pub radius: i32,
+}
 pub struct Spotter<'a> {
+    pub home: Option<Home>,
     pub mw: &'a MobWorld<'a>,
     pub pos: [f64; 3],
     pub nav: &'a NavParams,
@@ -121,6 +128,16 @@ impl Rng {
     }
 }
 impl Spotter<'_> {
+    /// `GoalUtils.isRestricted(mobRestricted(mob, h), mob, p)`: near its home, a position outside it is refused.
+    fn restricted(&self, h: f64, p: [i32; 3]) -> bool {
+        let Some(home) = self.home else { return false };
+        let d = |i: usize, v: f64| f64::from(home.center[i]) + 0.5 - v;
+        let (x, y, z) = (d(0, self.pos[0]), d(1, self.pos[1]), d(2, self.pos[2]));
+        let reach = f64::from(home.radius) + h + 1.0;
+        let near = x * x + y * y + z * z < reach * reach;
+        let inside = (0..3).map(|i| (f64::from(home.center[i]) - f64::from(p[i])).powi(2)).sum::<f64>() < f64::from(home.radius.wrapping_mul(home.radius));
+        near && !inside
+    }
     fn malus_is_zero(&self, p: [i32; 3]) -> bool {
         let t = self.mw.path_type_static(p[0], p[1], p[2]);
         self.nav.malus[t as usize].unwrap_or_else(|| t.malus()) == 0.0
@@ -160,8 +177,8 @@ impl Spotter<'_> {
     fn in_height(&self, p: [i32; 3]) -> bool {
         p[1] >= self.mw.world.bottom_y() && p[1] < self.mw.world.top_y()
     }
-    fn default_check(&self, p: [i32; 3]) -> bool {
-        self.in_height(p) && stable_for(self.stable, self.mw, p) && self.malus_is_zero(p)
+    fn default_check(&self, h: f64, p: [i32; 3]) -> bool {
+        self.in_height(p) && !self.restricted(h, p) && stable_for(self.stable, self.mw, p) && self.malus_is_zero(p)
     }
     /// `LandRandomPos.movePosUpOutOfSolid` and the water / malus refusal.
     fn land_up_out_of_solid(&self, mut p: [i32; 3]) -> Option<[i32; 3]> {
@@ -180,24 +197,24 @@ impl Spotter<'_> {
             Pick::Default { h, v } => {
                 let d = self.direction(h, v);
                 let p = self.toward(d);
-                self.default_check(p).then_some(p)
+                self.default_check(f64::from(h), p).then_some(p)
             }
             Pick::DefaultAway { h, v, from } => {
                 let (xd, zd) = (self.pos[0] - from[0], self.pos[2] - from[2]);
                 let d = self.direction_within(0.0, f64::from(h), v, xd, zd, std::f64::consts::FRAC_PI_2)?;
                 let p = self.toward(d);
-                self.default_check(p).then_some(p)
+                self.default_check(f64::from(h), p).then_some(p)
             }
             Pick::DefaultTowards { h, v, to, max_rad } => {
                 let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
                 let d = self.direction_within(0.0, f64::from(h), v, xd, zd, max_rad)?;
                 let p = self.toward(d);
-                self.default_check(p).then_some(p)
+                self.default_check(f64::from(h), p).then_some(p)
             }
             Pick::Land { h, v } => {
                 let d = self.direction(h, v);
                 let p = self.toward(d);
-                if !self.in_height(p) || !stable_destination(self.mw, p) {
+                if !self.in_height(p) || self.restricted(f64::from(h), p) || !stable_for(self.stable, self.mw, p) {
                     return None;
                 }
                 self.land_up_out_of_solid(p)
@@ -262,7 +279,7 @@ impl Spotter<'_> {
         self.best_of_ten(|s| {
             let d = s.direction_within(min_h, max_h, v, xd, zd, f64::from(std::f32::consts::FRAC_PI_2))?;
             let p = s.toward(d);
-            if !s.in_height(p) || !stable_destination(s.mw, p) {
+            if !s.in_height(p) || s.restricted(max_h, p) || !stable_for(s.stable, s.mw, p) {
                 return None;
             }
             s.land_up_out_of_solid(p)
@@ -315,7 +332,7 @@ impl Spotter<'_> {
 }
 /// Everything a system needs to build a `Spotter` for an entity.
 pub fn spotter<'a>(level: &'a Level, pos: [f64; 3], nav: &'a NavParams, walk: WalkValue, rng: &'a mut Rng) -> Spotter<'a> {
-    Spotter { mw: level.mw.0, pos, nav, walk, rng, stable: Stable::Ground }
+    Spotter { home: None, mw: level.mw.0, pos, nav, walk, rng, stable: Stable::Ground }
 }
 /// The call a module makes: a position for the entity `e` by the vanilla picker `pick`, drawn from its own random stream
 /// (written back), with its position, its path maluses and its walk preference read from its components. `None` when the
@@ -329,6 +346,7 @@ pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
     let stable = if w.get::<crate::locomotion::SwimMode>(e).is_some() { Stable::Water } else { Stable::Ground };
     let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng);
     sp.stable = stable;
+    sp.home = w.get::<Home>(e).copied();
     let out = sp.pick(pick);
     w.get_mut::<Rng>(e)?.0 = rng.0;
     out

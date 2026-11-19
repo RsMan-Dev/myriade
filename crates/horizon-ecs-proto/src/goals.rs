@@ -661,6 +661,7 @@ pub struct Events {
     pub target_lost: Ev,
     /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
     pub projectile_hit: Ev,
+    pub exploded: Ev<crate::projectile::Blast>,
     /// A creature picked up an item from the ground (`item::pick_up`): the creature.
     pub picked_up: Ev,
     /// A rider took the seat of this mount / left it (`mount.rs`).
@@ -680,6 +681,7 @@ impl Events {
         self.target_acquired.swap();
         self.target_lost.swap();
         self.projectile_hit.swap();
+        self.exploded.swap();
         self.hurt.swap();
         self.hurt_by_entity.swap();
         self.entered_powder_snow.swap();

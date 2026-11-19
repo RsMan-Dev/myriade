@@ -219,6 +219,26 @@ pub struct HurtAt {
 pub struct Burning {
     pub until: u64,
 }
+/// `Entity.igniteForSeconds`: on fire for `ticks` more (the later end wins); the first burn comes with the wheel as for a fire under it.
+pub fn set_on_fire(w: &mut World, e: Entity, ticks: u64) {
+    if w.get::<Health>(e).is_none() {
+        return;
+    }
+    let now = now_of(w, e);
+    let until = now + ticks;
+    match w.get::<Burning>(e).map(|b| b.until) {
+        None => {
+            let at = w.resource::<Clock>().at(e, now + if ticks % 20 == 0 { 1 } else { 20 });
+            w.resource_mut::<Wheel>().push(at, e, Due::Burn);
+            w.entity_mut(e).insert(Burning { until });
+            w.resource_mut::<crate::goals::Events>().ignited.push(e);
+        }
+        Some(old) if old < until => {
+            w.entity_mut(e).insert(Burning { until });
+        }
+        _ => {}
+    }
+}
 /// The hazards under the cow's box (bits of `HAZ_*`): present only while it overlaps one.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Hazard(pub u8);
@@ -1410,11 +1430,12 @@ pub(crate) fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
+    day: Res<crate::hostile::Daylight>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1450,6 +1471,18 @@ pub(crate) fn pathfind(
                 cmd.queue(move |w: &mut World| crate::locomotion::climb::wish(w, e, to, speed));
             });
         }
+        // `GroundPathNavigation.trimPath` with `avoidSun`: a mob out of the sky's sight keeps only the nodes before the first one the sky sees.
+        let path = path.map(|mut p| {
+            if sunless && day.0 {
+                let at = [pos.0.x.floor() as i32, (pos.0.y + 0.5).floor() as i32, pos.0.z.floor() as i32];
+                if !mw.can_see_sky(at[0], at[1], at[2]) {
+                    if let Some(i) = p.nodes.iter().position(|n| mw.can_see_sky(n.x, n.y, n.z)) {
+                        p.nodes.truncate(i);
+                    }
+                }
+            }
+            p
+        });
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -1467,10 +1500,10 @@ pub(crate) fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l, cl) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl);
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
         }
     }
 }

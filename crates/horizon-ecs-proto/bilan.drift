@@ -141,3 +141,31 @@ kernel 4a91e97207 delta (bee)|crowd 0.8 (cow, 2000, 0 player)|ordered|19789|1984
 kernel 4a91e97207 delta (bee)|zone near ring (cow, 6, 10)|ecs|5077.4|5073.0
 kernel 4a91e97207 delta (bee)|zone far ring (cow, 6, 10)|ecs|0.2|1.2
 kernel 4a91e97207 delta (bee)|schedule at rest (empty world, per tick)|ecs|125418|125389
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow idle|ecs|2144|2142
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow idle|ecs-eager|2500|2499
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19796|19799
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|pig active(1000 players, no solicitation)|ecs|8402|8403
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17971|17969
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep idle|ecs|995|994
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep idle|ecs-eager|1172|1173
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep active(1000 players, no solicitation)|ecs|9566|9567
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19168|19173
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken idle|ecs|42|43
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken active(1000 players, no solicitation)|ecs|5414|5416
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken active(1000 players, no solicitation)|ecs-eager|5290|5292
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12220|12225
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie idle|ecs|185|184
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie idle|ecs-eager|399|398
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie active(1000 players, no solicitation)|ecs|13994|14001
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie active(1000 players, no solicitation)|ecs-eager|13940|13941
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6353|6349
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9253|9255
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.5 (cow, 2000, 0 player)|batch|13238|13235
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.5 (cow, 2000, 0 player)|ordered|25699|25698
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.8 (cow, 2000, 0 player)|batch|11944|11941
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.8 (cow, 2000, 0 player)|ordered|19843|19842
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone near ring (cow, 6, 10)|ecs|5073.0|5075.8
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone mid ring (cow, 6, 10)|ecs|34.0|34.1
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone far ring (cow, 6, 10)|ecs|1.2|-0.0
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|schedule at rest (empty world, per tick)|ecs|125389|127137

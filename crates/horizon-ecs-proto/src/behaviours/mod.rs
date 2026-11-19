@@ -252,6 +252,10 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod burst_shot;
+pub mod charged_shot;
+pub mod restrict_sun;
+pub mod village_walk;
 pub mod run_around_like_crazy;
 pub mod owner_target;
 pub mod sit_when_ordered;
@@ -348,6 +352,10 @@ pub static TABLE: &[&Module] = &[
     &flier_goals::PHANTOM_SWEEP_ATTACK,
     &flier_goals::PHANTOM_CIRCLE_AROUND_ANCHOR,
     &follow_owner::MODULE,
+    &village_walk::MODULE,
+    &restrict_sun::MODULE,
+    &burst_shot::MODULE,
+    &charged_shot::MODULE,
     &run_around_like_crazy::MODULE,
     &owner_target::MODULE,
     &sit_when_ordered::MODULE,

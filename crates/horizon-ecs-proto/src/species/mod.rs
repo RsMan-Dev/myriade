@@ -19,6 +19,8 @@ pub mod skeleton;
 pub mod sheep;
 pub mod templates;
 pub mod horse;
+pub mod blaze;
+pub mod iron_golem;
 pub mod magma_cube;
 pub mod rabbit;
 pub mod slime;
@@ -109,6 +111,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &magma_cube::DEF,
     &bat::DEF,
     &strider::DEF,
+    &iron_golem::DEF,
+    &blaze::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -484,7 +488,7 @@ mod tests {
         ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:sheep", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("eat_block", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:chicken", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
-        ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("ranged_bow", 4)]),
+        ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4)]),
         ("minecraft:copper_golem", &[]),
         ("minecraft:cod", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
         ("minecraft:salmon", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
@@ -505,7 +509,7 @@ mod tests {
         ("minecraft:phantom", &[("phantom_attack_player_target", 1), ("phantom_attack_strategy", 1), ("phantom_sweep_attack", 2), ("phantom_circle_around_anchor", 3)]),
         ("minecraft:turtle", &[("panic", 0), ("turtle_lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("fly_stroll", 2), ("follow_mob", 3)]),
-        ("minecraft:ghast", &[("float_around", 5)]),
+        ("minecraft:ghast", &[("float_around", 5), ("charged_shot", 7)]),
         ("minecraft:bat", &[("bat_flutter", 0)]),
         ("minecraft:strider", &[]),
         ("minecraft:turtle", &[("turtle_go_to_water", 3), ("turtle_travel", 7), ("turtle_stroll", 9)]),
@@ -532,6 +536,8 @@ mod tests {
         ("minecraft:slime", &[("float", 1)]),
         ("minecraft:magma_cube", &[("float", 1)]),
         ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:blaze", &[("hurt_by", 1), ("nearest_target", 2), ("burst_shot", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:iron_golem", &[("hurt_by", 2), ("melee", 1), ("move_towards_target", 2), ("village_walk", 2), ("village_walk", 4), ("look_at_player", 7), ("random_look", 8)]),
     ];
     #[test]
     fn the_resolved_species_equal_their_expected_configuration() {

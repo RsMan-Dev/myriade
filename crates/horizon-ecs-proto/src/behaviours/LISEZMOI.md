@@ -196,6 +196,12 @@ Un but ou une règle dont le tick tourne à chaque tick (`flier_goals`, `squid_g
 - `walk::Params { climber: true }` (araignée) : `Drive.climber`/`climbing`, le contact horizontal du tick précédent fait grimper (vitesse bornée à 0,15, puis y = 0,2) ; `WallClimberNavigation.pathToPosition` : toute demande de chemin laisse un souhait (`Climbers`) que `climb::tick_all` poursuit en ligne droite quand le chemin est fini ou n'existe pas.
 - `swim` amphibie (tortue) : `amphibious`, `turtle_control`, `push` ; `squid: true` (calamar). Les mouvements minuscules (< 0,003) sont coupés AVANT le contrôle, puis le contrôle pousse (ordre de `aiStep`).
 
+## Golem de fer (`village_walk.rs`, `species/iron_golem.rs`, `spots::Home`)
+- `Home{center,radius}` : la restriction vanilla (`isRestricted`) des tireurs de position, sans effet sans le composant.
+- `village_walk` : `InVillage` (ailleurs 3 fois sur 10, sinon vers un point tenu d'une section de village à 2 sections) et `Back` (hors village seulement ; comme le `Mob`, aucune traction si le village est à plus de 2 sections : marche aléatoire par la promenade de 240 ticks).
+- Manque : `OfferFlower`, la marche vers un villageois qui veut un golem (état du villageois), `DefendVillageTarget` (réputation : cerveau du villageois), cible hostile, colère, `MoveThroughVillage`.
+- Contrôle `tests/village_vs_mob.rs` : temps de retour sur 40 graines, ECS (q1 1160, médiane 1830, q3 2720) contre `Mob` (1730, 2520, 3000+). Un village que personne ne tient : le registre le voit, le `Mob` (mémoires des villageois) non.
+
 ## Règle pour les modules nouveaux : pas de système de plus
 
 Chaque module dont `systems` ajoute un système au planning coûte ~1 000 instructions par tick **même sans porteur** (sa condition d'exécution,
@@ -210,3 +216,12 @@ Le champ `tick` est LA façon : un `fn tick_all` libre que personne n'appelle re
 
 ## Comment une espèce choisit son contrôle de déplacement (lot 5)
 Par la CONFIGURATION de son entrée de locomotion (`Def.locomotion`), jamais par son nom. Nage (`swim::Params`) : `control` = `Fish` (`FishMoveControl`), `Turtle`, `Drowned` (marqueur `swim::WantsToSwim` posé par ses buts : sinon le contrôle de marche), `Smooth { max_turn_x, max_turn_y, in_water, outside, gravity }` (`SmoothSwimmingMoveControl` : dauphin, axolotl, têtard, grenouille) ; `push` = `Fixed(0,01)` (poisson), `Fixed(0,1)` (tortue) ou `Speed` (la vitesse du mob, avec l'entrée verticale : dauphin, axolotl) ; `sinks` : le `-0,005` d'une bête sans cible ; `amphibious: Some(prefers_shallow)` : chemin amphibie ; `breach` : navigation qui peut sortir de l'eau (dauphin) ; `squid: true`. Vol (`fly::Params`) : `control` = `Path`, `Float`, `Direct`, `Bank`, `None`. Marche (`walk::Params`) : `climber`. Les buts d'une espèce n'ont qu'à poser les marqueurs et les points voulus (`go_to`, `fly::steer_to`, `WantsToSwim`) : le contrôle est celui de l'entrée. Exemples complets : `species/{dolphin,axolotl,drowned,turtle,cod,squid,spider,vex,phantom}.rs`. `Drive.discard_friction` (`shouldDiscardFriction` : le saut long de la grenouille ou de la chèvre) : un but le pose pendant le bond et le retire à l'atterrissage.
+
+## Éviter le soleil (`restrict_sun.rs`, `Nav.avoid_sun`)
+`RestrictSunGoal` ne prend aucun drapeau et ne fait rien d'autre que `nav.avoid_sun` ; le module n'a ni échéance ni système : il pose la marque `AvoidSun`, et le chercheur de chemin (`cow::pathfind`) tronque le chemin à la première case que le ciel voit quand il fait jour et que la créature n'est pas déjà vue du ciel (`trimPath`). Non modélisé : le casque qui annule le but (pas d'équipement de mobs). Contrôle `tests/avoid_sun_vs_mob.rs` : squelette sous un toit envoyé en plein air, de jour il s'arrête à x = 6,28 des deux côtés, de nuit à 11,23 des deux côtés. Espèces : squelette ; stray, bogged, parched, wither : à venir avec leurs espèces.
+
+## Projectiles, tirs à cadence (`projectile.rs`, `burst_shot.rs`, `charged_shot.rs`)
+- `Flight` : `accel`, `max_age`, `hit` (`Nothing`, `Ignite(ticks)`, `Explode{power,fire}`), `Order::Hurting` (poussée le long de la vitesse puis inertie 0,95, avant le déplacement, sans gravité). Constantes : `ARROW`, `SNOWBALL`, `SMALL_FIREBALL`, `large_fireball(power)`, `SPIT`, `POTION`. Un coup qui explose pose `Events.exploded` (lu au tick suivant) : la capacité d'explosion n'existe pas encore.
+- `burst_shot` (rafale : charge, `shots` tirs espacés de `gap`, repos) et `charged_shot` (charge qui monte quand la cible est vue, descend sinon, tir à `at`, puis attente) : paramètres, aucun nom d'espèce ; le projectile est un paramètre.
+- Contrôle `tests/shots_vs_mob.rs` : vol identique au `Projectile::tick` du `Mob` (petite boule, grosse boule, crachat), rythme du blaze et du ghast identique, départ et vitesse du ghast identiques.
+- Manque : mêlée du blaze, guidage de la balle de shulker, effets de potion, crachat qui traverse, explosion.
