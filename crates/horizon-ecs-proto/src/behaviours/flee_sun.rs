@@ -152,6 +152,7 @@ mod tests {
     fn ignite(h: &mut Herd, e: Entity) {
         let now = h.world.resource::<Clock>().0;
         h.world.entity_mut(e).insert(Burning { until: now + 160 });
+        h.world.resource_mut::<Events>().ignited.push(e);
     }
     fn at(h: &Herd, e: Entity) -> (f64, f64) {
         let p = h.world.get::<Pos>(e).unwrap().0;

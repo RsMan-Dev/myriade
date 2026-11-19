@@ -6,7 +6,7 @@ use common::*;
 use horizon_client_lib::mobs::{self, Mob, MobEvent};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    behaviours::{Entry, follow_parent, panda_lie_on_back, panda_roll, panda_sneeze, panda_state as ps, swell, silverfish_wake_up_friends as silver, fox_faceplant, fox_state as fs, nearest_target},
+    behaviours::{Entry, follow_parent, look_at_player, random_look, stroll, panda_lie_on_back, panda_roll, panda_sneeze, panda_state as ps, swell, silverfish_wake_up_friends as silver, fox_faceplant, fox_state as fs, nearest_target},
     cow::*,
     goals::*,
 };
@@ -18,6 +18,7 @@ fn leak<T>(v: T) -> &'static T {
 fn ecs_with(h: &mut Herd, entries: &'static [Entry], x: f64, z: f64, seed: u64) -> Entity {
     let mut sp = *species();
     sp.goals = horizon_ecs_proto::species::Config { entries };
+    set_lazy_look(&mut h.world, false);
     let e = spawn_species(&mut h.world, &sp, x, z, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
@@ -83,7 +84,14 @@ fn pandas(kind: Pk, n: usize, ticks: usize, baby: bool, variant: u8, gene: ps::G
     let entries: &'static [Entry] = match kind {
         Pk::Sneeze => leak([Entry::new(&panda_sneeze::MODULE, 8, &panda_sneeze::Params::DEFAULT)]),
         Pk::Lie => leak([Entry::new(&panda_lie_on_back::MODULE, 8, &panda_lie_on_back::Params::DEFAULT)]),
-        Pk::Roll => leak([Entry::new(&panda_roll::MODULE, 12, &panda_roll::Params::DEFAULT)]),
+        // The real panda's competitors for the flags: the look goals (9, 10) and the stroll (14) keep MOVE / LOOK part of
+        // the time, and the `Mob` does not even ask `canUse` then.
+        Pk::Roll => leak([
+            Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
+            Entry::new(&random_look::MODULE, 10, &random_look::Params::DEFAULT),
+            Entry::new(&panda_roll::MODULE, 12, &panda_roll::Params::DEFAULT),
+            Entry::new(&stroll::MODULE, 14, &stroll::Params::DEFAULT),
+        ]),
     };
     let ef = match kind {
         Pk::Sneeze => ps::FLAG_SNEEZE,
@@ -175,13 +183,10 @@ fn panda_roll_first_roll_of_a_cub() {
     assert!((fm - fe).abs() / fm < 0.3, "{fm} vs {fe}");
 }
 
-#[test]
-fn swell_direction_follows_the_player() {
-    if !have_data() {
-        return;
-    }
+/// One run: the player appears at 2 blocks at tick 20, goes to 5 at 60, 8 at 100, 5 at 140, 2 at 180. Returns, for each
+/// side, the direction per tick and the tick at which a target was held.
+fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize>)) {
     use mobs::goals::NearestTarget;
-    // The distance of the player (x offset from the mob at 0.5) by tick: 2, 5, 8, 5, 2, then away, with a wall at 80..120.
     let at = |t: usize| -> Option<f64> {
         match t {
             0..=19 => None,
@@ -193,36 +198,81 @@ fn swell_direction_follows_the_player() {
         }
     };
     let mut r = MobRef::new(20, false);
+    for _ in 0..salt {
+        let k = r.kind.clone();
+        mob_add(&mut r, k, Vec3::new(15.5, 1.0, 15.5));
+    }
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
     r.mobs[i].ai.goals.clear();
     r.mobs[i].ai.targets.clear();
     r.mobs[i].ai.goals.add(2, mobs::hostile::Swell::default());
-    r.mobs[i].ai.targets.add(2, NearestTarget::player(true));
-    let mut mob = Vec::new();
+    let _ = NearestTarget::player(true);
+    // The creeper starts with its sense at -1 (`hostile.rs:38`).
+    r.mobs[i].extra.counter = -1;
+    let (mut mob, mut mt) = (Vec::new(), None);
     for t in 0..220 {
         let pv = at(t).map(|d| player_view(Vec3::new(0.5 + d, 1.0, 0.5), None));
+        if t == 20 {
+            // The target is imposed (the acquisition law is the target service's, not the goal's).
+            r.mobs[i].ai.target = Some(mobs::Who::Player);
+        }
         r.step(pv.as_ref());
         mob.push(r.mobs[i].extra.counter);
+        if mt.is_none() && r.mobs[i].ai.target.is_some() {
+            mt = Some(t);
+        }
     }
-    let entries: &'static [Entry] = leak([Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER), Entry::new(&swell::MODULE, 2, &swell::Params::DEFAULT)]);
+    let entries: &'static [Entry] = leak([Entry::new(&swell::MODULE, 2, &swell::Params::DEFAULT)]);
     let mut h = Herd::with_slab(20, false, false);
-    let e = ecs_with(&mut h, entries, 0.5, 0.5, 77);
+    let e = ecs_with(&mut h, entries, 0.5, 0.5, 77 + salt as u64);
     h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
-    let mut ecs = Vec::new();
+    let (mut ecs, mut et) = (Vec::new(), None);
     for t in 0..220 {
-        match at(t) {
-            Some(d) => h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0 }),
-            None => {}
+        if let Some(d) = at(t) {
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0 });
+        }
+        if t == 20 {
+            horizon_ecs_proto::targeting::set_target(&mut h.world, e, horizon_ecs_proto::targeting::Target::player(1, 60));
         }
         h.tick();
         ecs.push(i32::from(h.world.get::<swell::SwellDir>(e).unwrap().0));
+        if et.is_none() && h.world.get::<horizon_ecs_proto::targeting::Target>(e).is_some() {
+            et = Some(t);
+        }
+    }
+    ((mob, mt), (ecs, et))
+}
+#[test]
+fn swell_direction_follows_the_player() {
+    if !have_data() {
+        return;
     }
     let first_up = |v: &[i32]| v.iter().position(|&d| d > 0);
-    let diff = mob.iter().zip(&ecs).filter(|(a, b)| a != b).count();
-    eprintln!("swell: first +1 at tick mob {:?} ecs {:?}; ticks with a different direction {diff}/220; mob around 100..110 {:?} ecs {:?}", first_up(&mob), first_up(&ecs), &mob[100..110], &ecs[100..110]);
-    assert!(first_up(&mob).is_some());
-    assert!(first_up(&ecs).zip(first_up(&mob)).is_some_and(|(a, b)| a.abs_diff(b) <= 2), "the fuse starts at another tick");
-    assert!(diff <= 8, "the direction differs on {diff} ticks");
+    let (mut lm, mut le, mut edge_bad) = (Vec::new(), Vec::new(), 0);
+    for salt in 0..16 {
+        let ((m, mt), (e, et)) = swell_run(salt);
+        // After the first rise, the directions must agree tick by tick (the later edges depend on the distances only).
+        let edges = |v: &[i32]| v.windows(2).enumerate().filter(|(_, p)| p[0] != p[1]).map(|(t, p)| (t + 1, p[1])).collect::<Vec<_>>();
+        let (em, ee) = (edges(&m), edges(&e));
+        if salt < 2 {
+            eprintln!("swell salt {salt}: target held at mob {mt:?} ecs {et:?}; edges mob {em:?} ecs {ee:?}");
+        }
+        if let (Some(a), Some(b)) = (mt, first_up(&m)) {
+            lm.push((b - a) as f64);
+        }
+        if let (Some(a), Some(b)) = (et, first_up(&e)) {
+            le.push((b - a) as f64);
+        }
+        // The two later edges (8 blocks: down, 2 blocks: up) at the same tick, to 2 ticks.
+        if em.len() == 3 && ee.len() == 3 {
+            edge_bad += usize::from(em[1].0.abs_diff(ee[1].0) > 2) + usize::from(em[2].0.abs_diff(ee[2].0) > 2);
+        } else {
+            edge_bad += 1;
+        }
+    }
+    eprintln!("swell: lag from the target to the first +1 (ticks): mob {:.2} (n {}) ecs {:.2} (n {}); later edges more than 2 ticks apart: {edge_bad}", mean(&lm), lm.len(), mean(&le), le.len());
+    assert!((mean(&lm) - mean(&le)).abs() <= 1.5);
+    assert_eq!(edge_bad, 0);
 }
 
 #[test]
@@ -230,10 +280,11 @@ fn silverfish_wake_up_friends_after_a_hit() {
     if !have_data() {
         return;
     }
-    let ring: Vec<(i32, i32, i32)> = (-4i32..=4).flat_map(|x| (-4..=4).flat_map(move |z| (1..=2).map(move |y| (x, y, z)))).filter(|&(x, _, z)| x.abs() >= 2 || z.abs() >= 2).collect();
+    let ring: Vec<(i32, i32, i32)> = (-4i32..=4).flat_map(|x| (-4i32..=4).flat_map(move |z| (1i32..=2).map(move |y| (x, y, z)))).filter(|&(x, _, z)| x.abs() >= 2 || z.abs() >= 2).collect();
     let mut r = MobRef::new(20, false);
-    for x in -3..=3 {
-        for z in -3..=3 {
+    // No stone floor in reach (the silverfish hides in a host block it stands on: it would leave the trial).
+    for x in -14..=14 {
+        for z in -14..=14 {
             r.set_block(x, 0, z, "minecraft:dirt");
         }
     }
@@ -255,15 +306,25 @@ fn silverfish_wake_up_friends_after_a_hit() {
             r.set_block(x, y, z, "minecraft:infested_stone");
             h.set_block(x, y, z, "minecraft:infested_stone");
         }
+        // The silverfish is put back (the `Mob` walks off after a hit) and healed.
+        {
+            let m = &mut r.mobs[i];
+            m.position = Vec3::new(0.5, 1.0, 0.5);
+            m.velocity = Vec3::ZERO;
+            m.health = 8.0;
+            m.nav_stop();
+            m.extra.counter = 0;
+        }
         r.step(None);
         h.tick();
         let from = r.events.len();
         if falling {
             // A damage without an attacker (a fall): nobody wakes.
-            h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Fall);
+            h.world.resource_mut::<DamageQueue>().add(e, 0.01, Cause::Fall);
         } else {
-            r.hit(i, 0.5, [0.5, 1.0, 3.5]);
-            h.hit(e, 0.5, (0.5, 3.5));
+            r.hit(i, 0.01, [0.5, 1.0, 3.5]);
+
+            h.hit(e, 0.01, (0.5, 3.5));
         }
         let (mut dm, mut de) = (None, None);
         let mut nm = 0;

@@ -48,15 +48,19 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     crate::goals::arm(w, e, inst.slot, wait);
 }
 
-/// The deadline: the countdown is over, the goal ends now. A deadline of an earlier run (ended before, by the flags) is
-/// older than the end of this one and is ignored.
+/// A deadline of this goal: while it runs it is the end of the countdown (it ends now; a deadline of an earlier run is
+/// older than the end of this one and is ignored); when it does not run it is the framework's retry of a start request
+/// that came on a tick that was not the selector's (`Req::Start` re-arms the goal for the next tick): ask `can_use`.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    if let Some(end) = w.get::<FaceplantEnd>(e).map(|f| f.0)
-        && now_of(w, e) >= end
-    {
-        crate::goals::end_goal(w, e, inst.slot);
+    match w.get::<FaceplantEnd>(e).map(|f| f.0) {
+        Some(end) => {
+            if now_of(w, e) >= end {
+                crate::goals::end_goal(w, e, inst.slot);
+            }
+            false
+        }
+        None => true,
     }
-    false
 }
 
 fn stop(w: &mut World, e: Entity, _: Inst) {
