@@ -223,3 +223,42 @@ fn the_drowned_throws_its_trident_as_a_mob_does() {
     close(&m, &e, 3, "trident throws");
     assert!((m.len() as i64 - e.len() as i64).abs() <= 1, "mob {m:?}, ecs {e:?}");
 }
+
+/// The blaze's burst: three small fireballs per salve, the first at the same tick within the tolerance on both sides, the same count in 150
+/// ticks; the `Charged` flag is up while it charges and down after the salve.
+#[test]
+fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
+    if !is("minecraft:blaze") {
+        return;
+    }
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(8.5, 1.0, 0.5), None, false);
+    let view = player_view(Vec3::new(8.5, 1.0, 0.5), None);
+    let (mut v, mut charged) = (Vec::new(), Vec::new());
+    for _ in 0..150 {
+        v.push(s.step(&view));
+        charged.push(s.h.world.get::<burst_shot::Charged>(s.ecs).is_some());
+    }
+    let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
+    close(&m, &e, 6, "fireballs");
+    assert_eq!(m.len(), e.len(), "mob {m:?}, ecs {e:?}");
+    assert_eq!(e.len(), 3, "three per salve: {e:?}");
+    assert!(charged[..e[0] as usize].iter().any(|c| *c), "charged while charging");
+    assert!(!charged[e[2] as usize + 100..].iter().any(|c| *c) || e[2] as usize + 100 >= 150, "not charged after the rest");
+}
+
+/// The blaze under 2 blocks of a seen target: a blow every 20 ticks of the blaze's own damage (the ECS side; the `Mob`'s blow is the
+/// `do_hurt_target` event, not compared here).
+#[test]
+fn the_blaze_strikes_in_melee_under_two_blocks() {
+    if !is("minecraft:blaze") {
+        return;
+    }
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(1.9, 1.0, 0.5), None, false);
+    let view = player_view(Vec3::new(1.9, 1.0, 0.5), None);
+    run(&mut s, &view, 120);
+    let hits: Vec<(u64, f32)> = s.h.world.resource::<PlayerState>().hits.iter().map(|h| (h.tick, h.amount)).collect();
+    eprintln!("melee hits: {hits:?}");
+    assert!(hits.len() >= 3, "{hits:?}");
+    assert!(hits.windows(2).all(|w| w[1].0 - w[0].0 == 20), "every 20 ticks: {hits:?}");
+    assert!(hits.iter().all(|h| (h.1 - burst_shot::Params::BLAZE.melee_damage).abs() < 1e-3));
+}
