@@ -81,7 +81,6 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     b.height = sizes.baby.1;
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
     world.entity_mut(e).insert(GrowAt(now + ticks));
-    world.resource_mut::<Babies>().0.push(e);
     wake(world, e, &MODULE);
     crate::cow::arm_at(world, e, now + ticks, Due::Grow);
 }
@@ -146,28 +145,34 @@ fn mother_moved(
     }
 }
 /// `FollowParentGoal.canUse` looks for the nearest adult of the species within 8 x 4 x 8: a baby is woken when an
-/// adult comes within 9 blocks of it (an adult that changed column), or when it changes column itself.
+/// adult comes within 9 blocks of it (an adult that changed column), or when it changes column itself. The babies are the
+/// watchers (`GrowAt`) of the index: a mover that enters a column far from every baby costs nothing, and the others look up
+/// the babies around them (not every baby against every mover).
 fn cell_moves(
     moves: Res<CellMoves>,
-    mut babies: ResMut<Babies>,
+    idx: Res<Index>,
     pos: Query<(&Pos, Has<GrowAt>)>,
-    follow: Query<&FollowParent>,
+    follow: Query<&FollowParent, With<GrowAt>>,
     mut reqs: ResMut<Requests>,
 ) {
-    let moved = &moves.0;
-    if moved.is_empty() {
-        return;
-    }
-    babies.0.retain(|&b| pos.get(b).is_ok_and(|(_, baby)| baby));
-    for &b in &babies.0 {
-        let Ok(f) = follow.get(b) else { continue };
-        let bp = pos.get(b).unwrap().0.0;
-        for &m in moved {
-            let Ok((mp, _)) = pos.get(m) else { continue };
-            if m == b || (mp.0.x - bp.x).abs() <= 9.0 && (mp.0.z - bp.z).abs() <= 9.0 {
+    for &m in &moves.0 {
+        if let Ok(f) = follow.get(m) {
+            reqs.0.push(Req::Start(m, f.slot));
+        }
+        let Ok((mp, _)) = pos.get(m) else { continue };
+        if !idx.watched_near(WATCH_FOLLOW_PARENT, idx.cell_of(mp.0.x, mp.0.z)) {
+            continue;
+        }
+        let at = mp.0;
+        idx.for_radius(at.x, at.z, 9.0, |b| {
+            if b == m {
+                return;
+            }
+            let (Ok(f), Ok((bp, _))) = (follow.get(b), pos.get(b)) else { return };
+            if (at.x - bp.0.x).abs() <= 9.0 && (at.z - bp.0.z).abs() <= 9.0 {
                 reqs.0.push(Req::Start(b, f.slot));
             }
-        }
+        });
     }
 }
 /// `FollowParentGoal.canContinue` and `tick`: the path to the parent is made again every 10 ticks.

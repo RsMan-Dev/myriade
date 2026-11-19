@@ -420,6 +420,7 @@ impl Hazards {
 const BUILD_TOP: i32 = 6;
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = watch_in::<WATCH_FOLLOW_PARENT>, on_discard = watch_out::<WATCH_FOLLOW_PARENT>)]
 pub struct GrowAt(pub u64);
 
 impl Rng {
@@ -624,6 +625,8 @@ impl Wheel {
 const CELL: f64 = 1.0;
 /// The side of a block of columns of the index, in columns.
 const BLOCK: usize = 8;
+/// `BLOCK` as a signed column count.
+const B: i64 = BLOCK as i64;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -640,10 +643,96 @@ pub struct Index {
     /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
     blocks: Vec<u64>,
     bw: usize,
+    /// The watched columns of each consumer of `CellMoves` that looks at the NEIGHBOURS of a mover (see `Watch`).
+    watch: [Watch; WATCHERS],
+    /// By entity index: the consumers (bit `WATCH_*`) the entity is a watcher of.
+    watching: Vec<u8>,
+}
+/// The consumers of the moves of columns that wake the watchers around a mover. A consumer registers its watchers (an entity
+/// carrying its component, see `watch_hooks!`); a mover that enters a column far from every watcher of the consumer costs it nothing.
+pub const WATCH_FOLLOW_PARENT: usize = 0;
+pub const WATCH_AVOID: usize = 1;
+pub const WATCH_FOLLOW_MOB: usize = 2;
+pub const WATCH_PUFFER: usize = 3;
+const WATCHERS: usize = 4;
+/// The side of a bucket of watched columns: a watcher within 32 columns of a mover is in the 3 x 3 buckets around its column.
+const BUCKET: i64 = 32;
+/// The watchers of one consumer, counted by bucket of 32 x 32 columns; `total` is zero while nobody watches (the whole cost then).
+#[derive(Default)]
+struct Watch {
+    total: u32,
+    counts: Vec<u32>,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK) }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK), watch: Default::default(), watching: Vec::new() }
+    }
+    #[inline]
+    fn bucket_of(&self, cell: u32) -> (usize, usize) {
+        let (cx, cz) = ((cell as usize % self.width) as i64 / BUCKET, (cell as usize / self.width) as i64 / BUCKET);
+        (cx as usize, cz as usize)
+    }
+    fn buckets(&self) -> usize {
+        self.width.div_ceil(BUCKET as usize)
+    }
+    /// `e`, in column `cell`, watches for consumer `k` (adds it to the count of its bucket).
+    fn watch_count(&mut self, k: usize, cell: u32, delta: i32) {
+        let n = self.buckets();
+        let (bx, bz) = self.bucket_of(cell);
+        let w = &mut self.watch[k];
+        if w.counts.is_empty() {
+            w.counts = vec![0; n * n];
+        }
+        let c = &mut w.counts[bz * n + bx];
+        *c = (*c as i64 + delta as i64) as u32;
+        w.total = (w.total as i64 + delta as i64) as u32;
+    }
+    /// `e` became a watcher of consumer `k` (its component was inserted); `cell` is its column (`u32::MAX`: not placed yet,
+    /// `move_watcher` counts it at its first column).
+    pub fn watch_add(&mut self, e: Entity, k: usize, cell: u32) {
+        let i = e.index().index() as usize;
+        if self.watching.len() <= i {
+            self.watching.resize(i + 1, 0);
+        }
+        self.watching[i] |= 1 << k;
+        if cell != u32::MAX {
+            self.watch_count(k, cell, 1);
+        }
+    }
+    pub fn watch_remove(&mut self, e: Entity, k: usize, cell: u32) {
+        if let Some(m) = self.watching.get_mut(e.index().index() as usize) {
+            *m &= !(1 << k);
+        }
+        if cell != u32::MAX {
+            self.watch_count(k, cell, -1);
+        }
+    }
+    /// `reindex`: the entity went from column `old` to `new`; its counts follow when it watches and the bucket changed.
+    #[inline]
+    pub(crate) fn move_watcher(&mut self, e: Entity, old: u32, new: u32) {
+        let m = self.watching.get(e.index().index() as usize).copied().unwrap_or(0);
+        if m == 0 || (old != u32::MAX && self.bucket_of(old) == self.bucket_of(new)) {
+            return;
+        }
+        for k in 0..WATCHERS {
+            if m >> k & 1 == 1 {
+                if old != u32::MAX {
+                    self.watch_count(k, old, -1);
+                }
+                self.watch_count(k, new, 1);
+            }
+        }
+    }
+    /// Does consumer `k` have a watcher within 32 columns of column `cell`? (zero cost while it has none.)
+    #[inline]
+    pub fn watched_near(&self, k: usize, cell: u32) -> bool {
+        let w = &self.watch[k];
+        if w.total == 0 {
+            return false;
+        }
+        let n = self.buckets();
+        let (bx, bz) = self.bucket_of(cell);
+        (bz.saturating_sub(1)..=(bz + 1).min(n - 1)).any(|z| (bx.saturating_sub(1)..=(bx + 1).min(n - 1)).any(|x| w.counts[z * n + x] > 0))
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -675,14 +764,44 @@ impl Index {
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
+    /// Two levels: the blocks of 8 x 8 columns hold a bit per occupied column, so the cost follows the occupied columns, not the area.
+    /// The visit order is the plain row-major order of the columns (rows outer, columns inner), as a loop over every column would give.
     pub fn for_radius(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Entity)) {
         let w = self.width as i64;
-        for zz in self.column(z - r - 1.0).max(0)..=self.column(z + r + 1.0).min(w - 1) {
-            for xx in self.column(x - r - 1.0).max(0)..=self.column(x + r + 1.0).min(w - 1) {
-                for &e in &self.cells[(zz * w + xx) as usize] {
-                    f(e);
+        let (x0, x1) = (self.column(x - r - 1.0).max(0), self.column(x + r + 1.0).min(w - 1));
+        let (z0, z1) = (self.column(z - r - 1.0).max(0), self.column(z + r + 1.0).min(w - 1));
+        if x0 > x1 || z0 > z1 {
+            return;
+        }
+        let (bx0, bx1) = ((x0 / B) as usize, (x1 / B) as usize);
+        let mut zz = z0;
+        while zz <= z1 {
+            let band = (zz / B) as usize * self.bw;
+            let row_end = z1.min(zz / B * B + B - 1);
+            if self.blocks[band + bx0..=band + bx1].iter().all(|&m| m == 0) {
+                zz = row_end + 1;
+                continue;
+            }
+            for z in zz..=row_end {
+                let shift = (z % B) * B;
+                for bx in bx0..=bx1 {
+                    let mut bits = (self.blocks[band + bx] >> shift) & 0xff;
+                    if bits == 0 {
+                        continue;
+                    }
+                    let lo = if bx == bx0 { x0 % B } else { 0 };
+                    let hi = if bx == bx1 { x1 % B } else { B - 1 };
+                    bits &= (0xffu64 << lo) & (0xffu64 >> (B - 1 - hi));
+                    while bits != 0 {
+                        let i = bits.trailing_zeros() as i64;
+                        bits &= bits - 1;
+                        for &e in &self.cells[(z * w + bx as i64 * B + i) as usize] {
+                            f(e);
+                        }
+                    }
                 }
             }
+            zz = row_end + 1;
         }
     }
     /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
@@ -1220,7 +1339,15 @@ pub fn enter_index(world: &mut World, e: Entity) {
     let Some(b) = world.get::<Bounds>(e).copied() else { return };
     let (mn, mx) = (b.0.min_position(), b.0.max_position());
     let cell = world.resource::<Index>().cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-    world.resource_mut::<Index>().insert(e, cell);
+    let old = world.get::<Cell>(e).unwrap().0;
+    {
+        let mut idx = world.resource_mut::<Index>();
+        if old != u32::MAX {
+            idx.remove(e, old);
+        }
+        idx.insert(e, cell);
+        idx.move_watcher(e, old, cell);
+    }
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);
 }
@@ -2231,6 +2358,7 @@ pub(crate) fn reindex(
                 idx.remove(e, c.0);
             }
             idx.insert(e, cell);
+            idx.move_watcher(e, c.0, cell);
             c.0 = cell;
             moves.0.push(e);
             idx.crossed.push((e, cell));
@@ -3920,5 +4048,67 @@ pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::li
         world.commands().entity(ctx.entity).insert(crate::item::ItemAwake);
     } else if world.get::<crate::orb::Orb>(ctx.entity).is_some() {
         world.commands().entity(ctx.entity).insert(crate::orb::OrbAwake);
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+    /// The two-level `for_radius` visits the same entities in the same order as a loop over every column of the box.
+    #[test]
+    fn for_radius_matches_column_loop() {
+        let mut world = World::new();
+        let width = 70;
+        let mut idx = Index::new(0.0, width);
+        let mut s = 12345u64;
+        let mut rnd = move |n: u64| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s % n
+        };
+        let mut placed = Vec::new();
+        for _ in 0..400 {
+            let e = world.spawn_empty().id();
+            let c = (rnd((width * width) as u64)) as u32;
+            idx.insert(e, c);
+            placed.push((e, c));
+        }
+        for k in 0..60 {
+            let (e, c) = placed.swap_remove(rnd(placed.len() as u64) as usize);
+            idx.remove(e, c);
+            if k % 2 == 0 {
+                let c2 = rnd((width * width) as u64) as u32;
+                idx.insert(e, c2);
+                placed.push((e, c2));
+            }
+        }
+        for _ in 0..300 {
+            let (x, z, r) = (rnd(90) as f64 - 10.0, rnd(90) as f64 - 10.0, rnd(40) as f64);
+            let mut got = Vec::new();
+            idx.for_radius(x, z, r, |e| got.push(e));
+            let w = width as i64;
+            let mut want = Vec::new();
+            for zz in idx.column(z - r - 1.0).max(0)..=idx.column(z + r + 1.0).min(w - 1) {
+                for xx in idx.column(x - r - 1.0).max(0)..=idx.column(x + r + 1.0).min(w - 1) {
+                    want.extend_from_slice(&idx.cells[(zz * w + xx) as usize]);
+                }
+            }
+            assert_eq!(got, want, "x {x} z {z} r {r}");
+        }
+    }
+}
+
+/// The hooks that register the carriers of a watcher component with the `Index`: `on_insert = watch_in::<K>, on_discard = watch_out::<K>`.
+pub(crate) fn watch_in<const K: usize>(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let cell = world.get::<Cell>(ctx.entity).map_or(u32::MAX, |c| c.0);
+    if let Some(mut idx) = world.get_resource_mut::<Index>() {
+        idx.watch_add(ctx.entity, K, cell);
+    }
+}
+pub(crate) fn watch_out<const K: usize>(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let cell = world.get::<Cell>(ctx.entity).map_or(u32::MAX, |c| c.0);
+    if let Some(mut idx) = world.get_resource_mut::<Index>() {
+        idx.watch_remove(ctx.entity, K, cell);
     }
 }

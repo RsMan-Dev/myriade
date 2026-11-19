@@ -27,6 +27,7 @@ const SCAN_AREA: f64 = 7.0;
 const WATER: usize = PathType::Water as usize;
 
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::cow::watch_in::<{ crate::cow::WATCH_FOLLOW_MOB }>, on_discard = crate::cow::watch_out::<{ crate::cow::WATCH_FOLLOW_MOB }>)]
 pub struct Follower {
     p: Params,
     slot: u8,
@@ -85,6 +86,9 @@ fn wake_on_moves(
         let (at, mbox, sid) = (mp.0, mb.0, msid.0);
         if let Ok((f, ..)) = fols.get(m) {
             reqs.0.push(Req::Start(m, f.slot));
+        }
+        if !idx.watched_near(crate::cow::WATCH_FOLLOW_MOB, idx.cell_of(at.x, at.z)) {
+            continue;
         }
         let reach = SCAN_AREA + mbox.size().x / 2.0 + 1.0;
         idx.for_radius(at.x, at.z, reach, |c| {
