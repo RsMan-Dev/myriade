@@ -3,8 +3,8 @@
 use super::fox_state as pose;
 use super::trust::Trust;
 use super::*;
+use crate::goals::TARGET;
 use crate::cow::{Clock, LastHurtBy};
-use crate::host_out::HostOut;
 use crate::hostile::PlayerState;
 use crate::targeting::{self, Target, Who};
 
@@ -72,7 +72,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return false;
     }
     // `NearestAttackableTargetGoal`'s random interval: one tick in `reduced(10)` asks.
-    if crate::goals::with_rng(w, e, |r| r.next_int_bound((10 + 1) / 2)) != 0 {
+    if crate::goals::with_rng(w, e, |r| r.next_int((10 + 1) / 2)) != 0 {
         return false;
     }
     let Some(trusted) = w.get::<Trust>(e).map(|t| t.0) else { return false };
@@ -100,7 +100,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         targeting::set_target(w, e, Target::new(by, ((g.p.unseen_memory + 1) / 2) as u16, inst.slot));
     }
     let at = pose::feet(w, e);
-    w.resource_mut::<HostOut>().sound(g.p.sound, [at.x, at.y, at.z], 1.0, 1.0);
+    w.resource_mut::<crate::goals::Events>().host.sound(g.p.sound, [at.x, at.y, at.z], 1.0, 1.0);
     pose::set(w, e, g.p.raise, true);
     pose::set(w, e, g.p.lower, false);
 }

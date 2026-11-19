@@ -311,6 +311,11 @@ pub mod ravager_roar;
 pub mod hunt_speed;
 pub mod headbutt;
 pub mod ambient_sound;
+pub mod trust;
+pub mod variant;
+pub mod defend_trusted;
+pub mod shelter;
+pub mod lookout;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -437,4 +442,7 @@ pub static TABLE: &[&Module] = &[
     &hunt_speed::MODULE,
     &headbutt::MODULE,
     &ambient_sound::MODULE,
+    &defend_trusted::MODULE,
+    &shelter::MODULE,
+    &lookout::MODULE,
 ];

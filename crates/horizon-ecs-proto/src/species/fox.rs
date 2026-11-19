@@ -30,8 +30,8 @@ static CAN_BITE: Cond = Cond::Is("pose:can_bite");
 static LOOK_FREE: Cond = Cond::Is("pose:look_free");
 
 /// `Fox.AvoidEntityGoal` for players: not a sneaking nor a spectator player.
-fn player_when(p: &crate::goals::Player) -> bool {
-    !p.sneaking && !p.spectator
+fn player_when(ps: &crate::hostile::PlayerState, p: &crate::goals::Player) -> bool {
+    !ps.sneaking(p.id) && !ps.spectator(p.id)
 }
 
 pub static DEF: Def = Def {

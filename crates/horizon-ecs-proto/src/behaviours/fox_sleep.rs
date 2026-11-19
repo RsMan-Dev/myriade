@@ -118,7 +118,7 @@ fn has_shelter(w: &World, e: Entity, mw: &MobWorld) -> bool {
 /// `Fox.alertable`: a creature that is not a fox within 12 blocks (|dy| <= 6), or a player alive, not creative, not
 /// spectator, not sneaking, within `max(12 x visibility, 2)` blocks. A creature of the fox's own species is no alarm (the
 /// `Mob` says `Species::Fox`); every other one counts as untamed (no tame state here).
-fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
+pub(super) fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
     let mut near = Vec::new();
     w.resource::<Index>().for_radius(p.x, p.z, 12.0, |c| near.push(c));
     let creature = near.into_iter().any(|c| {

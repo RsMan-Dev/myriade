@@ -29,7 +29,7 @@ pub struct Params {
     /// The animal's own condition (`when`).
     pub avoider_when: Option<fn(&World, Entity) -> bool>,
     /// The player's condition (`player_when`), for `Avoid::Player`.
-    pub player_when: Option<fn(&Player) -> bool>,
+    pub player_when: Option<fn(&crate::hostile::PlayerState, &Player) -> bool>,
     /// The listed animal's condition (`seen_when`), for `Avoid::Species`.
     pub target_when: Option<fn(&World, Entity) -> bool>,
     /// A condition that draws (`WolfAvoidEntityGoal`: the llama's strength against `nextInt(5)`): the uniform draw in [0, 1) is the third argument.
@@ -47,7 +47,7 @@ pub struct Avoider {
     walk: f64,
     sprint: f64,
     avoider_when: Option<fn(&World, Entity) -> bool>,
-    player_when: Option<fn(&Player) -> bool>,
+    player_when: Option<fn(&crate::hostile::PlayerState, &Player) -> bool>,
     target_when: Option<fn(&World, Entity) -> bool>,
     target_roll: Option<fn(&World, Entity, f64) -> bool>,
     /// The species the goal avoids.
@@ -145,7 +145,7 @@ fn in_reach(a: &Avoider, from: Vec3, to: Vec3) -> bool {
     (to.y - from.y).abs() <= a.max_dist + 3.0 && d2(from, to) <= r * r
 }
 /// A player came within range (or was within it and moved out of it: no wake, the goal decides).
-fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, any: Query<(), With<Avoiders>>, mut reqs: ResMut<Requests>) {
+fn wake_on_player(on: Res<Online>, ps: Res<crate::hostile::PlayerState>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, any: Query<(), With<Avoiders>>, mut reqs: ResMut<Requests>) {
     if any.is_empty() {
         return;
     }
@@ -155,7 +155,7 @@ fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>,
         idx.for_radius(n.x, n.z, REACH, |c| {
             let Ok((pos, avs)) = q.get(c) else { return };
             for a in avs.0.iter().filter(|a| matches!(a.what, Avoid::Player)) {
-                let wanted = |p: Player| a.player_when.is_none_or(|f| f(&p));
+                let wanted = |p: Player| a.player_when.is_none_or(|f| f(&ps, &p));
                 let was = old.is_some_and(|o| wanted(o) && in_reach(a, pos.0, Vec3::new(o.x, o.y, o.z)));
                 if wanted(n) && in_reach(a, pos.0, at) && !was {
                     reqs.0.push(Req::Start(c, a.slot));
@@ -234,7 +234,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option
             w.resource::<Online>().for_near(pos.x, pos.z, r, |p| {
                 let d = d2(pos, Vec3::new(p.x, p.y, p.z));
                 let near = (p.y - pos.y).abs() <= a.max_dist + 3.0 && d <= r * r;
-                let wanted = a.player_when.is_none_or(|f| f(&p));
+                let wanted = a.player_when.is_none_or(|f| f(w.resource::<crate::hostile::PlayerState>(), &p));
                 if near && wanted && best.is_none_or(|b| d < b.0) && sees(Vec3::new(p.x, p.eye(), p.z)) {
                     best = Some((d, p));
                 }

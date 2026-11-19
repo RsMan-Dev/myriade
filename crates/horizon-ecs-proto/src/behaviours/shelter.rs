@@ -3,7 +3,9 @@
 //! sky with `Stormy`; the weather value is not read by `can_use`. Outside a storm the village check runs every `interval` asks.
 use super::fox_state as pose;
 use super::*;
-use crate::goals::{go_to_at, with_rng};
+use crate::cow::Pos;
+use crate::goals::MOVE;
+use crate::goals::{go_to_at, with_rng, Req, Requests};
 use crate::cow::Level;
 use crate::hostile::Daylight;
 use crate::poi::PoiRegistry;
@@ -84,7 +86,7 @@ fn hide_pos(w: &mut World, e: Entity) -> Option<[f64; 3]> {
     let wv = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
     for _ in 0..10 {
         let (dx, dy, dz) = with_rng(w, e, |r| {
-            (r.next_int_bound(20).unwrap_or(0) - 10, r.next_int_bound(6).unwrap_or(0) - 3, r.next_int_bound(20).unwrap_or(0) - 10)
+            (r.next_int(20) - 10, r.next_int(6) - 3, r.next_int(20) - 10)
         });
         let q = [b[0] + dx, b[1] + dy, b[2] + dz];
         if !mw.can_see_sky(q[0], q[1], q[2]) && walk_target_value(mw, wv, q) < 0.0 {

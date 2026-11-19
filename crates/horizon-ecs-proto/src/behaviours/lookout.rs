@@ -62,7 +62,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return false;
     }
     // DOUBT: vanilla also refuses while `alertable` (a player close to a sleeper); that check lives in `fox_sleep` and is not shared yet.
-    with_rng(w, e, |r| r.next_float()) < g.p.chance
+    with_rng(w, e, |r| r.next_f64()) < f64::from(g.p.chance)
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
