@@ -75,6 +75,10 @@ fn on_target(w: &mut World, e: Entity) {
     if w.get::<Leaping>(e).is_some() || in_range(w, e).is_none() {
         return;
     }
+    draw(w, e, slot);
+}
+/// The chance of the next ask: a geometric wait (1 in 3 per ask), the first ask at the next selector tick or two ticks later.
+fn draw(w: &mut World, e: Entity, slot: u8) {
     let (now, phase) = (now_of(w, e), phase_of(w, e));
     let failures = with_rng(w, e, |r| geometric(r, 3)).max(0) as u64;
     // Les demandes tombent aux ticks de phase (`now + phase` pair) : la première est au tick suivant ou dans deux ticks.
@@ -118,6 +122,13 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Leaping>();
+    // The Mob asks again at every selector tick: a target still held and still in range (a prey that runs) is leapt at again.
+    // Controlled in `lot2_vs_mob` (1512 leaps in 300 ticks for 90 animals on the Mob side against 90 before this line).
+    if w.get::<Target>(e).is_some()
+        && let Some(slot) = w.get::<Leap>(e).map(|l| l.slot)
+    {
+        draw(w, e, slot);
+    }
 }
 /// `canContinueToUse` = `!onGround` : le but finit au tick où l'animal atterrit (l'événement, lu au tick suivant).
 fn land(ev: Res<Events>, q: Query<&Leap, With<Leaping>>, mut reqs: ResMut<Requests>) {
