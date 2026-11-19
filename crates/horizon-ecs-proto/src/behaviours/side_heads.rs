@@ -89,6 +89,14 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     if now < h.due {
         return;
     }
+    // The heads do nothing during the charge (the Mob's `customServerAiStep` returns before them): they wait for its end.
+    if let Some(end) = super::invulnerable_charge::ends_at(w, e) {
+        h.due = end;
+        w.get_mut::<Heads>(e).unwrap().0[inst.nth as usize] = h;
+        arm_at(w, e, end, Due::Goal(inst.slot));
+        w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
+        return;
+    }
     let idle_on = difficulty(w) >= h.p.idle_difficulty;
     h.due = now + 10 + roll(w, e, 10);
     if idle_on {
@@ -113,6 +121,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     if let Some(mut hs) = w.get_mut::<Heads>(e) {
         hs.0[inst.nth as usize] = h;
     }
+    arm_at(w, e, h.due, Due::Goal(inst.slot));
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }
 /// An accepted hurt (`WitherBoss.accepts`): each head's idle counter goes up by 3.
@@ -143,11 +152,20 @@ fn pick(w: &mut World, e: Entity, h: &Head) -> Option<Who> {
             found.push(c);
         }
     });
-    if found.is_empty() {
+    let mut who: Vec<Who> = found.into_iter().map(Who::Entity).collect();
+    // The player too (not creative, not spectator), in the box and in sight, after the creatures.
+    let mut players = Vec::new();
+    w.resource::<crate::goals::Online>().for_near(o.x, o.z, b[0].max(b[2]), |p| players.push(p));
+    for p in players {
+        if (p.x - o.x).abs() <= b[0] && (p.y - o.y).abs() <= b[1] && (p.z - o.z).abs() <= b[2] && targeting::can_target(w, e, Who::Player(p.id)) && targeting::sees(w, e, Who::Player(p.id)) {
+            who.push(Who::Player(p.id));
+        }
+    }
+    if who.is_empty() {
         return None;
     }
-    let k = roll(w, e, found.len() as i32) as usize;
-    Some(Who::Entity(found[k]))
+    let k = roll(w, e, who.len() as i32) as usize;
+    Some(who[k])
 }
 /// The aim point of a target still in sight within `range`: halfway up its body.
 fn sight(w: &World, e: Entity, who: Who, range: f64) -> Option<[f64; 3]> {

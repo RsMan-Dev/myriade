@@ -123,6 +123,10 @@ impl GoalSet {
         for j in 0..MAX_ENTRIES as u8 {
             if stopped >> j & 1 == 1 {
                 self.stop(j);
+                // A goal that is polled every tick (`retry_on_end`) and that a stronger one preempted is asked again when that one ends.
+                if self.entries[j as usize].module.retry_on_end {
+                    self.pending |= 1 << j;
+                }
             }
         }
         for b in 0..4 {

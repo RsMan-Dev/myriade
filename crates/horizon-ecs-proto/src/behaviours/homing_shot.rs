@@ -27,6 +27,7 @@ pub struct Params {
 pub struct Volley {
     pub wait: i32,
     pub cfg: Params,
+    pub slot: u8,
 }
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -35,6 +36,7 @@ pub struct Firing;
 pub static MODULE: Module = Module {
     name: "homing_shot",
     flags: MOVE | LOOK,
+    resources,
     equip,
     can_use,
     start,
@@ -43,8 +45,16 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Targets],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Volley { wait: 0, cfg: *params::<Params>(p) });
+/// The target service tells the goal when its creature gets a target: it asks `can_use` then (nothing else wakes it).
+fn resources(w: &mut World) {
+    w.resource_mut::<targeting::TargetWatchers>().0.push(|w, e| {
+        if let Some(slot) = w.get::<Volley>(e).map(|v| v.slot) {
+            w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
+        }
+    });
+}
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(Volley { wait: 0, cfg: *params::<Params>(p), slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     crate::effects::difficulty(w) != 0 && w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some_and(|i| !i.exempt))

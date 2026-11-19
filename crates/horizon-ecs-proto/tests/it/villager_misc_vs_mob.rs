@@ -9,7 +9,7 @@ use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 
 fn is(name: &str) -> bool {
-    species().name == name
+    process_species_name() == name
 }
 
 /// Writes a block state with properties into the `Mob` world (`MobRef::set_block` takes a default state only).

@@ -65,7 +65,7 @@ fn a_phantom_circles_its_anchor_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name == "minecraft:phantom" {
+    if process_species_name() == "minecraft:phantom" {
         laws("phantom");
     }
 }
@@ -76,7 +76,7 @@ fn a_vex_drifts_near_its_origin_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name == "minecraft:vex" {
+    if process_species_name() == "minecraft:vex" {
         laws("vex");
     }
 }
@@ -90,7 +90,7 @@ fn the_phantoms_take_the_player_and_dive_at_the_cadence_of_the_mob() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:phantom" {
+    if process_species_name() != "minecraft:phantom" {
         return;
     }
     let n = 24;

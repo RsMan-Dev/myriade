@@ -37,7 +37,7 @@ pub static DEF: Def = Def {
     ],
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
-        Entry::new(&melee::MODULE, 2, &melee::Params { interval: 41, interval_baby: Some(16), ..melee::Params::DEFAULT }).when(&NOT_RETREATING),
+        Entry::new(&melee::MODULE, 2, &melee::Params { interval: 41, interval_baby: Some(16), follow_unseen: true, ..melee::Params::DEFAULT }).when(&NOT_RETREATING),
         Entry::new(&headbutt::MODULE, 2, &headbutt::Params { knockback: 0.6 }),
         Entry::new(&breed::MODULE, 3, &breed::Params { foods: &["minecraft:crimson_fungus"], ..breed::Params::DEFAULT }).when(&BREEDING),
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params::DEFAULT).when(&NOT_RETREATING),

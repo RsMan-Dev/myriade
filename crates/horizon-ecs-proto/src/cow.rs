@@ -1237,6 +1237,10 @@ pub fn species_table() -> SpeciesTable {
     SpeciesTable(TABLE.get().expect("a level was built").clone())
 }
 
+/// The name of the species of the process (`HORIZON_SPECIES`), readable before any level is built (`species()` is not).
+pub fn process_species_name() -> String {
+    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into())
+}
 /// For the tests of a behaviour only some species have: whether to skip the test of the process's species, which has no
 /// such goal (the skip is printed, so it is never silent).
 pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bool {
@@ -4366,7 +4370,7 @@ mod tests {
     /// cell (the player moved nowhere: only the cell change tells).
     #[test]
     fn a_cow_leaving_a_standing_player_stops_being_active() {
-        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() || skip_unless_walker("a_cow_leaving_a_standing_player_stops_being_active") {
             return;
         }
         let mut herd = Herd::new(0, 6.0, true, false, 3);

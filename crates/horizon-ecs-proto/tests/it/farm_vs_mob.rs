@@ -8,7 +8,7 @@ use horizon_client_lib::mobs::MobEvent;
 use horizon_ecs_proto::{cow::*, farm::*, goals::*};
 
 fn is(name: &str) -> bool {
-    species().name == name
+    process_species_name() == name
 }
 /// Grass under both worlds for `n` blocks each way of the origin, and the same herd flat.
 fn grass_pair(n: i32) -> (MobRef, Herd) {

@@ -40,9 +40,11 @@ pub struct Params {
     pub candidate_when: Option<fn(&World, Entity) -> bool>,
     /// Candidates further than this in height from the attacker's feet are not picked (the slime's player target: `|dy| <= 4`).
     pub max_dy: Option<f64>,
+    /// The player is a candidate only within this distance along the axis of the face the attacker is attached to (the shulker's `|d| <= 4.5`).
+    pub attach_reach: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, candidate_when: None, max_dy: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, candidate_when: None, max_dy: None, attach_reach: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -180,6 +182,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
                 && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
+                && n.p.attach_reach.is_none_or(|m| {
+                    let face = w.get::<crate::behaviours::attached_face::Attached>(e).map_or(0, |a| a.face);
+                    let d = [p.x - pos.x, p.y - pos.y, p.z - pos.z][crate::behaviours::homing_projectile::axis_of(face) as usize];
+                    d.abs() <= m
+                })
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)

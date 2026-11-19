@@ -7,7 +7,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::fly_stroll, cow::*, goals::*};
 
 fn parrot() -> bool {
-    species().name == "minecraft:parrot"
+    process_species_name() == "minecraft:parrot"
 }
 
 /// A flight: the `Mob` draws when to fly and where; the ecs parrot is started at the same tick with the same spot (`Forced`), and the two are

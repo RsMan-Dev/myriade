@@ -77,7 +77,7 @@ fn a_squid_is_pushed_by_its_cycle_as_a_mob_is() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:squid" {
+    if process_species_name() != "minecraft:squid" {
         return;
     }
     let wet = run("squid in water", true);
@@ -93,7 +93,7 @@ fn the_squids_wander_as_the_mobs_do() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:squid" {
+    if process_species_name() != "minecraft:squid" {
         return;
     }
     let (mut r, mut h) = flat_pair();
@@ -152,7 +152,7 @@ fn a_hurt_squid_flees_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:squid" {
+    if process_species_name() != "minecraft:squid" {
         return;
     }
     use horizon_client_lib::mobs::Who as MWho;

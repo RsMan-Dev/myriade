@@ -37,7 +37,7 @@ fn scene(at: Vec3) -> (MobRef, Herd, usize, Entity) {
 
 #[test]
 fn a_turtle_with_an_egg_walks_digs_and_lays_it_as_a_mob_does() {
-    if !have_data() || species().name != "minecraft:turtle" {
+    if !have_data() || process_species_name() != "minecraft:turtle" {
         return;
     }
     let at = Vec3::new(2.5, 1.0, 0.5);

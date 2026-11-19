@@ -269,7 +269,7 @@ fn a_hen_that_sleeps_lays_after_the_same_ticks_it_was_ticked() {
         return;
     }
     let _ = pair();
-    if species().name != "minecraft:chicken" {
+    if process_species_name() != "minecraft:chicken" {
         return;
     }
     let lay = |gap: i64| {

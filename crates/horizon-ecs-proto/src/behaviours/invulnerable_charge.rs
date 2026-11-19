@@ -38,6 +38,10 @@ pub static MODULE: Module = Module {
 pub fn charging(w: &World, e: Entity) -> bool {
     w.get::<Charge>(e).is_some_and(|c| !c.done)
 }
+/// The tick the charge ends, while it holds.
+pub fn ends_at(w: &World, e: Entity) -> Option<u64> {
+    w.get::<Charge>(e).filter(|c| !c.done).map(|c| c.until)
+}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let until = now_of(w, e) + p.ticks.max(0) as u64;

@@ -295,7 +295,7 @@ mod tests {
     /// Pursuit: it walks toward the animal and comes within the stop distance.
     #[test]
     fn it_walks_toward_the_animal() {
-    if crate::cow::skip_unless_ground_only("it_walks_toward_the_animal") {
+    if crate::cow::skip_unless_walker("it_walks_toward_the_animal") {
         return;
     }
         let (mut h, parrot, animal) = pair(5.5);
@@ -312,7 +312,7 @@ mod tests {
     /// there: `GroundPathNavigation`) comes first and is asked again, as the `Mob` does: the witness is an end within 3 blocks.
     #[test]
     fn it_stops_within_three_blocks_of_the_animal() {
-    if crate::cow::skip_unless_ground_only("it_stops_within_three_blocks_of_the_animal") {
+    if crate::cow::skip_unless_walker("it_stops_within_three_blocks_of_the_animal") {
         return;
     }
         let (mut h, parrot, animal) = pair(5.5);

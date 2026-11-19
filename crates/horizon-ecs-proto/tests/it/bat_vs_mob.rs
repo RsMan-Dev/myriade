@@ -9,7 +9,7 @@ use horizon_ecs_proto::behaviours::bat_flutter::{self, Flutter, Hanging};
 use horizon_ecs_proto::{cow::*, goals::*};
 
 fn bat() -> bool {
-    species().name == "minecraft:bat"
+    process_species_name() == "minecraft:bat"
 }
 /// Woken before the `Mob`'s step: it is steered in that tick.
 fn wake_now(w: &mut World, e: Entity) {

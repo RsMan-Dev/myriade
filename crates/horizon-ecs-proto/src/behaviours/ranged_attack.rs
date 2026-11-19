@@ -35,6 +35,8 @@ pub struct Params {
     pub aim_fraction: f64,
     /// The shooter is marked `DidShot` at each shot (what `LlamaHurtBy` reads: the llama's `flag2`).
     pub marks: bool,
+    /// The sound of each shot (the wither's head: `entity.wither.shoot`, volume 2), `None`: none.
+    pub sound: Option<&'static str>,
 }
 impl Params {
     /// Le golem de neige (`golem.rs:554-557`, `golem.rs:580`).
@@ -53,11 +55,12 @@ impl Params {
         front: 0.0,
         aim_fraction: 0.0,
         marks: false,
+        sound: None,
     };
     /// The llama's spit (`llama.rs:67`, `llama.rs:159-189`): 40 ticks, 20 blocks, speed 1.5, spread 10, from in front of the body, aimed at a third of the box.
-    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true };
+    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true, sound: None };
     /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
-    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false };
+    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false, sound: None };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -86,6 +89,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     tick: Some(tick),
+    retry_on_end: true,
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
@@ -234,6 +238,9 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let mut rng = w.get_mut::<Rng>(e).unwrap();
     let mut triangle = |mean: f64, spread: f64| mean + spread * (rng.next_f64() - rng.next_f64());
     let v = Vec3::new((dir.x + triangle(0.0, spread)) * p.shot_speed, (dir.y + triangle(0.0, spread)) * p.shot_speed, (dir.z + triangle(0.0, spread)) * p.shot_speed);
+    if let Some(name) = p.sound {
+        w.resource_mut::<Events>().host.sound(name, [pos.x, pos.y, pos.z], 2.0, 1.0);
+    }
     launch(w, p.flight, start, v, Some(Who::Entity(e)));
     if p.marks {
         w.entity_mut(e).insert(DidShot);

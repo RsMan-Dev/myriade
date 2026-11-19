@@ -54,7 +54,7 @@ fn step(s: &mut Scene, view: Option<&PlayerView>) -> (Tick, Tick) {
     for ev in &s.r.events[from..] {
         match ev {
             MobEvent::Explode(..) => mob.blast = true,
-            MobEvent::Sound(name, ..) if *name == "entity.wither.shoot" => mob.shots += 1,
+            MobEvent::LevelEventSound { sound: "entity.wither.shoot", .. } => mob.shots += 1,
             MobEvent::BreakBlock { pos, .. } => mob.breaks.push(*pos),
             _ => {}
         }
@@ -103,7 +103,7 @@ fn the_side_heads_volley_as_the_mob_s_do() {
     }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5));
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
-    for _ in 0..230 {
+    for i in 0..230 {
         step(&mut s, Some(&view));
     }
     let (mut m, mut e) = (Vec::new(), Vec::new());

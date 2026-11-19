@@ -27,7 +27,7 @@ pub static DEF: Def = Def {
     name: "minecraft:shulker",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: SHELLS, ..hurt_by::Params::DEFAULT }),
-        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { predicate: Some("shulker_box"), ..nearest_target::Params::PLAYER }),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { attach_reach: Some(4.5), ..nearest_target::Params::PLAYER }),
     ],
     goals: &[
         Entry::new(&look_at_player::MODULE, 1, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),

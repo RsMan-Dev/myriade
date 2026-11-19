@@ -1029,7 +1029,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         return;
     }
     let (mut r, mut h) = flat_pair();
-    if species().name != "minecraft:pig" {
+    if process_species_name() != "minecraft:pig" {
         return;
     }
     let mi = r.add(Vec3::new(-6.5, 1.0, 0.5));
