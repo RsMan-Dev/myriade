@@ -15,13 +15,43 @@ fn main() {
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing = 2.0;
     let mix = if scene == "active" { 4 } else { 0 };
-    let mut herd = Herd::with_mix(if scene == "arrows" { 1 } else { n }, spacing, true, false, 42, false, mix);
+    let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
         for i in 0..n {
             let (x, z) = (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
             horizon_ecs_proto::projectile::launch(&mut herd.world, horizon_ecs_proto::projectile::Flight::ARROW, horizon_core::geometry::Vec3::new(x, 3.0, z), horizon_core::geometry::Vec3::new(0.05, -0.5, 0.0), None);
         }
+    }
+    // ITEMS: N full stacks (which never merge) dropped from 1.5 blocks over the slab: `items` lets them land and sleep, `itemfall` drops N/50
+    // more each tick; `itemsref` runs Horizon's own `ItemEntity.tick` on every item every tick (the same scene, the cost to compare).
+    let spot_of = |i: usize| (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
+    let stack = || horizon_client_lib::items::ItemStack::new("minecraft:stone", 64);
+    if scene == "items" {
+        for i in 0..n {
+            let (x, z) = spot_of(i);
+            horizon_ecs_proto::item::drop_item(&mut herd.world, stack(), horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 0);
+        }
+    }
+    if scene == "itemsref" {
+        let mw = herd.world.resource::<horizon_ecs_proto::cow::Level>().mw.0;
+        let mut o = horizon_ecs_proto::item_reference::Original { mw, items: Vec::new() };
+        for i in 0..n {
+            let (x, z) = spot_of(i);
+            o.items.push(horizon_ecs_proto::item_reference::original(i as u32 + 1, stack(), horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 0));
+        }
+        let counter = Counter::new();
+        let warm = arg(5, 100).min(ticks / 2);
+        let mut total = 0u64;
+        for t in 0..ticks {
+            let c0 = counter.read();
+            o.tick();
+            if t >= warm {
+                total += counter.read() - c0;
+            }
+        }
+        println!("scene=itemsref n={n} ticks_measured={} instr/tick={:.0} instr/item-tick={:.0}", ticks - warm, total as f64 / (ticks - warm) as f64, total as f64 / (ticks - warm) as f64 / n as f64);
+        return;
     }
     let shared = profile::instrument(&mut herd);
     let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();
@@ -57,6 +87,12 @@ fn main() {
         if t == warm {
             profile::reset(&shared);
             total = 0;
+        }
+        if scene == "itemfall" {
+            for k in 0..(n / 50).max(1) {
+                let (x, z) = spot_of(t * 97 + k);
+                horizon_ecs_proto::item::drop_item(&mut herd.world, stack(), horizon_core::geometry::Vec3::new(x, 5.0, z), horizon_core::geometry::Vec3::ZERO, 0);
+            }
         }
         if scene == "active" {
             for i in 0..walkers {

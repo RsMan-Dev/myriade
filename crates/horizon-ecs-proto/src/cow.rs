@@ -35,6 +35,9 @@ pub struct Body {
     pub speed: f64,
     /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
     pub fall_factor: f64,
+    /// The motion of an object (`ItemEntity.tick`: the gravity before the move, the drags of the air and the ground, the bounce, the water
+    /// and the lava slowing it) instead of a creature's (`LivingEntity.travel`).
+    pub object: bool,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -427,6 +430,10 @@ pub enum Due {
     Forget(u16, u32),
     /// The brain has something to do (a timed behaviour's end).
     BrainWake,
+    /// A resting item's deadline (its last tick, its merge check), with the token it was armed with (`item.rs`).
+    ItemExpire(u32),
+    /// A merge check of an item at its own multiple of 40 ticks (`item.rs`).
+    ItemCheck(u32),
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -701,6 +708,8 @@ pub struct Immune(pub u32);
 pub const IMMUNE_FALL: u32 = 1;
 /// Does not drown under water.
 pub const BREATHES_WATER: u32 = 2;
+/// No window of invulnerability after a hurt (`ItemEntity.hurtServer` takes each hit in full; a living entity ignores the weaker ones for 10 ticks).
+pub const NO_HURT_COOLDOWN: u32 = 4;
 impl Immune {
     pub fn has(self, bit: u32) -> bool {
         self.0 & bit != 0
@@ -866,7 +875,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0) },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -1013,6 +1022,7 @@ pub fn schedule() -> Schedule {
     crate::farm::register(&mut s);
     crate::projectile::register(&mut s);
     crate::brain::register(&mut s);
+    crate::item::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1538,6 +1548,45 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
         vel.0.z = 0.0;
     }
 }
+/// `ItemEntity.tick`'s motion for an object: a fluid slows it (water 0.99, lava 0.95, lifting a slow one by 5.0E-4) or gravity pulls it
+/// down BEFORE the move; it moves unless it lies still on the ground; then the drag of the air (0.98 on every axis, times the block's friction
+/// on the ground for x and z) and the bounce (a downward speed on the ground is halved and turned up). True when it is at rest. An object that
+/// walks (`Drive`) is accelerated as a creature is, before the move.
+#[allow(clippy::too_many_arguments)]
+fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+    let height = f64::from(0.1_f32);
+    let (in_water, in_lava) = (fs.water > height, fs.lava > height);
+    if in_water || in_lava {
+        let drag = f64::from(if in_water { 0.99_f32 } else { 0.95_f32 });
+        let lift = if vel.0.y < f64::from(0.06_f32) { f64::from(5.0e-4_f32) } else { 0.0 };
+        vel.0 = Vec3::new(vel.0.x * drag, vel.0.y + lift, vel.0.z * drag);
+    } else {
+        vel.0.y -= body.gravity;
+    }
+    if d.zza != 0.0 || d.xxa != 0.0 {
+        let speed = if c.on_ground { d.speed } else { 0.02 };
+        move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+    }
+    let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
+    if c.on_ground && horizontal <= 1.0e-5 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
+        // Lying still on the ground: the gravity of this tick is not integrated, nothing moves.
+        vel.0 = Vec3::ZERO;
+        return true;
+    }
+    do_move(level, pos, vel, c, body, bounds, fall_damage);
+    let mut friction = 0.98_f32;
+    if c.on_ground {
+        let mw = level.mw.0;
+        let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.999_999).floor() as i32, pos.0.z.floor() as i32);
+        friction *= mw.facts.get(below).friction;
+    }
+    let (f, air) = (f64::from(friction), f64::from(0.98_f32));
+    vel.0 = Vec3::new(vel.0.x * f, vel.0.y * air, vel.0.z * f);
+    if c.on_ground && vel.0.y < 0.0 {
+        vel.0.y *= -0.5;
+    }
+    false
+}
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
 fn travel_one(
@@ -1554,6 +1603,9 @@ fn travel_one(
     jumping: bool,
     fall_damage: &mut f32,
 ) -> bool {
+    if body.object {
+        return travel_object(level, pos, vel, yaw, c, d, body, bounds, fs, fall_damage);
+    }
     let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
@@ -1885,7 +1937,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -1896,11 +1948,11 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
-        let cooldown = now < hurt.at + 10 && hurt.at != 0;
+        let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
         let applied = if cooldown {
             if hit.amount <= hurt.last {
                 continue;
@@ -2132,12 +2184,16 @@ fn push(
     par: ParallelCommands,
     // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
     // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
-    boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
+    boxes: Query<(Ref<Bounds>, Has<Disabled>, Option<&Body>), Allow<Disabled>>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>, Option<&Body>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
 ) {
-    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool| {
+    // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed.
+    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool, body: Option<&Body>| {
+        if body.is_some_and(|b| b.object) {
+            return;
+        }
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
@@ -2146,8 +2202,8 @@ fn push(
             if o == e {
                 return;
             }
-            let Ok((ob, asleep)) = boxes.get(o) else { return };
-            if !b.0.intersects(ob.0) {
+            let Ok((ob, asleep, ob_body)) = boxes.get(o) else { return };
+            if ob_body.is_some_and(|b| b.object) || !b.0.intersects(ob.0) {
                 return;
             }
             overlapping += 1;
@@ -2214,7 +2270,7 @@ fn push(
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
-                if o != e && boxes.get(o).is_ok_and(|(ob, _)| b.0.intersects(ob.0)) {
+                if o != e && boxes.get(o).is_ok_and(|(ob, _, ob_body)| !ob_body.is_some_and(|b| b.object) && b.0.intersects(ob.0)) {
                     par.command_scope(|mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
@@ -2231,10 +2287,10 @@ fn push(
         }
     };
     if cfg.parallel {
-        movers.par_iter_mut().for_each(|(e, b, mut v, m, t)| one(e, b, &mut v, m, t));
+        movers.par_iter_mut().for_each(|(e, b, mut v, m, t, bd)| one(e, b, &mut v, m, t, bd));
     } else {
-        for (e, b, mut v, m, t) in &mut movers {
-            one(e, b, &mut v, m, t);
+        for (e, b, mut v, m, t, bd) in &mut movers {
+            one(e, b, &mut v, m, t, bd);
         }
     }
 }
@@ -2615,6 +2671,8 @@ pub(crate) fn due(
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
             Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
             Due::Sensor(i) => commands.queue(move |w: &mut World| crate::brain::sensor_due(w, e, i)),
+            Due::ItemExpire(t) => commands.queue(move |w: &mut World| crate::item::expire_due(w, e, t)),
+            Due::ItemCheck(t) => commands.queue(move |w: &mut World| crate::item::check_due(w, e, t)),
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),

@@ -515,6 +515,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(CellMoves::default());
     crate::projectile::insert_resources(world);
     crate::brain::insert_resources(world);
+    crate::item::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {
