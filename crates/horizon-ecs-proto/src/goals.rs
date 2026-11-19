@@ -592,6 +592,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
     world.insert_resource(Events::default());
+    world.insert_resource(crate::host_out::HostOut::default());
     world.insert_resource(crate::farm::Grown::default());
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());

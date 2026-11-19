@@ -3447,6 +3447,10 @@ impl Herd {
     pub fn teleport(&mut self, e: Entity, at: Vec3) {
         teleport(&mut self.world, e, at);
     }
+    /// The block writes, sounds and particles written since the last call (`host_out`), for the host to apply.
+    pub fn drain_host_out(&mut self) -> Vec<crate::host_out::HostEvent> {
+        self.world.resource_mut::<crate::host_out::HostOut>().drain().collect()
+    }
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);
         // The messages of removed components (`RemovedComponents`) are dropped at the end of a tick, as the game's tick must do: without it they pile up without bound.
