@@ -77,6 +77,10 @@ pub struct Drive {
     pub no_jump_delay: i32,
     /// `MoveControl.Operation.JUMPING`: after a jump the move control only keeps the speed until the cow lands.
     pub jumping_op: bool,
+    /// A wall climber (`walk::Params.climber`: a spider): pressed against a wall it climbs it. `climbing` is `Spider.climbing`: the contact of
+    /// the last tick (`locomotion/climb.rs`).
+    pub climber: bool,
+    pub climbing: bool,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -1402,10 +1406,10 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1434,6 +1438,13 @@ pub(crate) fn pathfind(
                 Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
             })
             .flatten();
+        if climber {
+            // `WallClimberNavigation.pathToPosition`: the climb goes on straight to the target when the path is over (or when there is none).
+            let (to, speed) = (target, nav.speed);
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| crate::locomotion::climb::wish(w, e, to, speed));
+            });
+        }
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -1451,10 +1462,10 @@ pub(crate) fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l)| one(e, p, b, c, &mut s, &mut n, f, v, i, l));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl));
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l);
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl);
         }
     }
 }
@@ -1663,7 +1674,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1909,8 +1920,23 @@ pub(crate) fn travel_one(
         0.02
     };
     move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+    // `LivingEntity.handleOnClimbable`, the move, then the climb up a wall (a wall climber pressed against one).
+    let climbing = d.climber && d.climbing;
+    if climbing {
+        c.fall_distance = 0.0;
+        let limit = f64::from(0.15_f32);
+        let u = vel.0;
+        vel.0 = Vec3::new(u.x.clamp(-limit, limit), if u.y.is_nan() { u.y } else { u.y.max(-limit) }, u.z.clamp(-limit, limit));
+    }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
-    let movement = vel.0;
+    let mut movement = vel.0;
+    if climbing && (c.horizontal || jumping) {
+        movement.y = 0.2;
+    }
+    if d.climber {
+        // `Spider.tick`: climbing while pressed against a wall.
+        d.climbing = c.horizontal;
+    }
     let drag = 0.91_f32;
     let f = friction * drag;
     let y = movement.y - body.gravity;
