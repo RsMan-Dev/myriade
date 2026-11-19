@@ -36,9 +36,13 @@ pub struct Params {
     pub hostile: bool,
     /// The distance of the search in blocks, instead of the follow range times `follow_scale`.
     pub range: Option<f64>,
+    /// `NearestHealableRaiderTargetGoal`: only while the raid is active, on a draw of one in two, and it starts the wait (`HealWait`) of 200 ticks.
+    pub heal: bool,
+    /// `NearestAttackableWitchTargetGoal`: not while the wait of the healing goal runs.
+    pub after_heal: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -152,6 +156,12 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(n) = state(w, e, inst) else { return false };
+    if (n.p.after_heal || n.p.heal) && super::heal_raiders::waiting(w, e) {
+        return false;
+    }
+    if n.p.heal && (!crate::raids::has_active_raid(w, e) || !with_rng(w, e, |r| r.next_int(2) == 0)) {
+        return false;
+    }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
     let range = n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale);
@@ -163,7 +173,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
         let ps = w.resource::<crate::hostile::PlayerState>();
         // No player has an effect (the usual): the list is not asked per candidate.
-        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
+        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.list.is_empty());
         let mut best: Option<(u32, f64)> = None;
         w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
             let reach = if any_effect {
@@ -228,6 +238,9 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let Some(n) = state(w, e, inst) else { return };
     let Some(who) = n.pick else { return };
+    if n.p.heal {
+        super::heal_raiders::wait(w, e);
+    }
     let mut t = Target::new(who, reduced(n.p.unseen_memory) as u16, inst.slot);
     (t.must_see, t.follow_scale) = (n.p.must_see, n.p.follow_scale);
     targeting::set_target(w, e, t);

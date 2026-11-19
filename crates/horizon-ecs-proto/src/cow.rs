@@ -514,8 +514,12 @@ pub enum Due {
     Burn,
     /// A status effect acts or ends (`effects.rs`).
     Effect,
+    /// A player's effect may be at its end (`effects.rs`).
+    PlayerEffectEnd(u32),
     /// A creeper's fuse may be at its end (`explosion.rs`).
     Fuse,
+    /// The raids tick (`raids.rs`).
+    Raids,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
     /// The mob may go away from now on (`despawn.rs`).
@@ -3137,6 +3141,8 @@ pub(crate) fn due(
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
+            Due::PlayerEffectEnd(id) => commands.queue(move |w: &mut World| crate::effects::player_end(w, id)),
+            Due::Raids => commands.queue(|w: &mut World| crate::raids::raid_due(w)),
             Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Despawn => commands.queue(move |w: &mut World| crate::despawn::due(w, e)),
             Due::Burn => {

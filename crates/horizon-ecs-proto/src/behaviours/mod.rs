@@ -224,6 +224,20 @@ pub mod panic;
 pub mod random_look;
 pub mod random_stand;
 pub mod ranged_bow;
+pub mod pathfind_to_raid;
+pub mod door_interact;
+pub mod break_door;
+pub mod raider_open_door;
+pub mod interact_with_door;
+pub mod celebration;
+pub mod hold_ground_attack;
+pub mod long_distance_patrol;
+pub mod raid_move_through_village;
+pub mod obtain_banner;
+pub mod move_through_village;
+pub mod offer_flower;
+pub mod heal_raiders;
+pub mod ranged_crossbow;
 pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
@@ -322,6 +336,19 @@ pub static TABLE: &[&Module] = &[
     &nearest_target::MODULE,
     &melee::MODULE,
     &ranged_bow::MODULE,
+    &ranged_crossbow::MODULE,
+    &pathfind_to_raid::MODULE,
+    &break_door::MODULE,
+    &break_door::RAID,
+    &raider_open_door::MODULE,
+    &interact_with_door::MODULE,
+    &celebration::MODULE,
+    &hold_ground_attack::MODULE,
+    &long_distance_patrol::MODULE,
+    &raid_move_through_village::MODULE,
+    &obtain_banner::MODULE,
+    &move_through_village::MODULE,
+    &offer_flower::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
     &avoid_entity::MODULE,
