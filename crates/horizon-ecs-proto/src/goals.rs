@@ -449,8 +449,10 @@ pub fn register(s: &mut Schedule) {
 }
 
 // ---- the events of the framework (a module never polls a component) ------------------------------------------
-/// The entities one event happened to: those of the tick before, then those of this one so far (a module's system reads
-/// both with `iter`; `due`, the first system of the tick, swaps the two). Nobody clears or takes them.
+/// The entities one event happened to. THE GUARANTEE: `iter` yields the events of the PREVIOUS tick, all of them, and only
+/// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
+/// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
+/// clears or takes them; a system that does not run every tick may miss events.
 #[derive(Default)]
 pub struct Ev {
     cur: Vec<Entity>,
@@ -461,18 +463,18 @@ impl Ev {
         self.cur.push(e);
     }
     pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
-        self.prev.iter().chain(&self.cur).copied()
+        self.prev.iter().copied()
     }
     pub fn is_empty(&self) -> bool {
-        self.prev.is_empty() && self.cur.is_empty()
+        self.prev.is_empty()
     }
     fn swap(&mut self) {
         std::mem::swap(&mut self.prev, &mut self.cur);
         self.cur.clear();
     }
 }
-/// The state changes other modules wait for, in the form of `Hurts` and `Grown` (an entity list per kind, read the tick it
-/// happened and the next one). Written by the framework's systems; a new kind is one field and one line in `swap`.
+/// The state changes other modules wait for (an entity list per kind, read the tick AFTER it happened, once; `Hurts` and
+/// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
 #[derive(Resource, Default)]
 pub struct Events {
     /// `Burning` was set (from not burning).

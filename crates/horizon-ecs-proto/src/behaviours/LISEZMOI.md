@@ -38,8 +38,11 @@ quelle pour le déplacement/navigation : un seul mode par animal (choix d'un mod
 
 ## Événements du cadre (un module ne scrute jamais un composant)
 
-`goals::Events` (ressource) : une liste d'entités par événement, lue avec `ev.<nom>.iter()` (les entités du tick précédent puis
-celles de ce tick jusque-là ; personne ne vide, `due` permute au début du tick) : `ignited` (le feu vient de prendre),
+`goals::Events` (ressource) : une liste d'entités par événement, lue avec `ev.<nom>.iter()`. GARANTIE : `iter` rend les événements du tick
+PRÉCÉDENT, tous et seulement ceux-là ; un système qui tourne à chaque tick voit donc chaque événement EXACTEMENT UNE FOIS, où que
+soit sa place dans le schedule (`due` permute au début du tick) ; les événements du tick en cours ne sont visibles qu'au tick
+suivant ; personne ne vide ; un système qui ne tourne pas à chaque tick peut en manquer (il lit l'événement dans le tick suivant
+celui où il s'est produit, ou jamais) : `ignited` (le feu vient de prendre),
 `extinguished`, `entered_fluid`, `left_fluid`, `landed` (les pieds touchent le sol après l'air), `grew` (un bébé a grandi),
 `ate` (le broutage a mangé son bloc). Existants dans la même forme : `Hurts` (blessé), `Grown`, `LaidEggs`. Un événement
 nouveau = un champ de `Events`, une ligne dans `swap`, un `push` au point où l'état change. À venir (agent du ciblage) : cible
