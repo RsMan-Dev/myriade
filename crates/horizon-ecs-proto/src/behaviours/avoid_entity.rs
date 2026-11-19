@@ -60,17 +60,14 @@ pub static MODULE: Module = Module {
     name: "avoid_entity",
     flags: MOVE,
     ends_with_path: true,
-    blocked: None,
     retry_on_end: true,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
@@ -160,7 +157,7 @@ fn avoid_run(on: Res<Online>, mut q: Query<(&Pos, &Avoiding, &mut Avoiders, &mut
     for (pos, run, mut avs, mut nav) in &mut q {
         let a = &mut avs.0[run.0 as usize];
         let from = if a.player != 0 { on.get(a.player).map_or(a.from, |p| Vec3::new(p.x, p.y, p.z)) } else { a.from };
-        nav.speed = if d2(pos.0, from) < 49.0 { a.sprint } else { a.walk };
+        nav.speed = speed_at(a, d2(pos.0, from));
     }
 }
 /// `AvoidEntityGoal.avoidTarget`: the player (nearest, wanted and seen) or the first seen animal of a listed species, by
@@ -226,7 +223,9 @@ fn random_spot(w: &mut World, e: Entity, pos: Vec3, from: Vec3) -> Option<(f64, 
                     return None;
                 }
                 let yt = r.next_int(2 * V + 1) - V;
-                Some(((pos.x + xt).floor() as i32, yt, (pos.z + zt).floor() as i32))
+                // `RandomPos.generateRandomPosTowardDirection`: the offset is floored first (a block offset), then
+                // added to the position and floored again.
+                Some(((f64::from(xt.floor() as i32) + pos.x).floor() as i32, yt, (f64::from(zt.floor() as i32) + pos.z).floor() as i32))
             })
             .collect()
     });
@@ -259,12 +258,18 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     chosen.spot = (x, z);
     true
 }
+fn speed_at(a: &Avoider, d2_to_target: f64) -> f64 {
+    if d2_to_target < 49.0 { a.sprint } else { a.walk }
+}
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let a = w.get::<Avoiders>(e).unwrap().0[inst.nth as usize];
+    let pos = w.get::<Pos>(e).unwrap().0;
+    let from = if a.player != 0 { w.resource::<Online>().get(a.player).map_or(a.from, |p| Vec3::new(p.x, p.y, p.z)) } else { a.from };
     w.entity_mut(e).insert(Avoiding(inst.nth));
     {
         let mut nav = w.get_mut::<Nav>(e).unwrap();
-        nav.speed = a.walk;
+        // The `Mob` ticks a goal in the tick it starts: the speed is the one of this distance already.
+        nav.speed = speed_at(&a, d2(pos, from));
         // `nav_move_to_path` of `AvoidEntityGoal` asks a path to the block of the spot (reach 0).
         nav.reach = 0;
     }
@@ -289,7 +294,6 @@ mod tests {
 
     static FLEE: Params = Params { max_dist: 8.0, sprint: 1.2, ..Params::DEFAULT };
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 3, &FLEE)];
-    static NO_TARGET: [Entry; 1] = [Entry::new(&MODULE, 3, &Params { max_dist: 8.0, ..Params::DEFAULT })];
 
     /// A walled slab with one animal of the process's species whose only goal is this one (a test configuration: the
     /// species table is not changed), settled on the ground.
@@ -348,6 +352,5 @@ mod tests {
             h.tick();
         }
         assert!(h.world.get::<Avoiding>(e).is_none(), "the run went on after the player left");
-        let _ = &NO_TARGET;
     }
 }
