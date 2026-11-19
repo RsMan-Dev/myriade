@@ -21,6 +21,19 @@ fn main() {
     let half = ((f64::from(side) * spacing / 2.0) as i32 + 6).max(20);
     let (level, _species, kind) = horizon_ecs_proto::cow::build_level(half, std::env::var("HAZARDS").is_ok());
     let w: &MobWorld = level.mw.0;
+    if std::env::var_os("POOL").is_some() {
+        // A lake for the fish: water from y = 1 to 4 over the slab (the same as `Herd::fill_water`).
+        let state = w.registry.default_state("minecraft:water").expect("water");
+        // SAFETY: nothing else reads the leaked world while it is filled.
+        let world = unsafe { &mut *level.blocks.0 };
+        for x in -half + 1..half {
+            for z in -half + 1..half {
+                for y in 1..=4 {
+                    let _ = world.set(x, y, z, state);
+                }
+            }
+        }
+    }
     let items = w.items.expect("items");
     let mut mobs: Vec<Mob> = (0..n)
         .map(|i| {

@@ -1205,7 +1205,7 @@ pub(crate) fn player_near(
     idx.crossed.clear();
 }
 
-fn comfortable_fall_distance(f: f32) -> i32 {
+pub(crate) fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).floor() as i32
 }
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
@@ -1277,7 +1277,7 @@ pub(crate) fn pathfind(
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
 /// control at the next node. (The recompute on a block change is not here.) Visits only the cows that follow a path.
 #[allow(clippy::type_complexity)]
-fn follow(
+pub(crate) fn follow(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
@@ -1351,7 +1351,7 @@ fn follow(
     }
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
-fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
+pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
     for (e, g) in &q {
         crate::goals::path_ended(e, g, &mut reqs);
         commands.entity(e).remove::<PathEnded>();
@@ -1394,7 +1394,7 @@ fn wrap(a: f32) -> f32 {
     }
     a
 }
-fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
+pub(crate) fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     let mut r = a + wrap(b - a).clamp(-max, max);
     if r < 0.0 {
         r += 360.0;
@@ -1492,7 +1492,7 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
+pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
     let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
@@ -1508,7 +1508,7 @@ fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
 }
 /// `Entity.move`: the sweep over the blocks (Horizon's real kernel), then the collision flags, the landing and the
 /// restitution (the vertical velocity is lost after a landing).
-fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
+pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
     let wanted = vel.0;
     let p = pos.0;
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
@@ -1547,7 +1547,7 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-fn travel_one(
+pub(crate) fn travel_one(
     level: &Level,
     sp: &FluidParams,
     pos: &mut Pos,
@@ -1706,7 +1706,7 @@ pub(crate) fn travel(
 
 /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
 /// a column with a fluid.
-fn fluid_update(
+pub(crate) fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
     mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
@@ -1777,7 +1777,7 @@ fn breathing(
 
 /// `Mob.baseTick`'s `isInWall` for the cows an event asked about (a spawn, a teleport, a growth): the head in a
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
-fn wall_check(
+pub(crate) fn wall_check(
     level: Res<Level>,
     q: Query<(Entity, &Pos, &Body, Has<InWall>, &FluidParams), With<Recheck>>,
     mut commands: Commands,
@@ -2415,7 +2415,7 @@ fn find(parent: &mut [u32], mut i: u32) -> u32 {
 /// travel of this tick, from one that comes after it by the next tick's. The islands do not touch each other, so they run
 /// one after the other or in parallel (`Config.parallel`) with the same result. Every other animal stays in the batch.
 #[allow(clippy::type_complexity)]
-fn ordered_pass(
+pub(crate) fn ordered_pass(
     cfg: Res<Config>,
     level: Res<Level>,
     table: Res<SpeciesTable>,
@@ -2782,6 +2782,17 @@ impl Herd {
             let all: Vec<Entity> = self.world.query_filtered::<Entity, With<Bounds>>().iter(&self.world).collect();
             for e in all {
                 self.world.entity_mut(e).insert(Overlapping);
+            }
+        }
+    }
+    /// Fills the slab with water from y = 1 to y = `top` (a lake for the fish), taken at the next tick.
+    pub fn fill_water(&mut self, top: i32) {
+        let half = self.world.resource::<Level>().half;
+        for x in -half + 1..half {
+            for z in -half + 1..half {
+                for y in 1..=top {
+                    self.set_block(x, y, z, "minecraft:water");
+                }
             }
         }
     }

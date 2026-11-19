@@ -180,6 +180,7 @@ pub mod breed;
 #[cfg(test)]
 pub mod example;
 pub mod eat_block;
+pub mod fish_swim;
 pub mod float;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -207,4 +208,5 @@ pub static TABLE: &[&Module] = &[
     &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &fish_swim::MODULE,
 ];

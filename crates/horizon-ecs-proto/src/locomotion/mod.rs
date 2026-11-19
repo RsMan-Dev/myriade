@@ -57,6 +57,7 @@ pub fn fluid_changed(cmd: &mut Commands, e: Entity, modes: &Modes, in_water: boo
     if !modes.has(Medium::Water) {
         return;
     }
+    cmd.queue(move |w: &mut World| swim::water_changed(w, e, in_water));
     if in_water {
         cmd.entity(e).remove::<WalkMode>().insert(SwimMode);
     } else if modes.has(Medium::Ground) {
