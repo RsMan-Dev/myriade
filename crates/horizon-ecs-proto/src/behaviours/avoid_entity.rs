@@ -51,7 +51,7 @@ pub struct Avoider {
     target_when: Option<fn(&World, Entity) -> bool>,
     target_roll: Option<fn(&World, Entity, f64) -> bool>,
     /// The species the goal avoids, as a mask by `SpeciesId`.
-    mask: u64,
+    mask: crate::cow::SpeciesSet,
     pub slot: u8,
     from: Vec3,
     player: u32,
@@ -85,15 +85,16 @@ pub static MODULE: Module = Module {
 };
 /// The union of the species any avoid goal of the process lists (a superset is harmless): the move of an animal of another species
 /// matters to nobody, and its column change does not scan the index.
-static LISTED_ANYWHERE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// The species a `what` names, as a mask by `SpeciesId` (at most 64 species).
-fn species_mask(what: Avoid) -> u64 {
+static LISTED_ANYWHERE: [std::sync::atomic::AtomicU64; 4] = [const { std::sync::atomic::AtomicU64::new(0) }; 4];
+/// The species a `what` names, as a set by `SpeciesId`.
+fn species_mask(what: Avoid) -> crate::cow::SpeciesSet {
+    use crate::cow::SpeciesSet;
     let reg = crate::species::registry();
     match what {
-        Avoid::Player => 0,
-        Avoid::Species(ids) => ids.iter().filter(|&&i| i < 64).fold(0, |m, &i| m | 1 << i),
-        Avoid::Named(names) => reg.species.iter().enumerate().take(64).filter(|(_, s)| names.contains(&s.name)).fold(0, |m, (i, _)| m | 1 << i),
-        Avoid::Monsters => reg.species.iter().enumerate().take(64).filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").fold(0, |m, (i, _)| m | 1 << i),
+        Avoid::Player => SpeciesSet::EMPTY,
+        Avoid::Species(ids) => ids.iter().fold(SpeciesSet::EMPTY, |m, &i| m.with(usize::from(i))),
+        Avoid::Named(names) => reg.species.iter().enumerate().filter(|(_, s)| names.contains(&s.name)).fold(SpeciesSet::EMPTY, |m, (i, _)| m.with(i)),
+        Avoid::Monsters => reg.species.iter().enumerate().filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").fold(SpeciesSet::EMPTY, |m, (i, _)| m.with(i)),
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
@@ -115,7 +116,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         spot: (0.0, 0.0, 0.0),
     };
     if !matches!(p.what, Avoid::Player) {
-        LISTED_ANYWHERE.fetch_or(a.mask, std::sync::atomic::Ordering::Relaxed);
+        for id in (0..=u8::MAX).filter(|&id| a.mask.has(id)) {
+            LISTED_ANYWHERE[usize::from(id) >> 6].fetch_or(1 << (id & 63), std::sync::atomic::Ordering::Relaxed);
+        }
         w.entity_mut(e).insert(AvoidsAnimals);
     }
     match w.get_mut::<Avoiders>(e) {
@@ -172,7 +175,7 @@ fn cell_moves(
         return;
     }
     let listed = !listing.is_empty();
-    let listed_mask = LISTED_ANYWHERE.load(std::sync::atomic::Ordering::Relaxed);
+    let is_listed = |id: u8| LISTED_ANYWHERE[usize::from(id) >> 6].load(std::sync::atomic::Ordering::Relaxed) >> (id & 63) & 1 == 1;
     for &m in &moved.0 {
         if let Ok((_, avs)) = q.get(m) {
             reqs.0.extend(avs.0.iter().map(|a| Req::Start(m, a.slot)));
@@ -181,7 +184,7 @@ fn cell_moves(
             continue;
         }
         let Ok((mp, sid)) = ids.get(m) else { continue };
-        if sid.0 >= 64 || listed_mask >> sid.0 & 1 == 0 {
+        if !is_listed(sid.0) {
             continue;
         }
         let at = mp.0;
@@ -192,7 +195,7 @@ fn cell_moves(
             }
             for a in &avs.0 {
                 if !matches!(a.what, Avoid::Player)
-                    && sid.0 < 64 && a.mask >> sid.0 & 1 == 1
+                    && a.mask.has(sid.0)
                     && in_reach(a, pos.0, at)
                 {
                     reqs.0.push(Req::Start(c, a.slot));
@@ -240,7 +243,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option
                     && (tp.x - pos.x).abs() <= a.max_dist
                     && (tp.z - pos.z).abs() <= a.max_dist
                     && (tp.y - pos.y).abs() <= 3.0 + a.max_dist
-                    && sid.0 < 64 && a.mask >> sid.0 & 1 == 1
+                    && a.mask.has(sid.0)
                     && a.target_when.is_none_or(|f| f(w, t));
                 if boxed {
                     c.push((d2(pos, tp), t, tp));

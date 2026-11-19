@@ -765,6 +765,22 @@ fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SpeciesId(pub u8);
+/// A set of species by `SpeciesId`: 256 bits, one per value of the id (no species is left out of a set).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpeciesSet([u64; 4]);
+impl SpeciesSet {
+    pub const EMPTY: Self = Self([0; 4]);
+    pub fn with(mut self, id: usize) -> Self {
+        self.0[id >> 6 & 3] |= 1 << (id & 63);
+        self
+    }
+    pub fn has(&self, id: u8) -> bool {
+        self.0[usize::from(id) >> 6] >> (id & 63) & 1 == 1
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0 == [0; 4]
+    }
+}
 /// The data of every species of the world, by `SpeciesId`: what a system needs of a species it reads here, per entity.
 #[derive(Resource, Clone)]
 pub struct SpeciesTable(pub Vec<Species>);
