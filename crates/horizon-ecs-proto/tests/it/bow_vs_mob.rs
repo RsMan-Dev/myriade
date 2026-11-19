@@ -76,6 +76,10 @@ fn the_skeleton_shoots_at_the_same_cadence_as_a_mob() {
     if skip() {
         return;
     }
+    // The bogged and the parched shoot every 70 ticks (not 40): this scene counts the skeleton's cadence; their interval is `species/<name>.rs`.
+    if std::env::var("HORIZON_SPECIES").is_ok_and(|s| s == "minecraft:bogged" || s == "minecraft:parched") {
+        return;
+    }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5));
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
     let (m, e) = shots(&mut s, &view, 260);

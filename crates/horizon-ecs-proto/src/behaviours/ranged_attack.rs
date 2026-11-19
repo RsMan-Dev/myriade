@@ -7,7 +7,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::projectile::{Flight, launch};
 use crate::targeting::{self, Eye, Target, TargetWatchers, Who};
-use horizon_core::geometry::Vec3;
+use horizon_core::geometry::{trig, Axis, Vec3};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -27,6 +27,14 @@ pub struct Params {
     /// A witch's throw: the potion is chosen by the target (`Witch.performRangedAttack`), the aim leads the target's motion, and the speed
     /// is 0.45 within 2 blocks, 0.75 beyond.
     pub witch: bool,
+    /// The shot starts `(width + 1) * front` blocks in front of the body, along its yaw (the llama's spit, `llama.rs:165-171`: 0.5);
+    /// 0: from the eyes' column.
+    pub front: f64,
+    /// The aim is at the bottom of the target's box plus this fraction of its height (the spit: 1/3, `llama.rs:172-176`); 0: at the target's
+    /// eyes minus `aim_down`.
+    pub aim_fraction: f64,
+    /// The shooter is marked `DidShot` at each shot (what `LlamaHurtBy` reads: the llama's `flag2`).
+    pub marks: bool,
 }
 impl Params {
     /// Le golem de neige (`golem.rs:554-557`, `golem.rs:580`).
@@ -42,9 +50,14 @@ impl Params {
         aim_down: 1.1,
         lift: 0.2,
         witch: false,
+        front: 0.0,
+        aim_fraction: 0.0,
+        marks: false,
     };
+    /// The llama's spit (`llama.rs:67`, `llama.rs:159-189`): 40 ticks, 20 blocks, speed 1.5, spread 10, from in front of the body, aimed at a third of the box.
+    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true };
     /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
-    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true };
+    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -59,6 +72,10 @@ pub struct Shooter {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Shooting;
+/// A shot was made (`Params.marks`): the llama's `flag2`, read by the variant of `hurt_by` of lot B.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct DidShot;
 
 pub static MODULE: Module = Module {
     name: "ranged_attack",
@@ -163,7 +180,13 @@ fn shoot_run(
 fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let Some(i) = targeting::info(w, who) else { return };
     let (Some(pos), Some(eye)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Eye>(e).map(|x| x.0)) else { return };
-    let start = Vec3::new(pos.x, pos.y + eye - p.start_down, pos.z);
+    let start = if p.front > 0.0 {
+        let (Some(width), Some(yaw)) = (w.get::<Body>(e).map(|b| f64::from(b.width)), w.get::<Yaw>(e).map(|y| f64::from(y.0))) else { return };
+        let (yaw, reach) = (yaw.to_radians(), (width + 1.0) * p.front);
+        Vec3::new(pos.x - reach * f64::from(trig::sin(yaw)), pos.y + eye - p.start_down, pos.z + reach * f64::from(trig::cos(yaw)))
+    } else {
+        Vec3::new(pos.x, pos.y + eye - p.start_down, pos.z)
+    };
     let motion = match who {
         Who::Entity(t) if p.witch => w.get::<Vel>(t).map_or(Vec3::ZERO, |v| v.0),
         _ => Vec3::ZERO,
@@ -176,7 +199,10 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
             Who::Player(_) => 20.0,
         };
         use crate::effects::{Brew, Kind};
-        let has = |w: &World, kind| matches!(who, Who::Entity(t) if crate::effects::has(w, t, kind));
+        let has = |w: &World, kind| match who {
+            Who::Entity(t) => crate::effects::has(w, t, kind),
+            Who::Player(id) => crate::effects::player_has(w, id, kind),
+        };
         let (slow, poison, weak) = (has(w, Kind::Slowness), has(w, Kind::Poison), has(w, Kind::Weakness));
         static SLOW: [Brew; 1] = [Brew::Timed(Kind::Slowness, 0, 1800)];
         static POISON: [Brew; 1] = [Brew::Timed(Kind::Poison, 0, 900)];
@@ -196,7 +222,12 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
         p.shot_speed = if dist <= 2.0 { 0.45 } else { 0.75 };
     }
     let p = p;
-    let yd = i.eye - p.aim_down;
+    let yd = if p.aim_fraction > 0.0 {
+        let bottom = i.bounds.min(Axis::Y);
+        bottom + (i.bounds.max(Axis::Y) - bottom) * p.aim_fraction
+    } else {
+        i.eye - p.aim_down
+    };
     let yo = (xd * xd + zd * zd).sqrt() * p.lift;
     let dir = Vec3::new(xd, yd + yo - start.y, zd).normalize();
     let spread = 0.017_227_5 * p.uncertainty;
@@ -204,6 +235,9 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let mut triangle = |mean: f64, spread: f64| mean + spread * (rng.next_f64() - rng.next_f64());
     let v = Vec3::new((dir.x + triangle(0.0, spread)) * p.shot_speed, (dir.y + triangle(0.0, spread)) * p.shot_speed, (dir.z + triangle(0.0, spread)) * p.shot_speed);
     launch(w, p.flight, start, v, Some(Who::Entity(e)));
+    if p.marks {
+        w.entity_mut(e).insert(DidShot);
+    }
 }
 
 #[cfg(test)]
@@ -272,5 +306,53 @@ mod tests {
             h.tick();
         }
         assert!(!running(&h, golem), "arrêt quand la cible est perdue");
+    }
+
+    /// The llama's spit through the same goal (`Params::LLAMA`): one spit every 40 ticks while the target is seen, `DidShot` set, stop when the target is lost.
+    #[test]
+    fn the_llama_spits_every_forty_ticks_and_stops_when_the_target_is_lost() {
+        use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
+        use crate::projectile::Projectile;
+        use crate::targeting::{clear_target, set_target};
+        use crate::species::Config;
+        use crate::behaviours::Entry;
+        std::env::var_os("HORIZON_TEST_RESOURCES").map(|_| ()).unwrap_or(());
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        }
+        let mut h = Herd::with_slab(60, true, false);
+        crate::goals::set_lazy_look(&mut h.world, false);
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let mut sp = *table.iter().find(|s| s.name == "minecraft:zombie").unwrap();
+        let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 1, &Params::LLAMA)]));
+        sp.goals = Config { entries };
+        let mut cow = *table.iter().find(|s| s.name == "minecraft:cow").unwrap();
+        cow.goals = Config { entries: &[] };
+        let spitter = spawn_species(&mut h.world, &sp, 0.5, 0.5, 51);
+        let prey = spawn_species(&mut h.world, &cow, 12.5, 0.5, 52);
+        for e in [spitter, prey] {
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        }
+        h.tick();
+        set_target(&mut h.world, spitter, Target::new(Who::Entity(prey), 200, u8::MAX));
+        let mut first = std::collections::HashMap::new();
+        for t in 0..200 {
+            h.tick();
+            let ids: Vec<Entity> = h.world.query_filtered::<Entity, With<Projectile>>().iter(&h.world).collect();
+            for id in ids {
+                first.entry(id).or_insert(t);
+            }
+        }
+        let mut ticks: Vec<usize> = first.values().copied().collect();
+        ticks.sort_unstable();
+        assert!(ticks.len() >= 3, "at least three spits in 200 ticks, {ticks:?}");
+        assert!(ticks.windows(2).all(|w| w[1] - w[0] == 40), "an interval of 40 ticks, {ticks:?}");
+        assert!(h.world.get::<DidShot>(spitter).is_some(), "witness: the spit sets DidShot");
+        clear_target(&mut h.world, spitter);
+        for _ in 0..6 {
+            h.tick();
+        }
+        assert!(!h.world.get::<GoalSet>(spitter).unwrap().is_running(&MODULE), "stops when the target is lost");
     }
 }

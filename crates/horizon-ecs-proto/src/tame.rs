@@ -158,7 +158,7 @@ pub fn teleport_to_owner(w: &mut World, e: Entity) {
         let yd = with_rng(w, e, |r| r.next_int(3) - 1);
         let p = [base[0] + xd, base[1] + yd, base[2] + zd];
         if can_teleport_to(w, e, p) {
-            teleport(w, e, Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5));
+            crate::behaviours::ender_teleport::land(w, e, Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5));
             stop_nav(w, e);
             return;
         }

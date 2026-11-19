@@ -27,4 +27,6 @@ pub static DEF: Def = Def {
     caps: None,
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
+    spawn: Some(crate::spawning::SpawnDef::ANIMAL), despawn: Some(crate::despawn::DespawnDef::KEPT),
+    ..Def::EMPTY
 };

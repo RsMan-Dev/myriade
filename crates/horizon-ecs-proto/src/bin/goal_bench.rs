@@ -9,6 +9,7 @@ use horizon_ecs_proto::{
 use std::time::Instant;
 
 fn main() {
+    horizon_ecs_proto::bench_support::require_optimized();
     let a: Vec<String> = std::env::args().collect();
     let arg = |i: usize, d: f64| a.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
     let (n, ticks, players) = (arg(1, 10000.0) as usize, arg(2, 200.0) as usize, arg(3, 0.0) as usize);

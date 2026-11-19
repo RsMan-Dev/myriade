@@ -15,3 +15,6 @@ drowned ## swims every tick (its control and the travel of the water run each ti
 bee ## flies and hovers all the time (a flier: travel and float physics each tick); Mob 70670 vs ECS 29 487 per creature and tick
 iron_golem ## walks back to its village all the time (village_walk: 804 of 2 000 golems move each tick, travel); Mob 86 521 vs ECS 7 654 per creature and tick
 parrot ## flies (fly_stroll) most of the time: a flier moves each tick; ECS 233 per creature and tick, 2.5 x the cow
+frog ## the long jump's search, as the Mob does it: a start with no wish for a preferred block tries every one of the 404 candidates of the box and each acceptable one runs a path search of 8 blocks (frog.rs:860-866); the same search is not repeated from a block that found nothing for 600 ticks (long_jump FUTILE_FOR), amortised ~29 000 instr per creature and tick on bare ground; the Mob pays the same searches at each start
+goat ## the same search over a box of 11 x 11 x 11 (1 330 candidates) at each start of its long jump while the ram cools down, cached 600 ticks per block when nothing is found; the ram's wake is an event (no polling) but the navigation check still asks again at +2
+nautilus ## swims every tick (reindex and push of a mover, 1 000 instr each per creature and tick, as the dolphin and the axolotl); the charge itself is rare

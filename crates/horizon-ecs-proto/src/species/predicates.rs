@@ -1,7 +1,7 @@
 //! The named predicates of the base (`Cond::Is("horizon:...")`): each reads components of the entity, never a species.
 //! A mod adds its own with `Builder::predicate("mymod:name", f)` (a plain `fn(&World, Entity) -> bool`).
 use crate::behaviours::Pred;
-use crate::cow::{Burning, Contact, FluidState, GrowAt};
+use crate::cow::{Bounds, Burning, Contact, FluidState, GrowAt, Index, Pos, SpeciesId};
 use crate::hostile::Daylight;
 
 /// `horizon:is_baby`: it has not grown up yet.
@@ -48,6 +48,10 @@ fn has_rider(w: &World, e: Entity) -> bool {
 fn is_mounted(w: &World, e: Entity) -> bool {
     w.get::<crate::mount::Riding>(e).is_some()
 }
+/// `horizon:is_leashed`: it is on a lead (`leash::Leash`).
+fn is_leashed(w: &World, e: Entity) -> bool {
+    crate::leash::is_leashed(w, e)
+}
 /// `horizon:is_sitting`: it is ordered to sit (the occupation `SITTING`).
 fn is_sitting(w: &World, e: Entity) -> bool {
     crate::goals::is_occupied(w, e, crate::goals::OCC_SITTING)
@@ -75,6 +79,20 @@ fn bee_calm(w: &World, e: Entity) -> bool {
 fn bee_can_target(w: &World, e: Entity) -> bool {
     crate::behaviours::neutral_anger::is_angry(w, e) && !w.get::<crate::behaviours::bee::Bee>(e).is_some_and(|b| b.stung)
 }
+/// `polar_bear:cub_nearby` (`polar_bear.rs:63-69`): a cub of the same species (a baby, the bear excluded) whose box meets the bear's box
+/// inflated by (8, 4, 8). The species is compared by id, not by name.
+fn polar_bear_cub_nearby(w: &World, e: Entity) -> bool {
+    let (Some(p), Some(b), Some(s)) = (w.get::<Pos>(e), w.get::<Bounds>(e), w.get::<SpeciesId>(e)) else { return false };
+    let area = b.0.inflate(horizon_core::geometry::Vec3::new(8.0, 4.0, 8.0));
+    let mut found = false;
+    w.resource::<Index>().for_radius(p.0.x, p.0.z, 10.0, |c| {
+        found |= c != e
+            && w.get::<SpeciesId>(c).is_some_and(|x| x.0 == s.0)
+            && w.get::<GrowAt>(c).is_some()
+            && w.get::<Bounds>(c).is_some_and(|cb| cb.0.intersects(area));
+    });
+    found
+}
 /// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`. The ECS has no coats yet: no animal is one (DOUTE: a coat component).
 fn rabbit_killer(_: &World, _: Entity) -> bool {
     false
@@ -94,6 +112,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:has_rider", has_rider),
     ("horizon:is_mounted", is_mounted),
     ("horizon:is_sitting", is_sitting),
+    ("horizon:is_leashed", is_leashed),
     ("ocelot:trusting", ocelot_trusting),
     ("panda:acts", panda_acts),
     ("panda:avoids", panda_avoids),
@@ -101,5 +120,6 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("neutral:angry", neutral_angry),
     ("bee:calm", bee_calm),
     ("bee:can_target", bee_can_target),
+    ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
 ];

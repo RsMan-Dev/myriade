@@ -186,6 +186,10 @@ fn follow_step(w: &mut World, e: Entity) {
     if !f.fresh && (!busy || d <= stop2) {
         return end(w);
     }
+    // `FollowMobGoal.tick`: a creature on a lead does not turn nor walk to the one it follows.
+    if crate::leash::is_leashed(w, e) {
+        return;
+    }
     let eye = w.get::<Look>(target).map_or(0.0, |l| l.eye);
     look_at(w, e, [tp.x, tp.y + eye, tp.z], 10.0);
     {

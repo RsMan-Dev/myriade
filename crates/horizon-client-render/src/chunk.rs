@@ -770,6 +770,14 @@ impl Chunk {
     pub fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
         BlockStateId(self.get(x, y, z))
     }
+    /// Whether every block of section `s` is state `v` (O(1) on a uniform palette).
+    pub fn section_is_uniform(&self, s: usize, v: u32) -> bool {
+        self.sections[s].is_uniform(v)
+    }
+    /// The number of sections of the column.
+    pub fn section_count(&self) -> usize {
+        self.sections.len()
+    }
     /// The blocks that `matches`, section by section from the bottom, each section's in y, z, x
     /// order. A section whose palette holds none is skipped.
     pub fn blocks_where(

@@ -6,5 +6,6 @@ pub static DEF: Def = Def {
     name: "minecraft:salmon",
     reference: Some(&fish::DEF),
     goals: &[Entry::new(&follow_flock_leader::MODULE, 5, &follow_flock_leader::Params { max_school: 5, ..follow_flock_leader::Params::DEFAULT })],
+    spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterAmbient, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::SurfaceWater, cluster: 5, far: false, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef { distance: 64.0, ..crate::despawn::DespawnDef::MOB } }),
     ..Def::EMPTY
 };

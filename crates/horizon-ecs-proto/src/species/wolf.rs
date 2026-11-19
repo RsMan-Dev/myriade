@@ -7,7 +7,7 @@
 //! shake, the collar colour and its dyes, the healing by food, the variants, the howl, armour.
 use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
-use crate::behaviours::{forget_target, beg, breed, float, follow_owner, hurt_by, leap_at_target, look_at_player, melee, nearest_target, owner_target, panic, random_look, sit_when_ordered, stroll, Cap, Cond, Entry};
+use crate::behaviours::{neutral_anger, forget_target, beg, breed, float, follow_owner, hurt_by, leap_at_target, look_at_player, melee, nearest_target, owner_target, panic, random_look, sit_when_ordered, stroll, Cap, Cond, Entry};
 use crate::rules::RuleEntry;
 use crate::tame::{TameParams, TAME};
 
@@ -23,6 +23,7 @@ pub static DEF: Def = Def {
     name: "minecraft:wolf",
     reference: None,
     targets: &[
+        Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
         Entry::new(&owner_target::MODULE, 1, &owner_target::Params { never: NEVER, spare_when_tame: SPARED_TAME, spare_same_owner: true, ..owner_target::Params::HURT_BY }),
         Entry::new(&owner_target::MODULE, 2, &owner_target::Params { never: NEVER, spare_when_tame: SPARED_TAME, spare_same_owner: true, ..owner_target::Params::HURT }),
         Entry::new(&hurt_by::MODULE, 3, &hurt_by::Params { alert: true, spare_owner: true, ..hurt_by::Params::DEFAULT }),
@@ -51,4 +52,6 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
+    
+    ..Def::EMPTY
 };

@@ -96,9 +96,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !wants_laying(w, e) {
         return false;
     }
-    if w.get::<Lay>(e).unwrap().next_start > 0 {
-        w.get_mut::<Lay>(e).unwrap().next_start -= 1;
-        chain(w, e, 2);
+    let left = w.get::<Lay>(e).unwrap().next_start;
+    if left > 0 {
+        // The `Mob` counts its countdown down once per ask (every 2 ticks): `left` asks later the search comes. The chain jumps
+        // there at once (one deadline of `2 * left` ticks) instead of asking every 2 ticks to decrement.
+        w.get_mut::<Lay>(e).unwrap().next_start = 0;
+        chain(w, e, 2 * left);
         return false;
     }
     let countdown = with_rng(w, e, |r| reduced(200 + r.next_int(200)));

@@ -276,3 +276,93 @@ kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone near ring
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone mid ring (cow, 6, 10)|ecs|34.1|33.3
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone far ring (cow, 6, 10)|ecs|-0.4|1.2
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|schedule at rest (empty world, per tick)|ecs|127219|126741
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs|1059|1066
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs-eager|1290|1294
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs|5627|5636
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs-eager|5456|5462
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13983|13988
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs|189|193
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs-eager|362|363
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs|5130|5149
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs-eager|4866|4885
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13242|13263
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs|487|489
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs-eager|671|673
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs|5476|5482
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs-eager|5315|5322
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15765|15770
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken idle|ecs-eager|211|210
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs|3760|3766
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs-eager|3644|3651
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10013|10019
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie idle|ecs|112|113
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs|11382|11387
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs-eager|11287|11305
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5639|5646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7180|7179
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|batch|6631|6646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|ordered|19413|19436
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|batch|5754|5765
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|ordered|13690|13710
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone near ring (cow, 6, 10)|ecs|2957.9|2980.1
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone far ring (cow, 6, 10)|ecs|1.2|-0.2
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|schedule at rest (empty world, per tick)|ecs|126741|125462
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs|1066|1067
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs-eager|1294|1295
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs|5636|5646
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs-eager|5462|5471
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13988|14012
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs|5149|5157
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs-eager|4885|4892
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13263|13273
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep idle|ecs-eager|673|674
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs|5482|5490
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs-eager|5322|5330
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15770|15793
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs|3766|3771
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs-eager|3651|3656
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10019|10024
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs|11387|11395
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs-eager|11305|11312
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5646|5645
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7179|7183
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|batch|6646|6750
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|ordered|19436|19432
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|batch|5765|5827
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|ordered|13710|13707
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone near ring (cow, 6, 10)|ecs|2980.1|2978.3
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone far ring (cow, 6, 10)|ecs|-0.2|-0.4
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|schedule at rest (empty world, per tick)|ecs|125462|127264
+audit-fixes 510f5bde3f|cow idle|ecs|1067|1063
+audit-fixes 510f5bde3f|cow idle|ecs-eager|1295|1291
+audit-fixes 510f5bde3f|cow active(1000 players, no solicitation)|ecs|5646|5631
+audit-fixes 510f5bde3f|cow active(1000 players, no solicitation)|ecs-eager|5471|5457
+audit-fixes 510f5bde3f|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14012|13984
+audit-fixes 510f5bde3f|pig idle|ecs-eager|363|362
+audit-fixes 510f5bde3f|pig active(1000 players, no solicitation)|ecs|5157|5145
+audit-fixes 510f5bde3f|pig active(1000 players, no solicitation)|ecs-eager|4892|4881
+audit-fixes 510f5bde3f|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13273|13257
+audit-fixes 510f5bde3f|sheep idle|ecs|489|488
+audit-fixes 510f5bde3f|sheep idle|ecs-eager|674|673
+audit-fixes 510f5bde3f|sheep active(1000 players, no solicitation)|ecs|5490|5478
+audit-fixes 510f5bde3f|sheep active(1000 players, no solicitation)|ecs-eager|5330|5318
+audit-fixes 510f5bde3f|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15793|15762
+audit-fixes 510f5bde3f|chicken active(1000 players, no solicitation)|ecs|3771|3767
+audit-fixes 510f5bde3f|chicken active(1000 players, no solicitation)|ecs-eager|3656|3649
+audit-fixes 510f5bde3f|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10024|10022
+audit-fixes 510f5bde3f|zombie idle|ecs|113|104
+audit-fixes 510f5bde3f|zombie idle|ecs-eager|305|296
+audit-fixes 510f5bde3f|zombie active(1000 players, no solicitation)|ecs|11395|11376
+audit-fixes 510f5bde3f|zombie active(1000 players, no solicitation)|ecs-eager|11312|11293
+audit-fixes 510f5bde3f|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5645|5629
+audit-fixes 510f5bde3f|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7183|7157
+audit-fixes 510f5bde3f|crowd 0.5 (cow, 2000, 0 player)|batch|6750|6633
+audit-fixes 510f5bde3f|crowd 0.5 (cow, 2000, 0 player)|ordered|19432|19423
+audit-fixes 510f5bde3f|crowd 0.8 (cow, 2000, 0 player)|batch|5827|5753
+audit-fixes 510f5bde3f|crowd 0.8 (cow, 2000, 0 player)|ordered|13707|13698
+audit-fixes 510f5bde3f|zone near ring (cow, 6, 10)|ecs|2978.3|2978.6
+audit-fixes 510f5bde3f|zone far ring (cow, 6, 10)|ecs|-0.4|0.3
+audit-fixes 510f5bde3f|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+audit-fixes 510f5bde3f|schedule at rest (empty world, per tick)|ecs|127264|127386
+dated 2026-11-19|solicited lines re-based (new definition: species food, mean of six variants; PlayerEffects lazy)

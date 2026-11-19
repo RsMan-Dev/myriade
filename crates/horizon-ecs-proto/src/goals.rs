@@ -48,6 +48,8 @@ pub struct GoalSet {
     lock: [Option<u8>; 4],
     /// Some module wants to hear that a goal started or ended.
     watchers: bool,
+    /// Flags no goal may take (a creature steers this entity: `mount.rs`).
+    disabled: u8,
 }
 impl GoalSet {
     pub fn new(entries: &'static [Entry]) -> Self {
@@ -57,7 +59,7 @@ impl GoalSet {
             nth[i] = entries[..i].iter().filter(|o| std::ptr::eq(o.module, e.module)).count() as u8;
         }
         let watchers = entries.iter().any(|e| e.module.after_change.is_some());
-        Self { entries, nth, running: 0, pending: 0, lock: [None; 4], watchers }
+        Self { entries, nth, running: 0, pending: 0, lock: [None; 4], watchers, disabled: 0 }
     }
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -102,6 +104,9 @@ impl GoalSet {
     /// Every flag it needs is free or held by a goal of lower priority (a larger number).
     pub fn replaceable(&self, slot: u8) -> bool {
         let e = &self.entries[slot as usize];
+        if e.module.flags & self.disabled != 0 {
+            return false;
+        }
         (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority && self.entries[j as usize].module.interruptable))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
@@ -152,6 +157,8 @@ pub const MELON_SEEDS: u32 = 8;
 pub const PUMPKIN_SEEDS: u32 = 9;
 pub const SHEARS: u32 = 10;
 pub const BONE: u32 = 11;
+pub const LEAD: u32 = 12;
+pub const WARPED_FUNGUS_ON_A_STICK: u32 = 13;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -166,6 +173,8 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
         "minecraft:shears" => SHEARS,
         "minecraft:bone" => BONE,
+        "minecraft:lead" => LEAD,
+        "minecraft:warped_fungus_on_a_stick" => WARPED_FUNGUS_ON_A_STICK,
         _ => 0,
     }
 }
@@ -476,6 +485,10 @@ impl Online {
     pub fn get(&self, id: u32) -> Option<Player> {
         self.list.get(id as usize).copied().flatten()
     }
+    /// Every player online.
+    pub fn players(&self) -> impl Iterator<Item = Player> + '_ {
+        self.list.iter().flatten().copied()
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         for bz in z0..=z1 {
@@ -669,6 +682,11 @@ pub struct Events {
     /// A rider took the seat of this mount / left it (`mount.rs`).
     pub mounted: Ev,
     pub dismounted: Ev,
+    /// A lead was put on this creature / taken off it (`leash.rs`).
+    pub leashed: Ev,
+    pub unleashed: Ev,
+    /// The vehicle of a player moved, stopped or went (`vehicle.rs`): the player's id.
+    pub vehicle_moved: Ev<u32>,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -696,6 +714,9 @@ impl Events {
         self.picked_up.swap();
         self.mounted.swap();
         self.dismounted.swap();
+        self.leashed.swap();
+        self.unleashed.swap();
+        self.vehicle_moved.swap();
     }
 }
 
@@ -833,7 +854,7 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
         }
     }
 }
-fn online_events(
+pub(crate) fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,
     idx: Res<Index>,
@@ -1074,6 +1095,27 @@ fn changed(w: &mut World, e: Entity, c: Change) {
         f(w, e, c);
     }
 }
+/// The flags no goal of the entity may take (0: none): the goals that hold them end, the others wait; lifting the ban lets the waiting
+/// ones start again (`Mob.goals.disabled`).
+pub fn set_disabled_flags(w: &mut World, e: Entity, mask: u8) {
+    let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
+    if g.disabled == mask {
+        return;
+    }
+    g.disabled = mask;
+    let n = g.len() as u8;
+    if mask != 0 {
+        let held: Vec<u8> = (0..n).filter(|&s| g.slot_running(s) && g.module(s).flags & mask != 0).collect();
+        for s in held {
+            end_goal(w, e, s);
+        }
+    } else {
+        let waiting: Vec<u8> = (0..n).filter(|&s| g.pending >> s & 1 == 1).collect();
+        for s in waiting {
+            start_goal(w, e, s);
+        }
+    }
+}
 pub(crate) fn end_goal(w: &mut World, e: Entity, slot: u8) {
     let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
     if slot as usize >= g.len() || !g.stop(slot) {
@@ -1213,6 +1255,7 @@ pub static PATHS_FOUND: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, goal: usize) {
     ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     cmd.queue(move |w: &mut World| {
+        let e = crate::mount::nav_owner(w, e);
         if let Some(mut s) = w.get_mut::<Stroll>(e) {
             s.tx = x;
             s.tz = z;
@@ -1227,6 +1270,7 @@ pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, g
 /// A path to `at` (x, y, z: the row of the block is `floor(y)`) at `speed`, ending `reach` blocks from it: the way for a module to walk
 /// somewhere; it writes nothing of its own in the walking state. The end of the path is the `path_ended` event.
 pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) {
+    let e = crate::mount::nav_owner(w, e);
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         s.tx = at[0];
         s.ty = at[1].floor() as i32;
@@ -1240,6 +1284,7 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
 }
 /// The reach of the next paths of the entity (`go_to_at` sets it; a goal that ends puts the default 1 back).
 pub fn set_reach(w: &mut World, e: Entity, reach: i32) {
+    let e = crate::mount::nav_owner(w, e);
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.reach = reach;
     }
@@ -1270,6 +1315,7 @@ pub fn mob_griefing(w: &World) -> bool {
     w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_griefing)
 }
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
+    let e = crate::mount::nav_owner(w, e);
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
         n.reach = 1;
@@ -1672,6 +1718,9 @@ mod tests {
     /// A cow dropped in a pond floats: a jump 8 ticks in 10 while the water is deeper than 0.4, and it stays afloat.
     #[test]
     fn a_cow_in_a_pond_jumps_eight_ticks_in_ten() {
+    if crate::cow::skip_unless_farm_goals("a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
+        return;
+    }
     if crate::cow::skip_unless_walker("a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
         return;
     }
@@ -1704,4 +1753,9 @@ mod tests {
         let rate = jumps as f64 / floating as f64;
         assert!(rate > 0.72 && rate < 0.88, "{rate}");
     }
+}
+
+/// The player events of this tick, read outside the schedule (the benches that run a service alone).
+pub fn online_events_for_bench(world: &mut World) {
+    world.run_system_cached(online_events).unwrap();
 }

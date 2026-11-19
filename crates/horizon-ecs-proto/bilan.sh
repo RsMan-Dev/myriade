@@ -16,18 +16,22 @@ J=$(mktemp -d); trap 'rm -rf "$J"' EXIT
 JOBS=${JOBS:-$(nproc)}
 g() { grep -o 'instr_per_entity_tick=[0-9]*' | head -n1 | cut -d= -f2; }
 job() { local key=$1; shift; ( eval "$*" > "$J/$key" 2>/dev/null ) & while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done; }
-# NOTE: the held item is the bench default (wheat) for every species, as it always was in this table (the old script declared an array
-# `ITEM` that hid the variable, so the pig, the chicken and the zombie never got their food): changing it changes every solicited line.
+# The item a player holds in the solicited scenes is the FOOD of the species (since 2026-11-19: before, the array `ITEM` below hid the variable and every
+# species was held wheat: the pig, the chicken never saw their food).
+declare -A FOOD=( [cow]=minecraft:wheat [pig]=minecraft:carrot [sheep]=minecraft:wheat [chicken]=minecraft:wheat_seeds [zombie]=minecraft:wheat )
 SPECIES="cow pig sheep chicken zombie"
 for sp in $SPECIES; do
   E="HORIZON_SPECIES=minecraft:$sp"
+  F="HORIZON_SPECIES=minecraft:$sp ITEM=${FOOD[$sp]}"
   for n in 500 2000; do
     job ${sp}_idle_$n "env $E $D/goal_bench $n $T 0 0 0 0 | g"
     job ${sp}_eager_$n "env $E EAGER=1 $D/goal_bench $n $T 0 0 0 0 | g"
   done
   job ${sp}_active "env $E $D/goal_bench 2000 $T 1000 0 0 0 | g"
   job ${sp}_active_eager "env $E EAGER=1 $D/goal_bench 2000 $T 1000 0 0 0 | g"
-  [ $sp != zombie ] && job ${sp}_solicited "env $E $D/goal_bench 2000 $T 50 30 20 20 | g"
+  # The solicited scene is chaotic (a tick of one more hurt or one more pair in love moves the line by +-2.5 %): the line is the MEAN of six
+  # variants of it (players, hurt, love), run side by side.
+  if [ $sp != zombie ]; then k=0; for v in "50 30 20 20" "51 30 20 20" "52 30 20 20" "50 30 21 20" "50 30 20 21" "53 30 21 21"; do job ${sp}_solicited_$k "env $F $D/goal_bench 2000 $T $v | g"; k=$((k+1)); done; fi
 done
 Z="HORIZON_SPECIES=minecraft:zombie HUNT=1"
 job chase1 "env $Z $D/cow_bench sleep 1024 $T 1 6 1024 | g"
@@ -40,6 +44,9 @@ done
 job zone "env -u WARM $C $D/zone_bench rings 6 10 | awk '/--- zone on/{on=1} on && /^(near|mid|far)/{ for(i=1;i<=NF;i++) if (\$i ~ /^marginal\\/creature\\/tick=/) { v=\$i; sub(/.*=/,\"\",v); if (v==\"\") v=\$(i+1); print v } }'"
 it() { echo "env $C $D/prof_bench items $1 400 0 200 | head -n1 | sed -n 's/.*whole Schedule::run)=\\([0-9]*\\).*/\\1/p'"; }
 job items_500 "$(it 500)"; job items_2000 "$(it 2000)"; job empty "$(it 0)"
+# The profile per SYSTEM of three scenes (what a rise on a line is made of: `bilan_check.sh` prints the three systems that rose most).
+for sc in "idle 2000 600 0 400" "active 2000 300 300 200"; do job sys_${sc%% *} "env $C $D/prof_bench $sc | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"; done
+job sys_zombie "env HORIZON_SPECIES=minecraft:zombie $D/prof_bench idle 2000 600 0 400 | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"
 # The Mob (only when asked): its figures are kept in bilan.mob.
 if [ -n "${MOB:-}" ]; then
   for sp in $SPECIES; do
@@ -64,7 +71,7 @@ sl() { echo $(( (2000 * $(v $1_2000) - 500 * $(v $1_500)) / 1500 )); }
 for sp in $SPECIES; do
   echo "$sp idle: ecs $(sl ${sp}_idle) ecs-eager $(sl ${sp}_eager) mob $(mob ${sp}_idle)"
   echo "$sp active(1000 players, no solicitation): ecs $(v ${sp}_active) ecs-eager $(v ${sp}_active_eager) mob $(mob ${sp}_active)"
-  [ $sp != zombie ] && echo "$sp solicited(50 players, 30% hold, 20 hurt, 20 love): ecs $(v ${sp}_solicited) mob $(mob ${sp}_solicited)"
+  [ $sp != zombie ] && echo "$sp solicited(50 players, 30% hold, 20 hurt, 20 love): ecs $(( ($(v ${sp}_solicited_0) + $(v ${sp}_solicited_1) + $(v ${sp}_solicited_2) + $(v ${sp}_solicited_3) + $(v ${sp}_solicited_4) + $(v ${sp}_solicited_5)) / 6 )) mob $(mob ${sp}_solicited)"
 done
 echo "zombie chase clear (1024, spacing 6, 1024 players): ecs $(v chase1) mob $(mob chase1)"
 echo "zombie chase crowded (2000, spacing 2, 1000 players): ecs $(v chase2) mob $(mob chase2)"
@@ -75,3 +82,4 @@ echo "zone mid ring (cow, 6, 10): ecs ${2:-0} mob $(echo $mn | cut -d' ' -f2)"
 echo "zone far ring (cow, 6, 10): ecs ${3:-0} mob 0"
 echo "items at rest (slope per stack, 500 to 2000): ecs $(( ($(v items_2000) - $(v items_500)) / 1500 ))"
 echo "schedule at rest (empty world, per tick): ecs $(v empty)"
+for sc in idle active zombie; do awk -v sc="$sc" '{print "systems " sc " " $1 " " $2}' "$J/sys_$sc" 2>/dev/null; done

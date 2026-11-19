@@ -340,4 +340,5 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
         let stale = matches!((due, melee), (Due::Goal(s), Some(m)) if s == m);
         wh.push(if stale { now + 1 } else { now + rem }, e, due);
     }
+    crate::despawn::on_wake(world, e);
 }

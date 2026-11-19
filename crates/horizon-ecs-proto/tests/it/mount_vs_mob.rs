@@ -83,7 +83,7 @@ fn the_rider_steers_the_horse_as_it_steers_the_original() {
         let yaw = if t < 60 { 0.0 } else { 90.0 };
         let jump = if t == 80 { 1.0 } else { 0.0 };
         r.mobs[i].rider = Some(input(1.0, 0.0, yaw, jump));
-        h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: 1.0, strafe: 0.0, yaw, pitch: 0.0, jump };
+        h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: 1.0, strafe: 0.0, yaw, pitch: 0.0, jump, ..Default::default() };
         r.step(Some(&view));
         h.tick();
         let (m, p) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);

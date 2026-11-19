@@ -64,6 +64,12 @@ fn is_baby(w: &World, e: Entity) -> bool {
 }
 /// Une demande du but à +2 : seulement pour un bébé qui n'a pas déjà sa demande dans la roue.
 fn rearm(w: &mut World, e: Entity) {
+    rearm_in(w, e, 2);
+}
+/// The ask of a baby that has no adult to follow: the adult comes into range by a column change (the baby's own move wakes it, in
+/// `follow_run`), and a slow poll (`WAIT` ticks) covers the crossing of the range inside one column, instead of an ask every 2 ticks.
+const WAIT: i32 = 20;
+fn rearm_in(w: &mut World, e: Entity, ticks: i32) {
     let Some(f) = w.get::<Follow>(e).copied() else { return };
     if f.armed || !is_baby(w, e) {
         return;
@@ -71,7 +77,7 @@ fn rearm(w: &mut World, e: Entity) {
     if let Some(mut g) = w.get_mut::<Follow>(e) {
         g.armed = true;
     }
-    crate::goals::arm(w, e, f.slot, 2);
+    crate::goals::arm(w, e, f.slot, ticks);
 }
 /// Au tour de l'entité : un bébé demande le but.
 fn arm(w: &mut World, e: Entity, _: Inst) {
@@ -137,7 +143,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
             true
         }
         None => {
-            rearm(w, e);
+            rearm_in(w, e, WAIT);
             false
         }
     }
@@ -165,11 +171,19 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 /// `min - 1` blocs (le carré de la distance > (min - 1)^2) ; sinon le but finit. Le chemin est demandé une fois au
 /// départ (`fresh`), vers la position de l'adulte à ce moment-là, et le bébé regarde l'adulte à chaque tick.
 fn follow_run(
+    moved: Res<CellMoves>,
+    waiting: Query<&Follow, (With<GrowAt>, Without<FollowsAdult>)>,
     mut q: Query<(Entity, &Pos, &SpeciesId, &mut Follow, &mut Look, Has<Looking>, Has<GrowAt>), With<FollowsAdult>>,
     others: Query<(&Pos, &Eye, Has<GrowAt>, Option<&Health>, &SpeciesId)>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
+    // A baby that changed column asks again at once: its surroundings changed (the adult may be in range now).
+    for &m in &moved.0 {
+        if let Ok(f) = waiting.get(m) {
+            reqs.0.push(Req::Start(m, f.slot));
+        }
+    }
     for (e, pos, sp, mut f, mut look, looking, baby) in &mut q {
         let adult = f.adult.and_then(|a| others.get(a).ok().map(|(p, ce, g, h, s)| (p, ce, g, h, s, a)));
         let stays = baby

@@ -219,12 +219,15 @@ pub fn due(w: &mut World, e: Entity) {
     for (kind, _) in acts {
         match kind {
             Kind::Poison => {
-                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) {
+                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && w.get::<Undead>(e).is_none() {
                     w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Magic);
                 }
             }
             Kind::Wither => w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Wither),
             Kind::Regeneration => {
+                if w.get::<Undead>(e).is_some() {
+                    continue;
+                }
                 if let Some(mut h) = w.get_mut::<Health>(e) {
                     h.0 = (h.0 + 1.0).min(max);
                 }
@@ -248,14 +251,50 @@ pub struct OnHitParams(pub &'static [(Kind, i32, i32)]);
 fn equip_on_hit(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(OnHit(crate::rules::params::<OnHitParams>(p).0));
 }
-/// The blow landed: the effects of `from` are put on `target`.
-pub fn hit_effects(w: &mut World, from: Entity, target: Entity) {
+/// The blow landed: the effects of `from` are put on `target` (a creature, or a player: the player's list is `PlayerEffects`).
+pub fn hit_effects(w: &mut World, from: Entity, target: crate::targeting::Who) {
     let Some(OnHit(list)) = w.get::<OnHit>(from).copied() else { return };
     for &(kind, amp, ticks) in list {
-        add(w, target, kind, amp, ticks);
+        match target {
+            crate::targeting::Who::Entity(t) => {
+                add(w, t, kind, amp, ticks);
+            }
+            crate::targeting::Who::Player(id) => add_player(w, id, kind, amp, ticks),
+        }
     }
 }
-
+/// What the creatures of some species put on what they hit, at the normal difficulty (`CaveSpider`, `Bee`, `WitherSkeleton`, `Husk`, a puffed
+/// `Pufferfish`): the parameters of the rule `on_hit_effects`.
+pub static CAVE_SPIDER: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 140)]);
+pub static BEE_STING: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 200)]);
+pub static WITHER_SKELETON: OnHitParams = OnHitParams(&[(Kind::Wither, 0, 200)]);
+pub static HUSK: OnHitParams = OnHitParams(&[(Kind::Hunger, 0, 140)]);
+pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, 1200)]);
+/// A creature that `EntityTypeTags.UNDEAD` names: poison and regeneration do nothing to it, harming heals it and healing hurts it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Undead;
+/// The effects of the players (they are not entities): a list per player, read at the tick it is asked (an effect has its end; nothing ticks).
+/// The periodic damage and the speed of a player are the player's own system's; here the reading (a witch's choice, the sight a creature has
+/// of an invisible player, the hunger a husk gives) and the writing.
+#[derive(Resource, Default)]
+pub struct PlayerEffects(pub std::collections::HashMap<u32, Vec<(Kind, i32, u64)>>);
+pub fn add_player(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i32) {
+    let now = w.resource::<Clock>().0;
+    let ends = now + ticks.max(0) as u64;
+    // Born at the first effect of a player (a resource registered at the world's creation costs `arbitrate` even when nothing reads it).
+    let mut res = w.get_resource_or_insert_with(PlayerEffects::default);
+    let list = res.0.entry(id).or_default();
+    list.retain(|x| x.2 > now);
+    match list.iter().position(|x| x.0 == kind) {
+        Some(i) if amp > list[i].1 || amp == list[i].1 && ends > list[i].2 => list[i] = (kind, amp, ends),
+        Some(_) => {}
+        None => list.push((kind, amp, ends)),
+    }
+}
+pub fn player_has(w: &World, id: u32, kind: Kind) -> bool {
+    let now = w.resource::<Clock>().0;
+    w.get_resource::<PlayerEffects>().is_some_and(|p| p.0.get(&id).is_some_and(|l| l.iter().any(|x| x.0 == kind && x.2 > now)))
+}
 /// What a thrown potion carries (`PotionContents`): the effects it puts on what its splash reaches.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Brew {
@@ -292,18 +331,21 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
                         add(w, c, kind, amp, t);
                     }
                 }
-                Brew::Harm(amp) => {
-                    let amount = (scale * f64::from(6 * (amp + 1)) + 0.5).floor() as f32;
-                    match owner {
-                        Some(crate::targeting::Who::Entity(o)) => w.resource_mut::<DamageQueue>().add_by_entity(c, amount, (at.x, at.z), o),
-                        _ => w.resource_mut::<DamageQueue>().add(c, amount, Cause::Magic),
-                    }
-                }
-                Brew::Heal(amp) => {
-                    let max = w.get::<SpeciesId>(c).map_or(f32::MAX, |s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
-                    let amount = (scale * f64::from(4 * (amp + 1)) + 0.5).floor() as f32;
-                    if let Some(mut h) = w.get_mut::<Health>(c) {
-                        h.0 = (h.0 + amount).min(max);
+                Brew::Harm(amp) | Brew::Heal(amp) => {
+                    let undead = w.get::<Undead>(c).is_some();
+                    let harms = matches!(brew, Brew::Harm(_)) != undead;
+                    let base = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
+                    let amount = (scale * f64::from(base * (amp + 1)) + 0.5).floor() as f32;
+                    if harms {
+                        match owner {
+                            Some(crate::targeting::Who::Entity(o)) => w.resource_mut::<DamageQueue>().add_by_entity(c, amount, (at.x, at.z), o),
+                            _ => w.resource_mut::<DamageQueue>().add(c, amount, Cause::Magic),
+                        }
+                    } else {
+                        let max = w.get::<SpeciesId>(c).map_or(f32::MAX, |s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
+                        if let Some(mut h) = w.get_mut::<Health>(c) {
+                            h.0 = (h.0 + amount).min(max);
+                        }
                     }
                 }
             }

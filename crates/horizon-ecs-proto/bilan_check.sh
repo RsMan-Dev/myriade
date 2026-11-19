@@ -25,8 +25,29 @@ if [ "${1:-}" = "--record" ]; then
     old=$(grep -F -- "$key " bilan.last | head -n1 | awk '{print $NF}')
     [ -n "$old" ] && [ "$old" != "$new" ] && printf '%s|%s|%s|%s\n' "$2" "$key" "$old" "$new" >> bilan.drift
   done < "$now"
+  grep '^systems ' "${BILAN_LOG:-/dev/null}" > bilan.systems 2>/dev/null || ./bilan.sh 2>/dev/null | grep '^systems ' > bilan.systems
   cp "$now" bilan.last; echo "recorded $2"; rm -f "$now"; exit 0
 fi
+# The three systems that rose most (per scene) against `bilan.systems`, shown when a line comes out.
+risers() {
+  [ -f bilan.systems ] || return
+  grep '^systems ' "${BILAN_LOG:-/dev/null}" 2>/dev/null > /tmp/sys.now.$$ || ./bilan.sh 2>/dev/null | grep '^systems ' > /tmp/sys.now.$$
+  python3 - /tmp/sys.now.$$ bilan.systems <<'P'
+import sys,collections
+def load(p):
+    d={}
+    for l in open(p):
+        t=l.split()
+        if len(t)==4 and t[0]=='systems': d[(t[1],t[2])]=float(t[3])
+    return d
+n,o=load(sys.argv[1]),load(sys.argv[2])
+for sc in ('idle','active','zombie'):
+    r=sorted(((n[k]-o.get(k,0),k[1],o.get(k,0),n[k]) for k in n if k[0]==sc),reverse=True)[:3]
+    r=[x for x in r if x[0]>50]
+    if r: print("  systems that rose, scene %s: "%sc+"; ".join("%s %+.0f (%.0f -> %.0f)"%(x[1],x[0],x[2],x[3]) for x in r))
+P
+  rm -f /tmp/sys.now.$$
+}
 [ -f bilan.ref ] || { echo "no bilan.ref"; exit 2; }
 [ -f bilan.last ] || cp bilan.ref bilan.last
 fail=0
@@ -48,4 +69,5 @@ if [ -z "${BILAN_LOG:-}" ]; then
   sc=$(mktemp); ./species_cost.sh > "$sc" 2>&1 || fail=1
   grep -v '^ok [a-z_]* [0-9]*$' "$sc" | sed 's/^/species cost: /'; rm -f "$sc"
 fi
+[ $fail -ne 0 ] && risers
 rm -f "$now"; exit $fail

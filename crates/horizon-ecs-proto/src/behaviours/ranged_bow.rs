@@ -17,9 +17,11 @@ pub struct Params {
     pub radius: f32,
     /// The difficulty id (0 peaceful to 3 hard): the arrow's spread (`14 - 4 * id`) and its damage's draw.
     pub difficulty: i32,
+    /// The effect its arrows put on the creature they hit (a stray's slowness, a bogged's poison, a parched's weakness): (kind, level, ticks).
+    pub effect: Option<(crate::effects::Kind, i32, i32)>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2 };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2, effect: None };
 }
 /// The goal's state (`RangedBowAttackGoal`'s fields) and the bow in use (`using`: ticks the bow has been drawn).
 #[derive(Component, Clone, Copy, Debug)]
@@ -210,5 +212,5 @@ fn shoot(w: &mut World, e: Entity, who: Who, power: f32) {
     let dir = Vec3::new(xd, yd + dist * f64::from(0.2_f32), zd).normalize();
     let spread = 0.017_227_5 * f64::from((14 - id * 4) as f32);
     let v = Vec3::new((dir.x + triangle(0.0, spread)) * 1.6, (dir.y + triangle(0.0, spread)) * 1.6, (dir.z + triangle(0.0, spread)) * 1.6);
-    launch(w, Flight { damage: Damage::BySpeed(damage), ..Flight::ARROW }, start, v, Some(Who::Entity(e)));
+    launch(w, Flight { damage: Damage::BySpeed(damage), hit: b.effect.map_or(crate::projectile::OnHit::Nothing, |(k, a, t)| crate::projectile::OnHit::Effect(k, a, t)), ..Flight::ARROW }, start, v, Some(Who::Entity(e)));
 }

@@ -196,7 +196,9 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 }
 
 pub mod avoid_entity;
+pub mod breath_air;
 pub mod breed;
+pub mod swim_with_player;
 pub mod climb_on_powder_snow;
 pub mod do_nothing;
 pub mod silverfish_wake_up_friends;
@@ -212,6 +214,9 @@ pub mod bee;
 pub mod squid_goals;
 pub mod fly_stroll;
 pub mod float;
+pub mod defend_leash_holder;
+pub mod follow_caravan;
+pub mod follow_player_vehicle;
 pub mod follow_parent;
 pub mod look_at_player;
 pub mod melee;
@@ -233,6 +238,8 @@ pub mod fox_stalk_prey;
 pub mod fox_pounce;
 pub mod fox_sleep;
 pub mod fox_eat_berries;
+pub mod long_jump;
+pub mod ram;
 pub mod fox_search_for_items;
 pub mod fox_pick_up_loot;
 pub mod armadillo_state;
@@ -281,11 +288,30 @@ pub mod cat_relax_on_owner;
 pub mod cat_lie_on_block;
 pub mod cat_sit_on_block;
 pub mod ocelot_attack;
+pub mod posture;
+pub mod random_sitting;
+pub mod animal_panic;
+pub mod water_jump;
+pub mod play_with_items;
+pub mod charge_attack;
+pub mod swim_to_treasure;
+pub mod item_pickup;
+pub mod cube_attack;
+pub mod move_towards_restriction;
+pub mod fox_stroll_village;
+pub mod try_find_water;
+pub mod drowned_go_to_beach;
+pub mod drowned_swim_up;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &tempt::MODULE,
     &breed::MODULE,
+    &breath_air::MODULE,
+    &swim_with_player::MODULE,
+    &follow_caravan::MODULE,
+    &defend_leash_holder::MODULE,
+    &follow_player_vehicle::MODULE,
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,
@@ -309,6 +335,8 @@ pub static TABLE: &[&Module] = &[
     &swell::MODULE,
     &move_towards_target::MODULE,
     &ranged_attack::MODULE,
+    &water_jump::MODULE,
+    &play_with_items::MODULE,
     &leap_at_target::MODULE,
     &baby_follow_adult::MODULE,
     &rolled::MODULE,
@@ -377,4 +405,19 @@ pub static TABLE: &[&Module] = &[
     &cat_lie_on_block::MODULE,
     &cat_sit_on_block::MODULE,
     &ocelot_attack::MODULE,
+    &long_jump::MODULE,
+    &ram::MODULE,
+    &posture::MODULE,
+    &random_sitting::MODULE,
+    &animal_panic::MODULE,
+    &charge_attack::MODULE,
+    &swim_to_treasure::MODULE,
+    &item_pickup::MODULE,
+    &cube_attack::MODULE,
+    &move_towards_restriction::MODULE,
+    &move_towards_restriction::MODULE_LOOK,
+    &fox_stroll_village::MODULE,
+    &try_find_water::MODULE,
+    &drowned_go_to_beach::MODULE,
+    &drowned_swim_up::MODULE,
 ];

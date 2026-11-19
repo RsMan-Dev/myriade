@@ -211,7 +211,14 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 pub static SUN_BURN: crate::rules::Rule = crate::rules::Rule { name: "sun_burn", equip: equip_sun_burn, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 fn equip_sun_burn(world: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
-    world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0) });
+    world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0), flee: false });
+    world.resource_mut::<SunDirty>().0.push(e);
+}
+/// The rule `sun_flee`: the creature that leaves in daylight instead of burning (the enderman: the same draw, a teleport at the hit).
+pub static SUN_FLEE: crate::rules::Rule = crate::rules::Rule { name: "sun_flee", equip: equip_sun_flee, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_sun_flee(world: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+    let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
+    world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0), flee: true });
     world.resource_mut::<SunDirty>().0.push(e);
 }
 /// The monster's `Attack` data from its species (the melee module's).
@@ -366,11 +373,14 @@ pub fn melee_run(
                     let (tick, amount, from) = (clock.0, a.damage, (pos.0.x, pos.0.z));
                     let by = Who::Entity(e);
                     cmd.queue(move |w: &mut World| w.resource_mut::<PlayerState>().hurt(tick, id, amount, from, Some(by)));
+                    if effects {
+                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, Who::Player(id)));
+                    }
                 }
                 Who::Entity(t) => {
                     dq.add_by_entity(t, a.damage, (pos.0.x, pos.0.z), e);
                     if effects {
-                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, t));
+                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, Who::Entity(t)));
                     }
                 }
             }
@@ -405,6 +415,8 @@ pub struct SunFired(pub Vec<Entity>);
 pub struct BurnsInDay {
     eye: f64,
     block: (i32, i32, i32),
+    /// The sun does not set it alight: it teleports away (`Enderman.customServerAiStep`).
+    flee: bool,
 }
 /// Daylight, sky seen from the eyes and light enough: each tick the monster burns with probability
 /// `(brightness - 0.4) * 2 / 30` (`Mob.isSunBurnTick`); one draw is armed in the wheel, its tick is `token`.
@@ -430,7 +442,8 @@ fn failures_before(rng: &mut Rng, p: f64) -> u64 {
     let u = rng.next_f64().max(1.0e-12);
     (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64
 }
-/// Looks at the sun again for the monsters an event names and those whose eye changed block: no scan of the others.
+/// Looks at the sun again for the monsters an event names and those whose eye changed block: only the animals whose physics is
+/// active (`Moving`, a sparse marker) are looked at, not every burner each tick (`Changed<Bounds>` scanned them all).
 #[allow(clippy::type_complexity)]
 fn sun_eval(
     clock: Res<Clock>,
@@ -440,7 +453,7 @@ fn sun_eval(
     mut now_fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
     mut p: ParamSet<(
-        Query<(Entity, &Pos, &BurnsInDay), Changed<Bounds>>,
+        Query<(Entity, &Pos, &BurnsInDay), With<Moving>>,
         Query<(&Pos, &mut BurnsInDay, &mut Rng, Has<Exposed>)>,
     )>,
     mut cmd: Commands,
@@ -489,7 +502,13 @@ fn sun_burn(
         if x.token != now {
             continue;
         }
-        if !fs.in_water {
+        if b.flee {
+            // Not done: the gate of 600 ticks since the target was taken (`targetChangeTime`).
+            cmd.queue(move |w: &mut World| {
+                w.entity_mut(e).remove::<crate::targeting::Target>();
+                crate::behaviours::ender_teleport::random(w, e);
+            });
+        } else if !fs.in_water {
             let until = now + 160;
             match burning {
                 None => {

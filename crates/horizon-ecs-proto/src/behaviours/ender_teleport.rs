@@ -16,15 +16,20 @@ pub struct Params {
     pub dry_ground: bool,
     /// A projectile is dodged: no harm and 64 tries.
     pub dodges: bool,
+    /// The water hurts it (`isSensitiveToWater`).
+    pub water: bool,
 }
 impl Params {
-    pub const ENDERMAN: Self = Self { avoid: Some("minecraft:enderman_does_not_teleport_to"), dry_ground: true, dodges: true };
+    pub const ENDERMAN: Self = Self { avoid: Some("minecraft:enderman_does_not_teleport_to"), dry_ground: true, dodges: true, water: true };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Teleporter(pub Params);
 /// Projectiles do it no harm (`Enderman.hurtServer`: a projectile is dodged unless it rides).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Dodges;
+/// The water hurts it (`Enderman.isSensitiveToWater`); read by the breathing system of the creatures in a fluid.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct WaterSensitive;
 
 pub static MODULE: Module = Module { name: "ender_teleport", flags: 0, equip, can_use: never, damaged, requires: &[Cap::Body, Cap::Living], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
@@ -32,6 +37,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Teleporter(p));
     if p.dodges {
         w.entity_mut(e).insert(Dodges);
+    }
+    if p.water {
+        w.entity_mut(e).insert(WaterSensitive);
     }
 }
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
@@ -89,9 +97,13 @@ pub fn teleport_to(w: &mut World, e: Entity, target: Vec3) -> bool {
     if p.dry_ground && mw.fluid(bx, by, bz) == horizon_client_lib::blocks::Fluid::Water {
         return false;
     }
-    teleport(w, e, Vec3::new(target.x, ny, target.z));
-    crate::goals::stop_nav(w, e);
+    land(w, e, Vec3::new(target.x, ny, target.z));
     true
+}
+/// The move of every teleport (the enderman's, the pets'): the entity is put at the spot and its path dropped.
+pub fn land(w: &mut World, e: Entity, at: Vec3) {
+    teleport(w, e, at);
+    crate::goals::stop_nav(w, e);
 }
 /// `Enderman.teleportRandom`: a spot within 32 blocks, 32 up or down.
 pub fn random(w: &mut World, e: Entity) -> bool {

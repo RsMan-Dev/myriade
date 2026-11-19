@@ -22,14 +22,7 @@ fn target_of(w: &World, e: Entity) -> Option<(Who, targeting::Info)> {
 /// One strike at the target (`Mob.doHurtTarget`): the attack damage, from the animal.
 fn hit(w: &mut World, e: Entity, who: Who) {
     let amount = w.get::<AttackDamage>(e).map_or(1.0, |d| d.0.max(1.0));
-    let pos = w.get::<Pos>(e).map_or((0.0, 0.0), |p| (p.0.x, p.0.z));
-    match who {
-        Who::Player(id) => {
-            let tick = w.resource::<Clock>().0;
-            w.resource_mut::<crate::hostile::PlayerState>().hurt(tick, id, amount, pos, Some(Who::Entity(e)));
-        }
-        Who::Entity(t) => w.resource_mut::<DamageQueue>().add_by_entity(t, amount, pos, e),
-    }
+    crate::hostile::strike(w, e, who, amount);
 }
 fn wanted_active(w: &World, e: Entity) -> bool {
     w.get::<MoveTo>(e).is_some_and(|m| m.active)

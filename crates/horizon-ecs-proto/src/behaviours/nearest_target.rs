@@ -47,7 +47,7 @@ impl Params {
 pub struct Nearest {
     pub p: Params,
     pub slot: u8,
-    mask: u64,
+    mask: crate::species::SpeciesSet,
     baby: Option<bool>,
     /// `baby_on_land`: the candidate must also be out of the water (`baby_turtle_on_land`).
     land: bool,
@@ -58,7 +58,7 @@ pub struct Nearest {
 impl Nearest {
     /// An instance that can never find anything costs nothing: it is never armed.
     fn inert(&self) -> bool {
-        !self.p.players && self.mask == 0
+        !self.p.players && self.mask.is_empty()
     }
 }
 /// The instances of the animal, by `Inst::nth`.
@@ -79,17 +79,20 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+/// `LivingEntity.getVisibilityPercent` of an invisible target with no armour: `0.7 * 0.1`.
+const INVISIBLE: f64 = 0.07;
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mw = w.resource::<Level>().mw.0;
-    let mut mask = 0u64;
-    for (i, sp) in crate::species::registry().species.iter().enumerate().take(64) {
+    let mut ids = Vec::new();
+    for (i, sp) in crate::species::registry().species.iter().enumerate() {
         let named = p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name));
         let hostile = p.hostile && crate::cow::mob_kind(sp.name).category == "monster";
         if (named || p.any || hostile) && !p.except.contains(&sp.name) {
-            mask |= 1 << i;
+            ids.push(i);
         }
     }
+    let mask = crate::species::SpeciesSet::of(ids);
     let baby = match p.predicate {
         Some("baby") => Some(true),
         Some("adult") => Some(false),
@@ -159,9 +162,16 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if n.p.players {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
         let ps = w.resource::<crate::hostile::PlayerState>();
+        // No player has an effect (the usual): the list is not asked per candidate.
+        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
         let mut best: Option<(u32, f64)> = None;
         w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
-            let reach = targeting::sight_range(range, ps.visibility(p.id));
+            let reach = if any_effect {
+                let seen = if crate::effects::player_has(w, p.id, crate::effects::Kind::Invisibility) { INVISIBLE } else { 1.0 };
+                targeting::sight_range(range, ps.visibility(p.id) * seen)
+            } else {
+                targeting::sight_range(range, ps.visibility(p.id))
+            };
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
@@ -175,14 +185,14 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
         });
         found = best.map(|b| Who::Player(b.0));
-    } else if n.mask != 0 {
+    } else if !n.mask.is_empty() {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
             if c == e {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
@@ -194,7 +204,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         cands.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for (_, c, cp, ceye) in cands {
             let feet = d2(pos, cp);
-            if feet > targeting::sight_range(range, 1.0).powi(2) || n.p.beyond_sqr.is_some_and(|d| feet <= d) {
+            let vis = if w.get::<crate::effects::Invisible>(c).is_some() { INVISIBLE } else { 1.0 };
+            if feet > targeting::sight_range(range, vis).powi(2) || n.p.beyond_sqr.is_some_and(|d| feet <= d) {
                 continue;
             }
             if mw.line_of_sight_for(Some(pos.y), from, Vec3::new(cp.x, cp.y + ceye, cp.z)) {

@@ -50,8 +50,8 @@ pub struct Avoider {
     player_when: Option<fn(&Player) -> bool>,
     target_when: Option<fn(&World, Entity) -> bool>,
     target_roll: Option<fn(&World, Entity, f64) -> bool>,
-    /// The species the goal avoids, as a mask by `SpeciesId`.
-    mask: u64,
+    /// The species the goal avoids.
+    mask: crate::species::SpeciesSet,
     pub slot: u8,
     from: Vec3,
     player: u32,
@@ -85,15 +85,19 @@ pub static MODULE: Module = Module {
 };
 /// The union of the species any avoid goal of the process lists (a superset is harmless): the move of an animal of another species
 /// matters to nobody, and its column change does not scan the index.
-static LISTED_ANYWHERE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// The species a `what` names, as a mask by `SpeciesId` (at most 64 species).
-fn species_mask(what: Avoid) -> u64 {
+static LISTED_ANYWHERE: std::sync::OnceLock<Box<[std::sync::atomic::AtomicU64]>> = std::sync::OnceLock::new();
+fn listed_anywhere() -> &'static [std::sync::atomic::AtomicU64] {
+    LISTED_ANYWHERE.get_or_init(|| (0..crate::species::registry().species.len().div_ceil(64).max(1)).map(|_| std::sync::atomic::AtomicU64::new(0)).collect())
+}
+/// The species a `what` names.
+pub(crate) fn species_mask(what: Avoid) -> crate::species::SpeciesSet {
+    use crate::species::SpeciesSet;
     let reg = crate::species::registry();
     match what {
-        Avoid::Player => 0,
-        Avoid::Species(ids) => ids.iter().filter(|&&i| i < 64).fold(0, |m, &i| m | 1 << i),
-        Avoid::Named(names) => reg.species.iter().enumerate().take(64).filter(|(_, s)| names.contains(&s.name)).fold(0, |m, (i, _)| m | 1 << i),
-        Avoid::Monsters => reg.species.iter().enumerate().take(64).filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").fold(0, |m, (i, _)| m | 1 << i),
+        Avoid::Player => SpeciesSet::empty(),
+        Avoid::Species(ids) => SpeciesSet::of(ids.iter().map(|&i| i as usize)),
+        Avoid::Named(names) => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| names.contains(&s.name)).map(|(i, _)| i)),
+        Avoid::Monsters => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").map(|(i, _)| i)),
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
@@ -115,7 +119,10 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         spot: (0.0, 0.0, 0.0),
     };
     if !matches!(p.what, Avoid::Player) {
-        LISTED_ANYWHERE.fetch_or(a.mask, std::sync::atomic::Ordering::Relaxed);
+        for (i, w) in listed_anywhere().iter().enumerate() {
+            let bits = (0..64).filter(|&b| i * 64 + b < 256 && a.mask.contains((i * 64 + b) as u8)).fold(0u64, |m, b| m | 1 << b);
+            w.fetch_or(bits, std::sync::atomic::Ordering::Relaxed);
+        }
         w.entity_mut(e).insert(AvoidsAnimals);
     }
     match w.get_mut::<Avoiders>(e) {
@@ -172,7 +179,7 @@ fn cell_moves(
         return;
     }
     let listed = !listing.is_empty();
-    let listed_mask = LISTED_ANYWHERE.load(std::sync::atomic::Ordering::Relaxed);
+    let listed_mask = listed_anywhere();
     for &m in &moved.0 {
         if let Ok((_, avs)) = q.get(m) {
             reqs.0.extend(avs.0.iter().map(|a| Req::Start(m, a.slot)));
@@ -181,7 +188,7 @@ fn cell_moves(
             continue;
         }
         let Ok((mp, sid)) = ids.get(m) else { continue };
-        if sid.0 >= 64 || listed_mask >> sid.0 & 1 == 0 {
+        if listed_mask.get(sid.0 as usize / 64).is_none_or(|w| w.load(std::sync::atomic::Ordering::Relaxed) >> (sid.0 % 64) & 1 == 0) {
             continue;
         }
         let at = mp.0;
@@ -195,7 +202,7 @@ fn cell_moves(
             }
             for a in &avs.0 {
                 if !matches!(a.what, Avoid::Player)
-                    && a.mask >> sid.0 & 1 == 1
+                    && a.mask.contains(sid.0)
                     && in_reach(a, pos.0, at)
                 {
                     reqs.0.push(Req::Start(c, a.slot));
@@ -243,7 +250,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option
                     && (tp.x - pos.x).abs() <= a.max_dist
                     && (tp.z - pos.z).abs() <= a.max_dist
                     && (tp.y - pos.y).abs() <= 3.0 + a.max_dist
-                    && a.mask >> sid.0 & 1 == 1
+                    && a.mask.contains(sid.0)
                     && a.target_when.is_none_or(|f| f(w, t));
                 if boxed {
                     c.push((d2(pos, tp), t, tp));
