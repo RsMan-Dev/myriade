@@ -1,6 +1,6 @@
 //! The clients of the capabilities (status effects, teleport) wired by rules and data: the blow that poisons, the hunger a husk gives a player,
 //! the undead that poison does not hurt (against the `Mob`), the invisible player a monster does not see, the enderman that leaves the water.
-mod common;
+use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
