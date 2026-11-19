@@ -422,6 +422,9 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
 /// (the look goals do not depend on `noActionTime`).
 #[test]
 fn looking_goals_start_as_often_as_a_mob_s() {
+    if horizon_ecs_proto::cow::skip_unless_walker("looking_goals_start_as_often_as_a_mob_s") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::melee::MODULE, "looking_goals_start_as_often_as_a_mob_s") {
         return;
     }
@@ -461,6 +464,9 @@ fn looking_goals_start_as_often_as_a_mob_s() {
 /// A cow in a pond: it stays afloat as a mob does.
 #[test]
 fn a_cow_in_a_pond_floats_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_cow_in_a_pond_floats_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }

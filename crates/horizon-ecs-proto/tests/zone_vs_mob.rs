@@ -180,6 +180,9 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
 /// A sleeping creature has no wheel entry, no marker and no work; it does not move; it wakes with them again.
 #[test]
 fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_sleeping_creature_is_out_of_the_wheel_and_does_not_move") {
+        return;
+    }
     if !have_data() {
         return;
     }

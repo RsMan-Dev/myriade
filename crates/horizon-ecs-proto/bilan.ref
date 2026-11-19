@@ -31,3 +31,4 @@ crowd 0.8 (cow, 2000, 0 player)|ordered 19711
 zone near ring (cow, 6, 10)|ecs 4959.5
 zone mid ring (cow, 6, 10)|ecs 31.2
 zone far ring (cow, 6, 10)|ecs 0.1
+items at rest (2000 stacks)|ecs 68

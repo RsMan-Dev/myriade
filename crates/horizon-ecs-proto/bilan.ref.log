@@ -3,3 +3,4 @@ f4ba0711c6 reference of 2026-11-19 after spots, Body split, when (the head f4ba0
 2dbc7394eb release build (CARGO_INCREMENTAL=0) of 2dbc7394eb: the first reference came from an incremental build, 5 to 8 % too high
 53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference
 53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference
+e3596e44b1 added the items line (68 instr per item and tick, 2 000 stacks at rest)
