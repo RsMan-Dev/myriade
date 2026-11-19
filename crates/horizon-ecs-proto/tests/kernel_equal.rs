@@ -76,6 +76,9 @@ fn the_occupancy_masks_equal_the_reference_in_cube_worlds_and_after_changes() {
                 let (new, old, kernel) = (run(world, c), run_reference(world, c), run_kernel(world, c));
                 assert!(same(&new, &old), "seed {seed} round {round}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
                 assert!(same(&kernel, &old));
+                let scene = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
+                let mut scene2 = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
+                assert_eq!(occ.no_collision(scene, c.bounds), scene2.unobstructed(c.bounds).unwrap_or(false), "no_collision {:?}", c.bounds);
                 calls += 1;
             }
             if !tricky {

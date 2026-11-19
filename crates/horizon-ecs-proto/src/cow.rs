@@ -689,6 +689,13 @@ pub struct Level {
     /// The walls are at |x| or |z| = `half`.
     pub half: i32,
 }
+impl Level {
+    /// `MobWorld::no_collision` through the occupancy masks.
+    pub fn no_collision(&self, b: Aabb) -> bool {
+        let mw = self.mw.0;
+        self.occ.no_collision(SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b)
+    }
+}
 #[derive(Resource, Clone, Copy)]
 pub struct Config {
     pub sleep: bool,
@@ -1796,7 +1803,7 @@ fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &
     let mw = level.mw.0;
     if fs.eye_in_water {
         vel.0 = Vec3::new(vel.0.x * f64::from(0.99_f32), (vel.0.y + f64::from(5.0e-4_f32)).min(f64::from(0.06_f32)), vel.0.z * f64::from(0.99_f32));
-    } else if mw.no_collision(bounds.0) {
+    } else if level.no_collision(bounds.0) {
         vel.0.y -= body.gravity;
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
@@ -1913,7 +1920,7 @@ pub(crate) fn travel_one(
         let m = vel.0;
         let ahead = bounds.0.move_by(Vec3::new(m.x, m.y + f64::from(0.6_f32) - pos.0.y + old_y, m.z));
         let mw = level.mw.0;
-        if c.horizontal && mw.no_collision(ahead) && !mw.contains_any_liquid(ahead) {
+        if c.horizontal && level.no_collision(ahead) && !mw.contains_any_liquid(ahead) {
             vel.0.y = f64::from(0.3_f32);
         }
         return false;

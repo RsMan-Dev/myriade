@@ -103,6 +103,27 @@ impl Occupancy {
     }
 }
 
+impl Occupancy {
+    /// `SceneCollisions::unobstructed(bounds)` (no block collides with the box), the same answer: a plain cube that overlaps the
+    /// box collides, nothing else near means it does not; otherwise the kernel.
+    pub fn no_collision(&self, scene: SceneCollisions<'_, '_>, bounds: Aabb) -> bool {
+        {
+            let mut g = self.inner.lock().unwrap();
+            let Inner { map, recent, colliders } = &mut *g;
+            colliders.clear();
+            if collect(map, recent, &self.built, scene.world, scene.binding, bounds, colliders).is_ok() {
+                let free = colliders.is_empty();
+                colliders.clear();
+                self.fast.fetch_add(1, Relaxed);
+                return free;
+            }
+        }
+        self.fallback.fetch_add(1, Relaxed);
+        let mut scene = scene;
+        scene.unobstructed(bounds).unwrap_or(false)
+    }
+}
+
 fn classify(binding: &horizon_world::block_collision::BlockCollisionRegistry<'_>, s: BlockStateId) -> u8 {
     if !binding.may_collide(s) && !binding.reaches_out(s) {
         0

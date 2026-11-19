@@ -325,7 +325,7 @@ fn fly_controls(
                 let clear = (1..=steps).all(|i| {
                     let f = f64::from(i) / f64::from(steps);
                     let dd = Vec3::new(t.x * f, t.y * f, t.z * f);
-                    level.mw.0.no_collision(horizon_core::geometry::Aabb::new(b.0.min_position().add_vector(dd), b.0.max_position().add_vector(dd)))
+                    level.no_collision(horizon_core::geometry::Aabb::new(b.0.min_position().add_vector(dd), b.0.max_position().add_vector(dd)))
                 });
                 if clear {
                     let speed = 0.06 * 5.0 / 3.0;
