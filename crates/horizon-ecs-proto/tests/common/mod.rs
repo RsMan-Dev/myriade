@@ -38,6 +38,16 @@ impl MobRef {
         self.searches.push(0);
         self.mobs.len() - 1
     }
+    /// A mob with the id given: the brain's gates shuffle with a random seeded by the id, and the first draws of Java's generator
+    /// are correlated for neighbouring seeds (sequential ids make the golems choose alike); vanilla seeds from the level random.
+    pub fn add_id(&mut self, at: Vec3, id: u32) -> usize {
+        let mut m = Mob::new(id, self.kind.clone(), at, 0.0);
+        m.persistent = true;
+        m.ai.no_action_time = 100;
+        self.mobs.push(m);
+        self.searches.push(0);
+        self.mobs.len() - 1
+    }
     /// A mob of another type (the process's species is `self.kind`).
     pub fn add_kind(&mut self, at: Vec3, kind: Arc<mobs::MobType>) -> usize {
         let mut m = Mob::new(self.mobs.len() as u32 + 1, kind, at, 0.0);

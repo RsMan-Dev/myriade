@@ -33,7 +33,7 @@ fn pair(n: usize) -> Pair {
     let ids = (0..n)
         .map(|k| {
             let (x, z) = (-50.0 + 12.0 * (k % 9) as f64 + 0.5, -40.0 + 12.0 * (k / 9) as f64 + 0.5);
-            let i = r.add(Vec3::new(x, 1.0, z));
+            let i = r.add_id(Vec3::new(x, 1.0, z), ((k as u32 + 1).wrapping_mul(0x9E37_79B1) >> 4) | 1);
             let e = spawn_species(&mut h.world, &sp, x, z, (k as u64 + 1 + std::env::var("SEED").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) * 1000).wrapping_mul(0x9E37_79B9_7F4A_7C15));
             h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
             h.world.resource_mut::<Entered>().0.push(e);
@@ -43,6 +43,13 @@ fn pair(n: usize) -> Pair {
     Pair { r, h, ids }
 }
 impl Pair {
+    /// The transport cooldown made long on both sides: the golems stroll for as long as the control lasts.
+    fn long_cooldown(&mut self, ticks: i32) {
+        for &(i, e) in &self.ids {
+            animal_brain::set_transport_cooldown(&mut self.r.mobs[i], ticks);
+            set(&mut self.h.world, e, &TRANSPORT_ITEMS_COOLDOWN_TICKS, MemValue::Int(i64::from(ticks)), Some(ticks as u64));
+        }
+    }
     fn step(&mut self) {
         self.r.step(None);
         self.h.tick();
@@ -153,12 +160,6 @@ fn the_golem_strolls_while_the_transport_cooldown_lasts_as_a_mob_does() {
     let dist = |s: usize| moved.iter().map(|m| if s == 0 { m.0 } else { m.1 }).sum::<f64>() / n as f64;
     eprintln!("cooldown gone: mob {:.1} ({}) ecs {:.1} ({}); walked more than a block: mob {}/{n} ecs {}/{n}; mean distance: mob {:.2} ecs {:.2}", mg.0, mg.1, eg.0, eg.1, walked(0), walked(1), dist(0), dist(1));
     assert!(mg.1 == n && eg.1 == n && (mg.0 - eg.0).abs() < 4.0, "cooldown: mob {:.1}, ecs {:.1}", mg.0, eg.0);
-    // OPEN divergence (suivi/ecs-portage/CERVEAUX.md): the `Mob` golems start about 1.4 times as many walks and walk a little farther
-    // in the same 60 ticks (targets chosen by the same rules, the picks measured equal); with STRICT the check is made.
-    if std::env::var_os("STRICT").is_some() {
-        assert!(walked(0).abs_diff(walked(1)) <= 8, "walkers: mob {}, ecs {}", walked(0), walked(1));
-        assert!((dist(0) - dist(1)).abs() < 0.3, "distance: mob {:.2}, ecs {:.2}", dist(0), dist(1));
-    }
     assert!(walked(1) > 0 && walked(0) > 0);
 }
 
@@ -179,4 +180,36 @@ fn a_memory_expires_to_the_tick() {
         pattern.push(if present(&p.h.world, e, &LOOK_TARGET) { '1' } else { '0' });
     }
     assert_eq!(pattern, "11111000", "present for five ticks after the one it was written in");
+}
+
+/// 60 golems with a long transport cooldown, 100 to 400 ticks (the start of the two sides is settled): how many walks they begin
+/// and the share of the ticks they spend walking (a walk target present), on both sides.
+#[test]
+fn the_golem_strolls_as_much_as_a_mob_does() {
+    if skip() {
+        return;
+    }
+    let mut p = pair(60);
+    p.long_cooldown(2000);
+    let n = p.ids.len();
+    let (mut starts, mut ticks) = ([0usize; 2], [0usize; 2]);
+    let mut was = vec![[false; 2]; n];
+    for t in 1..=400 {
+        p.step();
+        if t < 100 {
+            continue;
+        }
+        for (k, &(i, e)) in p.ids.iter().enumerate() {
+            let on = [mob_has(&p.r.mobs[i], "walk_target"), present(&p.h.world, e, &WALK_TARGET)];
+            for s in 0..2 {
+                starts[s] += usize::from(on[s] && !was[k][s]);
+                ticks[s] += usize::from(on[s]);
+            }
+            was[k] = on;
+        }
+    }
+    eprintln!("walks begun: mob {} ecs {}; golem-ticks with a walk target: mob {} ecs {}", starts[0], starts[1], ticks[0], ticks[1]);
+    let near = |a: usize, b: usize| (a as f64 - b as f64).abs() <= 0.15 * a.max(b) as f64;
+    assert!(near(starts[0], starts[1]), "walks begun: mob {}, ecs {}", starts[0], starts[1]);
+    assert!(near(ticks[0], ticks[1]), "ticks walking: mob {}, ecs {}", ticks[0], ticks[1]);
 }
