@@ -106,7 +106,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let mut l = w.get::<Lay>(e).unwrap().clone();
     let found = {
         let mw = w.resource::<Level>().mw.0;
-        l.walk.find_nearest(base, mw, valid)
+        l.walk.may_find(base, mw, |s| mw.has_tag("minecraft:sand", &mw.facts.get(s).name)) && l.walk.find_nearest(base, mw, valid)
     };
     l.next_start = countdown;
     *w.get_mut::<Lay>(e).unwrap() = l;

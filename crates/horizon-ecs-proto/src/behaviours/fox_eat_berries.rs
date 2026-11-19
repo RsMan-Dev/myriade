@@ -109,7 +109,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let mut m = w.get::<MoveToBlock>(e).unwrap().clone();
     let found = {
         let mw = w.resource::<Level>().mw.0;
-        m.find_nearest(base, mw, has_berries)
+        m.may_find(base, mw, |s| matches!(&*mw.facts.get(s).name, "minecraft:sweet_berry_bush" | "minecraft:cave_vines" | "minecraft:cave_vines_plant")) && m.find_nearest(base, mw, has_berries)
     };
     *w.get_mut::<MoveToBlock>(e).unwrap() = m;
     w.get_mut::<BerrySearch>(e).unwrap().next = next;

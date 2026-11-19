@@ -13,7 +13,7 @@ fn main() {
     let arg = |i: usize, d: usize| a.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
     let (n, ticks) = (arg(2, 3000), arg(3, 300));
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
-    let spacing = 2.0;
+    let spacing: f64 = std::env::var("SPACING").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
     let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
     let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") || scene.starts_with("orb") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {

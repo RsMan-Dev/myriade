@@ -83,6 +83,9 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
+/// The union of the species any avoid goal of the process lists (a superset is harmless): the move of an animal of another species
+/// matters to nobody, and its column change does not scan the index.
+static LISTED_ANYWHERE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// The species a `what` names, as a mask by `SpeciesId` (at most 64 species).
 fn species_mask(what: Avoid) -> u64 {
     let reg = crate::species::registry();
@@ -112,6 +115,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         spot: (0.0, 0.0, 0.0),
     };
     if !matches!(p.what, Avoid::Player) {
+        LISTED_ANYWHERE.fetch_or(a.mask, std::sync::atomic::Ordering::Relaxed);
         w.entity_mut(e).insert(AvoidsAnimals);
     }
     match w.get_mut::<Avoiders>(e) {
@@ -168,6 +172,7 @@ fn cell_moves(
         return;
     }
     let listed = !listing.is_empty();
+    let listed_mask = LISTED_ANYWHERE.load(std::sync::atomic::Ordering::Relaxed);
     for &m in &moved.0 {
         if let Ok((_, avs)) = q.get(m) {
             reqs.0.extend(avs.0.iter().map(|a| Req::Start(m, a.slot)));
@@ -176,6 +181,9 @@ fn cell_moves(
             continue;
         }
         let Ok((mp, sid)) = ids.get(m) else { continue };
+        if sid.0 >= 64 || listed_mask >> sid.0 & 1 == 0 {
+            continue;
+        }
         let at = mp.0;
         idx.for_radius(at.x, at.z, REACH, |c| {
             let Ok((pos, avs)) = q.get(c) else { return };

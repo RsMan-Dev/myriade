@@ -4,3 +4,4 @@ f4ba0711c6 reference of 2026-11-19 after spots, Body split, when (the head f4ba0
 53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference
 53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference
 e3596e44b1 added the items line (68 instr per item and tick, 2 000 stacks at rest)
+dca8f1391b idle lines and items become slopes (500 to 2000 creatures); their reference is the one measured at 2dbc7394eb with the same script (items: head, the line did not exist there); the fixed cost is the line 'schedule at rest'

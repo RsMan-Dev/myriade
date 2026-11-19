@@ -33,24 +33,26 @@ pub struct CellMoves(pub Vec<Entity>);
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GoalSlot(pub u8);
 
+/// The most entries (goals and targets together) a selector holds: a species that has more is an error of the registry at the freeze.
+pub const MAX_ENTRIES: usize = 32;
 /// `GoalSelector`: the animal's entries (module, priority, flags from the module) in order; `running` and `pending` are
-/// slot bitmasks (16 goals at most); `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and
+/// slot bitmasks (32 goals at most, `MAX_ENTRIES`); `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and
 /// starts when it frees. Resolved once at creation: nothing is looked up by name afterwards.
 #[derive(Component, Clone)]
 #[component(on_add = goalset_added, on_insert = goalset_counted, on_discard = goalset_uncounted)]
 pub struct GoalSet {
     entries: &'static [Entry],
-    nth: [u8; 16],
-    running: u16,
-    pending: u16,
+    nth: [u8; MAX_ENTRIES],
+    running: u32,
+    pending: u32,
     lock: [Option<u8>; 4],
     /// Some module wants to hear that a goal started or ended.
     watchers: bool,
 }
 impl GoalSet {
     pub fn new(entries: &'static [Entry]) -> Self {
-        assert!(entries.len() <= 16, "a selector holds 16 goals at most");
-        let mut nth = [0; 16];
+        debug_assert!(entries.len() <= MAX_ENTRIES, "a selector holds {MAX_ENTRIES} entries at most: the registry refuses a larger species when it freezes");
+        let mut nth = [0; MAX_ENTRIES];
         for (i, e) in entries.iter().enumerate() {
             nth[i] = entries[..i].iter().filter(|o| std::ptr::eq(o.module, e.module)).count() as u8;
         }
@@ -103,9 +105,9 @@ impl GoalSet {
         (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority && self.entries[j as usize].module.interruptable))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
-    pub fn start(&mut self, slot: u8) -> u16 {
+    pub fn start(&mut self, slot: u8) -> u32 {
         let flags = self.entries[slot as usize].module.flags;
-        let mut stopped = 0u16;
+        let mut stopped = 0u32;
         for b in 0..4 {
             if flags >> b & 1 == 1
                 && let Some(j) = self.lock[b]
@@ -113,7 +115,7 @@ impl GoalSet {
                 stopped |= 1 << j;
             }
         }
-        for j in 0..16 {
+        for j in 0..MAX_ENTRIES as u8 {
             if stopped >> j & 1 == 1 {
                 self.stop(j);
             }
@@ -744,7 +746,7 @@ pub fn arm_timers(w: &mut World, e: Entity) {
     crate::brain::arm(w, e);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     let (entries, n) = (g.entries, g.len());
-    let insts: [Inst; 16] = std::array::from_fn(|i| Inst { slot: i as u8, nth: g.nth[i] });
+    let insts: [Inst; MAX_ENTRIES] = std::array::from_fn(|i| Inst { slot: i as u8, nth: g.nth[i] });
     for (i, en) in entries.iter().enumerate().take(n) {
         (en.module.arm)(w, e, insts[i]);
     }
@@ -930,7 +932,7 @@ pub fn force_start(w: &mut World, e: Entity, slot: u8) {
         }
         g.start(slot)
     };
-    for s in 0..16u8 {
+    for s in 0..MAX_ENTRIES as u8 {
         if stopped >> s & 1 == 1
             && let Some((sm, si)) = of(w, e, s)
         {
@@ -997,7 +999,7 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         return;
     }
     let stopped = w.get_mut::<GoalSet>(e).unwrap().start(slot);
-    for s in 0..16u8 {
+    for s in 0..MAX_ENTRIES as u8 {
         if stopped >> s & 1 == 1 {
             let (sm, si) = of(w, e, s).unwrap();
             (sm.stop)(w, e, si);
@@ -1329,7 +1331,7 @@ mod tests {
         }
         let (stroll, random, tempt, panic, float, look, follow, breed) =
             (s(&stroll::MODULE), s(&random_look::MODULE), s(&tempt::MODULE), s(&panic::MODULE), s(&float::MODULE), s(&look_at_player::MODULE), s(&follow_parent::MODULE), s(&breed::MODULE));
-        let mask = |slots: &[u8]| slots.iter().fold(0u16, |m, s| m | 1 << s);
+        let mask = |slots: &[u8]| slots.iter().fold(0u32, |m, s| m | 1 << s);
         g.start(stroll);
         assert!(!g.replaceable(random), "random look (7) cannot take MOVE from the stroll (5)");
         assert!(g.replaceable(tempt) && g.replaceable(panic) && g.replaceable(float));

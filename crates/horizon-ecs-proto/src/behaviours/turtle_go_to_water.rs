@@ -103,7 +103,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let mut s = w.get::<Seek>(e).unwrap().clone();
     let found = {
         let mw = w.resource::<Level>().mw.0;
-        s.walk.find_nearest(base, mw, is_water)
+        s.walk.may_find(base, mw, |s| &*mw.facts.get(s).name == "minecraft:water") && s.walk.find_nearest(base, mw, is_water)
     };
     s.countdown = countdown;
     *w.get_mut::<Seek>(e).unwrap() = s;
