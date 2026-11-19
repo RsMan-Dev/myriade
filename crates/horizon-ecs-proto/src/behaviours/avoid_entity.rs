@@ -51,6 +51,11 @@ pub struct Avoider {
 /// The avoid goals of the animal, by `Inst::nth`.
 #[derive(Component, Clone)]
 pub struct Avoiders(pub Vec<Avoider>);
+/// The animal has an avoid goal whose target is a listed species: the moves of the other animals matter to it (the
+/// systems do nothing, not even scan the index, in a world with none).
+#[derive(Component, Clone, Copy)]
+#[component(storage = "SparseSet")]
+pub struct AvoidsAnimals;
 /// An avoid goal runs: which instance (`nth`).
 #[derive(Component, Clone, Copy)]
 #[component(storage = "SparseSet")]
@@ -85,6 +90,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         player: 0,
         spot: (0.0, 0.0),
     };
+    if matches!(p.what, Avoid::Species(_)) {
+        w.entity_mut(e).insert(AvoidsAnimals);
+    }
     match w.get_mut::<Avoiders>(e) {
         Some(mut v) => {
             debug_assert_eq!(v.0.len(), inst.nth as usize);
@@ -96,6 +104,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
+    // Each wake-up system returns at once in a world with no avoider (a move of any animal would scan 24 blocks of index).
     s.add_systems((wake_on_player, cell_moves, avoid_run).chain().in_set(slot));
 }
 /// Whether `to` is within the range of the avoid goal from `from`: the distance and the height (`|dy| <= max + 3`).
@@ -104,7 +113,10 @@ fn in_reach(a: &Avoider, from: Vec3, to: Vec3) -> bool {
     (to.y - from.y).abs() <= a.max_dist + 3.0 && d2(from, to) <= r * r
 }
 /// A player came within range (or was within it and moved out of it: no wake, the goal decides).
-fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, mut reqs: ResMut<Requests>) {
+fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, any: Query<(), With<Avoiders>>, mut reqs: ResMut<Requests>) {
+    if any.is_empty() {
+        return;
+    }
     for &(old, new) in &on.seen {
         let Some(n) = new else { continue };
         let at = Vec3::new(n.x, n.y, n.z);
@@ -127,11 +139,20 @@ fn cell_moves(
     idx: Res<Index>,
     q: Query<(&Pos, &Avoiders)>,
     ids: Query<(&Pos, &SpeciesId)>,
+    listing: Query<(), With<AvoidsAnimals>>,
+    any: Query<(), With<Avoiders>>,
     mut reqs: ResMut<Requests>,
 ) {
+    if any.is_empty() {
+        return;
+    }
+    let listed = !listing.is_empty();
     for &m in &moved.0 {
         if let Ok((_, avs)) = q.get(m) {
             reqs.0.extend(avs.0.iter().map(|a| Req::Start(m, a.slot)));
+        }
+        if !listed {
+            continue;
         }
         let Ok((mp, sid)) = ids.get(m) else { continue };
         let at = mp.0;
