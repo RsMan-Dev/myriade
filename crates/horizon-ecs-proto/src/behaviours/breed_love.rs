@@ -7,6 +7,7 @@ use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::*;
 use crate::goals::{self, Events};
+use crate::behaviours::breed::Resting;
 use horizon_client_lib::items::Items;
 
 /// Le couple : partenaire et temps de naissance.

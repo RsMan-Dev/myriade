@@ -24,12 +24,12 @@ fn skip() -> bool {
 }
 
 /// Les registres du monde de test (items, enchantements) et le registre de commerce chargé des ressources.
-/// ASSUMED : `MobWorld` expose `items` (mobs.rs:3291) ; `enchantments` n'y est pas vu, à confirmer.
 fn registries() -> (&'static Items, &'static Enchantments, Trades) {
     let r = MobRef::new(1, false);
     let items = r.w.items.expect("items");
-    let enchantments = r.w.enchantments.expect("enchantments");
     let root = std::path::PathBuf::from(std::env::var("HORIZON_TEST_RESOURCES").expect("resources"));
+    let defaults = horizon_world::item_defaults::read(&root).expect("item defaults");
+    let enchantments: &'static Enchantments = Box::leak(Box::new(Enchantments::load(&root, &defaults).expect("enchantments")));
     let trades = Trades::load(&root, &horizon_world::loot::PackOverlay::NONE);
     (items, enchantments, trades)
 }
@@ -63,7 +63,7 @@ fn ecs_world(profession: u8, level: u8, xp: i32) -> (World, Entity, &'static Ite
     let (items, enchantments, trades) = registries();
     let mut w = World::new();
     w.insert_resource(TradeData { trades, items, enchantments, seed: SEED, sequences: BTreeMap::new() });
-    w.insert_resource(Times { day: 0 });
+    Times::set(&mut w, 0);
     let e = w.spawn(Merchant::new(false, profession, 0)).id();
     let mut m = w.get_mut::<Merchant>(e).unwrap();
     m.level = level;

@@ -8,6 +8,7 @@ use super::swallow_hold::Held;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::touch::Toucher;
 
 /// The creature the cube touched this tick.
 #[derive(Component, Clone, Copy, Debug)]
@@ -36,7 +37,9 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(_: &mut World, _: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {}
+fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(Toucher { reach: [1.0, 0.5, 1.0] });
+}
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(touched.in_set(slot));
 }
@@ -46,7 +49,7 @@ fn touched(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Held>, mut com
         let hot = q.get(cube).is_ok_and(|h| h.archetype.contact_damage.is_some());
         if hot {
             commands.entity(cube).insert(Touch { target });
-            reqs.0.push(Req::Start(cube, GoalSlot(0)));
+            reqs.0.push(Req::Start(cube, 0));
         }
     }
 }

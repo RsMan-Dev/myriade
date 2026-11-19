@@ -6,6 +6,7 @@
 use super::swallow_hold::may_search;
 use super::*;
 use crate::cow::*;
+use crate::goals::LOOK;
 use crate::locomotion::hop::Hop;
 use horizon_core::geometry::{trig, Vec3};
 

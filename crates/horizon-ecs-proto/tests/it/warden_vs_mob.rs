@@ -4,7 +4,7 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::{warden, MobEvent};
-use horizon_ecs_proto::{behaviours::{act_phase::{ActPhase, Phase}, dig::Withdrawn, suspect_anger}, goals::*, targeting::*};
+use horizon_ecs_proto::{cow::*, behaviours::{act_phase::{ActPhase, Phase}, dig::Withdrawn, suspect_anger}, goals::*, targeting::*};
 
 fn skip() -> bool {
     !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:warden")
@@ -40,7 +40,7 @@ fn scene() -> (MobRef, Herd, Entity, usize) {
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     (r, h, e, i)
 }
 

@@ -1,6 +1,7 @@
 //! The vibration ear (`VibrationUser` and `receiveVibration` in `mobs/warden.rs`). The sculk layer (socle, not written here) finds the
 //! listeners and asks `listens`; when the vibration has arrived it calls `receive`. Nothing here scans: the cooldown and the
 //! disturbance are own-time deadlines. The module has no goal: its `equip` gives the species' values to `receive`.
+use super::Inst;
 use super::act_phase::{ActPhase, Phase, RareState};
 use super::{go_to_disturbance, params, suspect_anger::{self, Level}, Module};
 use crate::{cow::*, goals::*, targeting::{self, Who}};
@@ -25,11 +26,20 @@ pub struct Params {
 pub struct Cfg(pub Params);
 
 /// The vibration as the sculk layer hands it over: where it came from and who made it (its owner, a projectile's shooter).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vibration {
     pub pos: [f64; 3],
     pub source: Option<Who>,
     pub owner: Option<Who>,
+    pub projectile: bool,
 }
+
+/// The listening range in blocks (`VibrationUser` of the warden: 16).
+const RANGE: f64 = 16.0;
+
+/// The vibration a listener heard and that is still travelling to its ear: `deliver` takes it when its delay is over.
+#[derive(Component, Default)]
+pub struct Heard(Option<Vibration>);
 
 pub static MODULE: Module = Module {
     name: "vibration_listen",
@@ -38,11 +48,44 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems(vibration_dispatch);
+}
+
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Cfg(p));
     w.entity_mut(e).insert_if_new(ActPhase::default());
     w.entity_mut(e).insert_if_new(RareState::default());
+    w.entity_mut(e).insert_if_new(Heard::default());
+}
+
+/// Each vibration of the tick goes to the listeners within `RANGE` (the index's columns, then the true distance): each one
+/// that `listens` gets it after as many ticks of its own time as the distance in blocks.
+fn vibration_dispatch(w: &mut World) {
+    let vs: Vec<Vibration> = w.resource::<Events>().vibration.iter().collect();
+    for v in vs {
+        let mut near_ids = Vec::new();
+        w.resource::<Index>().for_radius(v.pos[0], v.pos[2], RANGE, |e| near_ids.push(e));
+        for e in near_ids {
+            if w.get::<Cfg>(e).is_none() || !listens(w, e) {
+                continue;
+            }
+            let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { continue };
+            let d2 = (v.pos[0] - p.x).powi(2) + (v.pos[1] - p.y).powi(2) + (v.pos[2] - p.z).powi(2);
+            if d2 > RANGE * RANGE {
+                continue;
+            }
+            w.entity_mut(e).insert(Heard(Some(v)));
+            after(w, e, d2.sqrt() as i32, deliver);
+        }
+    }
+}
+
+/// The wheel's call: the listener receives the vibration it kept (`Heard`), once.
+fn deliver(w: &mut World, e: Entity) {
+    let Some(v) = w.get_mut::<Heard>(e).and_then(|mut h| h.0.take()) else { return };
+    receive(w, e, &v);
 }
 
 /// `canReceiveVibration`: not in its cooldown, not burrowing and not emerging.
@@ -59,7 +102,7 @@ fn block(p: [f64; 3]) -> [i32; 3] {
 /// Within the owner range of the entity.
 fn near(w: &World, e: Entity, who: Who, range_sqr: f64) -> bool {
     let (Some(i), Some(p)) = (targeting::info(w, who), w.get::<Pos>(e)) else { return false };
-    let d = [i.position.x - p.0.x, i.position.y - p.0.y, i.position.z - p.0.z];
+    let d = [i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z];
     d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < range_sqr
 }
 
@@ -77,7 +120,7 @@ pub fn receive(w: &mut World, e: Entity, v: &Vibration) {
                     if targeting::can_target(w, e, owner)
                         && let Some(i) = targeting::info(w, owner)
                     {
-                        at = block([i.position.x, i.position.y, i.position.z]);
+                        at = block([i.pos.x, i.pos.y, i.pos.z]);
                     }
                     suspect_anger::raise(w, e, owner, c.anger);
                 } else {

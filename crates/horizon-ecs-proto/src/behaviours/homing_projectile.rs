@@ -118,7 +118,8 @@ fn select_next(w: &mut World, e: Entity, excluded: Option<u8>) {
     let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
     let speed = h.cfg.speed;
     h.delta = if len == 0.0 { [0.0; 3] } else { d.map(|v| v / len * speed) };
-    h.steps = h.cfg.base_steps + draw(&mut h, h.cfg.step_count) * h.cfg.step_len;
+    let n = h.cfg.step_count;
+    h.steps = h.cfg.base_steps + draw(&mut h, n) * h.cfg.step_len;
     h.dir = selection;
     w.entity_mut(e).insert(h);
 }

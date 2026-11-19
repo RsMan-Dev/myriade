@@ -400,7 +400,7 @@ pub fn equipped(w: &World, e: Entity, slot: Slot) -> u32 {
         Slot::Saddle => q.saddle,
     })
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Player {
     pub id: u32,
     pub x: f64,
@@ -408,6 +408,11 @@ pub struct Player {
     pub z: f64,
     pub main: u32,
     pub off: u32,
+    /// The armor worn (0: nothing).
+    pub head: u32,
+    pub chest: u32,
+    pub legs: u32,
+    pub feet: u32,
 }
 impl Player {
     pub fn holds(&self, item: u32) -> bool {
@@ -673,6 +678,12 @@ pub struct Events {
     pub vehicle_moved: Ev<u32>,
     /// A slot of `Equipment` changed (`equipment::set_slot`).
     pub equipment_changed: Ev,
+    /// A vibration happened (`cow::apply_damage`, `projectile.rs` at impact, the host's pushes): read by `vibration_listen`.
+    pub vibration: Ev<crate::behaviours::vibration_listen::Vibration>,
+    /// A creature touched another (`touch.rs`): (the toucher, the other).
+    pub touched: Ev<(Entity, Entity)>,
+    /// A toucher touched an item on the ground (`touch.rs`): (the toucher, the item).
+    pub item_touched: Ev<(Entity, Entity)>,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -704,6 +715,9 @@ impl Events {
         self.unleashed.swap();
         self.vehicle_moved.swap();
         self.equipment_changed.swap();
+        self.vibration.swap();
+        self.touched.swap();
+        self.item_touched.swap();
     }
 }
 
@@ -1303,6 +1317,14 @@ pub fn impulse(w: &mut World, e: Entity, dv: Vec3) {
 pub fn mob_griefing(w: &World) -> bool {
     w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_griefing)
 }
+/// The places an animal cannot live in (the dimension of `piglins_zombify`, a drowned out of water): a predicate the level
+/// configures. Absent: no place is unsafe.
+#[derive(Resource, Clone, Copy)]
+pub struct UnsafePlace(pub fn(&World, Entity) -> bool);
+/// Whether `e` stands in a place the configured `UnsafePlace` names.
+pub fn in_unsafe_place(w: &World, e: Entity) -> bool {
+    w.get_resource::<UnsafePlace>().is_some_and(|p| (p.0)(w, e))
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     let e = crate::mount::nav_owner(w, e);
     if let Some(mut n) = w.get_mut::<Nav>(e) {
@@ -1385,7 +1407,7 @@ mod tests {
         e
     }
     fn player(h: &mut Herd, id: u32, x: f64, z: f64, item: u32) {
-        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: item, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: item, off: 0, ..Default::default() });
     }
     fn ticks(h: &mut Herd, n: usize) {
         for _ in 0..n {
@@ -1748,3 +1770,5 @@ mod tests {
 pub fn online_events_for_bench(world: &mut World) {
     world.run_system_cached(online_events).unwrap();
 }
+
+pub use crate::goals_more::*;

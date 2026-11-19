@@ -26,7 +26,7 @@ fn spider_has_target(day: bool) -> (bool, bool) {
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     let at = Vec3::new(8.5, 1.0, 0.5);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
     let pv = player_view(at, None);
     for _ in 0..150 {
         r.step(Some(&pv));
@@ -60,7 +60,7 @@ fn a_hit_llama_takes_the_player_as_the_mob_does() {
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     let at = Vec3::new(3.5, 1.0, 0.5);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
     let pv = player_view(at, None);
     for _ in 0..3 {
         r.step(Some(&pv));

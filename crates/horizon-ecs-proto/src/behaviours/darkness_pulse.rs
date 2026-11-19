@@ -1,5 +1,6 @@
 //! The darkness pulse: every `interval` ticks of own time, the players within `radius` blocks get the darkness effect. The effect is
 //! the host's (socle `HostOut::darkness(at, radius)`, not yet written: see the notes); this module only keeps the pulse.
+use super::Inst;
 use super::{params, Module};
 use crate::{cow::*, goals::*};
 use bevy_ecs::prelude::*;

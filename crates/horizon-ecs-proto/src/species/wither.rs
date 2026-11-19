@@ -3,7 +3,7 @@
 //! (`side_heads`, `nth` 0 and 1), the regeneration, the block breaking, the boss bar, the stroll and the looks. Flight steers
 //! to the target (`fly` `Control::Steer`). The hurt filter is `behaviours::phase_shield::accepts`.
 use crate::behaviours::{block_breaker, boss_bar, hurt_by, invulnerable_charge, look_at_player, nearest_target, random_look, ranged_attack, regen, side_heads, stroll, Cap, Entry};
-use crate::locomotion::fly;
+use crate::locomotion::{fly, Medium};
 use crate::projectile::Flight;
 use crate::species::Def;
 
@@ -33,7 +33,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
     ],
-    locomotion: &[Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Steer, max_turn: 10.0, hovers: false, ..fly::Params::DEFAULT })],
+    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Steer { speed: 0.5, accel: 0.6 }, max_turn: 10.0, hovers: false, ..fly::Params::DEFAULT }))],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     ..Def::EMPTY
 };

@@ -13,6 +13,10 @@ pub enum HostEvent {
     /// A velocity added to a player (`MobEvent::Push`).
     /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
     EntityEvent { entity: bevy_ecs::entity::Entity, code: u8 },
+    /// `Warden.applyDarknessAround`: darkness for the survival players within `radius` of `at`.
+    Darkness { at: [f64; 3], radius: f64 },
+    /// A boss bar of entity `id`: its progress (0..1) and colour; `remove` closes it.
+    BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
     PushPlayer { player: u32, velocity: [f64; 3] },
 }
 
@@ -25,6 +29,15 @@ impl HostOut {
     /// `MobEvent::SetBlock`.
     pub fn set_block(&mut self, pos: [i32; 3], state: BlockStateId) {
         self.out.push(HostEvent::SetBlock { pos, state });
+    }
+    pub fn darkness(&mut self, at: [f64; 3], radius: f64) {
+        self.out.push(HostEvent::Darkness { at, radius });
+    }
+    pub fn boss_bar(&mut self, id: u32, name: &'static str, progress: f32, color: u8) {
+        self.out.push(HostEvent::BossBar { id, name, progress, color, remove: false });
+    }
+    pub fn boss_bar_remove(&mut self, id: u32) {
+        self.out.push(HostEvent::BossBar { id, name: "", progress: 0.0, color: 0, remove: true });
     }
     /// `MobEvent::Sound(name, at, volume, pitch)`.
     pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {

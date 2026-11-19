@@ -1,6 +1,7 @@
 //! `attached_face`: a body fixed to a face of a block: its face (0..6, the first is down), its dye colour (`Sounds`' config: `none` is a
 //! colour the species names), the raw peek set by the goals and the eased lid. The lid eases `LID_SPEED` a tick toward raw peek / 100, and
 //! the lid's sweep pushes what it opens into (`cow::push_lid`). Covered armour: a +20 modifier while raw peek is 0 (`attributes`, socle).
+use crate::cow::Pos;
 use super::*;
 use crate::goals::Events;
 use crate::rules::Rule;

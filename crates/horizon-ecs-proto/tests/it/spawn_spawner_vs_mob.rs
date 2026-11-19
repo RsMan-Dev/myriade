@@ -238,7 +238,7 @@ fn spawner_block_vs_client_mob() {
     }
     let mut h = Herd::with_spawn_world(176, true);
     h.set_daylight(false);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let ecs = ecs_waves(&mut h);
 
     let mw = h.world.resource::<Level>().mw.0;

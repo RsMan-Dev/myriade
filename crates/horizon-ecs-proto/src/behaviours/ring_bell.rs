@@ -1,7 +1,6 @@
 //! Le villageois sonne la cloche à portée (`RingBell`, `villager_brain.rs:2447-2463`). La cloche est un bloc
-//! `minecraft:bell` à moins de 3 blocs (9 en carré) ; chaque sonnerie est écrite dans `BellRings` (ressource lue par
-//! `bell_heard::hear_bells`) et le son part par `events.host` (nom du son à confirmer, voir notes).
-use super::bell_heard::BellRings;
+//! `minecraft:bell` à moins de 3 blocs (9 en carré) ; chaque sonnerie appelle `bell_heard::ring` et le son part par `events.host` (nom du son à confirmer, voir notes).
+use super::bell_heard::ring;
 use super::block_reach::{block_at, centre_dist_sq};
 use crate::blocks;
 use crate::brain::*;
@@ -37,9 +36,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
 
 fn start(w: &mut World, e: Entity, _: &Ctx) {
     let Some(p) = bell_near(w, e) else { return };
-    if let Some(mut rings) = w.get_resource_mut::<BellRings>() {
-        rings.0.push(p);
-    }
+    ring(w, p);
     let at = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
     w.resource_mut::<Events>().host.sound("minecraft:block.bell.use", at, 2.0, 1.0);
 }

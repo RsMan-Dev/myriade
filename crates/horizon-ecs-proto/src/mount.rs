@@ -448,3 +448,8 @@ pub(crate) fn seats(
         }
     }
 }
+
+/// `Entity.ejectPassengers`: every rider gets off, the first seat then the second.
+pub fn eject_passengers(w: &mut World, mount: Entity) {
+    while dismount(w, mount).is_some() {}
+}

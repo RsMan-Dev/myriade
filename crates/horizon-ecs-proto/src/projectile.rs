@@ -87,7 +87,14 @@ impl Flight {
     /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
     pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, ..Self::BASE };
     pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
+    /// `WitherSkull`: a blue (dangerous) skull keeps 0.73 of its speed a tick, the others 0.95; 8 damage, then a power 1 blast without fire.
+    pub const fn wither_skull(dangerous: bool) -> Flight {
+        let inertia = if dangerous { 0.73_f32 as f64 } else { 0.95_f32 as f64 };
+        Flight { inertia, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power: 1, fire: false }, ..Self::BASE }
+    }
 }
+/// The six steps a projectile or a path takes from a block, by direction: down, up, north, south, west, east (the 3D data order).
+pub const STEPS: [[i32; 3]; 6] = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 /// The projectile: whose it is, its age, whether it has left its owner's box, the ticks it spent stuck.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Projectile {
@@ -238,8 +245,7 @@ pub fn fly(
             };
             let from = (original.x, original.z);
             match (who, p.owner) {
-                (Who::Entity(t), Some(Who::Entity(o))) => dq.add_by_entity(t, amount, from, o),
-                (Who::Entity(t), Some(Who::Player(id))) => dq.add_by(t, amount, from, id),
+                (Who::Entity(t), Some(o)) => dq.add_via(t, amount, from, o),
                 (Who::Entity(t), None) => dq.add_from(t, amount, Cause::Entity, from),
                 (Who::Player(id), owner) => ps.hurt(clock.0, id, amount, from, owner),
             }
@@ -360,4 +366,12 @@ fn no_block_collision(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb)
         }
     }
     true
+}
+/// No collision shape at `p`: the way a projectile or a steered skull can go.
+pub fn block_empty(w: &World, p: [i32; 3]) -> bool {
+    crate::level::block_empty(w, p)
+}
+/// A projectile at height `entity_y` stands on the block at `p`.
+pub fn can_stand_on(w: &World, p: [i32; 3], entity_y: f64) -> bool {
+    crate::level::can_stand_on(w, p, entity_y)
 }

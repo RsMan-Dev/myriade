@@ -163,6 +163,6 @@ fn full_face(w: &World, p: [i32; 3], face: u8) -> bool {
 fn has_tag(w: &World, tag: &str, p: [i32; 3]) -> bool {
     crate::cow::has_block_tag(w, tag, p)
 }
-fn with_level_rng<T>(w: &mut World, f: impl FnOnce(&mut horizon_core::random::LevelRandom) -> T) -> T {
+fn with_level_rng<T>(w: &mut World, f: impl FnOnce(&mut horizon_core::random::LegacyRandom) -> T) -> T {
     crate::cow::with_level_random(w, f)
 }

@@ -132,7 +132,7 @@ fn a_player_saddles_a_pig_and_the_slot_drives_the_mount() {
     h.world.resource_mut::<Entered>().0.extend([pig, baby]);
     h.make_baby(baby, 10_000);
     let saddle = items::item_id("minecraft:saddle");
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: saddle, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: saddle, off: 0, ..Default::default() });
     assert!(!interact(&mut h.world, baby, &Interaction { player: 1, item: saddle }), "a baby takes no saddle");
     assert!(!h.world.get::<Mount>(pig).unwrap().saddled);
     assert!(interact(&mut h.world, pig, &Interaction { player: 1, item: saddle }));
@@ -141,7 +141,7 @@ fn a_player_saddles_a_pig_and_the_slot_drives_the_mount() {
     assert_eq!(h.world.resource::<Online>().get(1).unwrap().main, 0, "the saddle left the hand");
     h.tick();
     assert!(h.world.resource::<Events>().equipment_changed.iter().any(|x| x == pig));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: saddle, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: saddle, off: 0, ..Default::default() });
     assert!(!interact(&mut h.world, pig, &Interaction { player: 1, item: saddle }) || h.world.resource::<Online>().get(1).unwrap().main == saddle, "a pig that is saddled takes no second one");
     assert_eq!(equipment::take_slot(&mut h.world, pig, Slot::Saddle), saddle);
     assert!(!h.world.get::<Mount>(pig).unwrap().saddled);
@@ -265,11 +265,11 @@ fn a_bucket_milks_a_cow_and_takes_a_fish() {
     h.world.resource_mut::<Entered>().0.extend([cow, calf, cod]);
     h.make_baby(calf, 10_000);
     let (bucket, water, milk) = (items::item_id("minecraft:bucket"), items::item_id("minecraft:water_bucket"), items::item_id("minecraft:milk_bucket"));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: bucket, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: bucket, off: 0, ..Default::default() });
     assert!(!interact(&mut h.world, calf, &Interaction { player: 1, item: bucket }), "a calf gives no milk");
     assert!(interact(&mut h.world, cow, &Interaction { player: 1, item: bucket }));
     assert_eq!(h.world.resource::<Online>().get(1).unwrap().main, milk);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: water, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: water, off: 0, ..Default::default() });
     assert!(!interact(&mut h.world, cow, &Interaction { player: 1, item: water }), "a cow does not go in a bucket");
     assert!(interact(&mut h.world, cod, &Interaction { player: 1, item: water }));
     assert_eq!(h.world.resource::<Online>().get(1).unwrap().main, items::item_id("minecraft:cod_bucket"));

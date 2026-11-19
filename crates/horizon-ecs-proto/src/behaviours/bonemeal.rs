@@ -1,6 +1,8 @@
 //! Le villageois utilise la poudre d'os sur une culture non mûre à portée (`UseBonemeal`, `villager_brain.rs:1713-1745`,
 //! tick `3044-3075`) : contrôle toutes les 10 ticks, pas dans les 160 ticks d'une session. La pousse est un paramètre
 //! (`grow`, état suivant de la culture, interface supposée) ; la poudre sort de l'inventaire (`inventory::take`).
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::World;
 use super::block_reach::{block_at, look_block, pick_in_reach, walk_to, Pred};
 use super::inventory;
 use crate::blocks;

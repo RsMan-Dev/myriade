@@ -314,7 +314,7 @@ fn wheat_tempts_as_it_does_a_mob() {
     // Player 9.5 blocks from the first cow, 10.5 blocks from the second.
     let at = Vec3::new(-1.0, 1.0, 0.5);
     let mut p = player_view(at, Some(tempt_item().1));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     for _ in 0..6 {
         r.step(Some(&p));
         h.tick();
@@ -342,13 +342,13 @@ fn wheat_tempts_as_it_does_a_mob() {
     assert!((md - cd).abs() < 0.8, "stop distance");
     // Wheat away for 4 ticks, then back: the ticks until the goal runs again.
     p.main_hand = None;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..4 {
         r.step(Some(&p));
         h.tick();
     }
     p.main_hand = Some(tempt_item().1.into());
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     let (mut mc, mut cc) = (None, None);
     for t in 1..=200 {
         r.step(Some(&p));
@@ -473,7 +473,7 @@ fn looking_goals_start_as_often_as_a_mob_s() {
             cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 700 + cows.len() as u64)));
         }
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0, ..Default::default() });
     arm_all(&mut h.world);
     let p = player_view(Vec3::new(0.0, 1.0, 0.0), None);
     let mut seen = vec![[false; 4]; cows.len()];
@@ -1040,7 +1040,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
     let mut t = 0;
     let mut set = |r: &mut Ref, h: &mut Herd, p: &mut PlayerView, held: Option<(&str, u32)>, ticks: usize, t: &mut i64, log: &mut Vec<(i64, bool, Option<u8>)>| {
         p.main_hand = held.map(|x| x.0.into());
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0, ..Default::default() });
         for _ in 0..ticks {
             r.step(Some(p));
             h.tick();

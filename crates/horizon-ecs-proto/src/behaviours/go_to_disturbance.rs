@@ -1,5 +1,6 @@
 //! Walking to the disturbance: with no target and no walk, the entity walks to the place of the last vibration it kept (`RareState`,
 //! until its expiry), and stops within 2 blocks. Woken by `vibration_listen::receive`.
+use super::Inst;
 use super::act_phase::RareState;
 use super::{params, Module};
 use crate::{cow::*, goals::*, targeting::Target};
@@ -50,7 +51,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     crate::brain::look_at(w, e, spot);
     w.get_mut::<Nav>(e).unwrap().speed = speed;
     let mut s = w.get_mut::<Stroll>(e).unwrap();
-    (s.tx, s.ty, s.tz) = (spot[0], spot[1], spot[2]);
+    (s.tx, s.ty, s.tz) = (spot[0], spot[1].floor() as i32, spot[2]);
     s.walking = true;
     drop(s);
     w.entity_mut(e).insert(NeedsPath);

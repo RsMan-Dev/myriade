@@ -36,7 +36,7 @@ fn a_ridden_wild_horse_is_tamed_by_the_law_of_its_temper_or_throws_the_rider() {
             h.tick();
         }
         h.world.get_mut::<Mount>(e).unwrap().temper = 50;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         assert!(interact(&mut h.world, e, &Interaction { player: 1, item: 0 }), "the player did not mount");
         for _ in 0..800 {
             h.tick();
@@ -71,7 +71,7 @@ fn the_rider_steers_the_horse_as_it_steers_the_original() {
     r.mobs[i].extra.set_saddled(true);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     horizon_ecs_proto::tame::set_owner(&mut h.world, e, Who::Player(1));
     h.world.get_mut::<Mount>(e).unwrap().saddled = true;
     assert!(ride(&mut h.world, e, Who::Player(1)));
@@ -105,7 +105,7 @@ fn a_dismount_frees_the_mount_and_the_player() {
     }
     let mut h = Herd::with_slab(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     assert!(ride(&mut h.world, e, Who::Player(1)));
     assert!(is_occupied(&h.world, e, OCC_MOUNTED));
     assert!(!ride(&mut h.world, e, Who::Player(2)), "two riders on one horse");
@@ -177,7 +177,7 @@ fn the_whole_law_of_the_temper_is_the_same_on_both_sides() {
     let var: f64 = p.iter().enumerate().map(|(r, q)| q * (r as f64 - mean).powi(2)).sum();
     // The ECS side.
     let mut h = Herd::with_slab(60, true, false);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let mut ecs = Vec::new();
     for k in 0..300 {
         let e = spawn_species(&mut h.world, species(), -39.5 + (k % 20) as f64 * 4.0, -29.5 + (k / 20) as f64 * 4.0, 77 + k as u64);

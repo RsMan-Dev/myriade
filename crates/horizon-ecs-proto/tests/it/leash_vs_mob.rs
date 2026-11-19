@@ -78,7 +78,7 @@ fn the_rope_snaps_as_the_player_walks_away() {
         es.push(e);
     }
     let start = Vec3::new(0.5, 1.0, 3.5);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: start.x, y: start.y, z: start.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: start.x, y: start.y, z: start.z, main: 0, off: 0, ..Default::default() });
     for &e in &es {
         assert!(leash::attach(&mut h.world, e, Holder::Player(1)), "the lead did not go on");
     }
@@ -87,7 +87,7 @@ fn the_rope_snaps_as_the_player_walks_away() {
     let mut seen = 0;
     for t in 1..=400u32 {
         let at = Vec3::new(start.x, start.y, start.z + 0.45 * f64::from(t.min(100)) + if t >= 150 { 25.0 } else { 0.0 });
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
         r.step(Some(&player_view(at, None)));
         h.tick();
         for e in &r.events[seen.min(r.events.len())..] {
@@ -144,7 +144,7 @@ fn three_llamas_make_a_caravan_as_in_the_original() {
             h.world.resource_mut::<Entered>().0.push(e);
             es.push(e);
         }
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         for _ in 0..3 {
             h.tick();
         }
@@ -212,7 +212,7 @@ fn a_lead_is_a_component_with_a_directory_events_and_a_home() {
     let e = spawn_species(&mut h.world, species(), 2.5, 0.5, 5);
     let o = spawn_species(&mut h.world, species(), 4.5, 0.5, 6);
     h.world.resource_mut::<Entered>().0.extend([e, o]);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: lead(), off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: lead(), off: 0, ..Default::default() });
     assert!(!leash::is_leashed(&h.world, e));
     assert!(interact(&mut h.world, e, &Interaction { player: 1, item: lead() }), "the lead item puts the lead on");
     assert_eq!(leash::holder_of(&h.world, e), Some(Holder::Player(1)));
@@ -297,7 +297,7 @@ fn probe_the_caravan_gaps() {
         h.world.resource_mut::<Entered>().0.push(e);
         es.push(e);
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..3 {
         h.tick();
     }

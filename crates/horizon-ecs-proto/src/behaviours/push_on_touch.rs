@@ -46,7 +46,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert((PlayerWatch::new(p.reach), p));
+    w.entity_mut(e).insert((PlayerWatch::new(p.reach as f32), p));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(entered.in_set(slot));
@@ -56,7 +56,7 @@ fn entered(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Held>, mut com
     for (e, player) in ev.player_entered.iter() {
         if q.get(e).is_ok() {
             commands.entity(e).insert(Pusher { player, sound_after: 0 });
-            reqs.0.push(Req::Start(e, GoalSlot(0)));
+            reqs.0.push(Req::Start(e, 0));
         }
     }
 }
@@ -88,13 +88,13 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let now = now_of(w, e);
     if strong && now >= pusher.sound_after {
         let at = [pos.x, pos.y, pos.z];
-        w.resource_mut::<HostOut>().sound(held.push_sound, at, 1.0, 1.0);
+        w.resource_mut::<crate::goals::Events>().host.sound(held.push_sound, at, 1.0, 1.0);
         if let Some(mut pu) = w.get_mut::<Pusher>(e) {
             pu.sound_after = now + (held.push_cooldown * 20.0) as u64;
         }
     }
     if let Some(mut v) = w.get_mut::<Vel>(e) {
-        v.0 += push;
+        v.0 = v.0.add_vector(push);
     }
 }
 /// The player's speed (`Entity.getDeltaMovement().length()`): the frame's `Player` has no velocity yet.

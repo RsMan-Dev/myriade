@@ -1,5 +1,6 @@
 //! `LookAtLoved` (`mobs/piglin.rs:1693-1728`): the nearest player within `range` blocks that holds one of the `items` in its
 //! main hand is looked at. The search runs when the selector asks this goal; the look is the head's (`goals::look_at`).
+use crate::goals;
 use super::*;
 use crate::{cow::*, goals::*};
 

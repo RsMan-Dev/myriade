@@ -166,6 +166,24 @@ pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Po
         }
     }
 }
+/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), and not `e` itself.
+pub fn can_target(w: &World, e: Entity, who: Who) -> bool {
+    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt)
+}
+/// The first creature within `radius` of `e` (by identifier, ascending) that `e` can target, read from the spatial index.
+pub fn attackable_near(w: &World, e: Entity, radius: f64) -> Option<Who> {
+    let pos = w.get::<Pos>(e)?.0;
+    let mut near = Vec::new();
+    w.resource::<Index>().for_radius(pos.x, pos.z, radius, |c| near.push(c));
+    near.into_iter().filter(|&c| can_target(w, e, Who::Entity(c))).min_by_key(|c| c.index().index()).map(Who::Entity)
+}
+/// `Mob.sees`: the line of sight from the eyes of `e` to the eyes of `who` is free of blocks.
+pub fn sees(w: &World, e: Entity, who: Who) -> bool {
+    let (Some(pos), Some(look), Some(i)) = (w.get::<Pos>(e), w.get::<Eye>(e), info(w, who)) else {
+        return false;
+    };
+    w.resource::<Level>().mw.0.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + look.0, pos.0.z), Vec3::new(i.pos.x, i.eye, i.pos.z))
+}
 /// The framework's systems of the targeting service (registered by the modules that choose targets, once).
 pub fn register(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
     s.add_systems((sight_eval, target_continue).chain().after(apply_damage).in_set(slot));

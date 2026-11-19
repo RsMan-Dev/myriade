@@ -44,7 +44,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 /// `canUse`: the admired item is in the off hand, and no admiration is under way.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(a) = w.get::<Admire>(e).copied() else { return false };
-    w.get::<Admiring>(e).is_none() && equipment::slot_item(w, e, Slot::OffHand) == Some(a.0.item)
+    w.get::<Admiring>(e).is_none() && crate::goals::equipped(w, e, Slot::Off) == crate::items::item_id(a.0.item)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let a = w.get::<Admire>(e).copied().unwrap();
@@ -71,10 +71,10 @@ fn tick(w: &mut World) {
 fn trade(w: &mut World, e: Entity) {
     let a = w.get::<Admire>(e).copied().unwrap();
     w.entity_mut(e).remove::<Admiring>();
-    if equipment::slot_item(w, e, Slot::OffHand) != Some(a.0.item) {
+    if crate::goals::equipped(w, e, Slot::Off) != crate::items::item_id(a.0.item) {
         return;
     }
-    equipment::take_slot(w, e, Slot::OffHand);
+    equipment::take_slot(w, e, Slot::Off);
     let seed = w.get_mut::<Rng>(e).unwrap().next_u32() as i64;
     let baby = w.get::<GrowAt>(e).is_some();
     let at: Vec3 = w.get::<Pos>(e).unwrap().0;

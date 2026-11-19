@@ -1,5 +1,7 @@
 //! Le bébé saute sur le lit le plus proche (`JumpOnBed`, `villager_brain.rs:1553-1580`, tick `2756-2776`) : 100 ticks,
 //! 3 à 6 sauts, 5 ticks de pause entre deux sauts, arrêt si le lit disparaît ou si le bébé grandit.
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::World;
 use super::block_reach::{block_at, walk_to};
 use crate::behaviours::bed::NEAREST_BED;
 use crate::blocks;

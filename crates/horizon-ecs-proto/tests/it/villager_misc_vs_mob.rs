@@ -3,7 +3,8 @@
 //! le câblage des espèces fait (voir `villager-divers.md`, section 5) : pas d'`#[ignore]`.
 use crate::common::*;
 use horizon_ecs_proto::brain::{present, IS_PANICKING};
-use horizon_ecs_proto::{blocks, cow};
+use bevy_ecs::prelude::*;
+use horizon_ecs_proto::{blocks, cow, cow::*};
 use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 
@@ -86,9 +87,9 @@ fn a_villager_flees_the_way_away_from_a_hit_as_a_mob_does() {
     for t in 0..400u64 {
         r.step(None);
         h.tick();
-        mob_x = r.mobs[i].position().x;
+        mob_x = r.mobs[i].position.x;
         ecs_x = h.world.get::<cow::Pos>(e).map_or(ecs_x, |p| p.0.x);
-        let mob_panic = r.mobs[i].is_panicking();
+        let mob_panic = horizon_client_lib::mobs::animal_brain::is_panicking(&r.mobs[i]);
         let ecs_panic = present(&h.world, e, &IS_PANICKING);
         if mob_end.is_none() && t > 0 && !mob_panic {
             mob_end = Some(t);

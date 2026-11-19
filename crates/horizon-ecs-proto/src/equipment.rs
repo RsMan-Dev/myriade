@@ -90,6 +90,20 @@ pub fn armor_applies(cause: Cause) -> bool {
     matches!(cause, Cause::Entity | Cause::Cactus | Cause::InFire | Cause::Lava | Cause::Blast)
 }
 
+/// The item a player (online, by id) wears or holds in a slot; 0 when nothing is there or the player is not online.
+pub fn worn_by_player(w: &World, id: u32, slot: Slot) -> u32 {
+    let Some(p) = w.get_resource::<Online>().and_then(|o| o.get(id)) else { return 0 };
+    match slot {
+        Slot::Head => p.head,
+        Slot::Chest => p.chest,
+        Slot::Legs => p.legs,
+        Slot::Feet => p.feet,
+        Slot::Main => p.main,
+        Slot::Off => p.off,
+        _ => 0,
+    }
+}
+
 /// What a player's item may be put on: which slots the entity accepts from a hand, and whether it must be tame and grown up.
 #[derive(Clone, Copy, Debug)]
 pub struct EquipParams {

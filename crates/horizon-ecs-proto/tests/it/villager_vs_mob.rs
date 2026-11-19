@@ -9,7 +9,7 @@ use horizon_client_lib::mobs::{villager, Mob, MobWorld};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::behaviours::{bed::Sleeping, schedule::Times};
 use horizon_ecs_proto::species::villager::{JOB_SITE, MEETING_POINT};
-use horizon_ecs_proto::{brain::*, cow::*};
+use horizon_ecs_proto::{brain::*, cow::*, goals::Entered};
 
 const BED: [i32; 3] = [4, 1, 0];
 const JOB: [i32; 3] = [-8, 1, 0];
@@ -69,7 +69,7 @@ fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     set(&mut h.world, e, &MEETING_POINT, MemValue::Block(BELL), None);
     let mut out = Vec::with_capacity(days.len());
     for &day in days {
-        h.world.insert_resource(Times { day });
+        Times::set(&mut h.world, day);
         h.tick();
         let at = h.world.get::<Pos>(e).unwrap().0;
         out.push(((at.x, at.z), h.world.get::<Sleeping>(e).is_some()));

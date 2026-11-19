@@ -35,7 +35,7 @@ fn a_mob_with_a_spear_charges_and_stabs_its_player_target_as_a_mob_does() {
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let e = spawn_species(&mut h.world, &sp, MOB.x, MOB.z, 93);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: PLAYER.x, y: PLAYER.y, z: PLAYER.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: PLAYER.x, y: PLAYER.y, z: PLAYER.z, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<PlayerState>().immortal = true;
     set_main_hand(&mut h.world, e, Some(spear()));
     set_target(&mut h.world, e, Target::player(1, 30));

@@ -2,6 +2,8 @@
 //! `villager_brain.rs:1636-1660`). Un coup : `can_start` tire et décide (toutes les 300 ticks, une fois sur deux),
 //! `start` pose l'événement (`ComposterWork`, pour un villageois qui travaille au composteur) et réapprovisionne.
 //! La conversion blé vers compost ou pain se fait côté hôte (`game/blocks/composter.rs`).
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::World;
 use super::block_reach::{centre_dist_sq, look_block};
 use super::trade_restock;
 use crate::brain::*;

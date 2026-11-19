@@ -1,6 +1,6 @@
 //! The piglin's admiration of gold, its flight from a soul campfire and its crossbow against the real `Mob` piglin in the same
 //! scene (`HORIZON_TEST_RESOURCES` set, `HORIZON_SPECIES=minecraft:piglin`). The ECS side needs the equipment lot's
-//! `equipment::{set_slot, slot_item}` and the `Slot::OffHand` of goals (both absent in this worktree: see the notes).
+//! `equipment::set_slot` and the `Slot::Off` of goals.
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
@@ -33,17 +33,17 @@ fn a_piglin_admires_gold_for_as_long_as_a_mob_does() {
     let mut r = MobRef::new(60, false);
     let mut h = Herd::with_slab(60, true, false);
     let i = mob_piglin(&mut r, 0.5, 0.5, 7);
-    r.mobs[i].set_slot_id(horizon_items::equipment::OFFHAND, Some(Arc::from("minecraft:gold_ingot")));
+    r.mobs[i].extra.set_slot_id(horizon_items::equipment::OFFHAND, Some(Arc::from("minecraft:gold_ingot")));
     let e = ecs_piglin(&mut h, 0.5, 0.5, 7);
-    equipment::set_slot(&mut h.world, e, Slot::OffHand, "minecraft:gold_ingot");
+    equipment::set_slot(&mut h.world, e, Slot::Off, horizon_ecs_proto::items::item_id("minecraft:gold_ingot"));
     let (mut mob_end, mut ecs_end) = (None, None);
     for t in 1..=300i64 {
         r.step(None);
         h.tick();
-        if mob_end.is_none() && r.mobs[i].off_hand_id().is_none() {
+        if mob_end.is_none() && r.mobs[i].extra.off_hand_id().is_none() {
             mob_end = Some(t);
         }
-        if ecs_end.is_none() && equipment::slot_item(&h.world, e, Slot::OffHand).is_none() {
+        if ecs_end.is_none() && h.world.get::<Equipment>(e).is_none_or(|q| q.off == 0) {
             ecs_end = Some(t);
         }
     }
@@ -89,9 +89,9 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
     let mut r = MobRef::new(60, false);
     let mut h = Herd::with_slab(60, true, false);
     let i = mob_piglin(&mut r, 0.5, 0.5, 9);
-    r.mobs[i].set_slot_id(horizon_items::equipment::MAINHAND, Some(Arc::from("minecraft:crossbow")));
+    r.mobs[i].extra.set_slot_id(horizon_items::equipment::MAINHAND, Some(Arc::from("minecraft:crossbow")));
     let e = ecs_piglin(&mut h, 0.5, 0.5, 9);
-    equipment::set_slot(&mut h.world, e, Slot::MainHand, "minecraft:crossbow");
+    equipment::set_slot(&mut h.world, e, Slot::Main, horizon_ecs_proto::items::item_id("minecraft:crossbow"));
     h.set_players(vec![(6.5, 0.5)]);
     let pv: PlayerView = player_view(Vec3::new(6.5, 1.0, 0.5), None);
     let (mut mob_first, mut ecs_first) = (None, None);

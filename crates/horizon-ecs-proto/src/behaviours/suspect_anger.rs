@@ -2,6 +2,7 @@
 //! Each suspect's anger is capped at `max` and loses one point per `step` ticks of own time while the suspect can still be targeted;
 //! it is settled when read, from the time it was set (no timer, no scan). `raise` is called by what angers it (a vibration, a roar,
 //! a hit) and asks the target goal again. The values come from the species (`Params`), none is written here.
+use super::Inst;
 use super::act_phase::{ActPhase, RareState};
 use super::{Damaged, Module, Cap, params};
 use crate::{cow::*, goals::*, targeting::{self, Target, Who}};
@@ -153,7 +154,7 @@ fn damaged(w: &mut World, e: Entity, inst: Inst, d: &Damaged) {
     }
     let near = match (targeting::info(w, who), w.get::<Pos>(e)) {
         (Some(i), Some(pos)) => {
-            let (dx, dy, dz) = (i.position.x - pos.0.x, i.position.y - pos.0.y, i.position.z - pos.0.z);
+            let (dx, dy, dz) = (i.pos.x - pos.0.x, i.pos.y - pos.0.y, i.pos.z - pos.0.z);
             dx * dx + dy * dy + dz * dz < p.hurt_target_range_sqr
         }
         _ => false,

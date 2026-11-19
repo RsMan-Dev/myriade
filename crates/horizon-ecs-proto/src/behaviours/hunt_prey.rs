@@ -59,10 +59,10 @@ fn prey_near(w: &mut World, e: Entity, p: &Params) -> Option<Entity> {
     let mut best: Option<(f64, Entity)> = None;
     let mut q = w.query::<(Entity, &Pos, &SpeciesId)>();
     for (other, pos, id) in q.iter(w) {
-        if other == e || !p.prey.contains(&species_name(id.0)) {
+        if other == e || !p.prey.contains(&crate::species::registry().species[usize::from(id.0)].name) {
             continue;
         }
-        let d = (pos.0 - at).length_squared();
+        let d = pos.0.distance_squared(at);
         if d <= p.range * p.range && best.is_none_or(|(b, _)| d < b) {
             best = Some((d, other));
         }
@@ -80,7 +80,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let mut group = Vec::new();
     let mut q = w.query::<(Entity, &Pos, &SpeciesId)>();
     for (other, pos, id) in q.iter(w) {
-        if id.0 == kind && (pos.0 - at).length_squared() <= h.p.group * h.p.group {
+        if id.0 == kind && pos.0.distance_squared(at) <= h.p.group * h.p.group {
             group.push(other);
         }
     }

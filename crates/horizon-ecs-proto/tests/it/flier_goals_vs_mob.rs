@@ -106,7 +106,7 @@ fn the_phantoms_take_the_player_and_dive_at_the_cadence_of_the_mob() {
         .collect();
     arm_all(&mut h.world);
     let at = Vec3::new(0.5, 1.0, 0.5);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
     let view = player_view(at, None);
     let (mut mfirst, mut efirst, mut mdives, mut edives) = (vec![None; n], vec![None; n], vec![0; n], vec![0; n]);

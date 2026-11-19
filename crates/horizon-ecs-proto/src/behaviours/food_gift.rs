@@ -1,6 +1,9 @@
 //! Le villageois donne un cadeau au héros du village (`GiveGiftToHero`, `villager_brain.rs:2790` et suivants). Le héros est
 //! un joueur ayant gagné un raid : `Heroes` (ressource, identifiants de joueur) écrite par l'hôte à la victoire.
 //! Le cadeau tombe devant le joueur (`item::drop_item`), tiré dans la table `gifts` (paramètre).
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::World;
+use crate::targeting::Who;
 use super::raid;
 use crate::brain::*;
 use crate::cow::Pos;
@@ -51,5 +54,5 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     let (name, n) = gifts[i];
     let Some(p) = w.get::<Pos>(e).map(|q| q.0) else { return };
     let at = Vec3::new(p.x, p.y + 1.0, p.z);
-    drop_item(w, ItemStack::new(name, n), at, Vec3::new(0.0, 0.3, 0.0), 40);
+    drop_item(w, ItemStack::new(name, n as u32), at, Vec3::new(0.0, 0.3, 0.0), 40);
 }

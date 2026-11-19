@@ -149,5 +149,5 @@ pub fn read<'a>(get: impl Fn(&str) -> Option<&'a Tag>) -> Option<Trader> {
 
 /// Le temps de jeu (`now_of`, ASSUMED : temps de jeu du monde, à confirmer) et le jour (`Times.day`) que lit le réapprovisionnement.
 pub fn clock(w: &World, e: Entity) -> (i64, i64) {
-    (now_of(w, e) as i64, w.resource::<Times>().day)
+    (now_of(w, e) as i64, Times::absolute(w))
 }

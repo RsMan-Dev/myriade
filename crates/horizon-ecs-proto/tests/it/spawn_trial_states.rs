@@ -62,7 +62,7 @@ fn at(w: &mut World, now: u64) {
 }
 
 fn put(w: &mut World, id: u32, x: f64) {
-    w.resource_mut::<Online>().set(Player { id, x, y: 64.0, z: 3.5, main: 0, off: 0 });
+    w.resource_mut::<Online>().set(Player { id, x, y: 64.0, z: 3.5, main: 0, off: 0, ..Default::default() });
 }
 
 /// Runs the ticks `from..=to` (the wake-ups are run as the caller's loop does: one call per tick).

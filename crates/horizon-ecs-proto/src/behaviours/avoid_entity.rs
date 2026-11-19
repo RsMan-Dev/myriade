@@ -338,7 +338,7 @@ mod tests {
         (h, e)
     }
     fn put_player(h: &mut Herd, x: f64) {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     }
     fn gap(h: &Herd, e: Entity, x: f64) -> f64 {
         let p = h.world.get::<Pos>(e).unwrap().0;

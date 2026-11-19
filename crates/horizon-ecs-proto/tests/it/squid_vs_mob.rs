@@ -177,7 +177,7 @@ fn a_hurt_squid_flees_as_a_mob_does() {
         h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
     }
     arm_all(&mut h.world);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: me.x, y: me.y, z: me.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: me.x, y: me.y, z: me.z, main: 0, off: 0, ..Default::default() });
     let view = player_view(me, None);
     let (mut md, mut ed) = (0.0, 0.0);
     for t in 1..=60 {

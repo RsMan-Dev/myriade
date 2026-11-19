@@ -4,7 +4,9 @@
 use crate::common;
 use common::*;
 use horizon_client_lib::mobs::{MobEvent, shulker::peek_height_scale};
+use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+use horizon_ecs_proto::targeting::{set_target, Target};
 use horizon_ecs_proto::{behaviours::attached_face::Attached, cow::*, goals::*, projectile::*};
 
 fn skip() -> bool {
@@ -27,7 +29,7 @@ fn scene() -> (MobRef, Herd, usize, Entity) {
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let ecs = spawn_species(&mut h.world, &sp, at.x, at.z, 77);
     h.world.get_mut::<ActiveUntil>(ecs).unwrap().0 = u64::MAX;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 8.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 8.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
     r.mobs[mob].ai.target = Some(horizon_client_lib::mobs::Who::Player);
     set_target(&mut h.world, ecs, Target::player(1, 30));

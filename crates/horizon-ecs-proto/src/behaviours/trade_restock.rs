@@ -17,10 +17,17 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+/// Le prochain instant où `should_restock` peut changer de réponse : 2401 ticks après le dernier réapprovisionnement s'il y en a eu un
+/// aujourd'hui, sinon le changement de jour (12001) ; un échange réveille le marchand de lui-même.
+fn next_check(t: &horizon_client_lib::merchant::Trader, game: i64) -> i64 {
+    let at = t.last_restock + if t.restocks_today == 1 { 2401 } else { 12001 };
+    at.max(game + 1)
+}
+
 /// Ticks avant le prochain contrôle, selon l'état de réapprovisionnement du marchand.
 fn delay(w: &World, e: Entity) -> i32 {
     let (game, _) = clock(w, e);
-    w.get::<Merchant>(e).map_or(1, |m| (m.trade.next_check(game) - game).clamp(1, i64::from(i32::MAX)) as i32)
+    w.get::<Merchant>(e).map_or(1, |m| (next_check(&m.trade, game) - game).clamp(1, i64::from(i32::MAX)) as i32)
 }
 
 fn arm(w: &mut World, e: Entity, inst: Inst) {
@@ -30,7 +37,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 
 /// `Trader::should_restock` au temps de jeu `game` : dû maintenant ?
 pub fn due_at(w: &mut World, e: Entity, game: i64) -> bool {
-    let day = w.resource::<Times>().day;
+    let day = Times::absolute(w);
     w.get_mut::<Merchant>(e).is_some_and(|mut m| m.trade.should_restock(game, day))
 }
 

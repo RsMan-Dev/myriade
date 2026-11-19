@@ -76,7 +76,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
     let mut seen = 0;
     for t in 1..=ticks {
         let p = STILL(t);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
             if h.world.get::<Target>(e).is_some() && out.acquired[i].is_none() {

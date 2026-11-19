@@ -8,6 +8,8 @@ use super::swallow_hold::{accepts, hold, may_search, Held};
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::item::Item;
+use crate::touch::Toucher;
 
 /// The items this species swallows (the `sulfur_cube_swallowable` tag, resolved by the species).
 #[derive(Component, Clone, Copy, Debug)]
@@ -35,17 +37,18 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Swallowable(params::<Params>(p).items));
+    w.entity_mut(e).insert((Swallowable(params::<Params>(p).items), Toucher { reach: [1.0, 0.5, 1.0] }));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(touched.in_set(slot));
 }
 /// An item touched a cube that may search: the cube takes it if the item is on its list.
-fn touched(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Swallowable>, mut commands: Commands) {
-    for t in ev.item_touched.iter() {
-        if q.get(t.cube).is_ok_and(|s| accepts(&t.name, s.0)) {
-            commands.entity(t.cube).insert(Taking { item: t.item, name: t.name.clone() });
-            reqs.0.push(Req::Start(t.cube, GoalSlot(0)));
+fn touched(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Swallowable>, items: Query<&Item>, mut commands: Commands) {
+    for (cube, item) in ev.item_touched.iter() {
+        let Ok(it) = items.get(item) else { continue };
+        if q.get(cube).is_ok_and(|s| accepts(&it.stack.item, s.0)) {
+            commands.entity(cube).insert(Taking { item, name: it.stack.item.clone() });
+            reqs.0.push(Req::Start(cube, 0));
         }
     }
 }

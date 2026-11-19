@@ -219,7 +219,7 @@ fn neutral_anger_duration_after_the_target_is_lost() {
     }
     let entries: &'static [Entry] = leak([Entry::new(&neutral_anger::MODULE, 200, &neutral_anger::Params::DEFAULT)]);
     let mut h = Herd::with_slab(24, false, false);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let es: Vec<Entity> = (0..n).map(|j| ecs_with(&mut h, entries, near(j).x, near(j).z, 300 + j as u64, u64::from(far_id(j)))).collect();
     h.tick();
     for &e in &es {
@@ -336,7 +336,7 @@ fn snow_golem_shot_cadence_and_aim() {
     let entries: &'static [Entry] = leak([Entry::new(&ranged_attack::MODULE, 1, &ranged_attack::Params::DEFAULT)]);
     let e = ecs_with(&mut h, entries, at.x, at.z, 77, u64::from(far_id(0)));
     h.world.entity_mut(e).insert(Eye(eye));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
     set_target(&mut h.world, e, Target::player(1, 30));
     let (mut mt, mut et) = (Vec::new(), Vec::new());
     let (mut mv, mut ev) = (Vec::new(), Vec::new());
@@ -651,7 +651,7 @@ fn freeze_reask_cost_wall_time() {
     let run = |with: bool| -> f64 {
         let entries: &'static [Entry] = if with { leak([Entry::new(&freeze_when_looked_at::MODULE, 1, &freeze_when_looked_at::Params::DEFAULT)]) } else { &[] };
         let mut h = Herd::with_slab(40, false, false);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         let es: Vec<Entity> = (0..1500).map(|j| ecs_with(&mut h, entries, -6.0 + 0.45 * (j % 40) as f64, -8.0 + 0.45 * (j / 40) as f64, 2000 + j as u64, j as u64)).collect();
         h.tick();
         for &e in &es {
@@ -718,7 +718,7 @@ fn freeze_when_looked_at_cone_at_two_distances() {
             let mut h = Herd::with_slab(40, false, false);
             let e = ecs_with(&mut h, entries, 0.5, 0.5, 31, 3);
             h.world.entity_mut(e).insert(Eye(eye_h));
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
             {
                 let mut ps = h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>();
                 ps.gaze.resize(2, [0.0, 0.0, 1.0]);
@@ -777,7 +777,7 @@ fn look_for_player_delay_and_stare() {
             view.look = look;
             let e = ecs_with(&mut h, entries, 0.5, 0.5, 80 + batch as u64, u64::from(far_id(40 + batch)));
             h.world.entity_mut(e).insert(Eye(eye_h));
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
             {
                 let mut ps = h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>();
                 ps.gaze.resize(2, [0.0, 0.0, 1.0]);

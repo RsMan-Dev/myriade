@@ -7,9 +7,9 @@ use crate::behaviours::{
 };
 use crate::species::{predicates::Cond, Def};
 
-static HOLDS_CROSSBOW: Cond = Cond::Is("piglin:holds_crossbow");
+static HOLDS_CROSSBOW: Cond = Cond::Is("horizon:holds_crossbow");
 static NO_CROSSBOW: Cond = Cond::Not(&HOLDS_CROSSBOW);
-static HOSTILE: Cond = Cond::Is("piglin:hostile_to_player");
+static HOSTILE: Cond = Cond::Is("horizon:hostile_to_player");
 
 pub static DEF: Def = Def {
     name: "minecraft:piglin",

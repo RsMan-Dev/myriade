@@ -331,7 +331,7 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
     for name in ["minecraft:goat", "minecraft:frog", "minecraft:camel", "minecraft:camel_husk", "minecraft:nautilus", "minecraft:llama", "minecraft:dolphin"] {
         let mut h = Herd::with_slab(24, false, false);
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 31, 3);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for _ in 0..60 {
             h.tick();
         }

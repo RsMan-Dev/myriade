@@ -373,7 +373,7 @@ fn zombie_hits(gap: i64, s1: i64, s2: i64) -> (Vec<i64>, Vec<i64>, bool) {
         h.world.entity_mut(e).insert(ActiveUntil(u64::MAX));
         h.world.resource_mut::<Entered>().0.push(e);
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: target.0, y: 1.0, z: target.1, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: target.0, y: 1.0, z: target.1, main: 0, off: 0, ..Default::default() });
     let (lv_near, lv_far) = (oracle(&[near], 6, 6), oracle(&[far], 6, 6));
     let pv = player_view(Vec3::new(target.0, 1.0, target.1), None);
     let (mut mob, mut ecs, mut seen, mut slept) = (Vec::new(), Vec::new(), 0, false);

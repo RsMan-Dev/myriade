@@ -64,8 +64,8 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn breaks(w: &mut World, e: Entity) {
     let (pos, width, height) = (
         w.get::<Pos>(e).map_or(horizon_core::geometry::Vec3::ZERO, |p| p.0),
-        w.get::<Bounds>(e).map_or(0.0, |b| b.0.max.x - b.0.min.x),
-        w.get::<Bounds>(e).map_or(0.0, |b| b.0.max.y - b.0.min.y),
+        w.get::<Bounds>(e).map_or(0.0, |b| b.0.size().x),
+        w.get::<Bounds>(e).map_or(0.0, |b| b.0.size().y),
     );
     let half = (width / 2.0 + 1.0).floor() as i32;
     let high = height.floor() as i32;
@@ -82,7 +82,7 @@ fn breaks(w: &mut World, e: Entity) {
                 if !crate::level::can_entity_destroy(w, e, [x, y, z], !immune) {
                     continue;
                 }
-                w.resource_mut::<Events>().host.set_block(x, y, z, "minecraft:air");
+                crate::level::break_block(w, [x, y, z], false, None, Some(e));
                 destroyed |= !crate::level::is_liquid(w, [x, y, z]);
             }
         }

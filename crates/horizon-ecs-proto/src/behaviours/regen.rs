@@ -69,8 +69,9 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 }
 fn heal(w: &mut World, e: Entity, amount: f32) {
     {
-        let Some(mut h) = w.get_mut::<Health>(e) else { return };
-        let max = w.get::<MaxHealth>(e).map_or(h.0, |m| m.0);
+        let Some(cur) = w.get::<Health>(e).map(|h| h.0) else { return };
+        let max = w.get::<MaxHealth>(e).map_or(cur, |m| m.0);
+        let mut h = w.get_mut::<Health>(e).unwrap();
         h.0 = (h.0 + amount).min(max);
     }
     boss_bar::progress(w, e);

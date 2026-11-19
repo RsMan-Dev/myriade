@@ -2,6 +2,7 @@
 //! plays the charge at once, then after `sound_delay` ticks draws the beam from its chest to the target's eyes, plays the boom and
 //! lands the blow (the damage and the knockback are the frame's, a socle). The act lasts `duration` ticks; the boom is the first
 //! tick of the deadline of `sound_delay`, the end the deadline of `duration`.
+use super::Inst;
 use super::act_phase::{self, ActPhase, Phase};
 use super::{params, Module};
 use crate::{cow::*, goals::*, targeting::{self, Target, Who}};
@@ -44,7 +45,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 
 fn within(w: &World, e: Entity, who: Who, c: &Params) -> bool {
     let (Some(i), Some(p)) = (targeting::info(w, who), w.get::<Pos>(e)) else { return false };
-    let (dx, dy, dz) = (i.position.x - p.0.x, i.position.y - p.0.y, i.position.z - p.0.z);
+    let (dx, dy, dz) = (i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z);
     dx * dx + dz * dz < c.range_h * c.range_h && dy.abs() < c.range_v
 }
 
@@ -87,7 +88,7 @@ fn boom(w: &mut World, e: Entity) {
     let Some(i) = targeting::info(w, target) else { return };
     let p = w.get::<Pos>(e).unwrap().0;
     let src = [p.x, p.y + c.chest, p.z];
-    let eye = [i.position.x, i.eye_y, i.position.z];
+    let eye = [i.pos.x, i.eye, i.pos.z];
     let d = [eye[0] - src[0], eye[1] - src[1], eye[2] - src[2]];
     let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
     let n = if len < 1.0e-5 { [0.0; 3] } else { d.map(|c| c / len) };

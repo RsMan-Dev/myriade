@@ -114,7 +114,9 @@ pub enum Cap {
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {
     pub amount: f32,
-    pub attacker: Option<Entity>,
+    /// Who hurt it (a player or a creature); `direct`: by its own blow, not a projectile.
+    pub who: Option<crate::targeting::Who>,
+    pub direct: bool,
 }
 /// A player's use of an item on an entity (the interactions step fills and sends it).
 pub struct Interaction {
@@ -326,6 +328,40 @@ pub mod equip_source;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
+    &admire::MODULE,
+    &vibration_listen::MODULE,
+    &block_breaker::MODULE,
+    &boss_bar::MODULE,
+    &bounce_drag::MODULE,
+    &burn_on_touch::MODULE,
+    &celebrate::MODULE,
+    &convert_timer::MODULE,
+    &darkness_pulse::MODULE,
+    &dig::MODULE,
+    &emerge::MODULE,
+    &flee_repellent::MODULE,
+    &go_to_disturbance::MODULE,
+    &go_to_wanted::MODULE,
+    &homing_shot::MODULE,
+    &hunt_prey::MODULE,
+    &invulnerable_charge::MODULE,
+    &item_seek::MODULE,
+    &look_at_held::MODULE,
+    &peek::MODULE,
+    &push_on_touch::MODULE,
+    &regen::MODULE,
+    &roar_at_target::MODULE,
+    &side_heads::MODULE,
+    &sniff::MODULE,
+    &sonic_boom::MODULE,
+    &suspect_anger::MODULE,
+    &swallow_item::MODULE,
+    &teleport_on::MODULE,
+    &trade_restock::MODULE,
+    &trade_session::MODULE,
+    &trade_show::MODULE,
+    &trample::MODULE,
+    &walk_away::MODULE,
     &tempt::MODULE,
     &breed::MODULE,
     &breath_air::MODULE,
@@ -456,3 +492,77 @@ pub static TABLE: &[&Module] = &[
     &heal_weather::MODULE,
     &square_or_face::MODULE,
 ];
+pub mod act_phase;
+pub mod admire;
+pub mod attached_face;
+pub mod bed;
+pub mod bell_heard;
+pub mod blast_fuse;
+pub mod block_breaker;
+pub mod block_reach;
+pub mod bonemeal;
+pub mod boss_bar;
+pub mod bounce_drag;
+pub mod breed_love;
+pub mod burn_on_touch;
+pub mod celebrate;
+pub mod composter;
+pub mod convert_timer;
+pub mod crop_harvest;
+pub mod darkness_pulse;
+pub mod dig;
+pub mod emerge;
+pub mod flee_repellent;
+pub mod food_gift;
+pub mod food_inventory;
+pub mod food_stock;
+pub mod golem_recent;
+pub mod golem_summon;
+pub mod gossip;
+pub mod go_to_disturbance;
+pub mod go_to_wanted;
+pub mod hide;
+pub mod hit_recoil;
+pub mod homing_projectile;
+pub mod homing_shot;
+pub mod hostiles_near;
+pub mod hunt_prey;
+pub mod inventory;
+pub mod invulnerable_charge;
+pub mod item_seek;
+pub mod jump_on_bed;
+pub mod look_at_held;
+pub mod nearby_babies;
+pub mod nearest_bed;
+pub mod nearest_poi;
+pub mod panic_flee;
+pub mod peek;
+pub mod phase_shield;
+pub mod play_tag;
+pub mod poi_claim;
+pub mod profession;
+pub mod push_on_touch;
+pub mod raid;
+pub mod reach_block;
+pub mod regen;
+pub mod ring_bell;
+pub mod roar_at_target;
+pub mod schedule;
+pub mod side_heads;
+pub mod sky_spot;
+pub mod sleep_in_bed;
+pub mod sniff;
+pub mod sonic_boom;
+pub mod stroll_near_block;
+pub mod suspect_anger;
+pub mod swallow_hold;
+pub mod swallow_item;
+pub mod teleport_on;
+pub mod trade_offers;
+pub mod trade_restock;
+pub mod trade_session;
+pub mod trade_show;
+pub mod trample;
+pub mod vibration_listen;
+pub mod victory_celebrate;
+pub mod walk_away;

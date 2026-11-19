@@ -1,6 +1,7 @@
 //! The burrowing act: an entity with no target and no walk digs for `duration` ticks once its dig cooldown is over, then leaves the
 //! world (`Withdrawn`, which the frame takes out of its queries). In a liquid it does not dig: it leaves at once, and its sound is
 //! the liquid one. A rider that was forced aboard gets off first (`mount::dismount`). The cooldown is set by `suspect_anger::raise`.
+use super::Inst;
 use super::act_phase::{self, ActPhase, Phase};
 use super::{params, Module};
 use crate::{cow::*, goals::*, mount, targeting::Target};
@@ -45,7 +46,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return false;
     }
     let grounded = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
-    let fluid = w.get::<Fluids>(e).is_some_and(|f| f.in_water || f.in_lava);
+    let fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water || f.in_lava);
     (grounded || fluid) && w.get::<Target>(e).is_none() && !w.get::<Stroll>(e).is_some_and(|s| s.walking)
 }
 

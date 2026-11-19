@@ -2,6 +2,7 @@
 //! `LookAtTradingPlayer`). Ouvert par l'interaction du joueur, fermé par sa fermeture ou par la fin du marchand. Le composant
 //! `Trading` n'existe que pendant l'écran (épars : aucun parcours ne le trouve). Le `Session` du client garde les règles du
 //! commerce ; ses événements partent vers le monde.
+use crate::cow::now_of;
 use super::gossip::{self, Gossips, Kind, PER_TRADE};
 use super::trade_offers::{ensure_offers, lend, profession_name, variant_name, Merchant, TradeData};
 use super::*;
@@ -105,7 +106,7 @@ pub fn open(w: &mut World, e: Entity, player: u32) {
 /// `Session::sequences_needed` : les séquences des niveaux au-dessus de celui-ci, prêtées par le monde (`WorldSequences.lend`).
 fn lend_for_levels(w: &mut World, profession: &str, level: i32) -> BTreeMap<String, XoroshiroRandom> {
     let needed = Session::sequences_needed(&w.resource::<TradeData>().trades, profession, level);
-    let d = w.resource_mut::<TradeData>();
+    let mut d = w.resource_mut::<TradeData>();
     let seed = d.seed;
     needed
         .into_iter()
@@ -163,7 +164,7 @@ pub fn close(w: &mut World, e: Entity) {
         m.trade.xp = t.session.xp;
         m.level = u8::try_from(t.session.level).unwrap_or(m.level);
     }
-    let d = w.resource_mut::<TradeData>();
+    let mut d = w.resource_mut::<TradeData>();
     for (id, r) in t.session.sequences {
         d.sequences.insert(id, r);
     }

@@ -19,9 +19,13 @@ pub struct Params {
     pub difficulty: i32,
     /// The effect its arrows put on the creature they hit (a stray's slowness, a bogged's poison, a parched's weakness): (kind, level, ticks).
     pub effect: Option<(crate::effects::Kind, i32, i32)>,
+    /// The ticks the bow is drawn before a shot (`20` for a bow; a crossbow's charge is longer).
+    pub charge: i32,
+    /// A power that replaces the bow's (a crossbow's 1.6), else the power of the draw.
+    pub fixed_power: Option<f32>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2, effect: None };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2, effect: None, charge: 20, fixed_power: None };
 }
 /// The goal's state (`RangedBowAttackGoal`'s fields) and the bow in use (`using`: ticks the bow has been drawn).
 #[derive(Component, Clone, Copy, Debug)]
@@ -166,9 +170,9 @@ fn bow_run(
                 b.using = 0;
             } else if sees {
                 let pull = b.using;
-                if pull >= 20 {
+                if pull >= b.p.charge {
                     b.using = 0;
-                    let power = bow_power(pull);
+                    let power = b.p.fixed_power.unwrap_or_else(|| bow_power(pull));
                     let who = t.who;
                     cmd.queue(move |w: &mut World| shoot(w, e, who, power));
                     b.attack_time = b.p.interval;

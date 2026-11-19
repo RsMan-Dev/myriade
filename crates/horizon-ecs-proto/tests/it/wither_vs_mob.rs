@@ -34,7 +34,7 @@ fn scene(at: Vec3, player: Vec3) -> Scene {
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let ecs = spawn_species(&mut h.world, &sp, at.x, at.z, 77);
     h.world.get_mut::<ActiveUntil>(ecs).unwrap().0 = u64::MAX;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<PlayerState>().immortal = true;
     set_target(&mut h.world, ecs, Target::player(1, 30));
     Scene { r, h, mob, ecs }
@@ -64,7 +64,7 @@ fn step(s: &mut Scene, view: Option<&PlayerView>) -> (Tick, Tick) {
         match ev {
             HostEvent::Sound { name: "entity.wither.spawn", .. } => ecs.blast = true,
             HostEvent::Sound { name: "entity.wither.shoot", .. } => ecs.shots += 1,
-            HostEvent::SetBlock { x, y, z, name } if name == "minecraft:air" => ecs.breaks.push([x, y, z]),
+            HostEvent::SetBlock { pos, .. } => ecs.breaks.push(pos),
             _ => {}
         }
     }
@@ -134,7 +134,7 @@ fn a_hurt_breaks_the_same_cells_as_the_mob() {
         step(&mut s, None);
     }
     s.r.hit(s.mob, 1.0, [10.5, 1.0, 0.5]);
-    s.h.hit(s.ecs, 1.0, [10.5, 1.0, 0.5]);
+    s.h.hit(s.ecs, 1.0, (10.5, 0.5));
     let (mut m, mut e) = (Vec::new(), Vec::new());
     for _ in 0..40 {
         let (mob, ecs) = step(&mut s, None);

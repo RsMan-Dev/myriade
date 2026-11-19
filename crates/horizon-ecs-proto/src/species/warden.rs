@@ -47,7 +47,7 @@ pub static DEF: Def = Def {
         Entry::new(&roar_at_target::MODULE, 4, &roar_at_target::Params { duration: 84, anger: 20, sound: "entity.warden.roar" }),
         Entry::new(&melee::MODULE, 5, &melee::Params { interval: 18, ..melee::Params::DEFAULT }),
         Entry::new(&go_to_disturbance::MODULE, 6, &go_to_disturbance::Params { speed: 0.7 }),
-        Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff" }),
+        Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff", radius: 24.0 }),
         Entry::new(&darkness_pulse::MODULE, 8, &darkness_pulse::Params { radius: 20.0, interval: 120 }),
         Entry::new(&float::MODULE, 9, &()),
         Entry::new(&look_at_player::MODULE, 10, &()),

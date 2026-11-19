@@ -62,7 +62,7 @@ fn mark_retry(w: &mut World, e: Entity) {
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
-    if present(w, e, p.memory) || w.get::<Retry>(e).is_some_and(|r| now_of(w, e) as i64 < r.next) {
+    if present(w, e, p.memory) || w.get::<Retry>(e).is_some_and(|r| (now_of(w, e) as i64) < r.next) {
         return false;
     }
     let free = !w.resource::<PoiRegistry>().in_range(block_of(w, e), p.range, true, p.accept).is_empty();

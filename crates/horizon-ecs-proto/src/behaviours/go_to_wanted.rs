@@ -44,7 +44,7 @@ fn wanted_near(w: &World, e: Entity, p: &Params) -> Option<Entity> {
         .into_iter()
         .filter(|&it| item::pickable(w, it) && item::kind_of(w, it).is_some_and(|k| p.items.contains(&k)))
         .min_by(|&a, &b| {
-            let d = |it: Entity| w.get::<Pos>(it).map_or(f64::MAX, |q| (q.0 - at).length_squared());
+            let d = |it: Entity| w.get::<Pos>(it).map_or(f64::MAX, |q| q.0.distance_squared(at));
             d(a).total_cmp(&d(b))
         })
 }
@@ -64,7 +64,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     stop_nav(w, e);
     let Some(it) = w.get_mut::<Wanted>(e).and_then(|mut wd| wd.item.take()) else { return };
     let (Some(me), Some(q)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Pos>(it).map(|p| p.0)) else { return };
-    if (q - me).length_squared() > 2.25 || !item::pickable(w, it) {
+    if q.distance_squared(me) > 2.25 || !item::pickable(w, it) {
         return;
     }
     if let Some(stack) = item::pick_up(w, e, it, u32::MAX) {

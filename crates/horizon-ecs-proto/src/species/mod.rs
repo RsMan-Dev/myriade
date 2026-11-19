@@ -148,6 +148,12 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &hoglin::DEF,
     &fox::DEF,
     &happy_ghast::DEF,
+    &piglin::DEF,
+    &shulker::DEF,
+    &sulfur_cube::DEF,
+    &villager::DEF,
+    &warden::DEF,
+    &wither::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -740,3 +746,9 @@ mod tests {
         assert!(e.contains("mod:big") && e.contains("33") && e.contains("32"), "{e}");
     }
 }
+pub mod piglin;
+pub mod shulker;
+pub mod sulfur_cube;
+pub mod villager;
+pub mod warden;
+pub mod wither;

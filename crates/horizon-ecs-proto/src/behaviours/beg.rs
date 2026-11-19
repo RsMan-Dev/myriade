@@ -149,7 +149,7 @@ mod tests {
     }
     /// A player at `x`, holding `main` (0: nothing).
     fn put_player(h: &mut Herd, x: f64, main: u32) {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main, off: 0, ..Default::default() });
     }
     fn bone() -> u32 {
         item_id("minecraft:bone")

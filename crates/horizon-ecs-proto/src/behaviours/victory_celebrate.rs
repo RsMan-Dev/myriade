@@ -1,6 +1,8 @@
 //! Victoire de raid : le villageois célèbre, parfois avec un feu d'artifice (`Celebrate`, `villager_brain.rs:2520` et
 //! tick `3024`). Durée et cadence sont des paramètres (valeurs du `Mob` à relever aux lignes 2520 et 3024, voir
 //! `villager-divers.md`). Les feux sont une ressource drainée par l'hôte (`villager_firework`, `creatures/mod.rs:3466`).
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::World;
 use super::raid;
 use crate::brain::*;
 use crate::cow::Pos;

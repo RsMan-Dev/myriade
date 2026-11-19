@@ -191,7 +191,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64, player_at: impl Fn(i64) -> Vec3, die: i
     let mut seen = 0;
     for t in 1..=ticks {
         let p = player_at(t);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
         if t == die {
             h.world.resource_mut::<PlayerState>().health = vec![0.0, 0.0];
         }
@@ -332,7 +332,7 @@ fn a_hurt_zombie_alerts_the_zombies_around_it() {
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let near: Vec<Entity> = (0..5).map(|i| spawn_species(&mut h.world, &table[2], -20.0 + 2.0 * i as f64, 0.5, 1 + i)).collect();
     let far = spawn_species(&mut h.world, &table[2], 50.5, 0.5, 9);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: -18.0, y: 1.0, z: 3.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: -18.0, y: 1.0, z: 3.5, main: 0, off: 0, ..Default::default() });
     for &e in near.iter().chain([&far]) {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     }
@@ -372,7 +372,7 @@ fn trace_one_zombie() {
         let m = &rf.mobs[0];
         if !acquired && m.ai.target.is_some() {
             acquired = true;
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: 1.0, z: pz, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: 1.0, z: pz, main: 0, off: 0, ..Default::default() });
             let slot = h.world.get::<GoalSet>(e).unwrap().slot_of(&horizon_ecs_proto::behaviours::nearest_target::MODULE).unwrap();
             force_start(&mut h.world, e, slot);
             let mut tg = Target::player(1, 30);
@@ -452,7 +452,7 @@ fn the_alert_reaches_the_same_zombies_at_the_same_tick_as_a_mob_s() {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         e
     }).collect();
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: 1.0, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: 1.0, z: player.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..5 {
         h.tick();
     }
@@ -506,7 +506,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
         let n = line.len();
         let (mut m, mut e) = (Run { acquired: vec![None; n], first_hit: vec![None; n], hits: vec![vec![]; n], lost: vec![None; n] }, Run { acquired: vec![None; n], first_hit: vec![None; n], hits: vec![vec![]; n], lost: vec![None; n] });
         let view = player_view(Vec3::new(0.5, 1.0, 0.5), None);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for t in 1..=260i64 {
             if t == wall_at.max(1) {
                 wall(&mut |x, y, z| rf.set_block(x, y, z, "minecraft:stone"));

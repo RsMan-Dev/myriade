@@ -1,5 +1,6 @@
 //! The emerging act: an entity whose `emerge_pending` is set plays the emerge sound and stands still for `duration` ticks. The flag is
 //! set by the species' `equip` through `RareState`; the act is exclusive, hence `interruptable: false`.
+use super::Inst;
 use super::act_phase::{self, ActPhase, Phase, RareState};
 use super::{params, Module};
 use crate::{cow::*, goals::*};

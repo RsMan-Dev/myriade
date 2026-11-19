@@ -94,7 +94,7 @@ fn ecs_run(at: &[(f64, f64)], ticks: i64, stun: bool) -> Log {
     }
     for t in 1..=ticks {
         let p = player_pos();
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
         h.tick();
         take_ecs(&mut h, t, &mut log);
     }

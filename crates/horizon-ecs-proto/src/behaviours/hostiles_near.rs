@@ -1,6 +1,7 @@
 //! Capteur : l'hostile le plus proche qui se trouve dans la distance de fuite de son espèce. La distance vient de la
 //! table `map` (ex. `neoforge:acceptable_villager_distances`), chargée depuis les données : rien n'est recopié ici.
 //! Une entité sans distance dans la table n'est pas une menace.
+use crate::targeting::Who;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::{Index, Pos, SpeciesId};
@@ -13,6 +14,7 @@ pub struct Params {
 
 /// Les tables de distances par nom de table, puis par nom d'espèce (`minecraft:player` pour les joueurs).
 #[derive(Default)]
+#[derive(Resource)]
 pub struct DistanceMaps(pub BTreeMap<String, BTreeMap<String, f64>>);
 impl DistanceMaps {
     pub fn get(&self, map: &str, species: &str) -> Option<f64> {

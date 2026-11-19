@@ -1,6 +1,7 @@
 //! `WalkAway` of the piglin (`mobs/piglin.rs:1048-1139`, `SetWalkTargetAwayFrom.entity(AVOID_TARGET, speed, distance, ...)`):
 //! while a point to keep away from is remembered (`Avoid`, written by whoever sees the threat), the animal walks to a spot
 //! `distance` blocks from it, ten tries at most, the path ending at once when none is found. Woken by the `Avoid` write.
+use crate::goals;
 use super::*;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;

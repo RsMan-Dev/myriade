@@ -1,25 +1,14 @@
-//! L'inventaire du villageois (`Villager.inventory`, ce qu'il porte sans les emplacements d'armure) : un composant
-//! `Stock` par item (`minecraft:wheat`...). Absent tant qu'il est vide : un villageois sans rien n'a pas le composant.
-use crate::brain::*;
-use bevy_ecs::prelude::Component;
-use std::collections::BTreeMap;
-
-/// Item name to count, counts above zero only.
-#[derive(Component, Default, Clone, Debug)]
-pub struct Stock(pub BTreeMap<&'static str, i32>);
+//! Lectures et retraits à l'unité sur l'inventaire du villageois (`food_inventory::Stock`, le seul : huit emplacements, absent
+//! tant qu'il est vide).
+use super::food_inventory::{insert, Stock};
+use bevy_ecs::prelude::{Entity, World};
 
 pub fn count(w: &World, e: Entity, item: &str) -> i32 {
-    w.get::<Stock>(e).and_then(|s| s.0.get(item).copied()).unwrap_or(0)
+    w.get::<Stock>(e).map_or(0, |s| s.0.iter().filter(|(n, _)| n == item).map(|(_, c)| i32::from(*c)).sum())
 }
 
-pub fn add(w: &mut World, e: Entity, item: &'static str, n: i32) {
-    if n <= 0 {
-        return;
-    }
-    if w.get::<Stock>(e).is_none() {
-        w.entity_mut(e).insert(Stock::default());
-    }
-    *w.get_mut::<Stock>(e).unwrap().0.entry(item).or_insert(0) += n;
+pub fn add(w: &mut World, e: Entity, item: &str, n: u8) -> u8 {
+    insert(w, e, item, n)
 }
 
 /// Takes `n` of `item` if there are that many; the component goes when it is empty again.
@@ -27,20 +16,18 @@ pub fn take(w: &mut World, e: Entity, item: &str, n: i32) -> bool {
     if count(w, e, item) < n {
         return false;
     }
-    let empty = {
-        let mut s = w.get_mut::<Stock>(e).unwrap();
-        let left = {
-            let c = s.0.get_mut(item).unwrap();
-            *c -= n;
-            *c
-        };
-        if left == 0 {
-            s.0.remove(item);
-        }
-        s.0.is_empty()
-    };
-    if empty {
+    let mut s = w.get::<Stock>(e).cloned().unwrap_or_default();
+    let mut left = n;
+    for (name, c) in s.0.iter_mut().filter(|(name, _)| name == item) {
+        let t = left.min(i32::from(*c));
+        *c -= t as u8;
+        left -= t;
+    }
+    s.0.retain(|(_, c)| *c > 0);
+    if s.0.is_empty() {
         w.entity_mut(e).remove::<Stock>();
+    } else {
+        w.entity_mut(e).insert(s);
     }
     true
 }

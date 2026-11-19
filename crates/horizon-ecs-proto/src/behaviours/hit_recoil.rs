@@ -38,6 +38,6 @@ pub fn launch(a: &Archetype, damage: f32, (xd, zd): (f64, f64), effect_scale: f3
 pub fn recoil(w: &mut World, e: Entity, archetype: &Archetype, damage: f32, direction: (f64, f64)) {
     let delta = launch(archetype, damage, direction, 1.0);
     if let Some(mut v) = w.get_mut::<Vel>(e) {
-        v.0 += Vec3::new(delta[0], delta[1], delta[2]);
+        v.0 = v.0.add_vector(Vec3::new(delta[0], delta[1], delta[2]));
     }
 }

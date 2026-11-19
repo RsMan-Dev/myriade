@@ -1,6 +1,7 @@
 //! Flight from repellents (`PiglinAvoidRepellent`, `mobs/piglin.rs:1640-1690`): a block of the list, or a creature of the
 //! list, within `horizontal` blocks (`vertical` up and down) makes the animal remember that spot as its `Avoid` point, and
 //! hands the walk to `walk_away`. The search runs when the selector asks this goal, and `walk_away` is started by request.
+use crate::goals;
 use super::walk_away::{Avoid, MODULE as WALK_AWAY};
 use super::*;
 use crate::{cow::*, goals::*};

@@ -3,6 +3,7 @@
 //! crop, else `by` for a leaf. Jump: a bump that broke nothing jumps; one that broke leaves jumps only when the game kept them all.
 use super::*;
 use crate::{cow::Pos, goals::*};
+use crate::level::{asks_living_destroy_block, block_has_class, break_block, can_grief, cells_in, is_on_ground, jump, jump_if_kept};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

@@ -53,7 +53,7 @@ fn ecs_blast(d: impl Fn(usize) -> f64, charged: bool, ticks: usize) -> Option<(u
         h.world.entity_mut(e).insert(explosion::Charged);
     }
     for t in 0..ticks {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d(t), y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d(t), y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         if t == 20 {
             set_target(&mut h.world, e, Target::player(1, 60));
         }

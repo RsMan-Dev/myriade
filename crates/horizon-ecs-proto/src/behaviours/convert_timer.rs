@@ -1,6 +1,7 @@
 //! Conversion of an animal kept in a place where it cannot live (the zombification of `PiglinAi`, `mobs/piglin.rs:1964-2000`):
 //! while `goals::in_unsafe_place` holds, the animal counts `after` ticks of its own time and then becomes `into`
 //! (`conversion::convert`, socle absent). The count is dropped when the place turns safe again (`stop`).
+use crate::goals;
 use super::*;
 use crate::{cow::*, goals::*};
 
@@ -57,6 +58,6 @@ fn tick(w: &mut World) {
     for e in due {
         let into = w.get::<Convert>(e).unwrap().0.into;
         w.entity_mut(e).remove::<Converting>();
-        conversion::convert(w, e, into);
+        crate::conversion::convert(w, e, into, crate::conversion::ConvertKeep::ALL);
     }
 }

@@ -43,5 +43,5 @@ pub fn may_search(w: &World, e: Entity) -> bool {
 
 /// The save of the held block (`Item`, a string) and nothing when the cube holds none.
 pub fn save(w: &World, e: Entity) -> Vec<(&'static str, Tag)> {
-    w.get::<Held>(e).map(|h| vec![("Item", Tag::String(h.item.to_string()))]).unwrap_or_default()
+    w.get::<Held>(e).map(|h| vec![("Item", Tag::String(horizon_core::nbt::JavaString::from(&*h.item)))]).unwrap_or_default()
 }

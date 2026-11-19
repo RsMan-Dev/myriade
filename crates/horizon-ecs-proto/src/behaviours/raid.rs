@@ -19,3 +19,14 @@ pub fn status(w: &World, e: Entity) -> i64 {
 pub fn active(w: &World, e: Entity) -> bool {
     status(w, e) == RAID_ACTIVE
 }
+
+/// The host says a raid began / ended near `at`: the creatures with a brain within `radius` take the status.
+pub fn set_status(w: &mut World, at: [f64; 3], radius: f64, status: i64) {
+    let mut near = Vec::new();
+    w.resource::<crate::cow::Index>().for_radius(at[0], at[2], radius, |o| near.push(o));
+    for o in near {
+        if w.get::<Brain>(o).is_some() {
+            set(w, o, &RAID_STATUS, MemValue::Int(status), None);
+        }
+    }
+}

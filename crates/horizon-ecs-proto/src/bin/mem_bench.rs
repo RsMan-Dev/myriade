@@ -71,7 +71,7 @@ fn main() {
     let item = horizon_ecs_proto::goals::item_id(&std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into()));
     for i in 0..np {
         let (x, z) = spot(i);
-        herd.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(horizon_ecs_proto::goals::Player { id: i as u32, x, y: 1.0, z, main: if i < np * 3 / 10 { item } else { 0 }, off: 0 });
+        herd.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(horizon_ecs_proto::goals::Player { id: i as u32, x, y: 1.0, z, main: if i < np * 3 / 10 { item } else { 0 }, off: 0, ..Default::default() });
     }
     if active {
         herd.set_players((0..np).map(spot).collect());

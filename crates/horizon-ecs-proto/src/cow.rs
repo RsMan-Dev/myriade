@@ -211,6 +211,10 @@ pub struct InWall;
 /// `LivingEntity.health`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Health(pub f32);
+/// `LivingEntity.getMaxHealth`, for the bars and the regeneration that read it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct MaxHealth(pub f32);
 /// The last hurt: the tick and the amount (`invulnerableTime`: for 10 ticks after, only a larger hit counts, by the
 /// difference).
 #[derive(Component, Clone, Copy, Debug)]
@@ -267,20 +271,26 @@ pub struct Hit {
     pub from: Option<(f64, f64)>,
     /// Who did it (a player of the bench's `Online` list, or a creature), for the target of a `HurtByTarget`.
     pub by: Option<crate::targeting::Who>,
+    /// The blow is the attacker's own (not a projectile it shot).
+    pub direct: bool,
 }
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, from: None, by: None });
+        self.0.push(Hit { target, amount, cause, from: None, by: None, direct: false });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true });
+    }
+    /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
+    pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(who), direct: false });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, from: Some(from), by: None });
+        self.0.push(Hit { target, amount, cause, from: Some(from), by: None, direct: false });
     }
 }
 /// What hurt (`DamageType`): `Panic` reads it (`#panic_environmental_causes`: cactus, freeze, hot_floor, in_fire, lava,
@@ -1533,6 +1543,7 @@ pub fn schedule() -> Schedule {
     s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
+    crate::touch::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
     s.add_systems(crate::spawning::step.after(crate::goals::online_events).before(player_near));
     crate::farm::register(&mut s);
@@ -1544,6 +1555,9 @@ pub fn schedule() -> Schedule {
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
+    crate::behaviours::attached_face::register(&mut s);
+    crate::behaviours::homing_projectile::register(&mut s);
+    crate::behaviours::vibration_listen::register(&mut s);
     s
 }
 
@@ -2646,6 +2660,7 @@ pub(crate) fn apply_damage(
         }
         hurts.0.push(e);
         events.hurt.push(e);
+        events.vibration.push(crate::behaviours::vibration_listen::Vibration { pos: [pos.0.x, pos.0.y, pos.0.z], source: hit.by, owner: None, projectile: false });
         if hit.by.is_some() {
             events.hurt_by_entity.push(e);
         }
@@ -2664,12 +2679,9 @@ pub(crate) fn apply_damage(
         if let Some(who) = hit.by {
             commands.entity(e).insert(LastHurtBy { who, at: clock.of(e) });
         }
-        let attacker = match hit.by {
-            Some(crate::targeting::Who::Entity(a)) => Some(a),
-            _ => None,
-        };
+        let (who, direct) = (hit.by, hit.direct);
         commands.queue(move |w: &mut World| {
-            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, attacker });
+            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct });
             crate::despawn::touch(w, e);
         });
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
@@ -3691,7 +3703,7 @@ impl Herd {
     pub fn set_online(&mut self, players: &[(f64, f64)]) {
         self.world.resource_mut::<crate::hostile::PlayerState>().immortal = true;
         for (i, p) in players.iter().enumerate() {
-            self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0 });
+            self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0, ..Default::default() });
         }
     }
     /// Day or night for the monsters that burn in daylight (`monsters_burn`): every one of them looks at the sun again.
@@ -4026,12 +4038,12 @@ mod tests {
         let tempted = |herd: &mut Herd, id: u8| {
             all.iter().filter(|a| a.1 == id && herd.world.get::<Tempting>(a.0).is_some()).count()
         };
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: carrot(), off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: carrot(), off: 0, ..Default::default() });
         for _ in 0..8 {
             herd.tick();
         }
         let (cows_c, pigs_c) = (tempted(&mut herd, 0), tempted(&mut herd, 1));
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: wheat(), off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: wheat(), off: 0, ..Default::default() });
         for _ in 0..8 {
             herd.tick();
         }
@@ -4450,3 +4462,5 @@ pub(crate) fn watch_out<const K: usize>(mut world: bevy_ecs::world::DeferredWorl
         idx.watch_remove(ctx.entity, K, cell);
     }
 }
+
+pub use crate::cow_helpers::*;

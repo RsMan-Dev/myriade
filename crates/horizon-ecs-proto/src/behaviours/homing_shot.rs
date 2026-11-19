@@ -1,6 +1,7 @@
 //! `homing_shot`: a goal that, while its target stands within `reach_sq` and the difficulty is not peaceful, opens the body's lid to `open`,
 //! turns to the target's eyes (`aim_at`, `turn` degrees a tick) and fires a `homing_projectile` every `wait_base + wait_step x nextInt(wait_count)`
 //! ticks, from its box's middle, with a sound. The lid shuts when the goal stops. Flags MOVE | LOOK.
+use crate::cow::Pos;
 use super::*;
 use crate::behaviours::{attached_face::{Attached, Sounds, set_peek}, fox_state::aim_at, homing_projectile};
 use crate::goals::*;
@@ -83,7 +84,7 @@ fn step(w: &mut World, e: Entity) {
     };
     let Some(t) = w.get::<Target>(e).copied() else { return };
     let Some(i) = targeting::info(w, t.who) else { return };
-    aim_at(w, e, [i.pos.x, i.eye, i.pos.z], Some(cfg.turn));
+    aim_at(w, e, [i.pos.x, i.eye, i.pos.z], Some(cfg.turn as f32));
     let from = w.get::<Pos>(e).map(|p| p.0).unwrap_or(i.pos);
     if d2(from, i.pos) >= cfg.reach_sq {
         targeting::clear_target(w, e);

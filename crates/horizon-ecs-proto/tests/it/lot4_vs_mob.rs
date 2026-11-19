@@ -154,7 +154,7 @@ fn reach_cat_bed_and_turtle_egg() {
         let owner = Vec3::new(-1.5, 3.0, 0.5);
         let mut view = player_view(owner, None);
         view.uuid = UUID;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0, ..Default::default() });
         for t in 0..800 {
             r.step(Some(&view));
             h.tick();
@@ -257,7 +257,7 @@ fn cat_sits_on_a_flat_bed() {
         let owner = Vec3::new(-1.5, 1.0, 0.5);
         let mut view = player_view(owner, None);
         view.uuid = UUID;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0, ..Default::default() });
         let (mut tm, mut te, mut dm, mut de) = (None, None, f64::MAX, f64::MAX);
         for t in 0..1500 {
             r.step(Some(&view));
@@ -304,7 +304,7 @@ fn cat_lies_down_after_taming() {
         let owner = Vec3::new(-1.5, 3.0, 0.5);
         let mut view = player_view(owner, None);
         view.uuid = UUID;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: owner.x, y: owner.y, z: owner.z, main: 0, off: 0, ..Default::default() });
         let (mut tm, mut te) = (None, None);
         for t in 0..600 {
             if t == 4 {
@@ -418,7 +418,7 @@ fn wolf_begs_for_a_bone() {
         let at = Vec3::new(3.5, 1.0, 0.5);
         let view = player_view(at, Some("minecraft:bone"));
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: bone, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: bone, off: 0, ..Default::default() });
         let (mut a, mut b, mut ga, mut gb) = (0usize, 0usize, 0usize, 0usize);
         let (mut pa, mut pb) = (false, false);
         for _ in 0..200 {
@@ -452,7 +452,7 @@ fn the_species_of_lot_4_start() {
     for name in ["minecraft:wolf", "minecraft:cat", "minecraft:ocelot", "minecraft:creeper", "minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse", "minecraft:llama"] {
         let mut h = Herd::with_slab(24, false, false);
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 31, 3);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for _ in 0..40 {
             h.tick();
         }

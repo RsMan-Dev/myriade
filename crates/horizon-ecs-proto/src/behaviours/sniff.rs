@@ -1,5 +1,6 @@
 //! The sniffing act: with no sniff cooldown, no disturbance and no target, a creature it could attack nearby is sniffed for `duration`
 //! ticks, and the cooldown restarts for `cooldown` ticks. Its cooldown is a deadline (`ActPhase.sniff_cooldown_until`), not a count.
+use super::Inst;
 use super::act_phase::{self, ActPhase, Phase, RareState};
 use super::{params, Module};
 use crate::{cow::*, goals::*, targeting::Target};
@@ -11,6 +12,8 @@ pub struct Params {
     /// The cooldown after a sniff, in ticks (a fixed value: the random draw of the source is not ported).
     pub cooldown: u64,
     pub sound: &'static str,
+    /// The range of the creatures that keep it from sniffing (its follow range).
+    pub radius: f64,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -40,7 +43,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         && w.get::<RareState>(e).unwrap().disturbance.is_none()
         && w.get::<Target>(e).is_none()
         && !w.get::<Stroll>(e).is_some_and(|s| s.walking)
-        && crate::targeting::attackable_near(w, e)
+        && crate::targeting::attackable_near(w, e, w.get::<Cfg>(e).unwrap().0.radius).is_none()
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
