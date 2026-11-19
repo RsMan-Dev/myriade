@@ -215,6 +215,9 @@ pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
 pub mod swell;
+pub mod freeze_when_looked_at;
+pub mod strider_go_to_lava;
+pub mod ghast_look;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -246,4 +249,7 @@ pub static TABLE: &[&Module] = &[
     &climb_on_powder_snow::MODULE,
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
+    &freeze_when_looked_at::MODULE,
+    &strider_go_to_lava::MODULE,
+    &ghast_look::MODULE,
 ];
