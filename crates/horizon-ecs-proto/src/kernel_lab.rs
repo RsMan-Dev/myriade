@@ -498,7 +498,15 @@ pub fn seam_world(seed: u64) -> (&'static MobWorld<'static>, Vec<Call>) {
         let mut r = Rng(seed | 1);
         for x in -20..20 {
             for z in -20..20 {
-                w.set(x, 15, z, stone).unwrap();
+                // The floor is not whole: shapes taller than their cell stand at y = 15 and reach into the section above.
+                match r.below(100) {
+                    0..=69 => w.set(x, 15, z, stone).unwrap(),
+                    70..=84 => {
+                        let k = r.below(pool.len());
+                        w.set(x, 15, z, pool[k][r.below(pool[k].len())]).unwrap();
+                    }
+                    _ => {}
+                }
             }
         }
         let near_seam = |v: i32| matches!(v, -2..=1 | 14..=17);
