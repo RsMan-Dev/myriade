@@ -147,7 +147,7 @@ fn sting(w: &mut World, e: Entity) {
     w.entity_mut(e).remove::<crate::behaviours::neutral_anger::Angry>();
 }
 fn stung_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Stung>>().iter(w).collect();
+    let es: Vec<Entity> = crate::goals::entities::<With<Stung>>(w);
     for e in es {
         let t = {
             let mut s = w.get_mut::<Stung>(e).unwrap();
@@ -454,7 +454,7 @@ fn drop_flower(w: &mut World, e: Entity) {
     }
 }
 fn pollinate_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Pollinating>>().iter(w).collect();
+    let es: Vec<Entity> = crate::goals::entities::<With<Pollinating>>(w);
     for e in es {
         let Some(f) = bee(w, e).and_then(|b| b.flower) else { end(w, e, &POLLINATE); continue };
         let raining = w.resource::<Level>().mw.0.raining;
@@ -577,7 +577,7 @@ fn drop_hive(w: &mut World, e: Entity) {
     }
 }
 fn go_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<GoingHome>>().iter(w).collect();
+    let es: Vec<Entity> = crate::goals::entities::<With<GoingHome>>(w);
     for e in es {
         let Some(h) = bee(w, e).and_then(|b| b.hive) else { end(w, e, &GO_TO_HIVE); continue };
         let travelling = {
@@ -720,7 +720,7 @@ fn kf_stop(w: &mut World, e: Entity, _: Inst) {
     arm_in(w, e, &GO_TO_KNOWN_FLOWER, 40);
 }
 fn kf_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<GoingToFlower>>().iter(w).collect();
+    let es: Vec<Entity> = crate::goals::entities::<With<GoingToFlower>>(w);
     for e in es {
         let Some(f) = bee(w, e).and_then(|b| b.flower) else { end(w, e, &GO_TO_KNOWN_FLOWER); continue };
         let travelling = {
@@ -789,7 +789,7 @@ pub fn hive_tick(w: &mut World) {
     release_tick(w);
     stung_tick(w);
     if w.is_resource_changed::<StayInHive>() {
-        let es: Vec<Entity> = w.query_filtered::<Entity, With<Bee>>().iter(w).collect();
+        let es: Vec<Entity> = crate::goals::entities::<With<Bee>>(w);
         for e in es {
             ask_hive(w, e);
             ask_pollinate(w, e);
@@ -799,7 +799,7 @@ pub fn hive_tick(w: &mut World) {
         return;
     }
     let gone: Vec<[i32; 3]> = w.resource::<crate::poi::PoiRegistry>().removed().to_vec();
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Bee>>().iter(w).collect();
+    let es: Vec<Entity> = crate::goals::entities::<With<Bee>>(w);
     for e in es {
         if bee(w, e).and_then(|b| b.hive).is_some_and(|h| gone.contains(&h)) {
             drop_hive(w, e);
