@@ -38,6 +38,8 @@ fn a_strider_crosses_a_lava_pool_as_a_mob_does() {
     for (k, &(x0, z0)) in starts.iter().enumerate() {
         let (mut r, mut h) = pools();
         let (i, e) = (r.add(Vec3::new(x0, 1.0, z0)), ecs_cow(&mut h, x0, 1.0, z0, 400 + k as u64));
+        // The `Mob` of this scene has no goals: the strider's own goals (stroll, the lava) would walk it elsewhere.
+        h.world.entity_mut(e).insert(horizon_ecs_proto::goals::GoalSet::new(&[]));
         let goal = if x0.abs() < 1.0 { [x0, 0.0, 4.5] } else { [-x0, 0.0, z0] };
         // The ecs animal has no fire immunity yet (a species rule): it must live through the lava.
         h.world.get_mut::<Health>(e).unwrap().0 = 1.0e6;

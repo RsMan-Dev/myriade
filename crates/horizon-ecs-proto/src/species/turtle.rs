@@ -12,7 +12,7 @@ pub static DEF: Def = Def {
     reference: None,
     goals: &[
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.2, water: Some(7), ..panic::Params::DEFAULT }),
-        // attend : breed (priorité 1, variante à oeuf)
+        // attend : breed à oeuf (priorité 1, avant turtle_lay_egg). breed.rs:198 `birth` pose un bébé vivant sur place : DOUTE, non porté.
         Entry::new(&turtle_lay_egg::MODULE, 1, &turtle_lay_egg::Params::DEFAULT),
         Entry::new(&tempt::MODULE, 2, &tempt::Params { speed: 1.1, items: &["minecraft:seagrass"], ..tempt::Params::DEFAULT }),
         Entry::new(&turtle_go_to_water::MODULE, 3, &turtle_go_to_water::Params::DEFAULT),

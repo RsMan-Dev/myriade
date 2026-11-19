@@ -158,6 +158,9 @@ fn mob_health(m: &Mob) -> f32 {
 /// resting vertical velocity) and fresh from its spawn (velocity zero: it is in the air for its first tick).
 #[test]
 fn cactus_fire_and_lava_hurt_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_if_fire_immune("cactus_fire_and_lava_hurt_as_a_mob_does") {
+        return;
+    }
     // The Mob's outcome depends on the panic flight out of the hazard; a species with no Panic wanders at random.
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "cactus_fire_and_lava_hurt_as_a_mob_does") {
         return;

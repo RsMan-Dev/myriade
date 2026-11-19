@@ -40,7 +40,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -95,8 +95,10 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<GoingToLava>();
     countdown(w, e, inst.slot);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((lava_exit, lava_run).chain().in_set(slot));
+/// The ticks of the module (no system in the schedule), in the order the chain had: run by `arbitrate` while an animal carries the goal.
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, lava_exit);
+    crate::goals::tick_state(w, lava_run);
 }
 /// A strider that left a fluid and had a search pending in it searches at once.
 fn lava_exit(ev: Res<Events>, q: Query<&Lava>, mut cmd: Commands) {

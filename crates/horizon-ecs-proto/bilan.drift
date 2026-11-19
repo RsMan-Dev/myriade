@@ -191,3 +191,27 @@ bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change
 bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zone far ring (cow, 6, 10)|ecs|-0.0|1.6
 bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
 bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|schedule at rest (empty world, per tick)|ecs|127137|127140
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow idle|ecs|2142|2143
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow active(1000 players, no solicitation)|ecs|9956|9957
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow active(1000 players, no solicitation)|ecs-eager|9862|9863
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig idle|ecs-eager|505|501
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig active(1000 players, no solicitation)|ecs|8402|8403
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig active(1000 players, no solicitation)|ecs-eager|8235|8236
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep idle|ecs|996|995
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep idle|ecs-eager|1173|1172
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep active(1000 players, no solicitation)|ecs-eager|9432|9433
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20914|20913
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken idle|ecs|43|42
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken idle|ecs-eager|212|213
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken active(1000 players, no solicitation)|ecs|5417|5418
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken active(1000 players, no solicitation)|ecs-eager|5296|5304
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12412|12413
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie active(1000 players, no solicitation)|ecs|14062|14064
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie active(1000 players, no solicitation)|ecs-eager|13946|13951
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6350|6358
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9252|9260
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|crowd 0.5 (cow, 2000, 0 player)|batch|13235|13236
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|crowd 0.8 (cow, 2000, 0 player)|batch|11941|11942
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone near ring (cow, 6, 10)|ecs|5075.7|5076.1
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone far ring (cow, 6, 10)|ecs|1.6|1.3
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|schedule at rest (empty world, per tick)|ecs|127140|127134

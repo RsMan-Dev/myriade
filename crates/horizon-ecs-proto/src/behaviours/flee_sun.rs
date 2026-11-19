@@ -29,7 +29,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Living, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -37,8 +37,10 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(FleeSunGoal { speed: p.speed, slot: inst.slot, pick: (0.0, 0, 0.0) });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_on_fire, wake_on_day).in_set(slot));
+/// The ticks of the module (no system in the schedule): run by `arbitrate` while an animal carries the goal.
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, wake_on_fire);
+    crate::goals::tick_state(w, wake_on_day);
 }
 /// A monster that catches fire asks for the goal (`canUse` is asked at the selector's ticks). Any ignition is seen here:
 /// The framework's `Events.ignited` says it (read once, the tick after).
