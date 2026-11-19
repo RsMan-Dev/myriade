@@ -106,6 +106,23 @@ pub fn bench_world_mut() -> (&'static MobWorld<'static>, *mut horizon_client_ren
                 }
             }
         }
+        // `KB_HARD=name:N`: a patch (x in [30, 48), z in [-48, -20)) where the block `name` fills each cell of the two layers above the floor
+        // with the odds that make N of them lie within a cow's box and its ring (32 cells): the case `h-hard`.
+        if let Ok(spec) = std::env::var("KB_HARD") {
+            let (name, n) = spec.split_once(':').expect("KB_HARD=name:N");
+            let hard = states_named(registry, &[name]);
+            let p = n.parse::<f64>().expect("N") / 32.0;
+            for x in 30..48 {
+                for z in -48..-20 {
+                    for y in 1..=2 {
+                        if r.unit() < p {
+                            let k = r.below(hard.len());
+                            w.set(x, y, z, hard[k][r.below(hard[k].len())]).unwrap();
+                        }
+                    }
+                }
+            }
+        }
     })
     .expect("HORIZON_TEST_RESOURCES");
     (w, p)
@@ -119,7 +136,7 @@ pub fn cow_box(x: f64, y: f64, z: f64) -> Aabb {
     Aabb::new(Vec3::new(x - 0.45, y, z - 0.45), Vec3::new(x + 0.45, y + 1.4, z + 0.45))
 }
 
-pub const CASES: [&str; 7] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air", "g-churn"];
+pub const CASES: [&str; 8] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air", "g-churn", "h-hard"];
 
 /// The calls of one cow case (a few hundred, cycled by the bench).
 pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
@@ -133,6 +150,7 @@ pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
                 "a-rest" => (cow_box(x, 1.0, z), Vec3::new(0.0, g, 0.0), true),
                 "b-walk" => (cow_box(x, 1.0, z), walk, true),
                 "c-wall" => (cow_box(19.0 - 0.45 - r.range(0.0, 0.3), 1.0, z), Vec3::new(0.12, g, r.range(-0.05, 0.05)), true),
+                "h-hard" => (cow_box(r.range(31.0, 47.0), 1.0, r.range(-47.0, -21.0)), walk, true),
                 "g-churn" => (cow_box(r.range(-15.5, -0.5), 1.0, r.range(0.5, 15.5)), walk, true),
                 "f-air" => (cow_box(x, r.range(40.0, 60.0), z), Vec3::new(r.range(-0.3, 0.3), r.range(-0.3, 0.3), r.range(-0.3, 0.3)), false),
                 "d-fall" => (cow_box(x, r.range(5.0, 30.0), z), Vec3::new(0.0, r.range(-1.2, -0.1), 0.0), false),
@@ -362,4 +380,103 @@ pub fn run_lava_walker(world: &MobWorld<'_>, c: &Call, reference: bool) -> Resul
     } else {
         occupancy_of(world).resolve(scene, c.bounds, c.movement, c.step, c.on_ground).map_err(|e| e.to_string())
     }
+}
+
+/// How a call is answered: through the masks, by the kernel alone, or by the reference (cell by cell) kernel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    Masks,
+    Kernel,
+    Reference,
+}
+
+/// [`run`] for a body with the given subject (the entity whose context the kernel's contextual shapes read).
+pub fn run_as(world: &MobWorld<'_>, c: &Call, subject: Option<horizon_client_render::collisions::PowderSnowSubject<'_>>, mode: Mode) -> Result<Vec3, String> {
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject };
+    match mode {
+        Mode::Masks => occupancy_of(world).resolve(scene, c.bounds, c.movement, c.step, c.on_ground),
+        Mode::Kernel => scene.resolve_in_border_with(c.bounds, c.movement, c.step, c.on_ground, None, &[]),
+        Mode::Reference => scene.resolve_in_border_with_reference(c.bounds, c.movement, c.step, c.on_ground, None, &[]),
+    }
+    .map_err(|e| e.to_string())
+}
+
+/// The subjects the contextual shapes tell apart: none (a position), a living entity with nothing special, one that fell,
+/// one in leather boots, a walkable type (a fox, a rabbit), a falling block, a lava walker.
+pub fn subjects() -> Vec<Option<horizon_client_render::collisions::PowderSnowSubject<'static>>> {
+    use horizon_client_render::collisions::PowderSnowSubject as S;
+    vec![
+        None,
+        Some(S::default()),
+        Some(S { fall_distance: 3.0, ..Default::default() }),
+        Some(S { leather_boots: true, ..Default::default() }),
+        Some(S { walkable_type: true, ..Default::default() }),
+        Some(S { falling_block: true, ..Default::default() }),
+        Some(S { lava_walker: true, ..Default::default() }),
+    ]
+}
+
+/// The blocks the masks leave to the kernel cell by cell (an entity context, a block entity, a piston in motion, a column offset).
+pub const HARD: &[&str] = &["scaffolding", "powder_snow", "moving_piston", "bamboo", "pointed_dripstone", "sulfur_spike", "water", "lava", "shulker_box", "red_shulker_box", "lime_shulker_box"];
+const FIXED: &[&str] = &["oak_slab", "oak_stairs", "oak_fence", "cobblestone_wall", "snow", "white_bed", "anvil", "hopper", "cauldron", "oak_trapdoor", "piston_head"];
+
+fn states_named(registry: &BlockRegistry, names: &[&str]) -> Vec<Vec<BlockStateId>> {
+    names
+        .iter()
+        .map(|n| (0..registry.len() as u32).map(BlockStateId).filter(|&id| registry.state(id).unwrap().name.strip_prefix("minecraft:") == Some(n)).collect::<Vec<_>>())
+        .filter(|v| !v.is_empty())
+        .collect()
+}
+
+/// A dense small world (x, z in [-14, 14), y in [0, 6)) of stone, fixed shapes (slabs, stairs, fences, walls, snow, beds...) and
+/// hard blocks (`only`: that one name, every column of the layer y = 1 holds one; None: all of `HARD`), with the lids of the
+/// shulker boxes and the pistons in motion the world keeps for them. The pointer lets a test change blocks.
+pub fn hard_world(seed: u64, only: Option<&str>) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+        insert_chunks(w, -2, 2);
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let fixed = states_named(registry, FIXED);
+        let hard = match only {
+            Some(n) => states_named(registry, &[n]),
+            None => states_named(registry, HARD),
+        };
+        assert!(!hard.is_empty(), "no state named {only:?}");
+        let mut r = Rng(seed | 1);
+        for x in -14..14 {
+            for z in -14..14 {
+                w.set(x, 0, z, stone).unwrap();
+                for y in 1..6 {
+                    let kind = if only.is_some() && y == 1 { 99 } else { r.below(100) };
+                    let s = match kind {
+                        0..=11 => stone,
+                        12..=26 => {
+                            let k = r.below(fixed.len());
+                            fixed[k][r.below(fixed[k].len())]
+                        }
+                        27..=69 | 99 => {
+                            let k = r.below(hard.len());
+                            hard[k][r.below(hard[k].len())]
+                        }
+                        _ => continue,
+                    };
+                    w.set(x, y, z, s).unwrap();
+                    let name = registry.state(s).unwrap().name.as_str();
+                    if name.ends_with("shulker_box") {
+                        use horizon_client_render::block_entity_anim::{Shulker, ShulkerStatus};
+                        let progress = [0.0f32, 0.25, 0.5, 0.75, 1.0][r.below(5)];
+                        if r.below(4) != 0 {
+                            w.shulkers.insert([x, y, z], Shulker { open_count: 1, status: ShulkerStatus::Opening, progress, progress_old: progress * 0.5 });
+                        }
+                    } else if name == "minecraft:moving_piston" && r.below(3) != 0 {
+                        let moved = fixed[r.below(fixed.len())][0];
+                        let direction = horizon_core::geometry::Direction::ALL[r.below(6)];
+                        let progress = r.below(5) as f32 / 4.0;
+                        w.moving_pistons.push(([x, y, z], horizon_world::piston_shape::MovingPistonState { moved_state: moved, direction, extending: r.below(2) == 0, source: r.below(2) == 0, progress, previous_progress: progress * 0.5 }));
+                    }
+                }
+            }
+        }
+    })
+    .expect("HORIZON_TEST_RESOURCES");
+    (w, p)
 }

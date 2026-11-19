@@ -1,6 +1,6 @@
 //! The optimised block-collision kernel against the reference one, bit for bit, over random calls in a varied
 //! random world (suivi/ecs-noyau-collisions.md). `HORIZON_TEST_RESOURCES` must be set.
-use horizon_ecs_proto::kernel_lab::{change_block, cube_world, occupancy_of, random_calls, run, run_kernel, run_lava_walker, run_reference, varied_world, Rng};
+use horizon_ecs_proto::kernel_lab::{change_block, cube_world, hard_world, occupancy_of, random_calls, run, run_as, run_kernel, run_lava_walker, run_reference, subjects, varied_world, Call, Mode, Rng};
 
 fn same(a: &Result<horizon_core::geometry::Vec3, String>, b: &Result<horizon_core::geometry::Vec3, String>) -> bool {
     match (a, b) {
@@ -266,4 +266,86 @@ fn contextual_states_have_no_cached_shape() {
     }
     eprintln!("contextual states without a cached shape: {without:?}");
     assert!(with_shape.is_empty(), "contextual states with a cached shape: {with_shape:?}");
+}
+
+/// Calls built on the hard cells of a world: boxes whose feet are at the heights that tell the contextual shapes apart (on the
+/// top of the block, a hair above or below, inside it), standing on it, falling onto it, walking against it.
+fn feet_calls(world: &horizon_client_lib::mobs::MobWorld<'_>, r: &mut Rng) -> Vec<Call> {
+    use horizon_core::geometry::{Aabb, Vec3};
+    let mut out = Vec::new();
+    for x in -14..14 {
+        for z in -14..14 {
+            for y in 0..6 {
+                let name = &world.registry.state(world.world.block(x, y, z)).unwrap().name;
+                if !HARD_NAMES.iter().any(|n| name.ends_with(n)) || r.below(3) != 0 {
+                    continue;
+                }
+                for feet in [0.0, 0.5, 0.875, 0.9, 0.99, 1.0, 1.0 + 1.0e-7, 1.0 - 1.0e-7, 1.0 + 3.0e-6, 1.125, 1.5, 2.0] {
+                    let (cx, cz) = (f64::from(x) + r.range(0.0, 1.0), f64::from(z) + r.range(0.0, 1.0));
+                    let (w, h) = [(0.6, 1.8), (0.9, 1.4), (0.3, 0.3), (0.6, 0.6)][r.below(4)];
+                    let bounds = Aabb::new(Vec3::new(cx - w / 2.0, f64::from(y) + feet, cz - w / 2.0), Vec3::new(cx + w / 2.0, f64::from(y) + feet + h, cz + w / 2.0));
+                    let movement = [Vec3::new(0.0, -0.0784, 0.0), Vec3::new(0.1, -0.08, 0.05), Vec3::new(0.0, -0.5, 0.0), Vec3::new(0.2, 0.0, -0.1), Vec3::new(0.0, 0.0, 0.0)][r.below(5)];
+                    out.push(Call { bounds, movement, step: [0.0_f32, 0.6, 1.0][r.below(3)], on_ground: r.below(2) == 0 });
+                }
+            }
+        }
+    }
+    out
+}
+const HARD_NAMES: &[&str] = &["scaffolding", "powder_snow", "moving_piston", "bamboo", "pointed_dripstone", "sulfur_spike", "water", "lava", "shulker_box"];
+
+/// Hard cells (scaffolding, powder snow, moving pistons, shulker boxes with their lids, bamboo, stalactites, fluids) among cubes and
+/// fixed shapes: the masks ask the kernel for the shape of the cells that need it and rebuild the rest, in the scan's order. Equal to
+/// the reference bit for bit for every kind of body (a position, a living entity, one that fell, in leather boots, a walkable type, a
+/// falling block, a lava walker), over random calls and calls with the feet at the heights that tell the shapes apart.
+#[test]
+fn hard_cells_asked_one_by_one_equal_the_reference_bit_for_bit() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let subs = subjects();
+    let (mut calls, mut stopped, mut fast, mut slow, mut errors) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    for (seed, only) in [(2u64, None), (4, None), (6, Some("scaffolding")), (8, Some("powder_snow")), (10, Some("moving_piston")), (12, Some("shulker_box")), (14, Some("bamboo")), (16, Some("pointed_dripstone")), (18, Some("water"))] {
+        let (world, _) = hard_world(seed, only);
+        let occ = occupancy_of(world);
+        let mut r = Rng(seed * 31 + 7);
+        let mut list = random_calls(seed, 2_500);
+        list.extend(feet_calls(world, &mut r));
+        let (f0, k0) = (occ.fast.load(Relaxed), occ.fallback.load(Relaxed));
+        for c in &list {
+            for (i, sub) in subs.iter().enumerate() {
+                let (new, old) = (run_as(world, c, *sub, Mode::Masks), run_as(world, c, *sub, Mode::Reference));
+                assert!(same(&new, &old), "seed {seed} {only:?} subject {i}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+                calls += 1;
+                if let Err(e) = &old {
+                    errors += 1;
+                    if errors == 1 { eprintln!("first reference error: {e}"); }
+                }
+                stopped += u64::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
+            }
+        }
+        let (f, k) = (occ.fast.load(Relaxed) - f0, occ.fallback.load(Relaxed) - k0);
+        fast += f;
+        slow += k;
+        eprintln!("seed {seed} {only:?}: {} calls x {} subjects; masks {f}, whole kernel {k}", list.len(), subs.len());
+    }
+    eprintln!("{errors} calls ended in a kernel error (the same one on both sides)");
+    eprintln!("{calls} calls, {stopped} stopped by a block; the whole kernel took {slow} ({:.1} %)", slow as f64 * 100.0 / (fast + slow) as f64);
+    assert!(stopped * 5 > calls, "only {stopped} of {calls} calls were stopped by a block");
+    assert!(slow * 20 < fast + slow, "the whole kernel still took {slow} of {} calls", fast + slow);
+}
+
+/// The same for `no_collision` (a position context whatever the body).
+#[test]
+fn hard_cells_agree_for_no_collision() {
+    let subs = subjects();
+    for (seed, only) in [(2u64, None), (6, Some("scaffolding")), (10, Some("moving_piston")), (12, Some("shulker_box"))] {
+        let (world, _) = hard_world(seed, only);
+        let occ = occupancy_of(world);
+        for c in random_calls(seed, 6_000) {
+            for sub in subs.iter().take(3) {
+                let scene = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                let mut scene2 = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                assert_eq!(occ.no_collision(scene, c.bounds), scene2.unobstructed(c.bounds).unwrap_or(false), "no_collision {:?} seed {seed} {only:?}", c.bounds);
+            }
+        }
+    }
 }
