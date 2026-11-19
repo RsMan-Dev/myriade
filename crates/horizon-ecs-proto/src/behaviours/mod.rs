@@ -231,6 +231,8 @@ pub mod leap_at_target;
 pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
+pub mod neutral_anger;
+pub mod panda_sit;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -262,6 +264,8 @@ pub static TABLE: &[&Module] = &[
     &leap_at_target::MODULE,
     &baby_follow_adult::MODULE,
     &rolled::MODULE,
+    &neutral_anger::MODULE,
+    &panda_sit::MODULE,
     &climb_on_powder_snow::MODULE,
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
