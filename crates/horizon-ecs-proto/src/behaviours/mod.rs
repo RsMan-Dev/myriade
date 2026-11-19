@@ -215,6 +215,9 @@ pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
 pub mod swell;
+pub mod move_towards_target;
+pub mod ranged_attack;
+pub mod leap_at_target;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -241,6 +244,9 @@ pub static TABLE: &[&Module] = &[
     &fox_stalk_prey::MODULE,
     &fox_pounce::MODULE,
     &swell::MODULE,
+    &move_towards_target::MODULE,
+    &ranged_attack::MODULE,
+    &leap_at_target::MODULE,
     &baby_follow_adult::MODULE,
     &rolled::MODULE,
     &climb_on_powder_snow::MODULE,
