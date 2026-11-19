@@ -1437,9 +1437,6 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
-        if sp.armor != (0.0, 0.0) {
-            e.insert(crate::equipment::Armor { armor: sp.armor.0.floor(), toughness: sp.armor.1 });
-        }
         if sp.undead {
             e.insert(crate::effects::Undead);
         }
@@ -2331,7 +2328,6 @@ pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
-    plain: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
@@ -2382,8 +2378,8 @@ pub(crate) fn travel(
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
-            // Removing a component from the entity itself commutes across entities: no need of the ordered buffer.
-            plain.command_scope(|mut cmd| {
+            // Not commutative: the entity takes the last row of the table it lands in, and the systems that walk that table (melee, goals) see the rows' order.
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
         }
@@ -2601,7 +2597,8 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>)>,
+    species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
@@ -2613,7 +2610,7 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
@@ -2627,8 +2624,9 @@ pub(crate) fn apply_damage(
             hit.amount
         };
         // `LivingEntity.getDamageAfterArmorAbsorb`: what the worn armor stops, unless the hurt is in `#bypasses_armor`.
-        if let Some(a) = armor.filter(|_| crate::equipment::armor_applies(hit.cause)) {
-            applied = crate::equipment::absorb(applied, a.armor, a.toughness);
+        if crate::equipment::armor_applies(hit.cause) {
+            let (a, t) = armor.map_or_else(|| sid.map_or((0.0, 0.0), |s| crate::equipment::base_armor(&species.0[s.0 as usize])), |a| (a.armor, a.toughness));
+            applied = crate::equipment::absorb(applied, a, t);
         }
         *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;

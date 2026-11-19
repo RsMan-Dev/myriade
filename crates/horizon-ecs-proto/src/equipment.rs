@@ -9,7 +9,7 @@ use crate::items::{self, worn_in};
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
 
-/// The armor an entity wears (absent: none).
+/// The armor an entity wears on top of its species' base (absent: only the base, `base_armor`): no byte for a creature that wears nothing.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct Armor {
     pub armor: f32,
@@ -52,18 +52,25 @@ pub fn set_slot(w: &mut World, e: Entity, slot: Slot, item: u32) -> u32 {
 pub fn take_slot(w: &mut World, e: Entity, slot: Slot) -> u32 {
     set_slot(w, e, slot, 0)
 }
+/// `Attributes.ARMOR` and `ARMOR_TOUGHNESS` of the type, the armor value floored.
+pub fn base_armor(sp: &crate::cow::Species) -> (f32, f32) {
+    (sp.armor.0.floor(), sp.armor.1)
+}
 fn refresh_armor(w: &mut World, e: Entity) {
     let q = *w.get::<Equipment>(e).unwrap();
     let base = w.get::<SpeciesId>(e).map_or((0.0, 0.0), |s| w.resource::<SpeciesTable>().0[s.0 as usize].armor);
-    let (mut armor, mut toughness) = (f64::from(base.0), f64::from(base.1));
+    let (mut armor, mut toughness, mut worn) = (f64::from(base.0), f64::from(base.1), false);
     for it in [q.head, q.chest, q.legs, q.feet, q.body] {
         let (a, t) = items::armor_of(it);
+        worn |= a != 0.0 || t != 0.0;
         armor += a;
         toughness += t;
     }
     // `armor::values`: the armor value is floored.
     let now = Armor { armor: armor.floor() as f32, toughness: toughness as f32 };
-    if now == Armor::default() {
+    if !worn {
+        w.entity_mut(e).remove::<Armor>();
+    } else if now == Armor::default() {
         w.entity_mut(e).remove::<Armor>();
     } else {
         w.entity_mut(e).insert(now);
