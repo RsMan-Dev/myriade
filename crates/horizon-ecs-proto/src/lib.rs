@@ -37,3 +37,4 @@ pub mod tame;
 pub mod vehicle;
 pub mod targeting;
 pub mod zone;
+pub mod pocket;
