@@ -22,6 +22,6 @@ pub static DEF: Def = Def {
         Entry::new(&turtle_stroll::MODULE, 9, &turtle_stroll::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
-    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), turtle_control: true, push: 0.1 }))],
+    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), turtle_control: true, push: 0.1, squid: false }))],
     ..Def::EMPTY
 };

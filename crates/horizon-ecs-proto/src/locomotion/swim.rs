@@ -24,9 +24,12 @@ pub struct Params {
     pub turtle_control: bool,
     /// What `moveRelative` pushes by in the water (0.01 for a fish, 0.1 for the turtle's `travelInWater`).
     pub push: f32,
+    /// `Squid.travel` and `Squid.aiStep`: no control, no path; the motion is the impulse of the tentacle cycle (`SquidState`), the move only
+    /// applies the velocity.
+    pub squid: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, turtle_control: false, push: 0.01 };
+    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, turtle_control: false, push: 0.01, squid: false };
 }
 /// The swim's parameters of the entity, as the systems read them.
 #[derive(Component, Clone, Copy, Debug)]
@@ -34,6 +37,14 @@ pub struct SwimParams {
     pub amphibious: Option<bool>,
     pub turtle_control: bool,
     pub push: f32,
+    pub squid: bool,
+}
+/// The tentacle cycle of a squid (`Squid.tentacleMovement`, `tentacleSpeed`) and the vector its goals set (`Mob.extra.vector`): what moves it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct SquidState {
+    pub movement: f32,
+    pub speed: f32,
+    pub vector: [f64; 3],
 }
 /// The animal's air runs down while it is out of the water (set by `equip`, with `Dry` out of the water).
 #[derive(Component, Clone, Copy, Debug)]
@@ -46,7 +57,12 @@ pub struct Dry;
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let sp = *crate::behaviours::params::<Params>(p);
-    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, turtle_control: sp.turtle_control, push: sp.push });
+    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, turtle_control: sp.turtle_control, push: sp.push, squid: sp.squid });
+    if sp.squid {
+        // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
+        let speed = crate::goals::with_rng(w, e, |r| 1.0 / (r.next_float() + 1.0) * 0.2);
+        w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3] }, Moving));
+    }
     if sp.needs_water {
         // Out of the water until the first event says otherwise.
         w.entity_mut(e).insert((NeedsWater, Dry));
@@ -228,6 +244,9 @@ pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob:
 #[allow(clippy::type_complexity)]
 fn move_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>), With<SwimMode>>) {
     for (pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following) in &mut q {
+        if swp.squid {
+            continue;
+        }
         if swp.turtle_control {
             turtle_control(pos, &mut vel, &mut yaw, &mut m, &mut d, body, fs, c, following);
             continue;
@@ -297,16 +316,17 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
 #[allow(clippy::type_complexity)]
 fn dry(
     level: Res<Level>,
-    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>), With<Dry>>,
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams), With<Dry>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let cx = level.mw.0.loop_context;
-    for (e, mut air, uid, tn, mut c, mut v, mut rng, moving) in &mut q {
+    for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp) in &mut q {
         if let Some(damage) = horizon_client_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
             queue.add(e, damage, Cause::Drown);
         }
-        if c.on_ground {
+        // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
+        if c.on_ground && !swp.squid {
             let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
             v.0 = Vec3::new(v.0.x + f64::from((a * 2.0 - 1.0) * 0.05), v.0.y + 0.4, v.0.z + f64::from((b * 2.0 - 1.0) * 0.05));
             c.on_ground = false;
@@ -317,19 +337,53 @@ fn dry(
     }
 }
 
+/// `Squid.aiStep` (server side): the tentacle cycle advances by its speed; in the water the stroke from 3/4 of the first half sets the velocity
+/// to the goals' vector, the second half slows it by 0.9; out of the water it falls straight down (no control).
+fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, gravity: f64) {
+    const PI: f32 = std::f32::consts::PI;
+    st.movement += st.speed;
+    if f64::from(st.movement) > std::f64::consts::TAU {
+        st.movement -= PI * 2.0;
+        if rng.next_int(10) == 0 {
+            st.speed = 1.0 / (rng.next_float() + 1.0) * 0.2;
+        }
+    }
+    if in_water {
+        if st.movement < PI {
+            if st.movement / PI > 0.75 {
+                v.0 = Vec3::new(st.vector[0], st.vector[1], st.vector[2]);
+            }
+        } else {
+            v.0 = Vec3::new(v.0.x * 0.9, v.0.y * 0.9, v.0.z * 0.9);
+        }
+    } else {
+        v.0 = Vec3::new(0.0, (v.0.y - gravity) * f64::from(0.98_f32), 0.0);
+    }
+}
+
 /// `AbstractFish.travelInWater` of an animal in the water; out of it (partly) the walk's `travel_one` (gravity on the ground).
 #[allow(clippy::type_complexity)]
 fn travel(
     level: Res<Level>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
     >,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp) in &mut q {
+    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp, squid, mut rng) in &mut q {
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
+        if swp.squid {
+            // `Squid.travel`: the move by the velocity and nothing else; then `Squid.aiStep` (the species' step, after the travel).
+            // `LivingEntity.aiStep` drops the tiny motions before the move.
+            crate::locomotion::fly::drop_tiny_motion(&mut v);
+            do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
+            if let Some(mut st) = squid {
+                squid_step(&mut st, &mut v, &mut rng, fs.in_water, b.gravity);
+            }
+            continue;
+        }
         if fs.in_water {
             if !c.on_ground && v.0.y < 0.0 {
                 v.0.y *= b.fall_factor;
