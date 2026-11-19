@@ -244,6 +244,8 @@ pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob:
 #[allow(clippy::type_complexity)]
 fn move_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>), With<SwimMode>>) {
     for (pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following) in &mut q {
+        // `LivingEntity.aiStep` drops the tiny motions BEFORE the control (the lift of the water comes after).
+        crate::locomotion::fly::drop_tiny_motion(&mut vel);
         if swp.squid {
             continue;
         }
@@ -376,11 +378,13 @@ fn travel(
         let was_in_air = !c.on_ground;
         if swp.squid {
             // `Squid.travel`: the move by the velocity and nothing else; then `Squid.aiStep` (the species' step, after the travel).
-            // `LivingEntity.aiStep` drops the tiny motions before the move.
+            // `LivingEntity.aiStep` drops the tiny motions before the move. The fluid state is the one `baseTick` read at the start of the tick
+            // (the entity's own `FluidState` is behind by a tick when it enters the water from above: its marker comes with the move).
             crate::locomotion::fly::drop_tiny_motion(&mut v);
+            let in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             if let Some(mut st) = squid {
-                squid_step(&mut st, &mut v, &mut rng, fs.in_water, b.gravity);
+                squid_step(&mut st, &mut v, &mut rng, in_water, b.gravity);
             }
             continue;
         }
@@ -388,9 +392,6 @@ fn travel(
             if !c.on_ground && v.0.y < 0.0 {
                 v.0.y *= b.fall_factor;
             }
-            // `LivingEntity.aiStep`: the tiny motions are dropped.
-            let u = v.0;
-            v.0 = Vec3::new(if u.x.abs() < 0.003 { 0.0 } else { u.x }, if u.y.abs() < 0.003 { 0.0 } else { u.y }, if u.z.abs() < 0.003 { 0.0 } else { u.z });
             move_relative(&mut v, y.0, swp.push, d.xxa, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
