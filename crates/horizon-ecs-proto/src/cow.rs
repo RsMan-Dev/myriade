@@ -2743,6 +2743,51 @@ impl Herd {
         self.world.run_system_cached(reindex).unwrap();
         out
     }
+    /// Micro-bench of the path search, 1: every animal gets a target 1.5 blocks away and `NeedsPath`.
+    pub fn bench_pathfind_prepare(&mut self) {
+        let ids: Vec<Entity> = self.world.query_filtered::<Entity, With<Stroll>>().iter(&self.world).collect();
+        for &e in &ids {
+            let p = self.world.get::<Pos>(e).unwrap().0;
+            let mut s = self.world.get_mut::<Stroll>(e).unwrap();
+            (s.tx, s.tz, s.ty) = (p.x + 1.5, p.z, p.y.floor() as i32);
+            self.world.entity_mut(e).insert(NeedsPath);
+        }
+    }
+    /// 2: `pathfind` alone, once; the searches it ran.
+    pub fn bench_pathfind_run(&mut self) -> usize {
+        let before: u32 = self.world.query::<&Nav>().iter(&self.world).map(|n| n.searches).sum();
+        self.world.run_system_cached(pathfind).unwrap();
+        let after: u32 = self.world.query::<&Nav>().iter(&self.world).map(|n| n.searches).sum();
+        (after - before) as usize
+    }
+    /// 2b: the same searches, the `Finder` alone from the same data (no system around it); the searches run.
+    pub fn bench_finder_only(&mut self) -> usize {
+        let level = *self.world.resource::<Level>();
+        let mw = level.mw.0;
+        let ids: Vec<Entity> = self.world.query_filtered::<Entity, With<Stroll>>().iter(&self.world).collect();
+        let mut n = 0;
+        for e in ids {
+            let (pos, body, c, s, sp) = (self.world.get::<Pos>(e).unwrap().0, *self.world.get::<Body>(e).unwrap(), *self.world.get::<Contact>(e).unwrap(), *self.world.get::<Stroll>(e).unwrap(), *self.world.get::<NavParams>(e).unwrap());
+            let reach = self.world.get::<Nav>(e).unwrap().reach;
+            let pm = PathMob { position: pos, width: body.width, height: body.height, on_ground: c.on_ground, in_water: false, max_up_step: body.step_height, max_fall_distance: comfortable_fall_distance(0.0), malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, stands_on_lava: false };
+            let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
+            let max_len = sp.follow_range;
+            std::hint::black_box(Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, reach, (max_len * 16.0).floor() as i32));
+            n += 1;
+        }
+        n
+    }
+    /// 3: the paths are dropped; what the other systems do to the caches between two searches is `travel` run once.
+    pub fn bench_pathfind_clear(&mut self, other_work: bool) {
+        let ids: Vec<Entity> = self.world.query_filtered::<Entity, With<Stroll>>().iter(&self.world).collect();
+        for &e in &ids {
+            self.world.get_mut::<Nav>(e).unwrap().path = None;
+            self.world.entity_mut(e).remove::<(Following, PathEnded, NeedsPath)>();
+        }
+        if other_work {
+            self.world.run_system_cached(travel).unwrap();
+        }
+    }
     /// Turns the simulated chunks on (`zone.rs`): only the chunks within `radius` chunks of a player tick, the creatures of the
     /// others sleep (at the next tick for the players set later).
     pub fn set_simulation(&mut self, radius: i32) {
