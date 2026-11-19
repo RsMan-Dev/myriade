@@ -69,7 +69,7 @@ mod tests {
     const FOOD: &[&str] = &["minecraft:carrot"];
 
     fn brained(h: &mut Herd) -> Entity {
-        static ENTRIES: [SensorEntry; 1] = [SensorEntry::new(&SENSOR, 20).with(&Params::DEFAULT)];
+        static ENTRIES: [SensorEntry; 1] = [SensorEntry::new(&SENSOR, 20).with(&Params { range: 10.0, foods: FOOD })];
         let def = BrainDef {
             sensors: &ENTRIES,
             activities: &[ActivityDef { name: "core", slot: 1, requires: &[] }],
@@ -82,7 +82,7 @@ mod tests {
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 91);
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.entity_mut(e).insert(bundle(plan));
-        equip(&mut h.world, e, &Params { range: 10.0, foods: FOOD });
+        // `start` is the frame's creation step: it calls the sensor's `equip` with the entry's parameters.
         start(&mut h.world, e);
         e
     }
