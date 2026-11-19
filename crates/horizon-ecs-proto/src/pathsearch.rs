@@ -10,7 +10,7 @@ use horizon_core::position::BlockPos;
 pub static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub const NAMES: [&str; 24] = ["opened", "neighbours_pushed", "find_accepted", "try_jump", "first_ground", "node()", "node_new", "cached()", "cached_miss", "path_type()", "path_type_miss(statics)", "static()", "from_state", "from_state_miss(world cache)", "block_read_floor", "block_read_other", "block_read_neigh", "check_neigh", "check_neigh_scan", "within_bb(alloc)", "has_collisions", "has_collisions_miss", "heap_ops(ins/pop/chg)", "heap_steps"];
 pub static C: [std::sync::atomic::AtomicU64; 24] = [const { std::sync::atomic::AtomicU64::new(0) }; 24];
-pub const SEC: [&str; 16] = ["path_type_of_mob(miss)", "compute_path_type(static miss)", "find_accepted", "walk_neighbors", "heap ops", "within_bb", "loop: neighbours", "heap_pop", "find (whole)", "static_floor", "cached()", "after loop", "start()", "node()", "path_type()", "best_h"];
+pub const SEC: [&str; 16] = ["Finder::new", "Finder drop", "find_accepted", "walk_neighbors", "heap ops", "within_bb", "loop: neighbours", "heap_pop", "find (whole)", "static_floor", "cached()", "after loop", "start()", "node()", "path_type()", "best_h"];
 pub static ACC: [std::sync::atomic::AtomicU64; 16] = [const { std::sync::atomic::AtomicU64::new(0) }; 16];
 thread_local! { static CTR: Option<crate::instr::Counter> = crate::instr::Counter::new(); }
 pub struct Sec(usize, u64);
@@ -28,6 +28,7 @@ pub fn calibrate(i: usize) -> u64 {
     o
 }
 /// The counters and guards exist only in a build with `PATH_PROBE` set in the environment (they cost instructions on the hot path).
+const REP: u32 = match option_env!("PATH_REP") { Some(v) => (v.as_bytes()[0] - b'0') as u32, None => 0 };
 const PROBE: bool = option_env!("PATH_PROBE").is_some();
 #[inline(always)]
 fn sec(i: usize) -> Option<Sec> {
@@ -320,6 +321,8 @@ impl FinderBuffers {
 }
 
 thread_local! {
+    /// The maluses of the last profile seen (the same few species search over and over).
+    static MALUS_CACHE: std::cell::RefCell<(u64, [f32; PathType::COUNT])> = const { std::cell::RefCell::new((0, [0.0; PathType::COUNT])) };
     static TLS_BUFFERS: std::cell::RefCell<FinderBuffers> = std::cell::RefCell::new(FinderBuffers::new());
 }
 
@@ -367,6 +370,7 @@ pub struct Finder<'a, 'w> {
 
 impl<'a, 'w> Drop for Finder<'a, 'w> {
     fn drop(&mut self) {
+        let _g = sec(1);
         TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
                 self.nodes.clear();
@@ -408,6 +412,7 @@ fn swim_cell_type(
 
 impl<'a, 'w> Finder<'a, 'w> {
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
+        let _g = sec(0);
         ADJACENT.with(|cell| {
             let (table, touched) = &mut *cell.borrow_mut();
             for id in touched.drain(..) {
@@ -455,14 +460,30 @@ impl<'a, 'w> Finder<'a, 'w> {
             layer_evict();
         }
         let mp = block_pos(mob);
+        let profile = profile_of(mob);
+        let amph = matches!(eval, Evaluator::Amphibious { .. });
         let mut mt = [0.0f32; PathType::COUNT];
-        for t in PathType::ALL {
-            mt[t as usize] = match (eval, t) {
-                (Evaluator::Amphibious { .. }, PathType::Water) => 0.0,
-                (Evaluator::Amphibious { .. }, PathType::Walkable) => 6.0,
-                (Evaluator::Amphibious { .. }, PathType::WaterBorder) => 4.0,
-                _ => mob.malus(t),
-            };
+        let cached_mt = !amph && MALUS_CACHE.with(|c| {
+            let c = c.borrow();
+            if c.0 == profile {
+                mt = c.1;
+                true
+            } else {
+                false
+            }
+        });
+        if !cached_mt {
+            for t in PathType::ALL {
+                mt[t as usize] = match (eval, t) {
+                    (Evaluator::Amphibious { .. }, PathType::Water) => 0.0,
+                    (Evaluator::Amphibious { .. }, PathType::Walkable) => 6.0,
+                    (Evaluator::Amphibious { .. }, PathType::WaterBorder) => 4.0,
+                    _ => mob.malus(t),
+                };
+            }
+            if !amph {
+                MALUS_CACHE.with(|c| *c.borrow_mut() = (profile, mt));
+            }
         }
         Self {
             w,
@@ -490,7 +511,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             collisions,
             use_layer,
             saw_rail: std::cell::Cell::new(false),
-            profile: profile_of(mob),
+            profile,
             entity_width: (mob.width + 1.0).floor() as i32,
             entity_height: (mob.height + 1.0).floor() as i32,
             entity_depth: (mob.width + 1.0).floor() as i32,
@@ -553,11 +574,11 @@ impl<'a, 'w> Finder<'a, 'w> {
             if !p.is_null() {
                 return p;
             }
-            let p = LAYER.with(|l| l.borrow_mut().profile_section(self.profile, layer_key(x, y, z)));
+            let p = LAYER.with(|l| l.borrow_mut().profile_section((self.profile, self.entity_width, self.entity_height), layer_key(x, y, z)));
             cell.set(p);
             return p;
         }
-        LAYER.with(|l| l.borrow_mut().profile_section(self.profile, layer_key(x, y, z)))
+        LAYER.with(|l| l.borrow_mut().profile_section((self.profile, self.entity_width, self.entity_height), layer_key(x, y, z)))
     }
     /// WalkNodeEvaluator.getFloorLevel(level, pos).
     pub fn static_floor(&self, x: i32, y: i32, z: i32) -> f64 {
@@ -1069,6 +1090,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         true
     }
     #[allow(clippy::too_many_arguments)]
+    #[inline(always)]
     fn find_accepted(
         &mut self,
         x: i32,
@@ -1080,26 +1102,51 @@ impl<'a, 'w> Finder<'a, 'w> {
         current: PathType,
     ) -> Option<u32> {
         if self.use_layer && !Self::partial_collision(current) {
-            // Common case, all read from the grid cell: solid floor, walkable cell, node already there.
+            // Common case, all read from the grid cell (filled from the layer the first time): solid floor, walkable cell.
             if let Some(p) = self.slot(x, y, z) {
-                // SAFETY: a grid cell.
-                let e = unsafe { *p };
+                // SAFETY: a grid cell; `cached`/`static_floor`/`node_update_max` only fill fields of it.
+                let mut e = unsafe { *p };
+                if (e >> 48) as u8 == 0 {
+                    self.cached(x, y, z);
+                    e = unsafe { *p };
+                }
+                if (e >> 56) as u8 == 0xFF {
+                    self.static_floor(x, y, z);
+                    e = unsafe { *p };
+                }
                 let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
-                if c < 0xFE && idx != NONE && ty == PathType::Walkable as u8 + 1 {
+                if c < 0xFE && ty == PathType::Walkable as u8 + 1 {
                     if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
                         return None;
                     }
                     let cost = self.mt[PathType::Walkable as usize];
-                    if cost >= 0.0 {
-                        let node = &mut self.nodes[idx as usize];
-                        node.kind = PathType::Walkable;
-                        node.cost_malus = node.cost_malus.max(cost);
-                        return Some(idx);
+                    if cost < 0.0 {
+                        return None;
                     }
-                    return None;
+                    if idx == NONE {
+                        return Some(self.node_update_max(x, y, z, PathType::Walkable, cost));
+                    }
+                    let node = &mut self.nodes[idx as usize];
+                    node.kind = PathType::Walkable;
+                    node.cost_malus = node.cost_malus.max(cost);
+                    return Some(idx);
                 }
             }
         }
+        self.find_accepted_slow(x, y, z, jump, node_height, dir, current)
+    }
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn find_accepted_slow(
+        &mut self,
+        x: i32,
+        y: i32,
+        z: i32,
+        jump: i32,
+        node_height: f64,
+        dir: (i32, i32),
+        current: PathType,
+    ) -> Option<u32> {
         let _g = sec(2);
         let amphibious = matches!(self.eval, Evaluator::Amphibious { .. });
         bump(2);
@@ -1334,6 +1381,71 @@ impl<'a, 'w> Finder<'a, 'w> {
                         node.cost_malus += 1.0;
                     }
                 }
+            }
+        }
+    }
+    /// walk_neighbors and the relaxation of the neighbours, in one pass and in place (Walk only): the neighbours are worked out in the
+    /// order of `walk_neighbors` and relaxed at once; relaxing changes nothing that finding the next ones reads.
+    fn expand_walk(&mut self, pos: u32, targets: &mut [Target], max_len: f32) {
+        let (px, py, pz, cg, cw) = {
+            let n = &self.nodes[pos as usize];
+            (n.x, n.y, n.z, n.g, n.walked)
+        };
+        let above = self.cached(px, py + 1, pz);
+        let current = self.cached(px, py, pz);
+        let mut jump = 0;
+        if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
+            jump = self.mob.max_up_step.max(1.0).floor() as i32;
+        }
+        let height = self.floor_level(px, py, pz);
+        const DIRS: [(i32, i32, usize); 4] = [(0, -1, 2), (1, 0, 3), (0, 1, 0), (-1, 0, 1)];
+        let pos_malus_neg = self.nodes[pos as usize].cost_malus < 0.0;
+        let mut by2d: [Option<u32>; 4] = [None; 4];
+        for (dx, dz, i2) in DIRS {
+            let n = self.find_accepted(px + dx, py, pz + dz, jump, height, (dx, dz), current);
+            by2d[i2] = n;
+            if let Some(n) = n {
+                let node = &self.nodes[n as usize];
+                if !node.closed && (node.cost_malus >= 0.0 || pos_malus_neg) {
+                    self.relax(pos, (px, py, pz, cg, cw), n, targets, max_len);
+                }
+            }
+        }
+        // by2d index i2 of the clockwise one and its offset, for the directions in DIRS order.
+        for (dx, dz, i2) in DIRS {
+            let (c, cdx, cdz) = match i2 {
+                2 => (3, 1, 0),
+                3 => (0, 0, 1),
+                0 => (1, -1, 0),
+                _ => (2, 0, -1),
+            };
+            if self.diagonal_pair_valid(pos, by2d[i2], by2d[c]) {
+                let d = self.find_accepted(px + dx + cdx, py, pz + dz + cdz, jump, height, (dx, dz), current);
+                if self.diagonal_valid(d) {
+                    self.relax(pos, (px, py, pz, cg, cw), d.unwrap_or_default(), targets, max_len);
+                }
+            }
+        }
+    }
+    #[inline(always)]
+    fn relax(&mut self, current: u32, c: (i32, i32, i32, f32, f32), neighbor: u32, targets: &mut [Target], max_len: f32) {
+        let (cx, cy, cz, cg, cw) = c;
+        let nn = &mut self.nodes[neighbor as usize];
+        let distance = nn.distance(cx, cy, cz);
+        let walked = cw + distance;
+        nn.walked = walked;
+        let tentative = cg + distance + nn.cost_malus;
+        let in_open = nn.heap >= 0;
+        if walked < max_len && (!in_open || tentative < nn.g) {
+            nn.came_from = Some(current);
+            nn.g = tentative;
+            let h = self.best_h(neighbor, targets) * 1.5;
+            self.nodes[neighbor as usize].h = h;
+            if in_open {
+                self.change_cost(neighbor, tentative + h);
+            } else {
+                self.nodes[neighbor as usize].f = tentative + h;
+                self.heap_insert(neighbor);
             }
         }
     }
@@ -1609,6 +1721,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         self.nodes[entry.1 as usize].heap = i as i32;
     }
     // --- PathFinder.findPath ------------------------------------------------
+    #[inline(always)]
     fn best_h(&self, n: u32, targets: &mut [Target]) -> f32 {
         let _g = sec(15);
         let mut best = f32::MAX;
@@ -1659,7 +1772,8 @@ impl<'a, 'w> Finder<'a, 'w> {
         self.heap.clear();
         self.heap_insert(from);
         let mut count = 0;
-        let mut neighbors = Vec::with_capacity(32);
+        let walk_fast = matches!(self.eval, Evaluator::Walk) && self.use_layer && self.use_grid;
+        let mut neighbors = Vec::new();
         let (fx, fy, fz) = {
             let n = &self.nodes[from as usize];
             (n.x, n.y, n.z)
@@ -1685,6 +1799,13 @@ impl<'a, 'w> Finder<'a, 'w> {
                 break;
             }
             if self.nodes[current as usize].distance(fx, fy, fz) >= max_path_length {
+                continue;
+            }
+            if walk_fast {
+                if REP > 0 {
+                    self.expand_walk(current, &mut targets, max_path_length);
+                }
+                self.expand_walk(current, &mut targets, max_path_length);
                 continue;
             }
             neighbors.clear();
@@ -1727,7 +1848,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let reached: Vec<&Target> = targets.iter().filter(|t| t.reached).collect();
         let build = |s: &Self, t: &Target, reached: bool| -> Option<Path> {
             let mut n = t.best?;
-            let mut nodes = vec![];
+            let mut nodes = Vec::with_capacity(48);
             loop {
                 let node = &s.nodes[n as usize];
                 nodes.push(PathNode {
@@ -1852,7 +1973,7 @@ pub struct Layer {
     /// By (profile, section): the type a mob of that profile gives a cell (`path_type_of_mob`), one byte a block like `stat`.
     pmap: FxHashMap<(u64, u64), Box<[u8; 4096]>>,
     /// The profiles that have a section in `pmap`.
-    profiles: Vec<u64>,
+    profiles: Vec<(u64, i32, i32)>,
 }
 thread_local! {
     static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
@@ -1864,9 +1985,10 @@ fn layer_idx(x: i32, y: i32, z: i32) -> usize {
     (((y & 15) << 8) | ((z & 15) << 4) | (x & 15)) as usize
 }
 impl Layer {
-    fn profile_section(&mut self, profile: u64, key: u64) -> *mut [u8; 4096] {
-        if !self.profiles.contains(&profile) {
-            self.profiles.push(profile);
+    fn profile_section(&mut self, pr: (u64, i32, i32), key: u64) -> *mut [u8; 4096] {
+        let profile = pr.0;
+        if !self.profiles.iter().any(|q| q.0 == profile) {
+            self.profiles.push(pr);
         }
         &mut **self.pmap.entry((profile, key)).or_insert_with(|| Box::new([0u8; 4096])) as *mut [u8; 4096]
     }
@@ -1904,13 +2026,15 @@ pub fn layer_changed(x: i32, y: i32, z: i32) {
                 }
             }
         }
-        boxes([x - 6, y - 6, z - 6], [x + 1, y + 3, z + 1], |key, a, b| {
-            for &p in &l.profiles {
+        // A cell's type of a mob `ew` wide and `eh` tall reads the blocks within `ew + 1` below/left of it and 1 right, 3 above.
+        for i in 0..l.profiles.len() {
+            let (p, ew, eh) = l.profiles[i];
+            boxes([x - ew - 1, y - eh - 1, z - ew - 1], [x + 1, y + 3, z + 1], |key, a, b| {
                 if let Some(v) = l.pmap.get_mut(&(p, key)) {
                     each(a, b, |i, j| v[i..j].fill(0));
                 }
-            }
-        });
+            });
+        }
         boxes([x - 1, y - 1, z - 1], [x + 1, y + 2, z + 1], |key, a, b| {
             if let Some(sct) = l.map.get_mut(&key) {
                 each(a, b, |i, j| {
