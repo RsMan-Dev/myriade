@@ -130,8 +130,9 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
 
 /// The selector tick of the goal: it ends when it can no longer continue (and wakes the faceplant when the nose is in the
 /// snow), else its tick.
-fn pounce_run(w: &mut World) {
-    for e in fs::marked::<Pouncing>(w) {
+fn pounce_run(w: &mut World, q: &mut QueryState<Entity, With<Pouncing>>) {
+    let list: Vec<Entity> = q.iter(w).collect();
+    for e in list {
         let Some(slot) = slot_of(w, e, &MODULE) else { continue };
         if !fs::selector_tick(w, e) {
             continue;

@@ -78,8 +78,8 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Swelling>();
 }
 /// `canContinueToUse` (le sens du dernier tick, ou la cible proche maintenant) puis `tick`, pour les animaux qui gonflent.
-fn swell_run(w: &mut World) {
-    let runs: Vec<(Entity, Who)> = w.query::<(Entity, &Swelling)>().iter(w).map(|(e, s)| (e, s.who)).collect();
+fn swell_run(w: &mut World, q: &mut QueryState<(Entity, &Swelling)>) {
+    let runs: Vec<(Entity, Who)> = q.iter(w).map(|(e, s)| (e, s.who)).collect();
     for (e, who) in runs {
         let dir = w.get::<SwellDir>(e).map_or(-1, |d| d.0);
         if dir <= 0 && !close(w, e, who) {
@@ -96,12 +96,8 @@ fn swell_run(w: &mut World) {
 }
 /// `canUse` des animaux qui ne gonflent pas et ont une cible : une cible à moins de 3 blocs demande le départ (le
 /// sélecteur le prend à son tour de phase).
-fn swell_watch(w: &mut World) {
-    let cands: Vec<(Entity, Who)> = w
-        .query_filtered::<(Entity, &Target), (With<SwellDir>, Without<Swelling>)>()
-        .iter(w)
-        .map(|(e, t)| (e, t.who))
-        .collect();
+fn swell_watch(w: &mut World, q: &mut QueryState<(Entity, &Target), (With<SwellDir>, Without<Swelling>)>) {
+    let cands: Vec<(Entity, Who)> = q.iter(w).map(|(e, t)| (e, t.who)).collect();
     for (e, who) in cands {
         if close(w, e, who)
             && let Some(slot) = slot_of(w, e, &MODULE)

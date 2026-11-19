@@ -131,8 +131,10 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
 
 /// `StalkPreyGoal.tick` on the selector ticks: the goal ends when `canUse` no longer holds; else it looks at the prey and
 /// either crouches (within 6 blocks) or asks the path to it.
-fn stalk_run(w: &mut World) {
-    for e in fs::marked::<Stalking>(w) {
+fn stalk_run(w: &mut World, q: &mut QueryState<Entity, With<Stalking>>) {
+    // The query is kept between ticks (`w.query()` rebuilt it every tick: about 4 000 instructions with nobody to visit).
+    let list: Vec<Entity> = q.iter(w).collect();
+    for e in list {
         let Some(slot) = slot_of(w, e, &MODULE) else { continue };
         if !fs::selector_tick(w, e) {
             continue;
