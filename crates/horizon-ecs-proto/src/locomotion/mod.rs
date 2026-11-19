@@ -6,6 +6,7 @@
 use crate::behaviours::{Entry, Module};
 use bevy_ecs::prelude::*;
 
+pub mod climb;
 pub mod fly;
 pub mod hop;
 pub mod lava;

@@ -119,6 +119,9 @@ mod tests {
 
     #[test]
     fn a_run_from_a_strong_llama_drops_the_target() {
+    if crate::cow::skip_unless_walker("a_run_from_a_strong_llama_drops_the_target") {
+        return;
+    }
         let (mut h, wolf, other) = wolf_with(Some(4));
         h.world.entity_mut(wolf).insert(Target::new(Who::Entity(other), 60, u8::MAX));
         h.world.resource_mut::<Requests>().0.push(Req::Start(wolf, 0));

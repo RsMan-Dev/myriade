@@ -79,3 +79,35 @@ lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|crowd 0.8 (cow, 2000, 0 player)|o
 lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zone near ring (cow, 6, 10)|ecs|5063.0|5063.4
 lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zone far ring (cow, 6, 10)|ecs|-1.0|-0.9
 lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|schedule at rest (empty world, per tick)|ecs|118767|124602
+kernel-collisions d0a22a9c3a (426dbeb571)|cow idle|ecs|2143|2149
+kernel-collisions d0a22a9c3a (426dbeb571)|cow idle|ecs-eager|2499|2505
+kernel-collisions d0a22a9c3a (426dbeb571)|cow active(1000 players, no solicitation)|ecs|9941|9966
+kernel-collisions d0a22a9c3a (426dbeb571)|cow active(1000 players, no solicitation)|ecs-eager|9841|9865
+kernel-collisions d0a22a9c3a (426dbeb571)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20047|19808
+kernel-collisions d0a22a9c3a (426dbeb571)|pig idle|ecs|323|324
+kernel-collisions d0a22a9c3a (426dbeb571)|pig idle|ecs-eager|502|503
+kernel-collisions d0a22a9c3a (426dbeb571)|pig active(1000 players, no solicitation)|ecs|8392|8415
+kernel-collisions d0a22a9c3a (426dbeb571)|pig active(1000 players, no solicitation)|ecs-eager|8255|8277
+kernel-collisions d0a22a9c3a (426dbeb571)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18272|17987
+kernel-collisions d0a22a9c3a (426dbeb571)|sheep idle|ecs|995|999
+kernel-collisions d0a22a9c3a (426dbeb571)|sheep idle|ecs-eager|1173|1176
+kernel-collisions d0a22a9c3a (426dbeb571)|sheep active(1000 players, no solicitation)|ecs|9555|9578
+kernel-collisions d0a22a9c3a (426dbeb571)|sheep active(1000 players, no solicitation)|ecs-eager|9422|9444
+kernel-collisions d0a22a9c3a (426dbeb571)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19417|19183
+kernel-collisions d0a22a9c3a (426dbeb571)|chicken idle|ecs-eager|211|213
+kernel-collisions d0a22a9c3a (426dbeb571)|chicken active(1000 players, no solicitation)|ecs|5408|5422
+kernel-collisions d0a22a9c3a (426dbeb571)|chicken active(1000 players, no solicitation)|ecs-eager|5283|5298
+kernel-collisions d0a22a9c3a (426dbeb571)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12427|12237
+kernel-collisions d0a22a9c3a (426dbeb571)|zombie idle|ecs-eager|397|399
+kernel-collisions d0a22a9c3a (426dbeb571)|zombie active(1000 players, no solicitation)|ecs|13948|14004
+kernel-collisions d0a22a9c3a (426dbeb571)|zombie active(1000 players, no solicitation)|ecs-eager|13894|13952
+kernel-collisions d0a22a9c3a (426dbeb571)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6375|6386
+kernel-collisions d0a22a9c3a (426dbeb571)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9270|9290
+kernel-collisions d0a22a9c3a (426dbeb571)|crowd 0.5 (cow, 2000, 0 player)|batch|13210|13240
+kernel-collisions d0a22a9c3a (426dbeb571)|crowd 0.5 (cow, 2000, 0 player)|ordered|25522|25641
+kernel-collisions d0a22a9c3a (426dbeb571)|crowd 0.8 (cow, 2000, 0 player)|batch|11919|11948
+kernel-collisions d0a22a9c3a (426dbeb571)|crowd 0.8 (cow, 2000, 0 player)|ordered|19730|19789
+kernel-collisions d0a22a9c3a (426dbeb571)|zone near ring (cow, 6, 10)|ecs|5063.4|5077.4
+kernel-collisions d0a22a9c3a (426dbeb571)|zone far ring (cow, 6, 10)|ecs|-0.9|0.2
+kernel-collisions d0a22a9c3a (426dbeb571)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+kernel-collisions d0a22a9c3a (426dbeb571)|schedule at rest (empty world, per tick)|ecs|124602|125418

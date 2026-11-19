@@ -261,6 +261,9 @@ fn avoid_1_player_in_and_out_of_range() {
 }
 #[test]
 fn avoid_2_species_needs_a_line_of_sight() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("avoid_2_species_needs_a_line_of_sight") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("avoid_2_species_needs_a_line_of_sight") {
         return;
     }

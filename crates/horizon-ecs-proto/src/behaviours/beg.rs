@@ -185,6 +185,9 @@ mod tests {
 
     #[test]
     fn stops_when_the_player_puts_the_bone_away() {
+    if crate::cow::skip_unless_walker("stops_when_the_player_puts_the_bone_away") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 5.5, bone());
         for _ in 0..5 {

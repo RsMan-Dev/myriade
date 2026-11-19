@@ -47,6 +47,10 @@ fn run(name: &str, wet: bool) -> f64 {
             if std::env::var_os("TRACE2").is_some() && d > 0.01 && t % 20 == 0 {
                 eprintln!("{name} {k} t={t} gap {d:.3} MOB ({:.3},{:.3},{:.3}) | ECS ({:.3},{:.3},{:.3})", a.x, a.y, a.z, b.x, b.y, b.z);
             }
+            if std::env::var_os("TRACE9").is_some() && k == 3 && wet && (156..=163).contains(&t) {
+                let em = h.world.entity(e);
+                eprintln!("t={t} MOB y {:.4} vy {:.4} water {} mv {:.3} | ECS y {:.4} vy {:.4} water {} mv {:.3}", a.y, r.mobs[i].velocity.y, r.mobs[i].fluids.in_water, pre.0, b.y, em.get::<Vel>().unwrap().0.y, em.get::<FluidState>().unwrap().in_water, em.get::<SquidState>().unwrap().movement);
+            }
             if std::env::var_os("TRACE3").is_some() && d > 1.0e-6 && k == 3 && wet {
                 thread_local!(static ONCE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
                 if ONCE.with(|o| { let n = o.get(); o.set(n + 1); n < 4 }) {
@@ -56,7 +60,8 @@ fn run(name: &str, wet: bool) -> f64 {
             }
             worst = worst.max(d);
             compared += 1;
-            // At the surface (the box leaves the water) the ecs squid falls one tick longer than the `Mob`'s: not explained yet, not compared.
+            // At the surface the `Mob` reads the squid in the water one tick before the ecs one (and before the fluid function at the start of the
+            // tick: not explained yet): not compared there.
             if wet && a.y > 4.6 {
                 break;
             }
@@ -136,4 +141,66 @@ fn the_squids_wander_as_the_mobs_do() {
     let near = |a: f64, b: f64| (a - b).abs() <= 0.3 * a.max(b).max(1.0);
     assert!(near(f(md), f(ed)) && near(f(mdy), f(edy)), "the squids wander differently");
     let _ = (mstep, estep);
+}
+
+/// `SquidFlee`: a player hits the squid (the `Mob`'s `last_hurt_by`, the ecs `LastHurtBy` and the event of the blow) at 2.5 blocks: the squid
+/// swims away. Both with their own goals (the draws of the random movement differ): the mean distance gained from the player after 60
+/// ticks, 16 squids on each side.
+#[test]
+fn a_hurt_squid_flees_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:squid" {
+        return;
+    }
+    use horizon_client_lib::mobs::Who as MWho;
+    let (mut r, mut h) = flat_pair();
+    for x in -18..=18 {
+        for z in -18..=18 {
+            for y in 1..=40 {
+                r.set_block(x, y, z, "minecraft:water");
+                h.set_block(x, y, z, "minecraft:water");
+            }
+        }
+    }
+    h.tick();
+    let n = 16;
+    let me = Vec3::new(0.5, 20.0, 0.5);
+    let start: Vec<Vec3> = (0..n).map(|k| Vec3::new(3.0 + 0.2 * k as f64, 20.0 + 0.1 * k as f64, 0.5 + 0.1 * k as f64)).collect();
+    let ids: Vec<(usize, bevy_ecs::prelude::Entity)> = start.iter().enumerate().map(|(k, s)| (r.add(*s), ecs_cow(&mut h, s.x, s.y, s.z, 1700 + k as u64))).collect();
+    h.tick();
+    h.tick();
+    for (k, &(_, e)) in ids.iter().enumerate() {
+        h.teleport(e, start[k]);
+        h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
+    }
+    arm_all(&mut h.world);
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: me.x, y: me.y, z: me.z, main: 0, off: 0 });
+    let view = player_view(me, None);
+    let (mut md, mut ed) = (0.0, 0.0);
+    for t in 1..=60 {
+        for &(i, _) in &ids {
+            r.mobs[i].ai.no_action_time = 0;
+        }
+        if t == 3 {
+            for &(i, e) in &ids {
+                r.mobs[i].ai.last_hurt_by = Some(MWho::Player);
+                let now = h.world.resource::<Clock>().0;
+                h.world.entity_mut(e).insert(LastHurtBy { who: horizon_ecs_proto::targeting::Who::Player(1), at: now });
+                h.world.resource_mut::<horizon_ecs_proto::goals::Events>().hurt_by_entity.push(e);
+            }
+        }
+        r.step(Some(&view));
+        h.tick();
+    }
+    for (k, &(i, e)) in ids.iter().enumerate() {
+        let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
+        md += ((a.x - me.x).powi(2) + (a.y - me.y).powi(2) + (a.z - me.z).powi(2)).sqrt() - start[k].distance(me);
+        ed += ((b.x - me.x).powi(2) + (b.y - me.y).powi(2) + (b.z - me.z).powi(2)).sqrt() - start[k].distance(me);
+    }
+    eprintln!("squids flee: mob gains {:.2} blocks, ecs {:.2}", md / n as f64, ed / n as f64);
+    assert!(md / n as f64 > 2.0 && ed / n as f64 > 2.0, "they flee");
+    assert!((md - ed).abs() / n as f64 <= 0.3 * (md / n as f64), "the flight differs");
 }

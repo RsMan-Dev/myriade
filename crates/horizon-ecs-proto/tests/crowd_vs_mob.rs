@@ -60,6 +60,9 @@ fn pit_run(n: usize) -> (Vec<usize>, Vec<usize>) {
 /// More than 23 animals in a block are crushed, one tick in four, 6 a hit, with the 10-tick hurt window; 10 are not.
 #[test]
 fn a_crowd_in_a_pit_is_crushed_as_a_mob_s_is() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("a_crowd_in_a_pit_is_crushed_as_a_mob_s_is") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_small_body("a_crowd_in_a_pit_is_crushed_as_a_mob_s_is") {
         return;
     }

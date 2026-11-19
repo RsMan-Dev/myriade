@@ -35,6 +35,12 @@ pub mod strider;
 pub mod turtle;
 pub mod vex;
 pub mod squid;
+pub mod bee;
+pub mod dolphin;
+pub mod axolotl;
+pub mod drowned;
+pub mod spider;
+pub mod cave_spider;
 pub mod glow_squid;
 pub mod phantom;
 pub mod armadillo;
@@ -90,6 +96,12 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &rabbit::DEF,
     &turtle::DEF,
     &squid::DEF,
+    &bee::DEF,
+    &dolphin::DEF,
+    &axolotl::DEF,
+    &drowned::DEF,
+    &spider::DEF,
+    &cave_spider::DEF,
     &glow_squid::DEF,
     &vex::DEF,
     &phantom::DEF,
@@ -481,6 +493,12 @@ mod tests {
         ("minecraft:tadpole", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4)]),
         ("minecraft:snow_golem", &[("nearest_target", 1), ("ranged_attack", 1), ("stroll", 2), ("snow_trail", 255), ("look_at_player", 3), ("random_look", 4)]),
         ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
+        ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:dolphin", &[]),
+        ("minecraft:axolotl", &[]),
+        ("minecraft:drowned", &[]),
+        ("minecraft:bee", &[("bee_enter_hive", 1), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8)]),
