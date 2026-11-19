@@ -1,2 +1,1 @@
 # line ## percent of step allowed ## cause named BEFORE the merge (bilan_check.sh rule (a))
-schedule at rest (empty world, per tick)|ecs ## 7 ## 2026-11-19, to disappear when ecs/dispatch enters: lot 4 adds ~8 systems (beg_run, forget, attack_run, sit_run, relax_run, wake_*...), 270 to 540 instr each per tick even without a carrier (measured by system rows: 125 737 -> 133 345)

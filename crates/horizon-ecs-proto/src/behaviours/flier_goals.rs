@@ -51,7 +51,7 @@ pub struct Charging;
 
 /// `VexChargeAttackGoal`: a target alive, nothing wanted, one chance in 7 per ask, farther than 2 blocks: fly straight at its eyes; the
 /// charge ends at the first contact (a strike) or when the point is reached.
-pub static VEX_CHARGE: Module = Module { name: "vex_charge", flags: MOVE, arm: arm_vex_charge, fired: charge_fired, can_use: charge_can_use, start: charge_start, stop: charge_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static VEX_CHARGE: Module = Module { name: "vex_charge", tick: Some(charge_tick), flags: MOVE, arm: arm_vex_charge, fired: charge_fired, can_use: charge_can_use, start: charge_start, stop: charge_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn arm_vex_charge(w: &mut World, e: Entity, _: Inst) {
     let wait = with_rng(w, e, |r| idle_wait(r, reduced(7) * 2));
     arm_module(w, e, &VEX_CHARGE, wait.max(2));
@@ -132,7 +132,7 @@ fn random_stop(w: &mut World, e: Entity, i: Inst) {
 
 /// `VexCopyOwnerTargetGoal` (flag TARGET): when the owner (a creature, `tame::Owner`) gets a target that is not the vex and is alive, the vex
 /// takes it. By EVENT: the target the owner just got (`Events.target_acquired`).
-pub static VEX_COPY_OWNER_TARGET: Module = Module { name: "vex_copy_owner_target", flags: TARGET, requires: &[Cap::Targets], ..Module::DEFAULT };
+pub static VEX_COPY_OWNER_TARGET: Module = Module { name: "vex_copy_owner_target", tick: Some(copy_owner_tick), flags: TARGET, requires: &[Cap::Targets], ..Module::DEFAULT };
 fn copy_owner_target(w: &mut World) {
     let acquired: Vec<Entity> = w.resource::<Events>().target_acquired.iter().collect();
     for o in acquired {
@@ -248,7 +248,7 @@ fn set_diving(w: &mut World, e: Entity, on: bool) {
 
 /// `PhantomAttackStrategyGoal` (no flag): with a target, the circle above it, then every 8 to 11 seconds a dive. Started and ended by the
 /// target (events).
-pub static PHANTOM_ATTACK_STRATEGY: Module = Module { name: "phantom_attack_strategy", flags: 0, can_use: strategy_can_use, start: strategy_start, stop: strategy_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_ATTACK_STRATEGY: Module = Module { name: "phantom_attack_strategy", tick: Some(strategy_tick), flags: 0, can_use: strategy_can_use, start: strategy_start, stop: strategy_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
 fn strategy_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     target_of(w, e).is_some()
 }
@@ -298,7 +298,7 @@ fn strategy_tick(w: &mut World) {
 
 /// `PhantomSweepAttackGoal` (MOVE): the dive: the wanted point is the target's middle; a contact ends the dive with a strike; a wall or a
 /// hurt ends it; the goal ends the target.
-pub static PHANTOM_SWEEP_ATTACK: Module = Module { name: "phantom_sweep_attack", flags: MOVE, can_use: sweep_can_use, start: sweep_start, stop: sweep_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_SWEEP_ATTACK: Module = Module { name: "phantom_sweep_attack", tick: Some(sweep_tick), flags: MOVE, can_use: sweep_can_use, start: sweep_start, stop: sweep_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
 fn sweep_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Diving>(e).is_some() && w.get::<Target>(e).is_some()
 }
@@ -338,7 +338,7 @@ fn sweep_tick(w: &mut World) {
 
 /// `PhantomCircleAroundAnchorGoal` (MOVE): without a target or out of the dive, fly round the anchor at a radius of 5 to 15 blocks, 15
 /// degrees a point; the height, the radius and the angle are drawn again by chance (1 in 350, 250, 450 ticks of the goal).
-pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle_around_anchor", flags: MOVE, equip: circle_equip, arm: circle_arm, can_use: circle_can_use, start: circle_start, stop: circle_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle_around_anchor", tick: Some(circle_tick), flags: MOVE, equip: circle_equip, arm: circle_arm, can_use: circle_can_use, start: circle_start, stop: circle_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn circle_equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
     // `Phantom.register`: the anchor is 5 blocks above where it appeared.
     if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
@@ -432,29 +432,9 @@ fn circle_tick(w: &mut World) {
     }
 }
 
-/// The ticks of the goals above, run by `arbitrate` (one call, no system of their own: the modules cost the schedule nothing). Each is
-/// skipped while no creature carries its goal.
-pub fn tick_all(w: &mut World) {
-    // The rank of each module in the registry, found once.
-    static IDS: std::sync::OnceLock<[Option<usize>; 5]> = std::sync::OnceLock::new();
-    let ids = IDS.get_or_init(|| {
-        let r = crate::species::registry();
-        [&VEX_CHARGE, &VEX_COPY_OWNER_TARGET, &PHANTOM_ATTACK_STRATEGY, &PHANTOM_SWEEP_ATTACK, &PHANTOM_CIRCLE_AROUND_ANCHOR].map(|m| r.module_id(m))
-    });
-    let alive = |w: &World, k: usize| ids[k].is_some_and(|i| w.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0));
-    if alive(w, 0) {
-        charge_tick(w);
-    }
-    if alive(w, 1) && !w.resource::<Events>().target_acquired.is_empty() {
+/// The vex copies its owner's target only when a target was gained this tick.
+fn copy_owner_tick(w: &mut World) {
+    if !w.resource::<Events>().target_acquired.is_empty() {
         copy_owner_target(w);
-    }
-    if alive(w, 2) {
-        strategy_tick(w);
-    }
-    if alive(w, 3) {
-        sweep_tick(w);
-    }
-    if alive(w, 4) {
-        circle_tick(w);
     }
 }

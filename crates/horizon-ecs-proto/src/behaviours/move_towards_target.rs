@@ -40,7 +40,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Goals, Cap::Targets, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -57,8 +57,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Approach { slot: inst.slot, speed: p.speed, within: p.within, wanted: [0.0; 3] });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(approach_run.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, approach_run);
 }
 /// La cible d'un créature morte n'est plus vivante (un joueur mort n'est pas lu par `targeting::info`).
 fn alive(hp: &Query<&Health>, who: Who) -> bool {

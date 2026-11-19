@@ -215,3 +215,54 @@ pub fn reset(shared: &Shared) {
     }
     r.ticks = 0;
 }
+
+#[cfg(test)]
+mod tick_forms {
+    use super::*;
+    use bevy_ecs::system::SystemState;
+    #[derive(Component)]
+    struct Mark;
+    fn sys(q: Query<&crate::cow::Pos, With<Mark>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+        for p in &q {
+            reqs.0.push(Req::Start(Entity::PLACEHOLDER, p.0.x as u8));
+            cmd.spawn_empty();
+        }
+    }
+    /// Instructions of one empty call of a module's tick, in three forms (a run by system id, a `SystemState`, a `QueryState` alone):
+    /// the cost the `arbitrate` pays per module that runs (and that the schedule paid, with its condition, even for the modules that do not).
+    #[test]
+    #[ignore = "probe"]
+    fn per_call_cost_of_the_tick_forms() {
+        let mut w = World::new();
+        w.init_resource::<Requests>();
+        for _ in 0..200 {
+            w.spawn(crate::cow::Pos(horizon_core::geometry::Vec3::ZERO));
+        }
+        let id = w.register_system(sys);
+        let mut st: SystemState<(Query<&crate::cow::Pos, With<Mark>>, ResMut<Requests>, Commands)> = SystemState::new(&mut w);
+        let mut qs = w.query_filtered::<&crate::cow::Pos, With<Mark>>();
+        let c = Counter::new();
+        let n = 20_000u64;
+        let t0 = c.read();
+        for _ in 0..n {
+            let _ = w.run_system(id);
+        }
+        let t1 = c.read();
+        for _ in 0..n {
+            let (q, mut reqs, mut cmd) = st.get_mut(&mut w).unwrap();
+            for p in &q {
+                reqs.0.push(Req::Start(Entity::PLACEHOLDER, p.0.x as u8));
+                cmd.spawn_empty();
+            }
+            st.apply(&mut w);
+        }
+        let t2 = c.read();
+        for _ in 0..n {
+            for p in qs.iter(&w) {
+                std::hint::black_box(p);
+            }
+        }
+        let t3 = c.read();
+        eprintln!("TICKFORMS run_system {} SystemState {} QueryState {}", (t1 - t0) / n, (t2 - t1) / n, (t3 - t2) / n);
+    }
+}

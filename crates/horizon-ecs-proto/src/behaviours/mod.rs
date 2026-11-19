@@ -43,6 +43,10 @@ pub struct Module {
     pub stop: fn(&mut World, Entity, Inst),
     /// Its bevy systems (each filtered by the module's own marker) and the events that wake it, `.in_set(slot)`.
     pub systems: fn(&mut Schedule, GoalSlot),
+    /// The tick of a module that needs no place of its own in the schedule: called by `arbitrate`, in the order of the registry, only while
+    /// some live animal carries the module (`Carriers`): a module that does not run costs one test, not a system and its run condition.
+    /// A module has `systems` OR `tick` (`goals::tick_state` runs a bevy system function as that tick, its parameters kept in a `SystemState` of the world).
+    pub tick: Option<fn(&mut World)>,
     /// The capabilities the module supposes of the entity it is on (what its state components and its systems read).
     /// A species whose configuration has the module without one of them is a startup error (`species::registry`).
     pub requires: &'static [Cap],
@@ -73,6 +77,7 @@ impl Module {
         start: no_inst,
         stop: no_inst,
         systems: no_systems,
+        tick: None,
         requires: &[],
         interruptable: true,
         damaged: no_damaged,

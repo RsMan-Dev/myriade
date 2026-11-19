@@ -196,7 +196,9 @@ Un mode du sol (`Medium::Ground`) à côté de `walk`, `swim`, `fly` : le corps 
 Chaque module dont `systems` ajoute un système au planning coûte ~1 000 instructions par tick **même sans porteur** (sa condition d'exécution,
 et sa place dans la chaîne des `GoalSlot`) : mesuré le 2026-11-19, le planning à vide (0 créature) coûte 124 266 instr/tick, et 46 608
 sans aucun système de module (77 658 pour les modules, soit ~62 %). Un module nouveau n'ajoute donc PAS de système : ses ticks sont
-appelés depuis un point existant (modèle `flier_goals::tick_all`, appelé par `arbitrate`), sur les entités qui portent le marqueur de son
+appelés depuis un point existant (le champ `Module::tick`, appelé par `arbitrate` pour les modules que porte un animal vivant ; `goals::tick_state` reprend une fonction système telle quelle), sur les entités qui portent le marqueur de son
 but en marche (`With<Diving>`...), et ne coûtent rien quand aucune ne le porte. Les événements réveillent le but (`Req::Start`), les
 délais sont des échéances de la roue. Un module qui a vraiment besoin d'un ordre propre (avant `pathfind`, après `apply_damage`) le dit et
 le justifie dans son en-tête ; la barrière (`bilan_check.sh`, ligne « schedule at rest ») refuse la dérive.
+
+Le champ `tick` est LA façon : un `fn tick_all` libre que personne n'appelle rend le module inerte (`tests/no_tick_all.rs` le refuse). Les modules toujours actifs (mêlée, marche, regard, reproduction) restent au planning : coût mesuré en `tick`, +21 instr par créature dans la scène du mouton éveillé.

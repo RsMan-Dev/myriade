@@ -61,7 +61,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -165,8 +165,9 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     let next = w.get::<Raid>(e).unwrap().next;
     arm_asks(w, e, next);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(raid_run.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, raid_run);
 }
 /// Every tick of a running raid: the tick, then the end if the goal cannot continue (`canContinueToUse`).
 fn raid_run(w: &mut World, q: &mut QueryState<Entity, With<Raiding>>) {

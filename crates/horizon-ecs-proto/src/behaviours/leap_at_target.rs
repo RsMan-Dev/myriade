@@ -41,7 +41,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Targets],
     ..Module::DEFAULT
 };
@@ -52,8 +52,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let yd = params::<Params>(p).yd;
     w.entity_mut(e).insert(Leap { yd, slot: inst.slot, target: [0.0; 3], due: None });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(land.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, land);
 }
 /// La position de la cible si elle est à 2 à 4 blocs (carré de distance dans [4, 16]).
 fn in_range(w: &World, e: Entity) -> Option<[f64; 3]> {
