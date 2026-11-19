@@ -225,6 +225,7 @@ pub mod random_look;
 pub mod random_stand;
 pub mod guardian_beam;
 pub mod limited_life;
+pub mod drink_potion;
 pub mod ranged_bow;
 pub mod spell_casting;
 pub mod spell_use;
@@ -328,6 +329,7 @@ pub static TABLE: &[&Module] = &[
     &melee::MODULE,
     &guardian_beam::MODULE,
     &limited_life::MODULE,
+    &drink_potion::MODULE,
     &ranged_bow::MODULE,
     &spell_casting::MODULE,
     &spell_use::MODULE,

@@ -647,7 +647,7 @@ mod tests {
         ("minecraft:slime", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
         ("minecraft:magma_cube", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
         ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:witch", &[("hurt_by", 1), ("nearest_target", 3), ("float", 1), ("ranged_attack", 2), ("stroll", 2), ("look_at_player", 3), ("random_look", 3)]),
+        ("minecraft:witch", &[("hurt_by", 1), ("nearest_target", 3), ("float", 1), ("drink_potion", 0), ("ranged_attack", 2), ("stroll", 2), ("look_at_player", 3), ("random_look", 3)]),
         ("minecraft:blaze", &[("hurt_by", 1), ("nearest_target", 2), ("burst_shot", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:pillager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("ranged_crossbow", 3), ("stroll", 8), ("look_at_player", 9)]),
         ("minecraft:guardian", &[("nearest_target", 1), ("guardian_beam", 4), ("move_towards_restriction", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
