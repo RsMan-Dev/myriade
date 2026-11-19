@@ -98,3 +98,7 @@ par `walk_target_value` de l'espèce (composant `WalkValue` : `Animal` herbe 10 
 Le résultat est (x + 0,5, y, z + 0,5) ; la rangée y est celle du bloc : l'écrire dans la cible du chemin. Stroll (`WaterAvoiding`) et Panic l'emploient.
 Limites : navigation au sol seule, pas de `home` (`restricted` toujours faux), le `Mob` a douze cas d'espèce de plus (gardien, strider, tortue...).
 Contrôle : `tests/spots_vs_mob.rs` (30 000 tirages par picker contre un vrai `Mob` : part d'herbe, moyennes, taux d'échec).
+
+## Capacités : le corps est en trois
+
+`Transform` (Pos, Vel, SpeciesId, Uid, OwnTime : tout ce qu'a un projectile), `Solid` (Bounds, Cell : dans l'index, poussé, cherché, ciblé), `Body` (Body, Contact, FluidParams, Eye, FluidState, Recheck, Moving : `travel`, chute, fluides ; exige Transform et Solid). `Living` et `Locomotion` exigent `Body` ; les dépendances sont déclarées (`species::NEEDS`) et vérifiées au gel. Test : `no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_velocity`.

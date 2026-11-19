@@ -849,25 +849,24 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
 /// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
-/// `Body`: where it is, its box, its physics, its fluids; its identity (`SpeciesId`, `Uid`) and its eye.
-pub fn body_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
+/// `Transform`: where it is, how fast, its own time and its identity. All a projectile has.
+pub fn transform_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
+    (Pos(Vec3::new(x, 1.0, z)), Vel(Vec3::ZERO), SpeciesId(sp.id), crate::goals::Uid(uid), OwnTime)
+}
+/// `Solid`: a box in the spatial index (what the pushes, the searches and the targeting see).
+pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
+    (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX))
+}
+/// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
+pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Pos(Vec3::new(x, 1.0, z)),
-        SpeciesId(sp.id),
-        crate::goals::Uid(uid),
-        Vel(Vec3::ZERO),
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
-        Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
-        Cell(u32::MAX),
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        (
-            FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
-            crate::targeting::Eye(sp.eye_height),
-            FluidState::default(),
-            Recheck,
-            Moving,
-            OwnTime,
-        ),
+        FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+        crate::targeting::Eye(sp.eye_height),
+        FluidState::default(),
+        Recheck,
+        Moving,
     )
 }
 /// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
@@ -916,7 +915,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
-    (body_bundle(sp, x, z, uid), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+    (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
 }
 /// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
 fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
@@ -924,7 +923,13 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
-    let mut e = world.spawn(body_bundle(sp, x, z, uid));
+    let mut e = world.spawn(transform_bundle(sp, x, z, uid));
+    if has(crate::behaviours::Cap::Solid) {
+        e.insert(solid_bundle(sp, x, z));
+    }
+    if has(crate::behaviours::Cap::Body) {
+        e.insert(body_bundle(sp));
+    }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
     }

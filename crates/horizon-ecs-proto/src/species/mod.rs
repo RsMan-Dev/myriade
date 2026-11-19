@@ -51,7 +51,9 @@ pub struct Def {
     /// has no capability for is not read; a module that requires a missing capability is a startup error.
     pub caps: Option<&'static [Cap]>,
 }
-pub const ALL_CAPS: &[Cap] = &[Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
+pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
+/// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
+const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
 impl Def {
     pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None };
     fn capabilities(&self) -> &'static [Cap] {
@@ -174,6 +176,9 @@ impl Builder {
         }
         for ((_, d), (list, _)) in self.defs.iter().zip(&lists) {
             let caps = d.capabilities();
+            if let Some((a, b)) = NEEDS.iter().find(|(a, b)| caps.contains(a) && !caps.contains(b)) {
+                return Err(Error(format!("species `{}`: the capability {a:?} needs {b:?}, which it does not declare", d.name)));
+            }
             for e in list {
                 if let Some(c) = e.module.requires.iter().find(|c| !caps.contains(c)) {
                     return Err(Error(format!("species `{}`: module `{}` requires the capability {c:?}, which the species does not have", d.name, e.module.name)));
@@ -319,7 +324,7 @@ mod tests {
     }
     #[test]
     fn a_module_without_its_capability_is_a_startup_error() {
-        static NO_LOCOMOTION: Def = Def { name: "mod:post", reference: Some(&cow::DEF), caps: Some(&[Cap::Body, Cap::Living, Cap::Goals]), ..Def::EMPTY };
+        static NO_LOCOMOTION: Def = Def { name: "mod:post", reference: Some(&cow::DEF), caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals]), ..Def::EMPTY };
         let mut b = Builder::new();
         b.species(&NO_LOCOMOTION);
         let e = b.freeze().err().expect("an error").to_string();
