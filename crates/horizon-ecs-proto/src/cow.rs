@@ -418,6 +418,9 @@ impl Hazards {
 }
 /// The top of what the bench worlds generate (the patches reach y = 3).
 const BUILD_TOP: i32 = 6;
+/// An object (an item on the ground, an experience orb) neither pushes nor is pushed (`Entity.isPushable`): `push` does not visit it.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct PushFree;
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(on_insert = watch_in::<WATCH_FOLLOW_PARENT>, on_discard = watch_out::<WATCH_FOLLOW_PARENT>)]
@@ -2185,17 +2188,18 @@ pub(crate) fn travel(
         let was_in_air = !c.on_ground;
         let was_on_ground = c.on_ground;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
-        if was_on_ground && !c.on_ground {
+        // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
+        if was_on_ground && !c.on_ground && !b.object {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
             });
         }
-        if was_in_air && c.on_ground {
+        if was_in_air && c.on_ground && !b.object {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
-        if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
+        if fall > 0.0 && !b.object && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
@@ -2690,7 +2694,7 @@ fn push(
     objects: Query<&Body>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>, Without<PushFree>)>,
 ) {
     // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
     let is_object = |e: Entity| objects.get(e).is_ok_and(|b| b.object);

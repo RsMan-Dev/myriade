@@ -561,6 +561,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
+    world.insert_resource(StartSeen::default());
     crate::projectile::insert_resources(world);
     crate::brain::insert_resources(world);
     crate::item::insert_resources(world);
@@ -931,7 +932,32 @@ pub(crate) fn arbitrate(world: &mut World) {
     for (e, slot) in fired {
         timer_fired(world, e, slot);
     }
+    // The same `Start` asked many times in a tick (a listener woken by each of the movers around it) is answered once: a repeated ask
+    // finds the state the first one left (running, locked or refused), unless something else happened to the entity in between.
+    let mut seen = std::mem::take(&mut world.resource_mut::<StartSeen>().0);
+    let mut touched: Vec<u32> = Vec::new();
     for r in reqs {
+        match r {
+            Req::Start(e, k) if k < 32 => {
+                let i = e.index().index() as usize;
+                if seen.len() <= i {
+                    seen.resize(i + 1, 0);
+                }
+                if seen[i] >> k & 1 == 1 {
+                    continue;
+                }
+                if seen[i] == 0 {
+                    touched.push(i as u32);
+                }
+                seen[i] |= 1 << k;
+            }
+            Req::End(e, _) | Req::Call(e, _) | Req::Arm(e) => {
+                if let Some(m) = seen.get_mut(e.index().index() as usize) {
+                    *m = 0;
+                }
+            }
+            _ => {}
+        }
         match r {
             // An animal entering the active zone: its modules arm their deadlines.
             Req::Arm(e) => {
@@ -957,7 +983,14 @@ pub(crate) fn arbitrate(world: &mut World) {
             Req::End(e, k) => end_goal(world, e, k),
         }
     }
+    for i in touched {
+        seen[i as usize] = 0;
+    }
+    world.resource_mut::<StartSeen>().0 = seen;
 }
+/// The `Start` requests already answered in this `arbitrate`, by entity index (a bit per slot): all zero between two calls.
+#[derive(Resource, Default)]
+pub struct StartSeen(Vec<u32>);
 /// The module and instance of a slot, if the animal still has the selector and the slot.
 fn of(w: &World, e: Entity, slot: u8) -> Option<(&'static Module, Inst)> {
     let g = w.get::<GoalSet>(e)?;
