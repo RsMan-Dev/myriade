@@ -125,9 +125,17 @@ pub struct Sensor {
     pub name: &'static str,
     /// The memories it writes.
     pub mems: &'static [&'static MemKey],
-    pub scan: fn(&mut World, Entity),
+    /// A scan: the entry's `params` (its `Params`, with a `DEFAULT`: the range, the foods of a species) are in the `Ctx`.
+    pub scan: fn(&mut World, Entity, &Ctx),
+    /// Once at creation (the sensor's own state components from its parameters); the frame calls it, nobody else.
+    pub equip: fn(&mut World, Entity, &Ctx),
     pub requires: &'static [Cap],
 }
+impl Sensor {
+    /// A sensor is written `Sensor { name, mems, scan, ..Sensor::DEFAULT }`: a field added later touches no sensor.
+    pub const DEFAULT: Sensor = Sensor { name: "", mems: &[], scan: no_scan, equip: nothing, requires: &[] };
+}
+fn no_scan(_: &mut World, _: Entity, _: &Ctx) {}
 /// What a behaviour is given: its place in the plan and its parameters.
 #[derive(Clone, Copy)]
 pub struct Ctx {
@@ -189,6 +197,17 @@ impl Behaviour {
 pub struct SensorEntry {
     pub sensor: &'static Sensor,
     pub period: i32,
+    /// The sensor's typed parameters (its module's `Params`), `&()` when it has none.
+    pub params: &'static (dyn Any + Sync),
+}
+impl SensorEntry {
+    pub const fn new(sensor: &'static Sensor, period: i32) -> Self {
+        Self { sensor, period, params: &() }
+    }
+    /// The same entry with its parameters: `SensorEntry::new(&tempting::SENSOR, 10).with(&tempting::Params { .. })`.
+    pub const fn with(self, params: &'static (dyn Any + Sync)) -> Self {
+        Self { params, ..self }
+    }
 }
 #[derive(Clone, Copy)]
 pub struct Kid {
@@ -388,8 +407,16 @@ pub fn start(w: &mut World, e: Entity) {
     for (id, inst) in plan.insts.iter().enumerate() {
         (inst.b.equip)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params });
     }
+    for i in 0..plan.sensors.len() {
+        (plan.sensors[i].sensor.equip)(w, e, &sensor_ctx(plan, i));
+    }
     arm(w, e);
     wake(w, e);
+}
+/// What a sensor is given: its place in the plan (`nth` among the entries of the same sensor) and its parameters.
+fn sensor_ctx(plan: &Plan, i: usize) -> Ctx {
+    let nth = plan.sensors[..i].iter().filter(|s| std::ptr::eq(s.sensor, plan.sensors[i].sensor)).count() as u8;
+    Ctx { id: i as u16, nth, params: plan.sensors[i].params }
 }
 /// Arms the sensors that have no deadline (creation, the entity enters the active zone).
 pub fn arm(w: &mut World, e: Entity) {
@@ -414,7 +441,7 @@ pub fn sensor_due(w: &mut World, e: Entity, i: u8) {
         return;
     }
     expire(w, e, now);
-    (plan.sensors[i].sensor.scan)(w, e);
+    (plan.sensors[i].sensor.scan)(w, e, &sensor_ctx(plan, i));
     arm_at(w, e, now + plan.sensors[i].period as u64, Due::Sensor(i as u8));
     wake(w, e);
 }

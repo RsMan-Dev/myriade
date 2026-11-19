@@ -11,7 +11,7 @@ pub static DEF: Def = Def {
     name: "minecraft:copper_golem",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain]),
     brain: BrainDef {
-        sensors: &[SensorEntry { sensor: &living::SENSOR, period: 20 }, SensorEntry { sensor: &hurt_by::SENSOR, period: 20 }],
+        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20)],
         activities: &[ActivityDef { name: "core", slot: 1, requires: &[] }, ActivityDef { name: "idle", slot: 5, requires: &[] }],
         pick: &["idle"],
         initial: &[Initial { key: &TRANSPORT_ITEMS_COOLDOWN_TICKS, base: 60, range: 40 }],

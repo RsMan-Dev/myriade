@@ -7,7 +7,7 @@ use crate::goals::{d2, Online};
 use crate::targeting::{FollowRange, Who};
 use horizon_core::geometry::Vec3;
 
-pub static SENSOR: Sensor = Sensor { name: "minecraft:nearest_living_entities", mems: &[&MOBS, &VISIBLE_MOBS], scan, requires: &[Cap::Targets] };
+pub static SENSOR: Sensor = Sensor { name: "minecraft:nearest_living_entities", mems: &[&MOBS, &VISIBLE_MOBS], scan, requires: &[Cap::Targets], ..Sensor::DEFAULT };
 
 /// `Brain.living_near`.
 pub fn living_near(w: &World, e: Entity) -> Vec<Who> {
@@ -33,7 +33,7 @@ pub fn living_near(w: &World, e: Entity) -> Vec<Who> {
     found.sort_by(|a, b| a.1.total_cmp(&b.1));
     found.into_iter().map(|x| x.0).collect()
 }
-fn scan(w: &mut World, e: Entity) {
+fn scan(w: &mut World, e: Entity, _: &Ctx) {
     let list = living_near(w, e);
     set(w, e, &MOBS, MemValue::Whos(list.clone()), None);
     clear_sight(w, e);

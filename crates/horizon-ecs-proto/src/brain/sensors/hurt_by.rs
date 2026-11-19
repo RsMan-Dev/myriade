@@ -2,9 +2,9 @@
 use crate::brain::*;
 use crate::cow::*;
 
-pub static SENSOR: Sensor = Sensor { name: "minecraft:hurt_by", mems: &[&HURT_BY, &HURT_BY_ENTITY], scan, requires: &[] };
+pub static SENSOR: Sensor = Sensor { name: "minecraft:hurt_by", mems: &[&HURT_BY, &HURT_BY_ENTITY], scan, ..Sensor::DEFAULT };
 
-fn scan(w: &mut World, e: Entity) {
+fn scan(w: &mut World, e: Entity, _: &Ctx) {
     let now = now_of(w, e);
     let last = w.get::<LastDamage>(e).copied().filter(|d| now.saturating_sub(d.at) <= 40);
     if let Some(d) = last {
