@@ -113,11 +113,14 @@ keys! {
     TRANSPORT_ITEMS_COOLDOWN_TICKS = "minecraft:transport_items_cooldown_ticks", Int;
     NEAREST_PLAYERS = "minecraft:nearest_players", Whos;
     NEAREST_VISIBLE_PLAYER = "minecraft:nearest_visible_player", Who;
+    NEAREST_VISIBLE_ADULT = "minecraft:nearest_visible_adult", Who;
     NEAREST_VISIBLE_TARGETABLE_PLAYERS = "minecraft:nearest_visible_targetable_players", Whos;
     NEAREST_VISIBLE_TARGETABLE_PLAYER = "minecraft:nearest_visible_targetable_player", Who;
     TEMPTING_PLAYER = "minecraft:tempting_player", Who;
     TEMPTATION_COOLDOWN_TICKS = "minecraft:temptation_cooldown_ticks", Int;
     BREED_TARGET = "minecraft:breed_target", Who;
+    ATTACK_TARGET = "minecraft:attack_target", Who;
+    ATTACK_COOLING_DOWN = "minecraft:attack_cooling_down", Bool;
 }
 
 // ---- the modules and the configuration --------------------------------------------------------------------------------

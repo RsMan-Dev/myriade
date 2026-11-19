@@ -196,7 +196,9 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 }
 
 pub mod avoid_entity;
+pub mod breath_air;
 pub mod breed;
+pub mod swim_with_player;
 pub mod climb_on_powder_snow;
 pub mod do_nothing;
 pub mod silverfish_wake_up_friends;
@@ -281,11 +283,19 @@ pub mod cat_relax_on_owner;
 pub mod cat_lie_on_block;
 pub mod cat_sit_on_block;
 pub mod ocelot_attack;
+pub mod cube_attack;
+pub mod move_towards_restriction;
+pub mod fox_stroll_village;
+pub mod try_find_water;
+pub mod drowned_go_to_beach;
+pub mod drowned_swim_up;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &tempt::MODULE,
     &breed::MODULE,
+    &breath_air::MODULE,
+    &swim_with_player::MODULE,
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,
@@ -377,4 +387,11 @@ pub static TABLE: &[&Module] = &[
     &cat_lie_on_block::MODULE,
     &cat_sit_on_block::MODULE,
     &ocelot_attack::MODULE,
+    &cube_attack::MODULE,
+    &move_towards_restriction::MODULE,
+    &move_towards_restriction::MODULE_LOOK,
+    &fox_stroll_village::MODULE,
+    &try_find_water::MODULE,
+    &drowned_go_to_beach::MODULE,
+    &drowned_swim_up::MODULE,
 ];

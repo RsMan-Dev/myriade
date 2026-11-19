@@ -12,3 +12,8 @@ pub mod gate_all;
 pub mod stay_in_fluid;
 pub mod walk_to_look_target;
 pub mod swim_stroll;
+pub mod follow_adult;
+pub mod start_attacking;
+pub mod stop_attacking_if_target_invalid;
+pub mod melee_attack;
+pub mod set_walk_target_from_attack_target;

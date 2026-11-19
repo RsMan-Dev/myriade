@@ -308,3 +308,29 @@ kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone near r
 kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone far ring (cow, 6, 10)|ecs|1.2|-0.2
 kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
 kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|schedule at rest (empty world, per tick)|ecs|126741|125462
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs|1066|1067
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs-eager|1294|1295
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs|5636|5646
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs-eager|5462|5471
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13988|14012
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs|5149|5157
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs-eager|4885|4892
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13263|13273
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep idle|ecs-eager|673|674
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs|5482|5490
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs-eager|5322|5330
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15770|15793
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs|3766|3771
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs-eager|3651|3656
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10019|10024
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs|11387|11395
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs-eager|11305|11312
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5646|5645
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7179|7183
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|batch|6646|6750
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|ordered|19436|19432
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|batch|5765|5827
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|ordered|13710|13707
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone near ring (cow, 6, 10)|ecs|2980.1|2978.3
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone far ring (cow, 6, 10)|ecs|-0.2|-0.4
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|schedule at rest (empty world, per tick)|ecs|125462|127264

@@ -2,14 +2,20 @@
 //! attack by contact and its facing (`CubeMobAttackGoal`), the targets (the nearest player within 4 blocks of height), the size and its
 //! health, speed and damage, the split into smaller ones at the death, the squish, the landing particles and the sounds.
 use super::Def;
-use crate::behaviours::{float, Entry};
+use crate::behaviours::{cube_attack, float, nearest_target, Entry};
 use crate::locomotion::{hop, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:slime",
     reference: None,
-    targets: &[],
-    goals: &[Entry::new(&float::MODULE, 1, &float::Params::DEFAULT)],
+    targets: &[
+        Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, ..nearest_target::Params::PLAYER }),
+        Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT }),
+    ],
+    goals: &[
+        Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
+        Entry::new(&cube_attack::MODULE, 2, &cube_attack::Params { bites_tiny: false, ..cube_attack::Params::DEFAULT }),
+    ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::size::SIZE, &crate::size::SizeParams::SLIME)],
     caps: None,
