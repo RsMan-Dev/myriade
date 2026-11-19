@@ -1389,6 +1389,9 @@ mod tests {
     /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
+    if crate::cow::skip_unless_walker("cows_glance_at_a_near_player_and_look_around") {
+        return;
+    }
         let Some(mut h) = herd() else { return };
         // A ranged hunter holds the look flag as long as it has its target: the passive look is not what it does.
         if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {

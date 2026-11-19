@@ -160,6 +160,9 @@ mod tests {
     /// test world has no lighting (a block set does not relight it), so no shade can be built to test the draw.
     #[test]
     fn a_burning_animal_in_the_day_walks_to_its_spot() {
+    if crate::cow::skip_unless_walker("a_burning_animal_in_the_day_walks_to_its_spot") {
+        return;
+    }
         if skip("a_burning_animal_in_the_day_walks_to_its_spot") {
             return;
         }
@@ -178,6 +181,9 @@ mod tests {
     /// At night the burning animal does not run, even with a spot given: the daylight is checked first.
     #[test]
     fn a_burning_animal_at_night_does_not_run() {
+    if crate::cow::skip_unless_walker("a_burning_animal_at_night_does_not_run") {
+        return;
+    }
         if skip("a_burning_animal_at_night_does_not_run") {
             return;
         }

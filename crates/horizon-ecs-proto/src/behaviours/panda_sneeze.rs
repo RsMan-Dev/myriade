@@ -123,6 +123,9 @@ mod tests {
     /// the adult beside it, same seed, never does in the same time (the cub is the witness that the test can see it).
     #[test]
     fn a_weak_cub_sneezes_and_its_goal_ends_at_once_while_an_adult_does_not() {
+    if crate::cow::skip_unless_walker("a_weak_cub_sneezes_and_its_goal_ends_at_once_while_an_adult_does_not") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -147,6 +150,9 @@ mod tests {
     /// one's flag is cleared, as the panda's own rule does; here the goal's deadline is what is checked).
     #[test]
     fn after_its_end_the_cub_arms_its_next_ask() {
+    if crate::cow::skip_unless_walker("after_its_end_the_cub_arms_its_next_ask") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

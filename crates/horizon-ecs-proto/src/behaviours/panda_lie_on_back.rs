@@ -164,6 +164,9 @@ mod tests {
     /// cooldown before lying down again (end and cooldown); a panda of another gene, beside it, never lies down.
     #[test]
     fn a_lazy_panda_lies_on_its_back_rests_then_waits_its_cooldown() {
+    if crate::cow::skip_unless_walker("a_lazy_panda_lies_on_its_back_rests_then_waits_its_cooldown") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

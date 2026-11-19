@@ -143,6 +143,9 @@ fn run(gap: i64, s1: i64, s2: i64, what: What) -> (Seen, Seen, bool) {
 /// run out after the same number of ticks it was ticked, as the `Mob` that was not ticked.
 #[test]
 fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_creature_that_sleeps_keeps_its_timers_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -298,6 +301,9 @@ fn a_hen_that_sleeps_lays_after_the_same_ticks_it_was_ticked() {
 /// chunks that tick are awake and the others asleep, and none of them is lost or made twice.
 #[test]
 fn the_herd_stays_awake_or_asleep_by_its_chunk() {
+    if horizon_ecs_proto::cow::skip_unless_walker("the_herd_stays_awake_or_asleep_by_its_chunk") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -413,6 +419,9 @@ fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
 /// `Mob` beside a mob that is not ticked is (`Entity.push` moves both; the sleeper does not move, its velocity changes).
 #[test]
 fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_sleeping_neighbour_still_pushes_an_awake_creature") {
+        return;
+    }
     if !have_data() {
         return;
     }

@@ -300,6 +300,9 @@ mod tests {
 
     #[test]
     fn runs_from_a_player_in_range_and_walks_away() {
+    if crate::cow::skip_unless_walker("runs_from_a_player_in_range_and_walks_away") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 6.5);
         for _ in 0..10 {
@@ -324,6 +327,9 @@ mod tests {
 
     #[test]
     fn stops_when_the_player_goes_away() {
+    if crate::cow::skip_unless_walker("stops_when_the_player_goes_away") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 6.5);
         for _ in 0..10 {

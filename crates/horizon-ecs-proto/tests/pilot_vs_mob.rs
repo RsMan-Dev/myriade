@@ -242,6 +242,9 @@ fn mean_start(o: &AvOpt, trials: usize) -> (usize, usize, f64, f64) {
 
 #[test]
 fn avoid_1_player_in_and_out_of_range() {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_1_player_in_and_out_of_range") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -255,6 +258,9 @@ fn avoid_1_player_in_and_out_of_range() {
 }
 #[test]
 fn avoid_2_species_needs_a_line_of_sight() {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_2_species_needs_a_line_of_sight") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -276,6 +282,9 @@ fn avoid_2_species_needs_a_line_of_sight() {
 }
 #[test]
 fn avoid_3_speed_and_trajectory_with_the_spot_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_3_speed_and_trajectory_with_the_spot_imposed") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -335,6 +344,9 @@ fn avoid_4_a_creative_player_is_not_fled() {
 /// start (it would at its first ask in the `Mob`, which asks every other tick while active).
 #[test]
 fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -420,6 +432,9 @@ fn spot_law(grass: bool) {
 }
 #[test]
 fn avoid_5_spot_law_on_a_uniform_floor() {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_5_spot_law_on_a_uniform_floor") {
+        return;
+    }
     if have_data() {
         spot_law(false);
     }
@@ -450,6 +465,9 @@ fn shade_both(r: &MobRef, h: &Herd, open: &[(i32, i32)]) {
 }
 #[test]
 fn flee_1_hide_pos_law() {
+    if horizon_ecs_proto::cow::skip_unless_walker("flee_1_hide_pos_law") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -764,6 +782,9 @@ fn rate(v: &[Vec<usize>], ticks: usize) -> f64 {
 }
 #[test]
 fn stand_1_rate_and_first_rear() {
+    if horizon_ecs_proto::cow::skip_unless_walker("stand_1_rate_and_first_rear") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -783,6 +804,9 @@ fn stand_1_rate_and_first_rear() {
 }
 #[test]
 fn stand_2_a_horse_that_grazes_does_not_rear() {
+    if horizon_ecs_proto::cow::skip_unless_walker("stand_2_a_horse_that_grazes_does_not_rear") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -818,6 +842,9 @@ fn trace_avoid_from_start() {
 /// tick, `nextInt(1000) < counter` then `nextInt(10) == 0`) simulated apart, against 2000 ECS horses.
 #[test]
 fn stand_3_first_rear_law() {
+    if horizon_ecs_proto::cow::skip_unless_walker("stand_3_first_rear_law") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -861,6 +888,9 @@ fn stand_3_first_rear_law() {
 /// Duration of the rear: the ticks (sampled after each tick) during which the animal is up, and the end of the first one.
 #[test]
 fn stand_4_rear_lasts_twenty_ticks_and_does_not_chain() {
+    if horizon_ecs_proto::cow::skip_unless_walker("stand_4_rear_lasts_twenty_ticks_and_does_not_chain") {
+        return;
+    }
     if !have_data() {
         return;
     }

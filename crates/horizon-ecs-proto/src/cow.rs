@@ -854,6 +854,42 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
     }
     !has
 }
+/// For the tests written for a land animal that walks, strolls and has goals: they declare what they need (the capabilities
+/// `Locomotion`, `Goals` and `Head`, a goal list, a walk and no other medium) and skip, printed, in a process whose species lacks
+/// it: the rule of the code (nothing knows a species) applies to the tests.
+pub fn skip_unless_walker(test: &str) -> bool {
+    skip_unless_caps(&[crate::behaviours::Cap::Locomotion, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head], test)
+        || skip_unless_ground_only(test)
+        || skip_unless_goals(test)
+}
+/// Skips (printed) unless the species of the process has all these capabilities.
+pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let have = crate::species::registry().by_name(&name).map(|r| r.caps).unwrap_or(&[]);
+    let missing: Vec<_> = caps.iter().filter(|c| !have.contains(c)).collect();
+    if !missing.is_empty() {
+        eprintln!("SKIP {test}: {name} lacks the capabilities {missing:?}");
+    }
+    !missing.is_empty()
+}
+/// Skips (printed) when the species of the process moves in another medium than the ground (a swimmer).
+pub fn skip_unless_ground_only(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let other = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground));
+    if other {
+        eprintln!("SKIP {test}: {name} moves in another medium than the ground");
+    }
+    other
+}
+/// Skips (printed) when the species of the process has no goal at all (an entity driven by something else).
+pub fn skip_unless_goals(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let none = crate::species::registry().by_name(&name).is_ok_and(|r| r.config.entries.is_empty());
+    if none {
+        eprintln!("SKIP {test}: {name} has no goal");
+    }
+    none
+}
 /// The reverse: a test of a passive behaviour (a player in range changes nothing) skips a species that has the goal
 /// (a zombie hunts the player the test puts in range), printed.
 pub fn skip_if(module: &'static crate::behaviours::Module, test: &str) -> bool {
@@ -2926,6 +2962,9 @@ mod tests {
     /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
     #[test]
     fn falls_fire_lava_snow_and_cactus_hurt_a_cow() {
+    if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3124,6 +3163,9 @@ mod tests {
     /// put into a cow's cell adds the hazard module; a path is dropped only by a change near its middle.
     #[test]
     fn block_changes_wake_only_what_they_touch() {
+    if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3221,6 +3263,9 @@ mod tests {
     /// Water placed and removed at any height: `InFluid` and the float, fire put out, and a hazard high above the floor.
     #[test]
     fn water_placed_floats_extinguishes_and_works_at_height() {
+    if crate::cow::skip_unless_walker("water_placed_floats_extinguishes_and_works_at_height") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3301,6 +3346,9 @@ mod tests {
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
     #[test]
     fn a_hit_knocks_a_cow_back() {
+    if crate::cow::skip_unless_walker("a_hit_knocks_a_cow_back") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3323,6 +3371,9 @@ mod tests {
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
     fn the_cows_walk_sleep_and_wake_on_the_slab() {
+    if crate::cow::skip_unless_walker("the_cows_walk_sleep_and_wake_on_the_slab") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

@@ -146,6 +146,9 @@ mod tests {
     /// A resting animal rears from time to time, for 20 ticks, and never starts a second rear inside the first.
     #[test]
     fn a_resting_animal_rears_now_and_then_for_twenty_ticks() {
+    if crate::cow::skip_unless_walker("a_resting_animal_rears_now_and_then_for_twenty_ticks") {
+        return;
+    }
         let (mut herd, e) = resting();
         let mut last = u64::MAX;
         let mut rears = 0;
@@ -172,6 +175,9 @@ mod tests {
     /// deadlines and no rear going on, the goal does start (else the test would pass for a goal that never starts).
     #[test]
     fn a_standing_animal_does_not_start_the_goal() {
+    if crate::cow::skip_unless_walker("a_standing_animal_does_not_start_the_goal") {
+        return;
+    }
         let (mut herd, e) = resting();
         let mut started = false;
         for _ in 0..400 {
