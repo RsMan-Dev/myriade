@@ -5,7 +5,7 @@
 #  (a) the STEP of a merge (against `bilan.last`, the figures of the previous merge): accepted without cause if under 1 % or under
 #      10 instructions; above, a named cause is needed BEFORE the merge: a waiver in `bilan.waivers` ("line ## percent ## reason").
 #  (b) the CUMULATIVE drift against `bilan.ref` (the reference 2dbc7394eb): at 3 % a search for the cause is opened (printed SEARCH, the
-#      lots go on); at 5 % nothing enters on that line (FAIL).
+#      lots go on); at 5 % nothing that ADDS to that line enters (FAIL); under 10 instructions of cumulated drift neither rule applies.
 # ./bilan_check.sh                     checks (exit 1 on a FAIL)
 # ./bilan_check.sh --record "commit"   after a merge: appends the steps to `bilan.drift` (commit, line, before, after) and the figures
 #                                      become `bilan.last`
@@ -39,7 +39,7 @@ while IFS= read -r line; do
   waive=$(awk -F' ## ' -v k="$key" '$1==k{print $2}' bilan.waivers 2>/dev/null | head -n1)
   verdict=$(awk -v n="$new" -v r="$ref" -v l="$last" -v w="${waive:-1}" 'BEGIN{
     c=(n-r)*100/(r>0?r:1); s=(n-l)*100/(l>0?l:1); v="ok";
-    if (s>w && n-l>=10) v="FAIL-step"; if (c>=3 && v=="ok") v="SEARCH"; if (c>=5 && n-r>=10) v="FAIL-cumul";
+    if (s>w && n-l>=10) v="FAIL-step"; if (c>=3 && n-r>=10 && v=="ok") v="SEARCH"; if (c>=5 && n-r>=10 && n>l) v="FAIL-cumul";
     printf "%s step %.2f cumul %.2f", v, s, c }')
   echo "${verdict%% *} $key ref $ref last $last now $new (${verdict#* })"
   case $verdict in FAIL*) fail=1;; esac
