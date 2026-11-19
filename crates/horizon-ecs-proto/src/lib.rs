@@ -10,6 +10,7 @@ pub mod goals;
 pub mod instr;
 pub mod hostile;
 pub mod kernel_lab;
+pub mod locomotion;
 pub mod move_to_block;
 pub mod profile;
 pub mod projectile;

@@ -21,4 +21,5 @@ pub static DEF: Def = Def {
     ],
     changes: &[],
     caps: None,
+    locomotion: &[],
 };

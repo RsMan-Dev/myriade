@@ -678,6 +678,8 @@ pub struct Species {
     pub walk: crate::spots::WalkValue,
     /// The capabilities of the configuration (its sections): the entity is made of these only.
     pub caps: &'static [crate::behaviours::Cap],
+    /// The modes of locomotion (`locomotion.rs`).
+    pub modes: &'static [crate::locomotion::ModeEntry],
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -812,6 +814,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             burns_in_day: kind.flags.burns_in_day,
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
+            modes: crate::species::registry().by_name(name).unwrap().modes,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -904,6 +907,8 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
 pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
     (
         Yaw(yaw),
+        crate::locomotion::WalkMode,
+        crate::locomotion::Modes(sp.modes),
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
@@ -1212,7 +1217,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
@@ -1277,7 +1282,7 @@ fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1473,7 +1478,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Without<crate::locomotion::SwimMode>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1658,7 +1663,7 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
-        (With<Moving>, Without<Overlapping>),
+        (With<Moving>, Without<Overlapping>, Without<crate::locomotion::SwimMode>),
     >,
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
@@ -1828,10 +1833,10 @@ pub(crate) fn reindex(
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState, Option<&crate::locomotion::Modes>), Changed<Bounds>>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
+    for (e, b, mut c, hz, in_fluid, mut fs, modes) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -1849,9 +1854,16 @@ pub(crate) fn reindex(
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
             events.entered_fluid.push(e);
+            // The mode of the water, if the entity has one, becomes the active one: an event, not a test each tick.
+            if let Some(m) = modes {
+                crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0);
+            }
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             events.left_fluid.push(e);
+            if let Some(m) = modes {
+                crate::locomotion::fluid_changed(&mut commands, e, m, false);
+            }
             *fs = FluidState::default();
         }
         match (bits, hz) {

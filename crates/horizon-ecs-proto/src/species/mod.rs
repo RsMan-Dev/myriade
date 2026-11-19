@@ -51,12 +51,22 @@ pub struct Def {
     /// The capabilities of the entity (`None`: the reference's, or all of `Cap::ALL` at the root). A section the entity
     /// has no capability for is not read; a module that requires a missing capability is a startup error.
     pub caps: Option<&'static [Cap]>,
+    /// The modes of locomotion by medium (`locomotion::Medium`): empty is the reference's, or the walk at the root.
+    pub locomotion: &'static [crate::locomotion::ModeEntry],
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None, locomotion: &[] };
+    /// The modes of locomotion: its own, else its reference's, else the walk.
+    fn modes(&self) -> &'static [crate::locomotion::ModeEntry] {
+        if !self.locomotion.is_empty() {
+            self.locomotion
+        } else {
+            self.reference.map_or(crate::locomotion::DEFAULT_MODES, |r| r.modes())
+        }
+    }
     fn capabilities(&self) -> &'static [Cap] {
         self.caps.or_else(|| self.reference.map(|r| r.capabilities())).unwrap_or(ALL_CAPS)
     }
@@ -84,6 +94,8 @@ pub struct Resolved {
     pub name: &'static str,
     pub config: Config,
     pub caps: &'static [Cap],
+    /// The modes of locomotion, inherited like the sections.
+    pub modes: &'static [crate::locomotion::ModeEntry],
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -111,7 +123,7 @@ impl Registry {
     /// module nobody carries is zero). `REGISTER_ALL=1` registers every module (to measure what the guarantee saves).
     pub fn carried(&self, module: usize) -> bool {
         std::env::var_os("REGISTER_ALL").is_some()
-            || self.species.iter().any(|s| s.config.entries.iter().any(|e| self.module_id(e.module) == Some(module)))
+            || self.species.iter().any(|s| s.config.entries.iter().chain(s.modes.iter().map(|m| &m.1)).any(|e| self.module_id(e.module) == Some(module)))
     }
     /// The named predicate (`Cond::Is`).
     pub fn predicate(&self, name: &str) -> Option<Pred> {
@@ -142,7 +154,7 @@ impl Builder {
         for (n, f) in predicates::BUILTIN {
             b.predicates.push(("base", n, *f));
         }
-        for m in behaviours::TABLE {
+        for m in behaviours::TABLE.iter().chain(crate::locomotion::TABLE) {
             b.modules.push(m);
         }
         for d in BUILTIN {
@@ -192,7 +204,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities() });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities(), modes: d.modes() });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -200,6 +212,14 @@ impl Builder {
             };
             let (list, targets) = &mut lists[i];
             apply(src, name, changes, list, targets, &self.modules)?;
+        }
+        for (src, d) in &self.defs {
+            for (_, e) in d.modes() {
+                known(src, d.name, "locomotion", e.module, &self.modules)?;
+                if let Some(c) = e.module.requires.iter().find(|c| !d.capabilities().contains(c)) {
+                    return Err(Error(format!("species `{}`: mode `{}` requires the capability {c:?}, which the species does not have", d.name, e.module.name)));
+                }
+            }
         }
         for ((_, d), (list, _)) in self.defs.iter().zip(&lists) {
             let caps = d.capabilities();
