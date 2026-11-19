@@ -100,7 +100,7 @@ impl GoalSet {
     /// Every flag it needs is free or held by a goal of lower priority (a larger number).
     pub fn replaceable(&self, slot: u8) -> bool {
         let e = &self.entries[slot as usize];
-        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
+        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority && self.entries[j as usize].module.interruptable))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
     pub fn start(&mut self, slot: u8) -> u16 {
@@ -193,6 +193,8 @@ pub struct Look {
     pub cooldown: u8,
     pub y_speed: f32,
     pub x_max: f32,
+    /// `x_max` of the look the entity has when nothing asks for another (`aim_clamped` overrides it for one look).
+    pub x_default: f32,
     pub max_head_y: f32,
     pub eye: f64,
 }
@@ -401,7 +403,7 @@ impl Online {
 pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
-        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
+        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, x_default: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
         Phase(uid),
@@ -503,6 +505,12 @@ pub struct Events {
     pub grew: Ev,
     /// A grazing animal ate its block (`eat_block`).
     pub ate: Ev,
+    /// Hurt by anything / by an entity (a player or a creature): every module reads these, once (the attacker: `HurtBy`).
+    pub hurt: Ev,
+    pub hurt_by_entity: Ev,
+    /// The box entered / left powder snow.
+    pub entered_powder_snow: Ev,
+    pub left_powder_snow: Ev,
     /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
     pub target_acquired: Ev,
     pub target_lost: Ev,
@@ -511,7 +519,7 @@ pub struct Events {
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit, &mut self.hurt, &mut self.hurt_by_entity, &mut self.entered_powder_snow, &mut self.left_powder_snow] {
             ev.swap();
         }
     }
@@ -706,7 +714,7 @@ pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
 }
 fn start_goal(w: &mut World, e: Entity, slot: u8) {
     // One lookup of the selector: the module, whether it runs, whether its flags are free.
-    let (free, m, inst) = {
+    let (free, m, inst, when) = {
         let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
         if slot as usize >= g.len() || g.running >> slot & 1 == 1 {
             return;
@@ -715,7 +723,7 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         if free {
             g.pending &= !(1 << slot);
         }
-        (free, g.module(slot), g.inst(slot))
+        (free, g.module(slot), g.inst(slot), g.entries[slot as usize].when)
     };
     if !free {
         match m.blocked {
@@ -725,7 +733,6 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         return;
     }
     // The species' condition for this entry, before the module's own `canUse`; a refusal is a `blocked` (ask again later).
-    let when = w.get::<GoalSet>(e).unwrap().entries[slot as usize].when;
     if let Some(c) = when
         && !c.eval(w, e)
     {
@@ -894,7 +901,7 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 
 
 /// Path searches asked, by goal: 0 stroll, 1 panic, 2 tempt, 3 breed, 4 follow parent, 5 melee (benches read them).
-pub static ASKS: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
+pub static ASKS: [std::sync::atomic::AtomicU64; 32] = [const { std::sync::atomic::AtomicU64::new(0) }; 32];
 /// The searches `pathfind` ran.
 pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// The nodes of the paths those searches found (the mean length of a path is `PATH_NODES / paths found`).
@@ -928,6 +935,31 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
     }
     w.entity_mut(e).insert(NeedsPath);
 }
+/// `go_to_at` toward the position of the entity `target` now (follow: ask again as it moves; the module decides when). False
+/// when the target has no position.
+pub fn go_to_entity(w: &mut World, e: Entity, target: Entity, speed: f64, reach: i32) -> bool {
+    let Some(p) = w.get::<Pos>(target).map(|p| p.0) else { return false };
+    go_to_at(w, e, [p.x, p.y, p.z], speed, reach);
+    true
+}
+/// A velocity written outside the physics wakes the body: always through these (`Moving` is the physics' wake marker).
+pub fn set_velocity(w: &mut World, e: Entity, v: Vec3) {
+    if let Some(mut vel) = w.get_mut::<Vel>(e) {
+        vel.0 = v;
+        w.entity_mut(e).insert(Moving);
+    }
+}
+/// `Entity.push(x, y, z)`: adds to the velocity and wakes the body.
+pub fn impulse(w: &mut World, e: Entity, dv: Vec3) {
+    if let Some(mut vel) = w.get_mut::<Vel>(e) {
+        vel.0 = Vec3::new(vel.0.x + dv.x, vel.0.y + dv.y, vel.0.z + dv.z);
+        w.entity_mut(e).insert(Moving);
+    }
+}
+/// The game rule `mobGriefing` of the world (a mob that eats grass, breaks doors or takes blocks asks it).
+pub fn mob_griefing(w: &World) -> bool {
+    w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_griefing)
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
@@ -942,6 +974,11 @@ pub(crate) fn stop_nav(w: &mut World, e: Entity) {
         m.active = false;
     }
     w.entity_mut(e).remove::<(Following, NeedsPath)>();
+}
+/// `Mob.getLookControl().setLookAt(x, y, z, yMaxRotSpeed, xMaxRotAngle)`: the same with the vertical bound of this look.
+pub fn aim_clamped(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>, x_max: Option<f32>) {
+    look.x_max = x_max.unwrap_or(look.x_default);
+    aim(cmd, e, look, looking, at, y_speed);
 }
 pub(crate) fn aim(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>) {
     look.target = at;

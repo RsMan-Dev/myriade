@@ -217,3 +217,21 @@ fn a_named_condition_gates_an_entry_before_its_module() {
     assert!(c, "the control adult flees");
     assert!(!g, "the adult whose panic needs a baby does not");
 }
+
+/// `Module::interruptable`: a running goal that cannot be interrupted keeps its flags against a goal of a better priority;
+/// the same goal interruptible gives them up.
+#[test]
+fn a_goal_that_is_not_interruptable_keeps_its_flags() {
+    use horizon_ecs_proto::{behaviours::{Entry, Module}, goals::{GoalSet, MOVE}};
+    static STUBBORN: Module = Module { name: "stubborn", flags: MOVE, interruptable: false, ..Module::DEFAULT };
+    static SOFT: Module = Module { name: "soft", flags: MOVE, ..Module::DEFAULT };
+    static URGENT: Module = Module { name: "urgent", flags: MOVE, ..Module::DEFAULT };
+    static E1: [Entry; 2] = [Entry::new(&STUBBORN, 5, &()), Entry::new(&URGENT, 1, &())];
+    static E2: [Entry; 2] = [Entry::new(&SOFT, 5, &()), Entry::new(&URGENT, 1, &())];
+    let mut a = GoalSet::new(&E1);
+    a.start(0);
+    assert!(!a.replaceable(1), "the stubborn goal keeps MOVE");
+    let mut b = GoalSet::new(&E2);
+    b.start(0);
+    assert!(b.replaceable(1), "an interruptible goal gives MOVE to a better priority");
+}
