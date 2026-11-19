@@ -12,6 +12,22 @@ use horizon_ecs_proto::{
 };
 use std::sync::Arc;
 
+/// A skeleton keeps the goals the ECS has (see `tests/common/mod.rs`): `RestrictSun` makes its paths avoid the sun.
+fn scope(m: &mut Mob) {
+    use horizon_client_lib::mobs::goals::*;
+    if m.species() != horizon_client_lib::mobs::Species::Skeleton {
+        return;
+    }
+    m.extra.set_main_hand(Some("minecraft:bow".into()));
+    m.ai.goals.clear();
+    m.ai.targets.clear();
+    m.ai.goals.add(4, horizon_client_lib::mobs::undead::SkeletonWeapon::new(20, 40));
+    m.ai.goals.add(5, Stroll::avoiding_water(1.0));
+    m.ai.goals.add(6, LookAtPlayer::new(8.0));
+    m.ai.goals.add(6, RandomLookAround::default());
+    m.ai.targets.add(1, HurtByTarget::new());
+    m.ai.targets.add(2, NearestTarget::player(true));
+}
 struct Ref {
     w: &'static MobWorld<'static>,
     mobs: Vec<Mob>,
@@ -30,6 +46,7 @@ impl Ref {
         let mut m = Mob::new(self.mobs.len() as u32 + 1, self.kind.clone(), at, 0.0);
         m.persistent = true;
         m.ai.no_action_time = 100;
+        scope(&mut m);
         self.mobs.push(m);
         self.mobs.len() - 1
     }
