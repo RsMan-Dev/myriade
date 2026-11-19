@@ -5,7 +5,7 @@
 //! `disguise` helmet. It loses its roused state, and its target, when no attackable player is near.
 //!
 //! Nothing is polled. The rule is asked again by EVENT: a player's view vector changed (`Events.gaze_changed`), a player moved
-//! (`Online.seen`), or, every tick, a roused entity that is free to walk; only the carriers near that player are asked (the
+//! (`Online.seen`), or a roused free entity that changed cell (`CellMoves`); only the carriers near that player are asked (the
 //! spatial index). State is a marker, set and removed on the transition (`Stilled`, `Roused`); the brain reads it through
 //! `is_roused` and `can_move` (parameters of the attack behaviours) and through the memory `STILLED` (the activity's requirement).
 //! Not events (so not seen until the next one): a helmet change, a game-mode change, a block that opens or closes the line of sight.
@@ -76,7 +76,7 @@ fn tick(w: &mut World) {
     crate::goals::tick_state(w, asked);
 }
 #[allow(clippy::type_complexity)]
-fn asked(ev: Res<Events>, on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &StareFreeze)>, free: Query<Entity, (With<Roused>, Without<Stilled>, With<StareFreeze>)>, mut cmd: Commands) {
+fn asked(ev: Res<Events>, on: Res<Online>, idx: Res<Index>, moves: Res<CellMoves>, q: Query<(&Pos, &StareFreeze)>, free: Query<(), (With<Roused>, Without<Stilled>, With<StareFreeze>)>, mut cmd: Commands) {
     if q.is_empty() {
         return;
     }
@@ -100,10 +100,11 @@ fn asked(ev: Res<Events>, on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Sta
             near(p.x, p.z, &mut todo);
         }
     }
-    // A roused entity that is free walks, and its own motion can bring it into a player's view: it is asked every tick, as the
-    // `Mob` asks it (the one continuous case; a still or calm creaking costs nothing here).
-    for e in free.iter() {
-        todo.push(e);
+    // A roused entity that is free and walks may walk into a player's view: asked when it changes cell.
+    for &e in &moves.0 {
+        if free.contains(e) {
+            todo.push(e);
+        }
     }
     todo.sort_unstable();
     todo.dedup();

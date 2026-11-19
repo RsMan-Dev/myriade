@@ -2,7 +2,7 @@
 //! (`HORIZON_TEST_RESOURCES` set, process species `minecraft:creaking`). One creaking per run, `N` runs with ids far apart, the
 //! player's gaze scripted tick by tick: roused by a stare, still while looked at, hunting while not, one blow every 40 ticks.
 //! The `Mob` asks the stare every tick and reads its player from a sensor scanned every 20 ticks; the ECS asks it by event.
-mod common;
+use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
 use horizon_client_lib::mobs::{creaking, MobEvent};
