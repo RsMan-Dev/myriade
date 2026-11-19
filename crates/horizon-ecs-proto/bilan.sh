@@ -39,3 +39,7 @@ echo "zone far ring (cow, 6, 10): ecs ${3:-0} mob 0"
 # Items lying on the ground (2 000 stacks of stone at rest, no creature): instructions per item and per tick (the whole schedule).
 items=$("$D/prof_bench" items 2000 400 0 200 2>/dev/null | head -n1 | sed -n 's/.*whole Schedule::run)=\([0-9]*\).*/\1/p')
 echo "items at rest (2000 stacks): ecs $(( ${items:-0} / 2000 ))"
+# The fixed cost of the schedule: no creature, no item, no player (instructions per tick of the whole Schedule::run). Every module
+# adds systems, run conditions and sync points to it; the per-creature lines above carry it divided by 2 000.
+empty=$("$D/prof_bench" items 0 400 0 200 2>/dev/null | head -n1 | sed -n 's/.*whole Schedule::run)=\([0-9]*\).*/\1/p')
+echo "schedule at rest (empty world, per tick): ecs ${empty:-0}"
