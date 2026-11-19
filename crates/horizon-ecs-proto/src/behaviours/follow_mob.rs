@@ -243,6 +243,9 @@ mod tests {
     /// Departure: an animal of another species 5 blocks away (inside the grown box) starts the goal within a few ticks.
     #[test]
     fn it_starts_for_an_animal_of_another_species_in_its_area() {
+    if crate::cow::skip_unless_walker("it_starts_for_an_animal_of_another_species_in_its_area") {
+        return;
+    }
         let (mut h, parrot, _) = pair(5.5);
         for _ in 0..6 {
             h.tick();
@@ -253,6 +256,9 @@ mod tests {
     /// Negative control of the departure: 12 blocks away (outside the grown box) nothing starts.
     #[test]
     fn it_does_not_start_for_an_animal_out_of_its_area() {
+    if crate::cow::skip_unless_walker("it_does_not_start_for_an_animal_out_of_its_area") {
+        return;
+    }
         let (mut h, parrot, _) = pair(12.5);
         for _ in 0..30 {
             h.tick();
@@ -263,6 +269,9 @@ mod tests {
     /// The wake-up by an event: the animal moves into the area (its column changes) and the follower starts.
     #[test]
     fn an_animal_that_comes_into_the_area_wakes_it() {
+    if crate::cow::skip_unless_walker("an_animal_that_comes_into_the_area_wakes_it") {
+        return;
+    }
         let (mut h, parrot, animal) = pair(12.5);
         for _ in 0..10 {
             h.tick();

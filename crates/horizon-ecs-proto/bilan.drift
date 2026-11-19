@@ -1,0 +1,31 @@
+# commit|line|before|after (the steps of the merges, from bilan_check.sh --record)
+kernel-collisions bd205de13c|cow idle|ecs|2139|2138
+kernel-collisions bd205de13c|cow idle|ecs-eager|2494|2495
+kernel-collisions bd205de13c|cow active(1000 players, no solicitation)|ecs|9958|9960
+kernel-collisions bd205de13c|cow active(1000 players, no solicitation)|ecs-eager|9835|9837
+kernel-collisions bd205de13c|pig idle|ecs|322|323
+kernel-collisions bd205de13c|pig idle|ecs-eager|504|503
+kernel-collisions bd205de13c|pig active(1000 players, no solicitation)|ecs|8393|8395
+kernel-collisions bd205de13c|pig active(1000 players, no solicitation)|ecs-eager|8168|8170
+kernel-collisions bd205de13c|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18632|18634
+kernel-collisions bd205de13c|sheep idle|ecs|992|993
+kernel-collisions bd205de13c|sheep active(1000 players, no solicitation)|ecs|9546|9548
+kernel-collisions bd205de13c|sheep active(1000 players, no solicitation)|ecs-eager|9417|9419
+kernel-collisions bd205de13c|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|21210|21209
+kernel-collisions bd205de13c|chicken active(1000 players, no solicitation)|ecs|5401|5404
+kernel-collisions bd205de13c|chicken active(1000 players, no solicitation)|ecs-eager|5282|5283
+kernel-collisions bd205de13c|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12913|12917
+kernel-collisions bd205de13c|zombie idle|ecs|185|184
+kernel-collisions bd205de13c|zombie idle|ecs-eager|398|397
+kernel-collisions bd205de13c|zombie active(1000 players, no solicitation)|ecs|14027|14029
+kernel-collisions bd205de13c|zombie active(1000 players, no solicitation)|ecs-eager|13932|13934
+kernel-collisions bd205de13c|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6342|6344
+kernel-collisions bd205de13c|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9245|9249
+kernel-collisions bd205de13c|crowd 0.5 (cow, 2000, 0 player)|batch|13203|13204
+kernel-collisions bd205de13c|crowd 0.5 (cow, 2000, 0 player)|ordered|25518|25519
+kernel-collisions bd205de13c|crowd 0.8 (cow, 2000, 0 player)|ordered|19725|19727
+kernel-collisions bd205de13c|zone near ring (cow, 6, 10)|ecs|5062.8|5062.5
+kernel-collisions bd205de13c|zone mid ring (cow, 6, 10)|ecs|34.1|34.0
+kernel-collisions bd205de13c|zone far ring (cow, 6, 10)|ecs|0.3|-0.4
+kernel-collisions bd205de13c|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+kernel-collisions bd205de13c|schedule at rest (empty world, per tick)|ecs|125163|125737

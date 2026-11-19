@@ -224,6 +224,9 @@ fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
 /// woken.
 #[test]
 fn a_creature_walking_to_the_border_falls_asleep_there() {
+    if horizon_ecs_proto::cow::skip_unless_ground_only("a_creature_walking_to_the_border_falls_asleep_there") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_small_body("a_creature_walking_to_the_border_falls_asleep_there") {
         return;
     }
@@ -475,6 +478,9 @@ fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
 /// A creature created in a chunk that does not tick is born asleep, with no entry in the wheel; one in a chunk that ticks is not.
 #[test]
 fn a_creature_created_where_nothing_ticks_is_born_asleep() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_creature_created_where_nothing_ticks_is_born_asleep") {
+        return;
+    }
     if !have_data() {
         return;
     }

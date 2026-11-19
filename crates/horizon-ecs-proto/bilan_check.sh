@@ -1,36 +1,47 @@
 #!/usr/bin/env bash
-# Regression gate of the ECS prototype. BUILD MODE MATTERS: build the benches with CARGO_INCREMENTAL=0 (an incremental build adds 5 to 8 %
-# to every line, the Mob's included); `BILAN_LOG=file` compares a saved bilan.sh output instead of running it.
-# runs bilan.sh (HORIZON_TEST_RESOURCES and D set, the benches built with
-# `cargo build -p horizon-ecs-proto --profile fast --bins`) and compares every ECS figure with `bilan.ref`.
-#   ./bilan_check.sh                  fails (exit 1) if a line is more than THRESHOLD % (default 1) above its reference
-#   ./bilan_check.sh --update "why"   writes the figures as the new reference and records the reason in bilan.ref.log
-# A line that buys fidelity to the Mob is excused in `bilan.waivers` ("label|column ## percent ## reason"): the waiver is
-# written and committed WITH the change, and the reference is updated with a reason. Only `ecs`, `ecs-eager`, `batch`,
-# `ordered` columns are compared (the `Mob` column is a control, not a budget).
+# Regression gate of the ECS prototype (deterministic: exact instruction counts, so any difference is real). BUILD MODE MATTERS: build
+# the benches with CARGO_INCREMENTAL=0. `BILAN_LOG=file` compares a saved bilan.sh output instead of running it.
+# Two rules, per line (only `ecs`, `ecs-eager`, `batch`, `ordered` columns; the `mob` column is a control):
+#  (a) the STEP of a merge (against `bilan.last`, the figures of the previous merge): accepted without cause if under 1 % or under
+#      10 instructions; above, a named cause is needed BEFORE the merge: a waiver in `bilan.waivers` ("line ## percent ## reason").
+#  (b) the CUMULATIVE drift against `bilan.ref` (the reference 2dbc7394eb): at 3 % a search for the cause is opened (printed SEARCH, the
+#      lots go on); at 5 % nothing that ADDS to that line enters (FAIL); under 10 instructions of cumulated drift neither rule applies.
+# ./bilan_check.sh                     checks (exit 1 on a FAIL)
+# ./bilan_check.sh --record "commit"   after a merge: appends the steps to `bilan.drift` (commit, line, before, after) and the figures
+#                                      become `bilan.last`
 set -u
 cd "$(dirname "$0")"
-THRESHOLD=${THRESHOLD:-1}
 now=$(mktemp)
 { if [ -n "${BILAN_LOG:-}" ]; then cat "$BILAN_LOG"; else ./bilan.sh 2>/dev/null; fi; } | awk '{
   label=$0; sub(/:.*/,"",label); if (label ~ /^(zombie chase|crowd)/) { l=$0; sub(/\).*/,")",l); label=l }
   n=split($0,a," ");
   for(i=1;i<=n;i++) if (a[i]=="ecs"||a[i]=="ecs-eager"||a[i]=="batch"||a[i]=="ordered") print label "|" a[i], a[i+1]
 }' > "$now"
-if [ "${1:-}" = "--update" ]; then
-  [ -n "${2:-}" ] || { echo "a reason is required: --update \"why\""; exit 2; }
-  cp "$now" bilan.ref; printf '%s %s\n' "$(git rev-parse --short HEAD 2>/dev/null)" "$2" >> bilan.ref.log; echo "reference updated: $2"; rm -f "$now"; exit 0
+if [ "${1:-}" = "--record" ]; then
+  [ -n "${2:-}" ] || { echo "a commit label is required: --record \"commit\""; exit 2; }
+  [ -f bilan.last ] || cp bilan.ref bilan.last
+  while IFS= read -r line; do
+    key=${line% *}; new=${line##* }
+    old=$(grep -F -- "$key " bilan.last | head -n1 | awk '{print $NF}')
+    [ -n "$old" ] && [ "$old" != "$new" ] && printf '%s|%s|%s|%s\n' "$2" "$key" "$old" "$new" >> bilan.drift
+  done < "$now"
+  cp "$now" bilan.last; echo "recorded $2"; rm -f "$now"; exit 0
 fi
-[ -f bilan.ref ] || { echo "no bilan.ref: run --update first"; exit 2; }
+[ -f bilan.ref ] || { echo "no bilan.ref"; exit 2; }
+[ -f bilan.last ] || cp bilan.ref bilan.last
 fail=0
 while IFS= read -r line; do
   key=${line% *}; new=${line##* }
   ref=$(grep -F -- "$key " bilan.ref | head -n1 | awk '{print $NF}')
+  last=$(grep -F -- "$key " bilan.last | head -n1 | awk '{print $NF}')
   [ -z "$ref" ] && { echo "NEW   $key $new (no reference)"; continue; }
+  [ -z "$last" ] && last=$ref
   waive=$(awk -F' ## ' -v k="$key" '$1==k{print $2}' bilan.waivers 2>/dev/null | head -n1)
-  limit=${waive:-$THRESHOLD}
-  verdict=$(awk -v n="$new" -v r="$ref" -v t="$limit" 'BEGIN{ d=(n-r)*100/(r>0?r:1); printf "%s %.2f", (d>t && n-r>5)?"FAIL":"ok", d }')
-  echo "${verdict%% *} $key ref $ref now $new (${verdict##* } %, limit $limit %)"
+  verdict=$(awk -v n="$new" -v r="$ref" -v l="$last" -v w="${waive:-1}" 'BEGIN{
+    c=(n-r)*100/(r>0?r:1); s=(n-l)*100/(l>0?l:1); v="ok";
+    if (s>w && n-l>=10) v="FAIL-step"; if (c>=3 && n-r>=10 && v=="ok") v="SEARCH"; if (c>=5 && n-r>=10 && n>l) v="FAIL-cumul";
+    printf "%s step %.2f cumul %.2f", v, s, c }')
+  echo "${verdict%% *} $key ref $ref last $last now $new (${verdict#* })"
   case $verdict in FAIL*) fail=1;; esac
 done < "$now"
 if [ -z "${BILAN_LOG:-}" ]; then

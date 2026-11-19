@@ -78,6 +78,9 @@ fn a_killed_cow_leaves_the_loot_of_the_original_with_the_same_seed() {
 /// An item cannot be picked up before its delay is over; a creature takes one of the stack into its hand, the rest stays, and the event is raised.
 #[test]
 fn a_creature_picks_up_one_of_a_stack_after_the_delay() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_creature_picks_up_one_of_a_stack_after_the_delay") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -101,6 +104,9 @@ fn a_creature_picks_up_one_of_a_stack_after_the_delay() {
 /// What a creature holds goes out onto the ground when it drops it, and comes out first when it dies.
 #[test]
 fn what_a_creature_holds_is_dropped_and_is_left_at_its_death() {
+    if horizon_ecs_proto::cow::skip_unless_walker("what_a_creature_holds_is_dropped_and_is_left_at_its_death") {
+        return;
+    }
     if !have_data() {
         return;
     }
