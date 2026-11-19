@@ -150,7 +150,7 @@ fn free_vehicle(w: &World, rider: Entity, name: &str) -> Option<Entity> {
         let near = w.get::<SpeciesId>(c).is_some_and(|s| s.0 == id)
             && w.get::<Pos>(c).is_some_and(|q| (q.0.y - p.y).abs() <= 3.0);
         let free = w.get::<crate::mount::Riding>(c).is_none() && crate::mount::rider_of(w, c).is_none();
-        if near && free && best.is_none_or(|b: u32| c.index() < b) {
+        if near && free && best.is_none_or(|b| c.index() < b) {
             best = Some(c.index());
             found = Some(c);
         }

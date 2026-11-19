@@ -54,7 +54,7 @@ struct Block {
     next: Option<u8>,
     phase: Phase,
     /// Bumped each time the phase leaves `Running`: a wake-up of an older generation is stale.
-    gen: u32,
+    generation: u32,
 }
 
 /// The spawners of the world and their wake-ups, keyed by the tick they fire at.
@@ -79,7 +79,7 @@ pub fn ensure(w: &mut World, seed: i64) {
 /// Places a spawner at `pos`. Its first species is drawn from the potentials, as `setEntityId` does at load.
 pub fn place(w: &mut World, pos: Block3, cfg: Config, potentials: Vec<(u8, i32)>) {
     let next = w.resource_scope(|_, mut rng: Mut<SpawnerRng>| weighted(&potentials, &mut rng.0));
-    w.resource_mut::<Spawners>().at.insert(pos, Block { cfg, potentials, next, phase: Phase::Idle, gen: 0 });
+    w.resource_mut::<Spawners>().at.insert(pos, Block { cfg, potentials, next, phase: Phase::Idle, generation: 0 });
 }
 
 /// A player came near (`true`) or went away (`false`) of the spawner at `pos`. Pure bookkeeping: the wake-up is scheduled or dropped.
@@ -93,15 +93,15 @@ pub fn near_changed(w: &mut World, pos: Block3, near: bool) {
             (true, Phase::Idle) => {
                 let due = now + draw(b.cfg, &mut rng.0) as u64;
                 b.phase = Phase::Running(due);
-                schedule(&mut s.wakes, due, pos, b.gen);
+                schedule(&mut s.wakes, due, pos, b.generation);
             }
             (true, Phase::Frozen(left)) => {
                 let due = now + left;
                 b.phase = Phase::Running(due);
-                schedule(&mut s.wakes, due, pos, b.gen);
+                schedule(&mut s.wakes, due, pos, b.generation);
             }
             (false, Phase::Running(due)) => {
-                b.gen += 1;
+                b.generation += 1;
                 b.phase = Phase::Frozen(due.saturating_sub(now));
             }
             _ => {}
@@ -117,8 +117,8 @@ pub fn run_wakes(w: &mut World, valid: Valid) {
         let later = s.wakes.split_off(&(now + 1));
         std::mem::replace(&mut s.wakes, later).into_values().flatten().collect()
     };
-    for (pos, gen) in ready {
-        let due = w.resource::<Spawners>().at.get(&pos).is_some_and(|b| b.gen == gen && b.phase == Phase::Running(now));
+    for (pos, generation) in ready {
+        let due = w.resource::<Spawners>().at.get(&pos).is_some_and(|b| b.generation == generation && b.phase == Phase::Running(now));
         if due {
             w.resource_scope(|w, mut rng: Mut<SpawnerRng>| attempt(w, &mut rng.0, pos, now, valid));
         }
@@ -174,8 +174,8 @@ fn delay(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, spawned: 
         now + 1
     };
     b.phase = Phase::Running(due);
-    let gen = b.gen;
-    schedule(&mut s.wakes, due, pos, gen);
+    let generation = b.generation;
+    schedule(&mut s.wakes, due, pos, generation);
 }
 
 /// `MobSpawner.spawnDelay`: a draw in `[min, max)`, or `min` when the range is empty.
@@ -219,8 +219,8 @@ pub fn weighted_index(weights: &[i32], rng: &mut LegacyRandom) -> Option<usize> 
     None
 }
 
-fn schedule(wakes: &mut BTreeMap<u64, Vec<(Block3, u32)>>, due: u64, pos: Block3, gen: u32) {
-    wakes.entry(due).or_default().push((pos, gen));
+fn schedule(wakes: &mut BTreeMap<u64, Vec<(Block3, u32)>>, due: u64, pos: Block3, generation: u32) {
+    wakes.entry(due).or_default().push((pos, generation));
 }
 
 /// The creatures of the species within the box of the spawner grown by `range` (`count_entities`).

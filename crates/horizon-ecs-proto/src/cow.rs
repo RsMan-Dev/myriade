@@ -2638,6 +2638,7 @@ pub(crate) fn apply_damage(
             // What it leaves on the ground (`LivingEntity.die`), then it goes.
             commands.queue(move |w: &mut World| {
                 crate::loot::on_death(w, e);
+                crate::spawn_trial::forget(w, e);
                 if let Ok(mut m) = w.get_entity_mut(e) {
                     m.despawn();
                 }

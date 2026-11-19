@@ -71,3 +71,6 @@ mod ravager_vs_mob;
 mod hoglin_vs_mob;
 mod fox_vs_mob;
 mod happy_ghast_vs_mob;
+mod spawn_vs_mob;
+mod spawn_spawner_vs_mob;
+mod spawn_trial_states;

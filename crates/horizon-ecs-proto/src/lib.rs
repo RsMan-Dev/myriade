@@ -41,3 +41,7 @@ pub mod tame;
 pub mod vehicle;
 pub mod targeting;
 pub mod zone;
+pub mod spawn_finalize;
+pub mod spawn_spawner;
+pub mod spawn_trial;
+pub mod equipment_spawn;
