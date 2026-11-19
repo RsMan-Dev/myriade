@@ -151,6 +151,10 @@ pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
 pub mod tempt;
+pub mod fox_state;
+pub mod fox_faceplant;
+pub mod fox_stalk_prey;
+pub mod fox_pounce;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -167,4 +171,7 @@ pub static TABLE: &[&Module] = &[
     &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &fox_faceplant::MODULE,
+    &fox_stalk_prey::MODULE,
+    &fox_pounce::MODULE,
 ];
