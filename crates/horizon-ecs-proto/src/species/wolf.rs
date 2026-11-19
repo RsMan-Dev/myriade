@@ -52,4 +52,6 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
+    
+    ..Def::EMPTY
 };

@@ -30,8 +30,8 @@ pub struct HurtByGoal {
     pub slot: u8,
     last: Option<(Who, u64)>,
     handled: u64,
-    alert_types: u64,
-    alert_except: u64,
+    alert_types: crate::species::SpeciesSet,
+    alert_except: crate::species::SpeciesSet,
     /// A target an alerted creature takes (written by the one that called it).
     called_by: Option<Who>,
 }
@@ -48,9 +48,9 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn mask_of(w: &World, names: &[&str]) -> u64 {
+fn mask_of(w: &World, names: &[&str]) -> crate::species::SpeciesSet {
     let _ = w;
-    names.iter().filter_map(|n| crate::species::registry().id(n)).filter(|&i| i < 64).fold(0u64, |m, i| m | 1 << i)
+    crate::species::SpeciesSet::of(names.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize))
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
@@ -102,7 +102,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn alert_others(w: &mut World, e: Entity, who: Who, g: HurtByGoal) {
     let (pos, sid) = (w.get::<Pos>(e).unwrap().0, w.get::<SpeciesId>(e).unwrap().0);
     let follow = w.get::<FollowRange>(e).map_or(16.0, |f| f.0);
-    let kinds = if g.alert_types == 0 { 1u64 << sid } else { g.alert_types };
+    let kinds = if g.alert_types.is_empty() { crate::species::SpeciesSet::of([sid as usize]) } else { g.alert_types };
     let mut others = Vec::new();
     w.resource::<Index>().for_radius(pos.x, pos.z, follow, |o| others.push(o));
     for o in others {
@@ -110,8 +110,8 @@ fn alert_others(w: &mut World, e: Entity, who: Who, g: HurtByGoal) {
             continue;
         }
         let (Some(op), Some(os), true) = (w.get::<Pos>(o), w.get::<SpeciesId>(o), w.get::<HurtByGoal>(o).is_some()) else { continue };
-        if kinds >> os.0 & 1 == 1
-            && g.alert_except >> os.0 & 1 == 0
+        if kinds.contains(os.0)
+            && !g.alert_except.contains(os.0)
             && g.p.alert_when.is_none_or(|f| f(w, o))
             && (op.0.x - pos.x).abs() <= follow + 1.0
             && (op.0.z - pos.z).abs() <= follow + 1.0

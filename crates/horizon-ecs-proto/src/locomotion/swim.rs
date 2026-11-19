@@ -92,7 +92,11 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid });
     if sp.squid {
         // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
-        let speed = crate::goals::with_rng(w, e, |r| 1.0 / (r.next_float() + 1.0) * 0.2);
+        // A creature made by `spawn_declared` gets its stream after its locomotion: the entity's own number seeds a stream until then.
+        let speed = match w.get_mut::<crate::cow::Rng>(e) {
+            Some(mut r) => 1.0 / (r.next_float() + 1.0) * 0.2,
+            None => 1.0 / (crate::cow::Rng(e.to_bits() | 1).next_float() + 1.0) * 0.2,
+        };
         w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3] }, Moving));
     }
     if sp.needs_water {

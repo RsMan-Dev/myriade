@@ -47,7 +47,7 @@ impl Params {
 pub struct Nearest {
     pub p: Params,
     pub slot: u8,
-    mask: u64,
+    mask: crate::species::SpeciesSet,
     baby: Option<bool>,
     /// `baby_on_land`: the candidate must also be out of the water (`baby_turtle_on_land`).
     land: bool,
@@ -58,7 +58,7 @@ pub struct Nearest {
 impl Nearest {
     /// An instance that can never find anything costs nothing: it is never armed.
     fn inert(&self) -> bool {
-        !self.p.players && self.mask == 0
+        !self.p.players && self.mask.is_empty()
     }
 }
 /// The instances of the animal, by `Inst::nth`.
@@ -84,14 +84,15 @@ const INVISIBLE: f64 = 0.07;
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mw = w.resource::<Level>().mw.0;
-    let mut mask = 0u64;
-    for (i, sp) in crate::species::registry().species.iter().enumerate().take(64) {
+    let mut ids = Vec::new();
+    for (i, sp) in crate::species::registry().species.iter().enumerate() {
         let named = p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name));
         let hostile = p.hostile && crate::cow::mob_kind(sp.name).category == "monster";
         if (named || p.any || hostile) && !p.except.contains(&sp.name) {
-            mask |= 1 << i;
+            ids.push(i);
         }
     }
+    let mask = crate::species::SpeciesSet::of(ids);
     let baby = match p.predicate {
         Some("baby") => Some(true),
         Some("adult") => Some(false),
@@ -184,14 +185,14 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
         });
         found = best.map(|b| Who::Player(b.0));
-    } else if n.mask != 0 {
+    } else if !n.mask.is_empty() {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
             if c == e {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());

@@ -23,4 +23,6 @@ pub static DEF: Def = Def {
     caps: None,
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::SLIME))],
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Slime, ..crate::spawning::SpawnDef::MONSTER }), despawn: Some(crate::despawn::DespawnDef::MOB),
+    ..Def::EMPTY
 };

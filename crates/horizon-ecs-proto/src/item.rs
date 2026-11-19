@@ -380,6 +380,8 @@ pub fn pick_up(world: &mut World, creature: Entity, item: Entity, count: u32) ->
         world.entity_mut(item).despawn();
     }
     world.resource_mut::<crate::goals::Events>().picked_up.push(creature);
+    // `Mob.pickUpItem` sets `persistenceRequired`: what holds something never goes away (and the spawn caps stop counting it).
+    crate::despawn::keep(world, creature);
     Some(taken)
 }
 /// `LivingEntity.drop` of the main hand: the stack in the hand goes out at the creature's mouth, thrown as `spawn_at_location` throws it.

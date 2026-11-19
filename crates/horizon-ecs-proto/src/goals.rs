@@ -485,6 +485,10 @@ impl Online {
     pub fn get(&self, id: u32) -> Option<Player> {
         self.list.get(id as usize).copied().flatten()
     }
+    /// Every player online.
+    pub fn players(&self) -> impl Iterator<Item = Player> + '_ {
+        self.list.iter().flatten().copied()
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         for bz in z0..=z1 {
@@ -850,7 +854,7 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
         }
     }
 }
-fn online_events(
+pub(crate) fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,
     idx: Res<Index>,
@@ -1749,4 +1753,9 @@ mod tests {
         let rate = jumps as f64 / floating as f64;
         assert!(rate > 0.72 && rate < 0.88, "{rate}");
     }
+}
+
+/// The player events of this tick, read outside the schedule (the benches that run a service alone).
+pub fn online_events_for_bench(world: &mut World) {
+    world.run_system_cached(online_events).unwrap();
 }

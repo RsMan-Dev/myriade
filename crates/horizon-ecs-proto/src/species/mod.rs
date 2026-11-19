@@ -173,12 +173,16 @@ pub struct Def {
     pub brain: crate::brain::BrainDef,
     /// The modes of locomotion by medium (`locomotion::Medium`): empty is the reference's, or the walk at the root.
     pub locomotion: &'static [crate::locomotion::ModeEntry],
+    /// How the species is born in the wild (`spawning.rs`): its category and its placement rules. `None`: the reference's.
+    pub spawn: Option<crate::spawning::SpawnDef>,
+    /// When it goes away on its own (`despawn.rs`). `None`: the reference's.
+    pub despawn: Option<crate::despawn::DespawnDef>,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[] };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -194,6 +198,12 @@ impl Def {
         } else {
             self.reference.map_or(crate::locomotion::DEFAULT_MODES, |r| r.modes())
         }
+    }
+    fn spawn_def(&self) -> Option<crate::spawning::SpawnDef> {
+        self.spawn.or_else(|| self.reference.and_then(Def::spawn_def))
+    }
+    fn despawn_def(&self) -> Option<crate::despawn::DespawnDef> {
+        self.despawn.or_else(|| self.reference.and_then(Def::despawn_def))
     }
     fn brain_def(&self) -> crate::brain::BrainDef {
         if self.brain.is_empty() { self.reference.map_or(crate::brain::BrainDef::EMPTY, |r| r.brain_def()) } else { self.brain }
@@ -229,6 +239,8 @@ pub struct Resolved {
     pub brain: Option<&'static crate::brain::Plan>,
     /// The modes of locomotion, inherited like the sections.
     pub modes: &'static [crate::locomotion::ModeEntry],
+    pub spawn: Option<&'static crate::spawning::SpawnDef>,
+    pub despawn: Option<&'static crate::despawn::DespawnDef>,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -340,7 +352,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes() });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))) });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -497,6 +509,41 @@ pub fn names() -> Vec<&'static str> {
     registry().species.iter().map(|s| s.name).collect()
 }
 
+/// The bits of a set of species, one per species of the registry (`registry().species.len()` of them, so any number of species).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Words(Box<[u64]>);
+/// A set of species: what a goal avoids or targets, the kinds a hurt animal alerts. A handle to bits shared between the entities that
+/// have the same set (nothing is copied per entity); `contains` of an identifier beyond the registry is false.
+#[derive(Clone, Copy, Debug)]
+pub struct SpeciesSet(&'static Words);
+static SETS: std::sync::Mutex<Vec<&'static Words>> = std::sync::Mutex::new(Vec::new());
+impl SpeciesSet {
+    /// The set of the species of these identifiers (each must be one of the registry: a larger one is a defect of the caller, `panic`).
+    pub fn of(ids: impl IntoIterator<Item = usize>) -> Self {
+        let n = registry().species.len();
+        let mut words = vec![0u64; n.div_ceil(64).max(1)];
+        for i in ids {
+            assert!(i < n, "species {i} is not in the registry ({n} species)");
+            words[i / 64] |= 1 << (i % 64);
+        }
+        let mut sets = SETS.lock().unwrap();
+        if let Some(w) = sets.iter().find(|w| *w.0 == *words) {
+            return Self(w);
+        }
+        let w: &'static Words = Box::leak(Box::new(Words(words.into_boxed_slice())));
+        sets.push(w);
+        Self(w)
+    }
+    pub fn empty() -> Self {
+        Self::of(std::iter::empty())
+    }
+    pub fn contains(self, id: u8) -> bool {
+        self.0.0.get(id as usize / 64).is_some_and(|w| w >> (id % 64) & 1 == 1)
+    }
+    pub fn is_empty(self) -> bool {
+        self.0.0.iter().all(|&w| w == 0)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

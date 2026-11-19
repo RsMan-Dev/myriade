@@ -23,5 +23,6 @@ pub static DEF: Def = Def {
         Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
+    spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     ..Def::EMPTY
 };

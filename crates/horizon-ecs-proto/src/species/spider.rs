@@ -22,5 +22,6 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true }))],
     rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable]),
+    spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     ..Def::EMPTY
 };

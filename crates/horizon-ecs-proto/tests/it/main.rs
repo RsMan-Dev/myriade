@@ -42,6 +42,8 @@ mod rabbit_cube_vs_mob;
 mod services_vs_mob;
 mod shots_vs_mob;
 mod spots_vs_mob;
+mod spawning_vs_mob;
+mod despawn_vs_mob;
 mod squid_vs_mob;
 mod swim_controls_vs_mob;
 mod swim_vs_mob;
