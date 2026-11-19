@@ -215,3 +215,31 @@ lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)
 lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone near ring (cow, 6, 10)|ecs|5075.7|5076.1
 lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone far ring (cow, 6, 10)|ecs|1.6|1.3
 lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|schedule at rest (empty world, per tick)|ecs|127140|127134
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow idle|ecs|2143|2144
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow active(1000 players, no solicitation)|ecs|9957|9996
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20175|18723
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig idle|ecs-eager|501|502
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig active(1000 players, no solicitation)|ecs|8403|8430
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig active(1000 players, no solicitation)|ecs-eager|8236|8164
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18182|16360
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep active(1000 players, no solicitation)|ecs|9572|9577
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep active(1000 players, no solicitation)|ecs-eager|9433|9444
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20913|20322
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken idle|ecs-eager|213|211
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken active(1000 players, no solicitation)|ecs|5418|5420
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken active(1000 players, no solicitation)|ecs-eager|5304|5299
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12413|11590
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie idle|ecs|184|186
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie idle|ecs-eager|398|399
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie active(1000 players, no solicitation)|ecs|14064|14053
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie active(1000 players, no solicitation)|ecs-eager|13951|13956
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6358|6353
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9260|9188
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.5 (cow, 2000, 0 player)|batch|13236|13241
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.5 (cow, 2000, 0 player)|ordered|25698|25633
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.8 (cow, 2000, 0 player)|batch|11942|11950
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.8 (cow, 2000, 0 player)|ordered|19842|19807
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone near ring (cow, 6, 10)|ecs|5076.1|5079.1
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone far ring (cow, 6, 10)|ecs|1.3|-0.4
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|schedule at rest (empty world, per tick)|ecs|127134|127219

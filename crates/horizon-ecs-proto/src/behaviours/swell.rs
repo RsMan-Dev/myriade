@@ -8,9 +8,15 @@ use crate::goals::*;
 use crate::targeting::{self, Target, Who};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Params {}
+pub struct Params {
+    /// The swell at which it explodes (`maxSwell`), and the radius of the blast (`explosionRadius`, doubled when charged).
+    pub max: i32,
+    pub radius: f32,
+}
 impl Params {
-    pub const DEFAULT: Self = Self {};
+    pub const DEFAULT: Self = Self { max: 30, radius: 3.0 };
+    /// The goal without a blast (the swell direction only).
+    pub const NO_BLAST: Self = Self { max: 0, radius: 0.0 };
 }
 
 /// Le sens du gonflement : +1 gonfle, -1 dégonfle ; -1 à la création.
@@ -34,8 +40,12 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(SwellDir(-1));
+    if p.max > 0 {
+        w.entity_mut(e).insert(crate::explosion::Fuse { value: 0, at: 0, dir: -1, max: p.max, radius: p.radius, armed: 0, ignited: false });
+    }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((swell_run, swell_watch).chain().in_set(slot));
@@ -73,6 +83,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     if let Some(mut s) = w.get_mut::<SwellDir>(e) {
         s.0 = d;
     }
+    crate::explosion::set_dir(w, e, d);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Swelling>();
@@ -92,6 +103,7 @@ fn swell_run(w: &mut World, q: &mut QueryState<(Entity, &Swelling)>) {
         if let Some(mut s) = w.get_mut::<SwellDir>(e) {
             s.0 = d;
         }
+        crate::explosion::set_dir(w, e, d);
     }
 }
 /// `canUse` des animaux qui ne gonflent pas et ont une cible : une cible à moins de 3 blocs demande le départ (le
@@ -117,7 +129,7 @@ mod tests {
     use horizon_core::geometry::Vec3;
 
     fn config() -> Config {
-        let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 2, &Params::DEFAULT)]));
+        let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 2, &Params::NO_BLAST)]));
         Config { entries }
     }
     fn running(h: &Herd, e: Entity) -> bool {

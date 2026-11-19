@@ -253,6 +253,7 @@ pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
 pub mod burst_shot;
+pub mod ender_teleport;
 pub mod charged_shot;
 pub mod restrict_sun;
 pub mod village_walk;
@@ -355,6 +356,7 @@ pub static TABLE: &[&Module] = &[
     &village_walk::MODULE,
     &restrict_sun::MODULE,
     &burst_shot::MODULE,
+    &ender_teleport::MODULE,
     &charged_shot::MODULE,
     &run_around_like_crazy::MODULE,
     &owner_target::MODULE,

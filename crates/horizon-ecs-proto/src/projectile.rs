@@ -49,14 +49,18 @@ pub enum OnHit {
     /// An explosion of this power where it ends, on a creature or a block; with fire or not (`LargeFireball.onHit`). The frame has no
     /// explosion yet: `Events.exploded` says it, the damage in the radius and the blocks are the explosion capability's.
     Explode { power: i32, fire: bool },
+    /// A thrown potion breaks and splashes these brews (`effects::splash`).
+    Splash(&'static [crate::effects::Brew]),
 }
 /// An explosion asked by a projectile.
 #[derive(Clone, Copy, Debug)]
 pub struct Blast {
     pub at: Vec3,
-    pub power: i32,
+    pub radius: f32,
     pub fire: bool,
     pub owner: Option<Who>,
+    /// The exploding creature itself (spared by its own blast).
+    pub source: Option<Entity>,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Damage {
@@ -155,6 +159,7 @@ pub fn fly(
     mut events: ResMut<Events>,
     mut stuck: ResMut<StuckIndex>,
     creatures: Query<&Bounds, With<Health>>,
+    dodgers: Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
     mut commands: Commands,
 ) {
@@ -215,6 +220,16 @@ pub fn fly(
         if let Some((who, at, _)) = best {
             // The projectile ends at the creature; the damage is queued with the shooter as the source.
             pos.0 = at;
+            if let Who::Entity(t) = who
+                && dodgers.contains(t)
+            {
+                // `Enderman.hurtServer`: a projectile does it no harm and it tries 64 times to leave.
+                commands.queue(move |w: &mut World| {
+                    crate::behaviours::ender_teleport::repeatedly(w, t, 64);
+                });
+                commands.entity(e).despawn();
+                continue;
+            }
             let amount = match f.damage {
                 Damage::BySpeed(base) => (movement.length() * base).clamp(0.0, f64::from(i32::MAX)).ceil() as f32,
                 Damage::Fixed(a) => a,
@@ -233,7 +248,13 @@ pub fn fly(
                 }
             }
             if let OnHit::Explode { power, fire } = f.hit {
-                events.exploded.push(Blast { at, power, fire, owner: p.owner });
+                let blast = Blast { at, radius: power as f32, fire, owner: p.owner, source: None };
+                events.exploded.push(blast);
+                commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+            }
+            if let OnHit::Splash(brews) = f.hit {
+                let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
+                commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
             }
             commands.entity(e).despawn();
             continue;
@@ -252,7 +273,13 @@ pub fn fly(
                     commands.entity(e).remove::<Flying>().insert(Stuck { block: at });
                 } else {
                     if let OnHit::Explode { power, fire } = f.hit {
-                        events.exploded.push(Blast { at: pos.0, power, fire, owner: p.owner });
+                        let blast = Blast { at: pos.0, radius: power as f32, fire, owner: p.owner, source: None };
+                        events.exploded.push(blast);
+                        commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                    }
+                    if let OnHit::Splash(brews) = f.hit {
+                        let (at, owner) = (pos.0, p.owner);
+                        commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, brews, owner));
                     }
                     commands.entity(e).despawn();
                 }

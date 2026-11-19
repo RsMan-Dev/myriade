@@ -181,3 +181,131 @@ fn a_blaze_shoots_in_bursts_as_the_mob_s_does() {
     eprintln!("lateral direction (mean, sd): mob {lm:?} ecs {le:?}");
     assert!(lm.0.abs() < 0.05 && le.0.abs() < 0.05 && (lm.1 / le.1 - 1.0).abs() < 0.5, "{lm:?} {le:?}");
 }
+
+// ---- the witch's potion --------------------------------------------------------------------------------------------------------------
+
+/// The first potion a `Mob` witch throws at a cow `dist` blocks away that has these effects: its potion's name.
+fn mob_potion(dist: f64, effects: &[(&'static str, i32)], id: u32) -> Option<String> {
+    let mut r = MobRef::new(24, false);
+    let mut m = horizon_client_lib::mobs::Mob::new(id, mob_kind("minecraft:witch"), Vec3::new(0.5, 1.0, 0.5), 0.0);
+    m.persistent = true;
+    m.ai.no_action_time = 100;
+    scope(&mut m);
+    r.mobs.push(m);
+    r.searches.push(0);
+    let w = r.mobs.len() - 1;
+    let c = r.add_kind(Vec3::new(0.5, 1.0, 0.5 + dist), mob_kind("minecraft:cow"));
+    for &(e, ticks) in effects {
+        r.mobs[c].add_effect(e, ticks, 0);
+    }
+    r.mobs[w].ai.target = Some(MWho::Mob(r.mobs[c].id));
+    for _ in 0..120 {
+        let before = r.events.len();
+        r.step(None);
+        for e in &r.events[before..] {
+            if let MobEvent::Projectile(p) = e {
+                if let ProjectileKind::Potion(stack, _) = &p.kind {
+                    return stack.data().and_then(|d| d.potion.as_ref()).map(|s| s.to_string());
+                }
+            }
+        }
+        if std::env::var_os("WITCH_DBG").is_some() && r.t % 20 == 0 {
+            eprintln!("t {} target {:?} goals {:?} pos {:?}", r.t, r.mobs[w].ai.target, r.mobs[w].ai.goals.running_names(), r.mobs[w].position);
+        }
+        // The cow stays where it is.
+        r.mobs[c].position = Vec3::new(0.5, 1.0, 0.5 + dist);
+        r.mobs[c].velocity = Vec3::ZERO;
+    }
+    None
+}
+/// The same with the ECS witch: the first brew of the potion it throws.
+fn ecs_potion(dist: f64, effects: &[(horizon_ecs_proto::effects::Kind, i32)], seed: u64) -> Option<horizon_ecs_proto::effects::Brew> {
+    let mut h = Herd::with_slab(24, false, false);
+    set_lazy_look(&mut h.world, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let mut sp = *table.iter().find(|s| s.name == "minecraft:witch").unwrap();
+    sp.goals = Config { entries: Box::leak(Box::new([Entry::new(&horizon_ecs_proto::behaviours::ranged_attack::MODULE, 2, &horizon_ecs_proto::behaviours::ranged_attack::Params::WITCH)])) };
+    let mut cow = *table.iter().find(|s| s.name == "minecraft:cow").unwrap();
+    cow.goals = Config { entries: &[] };
+    let w = spawn_species(&mut h.world, &sp, 0.5, 0.5, seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let c = spawn_species(&mut h.world, &cow, 0.5, 0.5 + dist, 4);
+    for e in [w, c] {
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        h.world.resource_mut::<Entered>().0.push(e);
+    }
+    h.tick();
+    for &(k, t) in effects {
+        horizon_ecs_proto::effects::add(&mut h.world, c, k, 0, t);
+    }
+    set_target(&mut h.world, w, Target::new(Who::Entity(c), 200, u8::MAX));
+    for _ in 0..120 {
+        h.tick();
+        let found = h.world.query::<&Flight>().iter(&h.world).find_map(|f| if let horizon_ecs_proto::projectile::OnHit::Splash(b) = f.hit { b.first().copied() } else { None });
+        if found.is_some() {
+            return found;
+        }
+        teleport(&mut h.world, c, Vec3::new(0.5, 1.0, 0.5 + dist));
+    }
+    None
+}
+
+/// Slowness from afar, poison on a healthy target, harming when it has both, weakness up close a quarter of the time.
+#[test]
+fn a_witch_chooses_its_potion_by_its_target_as_the_mob_does() {
+    use horizon_ecs_proto::effects::{Brew, Kind};
+    if !have_data() {
+        return;
+    }
+    let name = |b: Brew| match b {
+        Brew::Timed(Kind::Slowness, ..) => "minecraft:slowness",
+        Brew::Timed(Kind::Poison, ..) => "minecraft:poison",
+        Brew::Timed(Kind::Weakness, ..) => "minecraft:weakness",
+        Brew::Harm(_) => "minecraft:harming",
+        _ => "other",
+    };
+    let slow = ("minecraft:slowness", 400);
+    let poison = ("minecraft:poison", 400);
+    let cases: [(f64, Vec<(&'static str, i32)>, Vec<(Kind, i32)>, &str); 4] = [
+        (12.0, vec![], vec![], "minecraft:slowness"),
+        (5.0, vec![slow], vec![(Kind::Slowness, 400)], "minecraft:poison"),
+        (5.0, vec![slow, poison], vec![(Kind::Slowness, 400), (Kind::Poison, 400)], "minecraft:harming"),
+        (12.0, vec![slow], vec![(Kind::Slowness, 400)], "minecraft:poison"),
+    ];
+    for (k, (dist, m_fx, e_fx, want)) in cases.into_iter().enumerate() {
+        let m = mob_potion(dist, &m_fx, 7000 + 10 * k as u32);
+        let e = ecs_potion(dist, &e_fx, 70 + k as u64).map(name);
+        eprintln!("distance {dist}, effects {m_fx:?}: mob {m:?} ecs {e:?}");
+        assert_eq!(m.as_deref(), Some(want), "the Mob");
+        assert_eq!(e, Some(want), "the ECS");
+    }
+    // Up close with slowness and poison: weakness one time in four (the Mob and the ECS, 120 witches each).
+    let fx = [("minecraft:slowness", 400), ("minecraft:poison", 400)];
+    let fe = [(Kind::Slowness, 400), (Kind::Poison, 400)];
+    let mw = (0..120).filter(|&k| mob_potion(2.5, &fx, 9000 + 10 * k).as_deref() == Some("minecraft:weakness")).count();
+    let ew = (0..120).filter(|&k| ecs_potion(2.5, &fe, 300 + k).map(name) == Some("minecraft:weakness")).count();
+    eprintln!("weakness up close, of 120: mob {mw} ecs {ew}");
+    assert!((15..=45).contains(&mw) && (15..=45).contains(&ew), "{mw} {ew}");
+}
+
+/// A splash potion: the effects reach the creatures near where it breaks, scaled by the nearness, the one it hits whole.
+#[test]
+fn a_splash_puts_its_effects_on_the_creatures_near_it() {
+    use horizon_ecs_proto::effects::{self, Brew, Kind};
+    if !have_data() {
+        return;
+    }
+    let (_, mut h) = flat_pair();
+    let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
+    let near = ecs_cow(&mut h, 2.5, 1.0, 0.5, 6);
+    let far = ecs_cow(&mut h, 9.5, 1.0, 0.5, 7);
+    h.tick();
+    static BREWS: [Brew; 2] = [Brew::Timed(Kind::Poison, 0, 900), Brew::Harm(0)];
+    let at = Vec3::new(0.5, 1.0, 0.5);
+    effects::splash(&mut h.world, at, Some(hit), &BREWS, None);
+    let remaining = |h: &Herd, e: Entity, now: u64| h.world.get::<effects::Effects>(e).and_then(|f| f.list.first().map(|x| x.ends + 1 - now));
+    let now = h.world.resource::<Clock>().0;
+    eprintln!("poison ticks: hit {:?} near {:?} far {:?}", remaining(&h, hit, now), remaining(&h, near, now), remaining(&h, far, now));
+    assert_eq!(remaining(&h, hit, now), Some((0.75_f64 * 900.0 + 0.5) as u64 + 1));
+    assert_eq!(remaining(&h, near, now), Some((0.5_f64 * 900.0 * 0.75 + 0.5) as u64 + 1));
+    assert_eq!(remaining(&h, far, now), None);
+}

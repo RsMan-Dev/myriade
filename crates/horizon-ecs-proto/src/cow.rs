@@ -68,6 +68,8 @@ pub struct Drive {
     pub no_gravity: bool,
     /// The sideways input (`xxa`).
     pub xxa: f32,
+    /// The level plus one of a levitation effect (0: none), read by the ground travel.
+    pub levitation: i32,
     pub speed: f32,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
@@ -295,6 +297,12 @@ pub enum Cause {
     Cramming,
     /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
     Entity,
+    /// Poison and instant damage (`DamageTypes.MAGIC`).
+    Magic,
+    /// `DamageTypes.WITHER`.
+    Wither,
+    /// An explosion (`explosion.rs`).
+    Blast,
 }
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
 #[derive(Resource, Default)]
@@ -502,6 +510,10 @@ pub enum Due {
     OrbExpire(u32),
     OrbCheck(u32),
     Burn,
+    /// A status effect acts or ends (`effects.rs`).
+    Effect,
+    /// A creeper's fuse may be at its end (`explosion.rs`).
+    Fuse,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
 }
@@ -1885,7 +1897,7 @@ pub(crate) fn travel_one(
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+    if !in_fluid && !jumping && c.on_ground && d.levitation == 0 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
     // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
@@ -1985,7 +1997,13 @@ pub(crate) fn travel_one(
         // `Spider.tick`: climbing while pressed against a wall.
         d.climbing = c.horizontal;
     }
-    let y = movement.y - body.gravity;
+    // `LivingEntity.travelInAir`: levitation (`effects.rs`) pulls the vertical speed toward 0.05 * (level + 1) instead of gravity.
+    let y = if d.levitation > 0 {
+        c.fall_distance = 0.0;
+        movement.y + (0.05 * f64::from(d.levitation) - movement.y) * 0.2
+    } else {
+        movement.y - body.gravity
+    };
     if d.discard_friction {
         vel.0 = Vec3::new(movement.x, y, movement.z);
         return false;
@@ -2983,7 +3001,7 @@ pub(crate) fn due(
     mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
-    burners: Query<(Entity, &Burning)>,
+    burners: Query<(Entity, &Burning, Option<&Immune>)>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
@@ -3016,11 +3034,15 @@ pub(crate) fn due(
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
+            Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
+            Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Burn => {
-                if let Ok((e2, burning)) = burners.get(e) {
+                if let Ok((e2, burning, imm)) = burners.get(e) {
                     let now = clock.of(e);
                     if now < burning.until {
-                        queue.add(e2, 1.0, Cause::OnFire);
+                        if !imm.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
+                            queue.add(e2, 1.0, Cause::OnFire);
+                        }
                         wheel.push(clock.at(e, now + 20), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();

@@ -234,7 +234,7 @@ fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize
             mt = Some(t);
         }
     }
-    let entries: &'static [Entry] = leak([Entry::new(&swell::MODULE, 2, &swell::Params::DEFAULT)]);
+    let entries: &'static [Entry] = leak([Entry::new(&swell::MODULE, 2, &swell::Params::NO_BLAST)]);
     let mut h = Herd::with_slab(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 77 + salt as u64);
     h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
