@@ -11,7 +11,7 @@ pub static DEF: Def = Def {
     reference: Some(&monster::DEF),
     goals: &[
         Entry::new(&emerge::MODULE, 0, &emerge::Params { duration: 134, sound: "entity.warden.emerge" }),
-        Entry::new(&dig::MODULE, 1, &dig::Params { duration: 100, sound_ground: "entity.warden.dig", sound_liquid: "entity.warden.agitated" }),
+        Entry::new(&dig::MODULE, 1, &dig::Params { duration: 100, cooldown: 1200, sound_ground: "entity.warden.dig", sound_liquid: "entity.warden.agitated" }),
         Entry::new(
             &suspect_anger::MODULE,
             2,
@@ -37,7 +37,9 @@ pub static DEF: Def = Def {
         Entry::new(&sonic_boom::MODULE, 3, &sonic_boom::Params {
             duration: 60,
             sound_delay: 34,
-            cooldown: 60,
+            // The Mob sets 40 at the end of the act (60 ticks): the next one starts 100 ticks after the start.
+            cooldown: 100,
+            first_cooldown: 200,
             range_h: 15.0,
             range_v: 20.0,
             chest: 1.6,

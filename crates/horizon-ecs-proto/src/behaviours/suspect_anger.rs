@@ -127,6 +127,7 @@ pub fn raise(w: &mut World, e: Entity, who: Who, amount: u16) -> u16 {
     drop(s);
     w.get_mut::<ActPhase>(e).unwrap().dig_cooldown_until = now + p.dig_cooldown;
     arm_module(w, e, &MODULE, 1);
+    arm_module(w, e, &super::dig::MODULE, p.dig_cooldown as i32);
     anger
 }
 

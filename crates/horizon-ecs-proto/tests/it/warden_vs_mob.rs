@@ -37,9 +37,16 @@ fn scene() -> (MobRef, Herd, Entity, usize) {
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let i = r.add_id(horizon_core::geometry::Vec3::new(0.5, 1.0, 0.5), 7);
+    // A summoned warden climbs out of the ground first (`Warden.finalizeSpawn`, triggered): the ECS species does so at its spawn.
+    let mut spawn_events = Vec::new();
+    warden::finalize(&mut r.mobs[i], true, &mut spawn_events);
+    // A persistent warden never digs (`setDigCooldown` at each step): this one may.
+    r.mobs[i].persistent = false;
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
+    // The `Mob` side has no player to hurt: the one of the ECS side is not harmed either.
+    h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     (r, h, e, i)
 }
@@ -51,17 +58,26 @@ fn the_warden_emerges_gets_angry_booms_and_burrows_as_a_mob_does() {
         return;
     }
     let (mut r, mut h, e, i) = scene();
-    let player = player_view(horizon_core::geometry::Vec3::new(6.5, 1.0, 0.5), None);
+    let mut player = player_view(horizon_core::geometry::Vec3::new(6.5, 1.0, 0.5), None);
     let mut mob = Marks::default();
     let mut ecs = Marks::default();
     let mut boom_mob: Option<i64> = None;
     let mut seen_events = 0usize;
-    for t in 1..=1500i64 {
+    for t in 1..=2200i64 {
         if (140..=142).contains(&t) {
             r.hit(i, 1.0, [6.5, 1.0, 0.5]);
-            h.hit(e, 1.0, (6.5, 0.5));
+            h.hit_by(e, 1.0, 1);
         }
-        r.step(Some(&player));
+        // Once angry the player climbs out of reach (8 blocks up): the warden cannot strike, so the sonic boom is what it has left.
+        if t == 150 {
+            player = player_view(horizon_core::geometry::Vec3::new(6.5, 9.0, 0.5), None);
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 9.0, z: 0.5, main: 0, off: 0, ..Default::default() });
+        }
+        // After the boom the player leaves: nobody is left to be angry at, and the warden digs back down once its cooldown is over.
+        if t == 450 {
+            h.world.resource_mut::<Online>().remove(1);
+        }
+        r.step(if t >= 450 { None } else { Some(&player) });
         h.tick();
         let m = &r.mobs[i];
         mob.note(t, [warden::pose(m) == warden::Pose::Emerging, warden::anger_level(m).is_angry(), false, m.removed]);
@@ -80,5 +96,8 @@ fn the_warden_emerges_gets_angry_booms_and_burrows_as_a_mob_does() {
     assert!(close(mob.t[0], ecs.t[0], 2), "emerging: mob {:?}, ecs {:?}", mob.t[0], ecs.t[0]);
     assert!(close(mob.t[1], ecs.t[1], 2), "angry after the blows: mob {:?}, ecs {:?}", mob.t[1], ecs.t[1]);
     assert!(close(boom_mob, ecs.t[2], 2), "sonic boom start: mob {:?}, ecs {:?}", boom_mob, ecs.t[2]);
-    assert!(close(mob.t[3], ecs.t[3], 10), "burrow after the calm: mob {:?}, ecs {:?}", mob.t[3], ecs.t[3]);
+    // The dig waits for the walk target to end: a stroll of random length (the RNGs differ), so the end is checked within one stroll,
+    // and never before the 1200-tick cooldown plus the 100-tick dig that follow the last fight tick.
+    assert!(mob.t[3].zip(ecs.t[3]).is_some_and(|(a, b)| a >= 1750 && b >= 1750), "burrow before the cooldown ended: mob {:?}, ecs {:?}", mob.t[3], ecs.t[3]);
+    assert!(close(mob.t[3], ecs.t[3], 60), "burrow after the calm: mob {:?}, ecs {:?}", mob.t[3], ecs.t[3]);
 }

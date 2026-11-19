@@ -27,10 +27,12 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
     w.entity_mut(e).insert_if_new(RareState { emerge_pending: true, ..RareState::default() });
+    // Nobody else asks for it: the animal climbs out of the ground at its first tick.
+    crate::goals::arm(w, e, inst.slot, 1);
 }
 
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

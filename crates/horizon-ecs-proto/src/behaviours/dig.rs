@@ -10,6 +10,8 @@ use bevy_ecs::prelude::*;
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub duration: i32,
+    /// Ticks without digging after the target is lost (`WardenAi.onTargetInvalid`).
+    pub cooldown: u64,
     pub sound_ground: &'static str,
     pub sound_liquid: &'static str,
 }
@@ -47,7 +49,12 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let grounded = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
     let fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water || f.in_lava);
-    (grounded || fluid) && w.get::<Target>(e).is_none() && !w.get::<Stroll>(e).is_some_and(|s| s.walking)
+    let ok = (grounded || fluid) && w.get::<Target>(e).is_none() && !w.get::<Stroll>(e).is_some_and(|s| s.walking);
+    if !ok {
+        // Asked again soon: nothing else wakes a goal that is refused for a transient reason.
+        arm(w, e, inst.slot, 20);
+    }
+    ok
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
@@ -79,4 +86,14 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
         w.entity_mut(e).insert(Withdrawn);
     }
     w.get_mut::<ActPhase>(e).unwrap().phase = Phase::Standing;
+}
+
+/// The target is gone: the dig cooldown starts again (it is also kept up while the fight lasts, by the anger raised in it).
+pub fn target_lost(w: &mut World, e: Entity) {
+    let Some(c) = w.get::<Cfg>(e).map(|c| c.0.cooldown) else { return };
+    let now = now_of(w, e);
+    if let Some(mut st) = w.get_mut::<ActPhase>(e) {
+        st.dig_cooldown_until = now + c;
+        arm_module(w, e, &MODULE, c as i32);
+    }
 }

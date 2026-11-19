@@ -101,7 +101,7 @@ fn worn_armor_cuts_a_blow_like_the_original() {
                 h.tick();
             }
             let base = armor::values(&r.mobs[i]);
-            let ea = h.world.get::<Armor>(e).copied().unwrap_or_default();
+            let ea = armor_of(&h.world, e);
             assert!((ea.armor - (base.0 + a)).abs() < 1e-6 && (ea.toughness - (base.1 + t)).abs() < 1e-6, "{label}: mob base {base:?}, pieces ({a}, {t}), ecs {ea:?}");
             let (m0, e0) = (r.mobs[i].health, health(&h, e));
             r.hit(i, blow, [8.5, 1.0, 0.5]);
@@ -169,7 +169,7 @@ fn a_zombie_wears_the_better_armor_it_finds_and_drops_it_at_death() {
     for _ in 0..3 {
         h.tick();
     }
-    let base = h.world.get::<Armor>(z).copied().unwrap_or_default();
+    let base = armor_of(&h.world, z);
     drop_at(&mut h, "minecraft:leather_helmet", 0.5);
     pick_up_gear::look(&mut h.world, z);
     h.world.flush();
@@ -179,7 +179,7 @@ fn a_zombie_wears_the_better_armor_it_finds_and_drops_it_at_death() {
     h.world.flush();
     assert_eq!(equipped(&h.world, z, Slot::Head), items::item_id("minecraft:iron_helmet"), "a better piece replaces it");
     assert!(on_ground(&mut h).contains(&"minecraft:leather_helmet".to_string()), "what it replaced (picked up, drop chance 2,0) falls");
-    let a = h.world.get::<Armor>(z).copied().unwrap();
+    let a = armor_of(&h.world, z);
     eprintln!("base {base:?} with the iron helmet {a:?}; leather {:?} iron {:?}", items::armor_of(items::item_id("minecraft:leather_helmet")), items::armor_of(items::item_id("minecraft:iron_helmet")));
     assert_eq!(a.armor, base.armor + 2.0, "an iron helmet is 2 armor points");
     // A worse piece beats nothing it wears: it falls back to the empty main hand (the `Mob`'s rule), and a second one is left on the ground.
@@ -275,4 +275,12 @@ fn a_bucket_milks_a_cow_and_takes_a_fish() {
     assert_eq!(h.world.resource::<Online>().get(1).unwrap().main, items::item_id("minecraft:cod_bucket"));
     h.world.flush();
     assert!(h.world.get_entity(cod).is_err(), "the fish is in the bucket");
+}
+
+/// The armor an animal has: its `Armor` (only while it wears a piece), else the base of its species (read from the table, no component for the unarmored).
+fn armor_of(w: &bevy_ecs::world::World, e: bevy_ecs::entity::Entity) -> Armor {
+    w.get::<Armor>(e).copied().unwrap_or_else(|| {
+        let (armor, toughness) = equipment::base_armor(&w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(e).unwrap().0 as usize]);
+        Armor { armor, toughness }
+    })
 }

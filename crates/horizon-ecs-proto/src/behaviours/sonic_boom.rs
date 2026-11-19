@@ -14,6 +14,8 @@ pub struct Params {
     pub sound_delay: i32,
     /// Ticks before the next beam (the Mob sets it to the act's duration).
     pub cooldown: u64,
+    /// The cooldown a new target starts (`setAttackTarget`: 200).
+    pub first_cooldown: u64,
     /// The reach: `range_h` horizontal and `range_v` vertical, in blocks.
     pub range_h: f64,
     pub range_v: f64,
@@ -29,6 +31,7 @@ pub struct Cfg(pub Params);
 pub static MODULE: Module = Module {
     name: "sonic_boom",
     flags: LOOK,
+    resources,
     equip,
     can_use,
     start,
@@ -38,6 +41,15 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+/// A new target starts the cooldown (`Warden.setAttackTarget`: 200 ticks) and the goal is asked when it ends.
+fn resources(w: &mut World) {
+    w.resource_mut::<targeting::TargetWatchers>().0.push(|w, e| {
+        let Some(c) = w.get::<Cfg>(e).map(|c| c.0) else { return };
+        let now = now_of(w, e);
+        w.get_mut::<ActPhase>(e).unwrap().sonic_cooldown_until = now + c.first_cooldown;
+        arm_module(w, e, &MODULE, c.first_cooldown as i32);
+    });
+}
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
@@ -53,7 +65,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let now = now_of(w, e);
     let c = w.get::<Cfg>(e).unwrap().0;
     let Some(target) = w.get::<Target>(e).map(|t| t.who) else { return false };
-    now >= w.get::<ActPhase>(e).unwrap().sonic_cooldown_until && targeting::can_target(w, e, target) && within(w, e, target, &c)
+    let until = w.get::<ActPhase>(e).unwrap().sonic_cooldown_until;
+    let ok = now >= until && targeting::can_target(w, e, target) && within(w, e, target, &c);
+    if !ok {
+        // The brain asks every tick: here, at the end of the cooldown, then every 5 ticks while the target is out of reach.
+        arm_module(w, e, &MODULE, if now < until { (until - now) as i32 } else { 5 });
+    }
+    ok
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
@@ -71,6 +89,10 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 
 /// The boom at the sound delay, then the end at the deadline of the act.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
+    // Not in the act: the deadline is the ask for a start.
+    if w.get::<ActPhase>(e).unwrap().phase != Phase::Booming {
+        return true;
+    }
     if !w.get::<ActPhase>(e).unwrap().boomed {
         let now = now_of(w, e);
         let until = w.get::<ActPhase>(e).unwrap().until;

@@ -906,6 +906,11 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
             h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
             horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
         }
+        if r.mobs[mobs[0]].extra.warden.is_some() {
+            // The Mob decides by a brain (activities), with no goal selector: there is no RandomLookAround to compare with.
+            eprintln!("SKIP: {name}: the Mob is brain-driven, it has no RandomLookAround goal");
+            return;
+        }
         let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
         let (mut seen_m, mut seen_e) = (vec![Vec::new(); 40], vec![Vec::new(); 40]);
         for _ in 0..1200 {

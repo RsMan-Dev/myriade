@@ -120,6 +120,7 @@ pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
 pub fn clear_target(w: &mut World, e: Entity) {
     if w.entity_mut(e).take::<Target>().is_some() {
         w.resource_mut::<Events>().target_lost.push(e);
+        crate::behaviours::dig::target_lost(w, e);
     }
 }
 /// `Mob.sees` for the attackers that have a target: the line of sight is read again only when the attacker's eyes or the
