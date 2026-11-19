@@ -136,7 +136,7 @@ pub fn cow_box(x: f64, y: f64, z: f64) -> Aabb {
     Aabb::new(Vec3::new(x - 0.45, y, z - 0.45), Vec3::new(x + 0.45, y + 1.4, z + 0.45))
 }
 
-pub const CASES: [&str; 8] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air", "g-churn", "h-hard"];
+pub const CASES: [&str; 9] = ["z-null", "a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air", "g-churn", "h-hard"];
 
 /// The calls of one cow case (a few hundred, cycled by the bench).
 pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
@@ -150,6 +150,7 @@ pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
                 "a-rest" => (cow_box(x, 1.0, z), Vec3::new(0.0, g, 0.0), true),
                 "b-walk" => (cow_box(x, 1.0, z), walk, true),
                 "c-wall" => (cow_box(19.0 - 0.45 - r.range(0.0, 0.3), 1.0, z), Vec3::new(0.12, g, r.range(-0.05, 0.05)), true),
+                "z-null" => (cow_box(x, 1.0, z), Vec3::new(0.0, 0.0, 0.0), true),
                 "h-hard" => (cow_box(r.range(31.0, 47.0), 1.0, r.range(-47.0, -21.0)), walk, true),
                 "g-churn" => (cow_box(r.range(-15.5, -0.5), 1.0, r.range(0.5, 15.5)), walk, true),
                 "f-air" => (cow_box(x, r.range(40.0, 60.0), z), Vec3::new(r.range(-0.3, 0.3), r.range(-0.3, 0.3), r.range(-0.3, 0.3)), false),
@@ -484,4 +485,54 @@ pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static M
     })
     .expect("HORIZON_TEST_RESOURCES");
     (w, p)
+}
+
+/// A world whose features lie on the seams between sections (x, z = -1 | 0 and 15 | 16, y = 15 | 16): plain cubes, shapes that reach out of their
+/// cell (fences, walls, pistons' heads), fixed shapes and hard blocks, so that boxes near a seam read cells of the neighbouring sections. Returns the
+/// world and the calls (boxes standing on the floor at y = 16, or inside the features).
+pub fn seam_world(seed: u64) -> (&'static MobWorld<'static>, Vec<Call>) {
+    let (w, _, _) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+        insert_chunks(w, -2, 2);
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let pool = states_named(registry, &["oak_fence", "cobblestone_wall", "piston_head", "oak_slab", "oak_stairs", "scaffolding", "bamboo", "snow", "iron_bars", "oak_fence_gate", "moving_piston"]);
+        let mut r = Rng(seed | 1);
+        for x in -20..20 {
+            for z in -20..20 {
+                w.set(x, 15, z, stone).unwrap();
+            }
+        }
+        let near_seam = |v: i32| matches!(v, -2..=1 | 14..=17);
+        for x in -20..20i32 {
+            for z in -20..20i32 {
+                for y in 14..19 {
+                    let (nx, nz, ny) = (near_seam(x), near_seam(z), matches!(y, 14..=17));
+                    if !(nx || nz || ny) || y == 15 {
+                        continue;
+                    }
+                    match r.below(100) {
+                        0..=9 => w.set(x, y, z, stone).unwrap(),
+                        10..=21 => {
+                            let k = r.below(pool.len());
+                            w.set(x, y, z, pool[k][r.below(pool[k].len())]).unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    })
+    .expect("HORIZON_TEST_RESOURCES");
+    let mut r = Rng(seed ^ 0x5EA3);
+    let calls = (0..20_000)
+        .map(|_| {
+            let (bw, bh) = [(0.9, 1.4), (0.6, 1.8), (0.3, 0.3), (0.6, 0.6)][r.below(4)];
+            let seam = |r: &mut Rng| [-1.0, 0.0, 15.0, 16.0][r.below(4)] + r.range(-1.6, 1.6);
+            let (x, z) = (seam(&mut r), seam(&mut r));
+            let y = [16.0, 15.0, 16.5, 17.0, 14.0][r.below(5)] + [0.0, 1.0e-7, -1.0e-7][r.below(3)];
+            let bounds = Aabb::new(Vec3::new(x - bw / 2.0, y, z - bw / 2.0), Vec3::new(x + bw / 2.0, y + bh, z + bw / 2.0));
+            let m = [Vec3::new(0.0, -0.0784, 0.0), Vec3::new(0.12, -0.08, 0.05), Vec3::new(-0.1, 0.0, 0.1), Vec3::new(0.3, 0.2, -0.3), Vec3::new(0.0, 0.0, 0.0)][r.below(5)];
+            Call { bounds, movement: m, step: [0.0_f32, 0.6, 1.0][r.below(3)], on_ground: r.below(2) == 0 }
+        })
+        .collect();
+    (w, calls)
 }

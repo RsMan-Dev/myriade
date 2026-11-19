@@ -1,6 +1,6 @@
 //! The optimised block-collision kernel against the reference one, bit for bit, over random calls in a varied
 //! random world (suivi/ecs-noyau-collisions.md). `HORIZON_TEST_RESOURCES` must be set.
-use horizon_ecs_proto::kernel_lab::{change_block, cube_world, hard_world, hard_world_sized, occupancy_of, random_calls, run, run_as, run_kernel, run_lava_walker, run_reference, subjects, varied_world, Call, Mode, Rng};
+use horizon_ecs_proto::kernel_lab::{change_block, cube_world, hard_world, hard_world_sized, occupancy_of, seam_world, random_calls, run, run_as, run_kernel, run_lava_walker, run_reference, subjects, varied_world, Call, Mode, Rng};
 
 fn same(a: &Result<horizon_core::geometry::Vec3, String>, b: &Result<horizon_core::geometry::Vec3, String>) -> bool {
     match (a, b) {
@@ -440,4 +440,65 @@ fn bamboo_and_stalactites_are_column_states() {
         }
     }
     assert!(n > 20, "{n} column states");
+}
+
+/// Features on the seams between sections (cubes, shapes that reach out of their cell, hard blocks), boxes beside them on both sides, standing and
+/// falling: the cells of the ring and of the box that lie in the neighbouring section are read from it.
+#[test]
+fn seams_between_sections_agree_with_the_reference() {
+    let mut stopped = 0;
+    for seed in [1u64, 2, 3, 4] {
+        let (world, calls) = seam_world(seed);
+        for c in &calls {
+            for sub in subjects().into_iter().take(2) {
+                let (new, old) = (run_as(world, c, sub, Mode::Masks), run_as(world, c, sub, Mode::Reference));
+                assert!(same(&new, &old), "seed {seed}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+                stopped += usize::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
+            }
+        }
+    }
+    assert!(stopped > 10_000, "only {stopped} calls stopped");
+}
+
+/// The masks dropped and the blocks changed behind their back (`clear`, as when a chunk is replaced): the threads' caches of sections must not
+/// answer for the old world; and calls from several threads at once, against answers computed before.
+#[test]
+fn clear_and_threads_agree_with_the_reference() {
+    let (world, ptr) = cube_world(14, true);
+    let occ = occupancy_of(world);
+    let calls = random_calls(14, 4_000);
+    let before: Vec<_> = calls.iter().map(|c| run(world, c)).collect();
+    for c in &calls {
+        assert!(same(&run_reference(world, c), &run(world, c)));
+    }
+    // Blocks change without `changed`, then `clear`.
+    let stone = world.registry.default_state("minecraft:stone").unwrap();
+    let air = world.registry.default_state("minecraft:air").unwrap();
+    let mut r = Rng(77);
+    for _ in 0..300 {
+        let (x, y, z) = (r.below(28) as i32 - 14, r.below(7) as i32, r.below(28) as i32 - 14);
+        let s = if r.below(2) == 0 { stone } else { air };
+        // SAFETY: no call runs at the same time.
+        unsafe {
+            let _ = (*ptr).set(x, y, z, s);
+        }
+    }
+    occ.clear();
+    let after: Vec<_> = calls.iter().map(|c| run_reference(world, c)).collect();
+    assert!(before.iter().zip(&after).any(|(a, b)| !same(a, b)), "the changes must matter");
+    std::thread::scope(|scope| {
+        // The world is read only here (the masks are what is under test); it is not `Sync` for what the mobs hold in it, which these calls never touch.
+        let addr = world as *const horizon_client_lib::mobs::MobWorld<'_> as usize;
+        for t in 0..4 {
+            let (calls, after) = (&calls, &after);
+            scope.spawn(move || {
+                // SAFETY: the world outlives the scope and nothing writes to it.
+                let world = unsafe { &*(addr as *const horizon_client_lib::mobs::MobWorld<'static>) };
+                for (i, c) in calls.iter().enumerate().skip(t).step_by(4) {
+                    let got = run(world, c);
+                    assert!(same(&got, &after[i]), "thread {t} call {i}: masks {got:?} reference {:?}", after[i]);
+                }
+            });
+        }
+    });
 }

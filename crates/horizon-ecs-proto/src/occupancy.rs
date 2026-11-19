@@ -17,6 +17,7 @@
 //! context the kernel's own scan would give it (`ask`), and its collider takes its place in the order: the cost follows the number of
 //! hard cells met. The whole kernel runs only when the box is too big or not finite (`Err` from `collect`); nothing else is left to it
 //! (a world border and entity colliders do not go through here).
+mod fast;
 use horizon_client_render::collisions::SceneCollisions;
 use horizon_core::{position::BlockPos, random::position_seed};
 use horizon_world::{collision_context::{CollisionContext, CollisionEntity, CollisionItem, EntityContextKind}, entity_obstruction::EntityIdentity};
@@ -26,7 +27,7 @@ use std::{
     collections::HashMap,
     hash::{BuildHasherDefault, Hasher},
     sync::{
-        atomic::{AtomicU64, Ordering::Relaxed},
+        atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering::Relaxed},
         Mutex,
     },
 };
@@ -47,15 +48,32 @@ pub struct Section {
     liquid: [u16; 256],
     any_cells: bool,
     any_hard: bool,
+    any_liquid: bool,
     any_large: bool,
     any_piston: bool,
     any_shaped: bool,
+    /// What the lock-free path asks of a section at a glance: 1 holds cells, 2 holds a shape that is not a cube or a hard cell, 4 holds a shape
+    /// that reaches out of its cell or a moving piston, 8 holds a liquid. Only ever turned on.
+    /// (Bit 16, set under the lock while other threads read: this section or one of its 26 neighbours holds a shape that reaches out of its cell
+    /// or a moving piston, so the scan reads cells of the ring that lie in other sections.)
+    flags: AtomicU8,
+    /// Which of the 26 neighbours hold such a shape (bit `rel` of the neighbour's offset: (dx + 1) * 9 + (dy + 1) * 3 + dz + 1).
+    halo: AtomicU32,
 }
 impl Section {
     fn void() -> Self {
-        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_large: false, any_piston: false, any_shaped: false }
+        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), halo: AtomicU32::new(0) }
+    }
+    fn refresh_flags(&self) {
+        let own = u8::from(self.any_cells) | u8::from(self.any_shaped || self.any_hard) << 1 | u8::from(self.any_large || self.any_piston) << 2 | u8::from(self.any_liquid) << 3;
+        self.flags.fetch_and(16, Relaxed);
+        self.flags.fetch_or(own, Relaxed);
     }
     fn set(&mut self, row: usize, bit: u16, class: Class) {
+        self.set_bits(row, bit, class);
+        self.refresh_flags();
+    }
+    fn set_bits(&mut self, row: usize, bit: u16, class: Class) {
         let clear = !bit;
         self.full[row] &= clear;
         self.near[row] &= clear;
@@ -68,6 +86,8 @@ impl Section {
         }
         if self.any_hard {
             self.hard[row] &= clear;
+        }
+        if self.any_liquid {
             self.liquid[row] &= clear;
         }
         if self.any_piston {
@@ -107,7 +127,7 @@ impl Section {
             }
             Class::Liquid { large } => {
                 self.liquid[row] |= bit;
-                self.any_hard = true;
+                self.any_liquid = true;
                 self.any_cells = true;
                 if large {
                     self.large[row] |= bit;
@@ -117,7 +137,7 @@ impl Section {
         }
     }
 }
-static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_large: false, any_piston: false, any_shaped: false };
+static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), halo: AtomicU32::new(0) };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Class {
@@ -308,15 +328,36 @@ impl Default for Inner {
     }
 }
 /// The masks and the table of one world, and how often the fast path answered.
-#[derive(Default)]
 pub struct Occupancy {
     inner: Mutex<Inner>,
     pub fast: AtomicU64,
     pub fallback: AtomicU64,
     pub built: AtomicU64,
+    /// Calls the lock-free path declined (they took the general one).
+    pub declined: AtomicU64,
+    /// Which instance this is (the per-thread caches of `fast` belong to one), and how many times the masks were dropped by `clear`.
+    id: u64,
+    generation: AtomicU64,
+}
+impl Default for Occupancy {
+    fn default() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Occupancy { inner: Mutex::default(), fast: AtomicU64::default(), fallback: AtomicU64::default(), built: AtomicU64::default(), declined: AtomicU64::default(), id: NEXT.fetch_add(1, Relaxed), generation: AtomicU64::default() }
+    }
 }
 
 impl Occupancy {
+    /// The section `k` (key `key`) of the masks, built from the blocks on its first read; its address holds until `clear`.
+    fn section(&self, world: &World, binding: &Binding<'_>, key: u64, k: [i32; 3]) -> *const Section {
+        let mut g = self.inner.lock().unwrap();
+        let Inner { map, table, .. } = &mut *g;
+        if let Some(s) = map.get(&key) {
+            return &**s as *const Section;
+        }
+        self.built.fetch_add(1, Relaxed);
+        let s = get_or_build(map, table, world, binding, k);
+        &**s as *const Section
+    }
     /// The block at (x, y, z) has just been written: its cell takes the class of its new state (the bits of its row), if the
     /// section has a mask. Nothing else is touched. Whoever writes blocks calls this (and after replacing a chunk, `clear`).
     pub fn changed(&self, world: &World, binding: &Binding<'_>, x: i32, y: i32, z: i32) {
@@ -324,13 +365,18 @@ impl Occupancy {
         let Inner { map, table, .. } = &mut *g;
         let Some(section) = map.get_mut(&key([x >> 4, y >> 4, z >> 4])) else { return };
         let class = table.class_of(binding, world.block(x, y, z));
+        let before = section.flags.load(Relaxed) & 4;
         section.set((((y & 15) << 4) | (z & 15)) as usize, 1 << (x & 15), class);
+        if before == 0 && section.flags.load(Relaxed) & 4 != 0 {
+            mark_halo(map, [x >> 4, y >> 4, z >> 4]);
+        }
     }
     /// Drops every mask (a chunk replaced, a world reloaded); the table stays.
     pub fn clear(&self) {
         let mut g = self.inner.lock().unwrap();
         g.map.clear();
         g.recent = [(0, 0); 64];
+        self.generation.fetch_add(1, Relaxed);
     }
     /// The class of a state, by name, for the tests: "empty", "cube", "shaped", "large shaped" or "hard".
     pub fn class_name(&self, binding: &Binding<'_>, s: BlockStateId) -> &'static str {
@@ -366,6 +412,12 @@ impl Occupancy {
 
     /// `SceneCollisions::resolve_in_border_with(bounds, movement, step, on_ground, None, &[])`, the same result bit for bit.
     pub fn resolve(&self, mut scene: SceneCollisions<'_, '_>, bounds: Aabb, movement: Vec3, max_step: f32, on_ground: bool) -> Result<Vec3, Box<dyn std::error::Error>> {
+        // Plain cubes and air only, no lock: the common case.
+        if let Some(v) = fast::resolve(self, &scene, bounds, movement, max_step, on_ground) {
+            self.fast.fetch_add(1, Relaxed);
+            return Ok(v);
+        }
+        self.declined.fetch_add(1, Relaxed);
         {
             let mut g = self.inner.lock().unwrap();
             let Inner { map, recent, colliders, held, table } = &mut *g;
@@ -419,6 +471,60 @@ fn context_of<'w>(scene: &SceneCollisions<'w, '_>, y: f64) -> CollisionContext<'
         CollisionEntity { identity: EntityIdentity(0), kind: EntityContextKind::Living, y, descending: false, main_hand: Some(subject.main_hand.unwrap_or(CollisionItem::EMPTY)) },
         false,
     )
+}
+
+/// Bit of a neighbour's offset in `Section::halo`.
+const fn rel(d: [i32; 3]) -> u32 {
+    ((d[0] + 1) * 9 + (d[1] + 1) * 3 + d[2] + 1) as u32
+}
+
+/// The section `k` of the map, built from the blocks when it is not there, and the halos kept: a section that holds a shape reaching out of its
+/// cell (or a moving piston) is noted in the 26 neighbours' `halo` (and `flags` bit 16 when any is), and a new one takes its own from the
+/// neighbours it finds.
+fn get_or_build<'m>(map: &'m mut Map, table: &mut Table, world: &World, binding: &Binding<'_>, k: [i32; 3]) -> &'m mut Box<Section> {
+    let kk = key(k);
+    if !map.contains_key(&kk) {
+        let s = build(world, binding, table, k);
+        let mut halo = 0u32;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    if (dx, dy, dz) != (0, 0, 0) {
+                        if let Some(n) = map.get(&key([k[0] + dx, k[1] + dy, k[2] + dz])) {
+                            if n.flags.load(Relaxed) & 4 != 0 {
+                                halo |= 1 << rel([dx, dy, dz]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        s.halo.store(halo, Relaxed);
+        if halo != 0 {
+            s.flags.fetch_or(16, Relaxed);
+        }
+        let reaches = s.flags.load(Relaxed) & 4 != 0;
+        map.insert(kk, s);
+        if reaches {
+            mark_halo(map, k);
+        }
+    }
+    map.get_mut(&kk).expect("just inserted")
+}
+/// The section at `k` now holds a shape that reaches out of its cell: its 26 neighbours that exist note it.
+fn mark_halo(map: &Map, k: [i32; 3]) {
+    for dx in -1..=1 {
+        for dy in -1..=1 {
+            for dz in -1..=1 {
+                if (dx, dy, dz) != (0, 0, 0) {
+                    if let Some(n) = map.get(&key([k[0] + dx, k[1] + dy, k[2] + dz])) {
+                        n.halo.fetch_or(1 << rel([-dx, -dy, -dz]), Relaxed);
+                        n.flags.fetch_or(16, Relaxed);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn build(world: &World, binding: &Binding<'_>, table: &mut Table, k: [i32; 3]) -> Box<Section> {
@@ -490,14 +596,14 @@ fn collect(map: &mut Map, recent: &mut [(u64, usize); 64], table: &mut Table, he
                         Some(s) => s,
                         None => {
                             built.fetch_add(1, Relaxed);
-                            map.entry(k).or_insert_with(|| build(world, binding, table, [kx, ky, kz]))
+                            get_or_build(map, table, world, binding, [kx, ky, kz])
                         }
                     };
                     recent[slot] = (k, s as *const Section as usize);
                     s
                 };
                 any_cells |= s.any_cells;
-                any_hard |= s.any_hard;
+                any_hard |= s.any_hard || (subject && s.any_liquid);
                 any_large |= s.any_large;
                 any_piston |= s.any_piston;
                 secs[(i * ny + j) * nz + l] = s;
