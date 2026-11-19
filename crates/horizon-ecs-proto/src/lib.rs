@@ -45,3 +45,8 @@ pub mod spawn_finalize;
 pub mod spawn_spawner;
 pub mod spawn_trial;
 pub mod equipment_spawn;
+pub mod equipment_enchant;
+pub mod equipment_items;
+pub mod equipment_wear;
+pub mod equipment_drop;
+pub mod equipment_break;

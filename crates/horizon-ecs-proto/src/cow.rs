@@ -1208,6 +1208,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     }
     if let Some(items) = mw.items {
         crate::items::install(items);
+        crate::equipment_items::install(items);
     }
     let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());

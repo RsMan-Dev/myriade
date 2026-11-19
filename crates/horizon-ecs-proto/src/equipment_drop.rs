@@ -11,9 +11,9 @@ use horizon_core::random::RandomSource;
 /// `Mob.DEFAULT_EQUIPMENT_DROP_CHANCE`.
 pub const DEFAULT: f32 = 0.085;
 
-/// The drop chance of each slot, by `index` (main hand, off hand, feet, legs, chest, head). Absent: `DEFAULT` everywhere.
+/// The drop chance of each slot, by `index` (main hand, off hand, feet, legs, chest, head, body, saddle). Absent: `DEFAULT` everywhere.
 #[derive(Component, Clone, Copy, Debug)]
-pub struct DropChances(pub [f32; 6]);
+pub struct DropChances(pub [f32; 8]);
 
 fn index(slot: Slot) -> usize {
     match slot {
@@ -23,6 +23,8 @@ fn index(slot: Slot) -> usize {
         Slot::Legs => 3,
         Slot::Chest => 4,
         Slot::Head => 5,
+        Slot::Body => 6,
+        Slot::Saddle => 7,
     }
 }
 

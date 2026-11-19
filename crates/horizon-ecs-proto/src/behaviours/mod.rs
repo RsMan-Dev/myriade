@@ -321,6 +321,8 @@ pub mod still_under_riders;
 pub mod heal_weather;
 pub mod square_or_face;
 pub mod fly_steer;
+pub mod equip_decision;
+pub mod equip_source;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[

@@ -74,3 +74,4 @@ mod happy_ghast_vs_mob;
 mod spawn_vs_mob;
 mod spawn_spawner_vs_mob;
 mod spawn_trial_states;
+mod equip_vs_mob;

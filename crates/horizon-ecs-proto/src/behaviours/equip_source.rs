@@ -37,7 +37,9 @@ pub fn item_in_reach(w: &mut World, mob: Entity, item: Entity, taker: &Taker) ->
     let taken = item::pick_up(w, mob, item, 1)?;
     match slot {
         Slot::Head | Slot::Chest | Slot::Legs | Slot::Feet => put_armor(w, mob, slot, id),
-        _ => set_slot(w, mob, slot, id),
+        _ => {
+            set_slot(w, mob, slot, id);
+        }
     }
     if slot == Slot::Main {
         set_main_hand(w, mob, Some(taken));
