@@ -70,7 +70,7 @@ fn arm_egg(w: &mut World, e: Entity) {
     let Some(mut egg) = w.get_mut::<Egg>(e) else { return };
     egg.at = now + egg.left;
     let at = egg.at;
-    crate::cow::arm_at(w, e, at.min(now + 4095), Due::Egg);
+    crate::cow::arm_at(w, e, at, Due::Egg);
 }
 /// A deadline of the egg timer: lay (an adult), start again, or wait for the growth (a baby does not count).
 pub fn lay_deadline(w: &mut World, e: Entity) {
@@ -80,7 +80,7 @@ pub fn lay_deadline(w: &mut World, e: Entity) {
         // A deadline of the wheel's reach, not the egg's.
         if egg.at != u64::MAX && now < egg.at {
             let at = egg.at;
-            crate::cow::arm_at(w, e, at.min(now + 4095), Due::Egg);
+            crate::cow::arm_at(w, e, at, Due::Egg);
         }
         return;
     }

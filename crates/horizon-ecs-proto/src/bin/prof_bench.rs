@@ -14,7 +14,7 @@ fn main() {
     let (n, ticks) = (arg(2, 3000), arg(3, 300));
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing = 2.0;
-    let mix = if scene == "active" { 4 } else { 0 };
+    let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
     let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
@@ -52,6 +52,10 @@ fn main() {
         }
         println!("scene=itemsref n={n} ticks_measured={} instr/tick={:.0} instr/item-tick={:.0}", ticks - warm, total as f64 / (ticks - warm) as f64, total as f64 / (ticks - warm) as f64 / n as f64);
         return;
+    }
+    if std::env::var_os("POOL").is_some() {
+        herd.fill_water(4);
+        herd.tick();
     }
     let shared = profile::instrument(&mut herd);
     let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();

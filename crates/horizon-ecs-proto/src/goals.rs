@@ -37,7 +37,7 @@ pub struct GoalSlot(pub u8);
 /// slot bitmasks (16 goals at most); `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and
 /// starts when it frees. Resolved once at creation: nothing is looked up by name afterwards.
 #[derive(Component, Clone)]
-#[component(on_add = goalset_added)]
+#[component(on_add = goalset_added, on_remove = goalset_removed)]
 pub struct GoalSet {
     entries: &'static [Entry],
     nth: [u8; 16],
@@ -514,13 +514,36 @@ fn equip_goals(w: &mut World, e: Entity) {
     }
 }
 
+/// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
+/// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
+#[derive(Resource, Default)]
+pub struct Carriers(pub Vec<u32>);
+pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries: &[Entry], delta: i32) {
+    let reg = crate::species::registry();
+    let Some(mut c) = world.get_resource_mut::<Carriers>() else { return };
+    for en in entries {
+        if let Some(i) = reg.module_id(en.module)
+            && let Some(n) = c.0.get_mut(i)
+        {
+            *n = n.saturating_add_signed(delta);
+        }
+    }
+}
+fn goalset_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(entries) = world.get::<GoalSet>(ctx.entity).map(|g| g.entries) else { return };
+    count_carriers(&mut world, entries, -1);
+}
 fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
+    if let Some(entries) = world.get::<GoalSet>(e).map(|g| g.entries) {
+        count_carriers(&mut world, entries, 1);
+    }
     world.commands().queue(move |w: &mut World| equip_goals(w, e));
 }
 
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
+    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()]));
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
@@ -544,6 +567,7 @@ pub fn insert_resources(world: &mut World) {
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
+    s.add_systems(player_watch.after(online_events).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
     s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
     let modules = &crate::species::registry().modules;
@@ -556,6 +580,8 @@ pub fn register(s: &mut Schedule) {
         // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
         if crate::species::registry().carried(i) {
             (modules[i].systems)(s, slot);
+            // Registered but nobody alive carries it: the whole set is skipped (one test per tick).
+            s.configure_sets(slot.run_if(move |c: Res<Carriers>| c.0.get(i).is_some_and(|n| *n > 0)));
         }
     }
 }
@@ -565,16 +591,20 @@ pub fn register(s: &mut Schedule) {
 /// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
 /// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
 /// clears or takes them; a system that does not run every tick may miss events.
-#[derive(Default)]
-pub struct Ev {
-    cur: Vec<Entity>,
-    prev: Vec<Entity>,
+pub struct Ev<T = Entity> {
+    cur: Vec<T>,
+    prev: Vec<T>,
 }
-impl Ev {
-    pub fn push(&mut self, e: Entity) {
+impl<T> Default for Ev<T> {
+    fn default() -> Self {
+        Self { cur: Vec::new(), prev: Vec::new() }
+    }
+}
+impl<T: Copy> Ev<T> {
+    pub fn push(&mut self, e: T) {
         self.cur.push(e);
     }
-    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
         self.prev.iter().copied()
     }
     pub fn is_empty(&self) -> bool {
@@ -607,6 +637,13 @@ pub struct Events {
     /// The box entered / left powder snow.
     pub entered_powder_snow: Ev,
     pub left_powder_snow: Ev,
+    /// The feet left the ground (after being on it).
+    pub left_ground: Ev,
+    /// A player's view vector changed (the id).
+    pub gaze_changed: Ev<u32>,
+    /// A player entered / left the `PlayerWatch` radius of an entity (the watcher, the player id).
+    pub player_entered: Ev<(Entity, u32)>,
+    pub player_left: Ev<(Entity, u32)>,
     /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
     pub target_acquired: Ev,
     pub target_lost: Ev,
@@ -617,9 +654,25 @@ pub struct Events {
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit, &mut self.hurt, &mut self.hurt_by_entity, &mut self.entered_powder_snow, &mut self.left_powder_snow, &mut self.picked_up] {
-            ev.swap();
-        }
+        self.ignited.swap();
+        self.extinguished.swap();
+        self.entered_fluid.swap();
+        self.left_fluid.swap();
+        self.landed.swap();
+        self.grew.swap();
+        self.ate.swap();
+        self.target_acquired.swap();
+        self.target_lost.swap();
+        self.projectile_hit.swap();
+        self.hurt.swap();
+        self.hurt_by_entity.swap();
+        self.entered_powder_snow.swap();
+        self.left_powder_snow.swap();
+        self.left_ground.swap();
+        self.gaze_changed.swap();
+        self.player_entered.swap();
+        self.player_left.swap();
+        self.picked_up.swap();
     }
 }
 
@@ -630,7 +683,7 @@ pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> 
 /// Arms a deadline of the goal of this slot, `wait` ticks from now.
 pub(crate) fn arm(w: &mut World, e: Entity, slot: u8, wait: i32) {
     let now = crate::cow::now_of(w, e);
-    crate::cow::arm_at(w, e, (now + wait.max(1) as u64).min(now + WHEEL_MAX), Due::Goal(slot));
+    crate::cow::arm_at(w, e, now + wait.max(1) as u64, Due::Goal(slot));
 }
 /// The rank of the module's (first) entry in the animal's selector.
 pub fn slot_of(w: &World, e: Entity, m: &'static Module) -> Option<u8> {
@@ -671,7 +724,7 @@ pub(crate) fn phase_of(w: &World, e: Entity) -> u64 {
     w.get::<Phase>(e).map_or(0, |p| p.0)
 }
 /// Asks every module of the animal for its first deadlines.
-pub(crate) fn arm_timers(w: &mut World, e: Entity) {
+pub fn arm_timers(w: &mut World, e: Entity) {
     crate::brain::arm(w, e);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     let (entries, n) = (g.entries, g.len());
@@ -697,6 +750,65 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 }
 /// The player events of the tick: the lazy look wakes the animals a player now watches, the list of the players is
 /// given to the other systems; the modules read `Online::seen` for their own wake-ups (a player takes an item...).
+/// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
+/// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
+/// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
+/// changes or the player moves; the radius is at most 64 blocks; players with id < 64.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerWatch {
+    pub radius: f32,
+    inside: u64,
+}
+impl PlayerWatch {
+    pub const fn new(radius: f32) -> Self {
+        Self { radius, inside: 0 }
+    }
+    pub fn is_inside(&self, player: u32) -> bool {
+        player < 64 && self.inside >> player & 1 == 1
+    }
+}
+/// Updates the watchers touched by the player events of the tick and by the cell moves.
+fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
+    const R: f64 = 64.0;
+    if on.seen.is_empty() && moves.0.is_empty() {
+        return;
+    }
+    let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
+        if id >= 64 {
+            return;
+        }
+        let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
+        let was = w.inside >> id & 1 == 1;
+        if now && !was {
+            w.inside |= 1 << id;
+            ev.player_entered.push((e, id));
+        } else if !now && was {
+            w.inside &= !(1 << id);
+            ev.player_left.push((e, id));
+        }
+    };
+    for (old, new) in &on.seen {
+        let Some(id) = new.or(*old).map(|p| p.id) else { continue };
+        let mut near: Vec<Entity> = Vec::new();
+        for p in [old, new].into_iter().flatten() {
+            idx.for_radius(p.x, p.z, R, |c| near.push(c));
+        }
+        near.sort_unstable();
+        near.dedup();
+        for e in near {
+            if let Ok((pos, mut w)) = q.get_mut(e) {
+                eval(e, pos, &mut w, id, *new, &mut ev);
+            }
+        }
+    }
+    for &e in &moves.0 {
+        if let Ok((pos, mut w)) = q.get_mut(e) {
+            for p in on.list.iter().flatten() {
+                eval(e, pos, &mut w, p.id, Some(*p), &mut ev);
+            }
+        }
+    }
+}
 fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,
@@ -1056,6 +1168,12 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
     }
     w.entity_mut(e).insert(NeedsPath);
 }
+/// The reach of the next paths of the entity (`go_to_at` sets it; a goal that ends puts the default 1 back).
+pub fn set_reach(w: &mut World, e: Entity, reach: i32) {
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.reach = reach;
+    }
+}
 /// `go_to_at` toward the position of the entity `target` now (follow: ask again as it moves; the module decides when). False
 /// when the target has no position.
 pub fn go_to_entity(w: &mut World, e: Entity, target: Entity, speed: f64, reach: i32) -> bool {
@@ -1404,6 +1522,9 @@ mod tests {
     /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
+    if crate::cow::skip_unless_walker("cows_glance_at_a_near_player_and_look_around") {
+        return;
+    }
         let Some(mut h) = herd() else { return };
         // A ranged hunter holds the look flag as long as it has its target: the passive look is not what it does.
         if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {

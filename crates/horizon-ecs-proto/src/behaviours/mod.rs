@@ -195,6 +195,7 @@ pub mod silverfish_wake_up_friends;
 pub mod example;
 pub mod eat_block;
 pub mod flee_sun;
+pub mod fish_swim;
 pub mod float;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -215,10 +216,26 @@ pub mod fox_state;
 pub mod fox_faceplant;
 pub mod fox_stalk_prey;
 pub mod fox_pounce;
+pub mod fox_sleep;
+pub mod fox_eat_berries;
 pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
 pub mod swell;
+pub mod look_for_player;
+pub mod take_block;
+pub mod leave_block;
+pub mod freeze_when_looked_at;
+pub mod strider_go_to_lava;
+pub mod ghast_look;
+pub mod move_towards_target;
+pub mod ranged_attack;
+pub mod leap_at_target;
+pub mod attack_turtle_egg;
+pub mod brute_stroll_home;
+pub mod silverfish_merge;
+pub mod neutral_anger;
+pub mod panda_sit;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -245,9 +262,26 @@ pub static TABLE: &[&Module] = &[
     &fox_stalk_prey::MODULE,
     &fox_pounce::MODULE,
     &swell::MODULE,
+    &move_towards_target::MODULE,
+    &ranged_attack::MODULE,
+    &leap_at_target::MODULE,
     &baby_follow_adult::MODULE,
     &rolled::MODULE,
+    &neutral_anger::MODULE,
+    &panda_sit::MODULE,
     &climb_on_powder_snow::MODULE,
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
+    &fish_swim::MODULE,
+    &look_for_player::MODULE,
+    &take_block::MODULE,
+    &leave_block::MODULE,
+    &freeze_when_looked_at::MODULE,
+    &strider_go_to_lava::MODULE,
+    &ghast_look::MODULE,
+    &fox_sleep::MODULE,
+    &fox_eat_berries::MODULE,
+    &attack_turtle_egg::MODULE,
+    &brute_stroll_home::MODULE,
+    &silverfish_merge::MODULE,
 ];

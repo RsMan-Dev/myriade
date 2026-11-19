@@ -143,6 +143,9 @@ fn run(gap: i64, s1: i64, s2: i64, what: What) -> (Seen, Seen, bool) {
 /// run out after the same number of ticks it was ticked, as the `Mob` that was not ticked.
 #[test]
 fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_creature_that_sleeps_keeps_its_timers_as_a_mob_does") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -298,6 +301,9 @@ fn a_hen_that_sleeps_lays_after_the_same_ticks_it_was_ticked() {
 /// chunks that tick are awake and the others asleep, and none of them is lost or made twice.
 #[test]
 fn the_herd_stays_awake_or_asleep_by_its_chunk() {
+    if horizon_ecs_proto::cow::skip_unless_walker("the_herd_stays_awake_or_asleep_by_its_chunk") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -379,7 +385,7 @@ fn zombie_hits(gap: i64, s1: i64, s2: i64) -> (Vec<i64>, Vec<i64>, bool) {
 
 /// A zombie asleep for 707 ticks strikes again as the `Mob` that was not ticked does. Its melee check is in the WORLD's time (vanilla's
 /// `lastCanUseCheck` against `getGameTime`, which the `Mob` keeps): the `Mob` asks at once when it wakes, the ecs zombie on its
-/// grid, at most 20 ticks later (a declared gap); the cadence after is the same, and its other deadlines (sun draw, fire,
+/// grid, at most 20 ticks later (aligned at the wake); the cadence after is the same, and its other deadlines (sun draw, fire,
 /// cooldown counters) stand still with its own time.
 #[test]
 fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
@@ -387,25 +393,35 @@ fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
         return;
     }
     let _ = pair();
-    let (s1, s2, gap) = (80, 300, 707);
-    let (m0, e0, slept0) = zombie_hits(0, s1, s2);
-    let (mg, eg, slept) = zombie_hits(gap, s1, s2);
-    eprintln!("zombies, no gap: mob {m0:?}\n  ecs {e0:?}\ngap {gap}: mob {mg:?}\n  ecs {eg:?}");
-    assert!(!slept0 && slept, "the zombies sleep in the gap only");
-    let first_after = |v: &[i64]| v.iter().copied().find(|&t| t > s1 + gap);
-    let (mf, ef) = (first_after(&mg).expect("the mob strikes again"), first_after(&eg).expect("the ecs zombies strike again"));
-    assert!(ef >= mf - 2 && ef - mf <= 22, "first strike after the wake: mob {mf}, ecs {ef}");
-    // The strikes before the sleep are those of a herd that never slept, and the cadence after is the same.
-    assert_eq!(eg.iter().filter(|&&t| t <= s1).count(), e0.iter().filter(|&&t| t <= s1).count());
-    let after = |v: &[i64]| v.iter().filter(|&&t| t > s1 + gap).count() as f64;
-    let (ma, ea) = (after(&mg), after(&eg));
-    assert!((ea / ma - 1.0).abs() < 0.25, "strikes after the wake: mob {ma}, ecs {ea}");
+    let s2 = 300;
+    let mut worst = 0;
+    // Asleep while hunting (the target taken, the melee goal not yet running, the zombies still on their way), for several lengths
+    // and several moments, so that the grid of the check falls at every offset from the wake.
+    for (s1, gap) in [(10, 707), (14, 713), (18, 721), (24, 729), (30, 737), (40, 743), (80, 707)] {
+        let (_, e0, slept0) = zombie_hits(0, s1, s2);
+        assert!(!slept0);
+        let (mg, eg, slept) = zombie_hits(gap, s1, s2);
+        assert!(slept, "the zombies sleep in the gap");
+        let first_after = |v: &[i64]| v.iter().copied().find(|&t| t > s1 + gap);
+        let (mf, ef) = (first_after(&mg).expect("the mob strikes again"), first_after(&eg).expect("the ecs zombies strike again"));
+        eprintln!("gap {gap}: first strike after the wake: mob +{}, ecs +{}", mf - s1 - gap, ef - s1 - gap);
+        worst = worst.max((ef - mf).abs());
+        // The strikes before the sleep are those of a herd that never slept.
+        assert_eq!(eg.iter().filter(|&&t| t <= s1).count(), e0.iter().filter(|&&t| t <= s1).count());
+        let after = |v: &[i64]| v.iter().filter(|&&t| t > s1 + gap).count() as f64;
+        let (ma, ea) = (after(&mg), after(&eg));
+        assert!((ea / ma - 1.0).abs() < 0.25, "strikes after the wake: mob {ma}, ecs {ea}");
+    }
+    assert!(worst <= 3, "first strike after the wake: the ecs zombies differ from the mob's by {worst} ticks");
 }
 
 /// At the border of the zone a creature asleep is still an obstacle: an awake one that overlaps it is pushed away, as the
 /// `Mob` beside a mob that is not ticked is (`Entity.push` moves both; the sleeper does not move, its velocity changes).
 #[test]
 fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_sleeping_neighbour_still_pushes_an_awake_creature") {
+        return;
+    }
     if !have_data() {
         return;
     }

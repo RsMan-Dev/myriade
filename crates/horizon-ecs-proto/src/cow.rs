@@ -258,6 +258,9 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// The block changes waiting for the next step: (x, y, z, block name).
 #[derive(Resource, Default)]
 pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
+/// The block changes WITH properties waiting for the next step: (x, y, z, block name, properties): `blocks::set_state`.
+#[derive(Resource, Default)]
+pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>);
 /// The hazard blocks of the world by column and height: only the columns that hold one have an entry. A cow's hazard
 /// bits are those of the entries its box (widened by a block each way, as a prefilter) meets; a block change at any
 /// height updates its entry (`set`).
@@ -443,6 +446,11 @@ const WHEEL: usize = 4096;
 #[derive(Resource)]
 pub struct Wheel {
     slots: Vec<Vec<(Entity, Due)>>,
+    /// What is due further than the wheel's horizon (`WHEEL` ticks): by tick, moved into the slots when it comes within the
+    /// horizon. A deadline of ANY length can be pushed: no caller knows the width of the wheel.
+    far: std::collections::BTreeMap<u64, Vec<(Entity, Due)>>,
+    /// The tick the wheel is at (set by `advance`, each tick, before the slot is read).
+    now: u64,
     /// With the simulation zone on (`zone.rs`): what each entity has in the wheel (by entity index), so that a creature
     /// that leaves the zone takes its entries out without a scan of the wheel.
     track: bool,
@@ -450,12 +458,27 @@ pub struct Wheel {
 }
 impl Default for Wheel {
     fn default() -> Self {
-        Self { slots: vec![Vec::new(); WHEEL], track: false, owned: Vec::new() }
+        Self { slots: vec![Vec::new(); WHEEL], far: Default::default(), now: 0, track: false, owned: Vec::new() }
     }
 }
 impl Wheel {
+    /// The wheel is at tick `now`: what has come within its horizon leaves the far list for its slot (called by `due`).
+    pub(crate) fn advance(&mut self, now: u64) {
+        self.now = now;
+        while let Some(entry) = self.far.first_entry() {
+            if *entry.key() >= now + WHEEL as u64 {
+                break;
+            }
+            let (at, list) = entry.remove_entry();
+            self.slots[(at % WHEEL as u64) as usize].extend(list);
+        }
+    }
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
-        self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        if at >= self.now + WHEEL as u64 {
+            self.far.entry(at).or_default().push((e, d));
+        } else {
+            self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        }
         if self.track {
             self.own(e, at, d);
         }
@@ -497,7 +520,7 @@ impl Wheel {
         list.retain(|o| o.0 != e);
         let mut out = Vec::with_capacity(mine.len());
         for (_, at, d) in mine {
-            let slot = &mut self.slots[(at % WHEEL as u64) as usize];
+            let slot = if at >= self.now + WHEEL as u64 { self.far.entry(at).or_default() } else { &mut self.slots[(at % WHEEL as u64) as usize] };
             if let Some(i) = slot.iter().position(|o| o.0 == e && o.1 == d) {
                 slot.swap_remove(i);
                 out.push((at, d));
@@ -511,7 +534,7 @@ impl Wheel {
     }
     /// How many entries the wheel holds in all.
     pub fn len(&self) -> usize {
-        self.slots.iter().map(Vec::len).sum()
+        self.slots.iter().map(Vec::len).sum::<usize>() + self.far.values().map(Vec::len).sum::<usize>()
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -523,6 +546,8 @@ impl Wheel {
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
+/// The side of a block of columns of the index, in columns.
+const BLOCK: usize = 8;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -532,13 +557,17 @@ pub struct Index {
     pub(crate) cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
-    pub(crate) crossed: Vec<Entity>,
+    pub(crate) crossed: Vec<(Entity, u32)>,
     /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
     pub zone: crate::zone::Zone,
+    /// How many animals each block of 8 x 8 columns holds (`player_near` looks only at the blocks that hold some).
+    /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
+    blocks: Vec<u64>,
+    bw: usize,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK) }
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -550,11 +579,23 @@ impl Index {
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
         self.cells[cell as usize].push(e);
+        let (b, bit) = self.block_of(cell);
+        self.blocks[b] |= bit;
+    }
+    #[inline]
+    fn block_of(&self, cell: u32) -> (usize, u64) {
+        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
+        ((cz / BLOCK) * self.bw + cx / BLOCK, 1 << ((cz % BLOCK) * BLOCK + cx % BLOCK))
     }
     pub fn remove(&mut self, e: Entity, cell: u32) {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+            let emptied = list.is_empty();
+            if emptied {
+                let (b, bit) = self.block_of(cell);
+                self.blocks[b] &= !bit;
+            }
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
@@ -673,6 +714,15 @@ pub struct Species {
     pub caps: &'static [crate::behaviours::Cap],
     /// The brain of the species, resolved (None: it has none).
     pub brain: Option<&'static crate::brain::Plan>,
+    /// The modes of locomotion (`locomotion.rs`).
+    pub modes: &'static [crate::locomotion::ModeEntry],
+}
+/// The last attacker (`LivingEntity.getLastHurtByMob`): written by `apply_damage` for every hit that has an attacker; `at` is
+/// the entity's own time (a module forgets it after 100 ticks as the `Mob` does).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LastHurtBy {
+    pub who: crate::targeting::Who,
+    pub at: u64,
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -809,6 +859,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
             brain: crate::species::registry().by_name(name).unwrap().brain,
+            modes: crate::species::registry().by_name(name).unwrap().modes,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -841,6 +892,42 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
         eprintln!("SKIP {test}: {name} has no {} goal", module.name);
     }
     !has
+}
+/// For the tests written for a land animal that walks, strolls and has goals: they declare what they need (the capabilities
+/// `Locomotion`, `Goals` and `Head`, a goal list, a walk and no other medium) and skip, printed, in a process whose species lacks
+/// it: the rule of the code (nothing knows a species) applies to the tests.
+pub fn skip_unless_walker(test: &str) -> bool {
+    skip_unless_caps(&[crate::behaviours::Cap::Locomotion, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head], test)
+        || skip_unless_ground_only(test)
+        || skip_unless_goals(test)
+}
+/// Skips (printed) unless the species of the process has all these capabilities.
+pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let have = crate::species::registry().by_name(&name).map(|r| r.caps).unwrap_or(&[]);
+    let missing: Vec<_> = caps.iter().filter(|c| !have.contains(c)).collect();
+    if !missing.is_empty() {
+        eprintln!("SKIP {test}: {name} lacks the capabilities {missing:?}");
+    }
+    !missing.is_empty()
+}
+/// Skips (printed) when the species of the process moves in another medium than the ground (a swimmer).
+pub fn skip_unless_ground_only(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let other = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground));
+    if other {
+        eprintln!("SKIP {test}: {name} moves in another medium than the ground");
+    }
+    other
+}
+/// Skips (printed) when the species of the process has no goal at all (an entity driven by something else).
+pub fn skip_unless_goals(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let none = crate::species::registry().by_name(&name).is_ok_and(|r| r.config.entries.is_empty());
+    if none {
+        eprintln!("SKIP {test}: {name} has no goal");
+    }
+    none
 }
 /// The reverse: a test of a passive behaviour (a player in range changes nothing) skips a species that has the goal
 /// (a zombie hunts the player the test puts in range), printed.
@@ -901,6 +988,8 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
 pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
     (
         Yaw(yaw),
+        crate::locomotion::WalkMode,
+        crate::locomotion::Modes(sp.modes),
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
@@ -985,6 +1074,13 @@ pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) 
     crate::rules::equip_all(world, e, sp.rules);
     e
 }
+/// `spawn_species` and the first deadlines of its modules (what a creature born at the start of a scene needs; `breed` does it for
+/// a baby). `spawn_species` alone arms nothing: the herds arm in bulk (`goals::arm_all`), a test calls this or `arm_all`.
+pub fn spawn_armed(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let e = spawn_species(world, sp, x, z, seed);
+    crate::goals::arm_timers(world, e);
+    e
+}
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
     let e = spawn_declared(world, sp, x, z, seed);
@@ -1034,7 +1130,7 @@ pub fn schedule() -> Schedule {
 pub(crate) fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
     let now = clock.of(e);
     let at = now + idle_wait(r, s.interval).max(1) as u64;
-    wheel.push(clock.at(e, at.min(now + WHEEL as u64 - 1)), e, Due::Stroll);
+    wheel.push(clock.at(e, at), e, Due::Stroll);
     s.scheduled = true;
 }
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
@@ -1063,42 +1159,6 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, n
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
 /// two circles of 32 blocks (a player's place before and after, `None`: absent) and not in the other: the cells either
 /// circle touches except those both surely contain, as two runs. A superset, with a margin of a cell or two.
-fn ring_runs(origin: f64, zz: i64, n: Option<(f64, f64)>, o: Option<(f64, f64)>) -> [(i64, i64); 2] {
-    const R: f64 = 32.0;
-    const NONE: [(i64, i64); 2] = [(1, 0), (1, 0)];
-    let (zlo, zhi) = (origin + zz as f64 * CELL, origin + (zz + 1) as f64 * CELL);
-    let col = |x: f64| ((x - origin) / CELL).floor() as i64;
-    // (the cells that may touch the circle, the cells surely inside it) in this row.
-    let one = |q: Option<(f64, f64)>| -> Option<((i64, i64), Option<(i64, i64)>)> {
-        let (px, pz) = q?;
-        let dzn = if pz < zlo { zlo - pz } else if pz > zhi { pz - zhi } else { 0.0 };
-        if dzn >= R {
-            return None;
-        }
-        let half_out = (R * R - dzn * dzn).sqrt();
-        let touch = (col(px - half_out) - 1, col(px + half_out) + 1);
-        let dzf = (pz - zlo).abs().max((pz - zhi).abs());
-        let inside = (dzf < R).then(|| {
-            let half_in = (R * R - dzf * dzf).sqrt();
-            (col(px - half_in) + 2, col(px + half_in) - 2)
-        });
-        Some((touch, inside))
-    };
-    let (a, b) = (one(n), one(o));
-    let touch = match (a, b) {
-        (None, None) => return NONE,
-        (Some((t, _)), None) | (None, Some((t, _))) => t,
-        (Some((t, _)), Some((u, _))) => (t.0.min(u.0), t.1.max(u.1)),
-    };
-    let both = match (a, b) {
-        (Some((_, Some(i))), Some((_, Some(j)))) => Some((i.0.max(j.0), i.1.min(j.1))).filter(|r| r.0 <= r.1),
-        _ => None,
-    };
-    match both {
-        Some((l, r)) => [(touch.0, l - 1), (r + 1, touch.1)],
-        None => [touch, (1, 0)],
-    }
-}
 
 /// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are
 /// and the cows stay in their cells. When a player moves (`Players.dirty`), only the cows of the cells its old and
@@ -1152,11 +1212,40 @@ pub(crate) fn player_near(
             }
             let (x0, x1) = (idx.column(x0).max(0), idx.column(x1).min(idx.width as i64 - 1));
             let (z0, z1) = (idx.column(z0).max(0), idx.column(z1).min(idx.width as i64 - 1));
-            for zz in z0..=z1 {
-                for (lo, hi) in ring_runs(origin, zz, n, o) {
-                    for xx in lo.max(x0)..=hi.min(x1) {
+            // A rectangle of columns the two circles agree on (inside both, or outside both) holds no animal whose state
+            // changes: only the blocks and the columns that hold an animal and are not so are looked at.
+            let agree = |cx0: f64, cx1: f64, cz0: f64, cz1: f64| -> bool {
+                let (mut inside, mut outside) = (true, true);
+                for q in [n, o] {
+                    let Some((px, pz)) = q else { inside = false; continue };
+                    let (nx, nz) = (px.clamp(cx0, cx1) - px, pz.clamp(cz0, cz1) - pz);
+                    let (fx, fz) = ((px - cx0).abs().max((px - cx1).abs()), (pz - cz0).abs().max((pz - cz1).abs()));
+                    inside &= fx * fx + fz * fz < R2;
+                    outside &= nx * nx + nz * nz >= R2;
+                }
+                inside || outside
+            };
+            let b = BLOCK as i64;
+            for bz in z0 / b..=z1 / b {
+                for bx in x0 / b..=x1 / b {
+                    if idx.blocks[(bz * idx.bw as i64 + bx) as usize] == 0 {
+                        continue;
+                    }
+                    let (bx0, bz0) = (origin + (bx * b) as f64 * CELL, origin + (bz * b) as f64 * CELL);
+                    if agree(bx0, bx0 + b as f64 * CELL, bz0, bz0 + b as f64 * CELL) {
+                        continue;
+                    }
+                    let mut bits = idx.blocks[(bz * idx.bw as i64 + bx) as usize];
+                    while bits != 0 {
+                        let k = bits.trailing_zeros() as i64;
+                        bits &= bits - 1;
+                        let (xx, zz) = (bx * b + k % b, bz * b + k / b);
                         let c = zz as usize * idx.width + xx as usize;
-                        if idx.stamp[c] != tick {
+                        if idx.stamp[c] == tick {
+                            continue;
+                        }
+                        let (cx0, cz0) = (origin + xx as f64 * CELL, origin + zz as f64 * CELL);
+                        if !agree(cx0, cx0 + CELL, cz0, cz0 + CELL) {
                             idx.stamp[c] = tick;
                             pl.candidates.push(c);
                         }
@@ -1201,14 +1290,20 @@ pub(crate) fn player_near(
         }
     }
     if !list_empty {
-        for &e in &idx.crossed {
-            test(e, &mut active, &mut wheel);
+        for &(e, cell) in &idx.crossed {
+            // A column more or less changes nothing for an animal with no player within a bin of it.
+            let (cx, cz) = ((cell as usize % idx.width) as f64 + 0.5 + origin / CELL, (cell as usize / idx.width) as f64 + 0.5 + origin / CELL);
+            let (bx, bz) = (bin(cx * CELL), bin(cz * CELL));
+            let near = (bz - 1..=bz + 1).any(|zz| (bx - 1..=bx + 1).any(|xx| (0..bins_n).contains(&xx) && (0..bins_n).contains(&zz) && !nbins[(zz * bins_n + xx) as usize].is_empty()));
+            if near {
+                test(e, &mut active, &mut wheel);
+            }
         }
     }
     idx.crossed.clear();
 }
 
-fn comfortable_fall_distance(f: f32) -> i32 {
+pub(crate) fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).floor() as i32
 }
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
@@ -1220,7 +1315,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
@@ -1280,12 +1375,12 @@ pub(crate) fn pathfind(
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
 /// control at the next node. (The recompute on a block change is not here.) Visits only the cows that follow a path.
 #[allow(clippy::type_complexity)]
-fn follow(
+pub(crate) fn follow(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1354,7 +1449,7 @@ fn follow(
     }
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
-fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
+pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
     for (e, g) in &q {
         crate::goals::path_ended(e, g, &mut reqs);
         commands.entity(e).remove::<PathEnded>();
@@ -1397,7 +1492,7 @@ fn wrap(a: f32) -> f32 {
     }
     a
 }
-fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
+pub(crate) fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     let mut r = a + wrap(b - a).clamp(-max, max);
     if r < 0.0 {
         r += 360.0;
@@ -1481,7 +1576,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Without<crate::locomotion::SwimMode>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1495,7 +1590,7 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
+pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
     let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
@@ -1511,7 +1606,7 @@ fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
 }
 /// `Entity.move`: the sweep over the blocks (Horizon's real kernel), then the collision flags, the landing and the
 /// restitution (the vertical velocity is lost after a landing).
-fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
+pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
     let wanted = vel.0;
     let p = pos.0;
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
@@ -1589,7 +1684,7 @@ fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-fn travel_one(
+pub(crate) fn travel_one(
     level: &Level,
     sp: &FluidParams,
     pos: &mut Pos,
@@ -1708,7 +1803,7 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
-        (With<Moving>, Without<Overlapping>),
+        (With<Moving>, Without<Overlapping>, Without<crate::locomotion::SwimMode>),
     >,
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
@@ -1722,7 +1817,13 @@ pub(crate) fn travel(
             None => &mut none,
         };
         let was_in_air = !c.on_ground;
+        let was_on_ground = c.on_ground;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        if was_on_ground && !c.on_ground {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
+            });
+        }
         if was_in_air && c.on_ground {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
@@ -1751,7 +1852,7 @@ pub(crate) fn travel(
 
 /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
 /// a column with a fluid.
-fn fluid_update(
+pub(crate) fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
     mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
@@ -1822,7 +1923,7 @@ fn breathing(
 
 /// `Mob.baseTick`'s `isInWall` for the cows an event asked about (a spawn, a teleport, a growth): the head in a
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
-fn wall_check(
+pub(crate) fn wall_check(
     level: Res<Level>,
     q: Query<(Entity, &Pos, &Body, Has<InWall>, &FluidParams), With<Recheck>>,
     mut commands: Commands,
@@ -1879,6 +1980,8 @@ pub(crate) fn reindex(
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
     mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
+    // Read only when the entity enters or leaves a fluid (rare): not part of the query that runs over every moved entity.
+    all_modes: Query<&crate::locomotion::Modes>,
     mut commands: Commands,
 ) {
     for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
@@ -1891,7 +1994,7 @@ pub(crate) fn reindex(
             idx.insert(e, cell);
             c.0 = cell;
             moves.0.push(e);
-            idx.crossed.push(e);
+            idx.crossed.push((e, cell));
         }
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
@@ -1899,9 +2002,16 @@ pub(crate) fn reindex(
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
             events.entered_fluid.push(e);
+            // The mode of the water, if the entity has one, becomes the active one: an event, not a test each tick.
+            if let Ok(m) = all_modes.get(e) {
+                crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0);
+            }
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             events.left_fluid.push(e);
+            if let Ok(m) = all_modes.get(e) {
+                crate::locomotion::fluid_changed(&mut commands, e, m, false);
+            }
             *fs = FluidState::default();
         }
         let was = hz.is_some_and(|h| h.0 & HAZ_SNOW != 0);
@@ -1988,6 +2098,10 @@ pub(crate) fn apply_damage(
         }
         // The reactions of the modules to the hurt (`Animal.actuallyHurt` ends love, `after_hurt` resets `noActionTime`...): each
         // module of the entity has its `damaged` entry point; the frame does not know what they do.
+        // `getLastHurtByMob`: who hurt it last, readable by every module (`ResetUniversalAngerTarget`, revenge...), with its own time.
+        if let Some(who) = hit.by {
+            commands.entity(e).insert(LastHurtBy { who, at: clock.of(e) });
+        }
         let attacker = match hit.by {
             Some(crate::targeting::Who::Entity(a)) => Some(a),
             _ => None,
@@ -2117,6 +2231,7 @@ fn recompute(
 #[allow(clippy::type_complexity)]
 pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
+    mut state_changes: ResMut<StateChanges>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
@@ -2126,12 +2241,14 @@ pub(crate) fn block_changes(
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
 ) {
-    if changes.0.is_empty() {
+    if changes.0.is_empty() && state_changes.0.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    for (x, y, z, name) in std::mem::take(&mut changes.0) {
-        let Some(state) = mw.registry.default_state(name) else { continue };
+    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..]));
+    let with_state = std::mem::take(&mut state_changes.0).into_iter();
+    for (x, y, z, name, props) in named.chain(with_state).collect::<Vec<_>>() {
+        let Some(state) = crate::blocks::resolve(mw, name, props) else { continue };
         // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
         unsafe {
             let world = &mut *level.blocks.0;
@@ -2469,7 +2586,7 @@ fn find(parent: &mut [u32], mut i: u32) -> u32 {
 /// travel of this tick, from one that comes after it by the next tick's. The islands do not touch each other, so they run
 /// one after the other or in parallel (`Config.parallel`) with the same result. Every other animal stays in the batch.
 #[allow(clippy::type_complexity)]
-fn ordered_pass(
+pub(crate) fn ordered_pass(
     cfg: Res<Config>,
     level: Res<Level>,
     table: Res<SpeciesTable>,
@@ -2654,6 +2771,7 @@ pub(crate) fn due(
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
     mut events: ResMut<crate::goals::Events>,
+    mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -2662,6 +2780,10 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    wheel.advance(clock.0);
+    for id in std::mem::take(&mut players.gaze_dirty) {
+        events.gaze_changed.push(id);
+    }
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
     if wheel.track {
@@ -2687,7 +2809,7 @@ pub(crate) fn due(
                     let now = clock.of(e);
                     if now < burning.until {
                         queue.add(e2, 1.0, Cause::OnFire);
-                        wheel.push(clock.at(e, (now + 20).min(now + WHEEL as u64 - 1)), e, Due::Burn);
+                        wheel.push(clock.at(e, now + 20), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
                         events.extinguished.push(e);
@@ -2699,7 +2821,7 @@ pub(crate) fn due(
                     let now = clock.of(e);
                     if g.0 > now {
                         // A wait longer than the wheel is put back (a calf grows in 24 000 ticks).
-                        wheel.push(clock.at(e, g.0.min(now + WHEEL as u64 - 1)), e, Due::Grow);
+                        wheel.push(clock.at(e, g.0), e, Due::Grow);
                     } else if g.0 == now {
                         b.width = sizes.adult.0;
                         b.height = sizes.adult.1;
@@ -2747,6 +2869,7 @@ impl Herd {
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(BlockChanges::default());
+        world.insert_resource(StateChanges::default());
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
@@ -2772,7 +2895,7 @@ impl Herd {
             let ids: Vec<Entity> = world.query_filtered::<Entity, With<Stroll>>().iter(&world).collect();
             for e in ids {
                 let at = 1 + idle_wait(&mut arm, 60).max(0) as u64;
-                world.resource_mut::<Wheel>().push(at.min(WHEEL as u64 - 1), e, Due::Stroll);
+                world.resource_mut::<Wheel>().push(at, e, Due::Stroll);
                 world.get_mut::<Stroll>(e).unwrap().scheduled = true;
             }
         }
@@ -2795,7 +2918,7 @@ impl Herd {
         for &e in &out {
             let now = now_of(&self.world, e);
             let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
-            arm_at(&mut self.world, e, at.min(now + WHEEL as u64 - 1), Due::Stroll);
+            arm_at(&mut self.world, e, at, Due::Stroll);
             self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
         }
         crate::goals::arm_all(&mut self.world);
@@ -2844,9 +2967,24 @@ impl Herd {
             }
         }
     }
+    /// Fills the slab with water from y = 1 to y = `top` (a lake for the fish), taken at the next tick.
+    pub fn fill_water(&mut self, top: i32) {
+        let half = self.world.resource::<Level>().half;
+        for x in -half + 1..half {
+            for z in -half + 1..half {
+                for y in 1..=top {
+                    self.set_block(x, y, z, "minecraft:water");
+                }
+            }
+        }
+    }
     /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
         self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
+    }
+    /// A block placed with properties (`minecraft:sweet_berry_bush`, `&[("age", "3")]`): taken at the next step.
+    pub fn set_block_state(&mut self, x: i32, y: i32, z: i32, name: &'static str, props: &'static [(&'static str, &'static str)]) {
+        self.world.resource_mut::<StateChanges>().0.push((x, y, z, name, props));
     }
     /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
     /// A hit by player `player` (of `Online`): from where it stands.
@@ -2915,6 +3053,26 @@ impl Herd {
 
 #[cfg(test)]
 mod tests {
+    /// A deadline of ANY length lands on its exact tick: the wheel keeps what is beyond its horizon and brings it in by itself.
+    #[test]
+    fn a_wait_of_ten_thousand_ticks_falls_at_the_exact_tick() {
+        let mut w = Wheel::default();
+        let e = Entity::from_raw_u32(7).unwrap();
+        for at in [5_u64, 4095, 4096, 4097, 8192, 10_000, 20_000] {
+            w.push(at, e, Due::Burn);
+        }
+        let mut fired = Vec::new();
+        for t in 1..=20_001_u64 {
+            w.advance(t);
+            let n = w.due_len(t);
+            for _ in 0..n {
+                fired.push(t);
+            }
+            w.slots[(t % WHEEL as u64) as usize].clear();
+        }
+        assert_eq!(fired, vec![5, 4095, 4096, 4097, 8192, 10_000, 20_000]);
+        assert!(w.far.is_empty());
+    }
     use super::*;
 
     /// Two cows standing in each other are pushed apart; a sleeping cow they overlap is woken; a baby grows up.
@@ -2950,6 +3108,9 @@ mod tests {
     /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
     #[test]
     fn falls_fire_lava_snow_and_cactus_hurt_a_cow() {
+    if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3148,6 +3309,9 @@ mod tests {
     /// put into a cow's cell adds the hazard module; a path is dropped only by a change near its middle.
     #[test]
     fn block_changes_wake_only_what_they_touch() {
+    if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3245,6 +3409,9 @@ mod tests {
     /// Water placed and removed at any height: `InFluid` and the float, fire put out, and a hazard high above the floor.
     #[test]
     fn water_placed_floats_extinguishes_and_works_at_height() {
+    if crate::cow::skip_unless_walker("water_placed_floats_extinguishes_and_works_at_height") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3325,6 +3492,9 @@ mod tests {
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
     #[test]
     fn a_hit_knocks_a_cow_back() {
+    if crate::cow::skip_unless_walker("a_hit_knocks_a_cow_back") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3347,6 +3517,9 @@ mod tests {
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
     fn the_cows_walk_sleep_and_wake_on_the_slab() {
+    if crate::cow::skip_unless_walker("the_cows_walk_sleep_and_wake_on_the_slab") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3387,38 +3560,6 @@ mod tests {
         eprintln!("travelled {travelled}, asleep between {min_asleep} and {max_asleep} of 300");
     }
 
-    /// The runs of `ring_runs` hold every cell where a player's two circles may disagree (checked cell by cell, by
-    /// the corners of the cells that could hold a point of one circle and not of the other).
-    #[test]
-    fn the_ring_runs_cover_every_cell_the_circles_disagree_on() {
-        let mut r = Rng(0x5eed | 1);
-        let origin = -50.0;
-        let rnd = |r: &mut Rng, a: f64, b: f64| a + (b - a) * (f64::from(r.next_u32()) / f64::from(u32::MAX));
-        for _ in 0..3000 {
-            let n = (r.next_u32() % 8 != 0).then(|| (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)));
-            let step = [0.1, 1.0, 5.0, 70.0][(r.next_u32() % 4) as usize];
-            let o = (r.next_u32() % 8 != 0).then(|| match n {
-                Some((x, z)) => (x + rnd(&mut r, -step, step), z + rnd(&mut r, -step, step)),
-                None => (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)),
-            });
-            for zz in 0..50i64 {
-                let runs = ring_runs(origin, zz, n, o);
-                for xx in 0..50i64 {
-                    // Points of the cell, a fine grid with its corners.
-                    let mut differs = false;
-                    for a in 0..=8 {
-                        for b in 0..=8 {
-                            let (x, z) = (origin + (xx as f64 + f64::from(a) / 8.0) * CELL, origin + (zz as f64 + f64::from(b) / 8.0) * CELL);
-                            let inside = |q: Option<(f64, f64)>| q.is_some_and(|(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0);
-                            differs |= inside(n) != inside(o);
-                        }
-                    }
-                    let covered = runs.iter().any(|&(lo, hi)| lo <= xx && xx <= hi);
-                    assert!(!differs || covered, "cell ({xx}, {zz}) of {n:?} -> {o:?} is not covered by {runs:?}");
-                }
-            }
-        }
-    }
 
     /// A cow that walks out of the 32 blocks of a player that stays where it is stops being active when it changes
     /// cell (the player moved nowhere: only the cell change tells).

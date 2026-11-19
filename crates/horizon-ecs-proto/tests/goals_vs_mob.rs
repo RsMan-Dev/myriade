@@ -736,6 +736,9 @@ fn trace_short_path() {
 /// (`Forced`), and the two are followed for 60 ticks.
 #[test]
 fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
+        return;
+    }
     if !have_data() {
         return;
     }

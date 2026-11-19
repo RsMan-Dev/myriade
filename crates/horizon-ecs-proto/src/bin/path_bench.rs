@@ -14,7 +14,8 @@ fn main() {
     let iters: usize = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(2000);
     let (level, species, _) = build_level(60, false);
     let mw = level.mw.0;
-    let sp = species_table().0[0];
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let sp = *species_table().0.iter().find(|s| s.name == name).expect("a known species");
     let _ = species;
     let mut r = Rng(0x1234_5678_9abc_def1);
     let (mut ok, mut nodes, mut instr) = (0usize, 0usize, 0u64);
@@ -22,13 +23,13 @@ fn main() {
     let mut sum = 0u64;
     for _ in 0..iters {
         let (x, z) = (r.range(-40.0, 40.0), r.range(-40.0, 40.0));
-        let reach = if case == "chase" { 30.0 } else { 10.0 };
+        let reach = match case { "chase" => 30.0, "near" => 1.5, _ => 10.0 };
         let (tx, tz) = (x + r.range(-reach, reach), z + r.range(-reach, reach));
         let (tx, tz) = if case == "wall" { (60.5 + r.range(0.0, 3.0), tz.clamp(-50.0, 50.0)) } else { (tx, tz) };
         let pm = PathMob {
             position: Vec3::new(x, 1.0, z),
-            width: 0.9,
-            height: 1.4,
+            width: sp.width,
+            height: sp.height,
             on_ground: true,
             in_water: false,
             max_up_step: 0.6,

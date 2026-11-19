@@ -60,6 +60,9 @@ fn pit_run(n: usize) -> (Vec<usize>, Vec<usize>) {
 /// More than 23 animals in a block are crushed, one tick in four, 6 a hit, with the 10-tick hurt window; 10 are not.
 #[test]
 fn a_crowd_in_a_pit_is_crushed_as_a_mob_s_is() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_crowd_in_a_pit_is_crushed_as_a_mob_s_is") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -80,6 +83,9 @@ fn a_crowd_in_a_pit_is_crushed_as_a_mob_s_is() {
 /// Two animals overlapping in the open: their positions tick by tick on both sides (the push law and its timing).
 #[test]
 fn two_overlapping_animals_move_apart_as_a_mob_s_do() {
+    if horizon_ecs_proto::cow::skip_unless_walker("two_overlapping_animals_move_apart_as_a_mob_s_do") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -135,6 +141,9 @@ fn overlapping_pairs(p: &[(f64, f64)], w: f64) -> usize {
 /// 60 and 120 ticks, in the batch mode and in the ordered mode (which follows the `Mob`'s pass order).
 #[test]
 fn a_tight_herd_spreads_out_like_a_mob_herd() {
+    if horizon_ecs_proto::cow::skip_unless_walker("a_tight_herd_spreads_out_like_a_mob_herd") {
+        return;
+    }
     if !have_data() {
         return;
     }

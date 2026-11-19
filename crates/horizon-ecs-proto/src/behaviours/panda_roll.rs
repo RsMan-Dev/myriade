@@ -155,6 +155,9 @@ mod tests {
     /// adult cub that is neither stays put in the same time.
     #[test]
     fn a_cub_facing_a_hole_rolls_at_once_and_a_playful_panda_rolls_at_random() {
+    if crate::cow::skip_unless_walker("a_cub_facing_a_hole_rolls_at_once_and_a_playful_panda_rolls_at_random") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

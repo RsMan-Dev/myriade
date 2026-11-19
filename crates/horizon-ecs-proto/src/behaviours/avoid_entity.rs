@@ -46,7 +46,7 @@ pub struct Avoider {
     pub slot: u8,
     from: Vec3,
     player: u32,
-    spot: (f64, f64),
+    spot: (f64, f64, f64),
 }
 /// The avoid goals of the animal, by `Inst::nth`.
 #[derive(Component, Clone)]
@@ -88,7 +88,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         slot: inst.slot,
         from: Vec3::ZERO,
         player: 0,
-        spot: (0.0, 0.0),
+        spot: (0.0, 0.0, 0.0),
     };
     if matches!(p.what, Avoid::Species(_)) {
         w.entity_mut(e).insert(AvoidsAnimals);
@@ -227,36 +227,9 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u
         }
     }
 }
-/// `DefaultRandomPos.getPosAway(16, 7)`: a direction within a quarter turn of the one away from `from`, a distance up to
-/// 16 blocks, a height 0 (the slab's standing level, as `panic.rs`). The first valid of 10 tries.
-fn random_spot(w: &mut World, e: Entity, pos: Vec3, from: Vec3) -> Option<(f64, f64)> {
-    const H: f64 = 16.0;
-    const V: i32 = 7;
-    let half_pi = std::f64::consts::FRAC_PI_2;
-    let center = trig::atan2(pos.z - from.z, pos.x - from.x) - half_pi;
-    let tries: Vec<(i32, i32, i32)> = with_rng(w, e, |r| {
-        (0..10)
-            .filter_map(|_| {
-                let yrad = center + (2.0 * r.next_f64() - 1.0) * half_pi;
-                let dist = r.next_f64().sqrt() * H * std::f64::consts::SQRT_2;
-                let (xt, zt) = (-dist * jmath::sin(yrad), dist * jmath::cos(yrad));
-                if xt.abs() > H || zt.abs() > H {
-                    return None;
-                }
-                let yt = r.next_int(2 * V + 1) - V;
-                // `RandomPos.generateRandomPosTowardDirection`: the offset is floored first (a block offset), then
-                // added to the position and floored again.
-                Some(((f64::from(xt.floor() as i32) + pos.x).floor() as i32, yt, (f64::from(zt.floor() as i32) + pos.z).floor() as i32))
-            })
-            .collect()
-    });
-    let lim = w.resource::<Level>().half - 2;
-    let hazards = w.get_resource::<Hazards>();
-    tries.into_iter().find_map(|(x, dy, z)| {
-        let at = box_at(Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5), 0.2, 0.2);
-        let safe = hazards.is_none_or(|h| h.of_box(&at) == 0);
-        (dy == 0 && x.abs() < lim && z.abs() < lim && safe).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
-    })
+/// `DefaultRandomPos.getPosAway(16, 7)` (the framework's position service: best of ten by the species' walk value).
+fn random_spot(w: &mut World, e: Entity, _pos: Vec3, from: Vec3) -> Option<(f64, f64, f64)> {
+    crate::spots::pick_for(w, e, crate::spots::Pick::DefaultAway { h: 16, v: 7, from: [from.x, from.y, from.z] }).map(|p| (p[0], p[1], p[2]))
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let nth = inst.nth as usize;
@@ -267,8 +240,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let Some((from, player)) = avoid_target(w, e, &a, pos) else { return false };
     // The target is there: when no spot is found, or the spot is not farther than the animal, `canUse` is asked again.
-    let spot = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot)).or_else(|| random_spot(w, e, pos, from));
-    let Some((x, z)) = spot.filter(|&(x, z)| d2(Vec3::new(x, 1.0, z), from) >= d2(pos, from)) else {
+    let spot = w.resource_mut::<Forced>().take_spot(e, inst.slot, pos.y.floor()).map(|p| (p[0], p[1], p[2])).or_else(|| random_spot(w, e, pos, from));
+    let Some((x, y, z)) = spot.filter(|&(x, y, z)| d2(Vec3::new(x, y, z), from) >= d2(pos, from)) else {
         arm(w, e, inst.slot, 2);
         return false;
     };
@@ -276,7 +249,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let chosen = &mut avs.0[nth];
     chosen.from = from;
     chosen.player = player;
-    chosen.spot = (x, z);
+    chosen.spot = (x, y, z);
     true
 }
 fn speed_at(a: &Avoider, d2_to_target: f64) -> f64 {
@@ -287,25 +260,14 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let pos = w.get::<Pos>(e).unwrap().0;
     let from = if a.player != 0 { w.resource::<Online>().get(a.player).map_or(a.from, |p| Vec3::new(p.x, p.y, p.z)) } else { a.from };
     w.entity_mut(e).insert(Avoiding(inst.nth));
-    {
-        let mut nav = w.get_mut::<Nav>(e).unwrap();
-        // The `Mob` ticks a goal in the tick it starts: the speed is the one of this distance already.
-        nav.speed = speed_at(&a, d2(pos, from));
-        // `nav_move_to_path` of `AvoidEntityGoal` asks a path to the block of the spot (reach 0).
-        nav.reach = 0;
-    }
-    {
-        let mut s = w.get_mut::<Stroll>(e).unwrap();
-        (s.tx, s.ty, s.tz) = (a.spot.0, 1, a.spot.1);
-    }
-    w.entity_mut(e).insert(NeedsPath);
+    // The `Mob` ticks a goal in the tick it starts: the speed is the one of this distance already; `nav_move_to_path` of
+    // `AvoidEntityGoal` asks a path to the block of the spot (reach 0).
+    crate::goals::go_to_at(w, e, [a.spot.0, a.spot.1, a.spot.2], speed_at(&a, d2(pos, from)), 0);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Avoiding>();
     // Back to the reach of the other goals (stroll asks its paths with the default).
-    if let Some(mut nav) = w.get_mut::<Nav>(e) {
-        nav.reach = 1;
-    }
+    crate::goals::set_reach(w, e, 1);
 }
 
 #[cfg(test)]
@@ -338,6 +300,9 @@ mod tests {
 
     #[test]
     fn runs_from_a_player_in_range_and_walks_away() {
+    if crate::cow::skip_unless_walker("runs_from_a_player_in_range_and_walks_away") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 6.5);
         for _ in 0..10 {
@@ -362,6 +327,9 @@ mod tests {
 
     #[test]
     fn stops_when_the_player_goes_away() {
+    if crate::cow::skip_unless_walker("stops_when_the_player_goes_away") {
+        return;
+    }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 6.5);
         for _ in 0..10 {

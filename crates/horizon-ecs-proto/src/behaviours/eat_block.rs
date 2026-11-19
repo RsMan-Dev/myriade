@@ -162,6 +162,6 @@ fn ate(w: &mut World, e: Entity) {
     if let Some(mut g) = w.get_mut::<GrowAt>(e) {
         g.0 = g.0.saturating_sub(1200).max(now + 1);
         let at = g.0;
-        crate::cow::arm_at(w, e, at.min(now + 4095), Due::Grow);
+        crate::cow::arm_at(w, e, at, Due::Grow);
     }
 }

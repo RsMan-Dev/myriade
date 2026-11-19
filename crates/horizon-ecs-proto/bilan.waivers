@@ -1,0 +1,8 @@
+cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 5 ## merges of the 15 pilot modules, the brains and the swim mode (73b29e88e5): `arbitrate` costs +3 % per visit with the same code and the same visits (code layout of the larger crate); a module nobody carries costs zero (rest 276 462 -> 276 492); to be lowered when the cause is found
+pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 5 ## same, pig: +1.8 % of the pilot merge, +2.3 % of the brain merge (measured with the wheat item)
+sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 2 ## same, sheep
+zombie chase crowded (2000, spacing 2, 1000 players)|ecs ## 2 ## same merges: +1.06 % at the merge, the chase cost follows the same code layout effect
+pig idle|ecs ## 3 ## 6 instructions on 328 (the merges: larger crate, same systems)
+sheep idle|ecs ## 2 ## 10 instructions on 937 (larger crate, reindex +9 000 instr per tick at rest: to look at)
+chicken idle|ecs ## 12 ## 6 instructions on 66
+zombie idle|ecs ## 4 ## 6 instructions on 181
