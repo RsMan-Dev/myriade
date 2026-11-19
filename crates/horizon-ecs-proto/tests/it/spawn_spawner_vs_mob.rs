@@ -200,6 +200,15 @@ fn ecs_waves(h: &mut Herd) -> Vec<(u64, usize)> {
         let c = cows(h);
         if c > last {
             waves.push((t, c - last));
+            // The limit counts the box, not the world: the ECS cows walk off between two waves, so the total may pass it.
+            let id = cow_id();
+            let boxed = h
+                .world
+                .query::<(&SpeciesId, &Pos)>()
+                .iter(&h.world)
+                .filter(|(s, p)| s.0 == id && (-4.0..=5.0).contains(&p.0.x) && (-4.0..=5.0).contains(&p.0.z) && (-3.0..=6.0).contains(&p.0.y))
+                .count();
+            assert!(boxed <= 6, "ecs: {boxed} cows in the box after the wave at {t}, the limit is 6");
             last = c;
         }
     }
@@ -267,7 +276,8 @@ fn spawner_block_vs_client_mob() {
         }
     }
 
-    // Nearby limit: 6 of the species in the box, then no more spawns, on both sides.
+    // Nearby limit: 6 of the species in the box, then no more spawns: checked in the box after each ECS wave (`ecs_waves`); the
+    // client's mobs do not move, so its total is bounded.
     let ecs_total: usize = ecs.iter().map(|w| w.1).sum();
     let client_total: usize = client.iter().map(|w| w.1).sum();
     assert_eq!(ecs_total, 6, "ecs stops at max_nearby");

@@ -65,6 +65,8 @@ fn ecs_job_site_is_taken_and_lost_with_its_block() {
     assert_eq!(h.world.get::<Profession>(e), Some(&Profession(PoiType::Farmer)));
 
     h.set_block(SITE[0], SITE[1], SITE[2], "minecraft:air");
+    // The registry's events are readable the tick after the one that read the change: two ticks (the Mob loses the job in one).
+    h.tick();
     h.tick();
     assert_eq!(h.world.resource::<PoiRegistry>().removed(), &[SITE]);
     poi_claim::lose_claims(&mut h.world);
@@ -82,7 +84,7 @@ fn mob_job_site_is_taken_and_lost_with_its_block() {
     let mut r = MobRef::new(40, false);
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
     let i = r.add_kind(Vec3::new(3.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    let farmer = villager::profession_index("minecraft:farmer");
+    let farmer = villager::profession_index("farmer");
     for _ in 0..40 {
         r.step(None);
     }
@@ -120,7 +122,7 @@ fn two_villagers_one_job_site_one_profession() {
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
     let i = r.add_kind(Vec3::new(3.5, 1.0, 2.5), mob_kind("minecraft:villager"));
     let j = r.add_kind(Vec3::new(3.5, 1.0, 4.5), mob_kind("minecraft:villager"));
-    let farmer = villager::profession_index("minecraft:farmer").map(Some);
+    let farmer = villager::profession_index("farmer").map(Some);
     for _ in 0..300 {
         r.step(None);
     }

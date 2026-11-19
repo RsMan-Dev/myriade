@@ -8,6 +8,15 @@ use horizon_ecs_proto::{
     goals::Slot,
 };
 
+/// Consecutive seeds give a first draw that walks the unit interval in a nearly linear way (the generator's multiplier is small
+/// next to its modulus): a rate measured over 0..n depends on where the walk starts. The seeds are spread by a hash.
+fn scatter(i: i64) -> i64 {
+    let mut z = (i as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (z ^ (z >> 31)) as i64
+}
+
 fn rate(hits: usize, n: usize) -> f64 {
     hits as f64 / n as f64
 }
@@ -25,7 +34,7 @@ fn armour_set_starts_with_the_helmet_and_its_rate_follows_difficulty() {
     let n = 20_000;
     let mut sets = 0;
     for seed in 0..n {
-        let out = populate(&Spawn { armor: true, hand: None }, 1.0, false, |_| false, &mut LegacyRandom::new(seed as i64));
+        let out = populate(&Spawn { armor: true, hand: None }, 1.0, false, |_| false, &mut LegacyRandom::new(scatter(seed)));
         if let Some((slot, name)) = out.first() {
             assert!(matches!(slot, Slot::Head), "seed {seed}: the first piece is the helmet");
             assert!(name.starts_with("minecraft:") && name.ends_with("_helmet"), "{name}");

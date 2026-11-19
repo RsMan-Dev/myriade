@@ -9,17 +9,15 @@ pub const OCC_ROARING: u32 = 256;
 /// The roar's hit comes at this tick, the end at the next one (`anim_ticks` 20, the hit at 10).
 const HIT_AT: i32 = 10;
 const END_AT: i32 = 20;
-/// The illagers the roar spares (the ravagers too, always).
-const SPARED: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:evoker", "minecraft:illusioner", "minecraft:ravager"];
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub range: f64,
     pub damage: f32,
     pub fling: f64,
-}
-impl Params {
-    pub const DEFAULT: Self = Self { range: 4.0, damage: 6.0, fling: 4.0 };
+    pub sound: &'static str,
+    /// The species the roar spares.
+    pub spared: &'static [&'static str],
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Roar(pub Params);
@@ -36,13 +34,11 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 }
 /// The roar starts: busy, the sound, and the two deadlines.
 pub fn start(w: &mut World, e: Entity) {
-    if w.get::<Roar>(e).is_none() {
-        return;
-    }
+    let Some(sound) = w.get::<Roar>(e).map(|r| r.0.sound) else { return };
     occupy(w, e, OCC_ROARING);
     super::hunt_speed::refresh(w, e);
     let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-    w.resource_mut::<Events>().host.sound("entity.ravager.roar", at, 1.0, 1.0);
+    w.resource_mut::<Events>().host.sound(sound, at, 1.0, 1.0);
     crate::cow::after(w, e, HIT_AT, hit);
     crate::cow::after(w, e, END_AT, end);
 }
@@ -62,7 +58,7 @@ fn hit(w: &mut World, e: Entity) {
         push_player(w, p, fling(from, player_xz(w, p), r.fling));
     }
     for c in creatures_in(w, area, e) {
-        if SPARED.contains(&species_name(w, c)) {
+        if r.spared.contains(&species_name(w, c)) {
             continue;
         }
         hurt_creature(w, c, e, r.damage);

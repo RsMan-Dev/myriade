@@ -23,6 +23,8 @@ pub struct Attack {
     pub stopped_at: u64,
     /// For the goal that follows unseen: the world tick of the next strike (a restart at the end of a path loses nothing).
     pub next_strike: u64,
+    /// The world tick the goal found the body busy at (`Ravager.isImmobile` stops the goals' ticks): 0 when it is free.
+    pub frozen_since: u64,
     pub speed: f64,
     /// `Mob.isWithinMeleeAttackRange`: the box widened by this on x and z meets the target's box.
     pub reach: f64,
@@ -236,6 +238,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         follow_unseen: false,
         stopped_at: 0,
         next_strike: 0,
+        frozen_since: 0,
         speed: 1.0,
         reach: 2.04_f32.sqrt() as f64 - 0.6,
         phase: now,
@@ -335,11 +338,23 @@ pub fn melee_run(
     level: Res<Level>,
     tg: targeting::Targets,
     mut dq: ResMut<DamageQueue>,
-    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>, Option<(&crate::behaviours::melee::QuitsInLight, &targeting::Eye)>), With<Meleeing>>,
+    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>, Option<(&crate::behaviours::melee::QuitsInLight, &targeting::Eye)>, Option<&Occupied>), With<Meleeing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects, quits) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects, quits, busy) in &mut q {
+        // `Ravager.isImmobile`: the goals do not tick while it lasts, so the strike cooldown stands still.
+        // The goal is restarted by the frame, so the pause is measured in world time: from the first run seen busy to the first one free.
+        if busy.is_some_and(|o| o.0 & crate::behaviours::hunt_speed::BUSY != 0) {
+            if a.frozen_since == 0 {
+                a.frozen_since = clock.0;
+            }
+            continue;
+        }
+        if a.frozen_since != 0 {
+            a.next_strike += clock.0 - a.frozen_since;
+            a.frozen_since = 0;
+        }
         // `SpiderAttackGoal.canContinue`: in light, one chance in n per tick to give up and forget the target.
         if let Some((n, eye)) = quits {
             let (x, y, z) = eye_block(pos.0, eye.0);

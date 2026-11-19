@@ -27,6 +27,8 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Bite(*params::<Params>(p)));
+    crate::hostile::ensure_attack(w, e);
+    w.get_mut::<crate::hostile::Attack>(e).unwrap().on_hit = Some(on_strike);
 }
 /// A strike landed: busy until the wheel's deadline releases the body.
 pub fn on_strike(w: &mut World, e: Entity) {

@@ -517,7 +517,7 @@ pub mod food_gift;
 pub mod food_inventory;
 pub mod food_stock;
 pub mod golem_recent;
-pub mod golem_summon;
+pub mod summon_defender;
 pub mod gossip;
 pub mod go_to_disturbance;
 pub mod go_to_wanted;

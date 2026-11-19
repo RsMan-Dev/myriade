@@ -133,7 +133,7 @@ fn attempt(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, valid: 
     let Some(sp) = next.and_then(|id| species_table().0.into_iter().find(|s| s.id == id)) else {
         return delay(w, rng, pos, now, false);
     };
-    let mut spawned = false;
+    let mut spawned = 0usize;
     for _ in 0..cfg.count {
         let r = f64::from(cfg.spawn_range);
         let at = [
@@ -150,7 +150,7 @@ fn attempt(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, valid: 
         let seed = rng.next_long() as u64;
         let nearest = nearest_sqr(w, at);
         crate::spawning::born(w, &sp, at, seed, nearest);
-        spawned = true;
+        spawned += 1;
         w.resource_mut::<Events>().host.particles(
             "minecraft:flame",
             [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5],
@@ -159,7 +159,7 @@ fn attempt(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, valid: 
             20,
         );
     }
-    delay(w, rng, pos, now, spawned);
+    delay(w, rng, pos, now, spawned > 0);
 }
 
 /// `MobSpawner.delay`: a new delay and a new species after a spawn (or a limit hit); otherwise one tick.
@@ -223,15 +223,16 @@ fn schedule(wakes: &mut BTreeMap<u64, Vec<(Block3, u32)>>, due: u64, pos: Block3
     wakes.entry(due).or_default().push((pos, generation));
 }
 
-/// The creatures of the species within the box of the spawner grown by `range` (`count_entities`).
-fn nearby(w: &World, species: u8, pos: Block3, range: i32) -> usize {
+/// The creatures of the species whose position is in the box of the spawner grown by `range` (`count_entities`). A scan of the
+/// species' creatures, once per attempt (an attempt comes every 200 to 800 ticks): the spatial index lags the cows that moved and
+/// the ones just born, which made the limit overshoot.
+fn nearby(w: &mut World, species: u8, pos: Block3, range: i32) -> usize {
     let r = f64::from(range);
     let (x, z) = (f64::from(pos[0]), f64::from(pos[2]));
     let (ylo, yhi) = (f64::from(pos[1]) - r, f64::from(pos[1]) + 1.0 + r);
-    let mut hits = Vec::new();
-    w.resource::<Index>().for_near_touching(x, z, (x - r, z - r), (x + 1.0 + r, z + 1.0 + r), |e| hits.push(e));
-    hits.into_iter()
-        .filter(|&e| w.get::<SpeciesId>(e).is_some_and(|s| s.0 == species) && w.get::<Pos>(e).is_some_and(|p| p.0.y >= ylo && p.0.y <= yhi))
+    w.query::<(&SpeciesId, &Pos)>()
+        .iter(w)
+        .filter(|(s, p)| s.0 == species && p.0.y >= ylo && p.0.y <= yhi && p.0.x >= x - r && p.0.x <= x + 1.0 + r && p.0.z >= z - r && p.0.z <= z + 1.0 + r)
         .count()
 }
 

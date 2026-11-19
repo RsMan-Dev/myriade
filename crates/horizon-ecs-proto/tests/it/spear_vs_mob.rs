@@ -27,6 +27,9 @@ fn spear() -> ItemStack {
 
 #[test]
 fn a_mob_with_a_spear_charges_and_stabs_its_player_target_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::spear_use::MODULE, "spear vs mob") {
+        return;
+    }
     let (mut r, mut h) = flat_pair();
     let i = r.add(MOB);
     r.mobs[i].extra.set_main_hand(Some("minecraft:wooden_spear".into()));

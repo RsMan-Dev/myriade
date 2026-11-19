@@ -4,7 +4,7 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_ecs_proto::{
-    behaviours::{breed_love, food_stock, gossip as eg, golem_summon},
+    behaviours::{breed_love, food_stock, gossip as eg, summon_defender},
     brain::*,
     cow::*,
     goals::*,
@@ -47,9 +47,9 @@ fn five_villagers_who_slept_call_an_iron_golem_on_a_column() {
     let mut h = Herd::with_slab(60, true, false);
     let ids: Vec<Entity> = (0..5).map(|k| villager_at(&mut h, (2.0 * k as f64, 0.5), k as u64 + 1)).collect();
     for &e in &ids {
-        h.world.entity_mut(e).insert(golem_summon::LastSlept(0));
+        h.world.entity_mut(e).insert(summon_defender::LastSlept(0));
     }
-    let called = golem_summon::check(&mut h.world, ids[0], golem_summon::NEEDED);
+    let called = summon_defender::check(&mut h.world, ids[0], &summon_defender::Params { species: "minecraft:iron_golem", sound: "", needed: 5 });
     let golem_id = h.world.resource::<SpeciesTable>().0.iter().position(|s| s.name == "minecraft:iron_golem").unwrap() as u8;
     let golems: Vec<[f64; 3]> = {
         let mut q = h.world.query::<(&SpeciesId, &Pos)>();
@@ -60,7 +60,7 @@ fn five_villagers_who_slept_call_an_iron_golem_on_a_column() {
     let g = golems[0];
     assert!((g[0] - 0.5).abs() <= 9.0 && (g[2] - 0.5).abs() <= 9.0, "the column is near the villagers: {g:?}");
     assert_eq!(g[1], g[1].round(), "the golem stands on a whole block: {g:?}");
-    assert!(ids.iter().all(|&e| present(&h.world, e, &golem_summon::GOLEM_DETECTED)), "each villager has seen the golem");
+    assert!(ids.iter().all(|&e| present(&h.world, e, &summon_defender::DEFENDER_SEEN)), "each villager has seen the golem");
 }
 
 /// Two villagers with food for breeding (12 points each) start to make love: the baby comes at the planned tick

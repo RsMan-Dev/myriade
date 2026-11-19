@@ -1,5 +1,5 @@
 //! Golem de fer appelé quand des villageois s'accordent (`villagers.rs:134-148`, `villager.rs:855-974`) : à la rencontre, si
-//! `NEEDED` villageois de la boîte (10 blocs autour de a) ont dormi dans le jour et n'ont pas vu de golem, un golem apparaît
+//! `needed` villageois de la boîte (10 blocs autour de a) ont dormi dans le jour et n'ont pas vu de golem, un golem apparaît
 //! sur une colonne trouvée près de a (10 essais, `summon_golem`), et ces villageois ne veulent plus d'autre golem 599 ticks.
 use crate::brain::*;
 use bevy_ecs::prelude::*;
@@ -11,22 +11,26 @@ use horizon_client_lib::mobs::{
     Species,
 };
 
-pub const NEEDED: usize = 5;
+/// What the meeting summons: the species, its spawn sound (`sounds[0]` of the species, empty until wired) and how many wanting villagers it takes.
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    pub species: &'static str,
+    pub sound: &'static str,
+    pub needed: usize,
+}
 const BOX: f64 = 10.0;
 const SLEPT: u64 = 24000;
 const CALM: u64 = 599;
-/// Son d'apparition : `sounds[0]` de `minecraft:iron_golem` (donnée de l'espèce, socle ; vide tant qu'il n'est pas branché).
-pub const GOLEM_SOUND: &str = "";
 
 /// Dernière nuit dormie (écrite par le comportement de sommeil, à brancher).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct LastSlept(pub u64);
 
-pub static GOLEM_DETECTED: MemKey = MemKey::new("horizon:golem_detected", Shape::Unit);
+pub static DEFENDER_SEEN: MemKey = MemKey::new("horizon:defender_seen", Shape::Unit);
 
 fn wants(w: &World, e: Entity, now: u64) -> bool {
-    w.get::<LastSlept>(e).is_some_and(|s| now.saturating_sub(s.0) < SLEPT) && !present(w, e, &GOLEM_DETECTED)
+    w.get::<LastSlept>(e).is_some_and(|s| now.saturating_sub(s.0) < SLEPT) && !present(w, e, &DEFENDER_SEEN)
 }
 
 /// `LEGACY_IRON_GOLEM` : un sol qui n'est ni cactus, ni verre, ni feuilles, etc.
@@ -83,7 +87,8 @@ fn fits<L: SpawnLevel>(l: &L, [x, y, z]: [i32; 3]) -> bool {
 }
 
 /// Appelé après une rencontre de `a`. Rend si un golem a été appelé.
-pub fn check(w: &mut World, a: Entity, needed: usize) -> bool {
+pub fn check(w: &mut World, a: Entity, p: &Params) -> bool {
+    let needed = p.needed;
     let now = now_of(w, a);
     if !wants(w, a, now) {
         return false;
@@ -105,16 +110,16 @@ pub fn check(w: &mut World, a: Entity, needed: usize) -> bool {
     let start = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
     let found = goals::with_rng(w, a, |r| (0..10).find_map(|_| attempt(mw, start, r).filter(|p| fits(mw, *p))));
     let Some([x, y, z]) = found else { return false };
-    let golem = w.resource::<SpeciesTable>().0.iter().copied().find(|s| s.name == "minecraft:iron_golem").expect("iron golem species");
+    let golem = w.resource::<SpeciesTable>().0.iter().copied().find(|s| s.name == p.species).expect("the summoned species");
     let seed = goals::with_rng(w, a, |r| r.next_u32() as u64);
     let g = spawn_armed(w, &golem, f64::from(x) + 0.5, f64::from(z) + 0.5, seed);
     w.get_mut::<Pos>(g).unwrap().0.y = f64::from(y);
-    if !GOLEM_SOUND.is_empty() {
+    if !p.sound.is_empty() {
         let at = [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5];
-        w.resource_mut::<Events>().host.sound(GOLEM_SOUND, at, 1.0, 1.0);
+        w.resource_mut::<Events>().host.sound(p.sound, at, 1.0, 1.0);
     }
     for j in near {
-        set(w, j, &GOLEM_DETECTED, MemValue::Unit, Some(CALM));
+        set(w, j, &DEFENDER_SEEN, MemValue::Unit, Some(CALM));
     }
     true
 }

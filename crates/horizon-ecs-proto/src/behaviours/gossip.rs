@@ -163,7 +163,7 @@ pub fn add(w: &mut World, e: Entity, player: u32, kind: Kind, amount: i32) {
 
 /// `Villager.gossip` : la rencontre de `a` et `b`. Rien si l'un des deux a entendu il y a moins de 1200 ticks. Sinon `a`
 /// reçoit jusqu'à 10 commérages tirés chez `b`, affaiblis par le récit, et les deux notent le temps. Rend si elle a eu lieu
-/// (l'appelant enchaîne `golem_summon::check`).
+/// (l'appelant enchaîne `summon_defender::check`).
 pub fn meet(w: &mut World, a: Entity, b: Entity) -> bool {
     let now = now_of(w, a);
     let free = |w: &World, e: Entity| w.get::<Heard>(e).is_none_or(|h| now < h.0 || now >= h.0 + HEARD_WAIT);

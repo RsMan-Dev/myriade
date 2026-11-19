@@ -206,7 +206,7 @@ fn emit(w: &mut World, e: Entity, events: Vec<Event>) {
 
 /// Le statut 14 d'un villageois après un échange : les cœurs (`particles::entity_event_burst`, table du client de rendu).
 fn hearts(w: &mut World, e: Entity) {
-    let Some((kind, burst)) = horizon_client_render::particles::entity_event_burst("minecraft:villager", 14) else { return };
+    let Some((kind, burst)) = horizon_client_render::particles::entity_event_burst(crate::area::species_name(w, e), 14) else { return };
     let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
     let speed = burst.speed.unwrap_or(0.0);
     w.resource_mut::<Events>().host.particles(kind, [at[0], at[1] + burst.y, at[2]], [0.5; 3], speed, burst.count);

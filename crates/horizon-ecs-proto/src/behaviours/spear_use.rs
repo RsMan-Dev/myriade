@@ -61,6 +61,9 @@ pub struct Spear {
     pub away: Option<[f64; 3]>,
     /// The targets stabbed and the clock tick of each stab (the contact cooldown).
     pub stabbed: Vec<(Who, u64)>,
+    /// The position at the previous tick and what the body moved since (`Mob.previous`: the known speed of the attacker).
+    pub last: Vec3,
+    pub moved: Vec3,
 }
 /// The goal runs: its system visits it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -70,6 +73,7 @@ pub struct Spearing;
 pub static MODULE: Module = Module {
     name: "spear_use",
     flags: MOVE | LOOK,
+    resources,
     equip,
     fired,
     can_use,
@@ -80,9 +84,17 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
+/// The target service wakes the goal when its creature gets a target: `ableToAttack` is asked then (an event, not a poll).
+fn resources(w: &mut World) {
+    w.resource_mut::<crate::targeting::TargetWatchers>().0.push(|w, e| {
+        if let Some(slot) = w.get::<Spear>(e).map(|s| s.slot) {
+            w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
+        }
+    });
+}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
-    w.entity_mut(e).insert(Spear { def, slot: inst.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new() });
+    w.entity_mut(e).insert(Spear { def, slot: inst.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new(), last: Vec3::ZERO, moved: Vec3::ZERO });
 }
 /// `ableToAttack`: a target and a kinetic weapon in the main hand.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -131,6 +143,9 @@ fn step(w: &mut World, e: Entity) {
     let (Some(who), Some(k)) = (w.get::<Target>(e).map(|t| t.who), kinetic(w, e)) else { return };
     let Some(t) = info(w, who) else { return };
     let me = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    s.moved = if s.last == Vec3::ZERO { Vec3::ZERO } else { Vec3::new(me.x - s.last.x, me.y - s.last.y, me.z - s.last.z) };
+    s.last = me;
+    w.get_mut::<Spear>(e).unwrap().last = me;
     let d = dist(me, [t.pos.x, t.pos.y, t.pos.z]);
     let (mount_speed, bonus) = mount_terms(w, e, &s.def);
     let at = [t.pos.x, t.pos.y, t.pos.z];
@@ -208,7 +223,7 @@ fn stab(w: &mut World, e: Entity, s: &mut Spear, k: &Kinetic, who: Who, ticks_us
     let to = Vec3::new(t.pos.x - eye.x, t.eye - eye.y, t.pos.z - eye.z);
     let len = (to.x * to.x + to.y * to.y + to.z * to.z).sqrt().max(1e-9);
     let look = Vec3::new(to.x / len, to.y / len, to.z / len);
-    let vel = w.get::<Vel>(e).map_or(Vec3::ZERO, |v| v.0);
+    let vel = s.moved;
     // The attacker's speed per second along its view; the target's speed is not read here (zero).
     let attacker_speed = look.dot(vel.scale(20.0));
     let reach = (REACH.min * REACH.mob_factor, REACH.max * REACH.mob_factor, REACH.hitbox_margin);

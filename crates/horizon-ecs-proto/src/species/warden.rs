@@ -2,8 +2,8 @@
 //! modules hold the mechanics only; their parameters have no default. Priorities: the lower number runs first (the brain's order).
 use super::{templates::monster, Def};
 use crate::behaviours::{
-    darkness_pulse, dig, emerge, float, go_to_disturbance, look_at_player, melee, roar_at_target, sniff, sonic_boom,
-    stroll, suspect_anger, vibration_listen, Cap, Entry,
+    darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom,
+    suspect_anger, vibration_listen, Cap, Entry,
 };
 
 pub static DEF: Def = Def {
@@ -50,8 +50,6 @@ pub static DEF: Def = Def {
         Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff", radius: 24.0 }),
         Entry::new(&darkness_pulse::MODULE, 8, &darkness_pulse::Params { radius: 20.0, interval: 120 }),
         Entry::new(&float::MODULE, 9, &()),
-        Entry::new(&look_at_player::MODULE, 10, &()),
-        Entry::new(&stroll::MODULE, 11, &()),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     ..Def::EMPTY

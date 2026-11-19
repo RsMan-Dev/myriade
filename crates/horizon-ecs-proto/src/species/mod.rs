@@ -673,6 +673,12 @@ mod tests {
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("charge_attack", 3)]),
+        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("admire", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_bow", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
+        ("minecraft:shulker", &[("hurt_by", 1), ("nearest_target", 2), ("look_at_player", 1), ("homing_shot", 4), ("peek", 7), ("random_look", 8), ("teleport_on", 0)]),
+        ("minecraft:sulfur_cube", &[("bounce_drag", 0), ("float", 1), ("swallow_item", 2), ("burn_on_touch", 2), ("push_on_touch", 2), ("tempt", 3), ("item_seek", 3)]),
+        ("minecraft:villager", &[]),
+        ("minecraft:warden", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("emerge", 0), ("dig", 1), ("suspect_anger", 2), ("vibration_listen", 2), ("sonic_boom", 3), ("roar_at_target", 4), ("melee", 5), ("go_to_disturbance", 6), ("sniff", 7), ("darkness_pulse", 8), ("float", 9)]),
+        ("minecraft:wither", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("invulnerable_charge", 0), ("ranged_attack", 2), ("side_heads", 2), ("side_heads", 2), ("regen", 0), ("block_breaker", 0), ("boss_bar", 0), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
     ];
     #[test]

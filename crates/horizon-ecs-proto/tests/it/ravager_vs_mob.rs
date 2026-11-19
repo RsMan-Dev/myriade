@@ -59,7 +59,8 @@ fn take_mob(events: &[MobEvent], from: usize, t: i64, log: &mut Log) {
             MobEvent::AttackPlayer(a, _) if *a == ROAR_DAMAGE => log.roar_hits.push(t),
             MobEvent::AttackPlayer(..) => log.bites.push(t),
             MobEvent::Sound(n, ..) => log.sounds.push((t, n.to_string())),
-            MobEvent::Particles { kind, count, .. } if kind.to_string() == "entity_effect" => log.stars += *count as u32,
+            // the Mob sends one event per star with count 0 (a coloured particle); the ECS one burst carrying their count.
+            MobEvent::Particles { kind, .. } if kind.to_string() == "entity_effect" => log.stars += 1,
             _ => {}
         }
     }
