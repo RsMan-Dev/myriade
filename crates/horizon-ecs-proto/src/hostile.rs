@@ -88,7 +88,7 @@ impl PlayerState {
     pub fn alive(&self, id: u32) -> bool {
         self.health_of(id) > 0.0
     }
-    fn hurt(&mut self, tick: u64, player: u32, amount: f32, from: (f64, f64)) {
+    pub(crate) fn hurt(&mut self, tick: u64, player: u32, amount: f32, from: (f64, f64)) {
         let i = player as usize;
         if self.health.len() <= i {
             self.health.resize(i + 1, 20.0);

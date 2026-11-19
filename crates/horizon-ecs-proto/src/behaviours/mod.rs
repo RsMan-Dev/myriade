@@ -146,6 +146,7 @@ pub mod look_at_player;
 pub mod melee;
 pub mod panic;
 pub mod random_look;
+pub mod ranged_bow;
 pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
@@ -163,6 +164,7 @@ pub static TABLE: &[&Module] = &[
     &hurt_by::MODULE,
     &nearest_target::MODULE,
     &melee::MODULE,
+    &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
 ];

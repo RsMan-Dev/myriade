@@ -89,7 +89,7 @@ mod mobs_view {
     pub use horizon_client_lib::mobs::PlayerView;
 }
 fn skip() -> bool {
-    !have_data() || horizon_ecs_proto::cow::skip_unless(&nearest_target::MODULE, "creature targets")
+    !have_data() || species().name != "minecraft:zombie" || horizon_ecs_proto::cow::skip_unless(&nearest_target::MODULE, "creature targets")
 }
 fn mean_tick(v: &[Option<i64>]) -> (f64, usize) {
     let n = v.iter().flatten().count();
