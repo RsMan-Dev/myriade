@@ -12,7 +12,7 @@ pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
     float::{Buoyancy, Floating},
     follow_parent::{Babies, FollowParent, Mother, Trailing, adopt, make_baby},
-    look_at_player::{Glance, Glancing},
+    look_at_player::Glancing,
     panic::{Hurts, Panic, Panicking, hurt, ignite},
     random_look::{Scan, Scanning},
     tempt::{Tempt, Tempting, Tempts},
@@ -665,6 +665,9 @@ impl<T: Copy> Ev<T> {
 /// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
 #[derive(Resource, Default)]
 pub struct Events {
+    /// Outputs toward the host (block writes, sounds, particles): a field here and not a resource of its own, because one more
+    /// resource moves the cost of the solicited scenes (+6,6 % measured at 14 448 against 13 544 on the cow).
+    pub host: crate::host_out::HostOut,
     /// `Burning` was set (from not burning).
     pub ignited: Ev,
     /// `Burning` ended (water, or the fire burnt out).
@@ -1392,8 +1395,8 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut g) = h.world.get_mut::<Glance>(e) {
-            g.armed = armed;
+        if let Some(mut gs) = h.world.get_mut::<look_at_player::Glances>(e) {
+            gs.0.iter_mut().for_each(|g| g.armed = armed);
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;
