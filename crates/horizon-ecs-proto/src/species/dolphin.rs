@@ -1,7 +1,7 @@
 //! `Dolphin`: its swim: water-bound navigation that may breach, `SmoothSwimmingMoveControl(85, 10, 0.02, 0.1, true)`, the push at the mob's speed. Its goals are not configured yet (the water goals of the species are written on top of this configuration).
 use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
-use crate::behaviours::{breath_air, fish_swim, look_at_player, random_look, swim_with_player, try_find_water, Cap, Entry};
+use crate::behaviours::{play_with_items, water_jump, breath_air, fish_swim, look_at_player, random_look, swim_with_player, try_find_water, Cap, Entry};
 use crate::locomotion::{swim, Medium};
 
 pub static DEF: Def = Def {
@@ -12,6 +12,8 @@ pub static DEF: Def = Def {
         Entry::new(&swim_with_player::MODULE, 2, &swim_with_player::Params::DEFAULT),
         Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params { speed: 1.0, interval: 10 }),
         Entry::new(&random_look::MODULE, 4, &random_look::Params::DEFAULT),
+        Entry::new(&water_jump::MODULE, 5, &water_jump::Params::DEFAULT),
+        Entry::new(&play_with_items::MODULE, 8, &play_with_items::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 9, &avoid_entity::Params { what: Avoid::Named(&["minecraft:guardian", "minecraft:elder_guardian"]), max_dist: 8.0, walk: 1.0, sprint: 1.0, ..avoid_entity::Params::DEFAULT }),
     ],

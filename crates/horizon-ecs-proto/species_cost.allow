@@ -15,3 +15,6 @@ drowned ## swims every tick (its control and the travel of the water run each ti
 bee ## flies and hovers all the time (a flier: travel and float physics each tick); Mob 70670 vs ECS 29 487 per creature and tick
 iron_golem ## walks back to its village all the time (village_walk: 804 of 2 000 golems move each tick, travel); Mob 86 521 vs ECS 7 654 per creature and tick
 parrot ## flies (fly_stroll) most of the time: a flier moves each tick; ECS 233 per creature and tick, 2.5 x the cow
+frog ## the long jump's cost amortised: a frog leaps every ~270 ticks (56 jumps in 6 x 2400 ticks) and each leap runs the candidate scan, the 40-tick preparation, the flight with discarded friction and the landing check; the Mob's frog (almost) never jumps, so the cost is the species' real activity, not a scan at rest
+goat ## the ram's gated long jump polls every 2 ticks while the ram cools down (no event says when the ram cooldown ends: GUIDE rule 4 fallback, one thread per animal), plus a 5 x 5 box scan at each jump; waits for the kernel event of the cooldown
+nautilus ## swims every tick (reindex and push of a mover, 1 000 instr each per creature and tick, as the dolphin and the axolotl); the charge itself is rare

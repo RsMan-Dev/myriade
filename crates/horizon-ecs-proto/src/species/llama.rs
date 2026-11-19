@@ -4,7 +4,7 @@
 //! them (`LlamaHurtBy`, the wolves: `NearestTarget` on untamed wolves, `llama.rs:79-90`, not_must_see, `reach()`: no field for the
 //! untamed filter nor for the reach). A llama that is not the one of a trader: its panic is 1.2.
 use super::Def;
-use crate::behaviours::{breed, float, follow_parent, look_at_player, panic, random_look, run_around_like_crazy, stroll, tempt, Cap, Entry};
+use crate::behaviours::{breed, float, follow_parent, look_at_player, panic, random_look, ranged_attack, run_around_like_crazy, stroll, tempt, Cap, Entry};
 
 const FOOD: &[&str] = &["minecraft:wheat", "minecraft:hay_block"];
 
@@ -13,6 +13,7 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&run_around_like_crazy::MODULE, 1, &run_around_like_crazy::Params::DEFAULT),
+        Entry::new(&ranged_attack::MODULE, 3, &ranged_attack::Params::LLAMA),
         Entry::new(&panic::MODULE, 3, &panic::Params { speed: 1.2, ..panic::Params::DEFAULT }),
         Entry::new(&breed::MODULE, 4, &breed::Params { speed: 1.0, foods: FOOD, ..breed::Params::DEFAULT }),
         Entry::new(&tempt::MODULE, 5, &tempt::Params { speed: 1.25, items: &["minecraft:hay_block"], ..tempt::Params::DEFAULT }),

@@ -56,3 +56,4 @@ mod zone_vs_mob;
 mod lot5_vs_mob;
 mod audit_fixes_vs_mob;
 mod clients_vs_mob;
+mod lot7_vs_mob;
