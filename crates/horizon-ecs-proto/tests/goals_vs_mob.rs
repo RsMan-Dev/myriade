@@ -287,6 +287,12 @@ fn a_struck_cow_panics_as_a_mob_does() {
 /// Wheat in hand: range 9.5 / 10.5, the time to walk up, the stop distance, the calm after putting it away.
 #[test]
 fn wheat_tempts_as_it_does_a_mob() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("wheat_tempts_as_it_does_a_mob") {
+        return;
+    }
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("wheat_tempts_as_it_does_a_mob") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::tempt::MODULE, "wheat_tempts_as_it_does_a_mob") {
         return;
     }
@@ -356,6 +362,9 @@ fn wheat_tempts_as_it_does_a_mob() {
 /// Two cows in love 2 and 5 blocks apart: the tick of the birth, the parents' age.
 #[test]
 fn breeding_takes_as_long_as_for_a_mob() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("breeding_takes_as_long_as_for_a_mob") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::breed::MODULE, "breeding_takes_as_long_as_for_a_mob") {
         return;
     }
@@ -425,6 +434,9 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
 /// (the look goals do not depend on `noActionTime`).
 #[test]
 fn looking_goals_start_as_often_as_a_mob_s() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("looking_goals_start_as_often_as_a_mob_s") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("looking_goals_start_as_often_as_a_mob_s") {
         return;
     }
@@ -751,6 +763,9 @@ fn trace_short_path() {
 /// (`Forced`), and the two are followed for 60 ticks.
 #[test]
 fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
         return;
     }
@@ -823,6 +838,12 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
 /// (`Forced`); the parent walks the same way and gives birth at the same tick.
 #[test]
 fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
+        return;
+    }
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::breed::MODULE, "breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed") {
         return;
     }

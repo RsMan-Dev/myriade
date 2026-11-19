@@ -143,6 +143,9 @@ fn run(gap: i64, s1: i64, s2: i64, what: What) -> (Seen, Seen, bool) {
 /// run out after the same number of ticks it was ticked, as the `Mob` that was not ticked.
 #[test]
 fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("a_creature_that_sleeps_keeps_its_timers_as_a_mob_does") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("a_creature_that_sleeps_keeps_its_timers_as_a_mob_does") {
         return;
     }

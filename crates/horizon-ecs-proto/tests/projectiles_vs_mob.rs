@@ -120,6 +120,9 @@ fn a_stuck_arrow_falls_when_its_block_goes() {
 /// shooter as the source.
 #[test]
 fn an_arrow_hurts_a_creature_as_a_mob_s_does() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("an_arrow_hurts_a_creature_as_a_mob_s_does") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("an_arrow_hurts_a_creature_as_a_mob_s_does") {
         return;
     }

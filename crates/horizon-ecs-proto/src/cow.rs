@@ -276,7 +276,10 @@ pub struct Hazards {
     /// Per column: 0, or 1 + the index in `pool`.
     cols: Vec<u32>,
     pool: Vec<Vec<(i32, u8)>>,
+    /// The cells that hold a turtle egg (what the egg hunters look for): a search that has none in its zone does not walk it.
+    eggs: std::collections::BTreeSet<[i32; 3]>,
 }
+const EGG: &str = "minecraft:turtle_egg";
 fn hazard_bit(name: &str) -> u8 {
     match name {
         "minecraft:lava" => HAZ_LAVA,
@@ -292,11 +295,15 @@ impl Hazards {
     pub fn build(level: &Level) -> Self {
         let mw = level.mw.0;
         let (origin, width) = (-level.half, (2 * level.half + 1) as usize);
-        let mut h = Self { origin, width, cols: vec![0; width * width], pool: Vec::new() };
+        let mut h = Self { origin, width, cols: vec![0; width * width], pool: Vec::new(), eggs: Default::default() };
         for x in 0..width {
             for z in 0..width {
                 for y in -2..=BUILD_TOP {
-                    let bit = hazard_bit(&mw.facts.get(mw.world.block(x as i32 + origin, y, z as i32 + origin)).name);
+                    let name = &mw.facts.get(mw.world.block(x as i32 + origin, y, z as i32 + origin)).name;
+                    if &**name == EGG {
+                        h.eggs.insert([x as i32 + origin, y, z as i32 + origin]);
+                    }
+                    let bit = hazard_bit(name);
                     if bit != 0 {
                         h.set(x as i32 + origin, y, z as i32 + origin, bit);
                     }
@@ -304,6 +311,10 @@ impl Hazards {
             }
         }
         h
+    }
+    /// A turtle egg lies in the box `lo..=hi` (cells).
+    pub fn egg_in(&self, lo: [i32; 3], hi: [i32; 3]) -> bool {
+        self.eggs.range([lo[0], i32::MIN, i32::MIN]..=[hi[0], i32::MAX, i32::MAX]).any(|p| (lo[1]..=hi[1]).contains(&p[1]) && (lo[2]..=hi[2]).contains(&p[2]))
     }
     /// The block at (x, y, z) now has these hazard bits (0: none), at any height.
     pub fn set(&mut self, x: i32, y: i32, z: i32, bit: u8) {
@@ -925,6 +936,23 @@ pub fn skip_unless_farm_goals(test: &str) -> bool {
         eprintln!("SKIP {test}: {name} lacks the farm animal's goals (tempt, breed, follow parent, panic, stroll)");
     }
     !ok
+}
+/// For the physics scenes written for a small animal (slabs, herds spaced for a cow's box, a pit of 24): skips (printed) when the
+/// species of the process has a body of another scale (wider than a block, taller than a block and a half, or smaller than half a block).
+pub fn skip_unless_small_body(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let (w, h) = species_size(&name);
+    let skip = w > 0.95 || h > 1.5 || (w < 0.5 && h < 0.5);
+    if skip {
+        eprintln!("SKIP {test}: {name} is {w} x {h}: the scene is made for a small animal");
+    }
+    skip
+}
+fn species_size(name: &str) -> (f32, f32) {
+    // The size of the type, read once from the real data of the process.
+    static TYPES_FOR_SIZE: std::sync::OnceLock<Option<horizon_client_lib::mobs::MobTypes>> = std::sync::OnceLock::new();
+    let t = TYPES_FOR_SIZE.get_or_init(|| horizon_client_lib::mobs::MobTypes::load(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").unwrap_or_default())).ok());
+    t.as_ref().and_then(|t| t.types.get(name).map(|k| (k.width as f32, k.height as f32))).unwrap_or((0.9, 1.4))
 }
 /// Skips (printed) unless the species of the process has all these capabilities.
 pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
@@ -2293,6 +2321,10 @@ pub(crate) fn block_changes(
             horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);
         }
         hazards.set(x, y, z, hazard_bit(name));
+        hazards.eggs.remove(&[x, y, z]);
+        if name == EGG {
+            hazards.eggs.insert([x, y, z]);
+        }
         seen.0.push((x, y, z));
         let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
         let reach = cell.inflate(Vec3::new(1.0, 1.0, 1.0));
@@ -3183,6 +3215,9 @@ mod tests {
     /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
     #[test]
     fn falls_fire_lava_snow_and_cactus_hurt_a_cow() {
+    if crate::cow::skip_unless_small_body("falls_fire_lava_snow_and_cactus_hurt_a_cow") {
+        return;
+    }
     if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") {
         return;
     }
@@ -3384,6 +3419,9 @@ mod tests {
     /// put into a cow's cell adds the hazard module; a path is dropped only by a change near its middle.
     #[test]
     fn block_changes_wake_only_what_they_touch() {
+    if crate::cow::skip_unless_small_body("block_changes_wake_only_what_they_touch") {
+        return;
+    }
     if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
         return;
     }
@@ -3484,6 +3522,9 @@ mod tests {
     /// Water placed and removed at any height: `InFluid` and the float, fire put out, and a hazard high above the floor.
     #[test]
     fn water_placed_floats_extinguishes_and_works_at_height() {
+    if crate::cow::skip_unless_small_body("water_placed_floats_extinguishes_and_works_at_height") {
+        return;
+    }
     if crate::cow::skip_unless_walker("water_placed_floats_extinguishes_and_works_at_height") {
         return;
     }

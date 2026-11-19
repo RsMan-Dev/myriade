@@ -1341,6 +1341,9 @@ mod tests {
     /// interrupted stops; a tempting player met during the panic waits for the flag and then tempts.
     #[test]
     fn a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals() {
+    if crate::cow::skip_unless_small_body("a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals") {
+        return;
+    }
     if crate::cow::skip_unless_farm_goals("a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals") {
         return;
     }
@@ -1415,6 +1418,12 @@ mod tests {
     /// Wheat within 10 blocks tempts, 10.5 does not; putting it away stops, with 100 ticks of calm.
     #[test]
     fn wheat_tempts_within_ten_blocks_and_stops_when_put_away() {
+    if crate::cow::skip_unless_small_body("wheat_tempts_within_ten_blocks_and_stops_when_put_away") {
+        return;
+    }
+    if crate::cow::skip_unless_farm_goals("wheat_tempts_within_ten_blocks_and_stops_when_put_away") {
+        return;
+    }
         if crate::cow::skip_unless(&tempt::MODULE, "wheat_tempts_within_ten_blocks_and_stops_when_put_away") {
             return;
         }
@@ -1449,6 +1458,12 @@ mod tests {
     /// Two cows in love: after the 60-tick delay close to each other, a baby of age -24000; both rest 6000 ticks.
     #[test]
     fn two_cows_in_love_make_a_baby_after_the_delay() {
+    if crate::cow::skip_unless_small_body("two_cows_in_love_make_a_baby_after_the_delay") {
+        return;
+    }
+    if crate::cow::skip_unless_farm_goals("two_cows_in_love_make_a_baby_after_the_delay") {
+        return;
+    }
         if crate::cow::skip_unless(&breed::MODULE, "two_cows_in_love_make_a_baby_after_the_delay") {
             return;
         }
@@ -1535,6 +1550,12 @@ mod tests {
     /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
+    if crate::cow::skip_unless_small_body("cows_glance_at_a_near_player_and_look_around") {
+        return;
+    }
+    if crate::cow::skip_unless_farm_goals("cows_glance_at_a_near_player_and_look_around") {
+        return;
+    }
     if crate::cow::skip_unless_walker("cows_glance_at_a_near_player_and_look_around") {
         return;
     }

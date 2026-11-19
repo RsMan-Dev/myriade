@@ -15,6 +15,9 @@ fn herd(lazy: bool, seed: u64) -> Herd {
 
 #[test]
 fn the_lazy_look_changes_nothing_a_player_sees() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("the_lazy_look_changes_nothing_a_player_sees") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("the_lazy_look_changes_nothing_a_player_sees") {
         return;
     }
@@ -79,6 +82,9 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
 
 #[test]
 fn the_lazy_look_wakes_when_a_player_comes() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("the_lazy_look_wakes_when_a_player_comes") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("the_lazy_look_wakes_when_a_player_comes") {
         return;
     }

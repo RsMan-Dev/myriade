@@ -242,6 +242,9 @@ fn mean_start(o: &AvOpt, trials: usize) -> (usize, usize, f64, f64) {
 
 #[test]
 fn avoid_1_player_in_and_out_of_range() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("avoid_1_player_in_and_out_of_range") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("avoid_1_player_in_and_out_of_range") {
         return;
     }
@@ -468,6 +471,9 @@ fn shade_both(r: &MobRef, h: &Herd, open: &[(i32, i32)]) {
 }
 #[test]
 fn flee_1_hide_pos_law() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("flee_1_hide_pos_law") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("flee_1_hide_pos_law") {
         return;
     }

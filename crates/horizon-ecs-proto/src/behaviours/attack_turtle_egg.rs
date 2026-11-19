@@ -63,7 +63,10 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let mw = w.resource::<Level>().mw.0;
     let base = feet(w, e);
-    let found = w.get_mut::<EggHunt>(e).unwrap().walk.find_nearest(base, mw, egg_target);
+    // No egg in the zone of the search (the world keeps the cells of its eggs): nothing to walk, the same answer as the walk.
+    let hunt = w.get::<EggHunt>(e).unwrap();
+    let nothing = hunt.walk.zone(base).is_none_or(|(lo, hi)| w.get_resource::<Hazards>().is_some_and(|h| !h.egg_in(lo, hi)));
+    let found = !nothing && w.get_mut::<EggHunt>(e).unwrap().walk.find_nearest(base, mw, egg_target);
     if found {
         return true;
     }
@@ -151,11 +154,23 @@ fn trample_tick(w: &mut World, e: Entity) {
 }
 /// `RemoveBlockGoal.isValidTarget` without `canEntityDestroy` (no such service: taken as true, DOUTE): an egg in a loaded
 /// chunk with two air blocks above it.
+/// The state ids of the turtle egg block, read once from the facts of the process (the states of a block are contiguous): the
+/// search compares numbers, not names (a 24-block search reads some 16 000 cells).
+fn egg_states(mw: &MobWorld) -> (u32, u32) {
+    static IDS: std::sync::OnceLock<(u32, u32)> = std::sync::OnceLock::new();
+    *IDS.get_or_init(|| {
+        let mut it = mw.facts.states.iter().enumerate().filter(|(_, s)| &*s.name == "minecraft:turtle_egg").map(|(i, _)| i as u32);
+        let first = it.next();
+        first.map_or((1, 0), |f| (f, it.last().unwrap_or(f)))
+    })
+}
 fn egg_target(mw: &MobWorld, p: [i32; 3]) -> bool {
-    mw.world.loaded(p[0], p[2])
-        && mw.block_name(p[0], p[1], p[2]) == "minecraft:turtle_egg"
-        && mw.facts.is_air(mw.world.block(p[0], p[1] + 1, p[2]))
-        && mw.facts.is_air(mw.world.block(p[0], p[1] + 2, p[2]))
+    if !mw.world.loaded(p[0], p[2]) {
+        return false;
+    }
+    let (lo, hi) = egg_states(mw);
+    let id = mw.world.block(p[0], p[1], p[2]).0;
+    id >= lo && id <= hi && mw.facts.is_air(mw.world.block(p[0], p[1] + 1, p[2])) && mw.facts.is_air(mw.world.block(p[0], p[1] + 2, p[2]))
 }
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
