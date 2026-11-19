@@ -20,6 +20,8 @@ fn main() {
     let mut r = Rng(0x1234_5678_9abc_def1);
     let (mut ok, mut nodes, mut instr) = (0usize, 0usize, 0u64);
     let counter = Counter::new();
+    let own = std::env::var_os("OWN").is_some();
+    if std::env::var_os("PATHCOUNT").is_some() { horizon_ecs_proto::pathsearch::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
     let mut sum = 0u64;
     for _ in 0..iters {
         let (x, z) = (r.range(-40.0, 40.0), r.range(-40.0, 40.0));
@@ -43,7 +45,9 @@ fn main() {
         };
         let max_len = sp.follow_range;
         let c0 = counter.read();
-        let p = Finder::new(mw, &pm, Evaluator::Walk).find(&[[tx.floor() as i32, 1, tz.floor() as i32]], max_len, 1, (max_len * 16.0).floor() as i32);
+        let target = [[tx.floor() as i32, 1, tz.floor() as i32]];
+        let visited = (max_len * 16.0).floor() as i32;
+        let p = if own { horizon_ecs_proto::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).find(&target, max_len, 1, visited) } else { Finder::new(mw, &pm, Evaluator::Walk).find(&target, max_len, 1, visited) };
         instr += counter.read() - c0;
         if let Some(p) = p {
             ok += 1;
@@ -51,6 +55,13 @@ fn main() {
             for n in &p.nodes {
                 sum = sum.wrapping_mul(31).wrapping_add((n.x as u64) ^ ((n.y as u64) << 20) ^ ((n.z as u64) << 40) ^ n.kind as u64);
             }
+        }
+    }
+    if std::env::var_os("PATHCOUNT").is_some() {
+        let opened = horizon_ecs_proto::pathsearch::C[0].load(std::sync::atomic::Ordering::Relaxed).max(1) as f64;
+        for (i, n) in horizon_ecs_proto::pathsearch::NAMES.iter().enumerate() {
+            let v = horizon_ecs_proto::pathsearch::C[i].load(std::sync::atomic::Ordering::Relaxed) as f64;
+            println!("  {n:>32}: {:>10.1}/search {:>8.2}/opened node", v / iters as f64, v / opened);
         }
     }
     println!("{case} iters={iters} follow_range={} found={ok} avg_nodes={:.1} instr/search={} checksum={sum:x}", sp.follow_range, nodes as f64 / ok.max(1) as f64, instr / iters as u64);
