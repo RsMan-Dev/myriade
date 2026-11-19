@@ -4,7 +4,7 @@
 //! `attackable`. The wind charge is the `Flight::BREEZE_WIND_CHARGE` of the frame (burst of radius 3: knockback of the creatures).
 //! The Mob's `Swim` is the `float` goal. Not ported: sounds, particles, the pose animations, `Breeze.isInvulnerableTo` (another breeze's
 //! charges: the burst spares the owner only), the jump boost and levitation effects, the mount, the burst's push of players and of blocks.
-//! DOUTES: the 100-tick window is read at the brain's steps (the sensor's scans, 20 ticks, and the running behaviours), the Mob reads it each tick.
+//! DOUTES: the attackable window is refreshed at the sensor's scans (20 ticks) and ends at a deadline of the wheel; the Mob refreshes it every tick.
 use super::Def;
 use crate::behaviours::{float, Cap, Entry};
 use crate::brain::behaviours::{breeze, do_nothing, look_at_target_sink, run_one, start_attacking, stop_attacking_if_target_invalid, stroll};
@@ -21,10 +21,6 @@ fn players_and_golems(w: &World, who: Who) -> bool {
         Who::Entity(_) => targeting::info(w, who).is_some_and(|i| crate::species::registry().id(GOLEM) == Some(usize::from(i.species))),
     }
 }
-fn attackable_golem(w: &World, e: Entity, who: Who) -> bool {
-    attackable::attackable(w, e, who, Some(GOLEM))
-}
-
 pub static DEF: Def = Def {
     name: "minecraft:breeze",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
@@ -34,7 +30,7 @@ pub static DEF: Def = Def {
             SensorEntry::new(&living::SENSOR, 20),
             SensorEntry::new(&hurt_by::SENSOR, 20),
             SensorEntry::new(&nearest_players::SENSOR, 20),
-            SensorEntry::new(&attackable::SENSOR, 20).with(&attackable::Params { creature: Some(GOLEM) }),
+            SensorEntry::new(&attackable::SENSOR, 20).with(&attackable::Params { creature: Some(GOLEM), window: 100 }),
         ],
         activities: &[
             ActivityDef { name: "core", slot: 1, requires: &[] },
@@ -80,7 +76,7 @@ pub static DEF: Def = Def {
                 behaviour: &stop_attacking_if_target_invalid::BEHAVIOUR,
                 activity: "fight",
                 priority: 0,
-                params: &stop_attacking_if_target_invalid::Params { tired_ticks: 200, still_visible: false, attackable: Some((attackable_golem, 100)) },
+                params: &stop_attacking_if_target_invalid::Params { tired_ticks: 200, still_visible: false, attackable: Some(100) },
                 needs: &[(&ATTACK_TARGET, Need::Present)],
                 duration: None,
                 kids: &[],

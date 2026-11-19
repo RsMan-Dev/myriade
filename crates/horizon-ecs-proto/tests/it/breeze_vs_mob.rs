@@ -15,6 +15,7 @@ fn skip() -> bool {
 }
 const N: usize = 12;
 const TICKS: i64 = 600;
+const SETTLE: usize = 120;
 fn far_id(j: usize) -> u32 {
     1 + (j as u32 + 1) * 7919 % 100_003
 }
@@ -24,13 +25,24 @@ struct Trace {
     shots: Vec<i64>,
     jumps: i64,
     far: f64,
+    far_at: i64,
+    path: Vec<(i64, f64)>,
+    /// (distance flown, peak speed) of each long jump.
+    flights: Vec<(f64, f64)>,
     near: f64,
 }
-fn mob_run(j: usize, start: Vec3, player: Vec3) -> Trace {
+fn mob_run(j: usize, start: Vec3, _player: Vec3) -> Trace {
     let mut r = MobRef::new(60, false);
     let i = r.add_id(start, far_id(j));
     let mut tr = Trace { near: f64::MAX, ..Default::default() };
+    // Both sides wander 120 ticks alone first: the ECS creature is born in the air and its first choice (a stroll needs a path) is always
+    // `do_nothing`, which lasts up to 100 ticks; the player then stands 10 blocks south of where the breeze is.
+    for _ in 0..SETTLE {
+        r.step(None);
+    }
+    let player = Vec3::new(r.mobs[i].position.x, 1.0, r.mobs[i].position.z + 10.0);
     let mut was_jumping = false;
+    let (mut from_at, mut peak) = ((0.0, 0.0), 0.0);
     for t in 1..=TICKS {
         let p = player_view(player, None);
         let from = r.events.len();
@@ -43,15 +55,26 @@ fn mob_run(j: usize, start: Vec3, player: Vec3) -> Trace {
         let jumping = breeze::pose(m) == breeze::LONG_JUMPING;
         if jumping && !was_jumping {
             tr.jumps += 1;
+            from_at = (m.position.x, m.position.z);
+            peak = (m.velocity.x * m.velocity.x + m.velocity.z * m.velocity.z).sqrt();
+        }
+        if !jumping && was_jumping {
+            tr.flights.push((((m.position.x - from_at.0).powi(2) + (m.position.z - from_at.1).powi(2)).sqrt(), peak));
         }
         was_jumping = jumping;
         let d = ((m.position.x - player.x).powi(2) + (m.position.z - player.z).powi(2)).sqrt();
-        tr.far = tr.far.max(d);
+        if d > tr.far {
+            tr.far = d;
+            tr.far_at = t;
+        }
+        if t % 30 == 0 {
+            tr.path.push((t, d));
+        }
         tr.near = tr.near.min(d);
     }
     tr
 }
-fn ecs_run(j: usize, start: Vec3, player: Vec3) -> Trace {
+fn ecs_run(j: usize, start: Vec3, _player: Vec3) -> Trace {
     let mut h = Herd::with_slab(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:breeze").unwrap();
@@ -59,7 +82,13 @@ fn ecs_run(j: usize, start: Vec3, player: Vec3) -> Trace {
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     let mut tr = Trace { near: f64::MAX, ..Default::default() };
+    for _ in 0..SETTLE {
+        h.tick();
+    }
+    let at = h.world.get::<Pos>(e).unwrap().0;
+    let player = Vec3::new(at.x, 1.0, at.z + 10.0);
     let mut was_jumping = false;
+    let (mut from_at, mut peak) = ((0.0, 0.0), 0.0);
     let mut seen = std::collections::HashSet::new();
     for t in 1..=TICKS {
         h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
@@ -75,13 +104,25 @@ fn ecs_run(j: usize, start: Vec3, player: Vec3) -> Trace {
             }
         }
         let jumping = h.world.get::<Pose>(e) == Some(&Pose::LongJumping);
+        let (pp, vv) = (h.world.get::<Pos>(e).unwrap().0, h.world.get::<Vel>(e).unwrap().0);
         if jumping && !was_jumping {
             tr.jumps += 1;
+            from_at = (pp.x, pp.z);
+            peak = (vv.x * vv.x + vv.z * vv.z).sqrt();
+        }
+        if !jumping && was_jumping {
+            tr.flights.push((((pp.x - from_at.0).powi(2) + (pp.z - from_at.1).powi(2)).sqrt(), peak));
         }
         was_jumping = jumping;
         let p = h.world.get::<Pos>(e).unwrap().0;
         let d = ((p.x - player.x).powi(2) + (p.z - player.z).powi(2)).sqrt();
-        tr.far = tr.far.max(d);
+        if d > tr.far {
+            tr.far = d;
+            tr.far_at = t;
+        }
+        if t % 30 == 0 {
+            tr.path.push((t, d));
+        }
         tr.near = tr.near.min(d);
     }
     tr

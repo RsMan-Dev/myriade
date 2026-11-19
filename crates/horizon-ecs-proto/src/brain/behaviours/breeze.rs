@@ -3,8 +3,7 @@
 //! the entries' `needs` (`species/breeze.rs`). The pose (`Pose`) is a component the four read: a shot or a slide starts only standing.
 //! Why the long jump is not `behaviours/long_jump` of the goals: that one is the frog's and the goat's (a goal, a prepared 40-tick look, a box of
 //! cells to pick from, the angles 65 to 80); the breeze's picks a point behind its target, inhales 10 ticks, and tries the angles 40 to 80,
-//! with no collision test of the arc. The arc arithmetic (`LongJumpUtil.calculateJumpVectorForAngle`) is the same: to be one service
-//! (`jump_arc`) when `ecs/lot7-review` is merged; it is not touched from here.
+//! with no collision test of the arc. The arc arithmetic (`LongJumpUtil`) is the service `jump_arc`, shared with that goal.
 //! Not ported: the sounds, the ground particles, the jump boost and levitation effects, the mount, the target's gaze-free yaw of a player
 //! (taken from his view vector), the pose the slide sink gives while it runs (animation only).
 use crate::behaviours::Cap;
@@ -14,7 +13,7 @@ use crate::cow::*;
 use crate::goals::with_rng;
 use crate::projectile::{launch, Flight};
 use crate::targeting::{self, FollowRange, Who};
-use horizon_core::{geometry::{trig, Vec3}, jmath};
+use horizon_core::geometry::Vec3;
 
 pub static SHOOT_MEM: MemKey = MemKey::new("minecraft:breeze_shoot", Shape::Unit);
 pub static SHOOT_COOLDOWN: MemKey = MemKey::new("minecraft:breeze_shoot_cooldown", Shape::Unit);
@@ -335,40 +334,11 @@ fn jump_start(w: &mut World, e: Entity, _: &Ctx) {
         look_at(w, e, [f64::from(b[0]) + 0.5, f64::from(b[1]) + 0.5, f64::from(b[2]) + 0.5]);
     }
 }
-/// `LongJumpUtil.calculateJumpVectorForAngle` without the arc's collision test (the breeze's own call passes none).
-fn jump_vector(w: &World, e: Entity, target: Vec3, max_velocity: f32, angle: i32) -> Option<Vec3> {
-    let pos = pos(w, e);
-    let plane = Vec3::new(target.x - pos.x, 0.0, target.z - pos.z).normalize().scale(0.5);
-    let aim = target.subtract(plane);
-    let d = aim.subtract(pos);
-    let angrad = angle as f32 * std::f32::consts::PI / 180.0;
-    let xz = trig::fdlibm_atan2(d.z, d.x);
-    let r2 = d.x * d.x + 0.0 + d.z * d.z;
-    let r = r2.sqrt();
-    let g = body(w, e).gravity;
-    let sin2 = jmath::sin(f64::from(2.0 * angrad));
-    let cos_sq = jmath::pow(jmath::cos(f64::from(angrad)), 2.0);
-    let (sin, cos) = (jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad)));
-    let v0sq = r2 * g / (r * sin2 - 2.0 * d.y * cos_sq);
-    if v0sq < 0.0 {
-        return None;
-    }
-    let v0 = v0sq.sqrt();
-    if v0 > f64::from(max_velocity) {
-        return None;
-    }
-    let (v0r, v0y) = (v0 * cos, v0 * sin);
-    Some(Vec3::new(v0r * jmath::cos(xz), v0y, v0r * jmath::sin(xz)).scale(f64::from(0.95_f32)))
-}
-/// `LongJump.calculateOptimalJumpVector`: the angles shuffled, the first that reaches the target.
+/// `LongJump.calculateOptimalJumpVector`: the angles shuffled, the first that reaches the target (the breeze's call passes no collision test).
 fn optimal_jump_vector(w: &mut World, e: Entity, target: Vec3) -> Option<Vec3> {
-    let mut angles = ALLOWED_ANGLES;
-    for i in (2..=angles.len()).rev() {
-        let j = with_rng(w, e, |r| r.next_int(i as i32)) as usize;
-        angles.swap(i - 1, j);
-    }
+    let angles = crate::jump_arc::shuffle(ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
     let max = 0.058_333_334_f32 * w.get::<FollowRange>(e).map_or(24.0, |f| f.0) as f32;
-    angles.iter().find_map(|&a| jump_vector(w, e, target, max, a))
+    crate::jump_arc::first_reaching(&angles, pos(w, e), body(w, e).gravity, target, max, None)
 }
 /// `LongJump.tick`, and `canStillUse` (not standing, and the jump's cooldown not started).
 fn jump_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {

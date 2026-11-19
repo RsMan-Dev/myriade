@@ -329,6 +329,8 @@ mod tests {
         let mut sp = *species();
         sp.goals = Config { entries };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+        // "Whose only goal is this one": the species' brain (the breeze's slide, the creaking's stroll) would walk it elsewhere.
+        h.world.entity_mut(e).remove::<crate::brain::Brain>();
         for _ in 0..20 {
             h.tick();
         }

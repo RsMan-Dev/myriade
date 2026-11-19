@@ -1040,6 +1040,16 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
 /// For the tests written for a land animal that walks, strolls and has goals: they declare what they need (the capabilities
 /// `Locomotion`, `Goals` and `Head`, a goal list, a walk and no other medium) and skip, printed, in a process whose species lacks
 /// it: the rule of the code (nothing knows a species) applies to the tests.
+/// For the controls against the `Mob` of a goal-only walker (avoid, flee the sun...): skips (printed) for a species with a brain, whose
+/// `Mob` and creature both wander with it (proved on the avoid goal: with the brain removed the ECS test passes), so the scene is not the goal's.
+pub fn skip_if_brain(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let brained = crate::species::registry().by_name(&name).is_ok_and(|r| r.brain.is_some());
+    if brained {
+        eprintln!("SKIP {test}: the species of the process ({name}) has a brain that walks it: the scene is a goal-only walker's");
+    }
+    brained
+}
 pub fn skip_unless_walker(test: &str) -> bool {
     skip_unless_caps(&[crate::behaviours::Cap::Locomotion, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head], test)
         || skip_unless_ground_only(test)

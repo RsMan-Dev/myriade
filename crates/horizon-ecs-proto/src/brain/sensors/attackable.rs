@@ -9,14 +9,20 @@ use crate::targeting::{self, Eye, FollowRange, Who};
 
 pub static NEAREST_ATTACKABLE: MemKey = MemKey::new("minecraft:nearest_attackable", Shape::Who);
 
-pub static SENSOR: Sensor = Sensor { name: "minecraft:breeze_attack_entity", mems: &[&NEAREST_ATTACKABLE], scan, requires: &[Cap::Targets], ..Sensor::DEFAULT };
+pub static SENSOR: Sensor = Sensor { name: "minecraft:breeze_attack_entity", mems: &[&NEAREST_ATTACKABLE, &ATTACK_TARGET], scan, requires: &[Cap::Targets], ..Sensor::DEFAULT };
 
 /// The species a creature must be to be attacked (a name, resolved with the registry; `None`: any creature).
 pub struct Params {
     pub creature: Option<&'static str>,
+    /// `Sensor.wasEntityAttackableLastNTicks(window)`: the attack target's last attackable time is kept, and the brain is woken `window` ticks after
+    /// it (a deadline of the wheel) to drop a target that was not seen since. 0: not kept.
+    pub window: u64,
 }
+/// The own time at which the attack target was last attackable (written by this sensor's scans).
+#[derive(Component, Clone, Copy)]
+pub struct LastAttackable(pub u64);
 impl Params {
-    pub const DEFAULT: Params = Params { creature: None };
+    pub const DEFAULT: Params = Params { creature: None, window: 0 };
 }
 fn params(c: &Ctx) -> &'static Params {
     let p: &'static dyn std::any::Any = c.params;
@@ -44,7 +50,15 @@ pub fn attackable(w: &World, e: Entity, who: Who, creature: Option<&str>) -> boo
 }
 
 fn scan(w: &mut World, e: Entity, c: &Ctx) {
-    let creature = params(c).creature;
+    let (creature, window) = (params(c).creature, params(c).window);
+    if window > 0
+        && let Some(MemValue::Who(t)) = get(w, e, &ATTACK_TARGET)
+        && attackable(w, e, *t, creature)
+    {
+        let now = now_of(w, e);
+        w.entity_mut(e).insert(LastAttackable(now));
+        arm_at(w, e, now + window + 1, Due::BrainWake);
+    }
     // The `Mob` runs `sense_living` first in the same scan: the list is read afresh, not from `mobs`.
     let list = super::living::living_near(w, e);
     match list.into_iter().find(|&who| attackable(w, e, who, creature)) {

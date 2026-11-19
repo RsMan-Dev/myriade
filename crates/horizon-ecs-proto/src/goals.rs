@@ -1753,7 +1753,7 @@ mod tests {
         let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
         let e = h.world.spawn(cow_bundle(-39.0, -47.0, 51)).id();
         h.world.get_mut::<Pos>(e).unwrap().0.y = 3.0;
-        h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), 0.9, 1.4);
+        h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), crate::cow::species().width, crate::cow::species().height);
         ticks(&mut h, 60);
         let (mut floating, mut jumps, mut low, mut was) = (0, 0, 9.0_f64, false);
         for _ in 0..1500 {
