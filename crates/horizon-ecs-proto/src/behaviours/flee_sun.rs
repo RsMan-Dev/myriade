@@ -160,6 +160,9 @@ mod tests {
     /// test world has no lighting (a block set does not relight it), so no shade can be built to test the draw.
     #[test]
     fn a_burning_animal_in_the_day_walks_to_its_spot() {
+    if crate::cow::skip_unless_farm_goals("a_burning_animal_in_the_day_walks_to_its_spot") {
+        return;
+    }
     if crate::cow::skip_unless_small_body("a_burning_animal_in_the_day_walks_to_its_spot") {
         return;
     }

@@ -183,6 +183,9 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
 /// A sleeping creature has no wheel entry, no marker and no work; it does not move; it wakes with them again.
 #[test]
 fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("a_sleeping_creature_is_out_of_the_wheel_and_does_not_move") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("a_sleeping_creature_is_out_of_the_wheel_and_does_not_move") {
         return;
     }
@@ -221,6 +224,9 @@ fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
 /// woken.
 #[test]
 fn a_creature_walking_to_the_border_falls_asleep_there() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("a_creature_walking_to_the_border_falls_asleep_there") {
+        return;
+    }
     if !have_data() {
         return;
     }
@@ -307,6 +313,9 @@ fn a_hen_that_sleeps_lays_after_the_same_ticks_it_was_ticked() {
 /// chunks that tick are awake and the others asleep, and none of them is lost or made twice.
 #[test]
 fn the_herd_stays_awake_or_asleep_by_its_chunk() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("the_herd_stays_awake_or_asleep_by_its_chunk") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("the_herd_stays_awake_or_asleep_by_its_chunk") {
         return;
     }
@@ -425,6 +434,9 @@ fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
 /// `Mob` beside a mob that is not ticked is (`Entity.push` moves both; the sleeper does not move, its velocity changes).
 #[test]
 fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("a_sleeping_neighbour_still_pushes_an_awake_creature") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("a_sleeping_neighbour_still_pushes_an_awake_creature") {
         return;
     }

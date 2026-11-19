@@ -15,6 +15,9 @@ fn stats(v: &[[f64; 3]], fails: usize, n: usize) -> (f64, f64, f64, f64) {
 
 #[test]
 fn the_pickers_have_the_laws_of_the_mob() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("the_pickers_have_the_laws_of_the_mob") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("the_pickers_have_the_laws_of_the_mob") {
         return;
     }

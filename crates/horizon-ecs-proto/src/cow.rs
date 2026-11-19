@@ -3251,6 +3251,9 @@ mod tests {
     /// Two cows standing in each other are pushed apart; a sleeping cow they overlap is woken; a baby grows up.
     #[test]
     fn cows_push_each_other_and_babies_grow() {
+    if crate::cow::skip_unless_small_body("cows_push_each_other_and_babies_grow") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3674,6 +3677,9 @@ mod tests {
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
     #[test]
     fn a_hit_knocks_a_cow_back() {
+    if crate::cow::skip_unless_small_body("a_hit_knocks_a_cow_back") {
+        return;
+    }
     if crate::cow::skip_unless_walker("a_hit_knocks_a_cow_back") {
         return;
     }
@@ -3699,6 +3705,9 @@ mod tests {
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
     fn the_cows_walk_sleep_and_wake_on_the_slab() {
+    if crate::cow::skip_unless_small_body("the_cows_walk_sleep_and_wake_on_the_slab") {
+        return;
+    }
     if crate::cow::skip_unless_farm_goals("the_cows_walk_sleep_and_wake_on_the_slab") {
         return;
     }

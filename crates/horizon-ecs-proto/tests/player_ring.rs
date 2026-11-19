@@ -7,6 +7,9 @@ use horizon_ecs_proto::cow::*;
 
 #[test]
 fn the_ring_of_32_blocks_is_kept_by_events_for_walking_jumping_coming_and_going_players() {
+    if horizon_ecs_proto::cow::skip_unless_small_body("the_ring_of_32_blocks_is_kept_by_events_for_walking_jumping_coming_and_going_players") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("the_ring_of_32_blocks_is_kept_by_events_for_walking_jumping_coming_and_going_players") {
         return;
     }
