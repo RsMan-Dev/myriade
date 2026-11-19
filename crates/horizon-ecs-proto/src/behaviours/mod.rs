@@ -150,6 +150,8 @@ pub mod ranged_bow;
 pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
+pub mod panda_sneeze;
+pub mod panda_state;
 pub mod tempt;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
@@ -167,4 +169,5 @@ pub static TABLE: &[&Module] = &[
     &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &panda_sneeze::MODULE,
 ];
