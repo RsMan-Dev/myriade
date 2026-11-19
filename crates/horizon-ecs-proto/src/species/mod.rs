@@ -14,6 +14,11 @@ pub mod chicken;
 pub mod copper_golem;
 pub mod cow;
 pub mod pig;
+pub mod evoker;
+pub mod illusioner;
+pub mod guardian;
+pub mod elder_guardian;
+pub mod pillager;
 pub mod predicates;
 pub mod skeleton;
 pub mod stray;
@@ -129,7 +134,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &blaze::DEF,
     &polar_bear::DEF,
     &witch::DEF,
- &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
+ &pillager::DEF, &evoker::DEF, &illusioner::DEF, &guardian::DEF, &elder_guardian::DEF, &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
     &goat::DEF,
     &camel::DEF,
     &camel_husk::DEF,
@@ -602,7 +607,7 @@ mod tests {
         ("minecraft:dolphin", &[("breath_air", 0), ("try_find_water", 0), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
-        ("minecraft:drowned", &[("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:drowned", &[("ranged_attack", 2), ("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
         ("minecraft:frog", &[("long_jump", 3)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
@@ -644,6 +649,11 @@ mod tests {
         ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:witch", &[("hurt_by", 1), ("nearest_target", 3), ("float", 1), ("ranged_attack", 2), ("stroll", 2), ("look_at_player", 3), ("random_look", 3)]),
         ("minecraft:blaze", &[("hurt_by", 1), ("nearest_target", 2), ("burst_shot", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:pillager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("ranged_crossbow", 3), ("stroll", 8), ("look_at_player", 9)]),
+        ("minecraft:guardian", &[("nearest_target", 1), ("guardian_beam", 4), ("move_towards_restriction", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:elder_guardian", &[("nearest_target", 1), ("guardian_beam", 4), ("move_towards_restriction", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:evoker", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("spell_casting", 1), ("avoid_entity", 2), ("avoid_entity", 3), ("spell_use", 4), ("spell_use", 5), ("stroll", 8), ("look_at_player", 9)]),
+        ("minecraft:illusioner", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("spell_casting", 1), ("avoid_entity", 3), ("spell_use", 4), ("ranged_bow", 6), ("stroll", 8), ("look_at_player", 9)]),
         ("minecraft:parched", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4)]),
         ("minecraft:iron_golem", &[("hurt_by", 2), ("melee", 1), ("move_towards_target", 2), ("village_walk", 2), ("village_walk", 4), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
