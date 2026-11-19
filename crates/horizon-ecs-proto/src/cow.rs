@@ -2598,13 +2598,19 @@ fn hazard_tick(
         }
     }
 }
+/// The commands collected by `OrdCmds` (with the emitting entity) and the empty queues kept for the next scopes (no allocation per scope).
+#[derive(Default)]
+pub struct Pending {
+    done: Vec<(Entity, bevy_ecs::world::CommandQueue)>,
+    spare: Vec<bevy_ecs::world::CommandQueue>,
+}
 /// `ParallelCommands` with a DETERMINISTIC order: the commands each entity's visit emits are kept with the entity, and `flush` (at the end of
 /// the system) applies them sorted by entity, whatever thread ran the visit. The order commands are applied in decides the rows of the tables
 /// (an entity that changes table takes the last row), hence the iteration order of every later system: with the per-thread queues of
 /// `ParallelCommands` two runs, or two thread counts, gave different rows and so different games (suivi/ecs-echelle.md, G').
 #[derive(bevy_ecs::system::SystemParam)]
 pub struct OrdCmds<'w, 's> {
-    pending: Local<'s, std::sync::Mutex<Vec<(Entity, bevy_ecs::world::CommandQueue)>>>,
+    pending: Local<'s, std::sync::Mutex<Pending>>,
     par: ParallelCommands<'w, 's>,
     allocator: &'w bevy_ecs::entity::EntityAllocator,
     entities: &'w bevy_ecs::entity::Entities,
@@ -2612,24 +2618,33 @@ pub struct OrdCmds<'w, 's> {
 impl OrdCmds<'_, '_> {
     /// Commands emitted by the visit of `by` (the sort key); callable from the threads of a parallel iteration.
     pub fn command_scope(&self, by: Entity, f: impl FnOnce(Commands)) {
-        let mut q = bevy_ecs::world::CommandQueue::default();
+        let mut q = self.pending.lock().unwrap().spare.pop().unwrap_or_default();
         f(Commands::new_from_entities(&mut q, self.allocator, self.entities));
-        if !q.is_empty() {
-            self.pending.lock().unwrap().push((by, q));
+        let mut p = self.pending.lock().unwrap();
+        if q.is_empty() {
+            p.spare.push(q);
+        } else {
+            p.done.push((by, q));
         }
     }
     /// Hands the collected commands to the system's buffer, sorted by emitter (stable: one entity's commands keep their order).
     pub fn flush(&mut self) {
-        let mut v = std::mem::take(self.pending.get_mut().unwrap());
-        if v.is_empty() {
+        let p = self.pending.get_mut().unwrap();
+        if p.done.is_empty() {
             return;
         }
+        let mut v = std::mem::take(&mut p.done);
         v.sort_by_key(|c| c.0);
+        let mut spare = std::mem::take(&mut p.spare);
         self.par.command_scope(|mut cmd| {
-            for (_, mut q) in v {
+            for (_, mut q) in v.drain(..) {
                 cmd.append(&mut q);
+                spare.push(q);
             }
         });
+        let p = self.pending.get_mut().unwrap();
+        p.done = v;
+        p.spare = spare;
     }
 }
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
