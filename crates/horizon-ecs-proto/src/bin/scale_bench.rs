@@ -50,6 +50,9 @@ impl Rng {
 }
 
 fn main() {
+    if std::env::var_os("OWN").is_some() { horizon_ecs_proto::pathsearch::USE_OWN.store(true, std::sync::atomic::Ordering::Relaxed); }
+    eprintln!("path search: {}", if horizon_ecs_proto::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) { "OWN (pathsearch.rs)" } else { "Horizon Finder" });
+    if std::env::var_os("NOLAYER").is_some() { horizon_ecs_proto::pathsearch::LAYER_ON.store(false, std::sync::atomic::Ordering::Relaxed); }
     let a: Vec<String> = std::env::args().collect();
     let scene = a.get(1).map_or("rest", String::as_str);
     let n: usize = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(1000);
@@ -162,6 +165,7 @@ fn main() {
     // `TICKSTAT=file`: per tick "tick path_searches instructions wall_us".
     let mut tickstat = std::env::var("TICKSTAT").ok().map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap()));
     let mut times: Vec<f64> = Vec::with_capacity(ticks);
+    let prof = std::env::var_os("PROFILE").map(|_| horizon_ecs_proto::profile::instrument(&mut herd));
     let mut instr_total = 0u64;
     let mut instr_ticks: Vec<u64> = Vec::new();
     let zone_radius = envf("VIEW", 10.0) as i32;
@@ -201,6 +205,7 @@ fn main() {
             }
         }
         if t == warm {
+            if let Some(p) = prof.as_ref() { horizon_ecs_proto::profile::reset(p); }
             hs = status("VmHWM:");
             ws = status("VmRSS:");
         }
@@ -241,7 +246,17 @@ fn main() {
             h = (h ^ v).wrapping_mul(0x100_0000_01b3);
         }
     }
+    if let Some(p) = prof.as_ref() {
+        let r = p.lock().unwrap();
+        let t = r.ticks.max(1) as f64;
+        let mut rows: Vec<_> = r.rows.iter().map(|x| (x.name.rsplit("::").next().unwrap_or(&x.name).to_string(), (x.run + x.apply) as f64 / t, x.visited as f64 / t)).collect();
+        let sum: f64 = rows.iter().map(|x| x.1).sum();
+        rows.sort_by(|a, b| b.1.total_cmp(&a.1));
+        eprintln!("PROFILE per tick (n={n}): sum rows {:.0} instr/tick = {:.1} per entity; schedule total {:.0}", sum, sum / n as f64, r.total as f64 / t);
+        for x in rows.iter().take(25) { eprintln!("  {:>10.0} {:>7.1}/ent visited {:>8.0}  {}", x.1, x.1 / n as f64, x.2, x.0); }
+    }
     let nt = ticks as f64;
+    eprintln!("layer (main thread): {:?} (sections, bytes)", horizon_ecs_proto::pathsearch::layer_size());
     println!(
         "scene={scene} n={n} threads={threads} ticks={ticks} warm={warm} players={npl} spacing={spacing} | wall ms/tick: median={:.3} p99={:.3} mean={mean:.3} max={:.3} | instr/tick={:.0} median={} instr/entity/tick={:.1} | rss_MB={} rss_before_window_MB={} hwm_MB={} rss_empty_MB={} | build_s={build_s:.1} | entities {before}->{after} animals {animals0}->{animals1} asleep={asleep} awake-ish idle={idle}/{total} following={following} moving={moving} | checksum={h:016x}",
         q(0.5),
