@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Regression gate of the ECS prototype: runs bilan.sh (HORIZON_TEST_RESOURCES and D set, the benches built with
+# Regression gate of the ECS prototype. BUILD MODE MATTERS: build the benches with CARGO_INCREMENTAL=0 (an incremental build adds 5 to 8 %
+# to every line, the Mob's included); `BILAN_LOG=file` compares a saved bilan.sh output instead of running it.
+# runs bilan.sh (HORIZON_TEST_RESOURCES and D set, the benches built with
 # `cargo build -p horizon-ecs-proto --profile fast --bins`) and compares every ECS figure with `bilan.ref`.
 #   ./bilan_check.sh                  fails (exit 1) if a line is more than THRESHOLD % (default 1) above its reference
 #   ./bilan_check.sh --update "why"   writes the figures as the new reference and records the reason in bilan.ref.log
@@ -10,7 +12,7 @@ set -u
 cd "$(dirname "$0")"
 THRESHOLD=${THRESHOLD:-1}
 now=$(mktemp)
-./bilan.sh 2>/dev/null | awk '{
+{ if [ -n "${BILAN_LOG:-}" ]; then cat "$BILAN_LOG"; else ./bilan.sh 2>/dev/null; fi; } | awk '{
   label=$0; sub(/:.*/,"",label); if (label ~ /^(zombie chase|crowd)/) { l=$0; sub(/\).*/,")",l); label=l }
   n=split($0,a," ");
   for(i=1;i<=n;i++) if (a[i]=="ecs"||a[i]=="ecs-eager"||a[i]=="batch"||a[i]=="ordered") print label "|" a[i], a[i+1]

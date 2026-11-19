@@ -46,6 +46,9 @@ pub struct Module {
     /// The capabilities the module supposes of the entity it is on (what its state components and its systems read).
     /// A species whose configuration has the module without one of them is a startup error (`species::registry`).
     pub requires: &'static [Cap],
+    /// A running goal that is not interruptible keeps its flags against any goal, whatever the priority (`Goal.isInterruptable`:
+    /// the fox's pounce, the panda's roll).
+    pub interruptable: bool,
     /// Optional, not called yet (the `Damaged` event of the reactions step): the entity took damage.
     pub damaged: fn(&mut World, Entity, Inst, &Damaged),
     /// Optional, not called yet (the interactions step): a player used an item on the entity; true = handled (the first
@@ -71,6 +74,7 @@ impl Module {
         stop: no_inst,
         systems: no_systems,
         requires: &[],
+        interruptable: true,
         damaged: no_damaged,
         interact: no_interact,
     };

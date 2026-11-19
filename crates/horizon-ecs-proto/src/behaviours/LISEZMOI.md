@@ -125,3 +125,12 @@ Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contr
 ## Barrière de régression
 
 `bilan_check.sh` (dans `crates/horizon-ecs-proto`) : `HORIZON_TEST_RESOURCES=... D=<target>/fast ./bilan_check.sh` lance `bilan.sh` et échoue (sortie 1) si une ligne ECS dépasse sa référence `bilan.ref` de plus de `THRESHOLD` % (1 par défaut) ; une dérogation écrite dans `bilan.waivers` (`ligne|colonne ## pourcent ## raison`) excuse un surcoût qui achète de la fidélité au `Mob` ; `./bilan_check.sh --update "pourquoi"` change la référence et écrit la raison dans `bilan.ref.log`. À lancer à chaque fusion.
+
+## Services du cadre pour les buts (go_to, vitesse, regard, règles, événements)
+
+- Marche : `goals::go_to_at(&mut World, e, [x, y, z], vitesse, portée)` (système exclusif / point d'entrée de module) ; `goals::go_to_entity(w, e, cible, vitesse, portée)` (la position de la cible à cet instant : redemander pour suivre) ; `goals::go_to(&mut Commands, e, x, z, vitesse, but)` est la forme de SYSTÈME (rangée 1, `but` < 32 pour `ASKS`) : le GUIDE qui la dit utilisable depuis un système exclusif se trompe, un système exclusif prend `go_to_at`.
+- Vitesse écrite hors de la physique : `goals::set_velocity(w, e, v)` / `goals::impulse(w, e, dv)` posent `Moving` ; ne jamais écrire `Vel` seul.
+- Regard : `goals::aim_clamped(cmd, e, look, looking, at, y_speed, x_max)` (borne verticale de ce regard ; `None` = `Look.x_default`).
+- Règle de partie : `goals::mob_griefing(w)`.
+- `Module.interruptable` (défaut vrai) : un but en cours non interruptible garde ses drapeaux contre toute priorité.
+- Événements (lus une fois, au tick suivant) : `Events.hurt` (blessé), `hurt_by_entity` (blessé par une entité ; l'attaquant par `HurtBy`), `entered_powder_snow`, `left_powder_snow`, en plus des précédents.

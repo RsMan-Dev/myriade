@@ -1837,6 +1837,13 @@ pub(crate) fn reindex(
             events.left_fluid.push(e);
             *fs = FluidState::default();
         }
+        let was = hz.is_some_and(|h| h.0 & HAZ_SNOW != 0);
+        let is = bits & HAZ_SNOW != 0;
+        if is && !was {
+            events.entered_powder_snow.push(e);
+        } else if was && !is {
+            events.left_powder_snow.push(e);
+        }
         match (bits, hz) {
             (0, Some(_)) => {
                 commands.entity(e).remove::<Hazard>();
@@ -1867,6 +1874,7 @@ pub(crate) fn apply_damage(
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
+    mut events: ResMut<crate::goals::Events>,
     mut commands: Commands,
 ) {
     // The causes of the previous step were read by the goals (they run after this system in the chain).
@@ -1896,6 +1904,10 @@ pub(crate) fn apply_damage(
             continue;
         }
         hurts.0.push(e);
+        events.hurt.push(e);
+        if hit.by.is_some() {
+            events.hurt_by_entity.push(e);
+        }
         causes.0.push((e, hit.cause));
         if let Some(p) = hit.by {
             by.0.push((e, p));
