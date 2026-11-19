@@ -322,10 +322,16 @@ impl FinderBuffers {
 
 thread_local! {
     /// The maluses of the last profile seen (the same few species search over and over).
-    static MALUS_CACHE: std::cell::RefCell<(u64, [f32; PathType::COUNT])> = const { std::cell::RefCell::new((0, [0.0; PathType::COUNT])) };
+    static MALUS_CACHE: std::cell::RefCell<Option<ProfileCache>> = const { std::cell::RefCell::new(None) };
     static TLS_BUFFERS: std::cell::RefCell<FinderBuffers> = std::cell::RefCell::new(FinderBuffers::new());
 }
 
+/// The last mob profile seen: what defines it (width, height, doors, maluses), its hash and the maluses by type.
+struct ProfileCache {
+    key: (u32, u32, bool, bool, [Option<f32>; PathType::COUNT]),
+    hash: u64,
+    mt: [f32; PathType::COUNT],
+}
 /// The node table is a direct grid GW x GW x GH around the mob (a stamp per search, no clearing); the sections table TAB cells.
 const GW: usize = 97;
 const GH: usize = 17;
@@ -456,23 +462,24 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
         }
         let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
-        if use_layer {
+        if use_layer && stamp & 63 == 0 {
             layer_evict();
         }
         let mp = block_pos(mob);
-        let profile = profile_of(mob);
         let amph = matches!(eval, Evaluator::Amphibious { .. });
+        let key = (mob.width.to_bits(), mob.height.to_bits(), mob.can_open_doors, mob.can_pass_doors);
         let mut mt = [0.0f32; PathType::COUNT];
-        let cached_mt = !amph && MALUS_CACHE.with(|c| {
-            let c = c.borrow();
-            if c.0 == profile {
-                mt = c.1;
+        let mut profile = 0;
+        let hit = !amph && MALUS_CACHE.with(|c| match &*c.borrow() {
+            Some(pc) if pc.key.0 == key.0 && pc.key.1 == key.1 && pc.key.2 == key.2 && pc.key.3 == key.3 && pc.key.4 == mob.malus => {
+                mt = pc.mt;
+                profile = pc.hash;
                 true
-            } else {
-                false
             }
+            _ => false,
         });
-        if !cached_mt {
+        if !hit {
+            profile = profile_of(mob);
             for t in PathType::ALL {
                 mt[t as usize] = match (eval, t) {
                     (Evaluator::Amphibious { .. }, PathType::Water) => 0.0,
@@ -482,7 +489,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 };
             }
             if !amph {
-                MALUS_CACHE.with(|c| *c.borrow_mut() = (profile, mt));
+                MALUS_CACHE.with(|c| *c.borrow_mut() = Some(ProfileCache { key: (key.0, key.1, key.2, key.3, mob.malus), hash: profile, mt }));
             }
         }
         Self {
@@ -892,11 +899,29 @@ impl<'a, 'w> Finder<'a, 'w> {
         // SAFETY: in range of the grid, whose buffer lives as long as `self`.
         unsafe {
             let p = self.gp.add((dy * GW + dz) * GW + dx);
+            self.fresh(p);
+            Some(p)
+        }
+    }
+    /// Resets a grid cell from an older search.
+    #[inline(always)]
+    unsafe fn fresh(&self, p: *mut u64) {
+        // SAFETY: the caller gives a cell of the grid.
+        unsafe {
             if ((*p >> 32) as u16) != self.stamp as u16 {
                 *p = (0xFFu64 << 56) | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
             }
-            Some(p)
         }
+    }
+    /// The grid cell of (x, y, z) when it and its 8 horizontal neighbours and the cell above are all in the grid, without resetting it.
+    #[inline(always)]
+    fn centre(&self, x: i32, y: i32, z: i32) -> Option<*mut u64> {
+        let (dx, dy, dz) = (x.wrapping_sub(self.gox) as u32 as usize, y.wrapping_sub(self.goy) as u32 as usize, z.wrapping_sub(self.goz) as u32 as usize);
+        if !self.use_grid || dx == 0 || dz == 0 || dx >= GW - 1 || dz >= GW - 1 || dy == 0 || dy >= GH - 1 {
+            return None;
+        }
+        // SAFETY: in range of the grid.
+        Some(unsafe { self.gp.add((dy * GW + dz) * GW + dx) })
     }
     fn node(&mut self, x: i32, y: i32, z: i32) -> u32 {
         bump(5);
@@ -938,7 +963,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         t != PathType::Open && self.malus(t) >= 0.0
     }
     fn start(&mut self) -> Option<u32> {
-        let m = self.mob.clone();
+        let m = self.mob;
         let p = m.position;
         let b = m.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
@@ -1102,36 +1127,43 @@ impl<'a, 'w> Finder<'a, 'w> {
         current: PathType,
     ) -> Option<u32> {
         if self.use_layer && !Self::partial_collision(current) {
-            // Common case, all read from the grid cell (filled from the layer the first time): solid floor, walkable cell.
             if let Some(p) = self.slot(x, y, z) {
-                // SAFETY: a grid cell; `cached`/`static_floor`/`node_update_max` only fill fields of it.
-                let mut e = unsafe { *p };
-                if (e >> 48) as u8 == 0 {
-                    self.cached(x, y, z);
-                    e = unsafe { *p };
-                }
-                if (e >> 56) as u8 == 0xFF {
-                    self.static_floor(x, y, z);
-                    e = unsafe { *p };
-                }
-                let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
-                if c < 0xFE && ty == PathType::Walkable as u8 + 1 {
-                    if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
-                        return None;
-                    }
-                    let cost = self.mt[PathType::Walkable as usize];
-                    if cost < 0.0 {
-                        return None;
-                    }
-                    if idx == NONE {
-                        return Some(self.node_update_max(x, y, z, PathType::Walkable, cost));
-                    }
-                    let node = &mut self.nodes[idx as usize];
-                    node.kind = PathType::Walkable;
-                    node.cost_malus = node.cost_malus.max(cost);
-                    return Some(idx);
-                }
+                return self.find_accepted_p(p, x, y, z, jump, node_height, dir, current);
             }
+        }
+        self.find_accepted_slow(x, y, z, jump, node_height, dir, current)
+    }
+    /// `find_accepted` of the cell whose grid cell is `p` (already reset); `current` is not a partial-collision type.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn find_accepted_p(&mut self, p: *mut u64, x: i32, y: i32, z: i32, jump: i32, node_height: f64, dir: (i32, i32), current: PathType) -> Option<u32> {
+        // Common case, all read from the grid cell (filled from the layer the first time): solid floor, walkable cell.
+        // SAFETY: a grid cell; `cached`/`static_floor`/`node_update_max` only fill fields of it.
+        let mut e = unsafe { *p };
+        if (e >> 48) as u8 == 0 {
+            self.cached(x, y, z);
+            e = unsafe { *p };
+        }
+        if (e >> 56) as u8 == 0xFF {
+            self.static_floor(x, y, z);
+            e = unsafe { *p };
+        }
+        let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
+        if c < 0xFE && ty == PathType::Walkable as u8 + 1 {
+            if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
+                return None;
+            }
+            let cost = self.mt[PathType::Walkable as usize];
+            if cost < 0.0 {
+                return None;
+            }
+            if idx == NONE {
+                return Some(self.node_update_max(x, y, z, PathType::Walkable, cost));
+            }
+            let node = &mut self.nodes[idx as usize];
+            node.kind = PathType::Walkable;
+            node.cost_malus = node.cost_malus.max(cost);
+            return Some(idx);
         }
         self.find_accepted_slow(x, y, z, jump, node_height, dir, current)
     }
@@ -1391,18 +1423,53 @@ impl<'a, 'w> Finder<'a, 'w> {
             let n = &self.nodes[pos as usize];
             (n.x, n.y, n.z, n.g, n.walked)
         };
-        let above = self.cached(px, py + 1, pz);
-        let current = self.cached(px, py, pz);
+        // One grid access for the 3x3 cells around the node: the neighbours are the centre cell +- constants.
+        let cp = self.centre(px, py, pz);
+        let (above, current, height) = match cp {
+            Some(cp) => {
+                // SAFETY: `centre` keeps the cell above and the 3x3 cells inside the grid.
+                let up = unsafe { cp.add(GW * GW) };
+                unsafe {
+                    self.fresh(cp);
+                    self.fresh(up);
+                }
+                let (eu, ec) = unsafe { (*up, *cp) };
+                let above = match (eu >> 48) as u8 {
+                    0 => self.cached(px, py + 1, pz),
+                    v => PathType::ALL[usize::from(v - 1)],
+                };
+                let current = match (ec >> 48) as u8 {
+                    0 => self.cached(px, py, pz),
+                    v => PathType::ALL[usize::from(v - 1)],
+                };
+                let c = (unsafe { *cp } >> 56) as u8;
+                let height = if c < 0xFE && !self.mob.can_float {
+                    f64::from(py - 1) + f64::from(c) / 16.0
+                } else {
+                    self.floor_level(px, py, pz)
+                };
+                (above, current, height)
+            }
+            None => (self.cached(px, py + 1, pz), self.cached(px, py, pz), self.floor_level(px, py, pz)),
+        };
         let mut jump = 0;
         if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
             jump = self.mob.max_up_step.max(1.0).floor() as i32;
         }
-        let height = self.floor_level(px, py, pz);
         const DIRS: [(i32, i32, usize); 4] = [(0, -1, 2), (1, 0, 3), (0, 1, 0), (-1, 0, 1)];
         let pos_malus_neg = self.nodes[pos as usize].cost_malus < 0.0;
+        let centre = if Self::partial_collision(current) { None } else { cp };
         let mut by2d: [Option<u32>; 4] = [None; 4];
         for (dx, dz, i2) in DIRS {
-            let n = self.find_accepted(px + dx, py, pz + dz, jump, height, (dx, dz), current);
+            let n = match centre {
+                Some(cp) => {
+                    // SAFETY: `centre` keeps the 3x3 cells inside the grid.
+                    let q = unsafe { cp.offset(dx as isize + dz as isize * GW as isize) };
+                    unsafe { self.fresh(q) };
+                    self.find_accepted_p(q, px + dx, py, pz + dz, jump, height, (dx, dz), current)
+                }
+                None => self.find_accepted(px + dx, py, pz + dz, jump, height, (dx, dz), current),
+            };
             by2d[i2] = n;
             if let Some(n) = n {
                 let node = &self.nodes[n as usize];
@@ -1411,7 +1478,6 @@ impl<'a, 'w> Finder<'a, 'w> {
                 }
             }
         }
-        // by2d index i2 of the clockwise one and its offset, for the directions in DIRS order.
         for (dx, dz, i2) in DIRS {
             let (c, cdx, cdz) = match i2 {
                 2 => (3, 1, 0),
@@ -1420,7 +1486,16 @@ impl<'a, 'w> Finder<'a, 'w> {
                 _ => (2, 0, -1),
             };
             if self.diagonal_pair_valid(pos, by2d[i2], by2d[c]) {
-                let d = self.find_accepted(px + dx + cdx, py, pz + dz + cdz, jump, height, (dx, dz), current);
+                let (qx, qz) = (dx + cdx, dz + cdz);
+                let d = match centre {
+                    Some(cp) => {
+                        // SAFETY: as above.
+                        let q = unsafe { cp.offset(qx as isize + qz as isize * GW as isize) };
+                        unsafe { self.fresh(q) };
+                        self.find_accepted_p(q, px + qx, py, pz + qz, jump, height, (dx, dz), current)
+                    }
+                    None => self.find_accepted(px + qx, py, pz + qz, jump, height, (dx, dz), current),
+                };
                 if self.diagonal_valid(d) {
                     self.relax(pos, (px, py, pz, cg, cw), d.unwrap_or_default(), targets, max_len);
                 }
