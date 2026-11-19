@@ -216,6 +216,8 @@ pub mod fly_stroll;
 pub mod float;
 pub mod defend_leash_holder;
 pub mod follow_caravan;
+pub mod held_swap;
+pub mod pick_up_gear;
 pub mod follow_player_vehicle;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -310,6 +312,7 @@ pub static TABLE: &[&Module] = &[
     &breath_air::MODULE,
     &swim_with_player::MODULE,
     &follow_caravan::MODULE,
+    &pick_up_gear::MODULE,
     &defend_leash_holder::MODULE,
     &follow_player_vehicle::MODULE,
     &follow_parent::MODULE,

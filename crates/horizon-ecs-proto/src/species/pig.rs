@@ -25,7 +25,7 @@ pub static DEF: Def = Def {
         Change::Priority { module: &look_at_player::MODULE, nth: 0, priority: 7 },
         Change::Priority { module: &random_look::MODULE, nth: 0, priority: 8 },
     ],
-    rules: &[RuleEntry::new(&RIDE, &RideParams::PIG), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT)],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::PIG), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable]),
     ..Def::EMPTY
 };

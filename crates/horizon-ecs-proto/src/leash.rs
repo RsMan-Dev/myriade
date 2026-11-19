@@ -88,7 +88,7 @@ fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate:
     if let Some(l) = w.get::<Leash>(e) {
         return l.holder == Holder::Player(i.player) && detach(w, e).is_some();
     }
-    i.item == LEAD && attach(w, e, Holder::Player(i.player))
+    i.item == lead() && attach(w, e, Holder::Player(i.player))
 }
 
 pub fn holder_of(w: &World, e: Entity) -> Option<Holder> {

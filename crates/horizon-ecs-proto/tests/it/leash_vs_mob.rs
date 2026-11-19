@@ -212,11 +212,11 @@ fn a_lead_is_a_component_with_a_directory_events_and_a_home() {
     let e = spawn_species(&mut h.world, species(), 2.5, 0.5, 5);
     let o = spawn_species(&mut h.world, species(), 4.5, 0.5, 6);
     h.world.resource_mut::<Entered>().0.extend([e, o]);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: LEAD, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: lead(), off: 0 });
     assert!(!leash::is_leashed(&h.world, e));
-    assert!(interact(&mut h.world, e, &Interaction { player: 1, item: LEAD }), "the lead item puts the lead on");
+    assert!(interact(&mut h.world, e, &Interaction { player: 1, item: lead() }), "the lead item puts the lead on");
     assert_eq!(leash::holder_of(&h.world, e), Some(Holder::Player(1)));
-    assert!(!interact(&mut h.world, e, &Interaction { player: 2, item: LEAD }), "already held");
+    assert!(!interact(&mut h.world, e, &Interaction { player: 2, item: lead() }), "already held");
     assert!(leash::attach(&mut h.world, o, Holder::Entity(e)), "a creature may hold another");
     assert_eq!(leash::held_by(&h.world, Holder::Player(1)), vec![e]);
     assert_eq!(leash::held_by(&h.world, Holder::Entity(e)), vec![o]);
@@ -279,4 +279,35 @@ fn the_lamas_of_a_trader_defend_it() {
         h.tick();
     }
     assert!(h.world.get::<Target>(loose).is_none(), "a loose llama defends nobody");
+}
+
+/// Probe of the open gap of the caravan (PROBE=1): the first ticks of trial 7, which joins at tick 82 here and 5 in the original.
+#[test]
+fn probe_the_caravan_gaps() {
+    if skip() || std::env::var_os("PROBE").is_none() {
+        return;
+    }
+    let off = 1.5 * 7.0;
+    let pts = [Vec3::new(0.5, 1.0, 6.5), Vec3::new(3.5 + off * 0.2, 1.0, 2.5), Vec3::new(-4.5, 1.0, 1.5 + off * 0.3)];
+    let player = Vec3::new(0.5, 1.0, 12.5);
+    let mut h = Herd::with_slab(60, true, false);
+    let mut es = Vec::new();
+    for (k, p) in pts.iter().enumerate() {
+        let e = spawn_species(&mut h.world, species(), p.x, p.z, 21 + k as u64 + 49);
+        h.world.resource_mut::<Entered>().0.push(e);
+        es.push(e);
+    }
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    for _ in 0..3 {
+        h.tick();
+    }
+    assert!(leash::attach(&mut h.world, es[0], Holder::Player(1)));
+    for t in 1..=90u32 {
+        h.tick();
+        if t <= 12 || t % 10 == 0 {
+            let pos = |k: usize| { let p = h.world.get::<Pos>(es[k]).unwrap().0; (p.x, p.z) };
+            let g = |k: usize| h.world.get::<GoalSet>(es[k]).map(|g| g.entries().iter().enumerate().filter(|(i, _)| g.slot_running(*i as u8)).map(|(_, e)| e.module.name).collect::<Vec<_>>());
+            eprintln!("t{t}: A {:?} B {:?} {:?} lined {} C {:?} {:?} lined {}", pos(0), pos(1), g(1), h.world.get::<follow_caravan::Lined>(es[1]).is_some(), pos(2), g(2), h.world.get::<follow_caravan::Lined>(es[2]).is_some());
+        }
+    }
 }

@@ -128,9 +128,9 @@ fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 fn tempt_item() -> (u32, &'static str) {
     match species().name {
-        "minecraft:pig" => (CARROT, "minecraft:carrot"),
-        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
-        _ => (WHEAT, "minecraft:wheat"),
+        "minecraft:pig" => (carrot(), "minecraft:carrot"),
+        "minecraft:chicken" => (wheat_seeds(), "minecraft:wheat_seeds"),
+        _ => (wheat(), "minecraft:wheat"),
     }
 }
 fn have_data() -> bool {
@@ -1049,8 +1049,8 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         }
     };
     let mut log = Vec::new();
-    let stick = Some(("minecraft:carrot_on_a_stick", CARROT_ON_A_STICK));
-    let carrot = Some(("minecraft:carrot", CARROT));
+    let stick = Some(("minecraft:carrot_on_a_stick", carrot_on_a_stick()));
+    let carrot = Some(("minecraft:carrot", carrot()));
     set(&mut r, &mut h, &mut p, stick, 10, &mut t, &mut log);
     let stopped_at = t;
     set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);

@@ -39,7 +39,9 @@ fn run(ticks: u32, preroll: u32, boost: Option<(u32, u32)>, f: impl Fn(u32) -> (
     let at = r.mobs[i].position;
     h.world.get_mut::<Pos>(e).unwrap().0 = at;
     r.mobs[i].extra.set_saddled(true);
-    h.world.get_mut::<Mount>(e).unwrap().saddled = true;
+    // The saddle goes in its slot; `Mount.saddled` follows.
+    horizon_ecs_proto::equipment::set_slot(&mut h.world, e, horizon_ecs_proto::goals::Slot::Saddle, saddle());
+    assert!(h.world.get::<Mount>(e).unwrap().saddled);
     assert!(ride(&mut h.world, e, Who::Player(1)));
     let mut worst = 0.0_f64;
     for t in 1..=ticks {

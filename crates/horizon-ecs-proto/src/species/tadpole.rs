@@ -33,5 +33,6 @@ pub static DEF: Def = Def {
             },
         ],
     },
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tadpole_bucket", adult_only: false, takes_creature: true })],
     ..Def::EMPTY
 };

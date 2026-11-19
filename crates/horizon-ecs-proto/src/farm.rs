@@ -17,7 +17,7 @@ pub static LAY_EGG: Rule = Rule { name: "lay_egg", equip: equip_egg, attrs: crat
 /// The rule `wool` (no params): the sheep's wool, sheared until the animal eats again.
 pub static WOOL: Rule = Rule { name: "wool", equip: |w, e, _| {
     w.entity_mut(e).insert(Wool::default());
-}, attrs: crate::rules::no_attrs, interact: |w, e, _, i| i.item == crate::goals::SHEARS && shear(w, e) };
+}, attrs: crate::rules::no_attrs, interact: |w, e, _, i| i.item == crate::goals::shears() && shear(w, e) };
 /// The parameters of `wing_flap`: the hen's wings and her glide (a fall in the air has its downward speed multiplied by
 /// `fall_factor` each tick) and whether `causeFallDamage` answers no.
 #[derive(Clone, Copy, Debug)]

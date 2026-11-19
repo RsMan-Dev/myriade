@@ -1,4 +1,4 @@
 //! `Cow.registerGoals`: the base as it is.
 use super::{templates::farm_animal, Def};
 
-pub static DEF: Def = Def { name: "minecraft:cow", reference: Some(&farm_animal::DEF), ..Def::EMPTY };
+pub static DEF: Def = Def { name: "minecraft:cow", reference: Some(&farm_animal::DEF), rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:bucket", to: "minecraft:milk_bucket", adult_only: true, takes_creature: false })], ..Def::EMPTY };

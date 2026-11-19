@@ -67,7 +67,7 @@ pub static MODULE: Module = Module {
 /// `Animal.mobInteract`: a player's food puts an adult in love (the first module to answer true is the only one).
 fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
     let Some(b) = w.get::<BreedData>(e).copied() else { return false };
-    if i.item == 0 || !b.foods.iter().any(|f| crate::goals::item_id(f) == i.item) {
+    if i.item == 0 || !b.foods.iter().any(|f| crate::items::is(f, i.item)) {
         return false;
     }
     feed(w, e)
