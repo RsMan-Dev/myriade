@@ -220,6 +220,9 @@ pub mod swell;
 pub mod look_for_player;
 pub mod take_block;
 pub mod leave_block;
+pub mod freeze_when_looked_at;
+pub mod strider_go_to_lava;
+pub mod ghast_look;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -254,4 +257,7 @@ pub static TABLE: &[&Module] = &[
     &look_for_player::MODULE,
     &take_block::MODULE,
     &leave_block::MODULE,
+    &freeze_when_looked_at::MODULE,
+    &strider_go_to_lava::MODULE,
+    &ghast_look::MODULE,
 ];
