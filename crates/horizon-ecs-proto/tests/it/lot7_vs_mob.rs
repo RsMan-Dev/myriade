@@ -115,6 +115,15 @@ fn ps_immortal(h: &mut Herd) {
 
 
 
+/// Day or night in both worlds (the `Mob`'s world is a leaked static: written through a raw pointer, as the blocks are).
+fn set_day(r: &MobRef, h: &mut Herd, day: bool) {
+    // SAFETY: the test thread owns the world while it builds the scene; no reference to the field is alive.
+    unsafe {
+        (*(r.w as *const mobs::MobWorld as *mut mobs::MobWorld)).daylight = day;
+    }
+    h.world.resource_mut::<horizon_ecs_proto::hostile::Daylight>().0 = day;
+}
+
 /// Counts the airborne episodes of at least `min` ticks of a position trace where `air` says the animal is off the ground.
 fn episodes(air: &[bool], min: usize) -> (usize, Option<usize>) {
     let (mut n, mut run, mut first) = (0, 0, None);
@@ -164,13 +173,63 @@ fn frog_long_jumps_on_flat_ground() {
     eprintln!("frog: long jumps in 6 x 2400 ticks: mob {nm} ecs {ne}; first tick mean mob {:.0} ecs {:.0}", fm.iter().sum::<usize>() as f64 / fm.len().max(1) as f64, fe.iter().sum::<usize>() as f64 / fe.len().max(1) as f64);
 }
 
-/// The goat: a cow 8 blocks away, 3000 ticks, 6 draws: the charges of the ram (a horizontal step of more than 0.4 blocks in a tick) on each side.
+
+/// A trench (x 2 and 3, all z) across the flat ground, in both worlds: dry (`water = false`) or water with lily pads on it (`true`).
+fn trench(r: &MobRef, h: &mut Herd, water: bool) {
+    for x in 2..=3 {
+        for z in -12..=12 {
+            // Water: a pool one block deep; dry: a pit five blocks deep (a fall a walker does not take).
+            for y in if water { 0..=0 } else { -4..=0 } {
+                let below = if water { "minecraft:water" } else { "minecraft:air" };
+                r.set_block(x, y, z, below);
+                h.set_block(x, y, z, below);
+            }
+            if water {
+                r.set_block(x, 1, z, "minecraft:lily_pad");
+                h.set_block(x, 1, z, "minecraft:lily_pad");
+            }
+        }
+    }
+}
+
+/// The frog where the `Mob`'s long jump can start: a trench it cannot walk across (dry, or water with lily pads, the preferred blocks), by
+/// day and by night. Airborne episodes in 6 x 2400 ticks.
+#[test]
+fn frog_long_jumps_across_a_trench() {
+    if !on() {
+        return;
+    }
+    for (water, day) in [(false, true), (false, false), (true, true), (true, false)] {
+        let (mut nm, mut ne) = (0usize, 0usize);
+        for j in 0..6 {
+            let mut r = MobRef::new(24, false);
+            let mut h = Herd::with_slab(24, false, false);
+            trench(&r, &mut h, water);
+            set_day(&r, &mut h, day);
+            let i = mob_add(&mut r, mob_kind("minecraft:frog"), Vec3::new(0.5, 1.0, 0.5), j + 1);
+            r.mobs[i].ai.no_action_time = 0;
+            let e = ecs_named(&mut h, "minecraft:frog", None, 0.5, 0.5, 25_000 + j as u64, u64::from(far_id(j + 1)));
+            let (mut am, mut ae) = (Vec::new(), Vec::new());
+            for _ in 0..2400 {
+                r.step(None);
+                h.tick();
+                am.push(!r.mobs[i].on_ground);
+                ae.push(!h.world.get::<Contact>(e).map_or(true, |c| c.on_ground));
+            }
+            nm += episodes(&am, 12).0;
+            ne += episodes(&ae, 12).0;
+        }
+        eprintln!("frog trench water={water} day={day}: long jumps in 6 x 2400 ticks: mob {nm} ecs {ne}");
+    }
+}
+
+/// The goat: a cow 8 blocks away, 12000 ticks, 6 draws: the charges of the ram (a horizontal step of more than 0.4 blocks in a tick) on each side.
 #[test]
 fn goat_rams() {
     if !on() {
         return;
     }
-    let (mut nm, mut ne, mut fm, mut fe) = (0usize, 0usize, Vec::new(), Vec::new());
+    let (mut nm, mut ne, mut fm, mut fe, mut jm, mut je) = (0usize, 0usize, Vec::new(), Vec::new(), 0usize, 0usize);
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
         let mut h = Herd::with_slab(24, false, false);
@@ -188,29 +247,41 @@ fn goat_rams() {
         r.mobs[ci].health = 1.0e6;
         let view = player_view(Vec3::new(40.0, 1.0, 40.0), None);
         let (mut pm, mut pe) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
-        let (mut sm, mut se) = (Vec::new(), Vec::new());
-        for t in 0..3000 {
+        let (mut sm, mut se, mut am, mut ae) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut starts, mut was_ramming) = (Vec::new(), false);
+        for t in 0..12000 {
             r.step(Some(&view));
             h.tick();
             let (qm, qe) = (r.mobs[i].position, h.world.get::<Pos>(e).map_or(pe, |p| p.0));
-            if xz(qm, pm) > 0.4 {
+            let (gm, ge) = (r.mobs[i].on_ground, h.world.get::<Contact>(e).is_some_and(|c| c.on_ground));
+            // A charge is fast on the ground; a leap is airborne.
+            if xz(qm, pm) > 0.4 && gm {
                 sm.push(t);
             }
-            if xz(qe, pe) > 0.4 {
+            if xz(qe, pe) > 0.4 && ge {
                 se.push(t);
             }
+            am.push(!gm);
+            ae.push(!ge);
+            let ramming = h.world.get::<horizon_ecs_proto::behaviours::ram::Ramming>(e).is_some();
+            if ramming && !was_ramming {
+                starts.push(t);
+            }
+            was_ramming = ramming;
             (pm, pe) = (qm, qe);
         }
-        // Charges: runs of fast ticks separated by more than 20 ticks.
         let runs = |v: &[usize]| -> Vec<usize> { v.iter().enumerate().filter(|(k, t)| *k == 0 || **t - v[*k - 1] > 20).map(|(_, t)| *t).collect() };
         let (a, b) = (runs(&sm), runs(&se));
+        let (lm, le) = (episodes(&am, 12), episodes(&ae, 12));
         nm += a.len();
         ne += b.len();
+        jm += lm.0;
+        je += le.0;
         fm.extend(a.first().copied());
         fe.extend(b.first().copied());
-        eprintln!("goat #{j}: fast runs mob {a:?} ecs {b:?}");
+        eprintln!("goat #{j}: ecs ram goal starts {starts:?}; rams mob {a:?} ecs {b:?}; leaps mob {} (first {:?}) ecs {} (first {:?})", lm.0, lm.1, le.0, le.1);
     }
-    eprintln!("goat: charges in 6 x 3000 ticks: mob {nm} ecs {ne}; first mean mob {:.0} ecs {:.0}", fm.iter().sum::<usize>() as f64 / fm.len().max(1) as f64, fe.iter().sum::<usize>() as f64 / fe.len().max(1) as f64);
+    eprintln!("goat: leaps mob {jm} ecs {je}; rams in 6 x 12000 ticks: mob {nm} ecs {ne}; first mean mob {:.0} ecs {:.0}", fm.iter().sum::<usize>() as f64 / fm.len().max(1) as f64, fe.iter().sum::<usize>() as f64 / fe.len().max(1) as f64);
 }
 
 /// The camel sits down and stands up (`RandomSitting`: sitting periods; the pose changes take 40 and 52 ticks): the sitting periods of 6 camels in

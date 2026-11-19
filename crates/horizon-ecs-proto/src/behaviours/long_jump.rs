@@ -52,6 +52,9 @@ pub struct LongJumpState {
     p: Params,
     ready_at: u64,
     armed: Option<u64>,
+    /// A start from this block found no spot to leap to (every candidate is walkable or has no arc): the search is not repeated from it before the
+    /// date (the `Mob` repeats it at each start: up to 400 path searches; deviation, a block placed meanwhile is seen at the date).
+    futile: Option<([i32; 3], u64)>,
 }
 
 /// Le choix de la phase de préparation (`LongJumpToRandomPos` et `LongJumpToPreferredBlock`).
@@ -97,13 +100,15 @@ pub static MODULE: Module = Module {
 const ALLOWED_ANGLES: [i32; 4] = [65, 70, 75, 80];
 const FIND_JUMP_TRIES: i32 = 20;
 const PREPARE_JUMP_DURATION: i32 = 40;
+/// How long a start from a block that found nothing is not repeated from it.
+const FUTILE_FOR: u64 = 600;
 const MID_JUMP_DURATION: u64 = 100;
 /// `JUMP_VELOCITY_MULTIPLIER` (f32 dans le `Mob`).
 const JUMP_VELOCITY_MULTIPLIER: f32 = 3.571_428_8;
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert(LongJumpState { slot: inst.slot, p, ready_at: 0, armed: None });
+    w.entity_mut(e).insert(LongJumpState { slot: inst.slot, p, ready_at: 0, armed: None, futile: None });
 }
 
 fn sample(r: &mut Rng, (lo, hi): (i32, i32)) -> i32 {
@@ -182,9 +187,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     if st.p.gated_by_ram {
         let Some(ram) = w.get::<crate::behaviours::ram::RamCooldown>(e).copied() else { return false };
-        if ram.0 <= now || navigating(w, e) {
-            // Repli (GUIDE règle 4) : la condition de fond est vraie (le compte à rebours du bond est écoulé), aucun événement
-            // ne dit quand le bélier finit son compte à rebours : une redemande à +2, un seul fil par animal.
+        if ram.0 <= now {
+            // The ram is on: the activity wakes when the ram sets its cooldown (`ram::set_cooldown` wakes this goal), no polling.
+            return false;
+        }
+        if navigating(w, e) {
+            // Repli (GUIDE règle 4) : aucun événement ne dit quand la navigation finit : une redemande à +2, un seul fil par animal.
             schedule(w, e, now + 2);
             return false;
         }
@@ -193,7 +201,10 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let block = block_of(p);
     let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
     let honey = level_mw(w).block_name(block[0], block[1], block[2]) == "minecraft:honey_block";
-    let can = on_ground && !fluids.in_water && !fluids.in_lava && !honey;
+    let mut can = on_ground && !fluids.in_water && !fluids.in_lava && !honey;
+    if can && st.futile.is_some_and(|(b, until)| b == block && now < until) {
+        can = false;
+    }
     if !can {
         sample_cooldown(w, e, 2);
     }
@@ -264,11 +275,19 @@ fn tick(w: &mut World) {
 
 /// `LongJumpToRandomPos.canContinue` avant le saut : même position, des essais restants, pas dans l'eau, une case ou un tirage.
 fn run_preparing(w: &mut World, e: Entity) {
-    let Some(leap) = w.get::<Leap>(e).cloned() else { return };
+    let Some(leap) = w.get::<Leap>(e) else { return };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     let valid = leap.initial == Some(pos) && leap.tries > 0 && !in_water && !(leap.chosen.is_none() && leap.candidates.is_empty());
+    // Only a search over all the candidates proves that there is nothing (with a wish for a preferred block the first draw empties the list).
+    let found_nothing = leap.initial == Some(pos) && leap.chosen.is_none() && leap.candidates.is_empty() && !leap.wanting_preferred;
     if !valid {
+        if found_nothing {
+            let now = now_of(w, e);
+            if let Some(mut st) = w.get_mut::<LongJumpState>(e) {
+                st.futile = Some((block_of(pos), now + FUTILE_FOR));
+            }
+        }
         sample_cooldown(w, e, 2);
         if let Some(slot) = w.get::<LongJumpState>(e).map(|s| s.slot) {
             w.resource_mut::<Requests>().0.push(Req::End(e, slot));
@@ -280,7 +299,8 @@ fn run_preparing(w: &mut World, e: Entity) {
 
 /// `LongJumpToRandomPos.tick` (préparation) : tirer une case, ou regarder la case choisie et sauter après 40 ticks.
 fn prepare_tick(w: &mut World, e: Entity) {
-    let Some(mut leap) = w.get::<Leap>(e).cloned() else { return };
+    // Moved out and back (the 400 candidates of a box are not copied at each tick).
+    let Some(mut leap) = w.get_mut::<Leap>(e).map(|mut l| std::mem::take(&mut *l)) else { return };
     match leap.chosen {
         None => {
             leap.tries -= 1;
@@ -291,7 +311,7 @@ fn prepare_tick(w: &mut World, e: Entity) {
             leap.prepare += 1;
             if leap.prepare >= PREPARE_JUMP_DURATION {
                 if let Some(mut c) = w.get_mut::<Leap>(e) {
-                    *c = leap.clone();
+                    *c = std::mem::take(&mut leap);
                 }
                 leap_now(w, e, jump);
                 return;
@@ -319,11 +339,43 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
         let centre = Vec3::new(f64::from(target[0]) + 0.5, f64::from(target[1]) + 0.5, f64::from(target[2]) + 0.5);
         let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else { continue };
         leap.look = [centre.x, centre.y, centre.z];
-        // Repli : `create_path_raw(&[target], 0, 8.0).reached` est absent : la case n'est jamais marchable.
+        // `create_path_raw(&[target], 0, 8.0).reached` (`frog.rs:860-866`) : une case qu'un chemin de 8 blocs atteint se marche, pas de bond.
+        if walkable(w, e, &p, target) {
+            continue;
+        }
         leap.chosen = Some(v);
         leap.prepare = 0;
         return;
     }
+}
+
+/// Whether a path of at most 8 blocks reaches the block (`Mob.create_path_raw(&[target], 0, 8.0).reached`): the search `pathfind` makes, without
+/// touching the animal. The frog's is the amphibious one that prefers shallow water (`nav.rs:20`), the goat's the walking one.
+fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
+    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+    let (Some(pos), Some(body), Some(c), Some(sp)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Contact>(e), w.get::<NavParams>(e)) else { return false };
+    let in_fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+    if !c.on_ground && !in_fluid {
+        return false;
+    }
+    let pm = PathMob {
+        position: pos.0,
+        width: body.width,
+        height: body.height,
+        on_ground: c.on_ground,
+        in_water: in_fluid,
+        max_up_step: body.step_height,
+        max_fall_distance: crate::cow::comfortable_fall_distance(0.0),
+        malus: sp.malus,
+        can_float: sp.can_float,
+        can_open_doors: sp.can_open_doors,
+        can_pass_doors: sp.can_pass_doors,
+        can_walk_over_fences: sp.can_walk_over_fences,
+        stands_on_lava: false,
+    };
+    crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let evaluator = if p.swim_rules { Evaluator::Amphibious { prefers_shallow: true } } else { Evaluator::Walk };
+    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).find(&[target], 8.0, 0, (sp.follow_range * 16.0).floor() as i32).is_some_and(|path| path.reached)
 }
 
 /// `LongJumpToPreferredBlock.getJumpCandidate` : tant qu'il en veut, la première case tirée sur un bloc préféré, sinon la
@@ -527,6 +579,17 @@ mod tests {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
         let mut h = Herd::with_slab(30, false, false);
         set_lazy_look(&mut h.world, false);
+        // The animal stands on a pillar in a moat 5 blocks deep and 2 wide: no path of 8 blocks reaches the ground around (the `Mob`
+        // refuses to leap where it can walk, `frog.rs:860-866`).
+        for x in -2..=2 {
+            for z in -2..=2 {
+                if (x, z) != (0, 0) {
+                    for y in -4..=0 {
+                        h.set_block(x, y, z, "minecraft:air");
+                    }
+                }
+            }
+        }
         Some(h)
     }
     fn species_named(h: &Herd, name: &str) -> Species {
@@ -644,6 +707,8 @@ mod tests {
         }
         assert!(!running(&h, e), "without a ram cooldown the goat does not leap");
         h.world.entity_mut(e).insert(crate::behaviours::ram::RamCooldown(u64::MAX / 2));
+        // What `ram::set_cooldown` does when it sets the date.
+        crate::goals::wake(&mut h.world, e, &MODULE);
         let mut started = false;
         for _ in 0..200 {
             h.tick();
