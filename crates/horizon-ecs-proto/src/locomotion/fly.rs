@@ -15,8 +15,21 @@ use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
 
+/// How the flier is steered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    /// `FlyingMoveControl(max_turn, hovers)` along a path of `FlyingPathNavigation` (parrot, bee).
+    Path,
+    /// `GhastMoveControl`: a push toward the wanted spot every few ticks when the way is clear; no path (the goal sets the spot).
+    Float,
+    /// None: a goal or a rule moves the animal itself (a bat's flutter).
+    None,
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
+    pub control: Control,
+    /// `LivingEntity.travelFlying` (no gravity at all, the animal is a `flying` type) instead of `travelInAir` with the gravity off while it moves.
+    pub free: bool,
     /// `FlyingMoveControl.maxTurn`: the degrees a tick the pitch turns by.
     pub max_turn: f32,
     /// `FlyingMoveControl.hoversInPlace` (gravity stays off when there is nowhere to go; the flight has no gravity at all here, so it
@@ -26,11 +39,13 @@ pub struct Params {
     pub glide: f64,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { max_turn: 10.0, hovers: false, glide: 1.0 };
+    pub const DEFAULT: Params = Params { control: Control::Path, free: false, max_turn: 10.0, hovers: false, glide: 1.0 };
 }
 /// What the flight reads of the animal (from its species, once).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct FlyParams {
+    pub control: Control,
+    pub free: bool,
     pub max_turn: f32,
     pub hovers: bool,
     pub glide: f64,
@@ -42,12 +57,19 @@ pub struct FlyParams {
     pub vertical_drag: f32,
 }
 
+/// `GhastMoveControl.floatDuration`: the ticks to the next push.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FloatState(pub i32);
+
 pub static MODULE: Module = Module { name: "fly", requires: &[Cap::Locomotion, Cap::Body], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = crate::behaviours::params::<Params>(p);
     let Some(sid) = w.get::<SpeciesId>(e).map(|s| s.0) else { return };
     let sp = w.resource::<SpeciesTable>().0[sid as usize];
-    w.entity_mut(e).insert((FlyParams { max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
+    if p.control == Control::Float {
+        w.entity_mut(e).insert((FloatState(0), Moving));
+    }
+    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
 }
 
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
@@ -56,6 +78,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
         move_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
+        float_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
 }
@@ -174,6 +197,9 @@ fn move_control(mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &C
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     const EPSILON: f64 = 1.0e-5;
     for (pos, mut yaw, mut m, mut d, body, c, fp, head) in &mut q {
+        if fp.control != Control::Path {
+            continue;
+        }
         if m.active {
             m.active = false;
             d.no_gravity = true;
@@ -206,6 +232,41 @@ fn move_control(mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &C
     }
 }
 
+/// `Ghast.GhastMoveControl.tick`: every `floatDuration` ticks (2 to 6 drawn each time) a push of `FLYING_SPEED * 5 / 3` toward the wanted
+/// spot if the box can go there in a straight line, else the spot is dropped.
+#[allow(clippy::type_complexity)]
+fn float_control(level: Res<Level>, mut q: Query<(&Pos, &Bounds, &mut Vel, &mut MoveTo, &mut FloatState, &mut Rng, &FlyParams), With<FlyMode>>) {
+    for (pos, b, mut v, mut m, mut st, mut rng, fp) in &mut q {
+        if fp.control != Control::Float || !m.active {
+            continue;
+        }
+        // `floatDuration-- <= 0`: the test is on the value before the decrement.
+        let before = st.0;
+        st.0 -= 1;
+        if before > 0 {
+            continue;
+        }
+        st.0 += rng.next_int(5) + 2;
+        let t = Vec3::new(m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+        let len = t.length();
+        if len < 1.0e-6 {
+            continue;
+        }
+        let steps = len.ceil() as i32;
+        let clear = (1..=steps).all(|i| {
+            let f = f64::from(i) / f64::from(steps);
+            let d = Vec3::new(t.x * f, t.y * f, t.z * f);
+            level.mw.0.no_collision(horizon_core::geometry::Aabb::new(b.0.min_position().add_vector(d), b.0.max_position().add_vector(d)))
+        });
+        if clear {
+            let speed = 0.06 * 5.0 / 3.0;
+            v.0 = v.0.add_vector(Vec3::new(t.x / len * speed, t.y / len * speed, t.z / len * speed));
+        } else {
+            m.active = false;
+        }
+    }
+}
+
 /// `LivingEntity.travelInAir` of a flier: the walk's with the vertical input and, while the move control says so, no gravity; in a
 /// fluid it is the walk's travel. Then the glide of a parrot (`Parrot.calculateFlapping`).
 #[allow(clippy::type_complexity)]
@@ -227,7 +288,16 @@ fn travel(
         }
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
-        if fs.in_water || fs.in_lava {
+        if fp.free {
+            // `LivingEntity.travelFlying`: no gravity, the drag of the medium (0.91 in the air, 0.8 in water, 0.5 in lava).
+            let u = v.0;
+            v.0 = Vec3::new(if u.x.abs() < 0.003 { 0.0 } else { u.x }, if u.y.abs() < 0.003 { 0.0 } else { u.y }, if u.z.abs() < 0.003 { 0.0 } else { u.z });
+            let (speed, drag) = if fs.in_water { (0.02_f32, f64::from(0.8_f32)) } else if fs.in_lava { (0.02_f32, 0.5) } else { (fp.air_speed, f64::from(0.91_f32)) };
+            move_relative_3d(&mut v, y.0, speed, d.xxa, d.yya, d.zza);
+            do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
+            let m = v.0;
+            v.0 = Vec3::new(m.x * drag, m.y * drag, m.z * drag);
+        } else if fs.in_water || fs.in_lava {
             travel_one(&level, fluid, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
         } else {
             // `LivingEntity.aiStep`: the tiny motions are dropped.

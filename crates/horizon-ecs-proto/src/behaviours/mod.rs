@@ -194,6 +194,7 @@ pub mod example;
 pub mod eat_block;
 pub mod flee_sun;
 pub mod fish_swim;
+pub mod float_around;
 pub mod fly_stroll;
 pub mod float;
 pub mod follow_parent;
@@ -252,4 +253,5 @@ pub static TABLE: &[&Module] = &[
     &do_nothing::MODULE,
     &fish_swim::MODULE,
     &fly_stroll::MODULE,
+    &float_around::MODULE,
 ];
