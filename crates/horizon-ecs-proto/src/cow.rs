@@ -140,6 +140,7 @@ pub struct Following;
 /// the marker off when the cow is back at rest.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
+#[component(on_add = crate::item::moving_added)]
 pub struct Moving;
 /// `Mob.noActionTime` as a deadline: the stroll goal is refused from this tick on (100 ticks after a player was
 /// last within 32 blocks, or the cow was hurt).
@@ -1060,6 +1061,9 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     if has(crate::behaviours::Cap::Goals) {
         e.insert(goals_part(sp, uid, rng));
     }
+    if has(crate::behaviours::Cap::Tamable) {
+        e.insert(crate::tame::Owner::default());
+    }
     if has(crate::behaviours::Cap::Brain)
         && let Some(plan) = sp.brain
     {
@@ -1130,6 +1134,7 @@ pub fn schedule() -> Schedule {
     crate::projectile::register(&mut s);
     crate::brain::register(&mut s);
     crate::item::register(&mut s);
+    crate::tame::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -2060,6 +2065,7 @@ pub(crate) fn apply_damage(
     mut wheel: ResMut<Wheel>,
     mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
+    mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
     mut events: ResMut<crate::goals::Events>,
@@ -2106,6 +2112,10 @@ pub(crate) fn apply_damage(
         commands.entity(e).insert(crate::brain::LastDamage { at: clock.of(e), panic: !matches!(hit.cause, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming), by: hit.by });
         if let Some(p) = hit.by {
             by.0.push((e, p));
+            // `Player.setLastHurtMob`: what a player hit last, for the pets that attack it.
+            if let crate::targeting::Who::Player(id) = p {
+                ps.set_last_hurt(id, crate::targeting::Who::Entity(e), clock.0);
+            }
         }
         // The reactions of the modules to the hurt (`Animal.actuallyHurt` ends love, `after_hurt` resets `noActionTime`...): each
         // module of the entity has its `damaged` entry point; the frame does not know what they do.
@@ -2318,16 +2328,15 @@ fn push(
     par: ParallelCommands,
     // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
     // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
-    boxes: Query<(Ref<Bounds>, Has<Disabled>, Option<&Body>), Allow<Disabled>>,
+    boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
+    objects: Query<&Body>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>, Option<&Body>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
 ) {
-    // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed.
-    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool, body: Option<&Body>| {
-        if body.is_some_and(|b| b.object) {
-            return;
-        }
+    // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
+    let is_object = |e: Entity| objects.get(e).is_ok_and(|b| b.object);
+    let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
@@ -2336,8 +2345,8 @@ fn push(
             if o == e {
                 return;
             }
-            let Ok((ob, asleep, ob_body)) = boxes.get(o) else { return };
-            if ob_body.is_some_and(|b| b.object) || !b.0.intersects(ob.0) {
+            let Ok((ob, asleep)) = boxes.get(o) else { return };
+            if !b.0.intersects(ob.0) || is_object(o) || is_object(e) {
                 return;
             }
             overlapping += 1;
@@ -2404,7 +2413,7 @@ fn push(
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
-                if o != e && boxes.get(o).is_ok_and(|(ob, _, ob_body)| !ob_body.is_some_and(|b| b.object) && b.0.intersects(ob.0)) {
+                if o != e && boxes.get(o).is_ok_and(|(ob, _)| !is_object(o) && b.0.intersects(ob.0)) {
                     par.command_scope(|mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
@@ -2421,10 +2430,10 @@ fn push(
         }
     };
     if cfg.parallel {
-        movers.par_iter_mut().for_each(|(e, b, mut v, m, t, bd)| one(e, b, &mut v, m, t, bd));
+        movers.par_iter_mut().for_each(|(e, b, mut v, m, t)| one(e, b, &mut v, m, t));
     } else {
-        for (e, b, mut v, m, t, bd) in &mut movers {
-            one(e, b, &mut v, m, t, bd);
+        for (e, b, mut v, m, t) in &mut movers {
+            one(e, b, &mut v, m, t);
         }
     }
 }
@@ -3053,11 +3062,7 @@ impl Herd {
     }
     /// Puts the cow at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.
     pub fn teleport(&mut self, e: Entity, at: Vec3) {
-        let b = *self.world.get::<Body>(e).unwrap();
-        self.world.get_mut::<Pos>(e).unwrap().0 = at;
-        self.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
-        self.world.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
-        self.world.entity_mut(e).insert((Recheck, Moving));
+        teleport(&mut self.world, e, at);
     }
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);
@@ -3636,4 +3641,13 @@ mod tests {
         let until = herd.world.get::<ActiveUntil>(e).unwrap().0;
         assert!(until != u64::MAX && until <= herd.world.resource::<Clock>().0 + 100, "still active without end: {until}");
     }
+}
+
+/// Puts the entity at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.
+pub fn teleport(world: &mut World, e: Entity, at: Vec3) {
+    let b = *world.get::<Body>(e).unwrap();
+    world.get_mut::<Pos>(e).unwrap().0 = at;
+    world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
+    world.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
+    world.entity_mut(e).insert((Recheck, Moving));
 }

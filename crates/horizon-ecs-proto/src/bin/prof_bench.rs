@@ -23,10 +23,6 @@ fn main() {
             horizon_ecs_proto::projectile::launch(&mut herd.world, horizon_ecs_proto::projectile::Flight::ARROW, horizon_core::geometry::Vec3::new(x, 3.0, z), horizon_core::geometry::Vec3::new(0.05, -0.5, 0.0), None);
         }
     }
-    if std::env::var_os("POOL").is_some() {
-        herd.fill_water(4);
-        herd.tick();
-    }
     // ITEMS: N full stacks (which never merge) dropped from 1.5 blocks over the slab: `items` lets them land and sleep, `itemfall` drops N/50
     // more each tick; `itemsref` runs Horizon's own `ItemEntity.tick` on every item every tick (the same scene, the cost to compare).
     let spot_of = |i: usize| (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
@@ -56,6 +52,10 @@ fn main() {
         }
         println!("scene=itemsref n={n} ticks_measured={} instr/tick={:.0} instr/item-tick={:.0}", ticks - warm, total as f64 / (ticks - warm) as f64, total as f64 / (ticks - warm) as f64 / n as f64);
         return;
+    }
+    if std::env::var_os("POOL").is_some() {
+        herd.fill_water(4);
+        herd.tick();
     }
     let shared = profile::instrument(&mut herd);
     let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();

@@ -181,7 +181,7 @@ pub fn fly(
                 (Who::Entity(t), Some(Who::Entity(o))) => dq.add_by_entity(t, amount, from, o),
                 (Who::Entity(t), Some(Who::Player(id))) => dq.add_by(t, amount, from, id),
                 (Who::Entity(t), None) => dq.add_from(t, amount, Cause::Entity, from),
-                (Who::Player(id), _) => ps.hurt(clock.0, id, amount, from),
+                (Who::Player(id), owner) => ps.hurt(clock.0, id, amount, from, owner),
             }
             if let Who::Entity(t) = who {
                 events.projectile_hit.push(t);

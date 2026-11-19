@@ -149,6 +149,7 @@ pub const BEETROOT_SEEDS: u32 = 7;
 pub const MELON_SEEDS: u32 = 8;
 pub const PUMPKIN_SEEDS: u32 = 9;
 pub const SHEARS: u32 = 10;
+pub const BONE: u32 = 11;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -162,6 +163,7 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:melon_seeds" => MELON_SEEDS,
         "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
         "minecraft:shears" => SHEARS,
+        "minecraft:bone" => BONE,
         _ => 0,
     }
 }
@@ -560,6 +562,7 @@ pub fn insert_resources(world: &mut World) {
     crate::projectile::insert_resources(world);
     crate::brain::insert_resources(world);
     crate::item::insert_resources(world);
+    crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {

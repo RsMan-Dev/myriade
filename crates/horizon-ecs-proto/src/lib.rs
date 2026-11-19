@@ -22,5 +22,6 @@ pub mod projectile;
 pub mod rules;
 pub mod spots;
 pub mod species;
+pub mod tame;
 pub mod targeting;
 pub mod zone;

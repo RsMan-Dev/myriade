@@ -18,6 +18,7 @@ pub mod predicates;
 pub mod skeleton;
 pub mod sheep;
 pub mod templates;
+pub mod wolf;
 pub mod zombie;
 pub mod cod;
 pub mod parrot;
@@ -26,7 +27,7 @@ pub mod ghast;
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF];
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -66,7 +67,7 @@ pub struct Def {
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
-const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
+const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform)];
 impl Def {
     pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[] };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
@@ -405,7 +406,7 @@ mod tests {
             }
         };
         for name in names() {
-            if name == "minecraft:copper_golem" {
+            if name == "minecraft:copper_golem" || name == "minecraft:wolf" {
                 continue; // its behaviours are a brain, not a selector
             }
             let got: Flat = config(name).entries.iter().map(|e| (e.module, e.priority)).collect();

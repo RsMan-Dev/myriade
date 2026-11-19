@@ -99,6 +99,8 @@ pub enum Cap {
     Brain,
     /// Walking, paths, the move control.
     Locomotion,
+    /// An owner (`tame.rs`): the component `Owner`; taming and sitting are a rule and an occupation.
+    Tamable,
     /// A stack on the ground (`item.rs`): needs `Transform`; no life, no goals, no box in the creature index.
     Item,
 }
@@ -236,6 +238,9 @@ pub mod leap_at_target;
 pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
+pub mod follow_owner;
+pub mod owner_target;
+pub mod sit_when_ordered;
 pub mod neutral_anger;
 pub mod panda_sit;
 
@@ -288,4 +293,7 @@ pub static TABLE: &[&Module] = &[
     &silverfish_merge::MODULE,
     &fly_stroll::MODULE,
     &float_around::MODULE,
+    &follow_owner::MODULE,
+    &owner_target::MODULE,
+    &sit_when_ordered::MODULE,
 ];
