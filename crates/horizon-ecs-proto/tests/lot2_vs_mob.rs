@@ -7,7 +7,7 @@ use common::*;
 use horizon_client_lib::mobs::{self, Mob, MobEvent, Who as MWho};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    behaviours::{Entry, freeze_when_looked_at, ghast_look, leap_at_target, silverfish_merge, strider_go_to_lava, leave_block, neutral_anger, panda_sit, panda_state as ps, ranged_attack, stroll, take_block},
+    behaviours::{Entry, attack_turtle_egg, fox_eat_berries, fox_sleep, look_for_player, move_towards_target, freeze_when_looked_at, ghast_look, leap_at_target, silverfish_merge, strider_go_to_lava, leave_block, neutral_anger, panda_sit, panda_state as ps, ranged_attack, stroll, take_block},
     cow::*,
     goals::*,
     projectile::Projectile,
@@ -60,6 +60,15 @@ fn spot(j: usize, step: f64, row: usize) -> Vec3 {
 fn near(j: usize) -> Vec3 {
     Vec3::new(-0.5 + 1.2 * (j % 8) as f64, 1.0, -3.5 + 1.2 * (j / 8) as f64)
 }
+/// A roof block over a column of the `Mob`'s world, with the light engine run on it (a raw `set_block` leaves the sky light as it
+/// was: the `Mob` still sees the sky; the ECS's `BlockChanges` relights).
+fn roof(r: &MobRef, x: i32, z: i32) {
+    r.set_block(x, 6, z, "minecraft:stone");
+    // SAFETY: as `MobRef::set_block`.
+    unsafe {
+        horizon_client_lib::mobs::world::relight_test_world(&mut *r.level.blocks.0, &[(x, 6, z)]);
+    }
+}
 fn mean_of(v: &[Option<usize>]) -> (usize, f64) {
     let f: Vec<f64> = v.iter().filter_map(|x| x.map(|t| t as f64)).collect();
     (f.len(), f.iter().sum::<f64>() / f.len().max(1) as f64)
@@ -94,7 +103,7 @@ fn enderman_first(take: bool, ticks: usize, batch: usize) -> (Vec<Option<usize>>
         }
         es.push(e);
         // A roof over the column: the enderman's own daylight teleport (`R:enderman`, not ported) needs the sky.
-        r.set_block(p.x.floor() as i32, 6, p.z.floor() as i32, "minecraft:stone");
+        roof(&r, p.x.floor() as i32, p.z.floor() as i32);
         h.set_block(p.x.floor() as i32, 6, p.z.floor() as i32, "minecraft:stone");
         // The ring of eight dirt blocks around the foot, at the height of the feet, on both sides.
         if take {
@@ -158,7 +167,7 @@ fn enderman_leave_block_first_placement() {
         return;
     }
     let (mut m, mut e) = (Vec::new(), Vec::new());
-    for b in 0..16 {
+    for b in 0..24 {
         let (a, c) = enderman_first(false, 24_000, b);
         m.extend(a);
         e.extend(c);
@@ -656,4 +665,432 @@ fn freeze_reask_cost_wall_time() {
     };
     let (a, b) = (run(false), run(true));
     eprintln!("freeze re-ask: 1500 animals holding a player: {b:.0} us/tick with the module, {a:.0} us/tick without: {:.2} us per animal per tick", (b - a) / 1500.0);
+}
+
+/// A block with properties in the world of the `Mob` (`MobRef`) and in the one of the ECS (the herd's level): the ECS can only
+/// write names through `BlockChanges`, the controls that need a ripe bush write the state directly.
+fn set_state(r: &MobRef, h: &Herd, x: i32, y: i32, z: i32, name: &str, props: &[(&str, &str)]) {
+    let reg = r.w.registry;
+    let base = reg.default_state(name).unwrap();
+    let mut st = reg.state(base).unwrap().clone();
+    for (k, v) in props {
+        st.properties.insert((*k).into(), (*v).into());
+    }
+    let id = reg.id(&st).unwrap();
+    for blocks in [r.level.blocks.0, h.world.resource::<Level>().blocks.0] {
+        // SAFETY: the test thread owns the two worlds while it builds the scene (no reference to their blocks is alive).
+        unsafe {
+            let _ = (&mut *blocks).set(x, y, z, id);
+        }
+    }
+}
+
+/// The cone of the stare at two distances, both sides: an enderman targeting a player freezes when the player looks at its
+/// eyes within `sqrt(2 x 0.025 / distance)` and not beyond.
+#[test]
+fn freeze_when_looked_at_cone_at_two_distances() {
+    if !on() {
+        return;
+    }
+    for d in [6.0_f64, 14.0] {
+        let crit = (2.0_f64 * 0.025 / d).sqrt();
+        for (k, expect) in [(0.8, true), (1.25, false)] {
+            let theta = crit * k;
+            let player = Vec3::new(0.5 + d, 1.0, 0.5);
+            let mut r = MobRef::new(40, false);
+            let i = mob_add(&mut r, mob_kind("minecraft:enderman"), Vec3::new(0.5, 1.0, 0.5), 3);
+            r.mobs[i].ai.target = Some(MWho::Player);
+            let eye_h = r.mobs[i].eye_y() - r.mobs[i].position.y;
+            let to = [-d, 1.0 + eye_h - (1.0 + 1.62), 0.0];
+            let len = (to[0] * to[0] + to[1] * to[1]).sqrt();
+            let u = [to[0] / len, to[1] / len, 0.0];
+            let look = [u[0] * theta.cos() - u[2] * theta.sin(), u[1], u[0] * theta.sin() + u[2] * theta.cos()];
+            let mut view = player_view(player, None);
+            view.look = look;
+            let entries: &'static [Entry] = leak([Entry::new(&freeze_when_looked_at::MODULE, 1, &freeze_when_looked_at::Params::DEFAULT)]);
+            let mut h = Herd::with_slab(40, false, false);
+            let e = ecs_with(&mut h, entries, 0.5, 0.5, 31, 3);
+            h.world.entity_mut(e).insert(Eye(eye_h));
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+            {
+                let mut ps = h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>();
+                ps.gaze.resize(2, [0.0, 0.0, 1.0]);
+                ps.gaze[1] = look;
+            }
+            h.tick();
+            let mut t = Target::player(1, 1000);
+            t.must_see = false;
+            set_target(&mut h.world, e, t);
+            let (mut mob, mut ecs) = (false, false);
+            for _ in 0..6 {
+                r.step(Some(&view));
+                h.tick();
+                mob |= r.mobs[i].ai.goals.running_names().iter().any(|n| n.contains("FreezeWhenLookedAt"));
+                ecs |= h.world.get::<freeze_when_looked_at::Freezing>(e).is_some();
+            }
+            eprintln!("freeze d={d} angle {:.2} deg ({k} x the cone): mob {mob} ecs {ecs}", theta.to_degrees());
+            assert_eq!((mob, ecs), (expect, expect), "d={d} k={k}");
+        }
+    }
+}
+
+/// An enderman and a player who stares at it from 8 blocks: the tick at which the player becomes its target, and that a player
+/// who looks away (30 degrees) never does. Roof over the column (the enderman teleports in daylight otherwise).
+#[test]
+fn look_for_player_delay_and_stare() {
+    if !on() {
+        return;
+    }
+    let mut res = Vec::new();
+    for (name, theta) in [("stares", 0.0_f64), ("looks away", 0.5)] {
+        let player = Vec3::new(8.5, 1.0, 0.5);
+        let (mut mob_t, mut ecs_t) = (Vec::new(), Vec::new());
+        for batch in 0..4 {
+            let mut r = MobRef::new(40, false);
+            let mut h = Herd::with_slab(40, false, false);
+            let entries: &'static [Entry] = leak([Entry::new(&look_for_player::MODULE, 1, &look_for_player::Params::DEFAULT)]);
+            let (mut ids, mut es) = (Vec::new(), Vec::new());
+            // Eight endermen on a row along z, each 8 blocks from the player's x, the player stays one: same gaze for all.
+            for j in 0..8usize {
+                let at = Vec3::new(0.5, 1.0, 0.5 + 0.0 * j as f64);
+                let _ = at;
+                let _ = j;
+            }
+            let i = mob_add(&mut r, mob_kind("minecraft:enderman"), Vec3::new(0.5, 1.0, 0.5), 40 + batch);
+            r.mobs[i].ai.goals.disabled = mobs::goals::MOVE | mobs::goals::LOOK | mobs::goals::JUMP;
+            roof(&r, 0, 0);
+            h.set_block(0, 6, 0, "minecraft:stone");
+            ids.push(i);
+            let eye_h = r.mobs[i].eye_y() - r.mobs[i].position.y;
+            let to = [-8.0, eye_h - 1.62, 0.0];
+            let len = (to[0] * to[0] + to[1] * to[1]).sqrt();
+            let u = [to[0] / len, to[1] / len];
+            let look = [u[0] * theta.cos(), u[1], u[0] * theta.sin()];
+            let mut view = player_view(player, None);
+            view.look = look;
+            let e = ecs_with(&mut h, entries, 0.5, 0.5, 80 + batch as u64, u64::from(far_id(40 + batch)));
+            h.world.entity_mut(e).insert(Eye(eye_h));
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+            {
+                let mut ps = h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>();
+                ps.gaze.resize(2, [0.0, 0.0, 1.0]);
+                ps.gaze[1] = look;
+            }
+            es.push(e);
+            let (mut mt, mut et) = (None, None);
+            for t in 1..=40 {
+                r.step(Some(&view));
+                h.tick();
+                if mt.is_none() && r.mobs[i].ai.target.is_some() {
+                    mt = Some(t);
+                }
+                if et.is_none() && h.world.get::<Target>(e).is_some() {
+                    et = Some(t);
+                }
+            }
+            mob_t.push(mt);
+            ecs_t.push(et);
+        }
+        eprintln!("look_for_player {name}: first tick with the target: mob {mob_t:?} ecs {ecs_t:?}");
+        res.push((theta, mob_t, ecs_t));
+    }
+    let (stare_m, stare_e) = (&res[0].1, &res[0].2);
+    assert!(stare_m.iter().all(Option::is_some) && stare_e.iter().all(Option::is_some), "the stare is taken on both sides");
+    assert!(res[1].1.iter().all(Option::is_none) && res[1].2.iter().all(Option::is_none), "a look away is never taken");
+    let (a, b) = (mean_of(&stare_m.iter().map(|x| x.map(|v| v as usize)).collect::<Vec<_>>()), mean_of(&stare_e.iter().map(|x| x.map(|v| v as usize)).collect::<Vec<_>>()));
+    assert!((a.1 - b.1).abs() <= 3.0, "delay {a:?} vs {b:?}");
+}
+
+/// A fox under a roof, by day, alone: the tick at which it falls asleep (the countdown of `reduced(140)` asks, then the asks
+/// that find the conditions), and the tick at which it wakes when a cow stands 5 blocks away from tick 400.
+#[test]
+fn fox_sleep_delay_and_wake() {
+    if !on() {
+        return;
+    }
+    let (mut ms, mut es, mut mw, mut ew) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for batch in 0..10 {
+        let n = 16;
+        let mut r = MobRef::new(24, false);
+        // Day for the Mob (its world is leaked; nothing reads it while this thread writes the flag).
+        unsafe {
+            let w = r.w as *const horizon_client_lib::mobs::MobWorld as *mut horizon_client_lib::mobs::MobWorld;
+            (*w).daylight = true;
+        }
+        let mut h = Herd::with_slab(24, false, false);
+        h.world.insert_resource(horizon_ecs_proto::hostile::Daylight(true));
+        let entries: &'static [Entry] = leak([Entry::new(&fox_sleep::MODULE, 7, &fox_sleep::Params::DEFAULT)]);
+        let (mut ids, mut fe) = (Vec::new(), Vec::new());
+        for j in 0..n {
+            let p = spot(j, 12.0, 4);
+            let i = mob_add(&mut r, mob_kind("minecraft:fox"), p, j + 50 * batch);
+            ids.push(i);
+            fe.push(ecs_with(&mut h, entries, p.x, p.z, 1500 + (j + 50 * batch) as u64, u64::from(far_id(j + 50 * batch))));
+            roof(&r, p.x.floor() as i32, p.z.floor() as i32);
+            h.set_block(p.x.floor() as i32, 6, p.z.floor() as i32, "minecraft:stone");
+        }
+        let mut cows = Vec::new();
+        let (mut sm, mut se) = (vec![None; n], vec![None; n]);
+        let (mut wm, mut we) = (vec![None; n], vec![None; n]);
+        for t in 0..900 {
+            if t == 400 {
+                for j in 0..n {
+                    let p = spot(j, 12.0, 4);
+                    let k = r.kind.clone();
+                    let c = mob_add(&mut r, k, Vec3::new(p.x + 5.0, 1.0, p.z), 1000 + j + 50 * batch);
+                    r.mobs[c].ai.goals.clear();
+                    cows.push(c);
+                    // Another species than the fox's own (the ECS fox is a cow body: a cow would be "its kind", no alarm).
+                    let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:zombie").unwrap();
+                    sp.goals = horizon_ecs_proto::species::Config { entries: &[] };
+                    let ce = spawn_species(&mut h.world, &sp, p.x + 5.0, p.z, 9000 + (j + 50 * batch) as u64);
+                    h.world.get_mut::<ActiveUntil>(ce).unwrap().0 = u64::MAX;
+                    h.world.resource_mut::<Entered>().0.push(ce);
+                }
+            }
+            r.step(None);
+            h.tick();
+            if t == 300 && batch == 0 && std::env::var_os("L2DBG").is_some() {
+                let m = &r.mobs[ids[0]];
+                let at = [m.position.x.floor() as i32, (m.position.y + 1.0).floor() as i32, m.position.z.floor() as i32];
+                eprintln!("fox dbg: daylight {} sky {} walk {:?} xxa {} zza {} running {:?} flags {:?}", r.w.daylight, r.w.can_see_sky(at[0], at[1], at[2]), m.walk_target_value(r.w, at), m.ai.xxa, m.ai.zza, m.ai.goals.running_names(), m.ai.nav.is_done());
+            }
+            for j in 0..n {
+                let m_sleeps = r.mobs[ids[j]].ai.goals.running_names().iter().any(|x| x.contains("Sleep"));
+                let e_sleeps = h.world.get::<fox_sleep::Sleeping>(fe[j]).is_some();
+                if m_sleeps && sm[j].is_none() {
+                    sm[j] = Some(t);
+                }
+                if e_sleeps && se[j].is_none() {
+                    se[j] = Some(t);
+                }
+                if t >= 400 {
+                    if !m_sleeps && sm[j].is_some() && wm[j].is_none() {
+                        wm[j] = Some(t);
+                    }
+                    if !e_sleeps && se[j].is_some() && we[j].is_none() {
+                        we[j] = Some(t);
+                    }
+                }
+            }
+        }
+        ms.extend(sm);
+        es.extend(se);
+        mw.extend(wm);
+        ew.extend(we);
+    }
+    let (a, b, c, d) = (mean_of(&ms), mean_of(&es), mean_of(&mw), mean_of(&ew));
+    eprintln!("fox_sleep: asleep (count, mean tick) mob {a:?} ecs {b:?}; wakes after the cow came (count, mean tick) mob {c:?} ecs {d:?}");
+    assert!(a.0 >= 100 && b.0 >= 100, "{a:?} {b:?}");
+    assert!((a.1 - b.1).abs() < 30.0, "asleep {a:?} vs {b:?}");
+    assert!(c.0 >= 100 && d.0 >= 100, "{c:?} {d:?}");
+}
+
+/// A fox with a ripe berry bush 4 blocks away: the tick of its first pick (arrival, then 40 ticks), on each side. The bush
+/// stays ripe on both sides here (the ECS cannot write the block properties).
+#[test]
+fn fox_eat_berries_first_pick() {
+    if !on() {
+        return;
+    }
+    let (mut mf, mut ef) = (Vec::new(), Vec::new());
+    for batch in 0..4 {
+        let n = 16;
+        let mut r = MobRef::new(24, false);
+        let mut h = Herd::with_slab(24, false, false);
+        let entries: &'static [Entry] = leak([Entry::new(&fox_eat_berries::MODULE, 10, &fox_eat_berries::Params::DEFAULT)]);
+        let (mut ids, mut es) = (Vec::new(), Vec::new());
+        for j in 0..n {
+            let p = spot(j, 12.0, 4);
+            let i = mob_add(&mut r, mob_kind("minecraft:fox"), p, j + 50 * batch);
+            ids.push(i);
+            es.push(ecs_with(&mut h, entries, p.x, p.z, 1700 + (j + 50 * batch) as u64, u64::from(far_id(j + 50 * batch))));
+            set_state(&r, &h, p.x.floor() as i32 + 4, 1, p.z.floor() as i32, "minecraft:sweet_berry_bush", &[("age", "3")]);
+        }
+        let (mut a, mut b) = (vec![None; n], vec![None; n]);
+        for t in 0..600 {
+            r.step(None);
+            h.tick();
+            for j in 0..n {
+                if a[j].is_none() && r.mobs[ids[j]].extra.main_hand_id().is_some() {
+                    a[j] = Some(t);
+                }
+                if b[j].is_none() && h.world.get::<fox_eat_berries::Picked>(es[j]).is_some() {
+                    b[j] = Some(t);
+                }
+            }
+        }
+        mf.extend(a);
+        ef.extend(b);
+    }
+    let (a, b) = (mean_of(&mf), mean_of(&ef));
+    eprintln!("fox_eat_berries: first pick within 600 ticks (count, mean tick) mob {a:?} ecs {b:?}");
+    assert!(a.0 >= 30 && b.0 >= 30, "{a:?} {b:?}");
+    assert!((a.1 - b.1).abs() / a.1 < 0.35, "{a:?} {b:?}");
+}
+
+/// A zombie-kind body with only the egg goal and a turtle egg 8 blocks away: the tick at which the egg is gone (the search
+/// delay `reduced(200 + nextInt(200))`, the walk, the 60 ticks of trampling), on each side.
+#[test]
+fn attack_turtle_egg_first_break() {
+    if !on() {
+        return;
+    }
+    let (mut mf, mut ef) = (Vec::new(), Vec::new());
+    for batch in 0..4 {
+        let n = 16;
+        let mut r = MobRef::new(24, false);
+        let mut h = Herd::with_slab(24, false, false);
+        let entries: &'static [Entry] = leak([Entry::new(&attack_turtle_egg::MODULE, 4, &attack_turtle_egg::Params::DEFAULT)]);
+        let (mut ids, mut es, mut eggs) = (Vec::new(), Vec::new(), Vec::new());
+        for j in 0..n {
+            let p = spot(j, 12.0, 4);
+            let i = mob_add(&mut r, mob_kind("minecraft:zombie"), p, j + 50 * batch);
+            r.mobs[i].ai.goals.clear();
+            r.mobs[i].ai.targets.clear();
+            r.mobs[i].ai.goals.add(4, mobs::undead::AttackTurtleEgg::default());
+            ids.push(i);
+            es.push(ecs_with(&mut h, entries, p.x, p.z, 1900 + (j + 50 * batch) as u64, u64::from(far_id(j + 50 * batch))));
+            let egg = (p.x.floor() as i32 + 6, 1, p.z.floor() as i32);
+            r.set_block(egg.0, egg.1, egg.2, "minecraft:turtle_egg");
+            h.set_block(egg.0, egg.1, egg.2, "minecraft:turtle_egg");
+            eggs.push(egg);
+        }
+        let (mut a, mut b) = (vec![None; n], vec![None; n]);
+        for t in 0..900 {
+            let from = r.events.len();
+            r.step(None);
+            h.tick();
+            for ev in &r.events[from..] {
+                if let MobEvent::BreakBlock { pos, .. } = ev {
+                    if let Some(j) = eggs.iter().position(|e| [e.0, e.1, e.2] == *pos) {
+                        a[j].get_or_insert(t);
+                    }
+                }
+            }
+            let mw = h.world.resource::<Level>().mw.0;
+            for j in 0..n {
+                if b[j].is_none() && mw.block_name(eggs[j].0, eggs[j].1, eggs[j].2) != "minecraft:turtle_egg" {
+                    b[j] = Some(t);
+                }
+            }
+        }
+        mf.extend(a);
+        ef.extend(b);
+    }
+    let (a, b) = (mean_of(&mf), mean_of(&ef));
+    eprintln!("attack_turtle_egg: first break within 900 ticks (count, mean tick) mob {a:?} ecs {b:?}");
+    assert!(a.0 >= 30 && b.0 >= 30, "{a:?} {b:?}");
+    assert!((a.1 - b.1).abs() / a.1 < 0.35, "{a:?} {b:?}");
+}
+
+/// An iron golem that targets a cow 20 blocks away (a 32-block range): does the goal "move towards the target" start, when, and
+/// where does the golem stand after 60 ticks; beyond 32 blocks it does not start. The `Mob`'s melee goal (priority 1) may take
+/// the legs first: the scenario then says that the goal is shadowed there, as it is in the game.
+#[test]
+fn move_towards_target_start_and_range() {
+    if !on() {
+        return;
+    }
+    for dist in [20.0_f64, 36.0] {
+        let (mut mob_first, mut ecs_first) = (Vec::new(), Vec::new());
+        let (mut mob_moved, mut ecs_moved) = (Vec::new(), Vec::new());
+        let mut melee_seen = 0;
+        for batch in 0..3 {
+            let n = 12;
+            let mut r = MobRef::new(40, false);
+            let mut h = Herd::with_slab(40, false, false);
+            let entries: &'static [Entry] = leak([Entry::new(&move_towards_target::MODULE, 2, &move_towards_target::Params::DEFAULT)]);
+            let (mut gs, mut es, mut start) = (Vec::new(), Vec::new(), Vec::new());
+            for j in 0..n {
+                let p = Vec3::new(-30.5 + 0.0, 1.0, -30.5 + 5.0 * j as f64);
+                let g = mob_add(&mut r, mob_kind("minecraft:iron_golem"), p, j + 50 * batch);
+                let k = r.kind.clone();
+                let c = mob_add(&mut r, k, Vec3::new(p.x + dist, 1.0, p.z), 1000 + j + 50 * batch);
+                r.mobs[c].ai.goals.clear();
+                let cid = r.mobs[c].id;
+                r.mobs[g].ai.target = Some(MWho::Mob(cid));
+                gs.push(g);
+                let e = ecs_with(&mut h, entries, p.x, p.z, 2100 + (j + 50 * batch) as u64, u64::from(far_id(j + 50 * batch)));
+                let mut sp = *species();
+                sp.goals = horizon_ecs_proto::species::Config { entries: &[] };
+                let ce = spawn_species(&mut h.world, &sp, p.x + dist, p.z, 9500 + (j + 50 * batch) as u64);
+                h.world.get_mut::<ActiveUntil>(ce).unwrap().0 = u64::MAX;
+                let mut t = Target::new(Who::Entity(ce), 1000, u8::MAX);
+                t.must_see = false;
+                // The cow body follows to 16 blocks: the target of a golem (follow range 32 here) is kept at 36.
+                t.follow_scale = 3.0;
+                es.push((e, t));
+                start.push(p);
+            }
+            h.tick();
+            for (e, t) in &es {
+                set_target(&mut h.world, *e, *t);
+            }
+            let (mut a, mut b) = (vec![None; n], vec![None; n]);
+            for t in 1..=60 {
+                r.step(None);
+                h.tick();
+                for j in 0..n {
+                    let names = r.mobs[gs[j]].ai.goals.running_names();
+                    if names.iter().any(|x| x.contains("MeleeAttack")) {
+                        melee_seen += 1;
+                    }
+                    if a[j].is_none() && names.iter().any(|x| x.contains("MoveTowardsTarget")) {
+                        a[j] = Some(t);
+                    }
+                    if b[j].is_none() && h.world.get::<move_towards_target::ApproachingTarget>(es[j].0).is_some() {
+                        b[j] = Some(t);
+                    }
+                }
+            }
+            for j in 0..n {
+                mob_moved.push(r.mobs[gs[j]].position.x - start[j].x);
+                ecs_moved.push(h.world.get::<Pos>(es[j].0).unwrap().0.x - start[j].x);
+            }
+            mob_first.extend(a);
+            ecs_first.extend(b);
+        }
+        let (mm, em) = (mean_of(&mob_first), mean_of(&ecs_first));
+        let avg = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+        eprintln!(
+            "move_towards_target dist {dist}: started (count, mean tick) mob {mm:?} ecs {em:?}; mean x moved in 60 ticks mob {:.1} ecs {:.1}; ticks with the melee running on the Mob side {melee_seen}",
+            avg(&mob_moved),
+            avg(&ecs_moved)
+        );
+        if dist > 32.0 {
+            assert!(mm.0 == 0 && em.0 == 0, "beyond 32 blocks neither starts: {mm:?} {em:?}");
+        }
+    }
+}
+
+/// The picker of the "move towards the target" goal on its own: `DefaultRandomPos.getPosTowards(16, 7, to, a quarter turn)`
+/// toward a point 20 blocks east on flat ground, on the Mob and in the ECS (`spots_vs_mob` does not cover this picker).
+#[test]
+fn default_towards_picker_has_the_law_of_the_mob() {
+    use horizon_ecs_proto::spots::{Pick, spotter};
+    if !on() {
+        return;
+    }
+    let (mut r, h) = flat_pair();
+    let at = Vec3::new(0.5, 1.0, 0.5);
+    let i = r.add(at);
+    let level = *h.world.resource::<Level>();
+    let sp = *species();
+    let nav = NavParams { malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, follow_range: sp.follow_range };
+    let to = [20.5, 1.0, 0.5];
+    let mut rng = Rng(0x1234_5678_9ABC_DEF1);
+    let (mut mob, mut ecs) = (Vec::new(), Vec::new());
+    let n = 20000;
+    for _ in 0..n {
+        if let Some(p) = r.mobs[i].default_random_pos_towards(r.w, 16, 7, to, std::f64::consts::FRAC_PI_2) {
+            mob.push(p);
+        }
+        if let Some(p) = spotter(&level, [at.x, at.y, at.z], &nav, sp.walk, &mut rng).pick(Pick::DefaultTowards { h: 16, v: 7, to, max_rad: std::f64::consts::FRAC_PI_2 }) {
+            ecs.push(p);
+        }
+    }
+    let m = |v: &[[f64; 3]], k: usize| v.iter().map(|p| p[k]).sum::<f64>() / v.len().max(1) as f64;
+    eprintln!("default_towards 16,7 to +20 x: success mob {:.3} ecs {:.3}; mean x mob {:.2} ecs {:.2}; mean z mob {:.2} ecs {:.2}", mob.len() as f64 / n as f64, ecs.len() as f64 / n as f64, m(&mob, 0), m(&ecs, 0), m(&mob, 2), m(&ecs, 2));
+    assert!((mob.len() as f64 - ecs.len() as f64).abs() / (n as f64) < 0.03, "success: mob {} ecs {}", mob.len(), ecs.len());
 }

@@ -20,6 +20,9 @@ pub struct Leaving {
     pub asks: i32,
     pub armed: bool,
     pub slot: u8,
+    /// The entity time at which the drawn wait ends (the wheel holds at most `WHEEL_MAX` = 4 095 ticks: a longer wait is
+    /// armed in pieces, a deadline before `due` is not the draw's).
+    pub due: u64,
 }
 
 pub static MODULE: Module = Module {
@@ -36,7 +39,7 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert(Leaving { asks: p.asks, armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(Leaving { asks: p.asks, armed: false, slot: inst.slot, due: 0 });
 }
 /// Arms the next draw while the enderman carries a block and the rule allows it.
 pub fn arm_leave(w: &mut World, e: Entity) {
@@ -46,16 +49,24 @@ pub fn arm_leave(w: &mut World, e: Entity) {
     }
     let wait = with_rng(w, e, |r| 2 * geometric(r, l.asks));
     crate::goals::arm(w, e, l.slot, wait);
-    w.get_mut::<Leaving>(e).unwrap().armed = true;
+    let due = now_of(w, e) + wait.max(1) as u64;
+    let mut l = w.get_mut::<Leaving>(e).unwrap();
+    l.armed = true;
+    l.due = due;
 }
 fn arm(w: &mut World, e: Entity, _: Inst) {
     arm_leave(w, e);
 }
 /// A deadline of this goal, or a replayed start: always asks `can_use`.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    if let Some(mut l) = w.get_mut::<Leaving>(e) {
-        l.armed = false;
+    let now = now_of(w, e);
+    let Some(l) = w.get::<Leaving>(e).copied() else { return true };
+    // A wait longer than the wheel's reach comes up in pieces: the rest is armed again, nothing is asked.
+    if l.armed && now < l.due {
+        crate::goals::arm(w, e, l.slot, (l.due - now) as i32);
+        return false;
     }
+    w.get_mut::<Leaving>(e).unwrap().armed = false;
     true
 }
 /// `EndermanLeaveBlockGoal.canUse` after the draw: carries a block, and `mobGriefing`.
