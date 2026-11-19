@@ -1,0 +1,230 @@
+//! Random positions, once for every module: `DefaultRandomPos` / `LandRandomPos` (the plain, away, towards and scored
+//! forms) with the vanilla rules of a candidate: the offset is rounded to a block BEFORE it is added to the position
+//! (`RandomPos.generateRandomPosTowardDirection`), the position is checked (height, stable destination, the path
+//! malus), and the best of ten by the species' `walk_target_value` wins (the first on a tie). A module calls `pick` and
+//! never writes its own draw. The numbers come from `Mob` (`goals.rs` `default_random_pos*`, `land_random_pos*`,
+//! `ai.rs` `walk_target_value`); the random stream is the entity's `Rng` (the same laws, not the same stream).
+use crate::cow::{Level, NavParams, Rng};
+use bevy_ecs::prelude::*;
+use horizon_client_lib::mobs::MobWorld;
+
+/// `PathfinderMob.getWalkTargetValue`: what the species prefers to walk to (data of the species, set at spawn).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WalkValue {
+    /// Every place alike (`Enderman`, `Pillager`, `Warden`, `Axolotl`...: the ten tries pick the first valid).
+    Zero,
+    /// `Animal.getWalkTargetValue`: grass 10, else the light above the dark (`brightness - 0.5`).
+    Animal,
+    /// `Monster.getWalkTargetValue`: the opposite of the light (`0.5 - brightness`): the dark.
+    Monster,
+    /// `MushroomCow`: mycelium 10, else the light.
+    Mooshroom,
+    /// `Bee`: any air block.
+    Bee,
+}
+/// The value of walking to the block `p` (the species' preference).
+pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
+    let light = || mw.brightness(p[0], p[1], p[2]) - 0.5;
+    match wv {
+        WalkValue::Zero => 0.0,
+        WalkValue::Monster => -light(),
+        WalkValue::Mooshroom => {
+            if mw.block_name(p[0], p[1] - 1, p[2]) == "minecraft:mycelium" {
+                10.0
+            } else {
+                light()
+            }
+        }
+        WalkValue::Bee => {
+            if mw.facts.is_air(mw.world.block(p[0], p[1], p[2])) {
+                10.0
+            } else {
+                0.0
+            }
+        }
+        WalkValue::Animal => {
+            if mw.block_name(p[0], p[1] - 1, p[2]) == "minecraft:grass_block" {
+                10.0
+            } else {
+                light()
+            }
+        }
+    }
+}
+/// `PathNavigation.isStableDestination` of a ground navigation: a solid block under the spot.
+pub fn stable_destination(mw: &MobWorld, p: [i32; 3]) -> bool {
+    mw.facts.get(mw.world.block(p[0], p[1] - 1, p[2])).solid_render
+}
+
+/// What a draw needs of the entity: where it is, its stream, its path maluses and its preference.
+pub struct Spotter<'a> {
+    pub mw: &'a MobWorld<'a>,
+    pub pos: [f64; 3],
+    pub nav: &'a NavParams,
+    pub walk: WalkValue,
+    pub rng: &'a mut Rng,
+}
+/// The forms of the vanilla position pickers.
+#[derive(Clone, Copy, Debug)]
+pub enum Pick {
+    /// `DefaultRandomPos.getPos(mob, h, v)`.
+    Default { h: i32, v: i32 },
+    /// `DefaultRandomPos.getPosAway(mob, h, v, from)`.
+    DefaultAway { h: i32, v: i32, from: [f64; 3] },
+    /// `DefaultRandomPos.getPosTowards(mob, h, v, to, max_rad)`.
+    DefaultTowards { h: i32, v: i32, to: [f64; 3], max_rad: f64 },
+    /// `LandRandomPos.getPos(mob, h, v)`.
+    Land { h: i32, v: i32 },
+    /// `LandRandomPos.getPosAway(mob, min_h, max_h, v, from)` (`min_h` 0 for the form without a minimum).
+    LandAway { min_h: f64, max_h: f64, v: i32, from: [f64; 3] },
+    /// `LandRandomPos.getPosTowards(mob, h, v, to)`.
+    LandTowards { h: i32, v: i32, to: [f64; 3] },
+}
+impl Rng {
+    /// `RandomSource.nextFloat`.
+    pub fn next_float(&mut self) -> f32 {
+        (self.next_u32() >> 8) as f32 / 16_777_216.0
+    }
+}
+impl Spotter<'_> {
+    fn malus_is_zero(&self, p: [i32; 3]) -> bool {
+        let t = self.mw.path_type_static(p[0], p[1], p[2]);
+        self.nav.malus[t as usize].unwrap_or_else(|| t.malus()) == 0.0
+    }
+    fn direction(&mut self, h: i32, v: i32) -> [i32; 3] {
+        let x = self.rng.next_int(2 * h + 1) - h;
+        let y = self.rng.next_int(2 * v + 1) - v;
+        let z = self.rng.next_int(2 * h + 1) - h;
+        [x, y, z]
+    }
+    /// `RandomPos.generateRandomDirectionWithinRadians`.
+    fn direction_within(&mut self, min: f64, max: f64, v: i32, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
+        let center = horizon_core::geometry::trig::atan2(zd, xd) - f64::from(std::f32::consts::FRAC_PI_2);
+        let yrad = center + f64::from(2.0 * self.rng.next_float() - 1.0) * max_rad;
+        let dist = (min + self.rng.next_f64().sqrt() * (max - min)) * f64::from(std::f32::consts::SQRT_2);
+        let xt = -dist * f64::from((yrad as f32).sin());
+        let zt = dist * f64::from((yrad as f32).cos());
+        if xt.abs() > max || zt.abs() > max {
+            return None;
+        }
+        let yt = self.rng.next_int(2 * v + 1) - v;
+        Some([xt.floor() as i32, yt, zt.floor() as i32])
+    }
+    /// The offset is a block offset: it is rounded first, then added to the position and rounded again.
+    fn toward(&self, d: [i32; 3]) -> [i32; 3] {
+        [
+            (f64::from(d[0]) + self.pos[0]).floor() as i32,
+            (f64::from(d[1]) + self.pos[1]).floor() as i32,
+            (f64::from(d[2]) + self.pos[2]).floor() as i32,
+        ]
+    }
+    fn in_height(&self, p: [i32; 3]) -> bool {
+        p[1] >= self.mw.world.bottom_y() && p[1] < self.mw.world.top_y()
+    }
+    fn default_check(&self, p: [i32; 3]) -> bool {
+        self.in_height(p) && stable_destination(self.mw, p) && self.malus_is_zero(p)
+    }
+    /// `LandRandomPos.movePosUpOutOfSolid` and the water / malus refusal.
+    fn land_up_out_of_solid(&self, mut p: [i32; 3]) -> Option<[i32; 3]> {
+        let mw = self.mw;
+        if mw.solid(p[0], p[1], p[2]) {
+            p[1] += 1;
+            while p[1] < mw.world.top_y() && mw.solid(p[0], p[1], p[2]) {
+                p[1] += 1;
+            }
+        }
+        let water = mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water;
+        (!water && self.malus_is_zero(p)).then_some(p)
+    }
+    fn candidate(&mut self, pick: Pick) -> Option<[i32; 3]> {
+        match pick {
+            Pick::Default { h, v } => {
+                let d = self.direction(h, v);
+                let p = self.toward(d);
+                self.default_check(p).then_some(p)
+            }
+            Pick::DefaultAway { h, v, from } => {
+                let (xd, zd) = (self.pos[0] - from[0], self.pos[2] - from[2]);
+                let d = self.direction_within(0.0, f64::from(h), v, xd, zd, std::f64::consts::FRAC_PI_2)?;
+                let p = self.toward(d);
+                self.default_check(p).then_some(p)
+            }
+            Pick::DefaultTowards { h, v, to, max_rad } => {
+                let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
+                let d = self.direction_within(0.0, f64::from(h), v, xd, zd, max_rad)?;
+                let p = self.toward(d);
+                self.default_check(p).then_some(p)
+            }
+            Pick::Land { h, v } => {
+                let d = self.direction(h, v);
+                let p = self.toward(d);
+                if !self.in_height(p) || !stable_destination(self.mw, p) {
+                    return None;
+                }
+                self.land_up_out_of_solid(p)
+            }
+            Pick::LandAway { .. } | Pick::LandTowards { .. } => unreachable!("drawn by `pick_in_direction`"),
+        }
+    }
+    /// `LandRandomPos.getPosInDirection`: ten tries within a quarter turn of the direction `(xd, zd)`.
+    fn land_in_direction(&mut self, min_h: f64, max_h: f64, v: i32, xd: f64, zd: f64) -> Option<[f64; 3]> {
+        self.best_of_ten(|s| {
+            let d = s.direction_within(min_h, max_h, v, xd, zd, f64::from(std::f32::consts::FRAC_PI_2))?;
+            let p = s.toward(d);
+            if !s.in_height(p) || !stable_destination(s.mw, p) {
+                return None;
+            }
+            s.land_up_out_of_solid(p)
+        })
+    }
+    /// `PathfinderMob`-side `pickBest`: ten tries, the highest `walk_target_value` wins (the first on a tie).
+    fn best_of_ten(&mut self, mut supplier: impl FnMut(&mut Self) -> Option<[i32; 3]>) -> Option<[f64; 3]> {
+        let mut best: Option<[i32; 3]> = None;
+        let mut best_weight = f64::NEG_INFINITY;
+        for _ in 0..10 {
+            if let Some(p) = supplier(self) {
+                let v = f64::from(walk_target_value(self.mw, self.walk, p));
+                if v > best_weight {
+                    best_weight = v;
+                    best = Some(p);
+                }
+            }
+        }
+        best.map(|p| [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5])
+    }
+    /// A position by one of the vanilla pickers, or `None` (the caller's goal does not start).
+    pub fn pick(&mut self, pick: Pick) -> Option<[f64; 3]> {
+        match pick {
+            Pick::LandAway { min_h, max_h, v, from } => {
+                let (mut xd, mut zd) = (self.pos[0] - from[0], self.pos[2] - from[2]);
+                if xd == 0.0 && zd == 0.0 {
+                    xd = self.rng.next_f64() - 0.5;
+                    zd = self.rng.next_f64() - 0.5;
+                }
+                self.land_in_direction(min_h, max_h, v, xd, zd)
+            }
+            Pick::LandTowards { h, v, to } => {
+                let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
+                self.land_in_direction(0.0, f64::from(h), v, xd, zd)
+            }
+            other => self.best_of_ten(|s| s.candidate(other)),
+        }
+    }
+}
+/// Everything a system needs to build a `Spotter` for an entity.
+pub fn spotter<'a>(level: &'a Level, pos: [f64; 3], nav: &'a NavParams, walk: WalkValue, rng: &'a mut Rng) -> Spotter<'a> {
+    Spotter { mw: level.mw.0, pos, nav, walk, rng }
+}
+/// The call a module makes: a position for the entity `e` by the vanilla picker `pick`, drawn from its own random stream
+/// (written back), with its position, its path maluses and its walk preference read from its components. `None` when the
+/// picker finds nothing (the goal does not start) or the entity has no body or no walking.
+pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
+    let pos = w.get::<crate::cow::Pos>(e)?.0;
+    let nav = *w.get::<NavParams>(e)?;
+    let walk = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
+    let level = *w.get_resource::<Level>()?;
+    let mut rng = Rng(w.get::<Rng>(e)?.0);
+    let out = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng).pick(pick);
+    w.get_mut::<Rng>(e)?.0 = rng.0;
+    out
+}

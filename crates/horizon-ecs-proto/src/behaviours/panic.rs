@@ -101,26 +101,10 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         pick(w, spot);
         return true;
     }
-    let lim = w.resource::<Level>().half - 2;
-    // DefaultRandomPos: 10 tries; on the slab only the standing level is a stable destination.
-    let tries: Vec<(i32, i32, i32)> = with_rng(w, e, |r| {
-        (0..10)
-            .map(|_| {
-                let (dx, dy, dz) = (r.next_int(2 * p.h + 1) - p.h, r.next_int(2 * p.v + 1) - p.v, r.next_int(2 * p.h + 1) - p.h);
-                ((pos.x + f64::from(dx)).floor() as i32, dy, (pos.z + f64::from(dz)).floor() as i32)
-            })
-            .collect()
-    });
-    // `DefaultRandomPos.isValid`: a path type of malus 0 only (no cactus, fire, lava, water, powder snow).
-    let hazards = w.get_resource::<Hazards>();
-    let spot = tries.into_iter().find_map(|(x, dy, z)| {
-        let at = box_at(Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5), 0.2, 0.2);
-        let safe = hazards.is_none_or(|h| h.of_box(&at) == 0);
-        (dy == 0 && x.abs() < lim && z.abs() < lim && safe).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
-    });
-    match spot {
-        Some((x, z)) => {
-            pick(w, (x, 1, z));
+    // `DefaultRandomPos.getPos(mob, h, v)`: the best of ten by the species' walk value (`spots.rs`).
+    match crate::spots::pick_for(w, e, crate::spots::Pick::Default { h: p.h, v: p.v }) {
+        Some([x, y, z]) => {
+            pick(w, (x, y.floor() as i32, z));
             true
         }
         None => {
@@ -163,7 +147,11 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 /// Sets the animal on fire for `ticks`: its damage every 20 ticks, and the panic that a burning animal has.
 pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
     let now = crate::cow::now_of(world, e);
+    let already = world.get::<Burning>(e).is_some();
     world.entity_mut(e).insert(Burning { until: now + ticks });
+    if !already {
+        world.resource_mut::<Events>().ignited.push(e);
+    }
     // `Entity.baseTick`: the fire hurts on the ticks where the remaining fire is a multiple of 20, the first included.
     crate::cow::arm_at(world, e, now + if ticks % 20 == 0 { 1 } else { 20 }, Due::Burn);
     wake(world, e, &MODULE);

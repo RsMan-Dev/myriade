@@ -38,6 +38,15 @@ impl MobRef {
         self.searches.push(0);
         self.mobs.len() - 1
     }
+    /// A mob of another type (the process's species is `self.kind`).
+    pub fn add_kind(&mut self, at: Vec3, kind: Arc<mobs::MobType>) -> usize {
+        let mut m = Mob::new(self.mobs.len() as u32 + 1, kind, at, 0.0);
+        m.persistent = true;
+        m.ai.no_action_time = 100;
+        self.mobs.push(m);
+        self.searches.push(0);
+        self.mobs.len() - 1
+    }
     pub fn names(&self, i: usize) -> Vec<&'static str> {
         self.mobs[i].ai.goals.running_names()
     }

@@ -33,6 +33,8 @@ pub struct Body {
     pub gravity: f64,
     /// The movement speed attribute.
     pub speed: f64,
+    /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
+    pub fall_factor: f64,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -50,6 +52,8 @@ pub struct Contact {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Drive {
     pub zza: f32,
+    /// The sideways input (`xxa`).
+    pub xxa: f32,
     pub speed: f32,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
@@ -210,15 +214,19 @@ pub struct Hit {
     pub cause: Cause,
     /// The attacker's position (x, z); `None` for an attacker without one or an environmental cause.
     pub from: Option<(f64, f64)>,
-    /// The player that did it (an entity of the bench's `Online` list), for the target of a `HurtByTarget`.
-    pub by: Option<u32>,
+    /// Who did it (a player of the bench's `Online` list, or a creature), for the target of a `HurtByTarget`.
+    pub by: Option<crate::targeting::Who>,
 }
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
         self.0.push(Hit { target, amount, cause, from: None, by: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(player) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)) });
+    }
+    /// A blow of a creature standing at `from`: the victim may take it as its target.
+    pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)) });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
         self.0.push(Hit { target, amount, cause, from: Some(from), by: None });
@@ -412,6 +420,8 @@ pub enum Due {
     Goal(u8),
     /// The hen's egg timer (`farm.rs`): a rule of the species, not a goal.
     Egg,
+    /// A stuck projectile's life is over (`projectile.rs`).
+    Expire,
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -612,6 +622,20 @@ pub struct Config {
     pub push_form: u8,
     pub push_k: f64,
 }
+/// `getWalkTargetValue` of the template `Mob`, as data (the species the prototype ports; the others read zero).
+fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::spots::WalkValue {
+    use crate::spots::WalkValue as W;
+    use horizon_client_lib::mobs::Species as S;
+    match mob.species() {
+        S::Mooshroom => W::Mooshroom,
+        S::Bee => W::Bee,
+        S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
+        S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
+        _ if mob.hostile() => W::Monster,
+        _ if kind.flags.animal => W::Animal,
+        _ => W::Zero,
+    }
+}
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -650,7 +674,53 @@ pub struct Species {
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
     pub burns_in_day: bool,
+    /// What the species prefers to walk to (`getWalkTargetValue`).
+    pub walk: crate::spots::WalkValue,
+    /// The capabilities of the configuration (its sections): the entity is made of these only.
+    pub caps: &'static [crate::behaviours::Cap],
 }
+/// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FluidParams {
+    pub eye_height: f64,
+    pub can_float: bool,
+    pub water_slowdown: f32,
+    pub water_efficiency: f32,
+}
+impl FluidParams {
+    pub const DEFAULT: FluidParams = FluidParams { eye_height: 0.0, can_float: false, water_slowdown: 0.8, water_efficiency: 0.0 };
+}
+/// What the path search reads of an entity that walks.
+#[derive(Component, Clone, Copy)]
+pub struct NavParams {
+    pub malus: [Option<f32>; PATH_TYPES],
+    pub can_float: bool,
+    pub can_open_doors: bool,
+    pub can_pass_doors: bool,
+    pub can_walk_over_fences: bool,
+    pub follow_range: f32,
+}
+/// `Attributes.ATTACK_DAMAGE` (0: the entity does not attack).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AttackDamage(pub f32);
+/// `Attributes.KNOCKBACK_RESISTANCE` (a living entity).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Resist(pub f64);
+/// What the entity does not suffer, as bits (a living entity).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Immune(pub u32);
+/// No fall damage.
+pub const IMMUNE_FALL: u32 = 1;
+/// Does not drown under water.
+pub const BREATHES_WATER: u32 = 2;
+impl Immune {
+    pub fn has(self, bit: u32) -> bool {
+        self.0 & bit != 0
+    }
+}
+/// The type of the entity (`minecraft:cow`...), for the data keyed by type of the host (breathing).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct TypeName(pub &'static str);
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
 
@@ -740,6 +810,8 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
+            walk: walk_value_of(&mob, &kind),
+            caps: crate::species::registry().by_name(name).unwrap().caps,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -794,34 +866,101 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     let (hw, h) = (f64::from(width) / 2.0, f64::from(height));
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
-/// An animal of the world's species at (x, z): every number is the species' data.
+/// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
+/// `Transform`: where it is, how fast, its own time and its identity. All a projectile has.
+pub fn transform_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
+    (Pos(Vec3::new(x, 1.0, z)), Vel(Vec3::ZERO), SpeciesId(sp.id), crate::goals::Uid(uid), OwnTime)
+}
+/// `Solid`: a box in the spatial index (what the pushes, the searches and the targeting see).
+pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
+    (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX))
+}
+/// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
+pub fn body_bundle(sp: &Species) -> impl Bundle {
+    (
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
+        Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
+        FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+        crate::targeting::Eye(sp.eye_height),
+        FluidState::default(),
+        Recheck,
+        Moving,
+    )
+}
+/// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
+pub fn living_bundle(sp: &Species) -> impl Bundle {
+    (
+        Sizes { adult: (sp.width, sp.height), baby: sp.baby },
+        Health(sp.max_health),
+        HurtAt { at: 0, last: 0.0 },
+        Frozen(0),
+        Air(300),
+        Resist(sp.knockback_resistance),
+        Immune(if sp.farm.fall_immune { IMMUNE_FALL } else { 0 } | if sp.breathes_water { BREATHES_WATER } else { 0 }),
+        TypeName(sp.name),
+    )
+}
+/// `Locomotion`: walking and paths (the heading, the walking input, the path and its target, the walking data).
+pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
+    (
+        Yaw(yaw),
+        Drive::default(),
+        MoveTo::default(),
+        Nav::default(),
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        sp.walk,
+        NavParams {
+            malus: sp.malus,
+            can_float: sp.can_float,
+            can_open_doors: sp.can_open_doors,
+            can_pass_doors: sp.can_pass_doors,
+            can_walk_over_fences: sp.can_walk_over_fences,
+            follow_range: sp.follow_range,
+        },
+    )
+}
+/// `Targets`: what the target selectors and the attacks read.
+pub fn targets_bundle(sp: &Species) -> impl Bundle {
+    (crate::targeting::FollowRange(f64::from(sp.follow_range)), AttackDamage(sp.attack_damage))
+}
+/// `Goals`: the selector, its head, and the activity zone and random stream the goals use.
+fn goals_part(sp: &Species, uid: u64, rng: Rng) -> impl Bundle {
+    (ActiveUntil(100), rng, crate::goals::goals_bundle(sp, uid))
+}
+/// An entity with EVERY capability at (x, z), for the tests and the benches: the species' data are the numbers.
+/// `spawn_species` gives only the capabilities a configuration declares.
 pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
-    (
-        Pos(Vec3::new(x, 1.0, z)),
-        SpeciesId(sp.id),
-        Vel(Vec3::ZERO),
-        Yaw((rng.next_u32() % 360) as f32),
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed },
-        Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
-        Cell(u32::MAX),
-        Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        Drive::default(),
-        (
-            Sizes { adult: (sp.width, sp.height), baby: sp.baby },
-            MoveTo::default(),
-            Nav::default(),
-            ActiveUntil(100),
-            OwnTime,
-            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
-            (Moving, crate::goals::goals_bundle(sp)),
-            Health(sp.max_health),
-            HurtAt { at: 0, last: 0.0 },
-            Frozen(0),
-            (FluidState::default(), Air(300), Recheck),
-            rng,
-        ),
-    )
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+}
+/// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
+fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let mut rng = Rng(seed | 1);
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
+    let mut e = world.spawn(transform_bundle(sp, x, z, uid));
+    if has(crate::behaviours::Cap::Solid) {
+        e.insert(solid_bundle(sp, x, z));
+    }
+    if has(crate::behaviours::Cap::Body) {
+        e.insert(body_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Living) {
+        e.insert(living_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Locomotion) {
+        e.insert(locomotion_bundle(sp, yaw));
+    }
+    if has(crate::behaviours::Cap::Targets) {
+        e.insert(targets_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Goals) {
+        e.insert(goals_part(sp, uid, rng));
+    }
+    e.id()
 }
 /// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
 /// tick see it).
@@ -833,9 +972,17 @@ pub fn enter_index(world: &mut World, e: Entity) {
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);
 }
+/// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
+pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) -> Entity {
+    let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];
+    let e = spawn_declared(world, &sp, x, z, seed);
+    enter_index(world, e);
+    crate::farm::equip(world, e, &sp);
+    e
+}
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
-    let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
+    let e = spawn_declared(world, sp, x, z, seed);
     enter_index(world, e);
     crate::hostile::equip(world, e, sp);
     crate::farm::equip(world, e, sp);
@@ -868,6 +1015,7 @@ pub fn schedule() -> Schedule {
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
+    crate::projectile::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -885,24 +1033,24 @@ fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &m
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
 /// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Returns whether a spot was picked.
-pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
+pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, nav: &NavParams, walk: crate::spots::WalkValue, in_water: bool) -> bool {
+    use crate::spots::{spotter, Pick};
     let (h, v) = (s.horizontal_range, s.vertical_range);
-    let lim = level.half - 2;
-    for _ in 0..10 {
-        let dx = r.next_int(2 * h + 1) - h;
-        let dy = r.next_int(2 * v + 1) - v;
-        let dz = r.next_int(2 * h + 1) - h;
-        let x = (pos.0.x + f64::from(dx)).floor() as i32;
-        let z = (pos.0.z + f64::from(dz)).floor() as i32;
-        // A spot in the air has nothing under it; one in the stone is lifted out of it onto the slab.
-        if dy <= 0 && x.abs() < lim && z.abs() < lim {
-            s.walking = true;
-            s.tx = f64::from(x) + 0.5;
-            s.tz = f64::from(z) + 0.5;
-            return true;
-        }
-    }
-    false
+    let mut sp = spotter(level, [pos.0.x, pos.0.y, pos.0.z], nav, walk, r);
+    // `WaterAvoidingRandomStrollGoal.getPosition`: in water a land spot first, else a land spot, a plain one 1 time in 1000.
+    let picked = if in_water {
+        sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
+    } else if sp.rng.next_float() >= 0.001 {
+        sp.pick(Pick::Land { h, v })
+    } else {
+        sp.pick(Pick::Default { h, v })
+    };
+    let Some(p) = picked else { return false };
+    s.walking = true;
+    s.tx = p[0];
+    s.tz = p[2];
+    s.ty = p[1].floor() as i32;
+    true
 }
 
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
@@ -922,7 +1070,7 @@ pub(crate) fn player_near(
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
     mut entered: ResMut<crate::goals::Entered>,
-    mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
+    mut active: Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>,
 ) {
     const BIN: f64 = 32.0;
     const R2: f64 = BIN * BIN;
@@ -1015,14 +1163,18 @@ pub(crate) fn player_near(
             })
         })
     };
-    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>, wheel: &mut Wheel| {
+    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>, wheel: &mut Wheel| {
         let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { return };
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if now_in && a.0 != u64::MAX {
             a.0 = u64::MAX;
             entered.0.push(e);
-            if !s.scheduled && !s.walking {
+            // The first stroll attempt belongs to an entity that walks and has goals; an object only wakes.
+            if let (Some(mut s), Some(mut r)) = (s, r)
+                && !s.scheduled
+                && !s.walking
+            {
                 arm_stroll(wheel, &clock, e, &mut s, &mut r);
             }
         } else if !now_in && a.0 == u64::MAX {
@@ -1059,14 +1211,12 @@ pub(crate) fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &SpeciesId), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), With<NeedsPath>>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sid: &SpeciesId| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
         let now = clock.of(e);
-        let sp = &table.0[sid.0 as usize];
         let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
@@ -1096,6 +1246,8 @@ pub(crate) fn pathfind(
             .flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
+                crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 nav.path = Some(p);
                 nav.last_check = now;
                 nav.last_pos = pos.0;
@@ -1246,10 +1398,38 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     }
     r
 }
+/// `MoveControl.Operation.STRAFE` (`MoveControl.strafe(forwards, right)`): the speed is a quarter of the movement speed; a side
+/// step whose target block is not walkable turns into a step forward. The caller (a goal) does it every tick it strafes;
+/// the walk of the path (`move_control`) sets the sideways input back to nothing.
+pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: &mut Drive, forwards: f32, right: f32, walkable: &mut Option<((i32, i32, i32), bool, u64)>, now: u64) {
+    let speed = (0.25 * body.speed) as f32;
+    let (mut xa, mut za) = (forwards, right);
+    let dist = (xa * xa + za * za).sqrt().max(1.0);
+    let k = speed / dist;
+    (xa, za) = (xa * k, za * k);
+    let angle = f64::from(yaw.0 * trig::DEG_TO_RAD);
+    let (s, co) = (trig::sin(angle), trig::cos(angle));
+    let (dx, dz) = (xa * co - za * s, za * co + xa * s);
+    let (x, y, z) = ((pos.0.x + f64::from(dx)).floor() as i32, pos.0.y.floor() as i32, (pos.0.z + f64::from(dz)).floor() as i32);
+    // The kind of the block is read once per block and kept for 10 ticks (a strafe step is 0.1 block: the same block for many ticks).
+    let ok = match *walkable {
+        Some((b, ok, at)) if b == (x, y, z) && now < at + 10 => ok,
+        _ => {
+            let ok = level.mw.0.path_type_static(x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
+            *walkable = Some(((x, y, z), ok, now));
+            ok
+        }
+    };
+    let (forwards, right) = if ok { (forwards, right) } else { (1.0, 0.0) };
+    d.speed = speed;
+    d.zza = forwards;
+    d.xxa = right;
+}
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
 fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
+    d.xxa = 0.0;
     if d.jumping_op {
         // Operation JUMPING: the speed follows the wanted spot's modifier, the heading is kept, and the next
         // wanted spot does not change the operation, until the cow is on the ground (or in a liquid).
@@ -1307,8 +1487,8 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, zza: f32) {
-    let input = Vec3::new(0.0, 0.0, f64::from(zza));
+fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
+    let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
         return;
@@ -1364,7 +1544,7 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
 #[allow(clippy::too_many_arguments)]
 fn travel_one(
     level: &Level,
-    sp: &Species,
+    sp: &FluidParams,
     pos: &mut Pos,
     vel: &mut Vel,
     yaw: &Yaw,
@@ -1380,12 +1560,12 @@ fn travel_one(
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
     // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
     if !c.on_ground && vel.0.y < 0.0 {
-        vel.0.y *= sp.farm.slow_fall;
+        vel.0.y *= body.fall_factor;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
     let v = vel.0;
@@ -1427,14 +1607,14 @@ fn travel_one(
                 slow += (0.546_000_06 - slow) * efficiency;
                 speed += (d.speed - speed) * efficiency;
             }
-            move_relative(vel, yaw.0, speed, d.zza);
+            move_relative(vel, yaw.0, speed, d.xxa, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let m = vel.0;
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
             vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
             c.fall_distance = 0.0;
         } else {
-            move_relative(vel, yaw.0, 0.02, d.zza);
+            move_relative(vel, yaw.0, 0.02, d.xxa, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let v = vel.0;
             if fs.lava <= threshold {
@@ -1462,32 +1642,43 @@ fn travel_one(
     } else {
         0.02
     };
-    move_relative(vel, yaw.0, speed, d.zza);
+    move_relative(vel, yaw.0, speed, d.xxa, d.zza);
     do_move(level, pos, vel, c, body, bounds, fall_damage);
     let movement = vel.0;
     let drag = 0.91_f32;
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
-    !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
+    !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
 pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, &SpeciesId),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>),
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
-        let sp = &table.0[sid.0 as usize];
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
-        let rest = travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
-        if fall > 0.0 && !sp.farm.fall_immune {
+        // A body without walking (an object) has no yaw and no input.
+        let mut none = Drive::default();
+        let mut d = d;
+        let dr: &mut Drive = match d.as_mut() {
+            Some(d) => d,
+            None => &mut none,
+        };
+        let was_in_air = !c.on_ground;
+        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        if was_in_air && c.on_ground {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
+            });
+        }
+        if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
@@ -1500,10 +1691,10 @@ pub(crate) fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i)| one(e, p, v, y, c, d, b, bb, fs, f, j, i));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j, i) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j, i);
+        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
         }
     }
 }
@@ -1513,13 +1704,12 @@ pub(crate) fn travel(
 fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, &SpeciesId), With<InFluid>>,
+    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
 ) {
     let level = &*level;
-    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, sid: &SpeciesId| {
+    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, fp: Option<&FluidParams>| {
         let mw = level.mw.0;
-        let f = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
+        let f = mw.fluids(b.0, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height);
         *fs = FluidState {
             water: f.water,
             lava: f.lava,
@@ -1549,27 +1739,25 @@ fn fluid_update(
 #[allow(clippy::type_complexity)]
 fn breathing(
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, sid, uid) in &mut q {
-        let sp = &table.0[sid.0 as usize];
+    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid) in &mut q {
         let submerged = fs.eye_in_water && {
-            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
+            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + fp.eye_height).floor() as i32, pos.0.z.floor() as i32);
             mw.block_name(x, y, z) != "minecraft:bubble_column"
         };
-        let drowns = submerged && !sp.breathes_water;
+        let drowns = submerged && !imm.has(BREATHES_WATER);
         let vanilla = horizon_client_lib::breathing::Breath {
             can_breathe: !drowns,
             consume: 1,
             refill: if drowns { 0 } else { 4 },
         };
         let id = uid.0 as u32;
-        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, sp.name, vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
+        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
         {
             queue.add(e, damage, Cause::Drown);
@@ -1586,14 +1774,12 @@ fn breathing(
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
 fn wall_check(
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    q: Query<(Entity, &Pos, &Body, Has<InWall>, &SpeciesId), With<Recheck>>,
+    q: Query<(Entity, &Pos, &Body, Has<InWall>, &FluidParams), With<Recheck>>,
     mut commands: Commands,
 ) {
     use horizon_core::geometry::{ShapeOp, VoxelShape};
     let mw = level.mw.0;
-    for (e, pos, body, was, sid) in &q {
-        let sp = &table.0[sid.0 as usize];
+    for (e, pos, body, was, sp) in &q {
         let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
         let inside = horizon_client_lib::mobs::ai::in_wall(
             body.width,
@@ -1641,6 +1827,7 @@ pub(crate) fn reindex(
     mut idx: ResMut<Index>,
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
+    mut events: ResMut<crate::goals::Events>,
     mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
     mut commands: Commands,
 ) {
@@ -1661,8 +1848,10 @@ pub(crate) fn reindex(
         if fluid && !in_fluid {
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
+            events.entered_fluid.push(e);
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
+            events.left_fluid.push(e);
             *fs = FluidState::default();
         }
         match (bits, hz) {
@@ -1688,11 +1877,10 @@ pub(crate) fn reindex(
 #[allow(clippy::type_complexity)]
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
-    table: Res<SpeciesTable>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId, &crate::goals::Uid)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&mut ActiveUntil>, Option<&mut Stroll>, Option<&Resist>, Option<&crate::goals::Uid>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -1702,7 +1890,7 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid, uid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, active, stroll, resist, uid)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
@@ -1732,7 +1920,9 @@ pub(crate) fn apply_damage(
         // `Animal.actuallyHurt`: damage taken ends love.
         commands.entity(e).remove::<crate::goals::Love>();
         // `ai::after_hurt`: `noActionTime = 0`.
-        if active.0 != u64::MAX {
+        if let (Some(mut active), Some(mut stroll), Some(uid)) = (active, stroll, uid)
+            && active.0 != u64::MAX
+        {
             active.0 = active.0.max(now + 100);
             if !stroll.scheduled && !stroll.walking {
                 // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
@@ -1743,12 +1933,18 @@ pub(crate) fn apply_damage(
         }
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
         if hit.cause == Cause::Entity && !cooldown {
-            let power = 0.4_f64 * (1.0 - table.0[sid.0 as usize].knockback_resistance);
+            let power = 0.4_f64 * (1.0 - resist.map_or(0.0, |r| r.0));
             if power > 0.0 {
                 let (mut dx, mut dz) = hit.from.map_or((0.0, 0.0), |f| (f.0 - pos.0.x, f.1 - pos.0.z));
+                let mut spare = Rng(clock.0 | 1);
+                let mut rng = rng;
                 while dx * dx + dz * dz < f64::from(1.0e-5_f32) {
-                    dx = (rng.next_f64() - rng.next_f64()) * 0.01;
-                    dz = (rng.next_f64() - rng.next_f64()) * 0.01;
+                    let r: &mut Rng = match rng.as_mut() {
+                        Some(r) => r,
+                        None => &mut spare,
+                    };
+                    dx = (r.next_f64() - r.next_f64()) * 0.01;
+                    dz = (r.next_f64() - r.next_f64()) * 0.01;
                 }
                 let l = (dx * dx + dz * dz).sqrt();
                 let (kx, kz) = (dx / l * power, dz / l * power);
@@ -1757,7 +1953,6 @@ pub(crate) fn apply_damage(
                 commands.entity(e).insert(Moving);
             }
         }
-        let _ = following;
     }
 }
 /// The module of the cows that overlap a hazard (only they are visited): lava ignites 15 s and hurts 4, fire ignites
@@ -1770,7 +1965,8 @@ fn hazard_tick(
     table: Res<SpeciesTable>,
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
-    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &SpeciesId)>,
+    mut events: ResMut<crate::goals::Events>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams)>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
@@ -1779,7 +1975,7 @@ fn hazard_tick(
         let f = h.0;
         // Water and lava as the `Mob` reads them: the fluid height at the cow's box, not the column.
         let (in_water, in_lava) = if f & (HAZ_WATER | HAZ_LAVA) != 0 {
-            let r = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
+            let r = mw.fluids(b.0, pos.0.y + sid.eye_height);
             (r.in_water, r.in_lava)
         } else {
             (false, false)
@@ -1788,6 +1984,7 @@ fn hazard_tick(
         if in_water {
             if burning.is_some() {
                 commands.entity(e).remove::<Burning>();
+                events.extinguished.push(e);
             }
         } else {
             let seconds = if in_lava { 300 } else if lit { 160 } else { 0 };
@@ -1798,6 +1995,7 @@ fn hazard_tick(
                         // `Entity.baseTick` hurts when the time left is a multiple of 20, the first tick included.
                         wheel.push(clock.at(e, now + if seconds % 20 == 0 { 1 } else { 20 }), e, Due::Burn);
                         commands.entity(e).insert(Burning { until });
+                        events.ignited.push(e);
                     }
                     Some(b) if b.until < until => {
                         commands.entity(e).insert(Burning { until });
@@ -1855,7 +2053,7 @@ fn recompute(
 /// changed, so `reindex` re-evaluates them); the cows that follow a path that the change is near the middle of
 /// (`PathNavigation.shouldRecomputePath`) ask for a new path to the same spot; nobody else is touched.
 #[allow(clippy::type_complexity)]
-fn block_changes(
+pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
@@ -1877,6 +2075,8 @@ fn block_changes(
             let world = &mut *level.blocks.0;
             let _ = world.set(x, y, z, state);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+            // The real light engine: the sky above a column changed with the block.
+            horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);
         }
         hazards.set(x, y, z, hazard_bit(name));
         seen.0.push((x, y, z));
@@ -2089,8 +2289,9 @@ type OrderedItems = (
     &'static FluidState,
     Has<Following>,
     Option<&'static crate::goals::Jump>,
-    &'static SpeciesId,
+    &'static FluidParams,
     Has<Moving>,
+    Option<&'static Immune>,
 );
 /// One island of the ordered pass, its animals in the order of creation: each travels, then pushes every animal that
 /// overlaps its box now (see `ordered_pass`). Touches only the components of the animals of its island and of the
@@ -2112,12 +2313,11 @@ fn run_island(
     for &e in ids {
         {
             // SAFETY: the islands are disjoint: no other thread touches the components of this animal.
-            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sid, _)) = (unsafe { q.get_unchecked(e) }) else { continue };
-            let sp = &table.0[sid.0 as usize];
+            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sp, _, imm)) = (unsafe { q.get_unchecked(e) }) else { continue };
             let mut fall = 0.0_f32;
             let jumping = jump.is_some_and(|j| j.0);
             travel_one(level, sp, &mut p, &mut v, y, &mut c, &mut d, body, &mut b, fs, jumping, &mut fall);
-            if fall > 0.0 {
+            if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
                 out.push(Effect::Fall(e, fall));
             }
         }
@@ -2387,6 +2587,7 @@ pub(crate) fn due(
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
+    mut events: ResMut<crate::goals::Events>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -2394,6 +2595,7 @@ pub(crate) fn due(
     mut commands: Commands,
 ) {
     clock.0 += 1;
+    events.swap();
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
     if wheel.track {
@@ -2407,6 +2609,7 @@ pub(crate) fn due(
             Due::Stroll => fired.0.push((e, crate::behaviours::stroll::FIRED)),
             Due::Goal(k) => fired.0.push((e, k)),
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
+            Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
@@ -2416,6 +2619,7 @@ pub(crate) fn due(
                         wheel.push(clock.at(e, (now + 20).min(now + WHEEL as u64 - 1)), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
+                        events.extinguished.push(e);
                     }
                 }
             }
@@ -2431,6 +2635,7 @@ pub(crate) fn due(
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                         commands.entity(e).remove::<GrowAt>().insert(Recheck);
                         grown.0.push(e);
+                        events.grew.push(e);
                     }
                 }
             }

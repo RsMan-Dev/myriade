@@ -1,11 +1,18 @@
 //! `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player (priority 2).
 use super::Def;
-use crate::behaviours::{look_at_player, melee, random_look, stroll, target, Entry};
+use crate::behaviours::{hurt_by, look_at_player, melee, nearest_target, random_look, stroll, Entry};
 
 pub static DEF: Def = Def {
     name: "minecraft:zombie",
     reference: None,
-    targets: &[Entry::new(&target::MODULE, 2, &target::Params::DEFAULT)],
+    // `Zombie.addBehaviourGoals`: hurt-by (alerting the others but the zombified piglin), the nearest player. Still to add when
+    // the species exist here (an instance for a kind with no species is never armed but still costs its entry): the
+    // villagers and the wandering trader (priority 3: `types: [minecraft:villager, minecraft:wandering_trader], must_see:
+    // false`), the iron golem (3), a baby turtle (5: `types: [minecraft:turtle], predicate: "baby"`).
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_except: &["minecraft:zombified_piglin"], ..hurt_by::Params::DEFAULT }),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),
+    ],
     goals: &[
         Entry::new(&melee::MODULE, 3, &melee::Params::DEFAULT),
         Entry::new(&stroll::MODULE, 7, &stroll::Params::DEFAULT),

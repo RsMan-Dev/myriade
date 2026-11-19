@@ -191,10 +191,7 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     }
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
     // The baby is of its parents' species (the mate was checked to be the same).
-    let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(a).unwrap().0 as usize];
-    let baby = w.spawn(spawn_bundle(&sp, pos.x, pos.z, seed)).id();
-    enter_index(w, baby);
-    crate::farm::equip(w, baby, &sp);
+    let baby = spawn_like(w, a, pos.x, pos.z, seed);
     // The parent's deadline is in its own time: the baby's own time is the world's.
     let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;
