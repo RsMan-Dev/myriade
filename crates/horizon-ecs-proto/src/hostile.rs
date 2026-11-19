@@ -66,6 +66,11 @@ pub struct PlayerState {
     pub gaze_dirty: Vec<u32>,
     pub team: Vec<u32>,
     pub peaceful: bool,
+    /// `getLastHurtByMob` and `getLastHurtMob` of each player (who, the world tick): what the pets of a player answer (`tame.rs`).
+    pub hurt_by: Vec<Option<(Who, u64)>>,
+    pub last_hurt: Vec<Option<(Who, u64)>>,
+    /// The players whose combat record changed since the last tick (`tame::owner_events` drains it).
+    pub combat_dirty: Vec<u32>,
 }
 impl PlayerState {
     pub fn creative(&self, id: u32) -> bool {
@@ -146,7 +151,26 @@ impl PlayerState {
     pub fn alive(&self, id: u32) -> bool {
         self.health_of(id) > 0.0
     }
-    pub(crate) fn hurt(&mut self, tick: u64, player: u32, amount: f32, from: (f64, f64)) {
+    pub fn set_hurt_by(&mut self, player: u32, who: Who, tick: u64) {
+        let i = player as usize;
+        if self.hurt_by.len() <= i {
+            self.hurt_by.resize(i + 1, None);
+        }
+        self.hurt_by[i] = Some((who, tick));
+        self.combat_dirty.push(player);
+    }
+    pub fn set_last_hurt(&mut self, player: u32, who: Who, tick: u64) {
+        let i = player as usize;
+        if self.last_hurt.len() <= i {
+            self.last_hurt.resize(i + 1, None);
+        }
+        self.last_hurt[i] = Some((who, tick));
+        self.combat_dirty.push(player);
+    }
+    pub(crate) fn hurt(&mut self, tick: u64, player: u32, amount: f32, from: (f64, f64), by: Option<Who>) {
+        if let Some(w) = by {
+            self.set_hurt_by(player, w, tick);
+        }
         let i = player as usize;
         if self.health.len() <= i {
             self.health.resize(i + 1, 20.0);
@@ -306,7 +330,8 @@ pub fn melee_run(
             match g.who {
                 Who::Player(id) => {
                     let (tick, amount, from) = (clock.0, a.damage, (pos.0.x, pos.0.z));
-                    cmd.queue(move |w: &mut World| w.resource_mut::<PlayerState>().hurt(tick, id, amount, from));
+                    let by = Who::Entity(e);
+                    cmd.queue(move |w: &mut World| w.resource_mut::<PlayerState>().hurt(tick, id, amount, from, Some(by)));
                 }
                 Who::Entity(t) => dq.add_by_entity(t, a.damage, (pos.0.x, pos.0.z), e),
             }

@@ -40,12 +40,30 @@ pub struct Item {
 pub const SIZE: f64 = 0.25;
 /// `ItemEntity.getDespawnTime`'s 6 000 ticks.
 pub const LIFE: u64 = 6000;
+/// An item that moves (`Moving` was put on it): the item system visits it, and only it, until it is at rest.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_add = awake_added, on_remove = awake_removed)]
+pub struct ItemAwake;
+fn awake_added(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    world.resource_mut::<ItemIndex>().awake += 1;
+}
+fn awake_removed(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    world.resource_mut::<ItemIndex>().awake -= 1;
+}
+/// The hook of `Moving`: an item that starts to move is listed for the item system (nothing for the others).
+pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if world.get::<Item>(ctx.entity).is_some() {
+        world.commands().entity(ctx.entity).insert(ItemAwake);
+    }
+}
 /// The dropped items by block cell, so that a merge, a pickup or a search finds them without a scan.
 #[derive(Resource, Default)]
 pub struct ItemIndex {
     cells: HashMap<[i32; 3], Vec<Entity>>,
     next_id: u32,
     token: u32,
+    /// The items in motion (`ItemAwake`): the item system does not run while there is none.
+    awake: usize,
 }
 impl ItemIndex {
     fn add(&mut self, e: Entity, cell: [i32; 3]) {
@@ -144,6 +162,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
             TypeName("minecraft:item"),
     ));
     let now = now_of(world, e);
+    world.entity_mut(e).insert(ItemAwake);
     world.entity_mut(e).insert(Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
     world.resource_mut::<ItemIndex>().add(e, cell);
     enter_index(world, e);
@@ -225,7 +244,10 @@ fn partners(world: &World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'s
 /// Each tick, the items that move: the cell they are in (the index follows), and `ItemEntity.tick`'s merge: every 2 ticks while the block
 /// changes, every 40 otherwise (a check pending at its own multiple of 40 is armed for a stack that was not looked at).
 fn item_moved(world: &mut World) {
-    let mut list: Vec<(u32, Entity)> = world.query_filtered::<(Entity, &Item), With<Moving>>().iter(world).map(|(e, it)| (it.id, e)).collect();
+    if world.resource::<ItemIndex>().awake == 0 {
+        return;
+    }
+    let mut list: Vec<(u32, Entity)> = world.query_filtered::<(Entity, &Item), With<ItemAwake>>().iter(world).map(|(e, it)| (it.id, e)).collect();
     if list.is_empty() {
         return;
     }
@@ -235,6 +257,7 @@ fn item_moved(world: &mut World) {
         let Some(p) = world.get::<Pos>(e).map(|p| p.0) else { continue };
         let now = now_of(world, e);
         let cell = cell_of(p);
+        let resting = world.get::<Moving>(e).is_none();
         let Some(it) = world.get::<Item>(e) else { continue };
         let (old, ticks, pending) = (it.cell, now - it.born, it.check != 0);
         let changed = old != cell;
@@ -249,6 +272,10 @@ fn item_moved(world: &mut World) {
         }
         if world.get::<Item>(e).is_some() && !pending {
             arm_check(world, e);
+        }
+        // At rest: its last visit; it is listed again when something moves it.
+        if resting && world.get::<Item>(e).is_some() {
+            world.entity_mut(e).remove::<ItemAwake>();
         }
     }
 }

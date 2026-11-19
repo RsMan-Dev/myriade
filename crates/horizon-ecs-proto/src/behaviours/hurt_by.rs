@@ -14,9 +14,11 @@ pub struct Params {
     pub alert_except: &'static [&'static str],
     /// `unseenMemoryTicks` of the target it takes, and of the one it gives to the alerted.
     pub unseen_memory: i32,
+    /// The owner (`tame::Owner`) is never taken for a target, whoever hit.
+    pub spare_owner: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300 };
+    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false };
     pub const ALERT: Self = Self { alert: true, ..Self::DEFAULT };
 }
 /// The state: the last hit (who, tick) and the one the goal answered, the kinds resolved to masks.
@@ -72,6 +74,9 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some((who, at)) = g.last else { return false };
     // `getLastHurtByMob` is forgotten after 100 ticks.
     if at == g.handled || now.saturating_sub(at) > 100 {
+        return false;
+    }
+    if g.p.spare_owner && w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(who)) {
         return false;
     }
     match targeting::info(w, who) {

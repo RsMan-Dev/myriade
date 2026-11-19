@@ -27,9 +27,11 @@ pub struct Params {
     pub interval: i32,
     /// Creatures nearer than this squared distance are not picked (`GuardianAttackSelector`).
     pub beyond_sqr: Option<f64>,
+    /// The owner (`tame::Owner`) is never picked.
+    pub spare_owner: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -140,6 +142,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let range = w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale;
     let mw = w.resource::<Level>().mw.0;
     let from = Vec3::new(pos.x, pos.y + eye, pos.z);
+    let owner = w.get::<crate::tame::Owner>(e).and_then(|o| o.0);
     let mut found: Option<Who> = None;
     if n.p.players {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
@@ -149,6 +152,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             let reach = targeting::sight_range(range, ps.visibility(p.id));
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
+                && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
