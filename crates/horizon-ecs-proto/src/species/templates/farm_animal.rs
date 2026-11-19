@@ -23,7 +23,7 @@ pub static DEF: Def = Def {
         RANDOM_LOOK,
     ],
     changes: &[],
-    rules: &[],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     caps: None,
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],

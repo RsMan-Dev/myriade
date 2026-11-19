@@ -7,6 +7,6 @@ use crate::rules::RuleEntry;
 pub static DEF: Def = Def {
     name: "minecraft:zombie",
     reference: Some(&zombie_base::DEF),
-    rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &())],
+    rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &()), RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 })],
     ..Def::EMPTY
 };

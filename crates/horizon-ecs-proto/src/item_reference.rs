@@ -102,3 +102,54 @@ impl Original {
     }
 }
 
+
+/// Horizon's experience orbs, run the naive way: each ticks in its list's order with the player it follows (the nearest within 8 blocks,
+/// looked for at its tick 1 modulo 20, let go beyond 8), and scans for merges at that tick.
+pub struct OrbsOriginal {
+    pub mw: &'static MobWorld<'static>,
+    pub orbs: Vec<horizon_client_lib::entities::ExperienceOrb>,
+    /// The players (id, feet position).
+    pub players: Vec<(u32, Vec3)>,
+}
+impl OrbsOriginal {
+    pub fn tick(&mut self) {
+        let mw = self.mw;
+        let mut removed = vec![false; self.orbs.len()];
+        for i in 0..self.orbs.len() {
+            if removed[i] {
+                continue;
+            }
+            let follow_now = self.orbs[i].ticks + 1;
+            let at = self.orbs[i].position;
+            if let Some(id) = self.orbs[i].following {
+                let gone = self.players.iter().find(|p| p.0 == id).is_none_or(|p| (p.1.x - at.x).powi(2) + (p.1.y - at.y).powi(2) + (p.1.z - at.z).powi(2) > 64.0);
+                if gone {
+                    self.orbs[i].following = None;
+                }
+            }
+            if self.orbs[i].following.is_none() && follow_now % 20 == 1 {
+                let best = self.players.iter().map(|p| (p.0, (p.1.x - at.x).powi(2) + (p.1.y - at.y).powi(2) + (p.1.z - at.z).powi(2))).filter(|b| b.1 <= 64.0).min_by(|a, b| a.1.total_cmp(&b.1));
+                self.orbs[i].following = best.map(|b| b.0);
+            }
+            let player = self.orbs[i].following.and_then(|id| self.players.iter().find(|p| p.0 == id)).map(|p| [p.1.x, p.1.y + 0.81, p.1.z]);
+            let mut float = || 0.5_f32;
+            let (alive, _) = self.orbs[i].tick_among(mw.world, mw.facts, mw.collision, player, true, &mut float, None, mw.fluid_tables, mw.loop_context, &mut |_, _| {}, &[]);
+            if !alive || self.orbs[i].age >= 6000 {
+                removed[i] = true;
+                continue;
+            }
+            if self.orbs[i].ticks % 20 == 1 {
+                let area = self.orbs[i].bounds().inflate(Vec3::new(0.5, 0.5, 0.5));
+                for j in 0..self.orbs.len() {
+                    if j != i && !removed[j] && self.orbs[j].bounds().intersects(area) && self.orbs[j].can_merge(self.orbs[i].id, self.orbs[i].value) {
+                        self.orbs[i].count += self.orbs[j].count;
+                        self.orbs[i].age = self.orbs[i].age.min(self.orbs[j].age);
+                        removed[j] = true;
+                    }
+                }
+            }
+        }
+        let mut r = removed.into_iter();
+        self.orbs.retain(|_| !r.next().unwrap());
+    }
+}

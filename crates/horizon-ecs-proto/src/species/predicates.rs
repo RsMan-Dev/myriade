@@ -31,6 +31,19 @@ fn on_fire(w: &World, e: Entity) -> bool {
 fn is_tame(w: &World, e: Entity) -> bool {
     w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some())
 }
+/// `horizon:in_village`: at most one section from a village point (`ServerLevel.isVillage`).
+fn in_village(w: &World, e: Entity) -> bool {
+    let (Some(p), Some(r)) = (w.get::<crate::cow::Pos>(e), w.get_resource::<crate::poi::PoiRegistry>()) else { return false };
+    r.is_village([p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32])
+}
+/// `horizon:has_rider`: something sits on it (`mount::Mount`).
+fn has_rider(w: &World, e: Entity) -> bool {
+    w.get::<crate::mount::Mount>(e).is_some_and(|m| m.rider.is_some())
+}
+/// `horizon:is_mounted`: it rides something (`mount::Riding`).
+fn is_mounted(w: &World, e: Entity) -> bool {
+    w.get::<crate::mount::Riding>(e).is_some()
+}
 /// `horizon:is_sitting`: it is ordered to sit (the occupation `SITTING`).
 fn is_sitting(w: &World, e: Entity) -> bool {
     crate::goals::is_occupied(w, e, crate::goals::OCC_SITTING)
@@ -66,6 +79,9 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:on_ground", on_ground),
     ("horizon:on_fire", on_fire),
     ("horizon:is_tame", is_tame),
+    ("horizon:in_village", in_village),
+    ("horizon:has_rider", has_rider),
+    ("horizon:is_mounted", is_mounted),
     ("horizon:is_sitting", is_sitting),
     ("panda:acts", panda_acts),
     ("panda:avoids", panda_avoids),

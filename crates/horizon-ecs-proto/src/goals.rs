@@ -562,6 +562,8 @@ pub fn insert_resources(world: &mut World) {
     crate::projectile::insert_resources(world);
     crate::brain::insert_resources(world);
     crate::item::insert_resources(world);
+    crate::orb::insert_resources(world);
+    crate::poi::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
@@ -659,6 +661,9 @@ pub struct Events {
     pub projectile_hit: Ev,
     /// A creature picked up an item from the ground (`item::pick_up`): the creature.
     pub picked_up: Ev,
+    /// A rider took the seat of this mount / left it (`mount.rs`).
+    pub mounted: Ev,
+    pub dismounted: Ev,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -682,6 +687,8 @@ impl Events {
         self.player_entered.swap();
         self.player_left.swap();
         self.picked_up.swap();
+        self.mounted.swap();
+        self.dismounted.swap();
     }
 }
 
@@ -1612,6 +1619,9 @@ mod tests {
     /// A cow dropped in a pond floats: a jump 8 ticks in 10 while the water is deeper than 0.4, and it stays afloat.
     #[test]
     fn a_cow_in_a_pond_jumps_eight_ticks_in_ten() {
+    if crate::cow::skip_unless_walker("a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
+        return;
+    }
         if crate::cow::skip_unless(&float::MODULE, "a_cow_in_a_pond_jumps_eight_ticks_in_ten") {
             return;
         }

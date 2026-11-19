@@ -126,6 +126,9 @@ mod tests {
     /// creature does nothing, and so does the player's hit while the rule is off.
     #[test]
     fn a_player_hit_forgets_the_target_and_starts_the_anger_again() {
+    if crate::cow::skip_unless_small_body("a_player_hit_forgets_the_target_and_starts_the_anger_again") {
+        return;
+    }
         if crate::cow::skip_unless_walker("a_player_hit_forgets_the_target_and_starts_the_anger_again") {
             return;
         }
@@ -154,6 +157,9 @@ mod tests {
     /// A reset is made per hit: a target taken again without a new hit is not reset; a new hit by a player is.
     #[test]
     fn one_reset_per_hit_of_a_player() {
+    if crate::cow::skip_unless_small_body("one_reset_per_hit_of_a_player") {
+        return;
+    }
         if crate::cow::skip_unless_walker("one_reset_per_hit_of_a_player") {
             return;
         }
@@ -176,6 +182,9 @@ mod tests {
     /// With the rule off, a player's hit does nothing (the control of the test above).
     #[test]
     fn without_the_rule_a_player_hit_does_nothing() {
+    if crate::cow::skip_unless_small_body("without_the_rule_a_player_hit_does_nothing") {
+        return;
+    }
         if crate::cow::skip_unless_walker("without_the_rule_a_player_hit_does_nothing") {
             return;
         }

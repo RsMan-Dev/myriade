@@ -50,12 +50,6 @@ fn awake_added(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle
 fn awake_removed(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
     world.resource_mut::<ItemIndex>().awake -= 1;
 }
-/// The hook of `Moving`: an item that starts to move is listed for the item system (nothing for the others).
-pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
-    if world.get::<Item>(ctx.entity).is_some() {
-        world.commands().entity(ctx.entity).insert(ItemAwake);
-    }
-}
 /// The dropped items by block cell, so that a merge, a pickup or a search finds them without a scan.
 #[derive(Resource, Default)]
 pub struct ItemIndex {
@@ -140,7 +134,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
             Vel(velocity),
             crate::goals::Uid(crate::goals::next_uid()),
             OwnTime,
-            Body { width: SIZE as f32, height: SIZE as f32, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: true },
+            Body { width: SIZE as f32, height: SIZE as f32, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: true, orb: false },
             Bounds(box_at(at)),
             Cell(u32::MAX),
             Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },

@@ -1,8 +1,9 @@
 //! `Rabbit` (`mobs/rabbit.rs:47-70`): float, climbing powder snow, panic, breeding and tempting with its food (the tag `rabbit_food`), raiding
 //! the garden, looking at players. Left out, waiting for their predicate, parameter or module: the flight from the player, the wolf and the
 //! monsters (`avoid_entity`, the predicate `rabbit:killer` is absent, the monsters are a list built at run time), the stroll that avoids
-//! water (`stroll` has no such parameter). The custom jump (`MoveKind::Custom`, `RabbitJumpControl`) is a movement control, not in this file.
+//! water (`stroll` has no such parameter). It moves by bounds along a path (`locomotion/hop.rs`, `Params::RABBIT`).
 use super::Def;
+use crate::locomotion::{hop, Medium};
 use crate::behaviours::{avoid_entity::{self, Avoid}, breed, climb_on_powder_snow, float, look_at_player, panic, raid_garden, stroll, tempt, Cond, Entry};
 
 const FOOD: &[&str] = &["minecraft:carrot", "minecraft:golden_carrot", "minecraft:dandelion"];
@@ -31,5 +32,6 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 6, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 11, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
     ],
+    locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::RABBIT))],
     ..Def::EMPTY
 };

@@ -71,6 +71,13 @@ fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Intera
         }
     }
 }
+/// `AbstractHorse.tameWithName`: the owner, nothing else (no sitting, the health stays).
+pub fn set_owner(w: &mut World, e: Entity, owner: Who) {
+    w.entity_mut(e).insert(Owner(Some(owner)));
+    if let Who::Player(id) = owner {
+        w.resource_mut::<Pets>().0.entry(id).or_default().push(e);
+    }
+}
 /// `TamableAnimal.tame` and `Wolf.mobInteract`'s side effects: the owner, the health, sitting, no target.
 pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
     w.entity_mut(e).insert(Owner(Some(owner)));

@@ -184,6 +184,9 @@ mod tests {
     /// At night the burning animal does not run, even with a spot given: the daylight is checked first.
     #[test]
     fn a_burning_animal_at_night_does_not_run() {
+    if crate::cow::skip_unless_small_body("a_burning_animal_at_night_does_not_run") {
+        return;
+    }
     if crate::cow::skip_unless_walker("a_burning_animal_at_night_does_not_run") {
         return;
     }

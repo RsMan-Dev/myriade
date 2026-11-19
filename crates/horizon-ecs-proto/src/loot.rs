@@ -14,6 +14,22 @@ pub struct LootTables(pub LootData);
 /// The level's random, which a table without a seed of its own is rolled with.
 #[derive(Resource)]
 pub struct LevelRandom(pub LegacyRandom);
+/// What a death is worth in experience (`Mob.getBaseExperienceReward`: `1 + nextInt(3)` for an animal, 5 for a monster).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct XpReward {
+    pub min: i32,
+    pub max: i32,
+}
+/// The rule that gives a species an experience reward.
+pub static XP: crate::rules::Rule = crate::rules::Rule {
+    name: "xp",
+    equip: |w, e, p| {
+        let p = *crate::rules::params::<XpReward>(p);
+        w.entity_mut(e).insert(p);
+    },
+    attrs: crate::rules::no_attrs,
+    interact: crate::rules::no_interact,
+};
 /// The seed an entity's death table is rolled with (`Mob.extra.death_table_seed`); 0 or absent: the level's random.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DeathSeed(pub i64);
@@ -77,5 +93,12 @@ pub fn on_death(world: &mut World, e: Entity) {
     let mut r = LegacyRandom::new(seed ^ 0x2545_F491 ^ i64::from(world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32)));
     for stack in out {
         crate::item::spawn_at_location(world, stack, at, &mut r);
+    }
+    // What a body of a size leaves: the smaller ones.
+    crate::size::split_on_death(world, e);
+    // The experience: not for a baby (`LivingEntity.shouldDropExperience`).
+    if let Some(x) = world.get::<XpReward>(e).copied().filter(|_| !baby) {
+        let amount = x.min + r.next_int_bound(x.max - x.min + 1).unwrap_or(0);
+        crate::orb::award(world, at, amount.max(0) as u32, &mut r);
     }
 }

@@ -15,7 +15,7 @@ fn main() {
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing = 2.0;
     let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
-    let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") { 1 } else { n }, spacing, true, false, 42, false, mix);
+    let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") || scene.starts_with("orb") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
         for i in 0..n {
@@ -32,6 +32,32 @@ fn main() {
             let (x, z) = spot_of(i);
             horizon_ecs_proto::item::drop_item(&mut herd.world, stack(), horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 0);
         }
+    }
+    if scene == "orbs" {
+        for i in 0..n {
+            let (x, z) = spot_of(i);
+            horizon_ecs_proto::orb::spawn_orb(&mut herd.world, 1, 1, horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO);
+        }
+    }
+    if scene == "orbsref" {
+        let mw = herd.world.resource::<horizon_ecs_proto::cow::Level>().mw.0;
+        let mut o = horizon_ecs_proto::item_reference::OrbsOriginal { mw, orbs: Vec::new(), players: Vec::new() };
+        for i in 0..n {
+            let (x, z) = spot_of(i);
+            o.orbs.push(horizon_client_lib::entities::ExperienceOrb::new(i as u32 + 1, horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 1 + (i % 11) as i32));
+        }
+        let counter = Counter::new();
+        let warm = arg(5, 100).min(ticks / 2);
+        let mut total = 0u64;
+        for t in 0..ticks {
+            let c0 = counter.read();
+            o.tick();
+            if t >= warm {
+                total += counter.read() - c0;
+            }
+        }
+        println!("scene=orbsref n={n} instr/tick={:.0} instr/orb-tick={:.0}", total as f64 / (ticks - warm) as f64, total as f64 / (ticks - warm) as f64 / n as f64);
+        return;
     }
     if scene == "itemsref" {
         let mw = herd.world.resource::<horizon_ecs_proto::cow::Level>().mw.0;

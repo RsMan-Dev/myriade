@@ -18,6 +18,10 @@ pub mod predicates;
 pub mod skeleton;
 pub mod sheep;
 pub mod templates;
+pub mod horse;
+pub mod magma_cube;
+pub mod rabbit;
+pub mod slime;
 pub mod wolf;
 pub mod zombie;
 pub mod cod;
@@ -35,7 +39,6 @@ pub mod mooshroom;
 pub mod husk;
 pub mod zombie_villager;
 pub mod zombified_piglin;
-pub mod horse;
 pub mod donkey;
 pub mod mule;
 pub mod skeleton_horse;
@@ -45,7 +48,6 @@ pub mod tropical_fish;
 pub mod pufferfish;
 pub mod tadpole;
 pub mod snow_golem;
-pub mod rabbit;
 pub mod turtle;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
@@ -76,6 +78,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &snow_golem::DEF,
     &rabbit::DEF,
     &turtle::DEF,
+    &slime::DEF,
+    &magma_cube::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,7 +120,7 @@ pub struct Def {
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
-const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform)];
+const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body)];
 impl Def {
     pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[] };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
@@ -473,10 +477,12 @@ mod tests {
         ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:zombified_piglin", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8)]),
-        ("minecraft:horse", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:donkey", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:mule", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:horse", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:donkey", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:mule", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:skeleton_horse", &[("breed", 2), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:slime", &[("float", 1)]),
+        ("minecraft:magma_cube", &[("float", 1)]),
         ("minecraft:zombie_horse", &[("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
     ];
     #[test]

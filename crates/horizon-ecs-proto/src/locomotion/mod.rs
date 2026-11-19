@@ -7,6 +7,7 @@ use crate::behaviours::{Entry, Module};
 use bevy_ecs::prelude::*;
 
 pub mod fly;
+pub mod hop;
 pub mod swim;
 pub mod walk;
 
@@ -18,7 +19,7 @@ pub enum Medium {
     Air,
 }
 /// The registration: one line per mode; the modes are modules of the registry like the goals.
-pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE];
+pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE, &hop::MODULE];
 
 /// A mode the species declares: its medium and the module with its parameters (the `priority` of the entry is not used).
 pub type ModeEntry = (Medium, Entry);

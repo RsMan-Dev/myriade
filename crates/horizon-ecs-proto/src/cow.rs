@@ -38,6 +38,8 @@ pub struct Body {
     /// The motion of an object (`ItemEntity.tick`: the gravity before the move, the drags of the air and the ground, the bounce, the water
     /// and the lava slowing it) instead of a creature's (`LivingEntity.travel`).
     pub object: bool,
+    /// With `object`: the motion of an experience orb (`ExperienceOrb.tick`) instead of an item's.
+    pub orb: bool,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -137,12 +139,13 @@ pub struct PathEnded;
 /// The cow follows a path: `follow` and `move_control` visit only these.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
+#[component(on_add = crate::locomotion::hop::following_started)]
 pub struct Following;
 /// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
 /// the marker off when the cow is back at rest.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
-#[component(on_add = crate::item::moving_added)]
+#[component(on_add = crate::cow::moving_added)]
 pub struct Moving;
 /// `Mob.noActionTime` as a deadline: the stroll goal is refused from this tick on (100 ticks after a player was
 /// last within 32 blocks, or the cow was hurt).
@@ -459,6 +462,11 @@ pub enum Due {
     ItemExpire(u32),
     /// A merge check of an item at its own multiple of 40 ticks (`item.rs`).
     ItemCheck(u32),
+    /// An orb's end of life and its merge check (`orb.rs`).
+    /// A hopping body's wait is over (`locomotion/hop.rs`).
+    Hop,
+    OrbExpire(u32),
+    OrbCheck(u32),
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -948,7 +956,7 @@ pub fn skip_unless_farm_goals(test: &str) -> bool {
 pub fn skip_unless_small_body(test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
     let (w, h) = species_size(&name);
-    let skip = w > 0.95 || h > 1.5 || (w < 0.5 && h < 0.5);
+    let skip = w > 0.95 || h > 1.5 || (w < 0.5 && h <= 0.5);
     if skip {
         eprintln!("SKIP {test}: {name} is {w} x {h}: the scene is made for a small animal");
     }
@@ -973,9 +981,12 @@ pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
 /// Skips (printed) when the species of the process moves in another medium than the ground (a swimmer).
 pub fn skip_unless_ground_only(test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
-    let other = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground));
+    // A ground mode other than the walk (the bounds of a slime or a rabbit) is another movement: the walking scenes do not apply.
+    let other = crate::species::registry().by_name(&name).is_ok_and(|r| {
+        r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground || !std::ptr::eq(m.1.module, &crate::locomotion::walk::MODULE))
+    });
     if other {
-        eprintln!("SKIP {test}: {name} moves in another medium than the ground");
+        eprintln!("SKIP {test}: {name} moves in another medium than the ground, or other than by walking");
     }
     other
 }
@@ -1021,7 +1032,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -1107,6 +1118,9 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     if has(crate::behaviours::Cap::Goals) {
         e.insert(goals_part(sp, uid, rng));
     }
+    if has(crate::behaviours::Cap::Rideable) {
+        e.insert(crate::mount::Mount::default());
+    }
     if has(crate::behaviours::Cap::Tamable) {
         e.insert(crate::tame::Owner::default());
     }
@@ -1180,7 +1194,10 @@ pub fn schedule() -> Schedule {
     crate::projectile::register(&mut s);
     crate::brain::register(&mut s);
     crate::item::register(&mut s);
+    crate::orb::register(&mut s);
+    crate::poi::register(&mut s);
     crate::tame::register(&mut s);
+    crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1711,6 +1728,9 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
 /// walks (`Drive`) is accelerated as a creature is, before the move.
 #[allow(clippy::too_many_arguments)]
 fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+    if body.orb {
+        return travel_orb(level, pos, vel, c, d, body, bounds, fs, fall_damage);
+    }
     let height = f64::from(0.1_f32);
     let (in_water, in_lava) = (fs.water > height, fs.lava > height);
     if in_water || in_lava {
@@ -1742,6 +1762,36 @@ fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut
     if c.on_ground && vel.0.y < 0.0 {
         vel.0.y *= -0.5;
     }
+    false
+}
+/// `ExperienceOrb.tick`'s motion: its eye in water floats it (0.99, lifted by 5.0E-4 up to 0.06), else gravity unless it is in a block; it moves,
+/// then every axis loses the same drag (0.98, times the block's friction on the ground), and a fall faster than 0.03 bounces by 0.4 of it.
+#[allow(clippy::too_many_arguments)]
+fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+    let mw = level.mw.0;
+    if fs.eye_in_water {
+        vel.0 = Vec3::new(vel.0.x * f64::from(0.99_f32), (vel.0.y + f64::from(5.0e-4_f32)).min(f64::from(0.06_f32)), vel.0.z * f64::from(0.99_f32));
+    } else if mw.no_collision(bounds.0) {
+        vel.0.y -= body.gravity;
+    }
+    let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
+    if c.on_ground && !fs.in_water && horizontal <= 1.0e-10 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
+        vel.0 = Vec3::ZERO;
+        return true;
+    }
+    let wanted_y = vel.0.y;
+    do_move(level, pos, vel, c, body, bounds, fall_damage);
+    let mut friction = 0.98_f32;
+    if c.on_ground {
+        let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.999_999).floor() as i32, pos.0.z.floor() as i32);
+        friction *= mw.facts.get(below).friction;
+    }
+    let f = f64::from(friction);
+    vel.0 = Vec3::new(vel.0.x * f, vel.0.y * f, vel.0.z * f);
+    if c.on_ground && wanted_y < -0.03 {
+        vel.0.y = -wanted_y * 0.4;
+    }
+    let _ = d;
     false
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
@@ -2872,6 +2922,9 @@ pub(crate) fn due(
             Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
             Due::Sensor(i) => commands.queue(move |w: &mut World| crate::brain::sensor_due(w, e, i)),
             Due::ItemExpire(t) => commands.queue(move |w: &mut World| crate::item::expire_due(w, e, t)),
+            Due::Hop => commands.queue(move |w: &mut World| crate::locomotion::hop::due(w, e)),
+            Due::OrbExpire(t) => commands.queue(move |w: &mut World| crate::orb::expire_due(w, e, t)),
+            Due::OrbCheck(t) => commands.queue(move |w: &mut World| crate::orb::check_due(w, e, t)),
             Due::ItemCheck(t) => commands.queue(move |w: &mut World| crate::item::check_due(w, e, t)),
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
@@ -3158,7 +3211,8 @@ impl Herd {
     pub fn counts(&mut self) -> (usize, usize, usize, usize) {
         let following = self.world.query_filtered::<(), With<Following>>().iter(&self.world).count();
         let moving = self.world.query_filtered::<(), With<Moving>>().iter(&self.world).count();
-        let idle = self.world.query_filtered::<(), (Without<Moving>, Without<Following>)>().iter(&self.world).count();
+        // Only what has a place: the world also holds entities of the framework (the registered components), which are not animals.
+        let idle = self.world.query_filtered::<(), (With<Pos>, Without<Moving>, Without<Following>)>().iter(&self.world).count();
         let total = self.world.query::<&Pos>().iter(&self.world).count();
         (idle, following, moving, total)
     }
@@ -3714,4 +3768,13 @@ pub fn teleport(world: &mut World, e: Entity, at: Vec3) {
     world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
     world.entity_mut(e).insert((Recheck, Moving));
+}
+
+/// The hook of `Moving`: an item or an orb that starts to move is listed for its system (nothing for the others).
+pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if world.get::<crate::item::Item>(ctx.entity).is_some() {
+        world.commands().entity(ctx.entity).insert(crate::item::ItemAwake);
+    } else if world.get::<crate::orb::Orb>(ctx.entity).is_some() {
+        world.commands().entity(ctx.entity).insert(crate::orb::OrbAwake);
+    }
 }
