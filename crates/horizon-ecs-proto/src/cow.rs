@@ -3054,7 +3054,10 @@ impl Herd {
     /// A mixed herd: every `other_every`-th animal is of the second species (the pig), the others of the first (the
     /// cow); 0: all of the process's default species.
     pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
-        Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None)
+        let mut herd = Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None);
+        // The loot tables are read once, now: the first death of a bench would read them in the middle of a measure.
+        crate::loot::preload(&mut herd.world);
+        herd
     }
     /// An empty walled slab of `half` blocks each way.
     pub fn with_slab(half: i32, sleep: bool, hazards: bool) -> Self {

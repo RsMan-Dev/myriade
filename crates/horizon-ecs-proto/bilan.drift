@@ -169,3 +169,25 @@ cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone mid ring (cow,
 cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone far ring (cow, 6, 10)|ecs|1.2|-0.0
 cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
 cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|schedule at rest (empty world, per tick)|ecs|125389|127137
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow idle|ecs-eager|2499|2500
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow active(1000 players, no solicitation)|ecs-eager|9856|9862
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19799|20175
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig idle|ecs-eager|502|505
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig active(1000 players, no solicitation)|ecs|8403|8402
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig active(1000 players, no solicitation)|ecs-eager|8265|8235
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17969|18182
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep idle|ecs|994|996
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep active(1000 players, no solicitation)|ecs|9567|9572
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep active(1000 players, no solicitation)|ecs-eager|9433|9432
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19173|20914
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken active(1000 players, no solicitation)|ecs|5416|5417
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken active(1000 players, no solicitation)|ecs-eager|5292|5296
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12225|12412
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie active(1000 players, no solicitation)|ecs|14001|14062
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie active(1000 players, no solicitation)|ecs-eager|13941|13946
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6349|6350
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9255|9252
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zone near ring (cow, 6, 10)|ecs|5075.8|5075.7
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zone far ring (cow, 6, 10)|ecs|-0.0|1.6
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|schedule at rest (empty world, per tick)|ecs|127137|127140
