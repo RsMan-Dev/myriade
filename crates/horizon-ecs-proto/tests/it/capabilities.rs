@@ -369,3 +369,31 @@ fn a_hundred_players_are_each_reported_once_by_a_watcher() {
     assert_eq!(left.len(), 100, "every player left: {}", left.len());
     assert!(left.values().all(|&n| n == 1));
 }
+
+/// `PlayerWatch` covers the whole player id range (it was a `u64` mask: ids >= 64 never fired).
+#[test]
+fn range_events_work_for_player_ids_beyond_64() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::goals::{Events, Online, Player, PlayerWatch};
+    let mut h = Herd::with_slab(30, true, false);
+    let e = inert(&mut h, 0.5, 1.0, 0.5);
+    h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
+    for _ in 0..30 {
+        h.tick();
+    }
+    for id in [70u32, 5000] {
+        let (mut entered, mut left) = (0, 0);
+        for x in [25.0, 6.0, 4.0, 20.0] {
+            h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+            for _ in 0..3 {
+                h.tick();
+                let ev = h.world.resource::<Events>();
+                entered += ev.player_entered.iter().filter(|&(w, p)| w == e && p == id).count();
+                left += ev.player_left.iter().filter(|&(w, p)| w == e && p == id).count();
+            }
+        }
+        assert_eq!((entered, left), (1, 1), "player {id}: one entry, one exit");
+    }
+}

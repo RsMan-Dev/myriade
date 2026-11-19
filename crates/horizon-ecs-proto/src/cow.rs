@@ -2344,7 +2344,7 @@ pub(crate) fn travel(
         }
         // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
         if p.0.y < void_y {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| {
                     // An experience orb is not alive: it is discarded (`Entity.checkBelowWorld`), a creature is hurt.
                     if w.get::<crate::orb::Orb>(e).is_some() {
