@@ -54,7 +54,7 @@ pub fn unarm(w: &mut World, e: Entity) {
     }
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     let Some(mut t) = w.get_mut::<TargetGoal>(e) else { return false };
     t.armed = false;

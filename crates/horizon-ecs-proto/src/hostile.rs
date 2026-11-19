@@ -134,6 +134,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         return;
     }
     let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(e).unwrap().0 as usize];
+    // The melee check's grid is in the WORLD's time (`MeleeAttackGoal.lastCanUseCheck` against `getGameTime`).
     let now = w.resource::<Clock>().0;
     w.entity_mut(e).insert(Attack {
         damage: if sp.attack_damage <= 0.0 { 1.0 } else { sp.attack_damage },
@@ -239,10 +240,11 @@ fn hurt_by_events(
 /// `TargetGoal.canContinueToUse`, asked every other tick of the monsters that have a target: alive and within the
 /// follow range of the monster, else the target is lost.
 fn aggro_run(clock: Res<Clock>, on: Res<Online>, ps: Res<PlayerState>, mut q: Query<(Entity, &Pos, &mut Aggro, &Attack)>, mut reqs: ResMut<Requests>) {
-    if clock.0 % 2 != 0 {
-        return;
-    }
     for (e, pos, mut g, a) in &mut q {
+        // Every other tick of the monster's own time.
+        if clock.of(e) % 2 != 0 {
+            continue;
+        }
         let ok = on.get(g.player).is_some_and(|p| ps.alive(p.id) && d2(pos.0, Vec3::new(p.x, p.y, p.z)) <= a.follow * a.follow);
         // `TargetGoal.canContinueToUse`: a target out of sight is kept for `unseenMemoryTicks` evaluations.
         if g.seen {
@@ -456,12 +458,13 @@ fn sun_eval(
         let chance = burn_chance(&level, day.0, b.block);
         if chance > 0.0 && !exposed {
             // The draw of THIS tick (the monster has moved already) is the first: it succeeds at tick now + failures.
-            let at = clock.0 + failures_before(&mut rng, chance);
+            let now = clock.of(e);
+            let at = now + failures_before(&mut rng, chance);
             // This tick's own draw came up: the wheel of this tick has been emptied already, so it is fired by hand.
-            if at == clock.0 {
+            if at == now {
                 now_fired.0.push(e);
             } else {
-                wheel.push(at, e, Due::Sun);
+                wheel.push(clock.at(e, at), e, Due::Sun);
             }
             cmd.entity(e).insert(Exposed { token: at });
         } else if chance == 0.0 && exposed {
@@ -481,9 +484,9 @@ fn sun_burn(
     mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng)>,
     mut cmd: Commands,
 ) {
-    let now = clock.0;
     for e in std::mem::take(&mut fired.0) {
         let Ok((x, b, fs, burning, mut rng)) = q.get_mut(e) else { continue };
+        let now = clock.of(e);
         if x.token != now {
             continue;
         }
@@ -491,7 +494,7 @@ fn sun_burn(
             let until = now + 160;
             match burning {
                 None => {
-                    wheel.push(now + 1, e, Due::Burn);
+                    wheel.push(clock.at(e, now + 1), e, Due::Burn);
                     cmd.entity(e).insert(Burning { until });
                 }
                 Some(bn) if bn.until < until => {
@@ -504,7 +507,7 @@ fn sun_burn(
         if chance > 0.0 {
             // The next draw is the next tick's.
             let at = now + 1 + failures_before(&mut rng, chance);
-            wheel.push(at, e, Due::Sun);
+            wheel.push(clock.at(e, at), e, Due::Sun);
             cmd.entity(e).insert(Exposed { token: at });
         } else {
             cmd.entity(e).remove::<Exposed>();

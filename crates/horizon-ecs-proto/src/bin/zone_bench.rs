@@ -7,7 +7,7 @@
 use horizon_ecs_proto::{
     cow::Herd,
     profile::Counter,
-    zone::{self, Cold},
+    zone,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -231,34 +231,6 @@ fn burst(spacing: f64, radius: i32) {
     herd.tick();
     let calm = counter.read() - c0;
     println!("(a) one chunk step: tick {step} instr (calm tick {calm}), {slept} slept, {woke} woke: {:.0} instr per creature moved (burst above the calm tick)", (step.saturating_sub(calm)) as f64 / (slept + woke).max(1) as f64);
-    // Form (b): the same chunk of creatures out of the world and back (a stand-alone measure of the form).
-    let mut herd = Herd::with_slab(half(), true, false);
-    let base = LIVE.load(Relaxed);
-    let ents = herd.populate(&at, 3);
-    for _ in 0..150 {
-        herd.tick();
-    }
-    herd.world.resource_mut::<horizon_ecs_proto::cow::Wheel>().enable_tracking_pub();
-    let chunk: Vec<_> = ents.into_iter().filter(|&e| {
-        let p = herd.world.get::<horizon_ecs_proto::cow::Pos>(e).unwrap().0;
-        (0.0..16.0).contains(&p.x) && (0.0..16.0).contains(&p.z)
-    }).collect();
-    let k = chunk.len();
-    let l0 = LIVE.load(Relaxed);
-    let c0 = counter.read();
-    let now = herd.world.resource::<horizon_ecs_proto::cow::Clock>().0;
-    let colds: Vec<Cold> = chunk.iter().map(|&e| zone::sleep_cold(&mut herd.world, e, now)).collect();
-    let out = counter.read() - c0;
-    let stored: usize = colds.iter().map(|c| std::mem::size_of::<Cold>() + c.wheel.capacity() * 24 + c.stash.capacity() * 64).sum();
-    let packed: usize = colds.iter().map(Cold::packed_bytes).sum();
-    let c0 = counter.read();
-    let now = herd.world.resource::<horizon_ecs_proto::cow::Clock>().0 + 1000;
-    for c in colds {
-        zone::wake_cold(&mut herd.world, c, now);
-    }
-    let back = counter.read() - c0;
-    let _ = (l0, base);
-    println!("(b) out of the world, {k} creatures of one chunk: out {} instr ({:.0}/creature), back {} instr ({:.0}/creature); a record is {} bytes ({} packed + wheel/markers)", out, out as f64 / k as f64, back, back as f64 / k as f64, stored / k.max(1), packed / k.max(1));
     // (a) for the same chunk, to compare like with like.
     let mut herd = Herd::with_slab(half(), true, false);
     let ents = herd.populate(&at, 3);
@@ -270,6 +242,7 @@ fn burst(spacing: f64, radius: i32) {
         let p = herd.world.get::<horizon_ecs_proto::cow::Pos>(e).unwrap().0;
         (0.0..16.0).contains(&p.x) && (0.0..16.0).contains(&p.z)
     }).collect();
+    let k = chunk.len();
     let now = herd.world.resource::<horizon_ecs_proto::cow::Clock>().0;
     let c0 = counter.read();
     for &e in &chunk {
@@ -281,5 +254,5 @@ fn burst(spacing: f64, radius: i32) {
         zone::wake(&mut herd.world, e, now + 1000);
     }
     let back_a = counter.read() - c0;
-    println!("(a) the same {k} creatures: out {out_a} instr ({:.0}/creature), back {back_a} instr ({:.0}/creature)", out_a as f64 / k as f64, back_a as f64 / k as f64);
+    println!("(a) {k} creatures of a chunk: out {out_a} instr ({:.0}/creature), back {back_a} instr ({:.0}/creature)", out_a as f64 / k as f64, back_a as f64 / k as f64);
 }

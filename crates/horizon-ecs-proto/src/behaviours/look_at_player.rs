@@ -110,7 +110,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let id = w.get::<Glance>(e).unwrap().pick;
     // `reducedTickDelay(40 + nextInt(40))` asks of 2 ticks.
     let n = with_rng(w, e, |r| r.next_int(40));
@@ -145,7 +145,7 @@ fn glance_run(
     for ((e, pos, mut look, looking, _, _), g, data) in &mut q {
         let p = on.get(g.player).filter(|p| d2(Vec3::new(p.x, p.y, p.z), pos.0) <= data.range * data.range);
         match p {
-            Some(p) if clock.0 < g.until => aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], None),
+            Some(p) if clock.of(e) < g.until => aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], None),
             _ => reqs.0.push(Req::End(e, data.slot)),
         }
     }

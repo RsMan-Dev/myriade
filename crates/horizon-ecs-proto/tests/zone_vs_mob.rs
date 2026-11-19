@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_client_lib::ticket_levels::{ChunkTickets, Levels, Sources};
 use horizon_core::geometry::Vec3;
-use horizon_ecs_proto::{cow::*, goals::*, zone::Dormant};
+use horizon_ecs_proto::{cow::*, goals::*, hostile::Aggro, zone::Dormant};
 
 const HALF: i32 = 100;
 
@@ -132,7 +132,7 @@ fn run(gap: i64, s1: i64, s2: i64, what: What) -> (Seen, Seen, bool) {
     }
     eprintln!("end: dormant {} burning {:?} grow {:?} clock {} pos {:?}", h.world.get::<Dormant>(e).is_some(), h.world.get::<Burning>(e).map(|b| b.until), h.world.get::<GrowAt>(e).map(|g| g.0), h.world.resource::<Clock>().0, h.world.get::<Pos>(e).map(|p| p.0));
     mob.love_left = i64::from(r.mobs[i].extra.in_love.max(0));
-    let clock = h.world.resource::<Clock>().0 as i64;
+    let clock = h.world.resource::<Clock>().of(e) as i64;
     ecs.love_left = h.world.get::<Love>(e).map_or(0, |l| (l.0 as i64 - clock).max(0));
     mob.health = mob_health(&r.mobs[i]);
     ecs.health = health(&h, e);
@@ -148,15 +148,20 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
     }
     let (s1, s2) = (100, 500);
     let _ = pair();
-    if species().name == "minecraft:zombie" {
-        // A monster's own deadlines (`hostile.rs`) are not shifted yet: see `suivi/ecs-ecarts.md`.
+    // A monster is not a baby and is never in love: its own timers are the fire and the zombie test below.
+    let monster = species().name == "minecraft:zombie";
+    let (mf, ef, slept) = run(700, s1, s2, What::Fire);
+    if monster {
+        assert!(slept);
+        let close = |a: Option<i64>, b: Option<i64>| a.zip(b).is_some_and(|(a, b)| (a - b).abs() <= 1);
+        assert!(close(ef.fire_out, mf.fire_out), "fire: mob {:?} ecs {:?}", mf.fire_out, ef.fire_out);
+        assert_eq!(ef.health, mf.health, "health after the fire");
         return;
     }
     let (m0, e0, slept0) = run(0, s1, s2, What::Baby);
     assert!(!slept0, "a creature beside a player never sleeps");
     let (mg, eg, slept) = run(700, s1, s2, What::Baby);
     let (ml, el, _) = run(700, s1, s2, What::Love);
-    let (mf, ef, _) = run(700, s1, s2, What::Fire);
     eprintln!("baby, no gap: mob {m0:?} ecs {e0:?}\nbaby, gap 700: mob {mg:?} ecs {eg:?}\nlove: mob {ml:?} ecs {el:?}\nfire: mob {mf:?} ecs {ef:?}");
     assert!(slept, "the creature must have slept");
     // The Mob after the gap equals the Mob with no gap, shifted by the gap.
@@ -323,4 +328,76 @@ fn the_herd_stays_awake_or_asleep_by_its_chunk() {
         moved = h.world.resource::<Index>().zone.stats.woke;
     }
     assert!(slept_max > 100 && moved > 50, "the zone never moved over the herd: {slept_max} asleep at most, {moved} woke");
+}
+
+/// What a ring of zombies around a player did: the ticks of their blows (the hits on the player, in the world's ticks).
+fn zombie_hits(gap: i64, s1: i64, s2: i64) -> (Vec<i64>, Vec<i64>, bool) {
+    use horizon_ecs_proto::hostile::PlayerState;
+    let mut r = MobRef::new(HALF, false);
+    r.kind = mob_kind("minecraft:zombie");
+    let mut h = Herd::with_slab(HALF, true, false);
+    h.world.resource_mut::<PlayerState>().immortal = true;
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let (target, near, far) = ((60.0, 0.0), (50.0, 0.0), (-90.0, -90.0));
+    h.set_players(vec![near]);
+    h.set_simulation(6);
+    h.tick();
+    let spots: Vec<(f64, f64)> = (0..4).map(|i| (target.0 + 6.0 * f64::from(i).cos(), target.1 + 6.0 * f64::from(i).sin())).collect();
+    for (i, s) in spots.iter().enumerate() {
+        r.add(Vec3::new(s.0, 1.0, s.1));
+        let e = spawn_species(&mut h.world, &table[2], s.0, s.1, 1000 + i as u64);
+        h.world.entity_mut(e).insert(ActiveUntil(u64::MAX));
+        h.world.resource_mut::<Entered>().0.push(e);
+    }
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: target.0, y: 1.0, z: target.1, main: 0, off: 0 });
+    let (lv_near, lv_far) = (oracle(&[near], 6, 6), oracle(&[far], 6, 6));
+    let pv = player_view(Vec3::new(target.0, 1.0, target.1), None);
+    let (mut mob, mut ecs, mut seen, mut slept) = (Vec::new(), Vec::new(), 0, false);
+    let t0 = h.world.resource::<Clock>().0 as i64;
+    for t in 1..=(s1 + gap + s2) {
+        let (list, lv) = if t > s1 && t <= s1 + gap { (far, &lv_far) } else { (near, &lv_near) };
+        if t == 1 || t == s1 + 1 || t == s1 + gap + 1 {
+            h.set_players(vec![list]);
+        }
+        let from = r.events.len();
+        r.step_where(Some(&pv), |m| lv.entity_ticking_at(m.position.x.floor() as i32, m.position.z.floor() as i32));
+        h.tick();
+        for e in &r.events[from..] {
+            if matches!(e, horizon_client_lib::mobs::MobEvent::AttackPlayer(..)) {
+                mob.push(t);
+            }
+        }
+        let hits = h.world.resource::<PlayerState>().hits.clone();
+        for x in &hits[seen..] {
+            ecs.push(x.tick as i64 - t0);
+        }
+        seen = hits.len();
+        slept |= h.world.query_filtered::<(), bevy_ecs::prelude::With<bevy_ecs::entity_disabling::Disabled>>().iter(&h.world).count() > 0;
+    }
+    (mob, ecs, slept)
+}
+
+/// A zombie asleep for 707 ticks strikes again as the `Mob` that was not ticked does. Its melee check is in the WORLD's time (vanilla's
+/// `lastCanUseCheck` against `getGameTime`, which the `Mob` keeps): the `Mob` asks at once when it wakes, the ecs zombie on its
+/// grid, at most 20 ticks later (a declared gap); the cadence after is the same, and its other deadlines (sun draw, fire,
+/// cooldown counters) stand still with its own time.
+#[test]
+fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let _ = pair();
+    let (s1, s2, gap) = (80, 300, 707);
+    let (m0, e0, slept0) = zombie_hits(0, s1, s2);
+    let (mg, eg, slept) = zombie_hits(gap, s1, s2);
+    eprintln!("zombies, no gap: mob {m0:?}\n  ecs {e0:?}\ngap {gap}: mob {mg:?}\n  ecs {eg:?}");
+    assert!(!slept0 && slept, "the zombies sleep in the gap only");
+    let first_after = |v: &[i64]| v.iter().copied().find(|&t| t > s1 + gap);
+    let (mf, ef) = (first_after(&mg).expect("the mob strikes again"), first_after(&eg).expect("the ecs zombies strike again"));
+    assert!(ef >= mf - 2 && ef - mf <= 22, "first strike after the wake: mob {mf}, ecs {ef}");
+    // The strikes before the sleep are those of a herd that never slept, and the cadence after is the same.
+    assert_eq!(eg.iter().filter(|&&t| t <= s1).count(), e0.iter().filter(|&&t| t <= s1).count());
+    let after = |v: &[i64]| v.iter().filter(|&&t| t > s1 + gap).count() as f64;
+    let (ma, ea) = (after(&mg), after(&eg));
+    assert!((ea / ma - 1.0).abs() < 0.25, "strikes after the wake: mob {ma}, ecs {ea}");
 }

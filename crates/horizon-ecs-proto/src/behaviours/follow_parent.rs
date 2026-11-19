@@ -73,7 +73,7 @@ pub fn adopt(world: &mut World, parent: Entity, baby: Entity) {
 }
 /// A baby of `ticks` ticks of age left.
 pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
-    let now = world.resource::<Clock>().0;
+    let now = crate::cow::now_of(world, e);
     let sizes = *world.get::<Sizes>(e).unwrap();
     let p = world.get::<Pos>(e).unwrap().0;
     let mut b = world.get_mut::<Body>(e).unwrap();
@@ -83,7 +83,7 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     world.entity_mut(e).insert(GrowAt(now + ticks));
     world.resource_mut::<Babies>().0.push(e);
     wake(world, e, &MODULE);
-    world.resource_mut::<Wheel>().push((now + ticks).min(now + WHEEL_MAX), e, Due::Grow);
+    crate::cow::arm_at(world, e, (now + ticks).min(now + WHEEL_MAX), Due::Grow);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
@@ -116,7 +116,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let mut f = w.get_mut::<FollowParent>(e).unwrap();
     f.recalc = now;
     let parent = f.parent.unwrap();
@@ -184,8 +184,8 @@ fn follow_parent_run(
             reqs.0.push(Req::End(e, f.slot));
             continue;
         };
-        if clock.0 >= f.recalc {
-            f.recalc = clock.0 + 10;
+        if clock.of(e) >= f.recalc {
+            f.recalc = clock.of(e) + 10;
             go_to(&mut cmd, e, pp.0.x, pp.0.z, f.speed, 4);
         }
     }

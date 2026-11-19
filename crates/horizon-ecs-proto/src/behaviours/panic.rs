@@ -78,13 +78,13 @@ pub(crate) fn hurt_events(
         if let Ok(mut p) = q.get_mut(e)
             && panics
         {
-            p.until = clock.0 + p.window;
+            p.until = clock.of(e) + p.window;
             reqs.0.push(Req::Start(e, p.slot));
         }
     }
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let Some(p) = w.get::<Panic>(e).copied() else { return false };
     let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
@@ -152,7 +152,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(NeedsPath);
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     w.entity_mut(e).remove::<Panicking>();
     // `canUse` is asked again at the next selector tick while the damage is recent or the animal burns.
     let until = w.get::<Panic>(e).unwrap().until;
@@ -162,9 +162,9 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 }
 /// Sets the animal on fire for `ticks`: its damage every 20 ticks, and the panic that a burning animal has.
 pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
-    let now = world.resource::<Clock>().0;
+    let now = crate::cow::now_of(world, e);
     world.entity_mut(e).insert(Burning { until: now + ticks });
     // `Entity.baseTick`: the fire hurts on the ticks where the remaining fire is a multiple of 20, the first included.
-    world.resource_mut::<Wheel>().push(now + if ticks % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
+    crate::cow::arm_at(world, e, now + if ticks % 20 == 0 { 1 } else { 20 }, Due::Burn);
     wake(world, e, &MODULE);
 }

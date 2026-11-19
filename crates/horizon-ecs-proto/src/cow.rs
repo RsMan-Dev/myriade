@@ -355,9 +355,54 @@ impl Rng {
 }
 
 // ---- resources -------------------------------------------------------------------------------------------
-/// The tick counter (advanced by `due`).
+/// The tick counter of the world (advanced by `due`) and the time each entity has not lived: `.0` is the WORLD's time (the
+/// timer wheel, the day, the log of the hits); an entity's own time is `of(e)`: the world's minus what it spent
+/// asleep (`zone.rs`), as a `Mob`'s `tickCount` does not count the ticks it is not ticked. Every deadline and every date a
+/// module or the frame keeps on an entity is in its OWN time; the wheel is in the world's (`at`, `arm`).
 #[derive(Resource, Default)]
-pub struct Clock(pub u64);
+pub struct Clock(pub u64, Vec<u64>);
+impl Clock {
+    /// The time of entity `e`: ticks it has been awake for since the world began (its `age`, with the world's start).
+    #[inline]
+    pub fn of(&self, e: Entity) -> u64 {
+        self.0 - self.1.get(e.index().index() as usize).copied().unwrap_or(0)
+    }
+    /// The world's tick at which the entity's own time is `local`.
+    #[inline]
+    pub fn at(&self, e: Entity, local: u64) -> u64 {
+        local + self.1.get(e.index().index() as usize).copied().unwrap_or(0)
+    }
+    /// The entity slept for `d` ticks of the world: its time stood still.
+    pub(crate) fn sleep_for(&mut self, e: Entity, d: u64) {
+        let i = e.index().index() as usize;
+        if self.1.len() <= i {
+            self.1.resize(i + 1, 0);
+        }
+        self.1[i] += d;
+    }
+    /// A new entity starts with its own time equal to the world's (its slot may have been an older entity's).
+    fn start(&mut self, e: Entity) {
+        if let Some(x) = self.1.get_mut(e.index().index() as usize) {
+            *x = 0;
+        }
+    }
+}
+/// On every animal: its own time starts with its creation (see `Clock`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_add = start_own_time)]
+pub struct OwnTime;
+fn start_own_time(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    world.resource_mut::<Clock>().start(ctx.entity);
+}
+/// Arms a wheel entry for an entity at its own time `local`.
+pub fn arm_at(w: &mut World, e: Entity, local: u64, d: Due) {
+    let at = w.resource::<Clock>().at(e, local);
+    w.resource_mut::<Wheel>().push(at, e, d);
+}
+/// The entity's own time.
+pub fn now_of(w: &World, e: Entity) -> u64 {
+    w.resource::<Clock>().of(e)
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Due {
     Stroll,
@@ -743,6 +788,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
             MoveTo::default(),
             Nav::default(),
             ActiveUntil(100),
+            OwnTime,
             Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
             (Moving, crate::goals::goals_bundle(sp)),
             Health(sp.max_health),
@@ -806,9 +852,10 @@ pub fn schedule() -> Schedule {
 /// `RandomStrollGoal.canUse` and `LandRandomPos`: after the wait, 10 tries of a spot within 10 x 7 (the first valid
 /// one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Arms the stroll attempt `idle_wait` ticks from now (the goal selector asks every other tick, 1 chance in 60).
-fn arm_stroll(wheel: &mut Wheel, now: u64, e: Entity, s: &mut Stroll, r: &mut Rng) {
+fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
+    let now = clock.of(e);
     let at = now + idle_wait(r, s.interval).max(1) as u64;
-    wheel.push(at.min(now + WHEEL as u64 - 1), e, Due::Stroll);
+    wheel.push(clock.at(e, at.min(now + WHEEL as u64 - 1)), e, Due::Stroll);
     s.scheduled = true;
 }
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
@@ -959,10 +1006,10 @@ pub(crate) fn player_near(
             a.0 = u64::MAX;
             entered.0.push(e);
             if !s.scheduled && !s.walking {
-                arm_stroll(wheel, clock.0, e, &mut s, &mut r);
+                arm_stroll(wheel, &clock, e, &mut s, &mut r);
             }
         } else if !now_in && a.0 == u64::MAX {
-            a.0 = clock.0 + 100;
+            a.0 = clock.of(e) + 100;
         }
     };
     for &c in &pl.candidates {
@@ -993,9 +1040,9 @@ pub(crate) fn pathfind(
     par: ParallelCommands,
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &SpeciesId), With<NeedsPath>>,
 ) {
-    let now = clock.0;
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sid: &SpeciesId| {
+        let now = clock.of(e);
         let sp = &table.0[sid.0 as usize];
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1057,9 +1104,9 @@ fn follow(
     par: ParallelCommands,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
 ) {
-    let now = clock.0;
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
+        let now = clock.of(e);
         let mw = level.mw.0;
         let mut end = false;
         match nav.path.as_mut() {
@@ -1635,7 +1682,8 @@ pub(crate) fn apply_damage(
         let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid, uid)) = q.get_mut(e) else {
             continue;
         };
-        let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
+        let now = clock.of(e);
+        let cooldown = now < hurt.at + 10 && hurt.at != 0;
         let applied = if cooldown {
             if hit.amount <= hurt.last {
                 continue;
@@ -1644,7 +1692,7 @@ pub(crate) fn apply_damage(
         } else {
             hit.amount
         };
-        *hurt = HurtAt { at: clock.0, last: hit.amount };
+        *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;
         if h.0 <= 0.0 {
             if cell.0 != u32::MAX {
@@ -1662,12 +1710,12 @@ pub(crate) fn apply_damage(
         commands.entity(e).remove::<crate::goals::Love>();
         // `ai::after_hurt`: `noActionTime = 0`.
         if active.0 != u64::MAX {
-            active.0 = active.0.max(clock.0 + 100);
+            active.0 = active.0.max(now + 100);
             if !stroll.scheduled && !stroll.walking {
                 // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
                 // of a panic), which the hit must not shift.
-                let mut own = Rng(((uid.0) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
-                arm_stroll(&mut wheel, clock.0, e, &mut stroll, &mut own);
+                let mut own = Rng(((uid.0) << 32 ^ now ^ 0x9e37_79b9_7f4a_7c15) | 1);
+                arm_stroll(&mut wheel, &clock, e, &mut stroll, &mut own);
             }
         }
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
@@ -1702,9 +1750,9 @@ fn hazard_tick(
     mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &SpeciesId)>,
     mut commands: Commands,
 ) {
-    let now = clock.0;
     let mw = level.mw.0;
     for (e, h, mut frozen, burning, pos, b, sid) in &mut q {
+        let now = clock.of(e);
         let f = h.0;
         // Water and lava as the `Mob` reads them: the fluid height at the cow's box, not the column.
         let (in_water, in_lava) = if f & (HAZ_WATER | HAZ_LAVA) != 0 {
@@ -1725,7 +1773,7 @@ fn hazard_tick(
                 match burning {
                     None => {
                         // `Entity.baseTick` hurts when the time left is a multiple of 20, the first tick included.
-                        wheel.push(now + if seconds % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
+                        wheel.push(clock.at(e, now + if seconds % 20 == 0 { 1 } else { 20 }), e, Due::Burn);
                         commands.entity(e).insert(Burning { until });
                     }
                     Some(b) if b.until < until => {
@@ -1768,10 +1816,10 @@ fn recompute(
         if nav.path.as_ref().is_none_or(|p| p.is_done()) {
             nav.delayed = false;
             commands.entity(e).remove::<Recompute>();
-        } else if clock.0.saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
+        } else if clock.of(e).saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
             nav.delayed = true;
         } else {
-            nav.last_recompute = clock.0;
+            nav.last_recompute = clock.of(e);
             nav.path = None;
             nav.delayed = false;
             commands.entity(e).remove::<(Following, Recompute)>().insert(NeedsPath);
@@ -2285,7 +2333,7 @@ fn cramming(
         } else if rng.next_int(4) == 0 {
             queue.add(e, 6.0, Cause::Cramming);
             // The hit is applied at the start of the next tick.
-            let in_window = clock.0 + 1 < hurt.at + 10 && hurt.at != 0;
+            let in_window = clock.of(e) + 1 < hurt.at + 10 && hurt.at != 0;
             let applied = if in_window { (6.0 - hurt.last).max(0.0) } else { 6.0 };
             if health.0 - applied <= 0.0 {
                 dying.push(e);
@@ -2332,9 +2380,10 @@ pub(crate) fn due(
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
-                    if clock.0 < burning.until {
+                    let now = clock.of(e);
+                    if now < burning.until {
                         queue.add(e2, 1.0, Cause::OnFire);
-                        wheel.push((clock.0 + 20).min(clock.0 + WHEEL as u64 - 1), e, Due::Burn);
+                        wheel.push(clock.at(e, (now + 20).min(now + WHEEL as u64 - 1)), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
                     }
@@ -2342,10 +2391,11 @@ pub(crate) fn due(
             }
             Due::Grow => {
                 if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e) {
-                    if g.0 > clock.0 {
+                    let now = clock.of(e);
+                    if g.0 > now {
                         // A wait longer than the wheel is put back (a calf grows in 24 000 ticks).
-                        wheel.push(g.0.min(clock.0 + WHEEL as u64 - 1), e, Due::Grow);
-                    } else if g.0 == clock.0 {
+                        wheel.push(clock.at(e, g.0.min(now + WHEEL as u64 - 1)), e, Due::Grow);
+                    } else if g.0 == now {
                         b.width = sizes.adult.0;
                         b.height = sizes.adult.1;
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
@@ -2437,9 +2487,9 @@ impl Herd {
         }
         let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
         for &e in &out {
-            let now = self.world.resource::<Clock>().0;
+            let now = now_of(&self.world, e);
             let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
-            self.world.resource_mut::<Wheel>().push(at.min(now + WHEEL as u64 - 1), e, Due::Stroll);
+            arm_at(&mut self.world, e, at.min(now + WHEEL as u64 - 1), Due::Stroll);
             self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
         }
         crate::goals::arm_all(&mut self.world);
@@ -2515,7 +2565,7 @@ impl Herd {
     }
     /// The cow grows up in `ticks` ticks (it is a baby until then: the baby's size, one wheel entry).
     pub fn make_baby(&mut self, e: Entity, ticks: u64) {
-        let now = self.world.resource::<Clock>().0;
+        let now = now_of(&self.world, e);
         let sizes = *self.world.get::<Sizes>(e).unwrap();
         let p = self.world.get::<Pos>(e).unwrap().0;
         let mut b = self.world.get_mut::<Body>(e).unwrap();
@@ -2523,7 +2573,7 @@ impl Herd {
         b.height = sizes.baby.1;
         self.world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
         self.world.entity_mut(e).insert(GrowAt(now + ticks));
-        self.world.resource_mut::<Wheel>().push(now + ticks, e, Due::Grow);
+        arm_at(&mut self.world, e, now + ticks, Due::Grow);
     }
     /// One tick with the wall time of each system added to `acc` (seconds), in the schedule's order.
     pub fn tick_timed(&mut self, acc: &mut [f64; 12]) {
