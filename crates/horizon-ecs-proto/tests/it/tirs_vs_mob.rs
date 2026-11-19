@@ -265,12 +265,20 @@ fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
     }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(8.5, 1.0, 0.5), None, false);
     let view = player_view(Vec3::new(8.5, 1.0, 0.5), None);
-    let (mut v, mut charged) = (Vec::new(), Vec::new());
+    let (mut v, mut charged, mut mob_flag) = (Vec::new(), Vec::new(), Vec::new());
     for _ in 0..150 {
         v.push(s.step(&view));
         charged.push(s.h.world.get::<burst_shot::Charged>(s.ecs).is_some());
+        mob_flag.push(s.r.mobs[s.mob].extra.flag);
     }
     let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
+    let first = |f: &[bool]| f.iter().position(|c| *c).map(|i| i as i64 + 1);
+    let (ms, es) = (first(&mob_flag), first(&charged));
+    eprintln!("blaze charge starts: mob {ms:?}, ecs {es:?}; fireballs mob {m:?}, ecs {e:?}");
+    // Same goal, same draws (none shape the timing): the time from the start of the charge to each fireball is EQUAL on both sides.
+    for i in 0..3 {
+        assert_eq!(m[i] - ms.unwrap(), e[i] - es.unwrap(), "fireball {i}: mob {m:?} from {ms:?}, ecs {e:?} from {es:?}");
+    }
     close(&m, &e, 6, "fireballs");
     assert_eq!(m.len(), e.len(), "mob {m:?}, ecs {e:?}");
     assert_eq!(e.len(), 3, "three per salve: {e:?}");
@@ -342,4 +350,139 @@ fn a_drinking_witch_does_not_throw() {
     let v = run(&mut s, &view, 160);
     let e = at(&v, |t| t.ecs_shot > 0);
     assert!(e.iter().all(|t| *t > 150), "no throw while drinking: {e:?}");
+}
+
+/// The pillager with the SAME random delays on both sides: the two sides draw from different generators, so the ECS's seed is searched until its
+/// two `attack_delay` draws (`20 + nextInt(20)` at each charge, read from the `Mob`'s own timeline: shot - load - 1) equal the `Mob`'s. Then the
+/// start of the charge to the first bolt, and the period, are then EQUAL to the tick; the start itself (`Mob` sound `loading_start`, ECS phase `Charging`) depends on the walk-in
+/// and the seed: a second search finds an ECS seed that starts it on the Mob's tick.
+#[test]
+fn the_pillager_with_the_same_delays_shoots_to_the_tick() {
+    if !is("minecraft:pillager") {
+        return;
+    }
+    let (at_, to) = (Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5));
+    let view = player_view(to, None);
+    let mut s = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+    let v = run(&mut s, &view, 200);
+    let m = at(&v, |t| t.mob_shot > 0);
+    let tick_of = |s: &Scene, f: &dyn Fn(&str) -> bool| -> Vec<i64> { s.trace.iter().filter(|(_, d)| f(d)).map(|(t, _)| *t).collect() };
+    let (starts, loads) = (tick_of(&s, &|d| d.contains("loading_start")), tick_of(&s, &|d| d.starts_with("CrossbowLoad")));
+    assert!(m.len() >= 2 && loads.len() >= 2 && !starts.is_empty(), "mob {m:?} loads {loads:?} starts {starts:?}");
+    let want = [m[0] - loads[0] - 1, m[1] - loads[1] - 1];
+    let phase = |s: &Scene| s.h.world.get::<ranged_crossbow::Crossbow>(s.ecs).map(|c| format!("{c:?}")).unwrap_or_default();
+    let field = |st: &str, name: &str| -> i64 { st.split(name).nth(1).and_then(|x| x.trim_start_matches(": ").split(',').next()).and_then(|x| x.trim().parse().ok()).unwrap_or(-1) };
+    let mut found = None;
+    'seeds: for seed in 1..=60_000u64 {
+        let mut e = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+        e.h.world.get_mut::<Rng>(e.ecs).unwrap().0 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let (mut last, mut delays, mut start, mut shots) = (String::new(), Vec::new(), 0, Vec::new());
+        for t in 1..=200i64 {
+            e.h.tick();
+            let st = phase(&e);
+            let ph: String = st.split("phase: ").nth(1).map(|x| x.split(',').next().unwrap_or("").to_string()).unwrap_or_default();
+            if ph != last {
+                if ph == "Charging" && start == 0 {
+                    start = t;
+                }
+                if ph == "Charged" {
+                    delays.push(field(&st, "attack_delay"));
+                    if delays[delays.len() - 1] != want[delays.len() - 1] {
+                        continue 'seeds;
+                    }
+                }
+                last = ph;
+            }
+            let mut q = e.h.world.query::<(Entity, &Projectile)>();
+            let new: Vec<Entity> = q.iter(&e.h.world).map(|x| x.0).filter(|x| !e.seen.contains(x)).collect();
+            e.seen.extend(new.iter().copied());
+            if !new.is_empty() {
+                shots.push(t);
+            }
+            if shots.len() >= 2 {
+                break;
+            }
+        }
+        if shots.len() >= 2 && delays.len() >= 2 {
+            found = Some((seed, start, shots));
+            break;
+        }
+    }
+    let (seed, start, e) = found.expect("an ECS seed with the Mob's two delays");
+    eprintln!("same delays {want:?} (seed {seed}): mob start {} shots {m:?}; ecs start {start} shots {e:?}", starts[0]);
+    assert_eq!(m[0] - starts[0], e[0] - start, "start of the charge to the first bolt: mob {m:?} from {starts:?}, ecs {e:?} from {start}");
+    assert_eq!(m[1] - m[0], e[1] - e[0], "period: mob {m:?}, ecs {e:?}");
+    // The start of the charge moves with the seed (walk-in, `path_delay`): some ECS seed starts it on the Mob's tick.
+    let starts_at = (1..=3000u64).find_map(|seed| {
+        let mut e = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+        e.h.world.get_mut::<Rng>(e.ecs).unwrap().0 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        (1..=60i64).find(|_| {
+            e.h.tick();
+            phase(&e).contains("phase: Charging")
+        })
+        .filter(|t| *t == starts[0]).map(|_| seed)
+    });
+    eprintln!("charge starts on the Mob's tick {} with seed {starts_at:?}", starts[0]);
+    assert!(starts_at.is_some(), "no ECS seed starts the charge on tick {}", starts[0]);
+    assert_eq!(m[1] - m[0], e[1] - e[0], "period: mob {m:?}, ecs {e:?}");
+}
+
+/// The witch with the SAME draws on both sides: the Mob's first drink (tick, potion, length of the flag) is read, then the ECS seed is searched
+/// until its own first drink falls on the same tick with the same potion; the length is then equal (33 ticks of `Drinking`).
+#[test]
+fn a_witch_with_the_same_draws_drinks_the_same_potion() {
+    if !is("minecraft:witch") {
+        return;
+    }
+    let (at_, to) = (Vec3::new(0.5, 2.0, 0.5), Vec3::new(30.5, 2.0, 0.5));
+    let view = player_view(to, None);
+    let mut s = scene(at_, to, None, true);
+    let (mut t0, mut potion, mut len) = (0, String::new(), 0);
+    for t in 1..=600 {
+        s.step(&view);
+        let flag = s.r.mobs[s.mob].extra.flag;
+        if flag && t0 == 0 {
+            t0 = t;
+            potion = s.r.mobs[s.mob].extra.main_hand_stack().map(|i| format!("{i:?}")).unwrap_or_default();
+        }
+        if t0 > 0 {
+            if !flag {
+                break;
+            }
+            len += 1;
+        }
+    }
+    assert!(t0 > 0, "the Mob drank");
+    let kind = if potion.contains("water_breathing") { drink_potion::Potion::WaterBreathing } else if potion.contains("swiftness") { drink_potion::Potion::Swiftness } else { panic!("potion {potion}") };
+    let mut found = None;
+    'seeds: for seed in 1..=20_000u64 {
+        let mut e = scene(at_, to, None, true);
+        e.h.world.get_mut::<Rng>(e.ecs).unwrap().0 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let (mut first, mut n, mut which) = (0, 0, None);
+        for t in 1..=(t0 + 40) {
+            e.h.tick();
+            match e.h.world.get::<drink_potion::Drinking>(e.ecs).copied() {
+                Some(d) => {
+                    if first == 0 {
+                        first = t;
+                        which = Some(d.potion);
+                        if first != t0 || d.potion != kind {
+                            continue 'seeds;
+                        }
+                    }
+                    n += 1;
+                }
+                None if first > 0 => break,
+                None => {}
+            }
+        }
+        if first == t0 {
+            found = Some((seed, which, n));
+            break;
+        }
+    }
+    let (seed, which, n) = found.expect("an ECS seed drinking the Mob's potion on its tick");
+    eprintln!("witch same draws (seed {seed}): mob {potion} at {t0} for {len} ticks; ecs {which:?} for {n} ticks");
+    assert_eq!(which, Some(kind));
+    assert_eq!(n, len, "the drinking lasts as long as the Mob's flag: mob {len}, ecs {n}");
 }
