@@ -10,6 +10,7 @@ use horizon_ecs_proto::{
     cow::*,
     goals::*,
     hostile::*,
+    targeting::*,
 };
 use std::sync::Arc;
 
@@ -196,7 +197,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64, player_at: impl Fn(i64) -> Vec3, die: i
         }
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
-            let has = h.world.get::<Aggro>(e).is_some();
+            let has = h.world.get::<Target>(e).is_some();
             if has && out.acquired[i].is_none() {
                 out.acquired[i] = Some(t);
             }
@@ -342,7 +343,7 @@ fn a_hurt_zombie_alerts_the_zombies_around_it() {
     for _ in 0..3 {
         h.tick();
     }
-    let hunting = |e: Entity| h.world.get::<Aggro>(e).is_some();
+    let hunting = |e: Entity| h.world.get::<Target>(e).is_some();
     assert!(near.iter().all(|&e| hunting(e)), "the zombies around it are alerted");
     assert!(!hunting(far), "the one 70 blocks away is not");
 }
@@ -372,8 +373,11 @@ fn trace_one_zombie() {
         if !acquired && m.ai.target.is_some() {
             acquired = true;
             h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: 1.0, z: pz, main: 0, off: 0 });
-            h.world.entity_mut(e).insert(Aggro::new(1, 30));
-            h.world.resource_mut::<Requests>().0.push(Req::Call(e, horizon_ecs_proto::hostile::hunt));
+            let slot = h.world.get::<GoalSet>(e).unwrap().slot_of(&horizon_ecs_proto::behaviours::nearest_target::MODULE).unwrap();
+            force_start(&mut h.world, e, slot);
+            let mut tg = Target::player(1, 30);
+            tg.slot = slot;
+            set_target(&mut h.world, e, tg);
             eprintln!("t={t}: target acquired by the Mob; imposed on the ECS");
         }
         h.tick();
@@ -457,7 +461,7 @@ fn the_alert_reaches_the_same_zombies_at_the_same_tick_as_a_mob_s() {
     for t in 1..=6 {
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
-            if h.world.get::<Aggro>(e).is_some() {
+            if h.world.get::<Target>(e).is_some() {
                 ecs_alerted[i].get_or_insert(t);
             }
         }
@@ -511,7 +515,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
             rf.step(Some(&view));
             h.tick();
             for i in 0..n {
-                let (ma, ea) = (rf.mobs[i].ai.target.is_some(), h.world.get::<Aggro>(ids[i]).is_some());
+                let (ma, ea) = (rf.mobs[i].ai.target.is_some(), h.world.get::<Target>(ids[i]).is_some());
                 if ma && m.acquired[i].is_none() { m.acquired[i] = Some(t); }
                 if !ma && m.acquired[i].is_some() && m.lost[i].is_none() { m.lost[i] = Some(t); }
                 if ea && e.acquired[i].is_none() { e.acquired[i] = Some(t); }
@@ -531,4 +535,41 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
     let (el, nl) = mean_of(&e.lost);
     eprintln!("wall built at tick 60: acquired mob {na} at {ma:.1}, ecs {ne} at {ea:.1}; target lost mob {nm} at {ml:.1}, ecs {nl} at {el:.1}");
     assert!(nm > 0 && nl > 0 && (ml - el).abs() < 15.0, "lost: mob {ml}, ecs {el}");
+}
+
+/// The world is lit by the real light engine: a roof over a zombie hides it from the sun (and from `can_see_sky`), the same
+/// zombie in the open burns, and removing the roof lets it burn.
+#[test]
+fn a_roof_over_a_zombie_stops_the_sun_and_removing_it_lets_it_burn() {
+    if !have_data() { return; }
+    let mut h = Herd::with_slab(20, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let (cx, cz) = (0.5, 0.5);
+    let level_sees = |h: &Herd, x: i32, y: i32, z: i32| h.world.resource::<Level>().mw.0.can_see_sky(x, y, z);
+    assert!(level_sees(&h, 0, 2, 0), "the open slab sees the sky");
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            h.set_block(dx, 4, dz, "minecraft:stone");
+        }
+    }
+    h.tick();
+    assert!(!level_sees(&h, 0, 2, 0), "a roof of stone over the column: the sky is no longer seen");
+    let under = spawn_species(&mut h.world, &table[2], cx, cz, 0x9E37_79B9);
+    let open = spawn_species(&mut h.world, &table[2], 10.5, 10.5, 0x7F4A_7C15);
+    h.set_day(true);
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert!(h.world.get::<Burning>(open).is_some(), "the zombie in the open burns in the day");
+    assert!(h.world.get::<Burning>(under).is_none(), "the zombie under the roof does not burn");
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            h.set_block(dx, 4, dz, "minecraft:air");
+        }
+    }
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert!(level_sees(&h, 0, 2, 0), "the roof is gone: the sky is seen again");
+    assert!(h.world.get::<Burning>(under).is_some() || h.world.get_entity(under).is_err(), "without the roof the zombie burns");
 }

@@ -86,7 +86,7 @@ fn wake_on_player(clock: Res<Clock>, on: Res<Online>, idx: Res<Index>, cows: Que
             for t in &ts.0 {
                 let reach = t.range.max(2.0).powi(2);
                 let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
-                if clock.0 >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
+                if clock.of(c) >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
                     reqs.0.push(Req::Start(c, t.slot));
                 }
             }
@@ -94,7 +94,7 @@ fn wake_on_player(clock: Res<Clock>, on: Res<Online>, idx: Res<Index>, cows: Que
     }
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let Some(t) = w.get::<Tempts>(e).and_then(|ts| ts.0.get(inst.nth as usize).copied()) else { return false };
     if now < t.calm_until {
@@ -117,7 +117,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).insert(Tempting(inst.nth));
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     w.entity_mut(e).remove::<Tempting>();
     stop_nav(w, e);
     // `calmDown = reducedTickDelay(100)`: no new temptation by this goal for 100 ticks, then it is looked at
@@ -130,7 +130,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 /// `TemptGoal.canUse` counts its `calmDown` down each time the selector asks, and the selector asks only a goal that
 /// could take its flags: while another goal of an equal or higher priority holds them, the calm-down stands still.
 fn after_change(w: &mut World, e: Entity, c: Change) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(n) = w.get::<Tempts>(e).map(|t| t.0.len()) else { return };
     for i in 0..n {
         let (slot, calm_until, paused_at) = {
@@ -170,7 +170,8 @@ fn tempt_run(
         // `TemptGoal` continues and ticks on the selector's ticks only (tick + id even): one look and at most one path
         // search every other tick, as the `Mob`.
         let phase = phase.map_or(0, |p| p.0);
-        if (clock.0 + phase) % 2 == 1 && clock.0 > 1 {
+        let now = clock.of(e);
+        if (now + phase) % 2 == 1 && now > 1 {
             continue;
         }
         let Some(t) = ts.0.get_mut(inst.0 as usize) else { continue };

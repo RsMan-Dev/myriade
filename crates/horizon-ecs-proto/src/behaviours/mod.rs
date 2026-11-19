@@ -79,7 +79,11 @@ impl Module {
 /// declares and nothing else; no capability supposes another except what `Module::requires` states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cap {
-    /// A physical body (position, box, gravity, contacts, fluids, index).
+    /// Position, velocity, own time and identity: all a projectile or a display has.
+    Transform,
+    /// A box in the spatial index (pushed, searched, targeted): `Bounds`, `Cell`.
+    Solid,
+    /// A body that falls, lands, floats and is pushed by blocks and fluids (`travel`): needs `Transform` and `Solid`.
     Body,
     /// Life: health, damage, knockback, death, immunities.
     Living,
@@ -109,10 +113,46 @@ pub struct Entry {
     pub module: &'static Module,
     pub priority: u8,
     pub params: &'static (dyn Any + Sync),
+    /// The condition of the species for this entry, asked by the framework before the module's `can_use`.
+    pub when: Option<&'static Cond>,
 }
 impl Entry {
     pub const fn new(module: &'static Module, priority: u8, params: &'static (dyn Any + Sync)) -> Self {
-        Self { module, priority, params }
+        Self { module, priority, params, when: None }
+    }
+    /// The same entry that starts only while `cond` holds: `Entry::new(..).when(&Cond::Is("horizon:is_baby"))`.
+    pub const fn when(self, cond: &'static Cond) -> Self {
+        Self { when: Some(cond), ..self }
+    }
+}
+/// A condition on an entity, in DATA: named predicates (registered with the registry: `horizon:is_baby`, `horizon:is_day`,
+/// `horizon:in_water`...) combined with not / all / any. A predicate reads components of the entity, never a species. The
+/// names are checked when the registry is frozen (an unknown one is a startup error naming the species).
+#[derive(Debug)]
+pub enum Cond {
+    Is(&'static str),
+    Not(&'static Cond),
+    All(&'static [Cond]),
+    Any(&'static [Cond]),
+}
+/// A named predicate: a plain function of the world and the entity.
+pub type Pred = fn(&World, Entity) -> bool;
+impl Cond {
+    pub fn eval(&self, w: &World, e: Entity) -> bool {
+        match self {
+            Cond::Is(name) => crate::species::registry().predicate(name).is_some_and(|p| p(w, e)),
+            Cond::Not(c) => !c.eval(w, e),
+            Cond::All(cs) => cs.iter().all(|c| c.eval(w, e)),
+            Cond::Any(cs) => cs.iter().any(|c| c.eval(w, e)),
+        }
+    }
+    /// The predicate names in it.
+    pub fn names(&self, out: &mut Vec<&'static str>) {
+        match self {
+            Cond::Is(n) => out.push(n),
+            Cond::Not(c) => c.names(out),
+            Cond::All(cs) | Cond::Any(cs) => cs.iter().for_each(|c| c.names(out)),
+        }
     }
 }
 pub fn same(a: &'static Module, b: &'static Module) -> bool {
@@ -149,8 +189,10 @@ pub mod melee;
 pub mod panic;
 pub mod random_look;
 pub mod random_stand;
+pub mod ranged_bow;
 pub mod stroll;
-pub mod target;
+pub mod hurt_by;
+pub mod nearest_target;
 pub mod tempt;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
@@ -163,8 +205,10 @@ pub static TABLE: &[&Module] = &[
     &random_stand::MODULE,
     &float::MODULE,
     &panic::MODULE,
-    &target::MODULE,
+    &hurt_by::MODULE,
+    &nearest_target::MODULE,
     &melee::MODULE,
+    &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
     &avoid_entity::MODULE,

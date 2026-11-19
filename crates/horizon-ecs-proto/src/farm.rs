@@ -77,21 +77,21 @@ pub struct Egg {
 pub struct LaidEggs(pub Vec<(Entity, u64)>);
 
 fn arm_egg(w: &mut World, e: Entity) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(mut egg) = w.get_mut::<Egg>(e) else { return };
     egg.at = now + egg.left;
     let at = egg.at;
-    w.resource_mut::<Wheel>().push(at.min(now + 4095), e, Due::Egg);
+    crate::cow::arm_at(w, e, at.min(now + 4095), Due::Egg);
 }
 /// A deadline of the egg timer: lay (an adult), start again, or wait for the growth (a baby does not count).
 pub fn lay_deadline(w: &mut World, e: Entity) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(egg) = w.get::<Egg>(e).copied() else { return };
     if egg.at == u64::MAX || now < egg.at {
         // A deadline of the wheel's reach, not the egg's.
         if egg.at != u64::MAX && now < egg.at {
             let at = egg.at;
-            w.resource_mut::<Wheel>().push(at.min(now + 4095), e, Due::Egg);
+            crate::cow::arm_at(w, e, at.min(now + 4095), Due::Egg);
         }
         return;
     }
@@ -99,7 +99,8 @@ pub fn lay_deadline(w: &mut World, e: Entity) {
         w.get_mut::<Egg>(e).unwrap().at = u64::MAX;
         return;
     }
-    w.resource_mut::<LaidEggs>().0.push((e, now));
+    let tick = w.resource::<Clock>().0;
+    w.resource_mut::<LaidEggs>().0.push((e, tick));
     let left = {
         let d = egg.def;
         let mut r = w.get_mut::<Rng>(e).unwrap();

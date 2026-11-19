@@ -49,7 +49,7 @@ fn blocked(w: &mut World, e: Entity, _: Inst) {
     arm_now(w, e);
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     let Some(mut s) = w.get_mut::<Stroll>(e) else { return false };
     s.scheduled = false;
@@ -66,7 +66,15 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             (s.walking, s.tx, s.tz) = (true, x, z);
             true
         }
-        None => pick_spot(&level, &Pos(pos), &mut s, &mut r),
+        None => {
+            let nav = w.get::<NavParams>(e).copied();
+            let walk = w.get::<crate::spots::WalkValue>(e).copied().unwrap_or(crate::spots::WalkValue::Zero);
+            let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+            match nav {
+                Some(nav) => pick_spot(&level, &Pos(pos), &mut s, &mut r, &nav, walk, in_water),
+                None => false,
+            }
+        }
     };
     w.get_mut::<Rng>(e).unwrap().0 = r.0;
     *w.get_mut::<Stroll>(e).unwrap() = s;

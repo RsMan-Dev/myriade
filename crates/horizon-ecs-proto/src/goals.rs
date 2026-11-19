@@ -21,6 +21,7 @@ pub use crate::behaviours::{
 pub const MOVE: u8 = 1;
 pub const LOOK: u8 = 2;
 pub const JUMP: u8 = 4;
+pub const TARGET: u8 = 8;
 pub(crate) const WHEEL_MAX: u64 = 4095;
 /// The widest tempting range of any species (the index scan radius).
 pub(crate) const SCAN: f64 = 10.0;
@@ -42,7 +43,7 @@ pub struct GoalSet {
     nth: [u8; 16],
     running: u16,
     pending: u16,
-    lock: [Option<u8>; 3],
+    lock: [Option<u8>; 4],
     /// Some module wants to hear that a goal started or ended.
     watchers: bool,
 }
@@ -54,7 +55,7 @@ impl GoalSet {
             nth[i] = entries[..i].iter().filter(|o| std::ptr::eq(o.module, e.module)).count() as u8;
         }
         let watchers = entries.iter().any(|e| e.module.after_change.is_some());
-        Self { entries, nth, running: 0, pending: 0, lock: [None; 3], watchers }
+        Self { entries, nth, running: 0, pending: 0, lock: [None; 4], watchers }
     }
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -64,6 +65,11 @@ impl GoalSet {
     }
     pub fn entries(&self) -> &'static [Entry] {
         self.entries
+    }
+    /// The same entries in the same order with other conditions or parameters (tests; the list's length must not change).
+    pub fn replace_entries(&mut self, entries: &'static [Entry]) {
+        assert_eq!(entries.len(), self.entries.len());
+        self.entries = entries;
     }
     pub fn module(&self, slot: u8) -> &'static Module {
         self.entries[slot as usize].module
@@ -94,13 +100,13 @@ impl GoalSet {
     /// Every flag it needs is free or held by a goal of lower priority (a larger number).
     pub fn replaceable(&self, slot: u8) -> bool {
         let e = &self.entries[slot as usize];
-        (0..3).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
+        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
     pub fn start(&mut self, slot: u8) -> u16 {
         let flags = self.entries[slot as usize].module.flags;
         let mut stopped = 0u16;
-        for b in 0..3 {
+        for b in 0..4 {
             if flags >> b & 1 == 1
                 && let Some(j) = self.lock[b]
             {
@@ -112,7 +118,7 @@ impl GoalSet {
                 self.stop(j);
             }
         }
-        for b in 0..3 {
+        for b in 0..4 {
             if flags >> b & 1 == 1 {
                 self.lock[b] = Some(slot);
             }
@@ -172,7 +178,7 @@ thread_local! {
 pub fn reset_uids() {
     NEXT_UID.with(|c| c.set(0));
 }
-fn next_uid() -> u64 {
+pub(crate) fn next_uid() -> u64 {
     NEXT_UID.with(|c| {
         let n = c.get();
         c.set(n + 1);
@@ -233,7 +239,7 @@ pub struct Requests(pub Vec<Req>);
 /// The option of the lazy look: when on, the look goals (`LookAtPlayer`, `RandomLookAround`) and the look control run
 /// only for an animal that a player can see, i.e. within `range` blocks, the client tracking range of an animal
 /// (10 chunks = 160 blocks; the client renders an entity at most 64 x 2.5 = 160 blocks away), rounded out to 16-block
-/// bins. Off by default: the owner decides.
+/// bins. ON by default (owner decision 2026-11-19: "useless for inactive and invisible mobs"); `set_lazy_look(world, false)` turns it off.
 #[derive(Resource)]
 pub struct LazyLook {
     pub enabled: bool,
@@ -245,7 +251,7 @@ pub struct LazyLook {
 }
 impl Default for LazyLook {
     fn default() -> Self {
-        Self { enabled: false, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
+        Self { enabled: true, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
     }
 }
 fn bin16(x: f64, z: f64) -> (i32, i32) {
@@ -304,6 +310,8 @@ pub struct Forced {
     pub spots: HashMap<(Entity, u8), (f64, f64)>,
     /// The partner a cow in love takes instead of the nearest one.
     pub partners: HashMap<Entity, Entity>,
+    /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
+    pub strafes: HashMap<Entity, (bool, bool)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -390,14 +398,12 @@ impl Online {
 
 /// The animal's number, by order of creation (see `Uid`) and the components of the selector. The modules' state
 /// components are created by their `equip`, once, when the selector is added.
-pub fn goals_bundle(sp: &Species) -> impl Bundle {
-    let uid = next_uid();
+pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
-        Uid(uid),
         Phase(uid),
     )
 }
@@ -424,18 +430,24 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Requests::default());
     world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
+    world.insert_resource(Events::default());
     world.insert_resource(crate::farm::Grown::default());
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
-    for m in &crate::species::registry().modules {
-        (m.resources)(world);
+    crate::projectile::insert_resources(world);
+    world.insert_resource(crate::targeting::TargetWatchers::default());
+    for (i, m) in crate::species::registry().modules.iter().enumerate() {
+        if crate::species::registry().carried(i) {
+            (m.resources)(world);
+        }
     }
 }
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
+    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
     let modules = &crate::species::registry().modules;
     for i in 0..modules.len() {
         let slot = GoalSlot(i as u8);
@@ -443,7 +455,65 @@ pub fn register(s: &mut Schedule) {
         if i > 0 {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
-        (modules[i].systems)(s, slot);
+        // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
+        if crate::species::registry().carried(i) {
+            (modules[i].systems)(s, slot);
+        }
+    }
+}
+
+// ---- the events of the framework (a module never polls a component) ------------------------------------------
+/// The entities one event happened to. THE GUARANTEE: `iter` yields the events of the PREVIOUS tick, all of them, and only
+/// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
+/// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
+/// clears or takes them; a system that does not run every tick may miss events.
+#[derive(Default)]
+pub struct Ev {
+    cur: Vec<Entity>,
+    prev: Vec<Entity>,
+}
+impl Ev {
+    pub fn push(&mut self, e: Entity) {
+        self.cur.push(e);
+    }
+    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.prev.iter().copied()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.prev.is_empty()
+    }
+    fn swap(&mut self) {
+        std::mem::swap(&mut self.prev, &mut self.cur);
+        self.cur.clear();
+    }
+}
+/// The state changes other modules wait for (an entity list per kind, read the tick AFTER it happened, once; `Hurts` and
+/// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
+#[derive(Resource, Default)]
+pub struct Events {
+    /// `Burning` was set (from not burning).
+    pub ignited: Ev,
+    /// `Burning` ended (water, or the fire burnt out).
+    pub extinguished: Ev,
+    pub entered_fluid: Ev,
+    pub left_fluid: Ev,
+    /// The feet reached the ground after being in the air.
+    pub landed: Ev,
+    /// A baby grew up (same as `farm::Grown`, readable by several).
+    pub grew: Ev,
+    /// A grazing animal ate its block (`eat_block`).
+    pub ate: Ev,
+    /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
+    pub target_acquired: Ev,
+    pub target_lost: Ev,
+    /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
+    pub projectile_hit: Ev,
+}
+impl Events {
+    pub fn swap(&mut self) {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
+            ev.swap();
+        }
     }
 }
 
@@ -453,8 +523,8 @@ pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> 
 }
 /// Arms a deadline of the goal of this slot, `wait` ticks from now.
 pub(crate) fn arm(w: &mut World, e: Entity, slot: u8, wait: i32) {
-    let now = w.resource::<Clock>().0;
-    w.resource_mut::<Wheel>().push((now + wait.max(1) as u64).min(now + WHEEL_MAX), e, Due::Goal(slot));
+    let now = crate::cow::now_of(w, e);
+    crate::cow::arm_at(w, e, (now + wait.max(1) as u64).min(now + WHEEL_MAX), Due::Goal(slot));
 }
 /// The rank of the module's (first) entry in the animal's selector.
 pub fn slot_of(w: &World, e: Entity, m: &'static Module) -> Option<u8> {
@@ -502,6 +572,9 @@ pub(crate) fn arm_timers(w: &mut World, e: Entity) {
     for (i, en) in entries.iter().enumerate().take(n) {
         (en.module.arm)(w, e, insts[i]);
     }
+    // A creature created in a chunk that does not tick is born asleep (a `Mob` there is not ticked either): this is the last
+    // step of every creation, once its deadlines exist.
+    crate::zone::admit(w, &[e]);
 }
 /// Arms the timers of every animal (the herd starts active).
 pub fn arm_all(world: &mut World) {
@@ -585,7 +658,7 @@ pub(crate) fn arbitrate(world: &mut World) {
             // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
             // heard at the next such tick (the same as the next one at most).
             Req::Start(e, k) => {
-                let now = world.resource::<Clock>().0;
+                let now = crate::cow::now_of(world, e);
                 if now > 1 && (now + phase_of(world, e)) % 2 == 1 {
                     arm(world, e, k, 1);
                 } else {
@@ -609,6 +682,25 @@ fn timer_fired(w: &mut World, e: Entity, slot: u8) {
         start_goal(w, e, slot);
     }
 }
+/// Starts the goal of this slot without asking `can_use` and without its `start` (the caller does what `start` does): the
+/// goals that hold its flags are stopped. For the tests that impose what a `Mob` drew (an acquisition at a given tick).
+pub fn force_start(w: &mut World, e: Entity, slot: u8) {
+    let stopped = {
+        let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
+        if slot as usize >= g.len() || g.running >> slot & 1 == 1 {
+            return;
+        }
+        g.start(slot)
+    };
+    for s in 0..16u8 {
+        if stopped >> s & 1 == 1
+            && let Some((sm, si)) = of(w, e, s)
+        {
+            (sm.stop)(w, e, si);
+        }
+    }
+    changed(w, e, Change::Started);
+}
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
@@ -629,6 +721,16 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         match m.blocked {
             Some(f) => f(w, e, inst),
             None => w.get_mut::<GoalSet>(e).unwrap().pending |= 1 << slot,
+        }
+        return;
+    }
+    // The species' condition for this entry, before the module's own `canUse`; a refusal is a `blocked` (ask again later).
+    let when = w.get::<GoalSet>(e).unwrap().entries[slot as usize].when;
+    if let Some(c) = when
+        && !c.eval(w, e)
+    {
+        if let Some(f) = m.blocked {
+            f(w, e, inst);
         }
         return;
     }
@@ -693,7 +795,7 @@ pub fn counts(world: &mut World) -> Vec<(&'static str, usize)> {
     vec![
         ("following", n!(Following)),
         ("moving", n!(Moving)),
-        ("hunting", n!(crate::hostile::Aggro)),
+        ("hunting", n!(crate::targeting::Target)),
         ("meleeing", n!(crate::hostile::Meleeing)),
         ("panicking", n!(Panicking)),
         ("tempting", n!(Tempting)),
@@ -795,6 +897,9 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 pub static ASKS: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
 /// The searches `pathfind` ran.
 pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// The nodes of the paths those searches found (the mean length of a path is `PATH_NODES / paths found`).
+pub static PATH_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static PATHS_FOUND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, goal: usize) {
     ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     cmd.queue(move |w: &mut World| {
@@ -809,12 +914,28 @@ pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, g
         w.entity_mut(e).insert(NeedsPath);
     });
 }
+/// A path to `at` (x, y, z: the row of the block is `floor(y)`) at `speed`, ending `reach` blocks from it: the way for a module to walk
+/// somewhere; it writes nothing of its own in the walking state. The end of the path is the `path_ended` event.
+pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) {
+    if let Some(mut s) = w.get_mut::<Stroll>(e) {
+        s.tx = at[0];
+        s.ty = at[1].floor() as i32;
+        s.tz = at[2];
+    }
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.speed = speed;
+        n.reach = reach;
+    }
+    w.entity_mut(e).insert(NeedsPath);
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
+        n.reach = 1;
     }
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.zza = 0.0;
+        d.xxa = 0.0;
         d.jump = false;
     }
     if let Some(mut m) = w.get_mut::<MoveTo>(e) {
@@ -841,7 +962,7 @@ pub(crate) type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Foll
 mod tests {
     use super::*;
     use crate::behaviours::{self, breed, float, follow_parent, look_at_player, panic, random_look, stroll, tempt};
-    use crate::behaviours::{eat_block, melee, target};
+    use crate::behaviours::{eat_block, melee};
 
     /// The item that tempts the species of the process (`HORIZON_SPECIES`).
     fn item() -> u32 {
@@ -864,9 +985,6 @@ mod tests {
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;
-        }
-        if let Some(mut t) = h.world.get_mut::<target::TargetGoal>(e) {
-            t.armed = armed;
         }
         if let Some(mut g) = h.world.get_mut::<eat_block::Graze>(e) {
             g.armed = armed;
@@ -994,7 +1112,8 @@ mod tests {
         assert!(started <= 4 && ended - started > 5, "panic from {started} to {ended}");
         assert!(dist(from, at(&h, e)) < 25.0);
         // Moving: modifier 2 gives 2 x 2 the pull of modifier 1 (`setSpeed` is both the speed and the input).
-        let fast = steps.iter().cloned().fold(0.0, f64::max);
+        // The recoil of the blow (0.4 of impulse, fading in about ten ticks) is not the walk: the walk is read after it.
+        let fast = steps.iter().skip(12).cloned().fold(0.0, f64::max);
         let slow = stroll_steps.iter().cloned().fold(0.0, f64::max);
         let want = panic_speed().powi(2);
         assert!(fast / slow > want * 0.75 && fast / slow < want * 1.15, "{fast} / {slow}, expected about {want}");
@@ -1128,6 +1247,12 @@ mod tests {
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
         let Some(mut h) = herd() else { return };
+        // A ranged hunter holds the look flag as long as it has its target: the passive look is not what it does.
+        if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {
+            return;
+        }
+        // The control compares the rates of the look goals of every animal: the lazy look is off here.
+        set_lazy_look(&mut h.world, false);
         let mut cows = Vec::new();
         for i in 0..15 {
             for j in 0..13 {
@@ -1162,9 +1287,10 @@ mod tests {
         let (rate, scan) = (near_hit as f64 / near as f64, scanned as f64 / cows.len() as f64);
         // 1 - 0.98^75 = 0.78 expected for a ask every 2 ticks over 150 ticks.
         // A species that hunts walks toward the player during the 150 ticks: a far one may glance once it is near.
-        let hunts = species().goals.has(&melee::MODULE);
+        let hunts = species().goals.has(&melee::MODULE) || species().goals.has(&crate::behaviours::ranged_bow::MODULE);
         assert!((far_hit == 0 || hunts) && rate > 0.62 && rate < 0.92, "near {near_hit}/{near}, far {far_hit}");
-        assert!(scan > 0.62 && scan < 0.92, "scan {scan}");
+        // A hunting species spends part of the 150 ticks in melee, which takes the flags of the look around.
+        assert!(scan > if hunts { 0.5 } else { 0.62 } && scan < 0.92, "scan {scan}");
         let turned = cows.iter().filter(|c| h.world.get::<Head>(c.0).is_some_and(|hd| !hd.yaw.is_nan())).count();
         assert!(turned > 50, "{turned} heads moved");
         eprintln!("glance {rate:.2}, scan {scan:.2}");

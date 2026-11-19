@@ -38,6 +38,15 @@ impl MobRef {
         self.searches.push(0);
         self.mobs.len() - 1
     }
+    /// A mob of another type (the process's species is `self.kind`).
+    pub fn add_kind(&mut self, at: Vec3, kind: Arc<mobs::MobType>) -> usize {
+        let mut m = Mob::new(self.mobs.len() as u32 + 1, kind, at, 0.0);
+        m.persistent = true;
+        m.ai.no_action_time = 100;
+        self.mobs.push(m);
+        self.searches.push(0);
+        self.mobs.len() - 1
+    }
     pub fn names(&self, i: usize) -> Vec<&'static str> {
         self.mobs[i].ai.goals.running_names()
     }
@@ -47,12 +56,20 @@ impl MobRef {
         self.mobs[i].damage(&mut lvl, amount, Damage::player(from));
     }
     pub fn step(&mut self, player: Option<&PlayerView>) {
+        self.step_where(player, |_| true);
+    }
+    /// A tick where only the mobs `ticks` accepts are ticked (the others stay in the snapshot, as in the game's pass over a
+    /// chunk that does not tick).
+    pub fn step_where(&mut self, player: Option<&PlayerView>, ticks: impl Fn(&Mob) -> bool) {
         self.t += 1;
         let items = self.w.items.expect("items");
         let mut snapshot: Vec<Seen> = self.mobs.iter().map(|m| m.seen(None, items)).collect();
         let mut grid = mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
         let mut lvl = self.tl.level();
         for slot in 0..self.mobs.len() {
+            if !ticks(&self.mobs[slot]) {
+                continue;
+            }
             mobs::apply_mob_pushes(&mut self.mobs[slot], &mut self.pushes);
             let from = self.events.len();
             let view = MobWorld {
