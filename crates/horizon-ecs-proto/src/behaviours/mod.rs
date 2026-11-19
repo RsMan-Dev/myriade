@@ -136,6 +136,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
     p.downcast_ref::<T>().expect("the parameters of another module")
 }
 
+pub mod avoid_entity;
 pub mod breed;
 #[cfg(test)]
 pub mod example;
@@ -163,4 +164,5 @@ pub static TABLE: &[&Module] = &[
     &melee::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &avoid_entity::MODULE,
 ];
