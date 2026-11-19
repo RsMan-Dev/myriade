@@ -549,6 +549,33 @@ mod tests {
     use super::*;
     use crate::behaviours::*;
 
+    /// A set of species holds ANY identifier of the registry: the species beyond the 64th are in it, and no species of the first 64 is
+    /// taken for one of them (a `u64` shifted by an identifier took the 70th for the 6th).
+    #[test]
+    fn a_species_set_holds_every_species_of_the_registry_without_aliasing() {
+        let n = registry().species.len();
+        assert!(n > 64, "this test is for a registry of more than 64 species ({n})");
+        for id in [0, 5, 63, 64, 69, n - 1] {
+            let set = SpeciesSet::of([id]);
+            for other in 0..n {
+                assert_eq!(set.contains(other as u8), other == id, "set of {{{id}}}, species {other}");
+            }
+        }
+        assert!(SpeciesSet::empty().is_empty());
+        assert!(!SpeciesSet::of([n - 1]).is_empty());
+    }
+    /// A goal that names a species beyond the 64th avoids that one and none of the first 64.
+    #[test]
+    fn a_goal_naming_a_late_species_takes_that_species_only() {
+        let reg = registry();
+        let late = reg.species.len() - 1;
+        let name = reg.species[late].name;
+        let names = [name];
+        let set = crate::behaviours::avoid_entity::species_mask(crate::behaviours::avoid_entity::Avoid::Named(&names));
+        assert!(set.contains(late as u8));
+        assert!(!set.contains((late % 64) as u8), "{name} (id {late}) aliased onto id {}", late % 64);
+    }
+
     /// What every species resolves to (module, priority, in order), written out by hand when the species was verified: the
     /// inheritance (`reference`, `changes`) must give exactly these lists. ALL the species are checked and ALL the differences
     /// are listed; a species of the registry that is not here is a difference too (add its line when you add the species).

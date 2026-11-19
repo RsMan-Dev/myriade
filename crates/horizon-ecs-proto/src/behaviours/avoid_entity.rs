@@ -90,7 +90,7 @@ fn listed_anywhere() -> &'static [std::sync::atomic::AtomicU64] {
     LISTED_ANYWHERE.get_or_init(|| (0..crate::species::registry().species.len().div_ceil(64).max(1)).map(|_| std::sync::atomic::AtomicU64::new(0)).collect())
 }
 /// The species a `what` names.
-fn species_mask(what: Avoid) -> crate::species::SpeciesSet {
+pub(crate) fn species_mask(what: Avoid) -> crate::species::SpeciesSet {
     use crate::species::SpeciesSet;
     let reg = crate::species::registry();
     match what {
