@@ -32,7 +32,19 @@ fn main() {
             let mut m = Mob::new(i as u32 + 1, kind.clone(), Vec3::new(o + cx * spacing + 0.5, 1.0, o + cz * spacing + 0.5), ((i * 37) % 360) as f32);
             m.persistent = true;
             // SCOPE: only the goals the ECS zombie has (melee, stroll, the two looks; hurt-by and nearest player).
-            if std::env::var_os("SCOPE").is_some() {
+            if std::env::var_os("SCOPE").is_some() && m.species() == horizon_client_lib::mobs::Species::Skeleton {
+                // The skeleton's goals the ECS has: the bow (at 4, the bow in hand), stroll, the two looks; hurt-by and the nearest player.
+                use horizon_client_lib::mobs::goals::*;
+                m.extra.set_main_hand(Some("minecraft:bow".into()));
+                m.ai.goals.clear();
+                m.ai.targets.clear();
+                m.ai.goals.add(4, horizon_client_lib::mobs::undead::SkeletonWeapon::new(20, 40));
+                m.ai.goals.add(5, Stroll::avoiding_water(1.0));
+                m.ai.goals.add(6, LookAtPlayer::new(8.0));
+                m.ai.goals.add(6, RandomLookAround::default());
+                m.ai.targets.add(1, HurtByTarget::new());
+                m.ai.targets.add(2, NearestTarget::player(true));
+            } else if std::env::var_os("SCOPE").is_some() {
                 use horizon_client_lib::mobs::goals::*;
                 m.ai.goals.clear();
                 m.ai.targets.clear();

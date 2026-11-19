@@ -3,6 +3,7 @@
 //! collision kernel and the stroll / move-control / travel formulas of the real cow.
 pub mod behaviours;
 pub mod bench_support;
+pub mod brain;
 pub mod cow;
 pub mod farm;
 pub mod flat;

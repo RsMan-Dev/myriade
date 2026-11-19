@@ -25,4 +25,5 @@ pub static DEF: Def = Def {
     changes: &[],
     rules: &[],
     caps: None,
+    brain: crate::brain::BrainDef::EMPTY,
 };

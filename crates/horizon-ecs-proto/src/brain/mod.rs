@@ -1,0 +1,736 @@
+//! The brain capability (`Cap::Brain`): memories with a time to live, sensors that scan on a cadence, activities, and
+//! behaviours that start under conditions of memory, run, and stop (`Brain.tick` of the `Mob`, written once). Everything is
+//! configuration: a species lists its sensors, activities and behaviours (`BrainDef`); a sensor or a behaviour is a static
+//! module with entry points, like a goal; memories are NAMED keys (`MemKey`) whose ids are assigned at the registry's freeze.
+//!
+//! Nothing is polled: a sensor is a deadline of the wheel (its period), a memory expires by a deadline, and the brain of an
+//! entity is stepped (`brain_step`) only when something woke it: a sensor scanned, a memory changed, a behaviour runs or is
+//! polled. A brain that has nothing to do costs its sensors' scans. The brain needs the `Goals` capability (the random
+//! stream, the look and the head) and `Locomotion` for the behaviours that walk.
+use crate::behaviours::Cap;
+use crate::cow::*;
+use crate::goals::*;
+use crate::targeting::Who;
+use bevy_ecs::prelude::*;
+use std::any::Any;
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use std::sync::Arc;
+
+pub mod behaviours;
+pub mod sensors;
+
+// ---- memories ---------------------------------------------------------------------------------------------------------
+/// What a memory holds (the forms are few; `Opaque` is a value a mod owns and types).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Who,
+    Whos,
+    Block,
+    Blocks,
+    Walk,
+    Look,
+    Int,
+    Bool,
+    Unit,
+    Opaque,
+    /// A list of entities that is present even when empty (`NearestVisibleLivingEntities`).
+    Seen,
+}
+/// A position a behaviour looks or walks at: an entity (at its eyes or feet), a block, a point.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Tracker {
+    Entity(Who, bool),
+    Block([i32; 3]),
+    Point([f64; 3]),
+}
+impl Tracker {
+    pub fn position(&self, w: &World) -> Option<[f64; 3]> {
+        match *self {
+            Tracker::Entity(who, eye) => crate::targeting::info(w, who).map(|i| [i.pos.x, if eye { i.eye } else { i.pos.y }, i.pos.z]),
+            Tracker::Block(p) => Some([f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5]),
+            Tracker::Point(v) => Some(v),
+        }
+    }
+    pub fn block(&self, w: &World) -> Option<[i32; 3]> {
+        match *self {
+            Tracker::Entity(who, _) => crate::targeting::info(w, who).map(|i| [i.pos.x.floor() as i32, i.pos.y.floor() as i32, i.pos.z.floor() as i32]),
+            Tracker::Block(p) => Some(p),
+            Tracker::Point(v) => Some([v[0].floor() as i32, v[1].floor() as i32, v[2].floor() as i32]),
+        }
+    }
+}
+/// `WalkTarget`: where to walk, how fast, how close is close enough (manhattan, in blocks).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WalkTarget {
+    pub target: Tracker,
+    pub speed: f32,
+    pub close: i32,
+}
+#[derive(Clone, Debug)]
+pub enum MemValue {
+    Who(Who),
+    Whos(Vec<Who>),
+    Block([i32; 3]),
+    Blocks(Vec<[i32; 3]>),
+    Walk(WalkTarget),
+    Look(Tracker),
+    Int(i64),
+    Bool(bool),
+    Unit,
+    Opaque(Arc<dyn Any + Send + Sync>),
+}
+static NEXT_MEM: AtomicU32 = AtomicU32::new(0);
+/// A memory's name (namespaced) and shape; the registry gives it an id when a plan that uses it is built.
+pub struct MemKey {
+    pub name: &'static str,
+    pub shape: Shape,
+    id: AtomicU32,
+}
+impl MemKey {
+    pub const fn new(name: &'static str, shape: Shape) -> Self {
+        Self { name, shape, id: AtomicU32::new(u32::MAX) }
+    }
+    pub fn id(&self) -> usize {
+        self.id.load(Relaxed) as usize
+    }
+    fn assign(&self) {
+        if self.id.load(Relaxed) == u32::MAX {
+            self.id.store(NEXT_MEM.fetch_add(1, Relaxed), Relaxed);
+        }
+    }
+}
+macro_rules! keys { ($($id:ident = $name:literal, $shape:ident;)*) => { $(pub static $id: MemKey = MemKey::new($name, Shape::$shape);)* } }
+keys! {
+    MOBS = "minecraft:mobs", Whos;
+    VISIBLE_MOBS = "minecraft:visible_mobs", Seen;
+    HURT_BY = "minecraft:hurt_by", Bool;
+    HURT_BY_ENTITY = "minecraft:hurt_by_entity", Who;
+    IS_PANICKING = "minecraft:is_panicking", Bool;
+    WALK_TARGET = "minecraft:walk_target", Walk;
+    LOOK_TARGET = "minecraft:look_target", Look;
+    PATH = "minecraft:path", Unit;
+    CANT_REACH_WALK_TARGET_SINCE = "minecraft:cant_reach_walk_target_since", Int;
+    TRANSPORT_ITEMS_COOLDOWN_TICKS = "minecraft:transport_items_cooldown_ticks", Int;
+}
+
+// ---- the modules and the configuration --------------------------------------------------------------------------------
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Need {
+    Present,
+    Absent,
+}
+pub type Needs = &'static [(&'static MemKey, Need)];
+/// A sensor: a scan the brain makes every `period` ticks (the period is configuration).
+pub struct Sensor {
+    pub name: &'static str,
+    /// The memories it writes.
+    pub mems: &'static [&'static MemKey],
+    pub scan: fn(&mut World, Entity),
+    pub requires: &'static [Cap],
+}
+/// What a behaviour is given: its place in the plan and its parameters.
+#[derive(Clone, Copy)]
+pub struct Ctx {
+    pub id: u16,
+    pub nth: u8,
+    pub params: &'static (dyn Any + Sync),
+}
+impl Ctx {
+    /// This entry's parameters (its module's `Params`).
+    pub fn get<T: 'static>(&self) -> &'static T {
+        let p: &'static dyn Any = self.params;
+        p.downcast_ref::<T>().expect("the parameters of another behaviour")
+    }
+}
+/// A composite: its kids are tried in order (or shuffled, weighted), the first that starts wins unless `try_all`.
+#[derive(Clone, Copy)]
+pub struct Gate {
+    pub shuffle: bool,
+    pub try_all: bool,
+}
+/// A behaviour, written `Behaviour { name, <entry points>, ..Behaviour::DEFAULT }`.
+pub struct Behaviour {
+    pub name: &'static str,
+    /// The memories it reads or writes (so that they have an id in the species' plan).
+    pub mems: &'static [&'static MemKey],
+    pub requires: &'static [Cap],
+    /// Starts and stops in the same tick (`OneShot`).
+    pub one_shot: bool,
+    /// Nothing to do while it runs (no `tick` work): the brain is woken at its end, not every tick.
+    pub passive: bool,
+    pub gate: Option<Gate>,
+    pub equip: fn(&mut World, Entity, &Ctx),
+    pub can_start: fn(&mut World, Entity, &Ctx) -> bool,
+    pub start: fn(&mut World, Entity, &Ctx),
+    /// Every tick while it runs, after the timeout check; false = stop.
+    pub tick: fn(&mut World, Entity, &Ctx) -> bool,
+    pub stop: fn(&mut World, Entity, &Ctx),
+}
+fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
+    true
+}
+fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
+impl Behaviour {
+    pub const DEFAULT: Behaviour = Behaviour {
+        name: "",
+        mems: &[],
+        requires: &[],
+        one_shot: false,
+        passive: false,
+        gate: None,
+        equip: nothing,
+        can_start: yes,
+        start: nothing,
+        tick: yes,
+        stop: nothing,
+    };
+}
+#[derive(Clone, Copy)]
+pub struct SensorEntry {
+    pub sensor: &'static Sensor,
+    pub period: i32,
+}
+#[derive(Clone, Copy)]
+pub struct Kid {
+    pub behaviour: &'static Behaviour,
+    pub weight: i32,
+    pub params: &'static (dyn Any + Sync),
+    pub needs: Needs,
+    pub duration: Option<(i32, i32)>,
+}
+#[derive(Clone, Copy)]
+pub struct BEntry {
+    pub behaviour: &'static Behaviour,
+    pub activity: &'static str,
+    pub priority: u8,
+    pub params: &'static (dyn Any + Sync),
+    /// The memories it needs to be started, and `Behavior`'s duration (min, max): drawn at the start, timed out after it.
+    pub needs: Needs,
+    pub duration: Option<(i32, i32)>,
+    pub kids: &'static [Kid],
+}
+/// An activity: its name, its place in vanilla's hash map (the order of equal priorities), what it requires.
+#[derive(Clone, Copy)]
+pub struct ActivityDef {
+    pub name: &'static str,
+    pub slot: u8,
+    pub requires: Needs,
+}
+/// A memory a brain starts with: `base + nextInt(range)` of the entity's random (the golem's transport cooldown).
+#[derive(Clone, Copy)]
+pub struct Initial {
+    pub key: &'static MemKey,
+    pub base: i64,
+    pub range: i32,
+}
+/// A species' brain: sensors, activities (the first is `core`, always active), the order the activities are tried in to
+/// pick the active one (the first whose requirements hold), and the behaviours.
+#[derive(Clone, Copy)]
+pub struct BrainDef {
+    pub sensors: &'static [SensorEntry],
+    pub activities: &'static [ActivityDef],
+    pub pick: &'static [&'static str],
+    pub initial: &'static [Initial],
+    pub behaviours: &'static [BEntry],
+}
+impl BrainDef {
+    pub const EMPTY: BrainDef = BrainDef { sensors: &[], activities: &[], pick: &[], initial: &[], behaviours: &[] };
+    pub fn is_empty(&self) -> bool {
+        self.behaviours.is_empty() && self.sensors.is_empty()
+    }
+}
+
+// ---- the plan: the configuration resolved once ------------------------------------------------------------------------
+pub struct BInst {
+    pub b: &'static Behaviour,
+    pub params: &'static (dyn Any + Sync),
+    pub act: u8,
+    pub prio: u8,
+    pub parent: u16,
+    pub weight: i32,
+    pub kids: Vec<u16>,
+    pub nth: u8,
+    pub needs: Needs,
+    pub duration: Option<(i32, i32)>,
+}
+pub struct Plan {
+    pub mems: Vec<&'static MemKey>,
+    local: Vec<u16>,
+    pub sensors: Vec<SensorEntry>,
+    pub insts: Vec<BInst>,
+    /// The top-level behaviours in `Brain.tick`'s order: priority, then the activity's slot, then insertion.
+    pub order: Vec<u16>,
+    pub acts: Vec<ActivityDef>,
+    pick: Vec<u8>,
+    initial: Vec<Initial>,
+}
+const NONE: u16 = u16::MAX;
+impl Plan {
+    /// Resolves a species' brain: the ids of its memories, the flat table of its behaviours (the kids of a composite after
+    /// the top level), the order.
+    pub fn build(def: &BrainDef, caps: &[Cap]) -> Result<Plan, String> {
+        let mut mems: Vec<&'static MemKey> = Vec::new();
+        let mut note = |k: &'static MemKey| {
+            k.assign();
+            if !mems.iter().any(|m| std::ptr::eq(*m, k)) {
+                mems.push(k);
+            }
+        };
+        for s in def.sensors {
+            s.sensor.mems.iter().for_each(|k| note(k));
+            if let Some(c) = s.sensor.requires.iter().find(|c| !caps.contains(c)) {
+                return Err(format!("sensor `{}` requires the capability {c:?}", s.sensor.name));
+            }
+        }
+        for a in def.activities {
+            a.requires.iter().for_each(|(k, _)| note(k));
+        }
+        for i in def.initial {
+            note(i.key);
+        }
+        let act_of = |n: &str| def.activities.iter().position(|a| a.name == n).map(|i| i as u8);
+        let mut insts: Vec<BInst> = Vec::new();
+        let mut tops = Vec::new();
+        for (i, e) in def.behaviours.iter().enumerate() {
+            let b = e.behaviour;
+            b.mems.iter().for_each(|k| note(k));
+            e.needs.iter().for_each(|(k, _)| note(k));
+            if let Some(c) = b.requires.iter().find(|c| !caps.contains(c)) {
+                return Err(format!("behaviour `{}` requires the capability {c:?}", b.name));
+            }
+            let act = act_of(e.activity).ok_or_else(|| format!("behaviour `{}`: unknown activity `{}`", b.name, e.activity))?;
+            let nth = def.behaviours[..i].iter().filter(|o| std::ptr::eq(o.behaviour, b)).count() as u8;
+            tops.push(insts.len() as u16);
+            insts.push(BInst { b, params: e.params, act, prio: e.priority, parent: NONE, weight: 1, kids: Vec::new(), nth, needs: e.needs, duration: e.duration });
+        }
+        for (t, e) in def.behaviours.iter().enumerate() {
+            let parent = tops[t];
+            for (k, kid) in e.kids.iter().enumerate() {
+                kid.behaviour.mems.iter().for_each(|m| note(m));
+                kid.needs.iter().for_each(|(m, _)| note(m));
+                let id = insts.len() as u16;
+                insts.push(BInst { b: kid.behaviour, params: kid.params, act: insts[parent as usize].act, prio: 0, parent, weight: kid.weight, kids: Vec::new(), nth: k as u8, needs: kid.needs, duration: kid.duration });
+                insts[parent as usize].kids.push(id);
+            }
+        }
+        let mut order = tops;
+        order.sort_by_key(|&i| (insts[i as usize].prio, def.activities[insts[i as usize].act as usize].slot));
+        let mut local = Vec::new();
+        for (l, k) in mems.iter().enumerate() {
+            if local.len() <= k.id() {
+                local.resize(k.id() + 1, NONE);
+            }
+            local[k.id()] = l as u16;
+        }
+        let pick = def.pick.iter().filter_map(|n| act_of(n)).collect();
+        Ok(Plan { mems, local, sensors: def.sensors.to_vec(), insts, order, acts: def.activities.to_vec(), pick, initial: def.initial.to_vec() })
+    }
+    fn local(&self, k: &MemKey) -> Option<usize> {
+        self.local.get(k.id()).copied().filter(|&l| l != NONE).map(usize::from)
+    }
+}
+
+// ---- the component ----------------------------------------------------------------------------------------------------
+struct Slot {
+    v: Option<MemValue>,
+    token: u32,
+    /// The own time at which it expires.
+    until: u64,
+}
+#[derive(Clone, Default)]
+struct Run {
+    running: bool,
+    end: u64,
+    /// The kids of a composite, in the order they are tried.
+    order: Vec<u16>,
+}
+/// The brain of an entity.
+#[derive(Component)]
+pub struct Brain {
+    plan: &'static Plan,
+    slots: Vec<Slot>,
+    run: Vec<Run>,
+    pub activity: u8,
+    awake: bool,
+    armed: Vec<bool>,
+    /// `Visible`'s line-of-sight cache, emptied when `visible_mobs` is written.
+    sight: Vec<(Who, bool)>,
+}
+/// The entities to step this tick.
+#[derive(Resource, Default)]
+pub struct BrainAwake(pub Vec<Entity>);
+/// The last damage an entity took (`LivingEntity.getLastDamageSource`): when (its own time), whether it makes it panic, by whom.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LastDamage {
+    pub at: u64,
+    pub panic: bool,
+    pub by: Option<Who>,
+}
+
+pub fn insert_resources(w: &mut World) {
+    w.insert_resource(BrainAwake::default());
+}
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems(brain_step.after(arbitrate).before(pathfind));
+}
+/// The components of the capability (the plan is the species' resolved brain).
+pub fn bundle(plan: &'static Plan) -> Brain {
+    let slots = plan.mems.iter().map(|_| Slot { v: None, token: 0, until: u64::MAX }).collect();
+    Brain { plan, slots, run: vec![Run::default(); plan.insts.len()], activity: plan.pick.last().copied().unwrap_or(0), awake: false, armed: vec![false; plan.sensors.len()], sight: Vec::new() }
+}
+/// Creation: the starting memories, the behaviours' own state, the sensors' first scans (a random phase each, as `Mob`).
+pub fn start(w: &mut World, e: Entity) {
+    let Some(plan) = w.get::<Brain>(e).map(|b| b.plan) else { return };
+    for i in &plan.initial {
+        let v = i.base + i64::from(with_rng(w, e, |r| r.next_int(i.range)));
+        set(w, e, i.key, MemValue::Int(v), Some(v as u64));
+    }
+    for (id, inst) in plan.insts.iter().enumerate() {
+        (inst.b.equip)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params });
+    }
+    arm(w, e);
+    wake(w, e);
+}
+/// Arms the sensors that have no deadline (creation, the entity enters the active zone).
+pub fn arm(w: &mut World, e: Entity) {
+    let Some(b) = w.get::<Brain>(e) else { return };
+    let (plan, armed) = (b.plan, b.armed.clone());
+    for (i, s) in plan.sensors.iter().enumerate() {
+        if !armed[i] {
+            let first = with_rng(w, e, |r| r.next_int(s.period)).max(1) as u64;
+            let now = now_of(w, e);
+            arm_at(w, e, now + first, Due::Sensor(i as u8));
+            w.get_mut::<Brain>(e).unwrap().armed[i] = true;
+        }
+    }
+}
+/// A deadline of a sensor: scan, and arm the next (nothing out of the active zone: the next entry arms again).
+pub fn sensor_due(w: &mut World, e: Entity, i: u8) {
+    let now = now_of(w, e);
+    let Some(b) = w.get::<Brain>(e) else { return };
+    let (plan, i) = (b.plan, i as usize);
+    if w.get::<ActiveUntil>(e).is_some_and(|a| now >= a.0) {
+        w.get_mut::<Brain>(e).unwrap().armed[i] = false;
+        return;
+    }
+    expire(w, e, now);
+    (plan.sensors[i].sensor.scan)(w, e);
+    arm_at(w, e, now + plan.sensors[i].period as u64, Due::Sensor(i as u8));
+    wake(w, e);
+}
+/// The memories whose time is up are forgotten (`Brain.forgetOutdatedMemories`, before the sensors).
+fn expire(w: &mut World, e: Entity, now: u64) {
+    let mut changed = false;
+    if let Some(mut b) = w.get_mut::<Brain>(e) {
+        for s in &mut b.slots {
+            if s.v.is_some() && s.until <= now {
+                s.v = None;
+                s.token += 1;
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        wake(w, e);
+    }
+}
+/// A deadline of a memory: forgotten, if it was not written again.
+pub fn forget_due(w: &mut World, e: Entity, local: u16, token: u32) {
+    let now = now_of(w, e);
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    if let Some(s) = b.slots.get_mut(local as usize)
+        && s.token == token
+        && s.v.is_some()
+        && s.until <= now
+    {
+        s.v = None;
+        s.token += 1;
+        drop(b);
+        wake(w, e);
+    }
+}
+/// The brain has something to do at the next step.
+pub fn wake(w: &mut World, e: Entity) {
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    if !b.awake {
+        b.awake = true;
+        w.resource_mut::<BrainAwake>().0.push(e);
+    }
+}
+
+// ---- memory access -----------------------------------------------------------------------------------------------------
+pub fn get<'a>(w: &'a World, e: Entity, k: &MemKey) -> Option<&'a MemValue> {
+    let b = w.get::<Brain>(e)?;
+    b.slots.get(b.plan.local(k)?)?.v.as_ref()
+}
+pub fn present(w: &World, e: Entity, k: &MemKey) -> bool {
+    get(w, e, k).is_some()
+}
+pub fn walk_target(w: &World, e: Entity) -> Option<WalkTarget> {
+    match get(w, e, &WALK_TARGET) {
+        Some(MemValue::Walk(t)) => Some(*t),
+        _ => None,
+    }
+}
+pub fn look_target(w: &World, e: Entity) -> Option<Tracker> {
+    match get(w, e, &LOOK_TARGET) {
+        Some(MemValue::Look(t)) => Some(*t),
+        _ => None,
+    }
+}
+pub fn int(w: &World, e: Entity, k: &MemKey) -> Option<i64> {
+    match get(w, e, k) {
+        Some(MemValue::Int(v)) => Some(*v),
+        _ => None,
+    }
+}
+/// `Brain.setMemory` / `setMemoryWithExpiry`: present for this tick and `ttl` more.
+pub fn set(w: &mut World, e: Entity, k: &MemKey, v: MemValue, ttl: Option<u64>) {
+    let now = now_of(w, e);
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    let Some(i) = b.plan.local(k) else { return };
+    if k.shape == Shape::Whos && matches!(&v, MemValue::Whos(l) if l.is_empty()) {
+        drop(b);
+        return erase(w, e, k);
+    }
+    let s = &mut b.slots[i];
+    s.v = Some(v);
+    s.token += 1;
+    s.until = ttl.map_or(u64::MAX, |t| now + t + 1);
+    let token = s.token;
+    drop(b);
+    if let Some(t) = ttl {
+        arm_at(w, e, now + t + 1, Due::Forget(i as u16, token));
+    }
+    wake(w, e);
+}
+pub fn erase(w: &mut World, e: Entity, k: &MemKey) {
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    let Some(i) = b.plan.local(k) else { return };
+    if b.slots[i].v.is_some() {
+        b.slots[i].v = None;
+        b.slots[i].token += 1;
+        drop(b);
+        wake(w, e);
+    }
+}
+fn needs_ok(w: &World, e: Entity, needs: Needs) -> bool {
+    needs.iter().all(|(k, n)| present(w, e, k) == (*n == Need::Present))
+}
+
+// ---- the step ---------------------------------------------------------------------------------------------------------
+/// `Brain.tick` for the entities that were woken: start what can start (in order), tick what runs, pick the activity.
+pub fn brain_step(world: &mut World) {
+    let list = std::mem::take(&mut world.resource_mut::<BrainAwake>().0);
+    for e in list {
+        step(world, e);
+    }
+}
+fn active(w: &World, e: Entity, act: u8) -> bool {
+    act == 0 || w.get::<Brain>(e).is_some_and(|b| b.activity == act)
+}
+fn step(w: &mut World, e: Entity) {
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    b.awake = false;
+    let plan = b.plan;
+    drop(b);
+    for &id in &plan.order {
+        let inst = &plan.insts[id as usize];
+        if active(w, e, inst.act) && !running(w, e, id) && needs_ok(w, e, inst.needs) {
+            try_start(w, e, plan, id);
+        }
+    }
+    let mut any;
+    for &id in &plan.order {
+        if running(w, e, id) {
+            tick_or_stop(w, e, plan, id);
+        }
+    }
+    update_activity(w, e, plan);
+    any = plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && running(w, e, i as u16));
+    if any {
+        wake(w, e);
+    }
+}
+fn running(w: &World, e: Entity, id: u16) -> bool {
+    w.get::<Brain>(e).is_some_and(|b| b.run[id as usize].running)
+}
+fn set_running(w: &mut World, e: Entity, id: u16, on: bool) {
+    w.get_mut::<Brain>(e).unwrap().run[id as usize].running = on;
+}
+fn ctx(plan: &Plan, id: u16) -> Ctx {
+    let i = &plan.insts[id as usize];
+    Ctx { id, nth: i.nth, params: i.params }
+}
+/// `Behavior.tryStart`: the extra condition, the duration, the start; a composite tries its kids.
+fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
+    let inst = &plan.insts[id as usize];
+    let c = ctx(plan, id);
+    if !(inst.b.can_start)(w, e, &c) {
+        return false;
+    }
+    if let Some((min, max)) = inst.duration {
+        let d = min + with_rng(w, e, |r| r.next_int(max + 1 - min));
+        let now = now_of(w, e);
+        w.get_mut::<Brain>(e).unwrap().run[id as usize].end = now + d as u64;
+        if inst.b.passive {
+            arm_at(w, e, now + d as u64 + 1, Due::BrainWake);
+        }
+    }
+    set_running(w, e, id, true);
+    if let Some(g) = inst.b.gate {
+        let mut order = inst.kids.clone();
+        if g.shuffle {
+            let forced = w.resource_mut::<Forced>().shuffles.get_mut(&e).and_then(|q| q.pop_front());
+            match forced {
+                Some(p) => order = p.into_iter().filter_map(|k| inst.kids.get(k).copied()).collect(),
+                None => {
+                    let mut keyed: Vec<(f64, u16)> = order.iter().map(|&k| (-with_rng(w, e, |r| r.next_f64()).powf(1.0 / f64::from(plan.insts[k as usize].weight)), k)).collect();
+                    keyed.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    order = keyed.into_iter().map(|x| x.1).collect();
+                }
+            }
+        }
+        w.get_mut::<Brain>(e).unwrap().run[id as usize].order = order.clone();
+        for k in order {
+            if !running(w, e, k) && needs_ok(w, e, plan.insts[k as usize].needs) && try_start(w, e, plan, k) && !g.try_all {
+                break;
+            }
+        }
+        return true;
+    }
+    (inst.b.start)(w, e, &c);
+    if inst.b.one_shot {
+        set_running(w, e, id, false);
+    }
+    true
+}
+/// `BehaviorControl.tickOrStop`.
+fn tick_or_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
+    let inst = &plan.insts[id as usize];
+    if inst.b.gate.is_some() {
+        let kids = w.get::<Brain>(e).unwrap().run[id as usize].order.clone();
+        for k in kids {
+            if running(w, e, k) {
+                tick_or_stop(w, e, plan, k);
+            }
+        }
+        if !inst.kids.iter().any(|&k| running(w, e, k)) {
+            do_stop(w, e, plan, id);
+        }
+        return;
+    }
+    let c = ctx(plan, id);
+    let (end, timed) = (w.get::<Brain>(e).unwrap().run[id as usize].end, inst.duration.is_some());
+    if timed && now_of(w, e) > end || !(inst.b.tick)(w, e, &c) {
+        do_stop(w, e, plan, id);
+    }
+}
+fn do_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
+    let inst = &plan.insts[id as usize];
+    set_running(w, e, id, false);
+    for &k in &inst.kids {
+        if running(w, e, k) {
+            do_stop(w, e, plan, k);
+        }
+    }
+    if inst.b.gate.is_none() {
+        (inst.b.stop)(w, e, &ctx(plan, id));
+    }
+    wake(w, e);
+}
+/// `updateActivity`: the first activity of the brain's list whose requirements hold.
+fn update_activity(w: &mut World, e: Entity, plan: &'static Plan) {
+    for &a in &plan.pick {
+        if needs_ok(w, e, plan.acts[a as usize].requires) {
+            w.get_mut::<Brain>(e).unwrap().activity = a;
+            return;
+        }
+    }
+}
+
+// ---- the services the modules use -------------------------------------------------------------------------------------
+/// `NearestVisibleLivingEntities.findClosest`: the first of `visible_mobs` that passes the filter and the sight test.
+pub fn find_closest(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bool) -> Option<Who> {
+    let list = match get(w, e, &VISIBLE_MOBS) {
+        Some(MemValue::Whos(l)) => l.clone(),
+        _ => return None,
+    };
+    list.into_iter().find(|&who| filter(w, who) && visible_test(w, e, who))
+}
+/// `NearestVisibleLivingEntities.contains`.
+pub fn visible_contains(w: &mut World, e: Entity, who: Who) -> bool {
+    let listed = matches!(get(w, e, &VISIBLE_MOBS), Some(MemValue::Whos(l)) if l.contains(&who));
+    listed && visible_test(w, e, who)
+}
+/// `Sensor.isEntityTargetable`, cached per `visible_mobs` value.
+fn visible_test(w: &mut World, e: Entity, who: Who) -> bool {
+    if let Some(&(_, r)) = w.get::<Brain>(e).and_then(|b| b.sight.iter().find(|(k, _)| *k == who)) {
+        return r;
+    }
+    let r = targetable(w, e, who);
+    w.get_mut::<Brain>(e).unwrap().sight.push((who, r));
+    r
+}
+pub(crate) fn clear_sight(w: &mut World, e: Entity) {
+    if let Some(mut b) = w.get_mut::<Brain>(e) {
+        b.sight.clear();
+    }
+}
+/// `TargetingConditions.forNonCombat()` within the follow range, in sight.
+fn targetable(w: &World, e: Entity, who: Who) -> bool {
+    let Some(i) = crate::targeting::info(w, who) else { return false };
+    let (Some(pos), Some(eye), Some(range)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<crate::targeting::Eye>(e), w.get::<crate::targeting::FollowRange>(e)) else { return false };
+    let vis = match who {
+        Who::Player(id) => w.resource::<crate::hostile::PlayerState>().visibility(id),
+        Who::Entity(_) => 1.0,
+    };
+    if i.exempt && i.player {
+        return false;
+    }
+    let reach = crate::targeting::sight_range(range.0, vis);
+    if d2(pos, i.pos) > reach * reach {
+        return false;
+    }
+    let mw = w.resource::<Level>().mw.0;
+    mw.line_of_sight_for(Some(pos.y), horizon_core::geometry::Vec3::new(pos.x, pos.y + eye.0, pos.z), horizon_core::geometry::Vec3::new(i.pos.x, i.eye, i.pos.z))
+}
+/// `PathNavigation.moveTo`: a path to the block (exact: reach 0), at this speed modifier; the walk is `pathfind`'s.
+pub fn walk_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
+    if let Some(mut s) = w.get_mut::<Stroll>(e) {
+        (s.tx, s.ty, s.tz) = (at[0], at[1].floor() as i32, at[2]);
+    }
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.speed = speed;
+        n.reach = 0;
+    }
+    w.entity_mut(e).insert(NeedsPath);
+}
+/// `nav.is_done()`: no path to follow and none being made.
+pub fn nav_done(w: &World, e: Entity) -> bool {
+    w.get::<Following>(e).is_none() && w.get::<NeedsPath>(e).is_none()
+}
+/// `LookControl.setLookAt`: the head turns toward the point for the next ticks.
+pub fn look_at(w: &mut World, e: Entity, at: [f64; 3]) {
+    let looking = w.get::<Looking>(e).is_some();
+    if let Some(mut l) = w.get_mut::<Look>(e) {
+        l.target = at;
+        l.cooldown = 2;
+        l.y_speed = l.y_default;
+    }
+    if !looking {
+        w.entity_mut(e).insert(Looking);
+    }
+}
+/// A spot of the species' own walk value (`spots.rs`), as the goals pick it.
+pub fn pick(w: &mut World, e: Entity, p: crate::spots::Pick) -> Option<[f64; 3]> {
+    crate::spots::pick_for(w, e, p)
+}
+
+/// The probe's view: the active activity, the behaviours that run, the memories that are present.
+pub fn describe(w: &World, e: Entity) -> Option<String> {
+    let b = w.get::<Brain>(e)?;
+    let running: Vec<&str> = b.plan.insts.iter().enumerate().filter(|(i, _)| b.run[*i].running).map(|(_, x)| x.b.name).collect();
+    let mems: Vec<&str> = b.plan.mems.iter().enumerate().filter(|(i, _)| b.slots[*i].v.is_some()).map(|(_, k)| k.name).collect();
+    Some(format!("activity {} running {:?} memories {:?}", b.plan.acts[b.activity as usize].name, running, mems))
+}

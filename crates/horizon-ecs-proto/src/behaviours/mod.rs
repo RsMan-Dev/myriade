@@ -95,6 +95,8 @@ pub enum Cap {
     /// The head: where it looks and how it turns (`Look`, `Head`); the look goals and every goal that aims need it.
     Head,
     Targets,
+    /// Memories, sensors, activities and behaviours (`brain`): needs `Goals` (its random stream, its look).
+    Brain,
     /// Walking, paths, the move control.
     Locomotion,
 }

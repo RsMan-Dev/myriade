@@ -38,11 +38,22 @@ impl MobRef {
         self.searches.push(0);
         self.mobs.len() - 1
     }
+    /// A mob with the id given: the brain's gates shuffle with a random seeded by the id, and the first draws of Java's generator
+    /// are correlated for neighbouring seeds (sequential ids make the golems choose alike); vanilla seeds from the level random.
+    pub fn add_id(&mut self, at: Vec3, id: u32) -> usize {
+        let mut m = Mob::new(id, self.kind.clone(), at, 0.0);
+        m.persistent = true;
+        m.ai.no_action_time = 100;
+        self.mobs.push(m);
+        self.searches.push(0);
+        self.mobs.len() - 1
+    }
     /// A mob of another type (the process's species is `self.kind`).
     pub fn add_kind(&mut self, at: Vec3, kind: Arc<mobs::MobType>) -> usize {
         let mut m = Mob::new(self.mobs.len() as u32 + 1, kind, at, 0.0);
         m.persistent = true;
         m.ai.no_action_time = 100;
+        scope(&mut m);
         self.mobs.push(m);
         self.searches.push(0);
         self.mobs.len() - 1
@@ -94,6 +105,24 @@ impl MobRef {
         self.apply_block_events();
     }
 }
+/// The goals of a skeleton the ECS has (the bow, stroll, the two looks; hurt-by and the nearest player), with the bow in
+/// hand: `RestrictSun` (its paths avoid the sun), `FleeSun` and `AvoidEntity` are not ported, and a path that avoids the
+/// sun is not the path of the ECS (the cause of the stroll control's gap for the skeleton).
+pub fn scope(m: &mut Mob) {
+    use horizon_client_lib::mobs::goals::*;
+    if m.species() != horizon_client_lib::mobs::Species::Skeleton {
+        return;
+    }
+    m.extra.set_main_hand(Some("minecraft:bow".into()));
+    m.ai.goals.clear();
+    m.ai.targets.clear();
+    m.ai.goals.add(4, horizon_client_lib::mobs::undead::SkeletonWeapon::new(20, 40));
+    m.ai.goals.add(5, Stroll::avoiding_water(1.0));
+    m.ai.goals.add(6, LookAtPlayer::new(8.0));
+    m.ai.goals.add(6, RandomLookAround::default());
+    m.ai.targets.add(1, HurtByTarget::new());
+    m.ai.targets.add(2, NearestTarget::player(true));
+}
 pub fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
     PlayerView {
         position: at,
@@ -142,6 +171,8 @@ pub fn tempt_item() -> (u32, &'static str) {
     }
 }
 pub fn have_data() -> bool {
+    // The tests inject their own configuration of the modules: every module is inscribed (the frame inscribes carried ones only).
+    horizon_ecs_proto::species::inscribe_every_module();
     std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
 }
 pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {

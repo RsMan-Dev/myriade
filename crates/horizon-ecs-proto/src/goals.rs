@@ -318,6 +318,8 @@ pub struct Forced {
     pub partners: HashMap<Entity, Entity>,
     /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
     pub strafes: HashMap<Entity, (bool, bool)>,
+    /// The order the kids of a shuffled composite of the brain are tried in (indices of the kids), instead of a draw.
+    pub shuffles: HashMap<Entity, std::collections::VecDeque<Vec<usize>>>,
 }
 
 impl Forced {
@@ -512,6 +514,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     crate::projectile::insert_resources(world);
+    crate::brain::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {
@@ -648,6 +651,7 @@ pub(crate) fn phase_of(w: &World, e: Entity) -> u64 {
 }
 /// Asks every module of the animal for its first deadlines.
 pub(crate) fn arm_timers(w: &mut World, e: Entity) {
+    crate::brain::arm(w, e);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     let (entries, n) = (g.entries, g.len());
     let insts: [Inst; 16] = std::array::from_fn(|i| Inst { slot: i as u8, nth: g.nth[i] });

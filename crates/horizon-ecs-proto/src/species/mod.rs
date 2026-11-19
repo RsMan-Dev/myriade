@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod chicken;
+pub mod copper_golem;
 pub mod cow;
 pub mod pig;
 pub mod predicates;
@@ -22,7 +23,7 @@ pub mod zombie;
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF];
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -55,16 +56,21 @@ pub struct Def {
     /// The capabilities of the entity (`None`: the reference's, or all of `Cap::ALL` at the root). A section the entity
     /// has no capability for is not read; a module that requires a missing capability is a startup error.
     pub caps: Option<&'static [Cap]>,
+    /// The brain (own, or the reference's when empty).
+    pub brain: crate::brain::BrainDef,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
         v
+    }
+    fn brain_def(&self) -> crate::brain::BrainDef {
+        if self.brain.is_empty() { self.reference.map_or(crate::brain::BrainDef::EMPTY, |r| r.brain_def()) } else { self.brain }
     }
     fn capabilities(&self) -> &'static [Cap] {
         self.caps.or_else(|| self.reference.map(|r| r.capabilities())).unwrap_or(ALL_CAPS)
@@ -94,6 +100,7 @@ pub struct Resolved {
     pub config: Config,
     pub rules: &'static [crate::rules::RuleEntry],
     pub caps: &'static [Cap],
+    pub brain: Option<&'static crate::brain::Plan>,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -120,7 +127,10 @@ impl Registry {
     /// Whether some resolved species has the module of rank `module`: its systems and resources exist only then (the cost of a
     /// module nobody carries is zero). `REGISTER_ALL=1` registers every module (to measure what the guarantee saves).
     pub fn carried(&self, module: usize) -> bool {
-        std::env::var_os("REGISTER_ALL").is_some()
+        // The unit tests of a module inject their own configuration into the library under test: every module is inscribed there.
+        cfg!(test)
+            || EVERY_MODULE.load(std::sync::atomic::Ordering::Relaxed)
+            || std::env::var_os("REGISTER_ALL").is_some()
             || self.species.iter().any(|s| s.config.entries.iter().any(|e| self.module_id(e.module) == Some(module)))
     }
     /// The named predicate (`Cond::Is`).
@@ -202,7 +212,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities() });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -231,6 +241,13 @@ impl Builder {
                 if let Some(n) = names.iter().find(|n| !preds.contains_key(*n)) {
                     return Err(Error(format!("{src}: species `{}`, module `{}`: unknown predicate `{n}`", d.name, e.module.name)));
                 }
+            }
+        }
+        for ((_, d), r) in self.defs.iter().zip(species.iter_mut()) {
+            let def = d.brain_def();
+            if !def.is_empty() {
+                let plan = crate::brain::Plan::build(&def, r.caps).map_err(|m| Error(format!("species `{}`: brain: {m}", d.name)))?;
+                r.brain = Some(Box::leak(Box::new(plan)));
             }
         }
         for (r, (list, _)) in species.iter_mut().zip(lists) {
@@ -304,6 +321,12 @@ fn apply(src: &str, species: &str, changes: &[Change], list: &mut Vec<Entry>, ta
     Ok(())
 }
 
+static EVERY_MODULE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Inscribes the systems of EVERY registered module, carried or not (before the first `registry()`): what the tests of a module
+/// that inject their own configuration need; `tests/common` does it for every integration test.
+pub fn inscribe_every_module() {
+    EVERY_MODULE.store(true, std::sync::atomic::Ordering::Relaxed);
+}
 static EXTENSIONS: std::sync::Mutex<Vec<fn(&mut Builder)>> = std::sync::Mutex::new(Vec::new());
 static REGISTRY: OnceLock<Registry> = OnceLock::new();
 /// Adds what a mod brings; must be called before the first `registry()` (the registry is frozen then).
@@ -356,6 +379,9 @@ mod tests {
             }
         };
         for name in names() {
+            if name == "minecraft:copper_golem" {
+                continue; // its behaviours are a brain, not a selector
+            }
             let got: Flat = config(name).entries.iter().map(|e| (e.module, e.priority)).collect();
             let want = flat(name);
             assert_eq!(got.len(), want.len(), "{name}");
