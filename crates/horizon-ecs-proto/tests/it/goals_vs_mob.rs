@@ -875,6 +875,46 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
     assert!(close(30) * 10 >= apart[30].len() * 8, "{line:?}");
 }
 
+/// A look goal that holds the MOVE flag against a walk goal of the same animal (the panda's RandomLookAround 10 over its stroll 14) stops that
+/// walk whether or not a player sees the animal (the lazy look leaves out the orientation only): the share of ticks spent looking around
+/// is the `Mob`'s (law over 40 animals and 1200 ticks, nobody there).
+#[test]
+fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
+    use horizon_ecs_proto::{behaviours::random_look, goals::MOVE};
+    if horizon_ecs_proto::cow::skip_unless_walker("the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees") {
+        return;
+    }
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| horizon_ecs_proto::species::PROCESS_DEFAULT.into());
+    let entries = horizon_ecs_proto::species::config(&name).entries;
+    let look = entries.iter().find(|e| std::ptr::eq(e.module, &random_look::MODULE)).map(|e| e.priority);
+    let stopped = look.and_then(|l| entries.iter().find(|e| e.module.flags & MOVE != 0 && e.priority > l).map(|e| e.module.name));
+    if stopped.is_none() || !have_data() {
+        eprintln!("SKIP: {name}: no goal holding MOVE has a larger priority number than the random look {look:?}: it stops nothing");
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let spots: Vec<(f64, f64)> = (0..8).flat_map(|i| (0..5).map(move |j| (-14.5 + 4.0 * f64::from(i), -12.5 + 5.0 * f64::from(j)))).collect();
+    let mobs: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+    let cows: Vec<Entity> = spots.iter().enumerate().map(|(k, &(x, z))| ecs_cow(&mut h, x, 1.0, z, 900 + k as u64)).collect();
+    for &e in &cows {
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
+    }
+    let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
+    for _ in 0..1200 {
+        for &i in &mobs {
+            r.mobs[i].ai.no_action_time = 0;
+        }
+        r.step(None);
+        h.tick();
+        mob_ticks += mobs.iter().filter(|&&i| r.names(i).contains(&"RandomLookAround")).count();
+        ecs_ticks += cows.iter().filter(|&&e| h.world.get::<random_look::Scanning>(e).is_some()).count();
+    }
+    eprintln!("ticks looking around: Mob {mob_ticks}, ecs {ecs_ticks} (40 animals, 1200 ticks)");
+    assert!(mob_ticks > 500, "the Mob hardly looks around: {mob_ticks}");
+    assert!(ecs_ticks * 10 >= mob_ticks * 7 && ecs_ticks * 7 <= mob_ticks * 10, "Mob {mob_ticks} ecs {ecs_ticks}");
+}
+
 /// Three cows in love: the `Mob` picks its partner (the first in its list), the ecs cow takes the same one
 /// (`Forced`); the parent walks the same way and gives birth at the same tick.
 #[test]

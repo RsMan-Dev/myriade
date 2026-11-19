@@ -47,11 +47,20 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let s = *w.get::<Scan>(e).unwrap();
     let p = w.get::<Pos>(e).unwrap().0;
-    if !s.armed && w.resource::<LazyLook>().watched(p.x, p.z) {
+    if !s.armed && (w.resource::<LazyLook>().watched(p.x, p.z) || holds_a_mover(w, e, inst)) {
         let wait = with_rng(w, e, |r| 2 * geometric(r, s.period));
         crate::goals::arm(w, e, inst.slot, wait);
         w.get_mut::<Scan>(e).unwrap().armed = true;
     }
+}
+/// The goal holds the MOVE flag against a goal of a larger priority number of the same animal (the panda's look 10 over its stroll 14): it
+/// stops that goal and keeps it from starting whether or not a player sees the animal, so it is drawn and runs for nobody too (the
+/// orientation alone is left out then: `scan_run`). Species whose look comes after every walk goal never need it.
+fn holds_a_mover(w: &World, e: Entity, inst: Inst) -> bool {
+    w.get::<GoalSet>(e).is_some_and(|g| {
+        let own = g.entries()[inst.slot as usize].priority;
+        g.entries().iter().any(|o| o.module.flags & MOVE != 0 && o.priority > own)
+    })
 }
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
     w.get_mut::<Scan>(e).unwrap().armed = false;
@@ -65,7 +74,10 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     s.armed = false;
     // With the lazy look, a timer that comes up for an animal no player sees lapses.
     let p = w.get::<Pos>(e).unwrap().0;
-    w.resource::<LazyLook>().watched(p.x, p.z)
+    w.resource::<LazyLook>().watched(p.x, p.z) || holds_a_mover(w, e, Inst { slot: s_slot(w, e), nth: 0 })
+}
+fn s_slot(w: &World, e: Entity) -> u8 {
+    w.get::<Scan>(e).map_or(0, |s| s.slot)
 }
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
     true
@@ -80,11 +92,11 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     rearm(w, e, inst);
 }
 /// `RandomLookAroundGoal.tick`.
-fn scan_run(clock: Res<Clock>, mut q: Query<(Aim, &Scanning, &Scan)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+fn scan_run(clock: Res<Clock>, lazy: Res<LazyLook>, mut q: Query<(Aim, &Scanning, &Scan)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
     for ((e, pos, mut look, looking, _, _), s, data) in &mut q {
         if clock.of(e) >= s.until {
             reqs.0.push(Req::End(e, data.slot));
-        } else {
+        } else if lazy.watched(pos.0.x, pos.0.z) {
             let at = [pos.0.x + s.dx, pos.0.y + look.eye, pos.0.z + s.dz];
             aim(&mut cmd, e, &mut look, looking, at, None);
         }
