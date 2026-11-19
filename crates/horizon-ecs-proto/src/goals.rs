@@ -305,6 +305,8 @@ pub struct Forced {
     pub spots: HashMap<(Entity, u8), (f64, f64)>,
     /// The partner a cow in love takes instead of the nearest one.
     pub partners: HashMap<Entity, Entity>,
+    /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
+    pub strafes: HashMap<Entity, (bool, bool)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -428,6 +430,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
+    crate::projectile::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for m in &crate::species::registry().modules {
         (m.resources)(world);
@@ -490,10 +493,15 @@ pub struct Events {
     pub grew: Ev,
     /// A grazing animal ate its block (`eat_block`).
     pub ate: Ev,
+    /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
+    pub target_acquired: Ev,
+    pub target_lost: Ev,
+    /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
+    pub projectile_hit: Ev,
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate] {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
             ev.swap();
         }
     }
@@ -889,6 +897,7 @@ pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     }
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.zza = 0.0;
+        d.xxa = 0.0;
         d.jump = false;
     }
     if let Some(mut m) = w.get_mut::<MoveTo>(e) {
@@ -1200,6 +1209,10 @@ mod tests {
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
         let Some(mut h) = herd() else { return };
+        // A ranged hunter holds the look flag as long as it has its target: the passive look is not what it does.
+        if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {
+            return;
+        }
         // The control compares the rates of the look goals of every animal: the lazy look is off here.
         set_lazy_look(&mut h.world, false);
         let mut cows = Vec::new();
@@ -1236,7 +1249,7 @@ mod tests {
         let (rate, scan) = (near_hit as f64 / near as f64, scanned as f64 / cows.len() as f64);
         // 1 - 0.98^75 = 0.78 expected for a ask every 2 ticks over 150 ticks.
         // A species that hunts walks toward the player during the 150 ticks: a far one may glance once it is near.
-        let hunts = species().goals.has(&melee::MODULE);
+        let hunts = species().goals.has(&melee::MODULE) || species().goals.has(&crate::behaviours::ranged_bow::MODULE);
         assert!((far_hit == 0 || hunts) && rate > 0.62 && rate < 0.92, "near {near_hit}/{near}, far {far_hit}");
         // A hunting species spends part of the 150 ticks in melee, which takes the flags of the look around.
         assert!(scan > if hunts { 0.5 } else { 0.62 } && scan < 0.92, "scan {scan}");

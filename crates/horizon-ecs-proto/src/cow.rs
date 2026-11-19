@@ -52,6 +52,8 @@ pub struct Contact {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Drive {
     pub zza: f32,
+    /// The sideways input (`xxa`).
+    pub xxa: f32,
     pub speed: f32,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
@@ -418,6 +420,8 @@ pub enum Due {
     Goal(u8),
     /// The hen's egg timer (`farm.rs`): a rule of the species, not a goal.
     Egg,
+    /// A stuck projectile's life is over (`projectile.rs`).
+    Expire,
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -988,6 +992,7 @@ pub fn schedule() -> Schedule {
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
+    crate::projectile::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1369,10 +1374,38 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     }
     r
 }
+/// `MoveControl.Operation.STRAFE` (`MoveControl.strafe(forwards, right)`): the speed is a quarter of the movement speed; a side
+/// step whose target block is not walkable turns into a step forward. The caller (a goal) does it every tick it strafes;
+/// the walk of the path (`move_control`) sets the sideways input back to nothing.
+pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: &mut Drive, forwards: f32, right: f32, walkable: &mut Option<((i32, i32, i32), bool, u64)>, now: u64) {
+    let speed = (0.25 * body.speed) as f32;
+    let (mut xa, mut za) = (forwards, right);
+    let dist = (xa * xa + za * za).sqrt().max(1.0);
+    let k = speed / dist;
+    (xa, za) = (xa * k, za * k);
+    let angle = f64::from(yaw.0 * trig::DEG_TO_RAD);
+    let (s, co) = (trig::sin(angle), trig::cos(angle));
+    let (dx, dz) = (xa * co - za * s, za * co + xa * s);
+    let (x, y, z) = ((pos.0.x + f64::from(dx)).floor() as i32, pos.0.y.floor() as i32, (pos.0.z + f64::from(dz)).floor() as i32);
+    // The kind of the block is read once per block and kept for 10 ticks (a strafe step is 0.1 block: the same block for many ticks).
+    let ok = match *walkable {
+        Some((b, ok, at)) if b == (x, y, z) && now < at + 10 => ok,
+        _ => {
+            let ok = level.mw.0.path_type_static(x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
+            *walkable = Some(((x, y, z), ok, now));
+            ok
+        }
+    };
+    let (forwards, right) = if ok { (forwards, right) } else { (1.0, 0.0) };
+    d.speed = speed;
+    d.zza = forwards;
+    d.xxa = right;
+}
 /// `MoveControl.tick`, operation MOVE_TO (the jump over a step is not here: the slab is flat).
 fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, landed: bool) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     d.jump = false;
+    d.xxa = 0.0;
     if d.jumping_op {
         // Operation JUMPING: the speed follows the wanted spot's modifier, the heading is kept, and the next
         // wanted spot does not change the operation, until the cow is on the ground (or in a liquid).
@@ -1430,8 +1463,8 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, zza: f32) {
-    let input = Vec3::new(0.0, 0.0, f64::from(zza));
+fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
+    let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
         return;
@@ -1503,7 +1536,7 @@ fn travel_one(
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
     // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
@@ -1550,14 +1583,14 @@ fn travel_one(
                 slow += (0.546_000_06 - slow) * efficiency;
                 speed += (d.speed - speed) * efficiency;
             }
-            move_relative(vel, yaw.0, speed, d.zza);
+            move_relative(vel, yaw.0, speed, d.xxa, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let m = vel.0;
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
             vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
             c.fall_distance = 0.0;
         } else {
-            move_relative(vel, yaw.0, 0.02, d.zza);
+            move_relative(vel, yaw.0, 0.02, d.xxa, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let v = vel.0;
             if fs.lava <= threshold {
@@ -1585,14 +1618,14 @@ fn travel_one(
     } else {
         0.02
     };
-    move_relative(vel, yaw.0, speed, d.zza);
+    move_relative(vel, yaw.0, speed, d.xxa, d.zza);
     do_move(level, pos, vel, c, body, bounds, fall_damage);
     let movement = vel.0;
     let drag = 0.91_f32;
     let f = friction * drag;
     let y = movement.y - body.gravity;
     vel.0 = Vec3::new(movement.x * f64::from(f), y * f64::from(0.98_f32), movement.z * f64::from(f));
-    !jumping && c.on_ground && d.zza == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
+    !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy
 }
 #[allow(clippy::type_complexity)]
 pub(crate) fn travel(
@@ -1996,7 +2029,7 @@ fn recompute(
 /// changed, so `reindex` re-evaluates them); the cows that follow a path that the change is near the middle of
 /// (`PathNavigation.shouldRecomputePath`) ask for a new path to the same spot; nobody else is touched.
 #[allow(clippy::type_complexity)]
-fn block_changes(
+pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
@@ -2552,6 +2585,7 @@ pub(crate) fn due(
             Due::Stroll => fired.0.push((e, crate::behaviours::stroll::FIRED)),
             Due::Goal(k) => fired.0.push((e, k)),
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
+            Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {

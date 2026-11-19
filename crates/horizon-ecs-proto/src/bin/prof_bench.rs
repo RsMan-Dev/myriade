@@ -1,4 +1,4 @@
-//! `prof-bench SCENE N TICKS [PLAYERS [WARM]]` (SCENE: idle | active | hunt), `HORIZON_TEST_RESOURCES` set (and
+//! `prof-bench SCENE N TICKS [PLAYERS [WARM]]` (SCENE: idle | active | hunt | arrows: one animal and N arrows shot into the ground), `HORIZON_TEST_RESOURCES` set (and
 //! `HORIZON_SPECIES` for the species of the herd): the instructions per tick of every system of the real schedule
 //! (`profile.rs`), the entities it visits per tick, instructions per visited entity, and the share of the tick.
 use horizon_ecs_proto::{
@@ -15,7 +15,14 @@ fn main() {
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing = 2.0;
     let mix = if scene == "active" { 4 } else { 0 };
-    let mut herd = Herd::with_mix(n, spacing, true, false, 42, false, mix);
+    let mut herd = Herd::with_mix(if scene == "arrows" { 1 } else { n }, spacing, true, false, 42, false, mix);
+    if scene == "arrows" {
+        // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
+        for i in 0..n {
+            let (x, z) = (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
+            horizon_ecs_proto::projectile::launch(&mut herd.world, horizon_ecs_proto::projectile::Flight::ARROW, horizon_core::geometry::Vec3::new(x, 3.0, z), horizon_core::geometry::Vec3::new(0.05, -0.5, 0.0), None);
+        }
+    }
     let shared = profile::instrument(&mut herd);
     let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();
     let side = (n as f64).sqrt().ceil() * spacing;

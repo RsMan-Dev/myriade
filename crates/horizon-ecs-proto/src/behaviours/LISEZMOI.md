@@ -32,6 +32,9 @@ pour être prévenu d'une acquisition, ajouter une fonction à `TargetWatchers` 
 `DamageQueue::add_by_entity(cible, dégâts, (x, z), attaquant)` (la victime peut en faire sa cible : module `hurt_by`). Les modules qui
 CHOISISSENT la cible sont `nearest_target` (joueur, types, tag, prédicat nommé ; plusieurs instances) et `hurt_by` (frappeur, alerte).
 
+Projectile (`projectile.rs`, capacité, pas un but) : une entité `Pos`+`Vel`+`Flight`+`Projectile` (+`OwnTime`), sans vie ni buts ni boîte dans l'index ;
+`projectile::launch(w, Flight::ARROW | SNOWBALL, pos, vitesse, propriétaire)` ; le tir d'un but : `behaviours/ranged_bow.rs`.
+
 Règles : pas de système qui parcourt tous les animaux (une requête filtrée par le marqueur du module) ; une échéance
 plutôt qu'une scrutation ; le module n'écrit pas dans l'état des autres (il leur demande par `Req`).
 Points d'entrée = `&mut World` (système exclusif, comme `arbitrate`) ; une forme à requêtes reste possible plus tard.

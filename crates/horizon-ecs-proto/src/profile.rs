@@ -103,6 +103,8 @@ fn counter_for(name: &str) -> Option<CountFn> {
         "look_control" => filter::<With<Looking>>(),
         "target_continue" | "sight_eval" => filter::<With<crate::targeting::Target>>(),
         "melee_run" => filter::<With<Meleeing>>(),
+        "fly" => filter::<With<crate::projectile::Flying>>(),
+        "bow_run" => filter::<With<crate::behaviours::ranged_bow::Bowing>>(),
         "sun_burn" => filter::<With<Exposed>>(),
         "pathfind" => filter::<With<NeedsPath>>(),
         "follow" | "move_control" => filter::<With<Following>>(),

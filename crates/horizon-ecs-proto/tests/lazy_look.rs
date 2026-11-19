@@ -20,7 +20,7 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
     }
     // A species that hunts the player (the zombie) walks to it: the walk count then depends on the draws the look goals
     // make, which the option changes; the test counts strolls of passive animals.
-    if horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::melee::MODULE, "the_lazy_look_changes_nothing_a_player_sees") {
+    if horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::melee::MODULE, "the_lazy_look_changes_nothing_a_player_sees") || horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::ranged_bow::MODULE, "the_lazy_look_changes_nothing_a_player_sees") {
         return;
     }
     let mut out = Vec::new();

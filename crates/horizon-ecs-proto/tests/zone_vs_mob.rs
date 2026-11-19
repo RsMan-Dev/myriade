@@ -149,7 +149,7 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
     let (s1, s2) = (100, 500);
     let _ = pair();
     // A monster is not a baby and is never in love: its own timers are the fire and the zombie test below.
-    let monster = species().name == "minecraft:zombie";
+    let monster = !species().goals.has(&horizon_ecs_proto::behaviours::breed::MODULE);
     let (mf, ef, slept) = run(700, s1, s2, What::Fire);
     if monster {
         assert!(slept);
