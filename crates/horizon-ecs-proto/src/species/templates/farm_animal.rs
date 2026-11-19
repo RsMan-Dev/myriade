@@ -15,7 +15,7 @@ pub static DEF: Def = Def {
     goals: &[
         FLOAT,
         Entry::new(&panic::MODULE, 1, &panic::Params::DEFAULT),
-        Entry::new(&breed::MODULE, 2, &breed::Params::DEFAULT),
+        Entry::new(&breed::MODULE, 2, &breed::Params { foods: &["minecraft:wheat"], ..breed::Params::DEFAULT }),
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, items: &["minecraft:wheat"], ..tempt::Params::DEFAULT }),
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params { speed: 1.25 }),
         WANDER,
@@ -23,6 +23,8 @@ pub static DEF: Def = Def {
         RANDOM_LOOK,
     ],
     changes: &[],
+    rules: &[],
     caps: None,
+    brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
 };

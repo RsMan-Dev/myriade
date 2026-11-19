@@ -128,3 +128,27 @@ Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contr
 
 ## Les modes de locomotion (`locomotion/`)
 Un mode de déplacement est un module de la même forme (`Module { name, requires, equip, systems, ..Module::DEFAULT }`, `Params`), inscrit dans `locomotion::TABLE` et déclaré par l'espèce : `Def { locomotion: &[(Medium::Ground, walk), (Medium::Water, swim), (Medium::Air, fly)], .. }` (vide : celle du modèle, ou la marche). Le mode actif est un marqueur (`WalkMode`, `SwimMode`, `FlyMode`) que filtrent les systèmes du mode ; on change de mode par `locomotion::switch(world, e, medium)` (événement `Events.mode_changed`) : `reindex` le fait aux entrées et sorties de fluide pour une espèce qui a un mode eau, un but peut le faire (décoller, se poser). Ajouter un mode : un fichier dans `locomotion/`, une ligne dans `TABLE`, un marqueur. `swim` : `needs_water` (air qui baisse hors de l'eau, saut). `fly` : `max_turn`, `hovers`, `glide` ; la gravité est coupée par le contrôle de mouvement tant qu'un chemin est suivi.
+
+## Services du cadre pour les buts (go_to, vitesse, regard, règles, événements)
+
+- Marche : `goals::go_to_at(&mut World, e, [x, y, z], vitesse, portée)` (système exclusif / point d'entrée de module) ; `goals::go_to_entity(w, e, cible, vitesse, portée)` (la position de la cible à cet instant : redemander pour suivre) ; `goals::go_to(&mut Commands, e, x, z, vitesse, but)` est la forme de SYSTÈME (rangée 1, `but` < 32 pour `ASKS`) : le GUIDE qui la dit utilisable depuis un système exclusif se trompe, un système exclusif prend `go_to_at`.
+- Vitesse écrite hors de la physique : `goals::set_velocity(w, e, v)` / `goals::impulse(w, e, dv)` posent `Moving` ; ne jamais écrire `Vel` seul.
+- Regard : `goals::aim_clamped(cmd, e, look, looking, at, y_speed, x_max)` (borne verticale de ce regard ; `None` = `Look.x_default`).
+- Règle de partie : `goals::mob_griefing(w)`.
+- `Module.interruptable` (défaut vrai) : un but en cours non interruptible garde ses drapeaux contre toute priorité.
+- Événements (lus une fois, au tick suivant) : `Events.hurt` (blessé), `hurt_by_entity` (blessé par une entité ; l'attaquant par `HurtBy`), `entered_powder_snow`, `left_powder_snow`, en plus des précédents.
+
+## État du joueur, occupation, équipement, hasard imposé en 3D
+
+- Joueur : `hostile::PlayerState` est LA source (une seule) : `creative`, `spectator`, `visibility`, `sneaking`, `helmet`, `gaze` (vecteur de regard), `team`, `peaceful` (difficulté) et la règle `targetable(id)` = vivant, ni créatif ni spectateur, pas Peaceful (le ciblage l'emploie). Le `Mob` ne fuit ni ne cible un joueur non ciblable : tout but qui fuit ou vise un joueur appelle `targetable`.
+- Occupation : `goals::occupy(w, e, OCC_*)` / `release` / `is_occupied(w, e, masque)` (`OCC_GRAZING`, `MOUNTED`, `SITTING`, `REARING`, `SLEEPING`, `ROLLED`) : le module qui immobilise pose son bit (le broutage le fait), les buts consultent sans connaître ce module.
+- Équipement : `goals::equipped(w, e, Slot::Head)` rend l'objet (0 si vide ou si l'entité n'a pas de composant `Equipment`).
+- Hasard imposé en 3D : `Forced::impose_spot(e, slot, [x, y, z])` et, dans le module, `Forced::take_spot(e, slot, y_par_défaut)`.
+
+## Règles, réactions, interactions, tête (conformité : aucun nom d'espèce dans le cadre)
+
+- RÈGLES (hors buts) : `rules::Rule { name, equip, attrs, interact }` + `RuleEntry::new(&RULE, &params)` dans la section `rules` de `Def` (héritée du gabarit, la première d'abord). Les règles de la base : `farm::WOOL`, `farm::LAY_EGG` (`EggDef`), `farm::WING_FLAP` (`WingParams` : glissade et immunité à la chute), `hostile::SUN_BURN`. `equip` pose l'état une fois ; `attrs` donne les attributs du corps lus quand les paquets de composants sont faits (`Body.fall_factor`, `Immune`) ; `interact` répond à un objet de joueur (la laine : cisailles). `FarmDef`, `farm_def(nom)` et `burns_in_day` n'existent plus.
+- RÉACTIONS : le dégât appelle le point d'entrée `damaged(w, e, inst, &Damaged)` de chaque module du sélecteur (`goals::dispatch_damaged`) : `breed` finit l'amour, `stroll` remet `noActionTime` à zéro. Le cadre ne sait plus ce qu'elles font. Ordre inchangé : dégât, réactions (au point de synchronisation), recul, physique.
+- INTERACTIONS : `goals::interact(w, e, &Interaction)` : le premier module qui répond vrai gagne (`breed` : les aliments `Params.foods` mettent en amour), puis les règles (cisailles). 
+- TÊTE : `Cap::Head` (`Look`, `Head`) est une capacité à part ; tout but qui regarde ou vise la déclare dans `requires`.
+- GARDE-FOU : `tests/no_species_names.rs` : aucun nom d'espèce (`"minecraft:..."` de `species::names()`) dans `src/` hors `species/`, `bin/` et les modules `#[cfg(test)]` ; la tolérance `ALLOWANCE` est vide.

@@ -975,6 +975,10 @@ impl TestResources {
 /// shades what is under it); `relight_test_world` keeps it right after a block change.
 #[cfg(feature = "proto")]
 fn light_test_world(world: &mut crate::world::World, tables: &crate::light::LightTables) {
+    // `HORIZON_UNLIT=1`: the world as before the light (the benches measure what the light costs).
+    if std::env::var_os("HORIZON_UNLIT").is_some() {
+        return;
+    }
     let keys: Vec<(i32, i32)> = world.chunks.keys().copied().collect();
     let mut lit = Vec::new();
     for &(cx, cz) in &keys {

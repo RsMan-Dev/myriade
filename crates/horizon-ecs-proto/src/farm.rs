@@ -1,39 +1,48 @@
 //! Farm-animal behaviours beyond the common goals, as data and events (suivi/ecs-ecarts.md): the sheep's grazing
-//! (`EatBlockGoal`) and wool, and the hen's egg and wings. A species takes a behaviour by having its data in
-//! `FarmDef`; nothing here knows a species by name.
+//! (`EatBlockGoal`) and wool, and the hen's egg and wings. A species takes a behaviour by having its rule in
+//! the `rules` of its configuration (`rules.rs`); nothing here knows a species by name.
 use crate::cow::*;
+use crate::rules::Rule;
 pub use crate::behaviours::eat_block::{Graze, Grazing};
 use bevy_ecs::prelude::*;
 
-/// What a species has of the behaviours of this file.
-#[derive(Clone, Copy, Debug)]
-pub struct FarmDef {
-    pub wool: bool,
-    /// The egg timer of the hen (a rule of the species' tick in `Mob`, not a goal).
-    pub egg: Option<EggDef>,
-    /// A fall in the air has its downward speed multiplied by this each tick (the hen's glide; 1 for the others).
-    pub slow_fall: f64,
-    /// `causeFallDamage` answers no (the hen).
-    pub fall_immune: bool,
-    /// The wing state of the hen (`flap`, `flapSpeed`, `flapping`), render-only.
-    pub flaps: bool,
-}
-impl Default for FarmDef {
-    fn default() -> Self {
-        Self { wool: false, egg: None, slow_fall: 1.0, fall_immune: false, flaps: false }
-    }
-}
 /// `Chicken.eggTime`: `base + nextInt(range)` ticks, counted only while an adult.
 #[derive(Clone, Copy, Debug)]
 pub struct EggDef {
     pub base: i32,
     pub range: i32,
 }
-pub fn farm_def(name: &str) -> FarmDef {
-    match name {
-        "minecraft:sheep" => FarmDef { wool: true, ..FarmDef::default() },
-        "minecraft:chicken" => FarmDef { egg: Some(EggDef { base: 6000, range: 6000 }), slow_fall: 0.6, fall_immune: true, flaps: true, ..FarmDef::default() },
-        _ => FarmDef::default(),
+/// The rule `lay_egg` (params `EggDef`): a hen's egg timer, a rule of its tick in `Mob` (`Chicken.aiStep`), not a goal.
+pub static LAY_EGG: Rule = Rule { name: "lay_egg", equip: equip_egg, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+/// The rule `wool` (no params): the sheep's wool, sheared until the animal eats again.
+pub static WOOL: Rule = Rule { name: "wool", equip: |w, e, _| {
+    w.entity_mut(e).insert(Wool::default());
+}, attrs: crate::rules::no_attrs, interact: |w, e, _, i| i.item == crate::goals::SHEARS && shear(w, e) };
+/// The parameters of `wing_flap`: the hen's wings and her glide (a fall in the air has its downward speed multiplied by
+/// `fall_factor` each tick) and whether `causeFallDamage` answers no.
+#[derive(Clone, Copy, Debug)]
+pub struct WingParams {
+    pub fall_factor: f64,
+    pub fall_immune: bool,
+}
+pub static WING_FLAP: Rule = Rule { name: "wing_flap", equip: equip_wings, attrs: wing_attrs, interact: crate::rules::no_interact };
+fn wing_attrs(p: &(dyn std::any::Any + Sync)) -> crate::rules::Attrs {
+    let p = crate::rules::params::<WingParams>(p);
+    crate::rules::Attrs { fall_factor: Some(p.fall_factor), immune: if p.fall_immune { IMMUNE_FALL } else { 0 } }
+}
+fn equip_wings(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(Flap::default());
+}
+fn equip_egg(world: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+    let d = *crate::rules::params::<EggDef>(p);
+    let left = {
+        let mut r = world.get_mut::<Rng>(e).unwrap();
+        r.next_int(d.range) + d.base
+    };
+    world.entity_mut(e).insert(Egg { def: d, left: left as u64, at: u64::MAX });
+    // The timer counts only for an adult: a newborn's is armed when it grows (`Grown`).
+    if world.get::<GrowAt>(e).is_none() {
+        arm_egg(world, e);
     }
 }
 /// The babies that grew up this tick (written by `due`).
@@ -44,26 +53,6 @@ pub struct Grown(pub Vec<Entity>);
 pub struct Wool {
     pub sheared: bool,
     pub color: u8,
-}
-/// Adds to an animal the components of the farm behaviours of its species.
-pub fn equip(world: &mut World, e: Entity, sp: &Species) {
-    if sp.farm.wool {
-        world.entity_mut(e).insert(Wool::default());
-    }
-    if let Some(d) = sp.farm.egg {
-        let left = {
-            let mut r = world.get_mut::<Rng>(e).unwrap();
-            r.next_int(d.range) + d.base
-        };
-        world.entity_mut(e).insert(Egg { def: d, left: left as u64, at: u64::MAX });
-        // The timer counts only for an adult: a newborn's is armed when it grows (`Grown`).
-        if world.get::<GrowAt>(e).is_none() {
-            arm_egg(world, e);
-        }
-    }
-    if sp.farm.flaps {
-        world.entity_mut(e).insert(Flap::default());
-    }
 }
 /// The hen's egg: `left` ticks of an adult's life until the next one; `at` is the tick it is due (MAX: not counting).
 #[derive(Component, Clone, Copy, Debug)]

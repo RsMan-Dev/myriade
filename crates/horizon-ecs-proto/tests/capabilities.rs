@@ -217,3 +217,109 @@ fn a_named_condition_gates_an_entry_before_its_module() {
     assert!(c, "the control adult flees");
     assert!(!g, "the adult whose panic needs a baby does not");
 }
+
+/// `Module::interruptable`: a running goal that cannot be interrupted keeps its flags against a goal of a better priority;
+/// the same goal interruptible gives them up.
+#[test]
+fn a_goal_that_is_not_interruptable_keeps_its_flags() {
+    use horizon_ecs_proto::{behaviours::{Entry, Module}, goals::{GoalSet, MOVE}};
+    static STUBBORN: Module = Module { name: "stubborn", flags: MOVE, interruptable: false, ..Module::DEFAULT };
+    static SOFT: Module = Module { name: "soft", flags: MOVE, ..Module::DEFAULT };
+    static URGENT: Module = Module { name: "urgent", flags: MOVE, ..Module::DEFAULT };
+    static E1: [Entry; 2] = [Entry::new(&STUBBORN, 5, &()), Entry::new(&URGENT, 1, &())];
+    static E2: [Entry; 2] = [Entry::new(&SOFT, 5, &()), Entry::new(&URGENT, 1, &())];
+    let mut a = GoalSet::new(&E1);
+    a.start(0);
+    assert!(!a.replaceable(1), "the stubborn goal keeps MOVE");
+    let mut b = GoalSet::new(&E2);
+    b.start(0);
+    assert!(b.replaceable(1), "an interruptible goal gives MOVE to a better priority");
+}
+
+/// `goals::interact`: the first module that answers handles the item (the cow's food puts it in love), then the rules (the
+/// sheep's shears); anything else is refused.
+#[test]
+fn a_player_item_is_handled_by_the_module_or_the_rule_that_wants_it() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::{behaviours::Interaction, goals::{interact, item_id, Love}};
+    let mut h = Herd::with_slab(8, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let named = |n: &str| table.iter().find(|s| s.name == n).copied().unwrap();
+    let cow = spawn_species(&mut h.world, &named("minecraft:cow"), 0.5, 0.5, 1);
+    let sheep = spawn_species(&mut h.world, &named("minecraft:sheep"), 3.5, 0.5, 2);
+    for _ in 0..10 {
+        h.tick();
+    }
+    let with = |item: &str| Interaction { player: 1, item: item_id(item) };
+    assert!(!interact(&mut h.world, cow, &with("minecraft:shears")), "a cow is not shorn");
+    assert!(!interact(&mut h.world, cow, &with("minecraft:carrot")), "a cow does not eat a carrot");
+    assert!(interact(&mut h.world, cow, &with("minecraft:wheat")) && h.world.get::<Love>(cow).is_some(), "wheat puts a cow in love");
+    assert!(interact(&mut h.world, sheep, &with("minecraft:shears")), "the sheep is shorn");
+    assert!(!interact(&mut h.world, sheep, &with("minecraft:shears")), "a shorn sheep is not shorn again");
+}
+
+/// Block states with properties: a bush placed with `age = 3` reads back as 3; an unknown property or value is refused.
+#[test]
+fn a_block_is_written_and_read_with_its_properties() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::blocks;
+    let mut h = Herd::with_slab(8, true, false);
+    h.set_block_state(2, 1, 2, "minecraft:sweet_berry_bush", &[("age", "3")]);
+    h.set_block_state(3, 1, 2, "minecraft:sweet_berry_bush", &[("age", "9")]);
+    h.set_block_state(4, 1, 2, "minecraft:sweet_berry_bush", &[("size", "1")]);
+    h.tick();
+    let mw = blocks::world_of(&h.world);
+    assert_eq!(blocks::int_property(mw, [2, 1, 2], "age"), Some(3));
+    assert_eq!(blocks::property(mw, [2, 1, 2], "size"), None, "a bush has no `size`");
+    assert_ne!(mw.block_name(3, 1, 2), "minecraft:sweet_berry_bush", "age 9 does not exist: nothing is placed");
+    assert_ne!(mw.block_name(4, 1, 2), "minecraft:sweet_berry_bush", "an unknown property: nothing is placed");
+    h.set_block_state(2, 1, 2, "minecraft:sweet_berry_bush", &[("age", "1")]);
+    h.tick();
+    assert_eq!(blocks::int_property(blocks::world_of(&h.world), [2, 1, 2], "age"), Some(1));
+}
+
+/// Range events: `PlayerWatch(10)` reports a player coming within 10 blocks and going, once each, by the player's moves; the gaze
+/// change and the feet leaving the ground are events too.
+#[test]
+fn players_entering_and_leaving_a_radius_the_gaze_and_leaving_the_ground_are_events() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::{goals::{Events, Online, Player, PlayerWatch}, hostile::PlayerState};
+    let mut h = Herd::with_slab(30, true, false);
+    let e = inert(&mut h, 0.5, 1.0, 0.5);
+    h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
+    for _ in 0..30 {
+        h.tick();
+    }
+    let (mut entered, mut left, mut gaze, mut off) = (0, 0, 0, 0);
+    let mut count = |h: &Herd, entered: &mut i32, left: &mut i32, gaze: &mut i32, off: &mut i32| {
+        let ev = h.world.resource::<Events>();
+        *entered += ev.player_entered.iter().filter(|&(w, p)| w == e && p == 1).count() as i32;
+        *left += ev.player_left.iter().filter(|&(w, p)| w == e && p == 1).count() as i32;
+        *gaze += ev.gaze_changed.iter().filter(|&p| p == 1).count() as i32;
+        *off += ev.left_ground.iter().filter(|&x| x == e).count() as i32;
+    };
+    let at = |h: &mut Herd, x: f64| h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+    at(&mut h, 25.0);
+    for _ in 0..3 { h.tick(); count(&h, &mut entered, &mut left, &mut gaze, &mut off); }
+    assert_eq!((entered, left), (0, 0), "far away: nothing");
+    at(&mut h, 6.0);
+    for _ in 0..3 { h.tick(); count(&h, &mut entered, &mut left, &mut gaze, &mut off); }
+    assert_eq!((entered, left), (1, 0), "within 10 blocks: once");
+    at(&mut h, 4.0);
+    for _ in 0..3 { h.tick(); count(&h, &mut entered, &mut left, &mut gaze, &mut off); }
+    assert_eq!((entered, left), (1, 0), "still inside: no second event");
+    at(&mut h, 20.0);
+    for _ in 0..3 { h.tick(); count(&h, &mut entered, &mut left, &mut gaze, &mut off); }
+    assert_eq!((entered, left), (1, 1), "gone: once");
+    h.world.resource_mut::<PlayerState>().set_gaze(1, [1.0, 0.0, 0.0]);
+    horizon_ecs_proto::goals::impulse(&mut h.world, e, Vec3::new(0.0, 0.5, 0.0));
+    for _ in 0..4 { h.tick(); count(&h, &mut entered, &mut left, &mut gaze, &mut off); }
+    assert_eq!(gaze, 1, "the gaze changed once");
+    assert_eq!(off, 1, "the feet left the ground once");
+}

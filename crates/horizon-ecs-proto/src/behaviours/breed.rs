@@ -14,9 +14,11 @@ pub struct Params {
     pub love: u64,
     pub rest: u64,
     pub baby_age: u64,
+    /// The items that put the animal in love (`Animal.isFood`), by name.
+    pub foods: &'static [&'static str],
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000 };
+    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[] };
 }
 /// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -27,6 +29,7 @@ pub struct BreedData {
     pub love: u64,
     pub rest: u64,
     pub baby_age: u64,
+    pub foods: &'static [&'static str],
     pub slot: u8,
     partner: Option<Entity>,
 }
@@ -52,12 +55,26 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
-    requires: &[Cap::Locomotion],
+    damaged,
+    interact,
+    requires: &[Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
+/// `Animal.mobInteract`: a player's food puts an adult in love (the first module to answer true is the only one).
+fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
+    let Some(b) = w.get::<BreedData>(e).copied() else { return false };
+    if i.item == 0 || !b.foods.iter().any(|f| crate::goals::item_id(f) == i.item) {
+        return false;
+    }
+    feed(w, e)
+}
+/// `Animal.actuallyHurt`: damage taken ends love.
+fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
+    w.entity_mut(e).remove::<Love>();
+}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, slot: inst.slot, partner: None });
+    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, slot: inst.slot, partner: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(breed_run.in_set(slot));

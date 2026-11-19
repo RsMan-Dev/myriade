@@ -259,6 +259,9 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// The block changes waiting for the next step: (x, y, z, block name).
 #[derive(Resource, Default)]
 pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
+/// The block changes WITH properties waiting for the next step: (x, y, z, block name, properties): `blocks::set_state`.
+#[derive(Resource, Default)]
+pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>);
 /// The hazard blocks of the world by column and height: only the columns that hold one have an entry. A cow's hazard
 /// bits are those of the entries its box (widened by a block each way, as a prefilter) meets; a block change at any
 /// height updates its entry (`set`).
@@ -426,6 +429,11 @@ pub enum Due {
     Egg,
     /// A stuck projectile's life is over (`projectile.rs`).
     Expire,
+    /// A sensor of the brain is due (its rank in the plan), and a memory's time is up (its slot and the token it had).
+    Sensor(u8),
+    Forget(u16, u32),
+    /// The brain has something to do (a timed behaviour's end).
+    BrainWake,
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -676,19 +684,27 @@ pub struct Species {
     pub baby: (f32, f32),
     pub goals: crate::species::Config,
     /// The farm behaviours of the species (`farm.rs`).
-    pub farm: crate::farm::FarmDef,
+    pub rules: &'static [crate::rules::RuleEntry],
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
-    pub burns_in_day: bool,
     /// What the species prefers to walk to (`getWalkTargetValue`).
     pub walk: crate::spots::WalkValue,
     /// The capabilities of the configuration (its sections): the entity is made of these only.
     pub caps: &'static [crate::behaviours::Cap],
+    /// The brain of the species, resolved (None: it has none).
+    pub brain: Option<&'static crate::brain::Plan>,
     /// The modes of locomotion (`locomotion.rs`).
     pub modes: &'static [crate::locomotion::ModeEntry],
+}
+/// The last attacker (`LivingEntity.getLastHurtByMob`): written by `apply_damage` for every hit that has an attacker; `at` is
+/// the entity's own time (a module forgets it after 100 ticks as the `Mob` does).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LastHurtBy {
+    pub who: crate::targeting::Who,
+    pub at: u64,
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -787,7 +803,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
     let (mw, types, blocks_ptr) =
         horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("HORIZON_TEST_RESOURCES");
     let chosen: &'static str = Box::leak(
-        std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
+        std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
     let names: Vec<&'static str> = crate::species::names();
@@ -820,12 +836,12 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             omnidirectional: kind.flags.omnidirectional,
             baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
             goals: crate::species::config(name),
-            farm: crate::farm::farm_def(name),
+            rules: crate::species::registry().by_name(name).unwrap().rules,
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
-            burns_in_day: kind.flags.burns_in_day,
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
+            brain: crate::species::registry().by_name(name).unwrap().brain,
             modes: crate::species::registry().by_name(name).unwrap().modes,
         });
         if name == chosen {
@@ -853,17 +869,53 @@ pub fn species_table() -> SpeciesTable {
 /// such goal (the skip is printed, so it is never silent).
 pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bool {
     // By the name the process was asked for (`HORIZON_SPECIES`), before any level is built.
-    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
     let has = crate::species::config(&name).has(module);
     if !has {
         eprintln!("SKIP {test}: {name} has no {} goal", module.name);
     }
     !has
 }
+/// For the tests written for a land animal that walks, strolls and has goals: they declare what they need (the capabilities
+/// `Locomotion`, `Goals` and `Head`, a goal list, a walk and no other medium) and skip, printed, in a process whose species lacks
+/// it: the rule of the code (nothing knows a species) applies to the tests.
+pub fn skip_unless_walker(test: &str) -> bool {
+    skip_unless_caps(&[crate::behaviours::Cap::Locomotion, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head], test)
+        || skip_unless_ground_only(test)
+        || skip_unless_goals(test)
+}
+/// Skips (printed) unless the species of the process has all these capabilities.
+pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let have = crate::species::registry().by_name(&name).map(|r| r.caps).unwrap_or(&[]);
+    let missing: Vec<_> = caps.iter().filter(|c| !have.contains(c)).collect();
+    if !missing.is_empty() {
+        eprintln!("SKIP {test}: {name} lacks the capabilities {missing:?}");
+    }
+    !missing.is_empty()
+}
+/// Skips (printed) when the species of the process moves in another medium than the ground (a swimmer).
+pub fn skip_unless_ground_only(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let other = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground));
+    if other {
+        eprintln!("SKIP {test}: {name} moves in another medium than the ground");
+    }
+    other
+}
+/// Skips (printed) when the species of the process has no goal at all (an entity driven by something else).
+pub fn skip_unless_goals(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let none = crate::species::registry().by_name(&name).is_ok_and(|r| r.config.entries.is_empty());
+    if none {
+        eprintln!("SKIP {test}: {name} has no goal");
+    }
+    none
+}
 /// The reverse: a test of a passive behaviour (a player in range changes nothing) skips a species that has the goal
 /// (a zombie hunts the player the test puts in range), printed.
 pub fn skip_if(module: &'static crate::behaviours::Module, test: &str) -> bool {
-    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
     let has = crate::species::config(&name).has(module);
     if has {
         eprintln!("SKIP {test}: {name} has a {} goal: the player in range makes it hunt, the test measures passive looking", module.name);
@@ -893,7 +945,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0) },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -911,7 +963,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Frozen(0),
         Air(300),
         Resist(sp.knockback_resistance),
-        Immune(if sp.farm.fall_immune { IMMUNE_FALL } else { 0 } | if sp.breathes_water { BREATHES_WATER } else { 0 }),
+        Immune(crate::rules::attrs_of(sp.rules).immune | if sp.breathes_water { BREATHES_WATER } else { 0 }),
         TypeName(sp.name),
     )
 }
@@ -949,7 +1001,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
-    (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+    (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), crate::goals::head_bundle(sp), goals_part(sp, uid, rng))
 }
 /// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
 fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
@@ -973,8 +1025,16 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     if has(crate::behaviours::Cap::Targets) {
         e.insert(targets_bundle(sp));
     }
+    if has(crate::behaviours::Cap::Head) {
+        e.insert(crate::goals::head_bundle(sp));
+    }
     if has(crate::behaviours::Cap::Goals) {
         e.insert(goals_part(sp, uid, rng));
+    }
+    if has(crate::behaviours::Cap::Brain)
+        && let Some(plan) = sp.brain
+    {
+        e.insert(crate::brain::bundle(plan));
     }
     e.id()
 }
@@ -993,15 +1053,22 @@ pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) 
     let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];
     let e = spawn_declared(world, &sp, x, z, seed);
     enter_index(world, e);
-    crate::farm::equip(world, e, &sp);
+    crate::rules::equip_all(world, e, sp.rules);
+    e
+}
+/// `spawn_species` and the first deadlines of its modules (what a creature born at the start of a scene needs; `breed` does it for
+/// a baby). `spawn_species` alone arms nothing: the herds arm in bulk (`goals::arm_all`), a test calls this or `arm_all`.
+pub fn spawn_armed(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let e = spawn_species(world, sp, x, z, seed);
+    crate::goals::arm_timers(world, e);
     e
 }
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
     let e = spawn_declared(world, sp, x, z, seed);
     enter_index(world, e);
-    crate::hostile::equip(world, e, sp);
-    crate::farm::equip(world, e, sp);
+    crate::rules::equip_all(world, e, sp.rules);
+    crate::brain::start(world, e);
     e
 }
 /// An animal of the species the process was built for (see `species`).
@@ -1032,6 +1099,7 @@ pub fn schedule() -> Schedule {
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
     crate::projectile::register(&mut s);
+    crate::brain::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1040,7 +1108,7 @@ pub fn schedule() -> Schedule {
 /// `RandomStrollGoal.canUse` and `LandRandomPos`: after the wait, 10 tries of a spot within 10 x 7 (the first valid
 /// one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Arms the stroll attempt `idle_wait` ticks from now (the goal selector asks every other tick, 1 chance in 60).
-fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
+pub(crate) fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
     let now = clock.of(e);
     let at = now + idle_wait(r, s.interval).max(1) as u64;
     wheel.push(clock.at(e, at.min(now + WHEEL as u64 - 1)), e, Due::Stroll);
@@ -1688,7 +1756,13 @@ pub(crate) fn travel(
             None => &mut none,
         };
         let was_in_air = !c.on_ground;
+        let was_on_ground = c.on_ground;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        if was_on_ground && !c.on_ground {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
+            });
+        }
         if was_in_air && c.on_ground {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
@@ -1877,6 +1951,13 @@ pub(crate) fn reindex(
             }
             *fs = FluidState::default();
         }
+        let was = hz.is_some_and(|h| h.0 & HAZ_SNOW != 0);
+        let is = bits & HAZ_SNOW != 0;
+        if is && !was {
+            events.entered_powder_snow.push(e);
+        } else if was && !is {
+            events.left_powder_snow.push(e);
+        }
         match (bits, hz) {
             (0, Some(_)) => {
                 commands.entity(e).remove::<Hazard>();
@@ -1903,17 +1984,18 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&mut ActiveUntil>, Option<&mut Stroll>, Option<&Resist>, Option<&crate::goals::Uid>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
+    mut events: ResMut<crate::goals::Events>,
     mut commands: Commands,
 ) {
     // The causes of the previous step were read by the goals (they run after this system in the chain).
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, active, stroll, resist, uid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
@@ -1936,24 +2018,26 @@ pub(crate) fn apply_damage(
             continue;
         }
         hurts.0.push(e);
+        events.hurt.push(e);
+        if hit.by.is_some() {
+            events.hurt_by_entity.push(e);
+        }
         causes.0.push((e, hit.cause));
+        commands.entity(e).insert(crate::brain::LastDamage { at: clock.of(e), panic: !matches!(hit.cause, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming), by: hit.by });
         if let Some(p) = hit.by {
             by.0.push((e, p));
         }
-        // `Animal.actuallyHurt`: damage taken ends love.
-        commands.entity(e).remove::<crate::goals::Love>();
-        // `ai::after_hurt`: `noActionTime = 0`.
-        if let (Some(mut active), Some(mut stroll), Some(uid)) = (active, stroll, uid)
-            && active.0 != u64::MAX
-        {
-            active.0 = active.0.max(now + 100);
-            if !stroll.scheduled && !stroll.walking {
-                // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
-                // of a panic), which the hit must not shift.
-                let mut own = Rng(((uid.0) << 32 ^ now ^ 0x9e37_79b9_7f4a_7c15) | 1);
-                arm_stroll(&mut wheel, &clock, e, &mut stroll, &mut own);
-            }
+        // The reactions of the modules to the hurt (`Animal.actuallyHurt` ends love, `after_hurt` resets `noActionTime`...): each
+        // module of the entity has its `damaged` entry point; the frame does not know what they do.
+        // `getLastHurtByMob`: who hurt it last, readable by every module (`ResetUniversalAngerTarget`, revenge...), with its own time.
+        if let Some(who) = hit.by {
+            commands.entity(e).insert(LastHurtBy { who, at: clock.of(e) });
         }
+        let attacker = match hit.by {
+            Some(crate::targeting::Who::Entity(a)) => Some(a),
+            _ => None,
+        };
+        commands.queue(move |w: &mut World| crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, attacker }));
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
         if hit.cause == Cause::Entity && !cooldown {
             let power = 0.4_f64 * (1.0 - resist.map_or(0.0, |r| r.0));
@@ -2078,6 +2162,7 @@ fn recompute(
 #[allow(clippy::type_complexity)]
 pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
+    mut state_changes: ResMut<StateChanges>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
@@ -2087,12 +2172,14 @@ pub(crate) fn block_changes(
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
 ) {
-    if changes.0.is_empty() {
+    if changes.0.is_empty() && state_changes.0.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    for (x, y, z, name) in std::mem::take(&mut changes.0) {
-        let Some(state) = mw.registry.default_state(name) else { continue };
+    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..]));
+    let with_state = std::mem::take(&mut state_changes.0).into_iter();
+    for (x, y, z, name, props) in named.chain(with_state).collect::<Vec<_>>() {
+        let Some(state) = crate::blocks::resolve(mw, name, props) else { continue };
         // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
         unsafe {
             let world = &mut *level.blocks.0;
@@ -2611,6 +2698,7 @@ pub(crate) fn due(
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
     mut events: ResMut<crate::goals::Events>,
+    mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -2619,6 +2707,9 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    for id in std::mem::take(&mut players.gaze_dirty) {
+        events.gaze_changed.push(id);
+    }
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
     if wheel.track {
@@ -2633,6 +2724,9 @@ pub(crate) fn due(
             Due::Goal(k) => fired.0.push((e, k)),
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
             Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
+            Due::Sensor(i) => commands.queue(move |w: &mut World| crate::brain::sensor_due(w, e, i)),
+            Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
+            Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
@@ -2699,6 +2793,7 @@ impl Herd {
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(BlockChanges::default());
+        world.insert_resource(StateChanges::default());
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
@@ -2856,6 +2951,10 @@ impl Herd {
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
         self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
     }
+    /// A block placed with properties (`minecraft:sweet_berry_bush`, `&[("age", "3")]`): taken at the next step.
+    pub fn set_block_state(&mut self, x: i32, y: i32, z: i32, name: &'static str, props: &'static [(&'static str, &'static str)]) {
+        self.world.resource_mut::<StateChanges>().0.push((x, y, z, name, props));
+    }
     /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
     /// A hit by player `player` (of `Online`): from where it stands.
     pub fn hit_by(&mut self, e: Entity, amount: f32, player: u32) {
@@ -2958,6 +3057,9 @@ mod tests {
     /// Palier 2 on single cows (no cross reading): a fall, lava, fire, powder snow, a cactus, by events.
     #[test]
     fn falls_fire_lava_snow_and_cactus_hurt_a_cow() {
+    if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -2991,7 +3093,7 @@ mod tests {
         }
         show(&herd, 40);
         // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
-        if species().farm.fall_immune {
+        if species().rules.iter().any(|r| r.rule.name == "wing_flap") {
             // A hen takes no fall damage (`causeFallDamage` answers no).
             assert!(health(&herd, hurt) == Some(species().max_health) && health(&herd, dies) == Some(species().max_health), "{:?} {:?}", health(&herd, hurt), health(&herd, dies));
         } else {
@@ -3017,7 +3119,7 @@ mod tests {
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
         // (A hen's glide cuts her sinking speed in water too; whether she drowns as a `Mob` hen does was not compared.)
-        if species().eye_height <= 1.4 && species().farm.slow_fall >= 1.0 {
+        if species().eye_height <= 1.4 && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
         }
         assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
@@ -3156,6 +3258,9 @@ mod tests {
     /// put into a cow's cell adds the hazard module; a path is dropped only by a change near its middle.
     #[test]
     fn block_changes_wake_only_what_they_touch() {
+    if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3253,6 +3358,9 @@ mod tests {
     /// Water placed and removed at any height: `InFluid` and the float, fire put out, and a hazard high above the floor.
     #[test]
     fn water_placed_floats_extinguishes_and_works_at_height() {
+    if crate::cow::skip_unless_walker("water_placed_floats_extinguishes_and_works_at_height") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3333,6 +3441,9 @@ mod tests {
     /// A hit from the east pushes the cow west with a hop (knockback 0.4), and wakes its physics.
     #[test]
     fn a_hit_knocks_a_cow_back() {
+    if crate::cow::skip_unless_walker("a_hit_knocks_a_cow_back") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3355,6 +3466,9 @@ mod tests {
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
     fn the_cows_walk_sleep_and_wake_on_the_slab() {
+    if crate::cow::skip_unless_walker("the_cows_walk_sleep_and_wake_on_the_slab") {
+        return;
+    }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

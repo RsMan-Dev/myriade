@@ -75,7 +75,7 @@ fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<
             if !ps.alive(id) {
                 return None;
             }
-            Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: ps.creative(id) || ps.spectator(id) })
+            Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: !ps.targetable(id) })
         }
         Who::Entity(e) => {
             let (pos, bounds, sid, baby, eye) = ent(e)?;

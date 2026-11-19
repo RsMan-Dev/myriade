@@ -1,6 +1,7 @@
 //! `Chicken.registerGoals`: the base with a faster panic and seeds (the egg timer is a rule of `Chicken.aiStep`).
 use super::{templates::farm_animal, Change, Def};
-use crate::behaviours::{follow_parent, panic, tempt};
+use crate::rules::RuleEntry;
+use crate::behaviours::{breed, follow_parent, panic, tempt};
 
 pub static DEF: Def = Def {
     name: "minecraft:chicken",
@@ -12,7 +13,12 @@ pub static DEF: Def = Def {
             nth: 0,
             params: &tempt::Params { speed: 1.0, items: &["minecraft:wheat_seeds", "minecraft:beetroot_seeds", "minecraft:melon_seeds", "minecraft:pumpkin_seeds"], ..tempt::Params::DEFAULT },
         },
+        Change::Set { module: &breed::MODULE, nth: 0, params: &breed::Params { foods: &["minecraft:wheat_seeds", "minecraft:beetroot_seeds", "minecraft:melon_seeds", "minecraft:pumpkin_seeds"], ..breed::Params::DEFAULT } },
         Change::Set { module: &follow_parent::MODULE, nth: 0, params: &follow_parent::Params { speed: 1.1 } },
+    ],
+    rules: &[
+        RuleEntry::new(&crate::farm::LAY_EGG, &crate::farm::EggDef { base: 6000, range: 6000 }),
+        RuleEntry::new(&crate::farm::WING_FLAP, &crate::farm::WingParams { fall_factor: 0.6, fall_immune: true }),
     ],
     ..Def::EMPTY
 };

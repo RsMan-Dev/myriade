@@ -100,7 +100,7 @@ impl GoalSet {
     /// Every flag it needs is free or held by a goal of lower priority (a larger number).
     pub fn replaceable(&self, slot: u8) -> bool {
         let e = &self.entries[slot as usize];
-        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
+        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority && self.entries[j as usize].module.interruptable))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
     pub fn start(&mut self, slot: u8) -> u16 {
@@ -148,6 +148,7 @@ pub const WHEAT_SEEDS: u32 = 6;
 pub const BEETROOT_SEEDS: u32 = 7;
 pub const MELON_SEEDS: u32 = 8;
 pub const PUMPKIN_SEEDS: u32 = 9;
+pub const SHEARS: u32 = 10;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -160,6 +161,7 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:beetroot_seeds" => BEETROOT_SEEDS,
         "minecraft:melon_seeds" => MELON_SEEDS,
         "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
+        "minecraft:shears" => SHEARS,
         _ => 0,
     }
 }
@@ -193,6 +195,8 @@ pub struct Look {
     pub cooldown: u8,
     pub y_speed: f32,
     pub x_max: f32,
+    /// `x_max` of the look the entity has when nothing asks for another (`aim_clamped` overrides it for one look).
+    pub x_default: f32,
     pub max_head_y: f32,
     pub eye: f64,
 }
@@ -308,12 +312,81 @@ pub fn set_lazy_look(world: &mut World, on: bool) {
 #[derive(Resource, Default)]
 pub struct Forced {
     pub spots: HashMap<(Entity, u8), (f64, f64)>,
+    /// The row (y) of an imposed spot, when the test gives one (`impose_spot`): the `Mob` draws a row too.
+    pub rows: HashMap<(Entity, u8), f64>,
     /// The partner a cow in love takes instead of the nearest one.
     pub partners: HashMap<Entity, Entity>,
     /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
     pub strafes: HashMap<Entity, (bool, bool)>,
+    /// The order the kids of a shuffled composite of the brain are tried in (indices of the kids), instead of a draw.
+    pub shuffles: HashMap<Entity, std::collections::VecDeque<Vec<usize>>>,
 }
 
+impl Forced {
+    /// A spot in 3D for the goal of `slot`: the module takes it with `take_spot` instead of drawing one.
+    pub fn impose_spot(&mut self, e: Entity, slot: u8, at: [f64; 3]) {
+        self.spots.insert((e, slot), (at[0], at[2]));
+        self.rows.insert((e, slot), at[1]);
+    }
+    /// The imposed spot of this goal (x, y, z), or `None`; `default_y` is the row when only (x, z) was imposed.
+    pub fn take_spot(&mut self, e: Entity, slot: u8, default_y: f64) -> Option<[f64; 3]> {
+        let (x, z) = self.spots.remove(&(e, slot))?;
+        Some([x, self.rows.remove(&(e, slot)).unwrap_or(default_y), z])
+    }
+}
+/// What stops an entity from acting (`Mob.isImmobile` / the goals' "cannot act" tests): a bit per reason, set by the module that
+/// causes it and read by any goal, which never needs to know that module. Absent: free.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Occupied(pub u32);
+pub const OCC_GRAZING: u32 = 1;
+pub const OCC_MOUNTED: u32 = 2;
+pub const OCC_SITTING: u32 = 4;
+pub const OCC_REARING: u32 = 8;
+pub const OCC_SLEEPING: u32 = 16;
+pub const OCC_ROLLED: u32 = 32;
+pub fn occupy(w: &mut World, e: Entity, reason: u32) {
+    let now = w.get::<Occupied>(e).map_or(0, |o| o.0);
+    w.entity_mut(e).insert(Occupied(now | reason));
+}
+pub fn release(w: &mut World, e: Entity, reason: u32) {
+    if let Some(mut o) = w.get_mut::<Occupied>(e) {
+        o.0 &= !reason;
+    }
+}
+/// Whether the entity is busy with any reason of `mask` (`u32::MAX`: any).
+pub fn is_occupied(w: &World, e: Entity, mask: u32) -> bool {
+    w.get::<Occupied>(e).is_some_and(|o| o.0 & mask != 0)
+}
+/// The equipment slots a goal reads (an item id, 0 empty): `Equipment` is absent on an entity that wears nothing.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Equipment {
+    pub head: u32,
+    pub chest: u32,
+    pub legs: u32,
+    pub feet: u32,
+    pub main: u32,
+    pub off: u32,
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Slot {
+    Head,
+    Chest,
+    Legs,
+    Feet,
+    Main,
+    Off,
+}
+/// The item in a slot of the entity (0 when it has none or no equipment at all).
+pub fn equipped(w: &World, e: Entity, slot: Slot) -> u32 {
+    w.get::<Equipment>(e).map_or(0, |q| match slot {
+        Slot::Head => q.head,
+        Slot::Chest => q.chest,
+        Slot::Legs => q.legs,
+        Slot::Feet => q.feet,
+        Slot::Main => q.main,
+        Slot::Off => q.off,
+    })
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
     pub id: u32,
@@ -401,10 +474,15 @@ impl Online {
 pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
-        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
         Phase(uid),
+    )
+}
+/// `Head`: the look and the head state (the look goals and any goal that aims).
+pub fn head_bundle(sp: &Species) -> impl Bundle {
+    (
+        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, x_default: 40.0, max_head_y: 75.0, eye: sp.eye_height },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
     )
 }
 /// Creates the state of every module of the animal's configuration from the parameters of its entries (once).
@@ -436,6 +514,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     crate::projectile::insert_resources(world);
+    crate::brain::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {
@@ -446,6 +525,7 @@ pub fn insert_resources(world: &mut World) {
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
+    s.add_systems(player_watch.after(online_events).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
     s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
     let modules = &crate::species::registry().modules;
@@ -467,16 +547,20 @@ pub fn register(s: &mut Schedule) {
 /// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
 /// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
 /// clears or takes them; a system that does not run every tick may miss events.
-#[derive(Default)]
-pub struct Ev {
-    cur: Vec<Entity>,
-    prev: Vec<Entity>,
+pub struct Ev<T = Entity> {
+    cur: Vec<T>,
+    prev: Vec<T>,
 }
-impl Ev {
-    pub fn push(&mut self, e: Entity) {
+impl<T> Default for Ev<T> {
+    fn default() -> Self {
+        Self { cur: Vec::new(), prev: Vec::new() }
+    }
+}
+impl<T: Copy> Ev<T> {
+    pub fn push(&mut self, e: T) {
         self.cur.push(e);
     }
-    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
         self.prev.iter().copied()
     }
     pub fn is_empty(&self) -> bool {
@@ -505,6 +589,19 @@ pub struct Events {
     pub grew: Ev,
     /// A grazing animal ate its block (`eat_block`).
     pub ate: Ev,
+    /// Hurt by anything / by an entity (a player or a creature): every module reads these, once (the attacker: `HurtBy`).
+    pub hurt: Ev,
+    pub hurt_by_entity: Ev,
+    /// The box entered / left powder snow.
+    pub entered_powder_snow: Ev,
+    pub left_powder_snow: Ev,
+    /// The feet left the ground (after being on it).
+    pub left_ground: Ev,
+    /// A player's view vector changed (the id).
+    pub gaze_changed: Ev<u32>,
+    /// A player entered / left the `PlayerWatch` radius of an entity (the watcher, the player id).
+    pub player_entered: Ev<(Entity, u32)>,
+    pub player_left: Ev<(Entity, u32)>,
     /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
     pub target_acquired: Ev,
     pub target_lost: Ev,
@@ -513,9 +610,25 @@ pub struct Events {
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.mode_changed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
-            ev.swap();
-        }
+        self.ignited.swap();
+        self.extinguished.swap();
+        self.entered_fluid.swap();
+        self.left_fluid.swap();
+        self.landed.swap();
+        self.mode_changed.swap();
+        self.grew.swap();
+        self.ate.swap();
+        self.target_acquired.swap();
+        self.target_lost.swap();
+        self.projectile_hit.swap();
+        self.hurt.swap();
+        self.hurt_by_entity.swap();
+        self.entered_powder_snow.swap();
+        self.left_powder_snow.swap();
+        self.left_ground.swap();
+        self.gaze_changed.swap();
+        self.player_entered.swap();
+        self.player_left.swap();
     }
 }
 
@@ -567,7 +680,8 @@ pub(crate) fn phase_of(w: &World, e: Entity) -> u64 {
     w.get::<Phase>(e).map_or(0, |p| p.0)
 }
 /// Asks every module of the animal for its first deadlines.
-pub(crate) fn arm_timers(w: &mut World, e: Entity) {
+pub fn arm_timers(w: &mut World, e: Entity) {
+    crate::brain::arm(w, e);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     let (entries, n) = (g.entries, g.len());
     let insts: [Inst; 16] = std::array::from_fn(|i| Inst { slot: i as u8, nth: g.nth[i] });
@@ -592,6 +706,65 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 }
 /// The player events of the tick: the lazy look wakes the animals a player now watches, the list of the players is
 /// given to the other systems; the modules read `Online::seen` for their own wake-ups (a player takes an item...).
+/// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
+/// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
+/// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
+/// changes or the player moves; the radius is at most 64 blocks; players with id < 64.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerWatch {
+    pub radius: f32,
+    inside: u64,
+}
+impl PlayerWatch {
+    pub const fn new(radius: f32) -> Self {
+        Self { radius, inside: 0 }
+    }
+    pub fn is_inside(&self, player: u32) -> bool {
+        player < 64 && self.inside >> player & 1 == 1
+    }
+}
+/// Updates the watchers touched by the player events of the tick and by the cell moves.
+fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
+    const R: f64 = 64.0;
+    if on.seen.is_empty() && moves.0.is_empty() {
+        return;
+    }
+    let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
+        if id >= 64 {
+            return;
+        }
+        let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
+        let was = w.inside >> id & 1 == 1;
+        if now && !was {
+            w.inside |= 1 << id;
+            ev.player_entered.push((e, id));
+        } else if !now && was {
+            w.inside &= !(1 << id);
+            ev.player_left.push((e, id));
+        }
+    };
+    for (old, new) in &on.seen {
+        let Some(id) = new.or(*old).map(|p| p.id) else { continue };
+        let mut near: Vec<Entity> = Vec::new();
+        for p in [old, new].into_iter().flatten() {
+            idx.for_radius(p.x, p.z, R, |c| near.push(c));
+        }
+        near.sort_unstable();
+        near.dedup();
+        for e in near {
+            if let Ok((pos, mut w)) = q.get_mut(e) {
+                eval(e, pos, &mut w, id, *new, &mut ev);
+            }
+        }
+    }
+    for &e in &moves.0 {
+        if let Ok((pos, mut w)) = q.get_mut(e) {
+            for p in on.list.iter().flatten() {
+                eval(e, pos, &mut w, p.id, Some(*p), &mut ev);
+            }
+        }
+    }
+}
 fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,
@@ -703,12 +876,34 @@ pub fn force_start(w: &mut World, e: Entity, slot: u8) {
     }
     changed(w, e, Change::Started);
 }
+/// The entity took damage: every module of its selector reacts through its `damaged` entry point (a default that does nothing).
+pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    let Some(g) = w.get::<GoalSet>(e) else { return };
+    for slot in 0..g.len() as u8 {
+        let Some((m, inst)) = of(w, e, slot) else { return };
+        (m.damaged)(w, e, inst, d);
+    }
+}
+/// A player uses an item on the entity: the first module of its selector that answers true handles it (`Mob.mobInteract`), then
+/// its rules (shearing); false when nothing did.
+pub fn interact(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) -> bool {
+    if let Some(g) = w.get::<GoalSet>(e) {
+        for slot in 0..g.len() as u8 {
+            let Some((m, inst)) = of(w, e, slot) else { break };
+            if (m.interact)(w, e, inst, i) {
+                return true;
+            }
+        }
+    }
+    let rules = w.get::<SpeciesId>(e).map_or(&[][..], |s| w.resource::<SpeciesTable>().0[s.0 as usize].rules);
+    rules.iter().any(|r| (r.rule.interact)(w, e, r.params, i))
+}
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
 fn start_goal(w: &mut World, e: Entity, slot: u8) {
     // One lookup of the selector: the module, whether it runs, whether its flags are free.
-    let (free, m, inst) = {
+    let (free, m, inst, when) = {
         let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
         if slot as usize >= g.len() || g.running >> slot & 1 == 1 {
             return;
@@ -717,7 +912,7 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         if free {
             g.pending &= !(1 << slot);
         }
-        (free, g.module(slot), g.inst(slot))
+        (free, g.module(slot), g.inst(slot), g.entries[slot as usize].when)
     };
     if !free {
         match m.blocked {
@@ -727,7 +922,6 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         return;
     }
     // The species' condition for this entry, before the module's own `canUse`; a refusal is a `blocked` (ask again later).
-    let when = w.get::<GoalSet>(e).unwrap().entries[slot as usize].when;
     if let Some(c) = when
         && !c.eval(w, e)
     {
@@ -896,7 +1090,7 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 
 
 /// Path searches asked, by goal: 0 stroll, 1 panic, 2 tempt, 3 breed, 4 follow parent, 5 melee (benches read them).
-pub static ASKS: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
+pub static ASKS: [std::sync::atomic::AtomicU64; 32] = [const { std::sync::atomic::AtomicU64::new(0) }; 32];
 /// The searches `pathfind` ran.
 pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// The nodes of the paths those searches found (the mean length of a path is `PATH_NODES / paths found`).
@@ -930,6 +1124,37 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
     }
     w.entity_mut(e).insert(NeedsPath);
 }
+/// The reach of the next paths of the entity (`go_to_at` sets it; a goal that ends puts the default 1 back).
+pub fn set_reach(w: &mut World, e: Entity, reach: i32) {
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.reach = reach;
+    }
+}
+/// `go_to_at` toward the position of the entity `target` now (follow: ask again as it moves; the module decides when). False
+/// when the target has no position.
+pub fn go_to_entity(w: &mut World, e: Entity, target: Entity, speed: f64, reach: i32) -> bool {
+    let Some(p) = w.get::<Pos>(target).map(|p| p.0) else { return false };
+    go_to_at(w, e, [p.x, p.y, p.z], speed, reach);
+    true
+}
+/// A velocity written outside the physics wakes the body: always through these (`Moving` is the physics' wake marker).
+pub fn set_velocity(w: &mut World, e: Entity, v: Vec3) {
+    if let Some(mut vel) = w.get_mut::<Vel>(e) {
+        vel.0 = v;
+        w.entity_mut(e).insert(Moving);
+    }
+}
+/// `Entity.push(x, y, z)`: adds to the velocity and wakes the body.
+pub fn impulse(w: &mut World, e: Entity, dv: Vec3) {
+    if let Some(mut vel) = w.get_mut::<Vel>(e) {
+        vel.0 = Vec3::new(vel.0.x + dv.x, vel.0.y + dv.y, vel.0.z + dv.z);
+        w.entity_mut(e).insert(Moving);
+    }
+}
+/// The game rule `mobGriefing` of the world (a mob that eats grass, breaks doors or takes blocks asks it).
+pub fn mob_griefing(w: &World) -> bool {
+    w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_griefing)
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
@@ -944,6 +1169,11 @@ pub(crate) fn stop_nav(w: &mut World, e: Entity) {
         m.active = false;
     }
     w.entity_mut(e).remove::<(Following, NeedsPath)>();
+}
+/// `Mob.getLookControl().setLookAt(x, y, z, yMaxRotSpeed, xMaxRotAngle)`: the same with the vertical bound of this look.
+pub fn aim_clamped(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>, x_max: Option<f32>) {
+    look.x_max = x_max.unwrap_or(look.x_default);
+    aim(cmd, e, look, looking, at, y_speed);
 }
 pub(crate) fn aim(cmd: &mut Commands, e: Entity, look: &mut Look, looking: bool, at: [f64; 3], y_speed: Option<f32>) {
     look.target = at;
@@ -1248,6 +1478,9 @@ mod tests {
     /// Look at a player within 6 blocks: the rate of a 1-in-50 ask every 2 ticks; none beyond; the head turns.
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
+    if crate::cow::skip_unless_walker("cows_glance_at_a_near_player_and_look_around") {
+        return;
+    }
         let Some(mut h) = herd() else { return };
         // A ranged hunter holds the look flag as long as it has its target: the passive look is not what it does.
         if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {

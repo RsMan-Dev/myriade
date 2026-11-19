@@ -110,6 +110,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let now = crate::cow::now_of(w, e);
     let d = w.get::<Graze>(e).unwrap().def;
     w.entity_mut(e).insert(Grazing { eat_at: now + d.eat_at, end_at: now + d.ticks, eaten: false });
+    occupy(w, e, OCC_GRAZING);
     let clock = w.resource::<Clock>();
     let (a, b) = (clock.at(e, now + d.eat_at), clock.at(e, now + d.ticks));
     let mut wheel = w.resource_mut::<Wheel>();
@@ -119,6 +120,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 /// `EatBlockGoal.stop`.
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Grazing>();
+    release(w, e, OCC_GRAZING);
     arm_graze(w, e);
 }
 /// A deadline of a grazing animal: the block goes (`EatBlockGoal.tick`), or the head comes up.

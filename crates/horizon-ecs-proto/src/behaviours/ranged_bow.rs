@@ -49,7 +49,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
-    requires: &[Cap::Targets, Cap::Locomotion],
+    requires: &[Cap::Targets, Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
 fn resources(w: &mut World) {

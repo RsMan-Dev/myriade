@@ -1,5 +1,6 @@
 //! `Sheep.registerGoals`: the base with slower panic and tempt, and grass eating before the stroll.
 use super::{templates::farm_animal, Change, Def};
+use crate::rules::RuleEntry;
 use crate::behaviours::{eat_block, follow_parent, look_at_player, panic, random_look, stroll, tempt, Entry};
 
 pub static DEF: Def = Def {
@@ -14,5 +15,6 @@ pub static DEF: Def = Def {
         Change::Priority { module: &look_at_player::MODULE, nth: 0, priority: 7 },
         Change::Priority { module: &random_look::MODULE, nth: 0, priority: 8 },
     ],
+    rules: &[RuleEntry::new(&crate::farm::WOOL, &())],
     ..Def::EMPTY
 };

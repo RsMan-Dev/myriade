@@ -11,6 +11,8 @@ pub static DEF: Def = Def {
     targets: &[],
     goals: &[Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params::DEFAULT)],
     changes: &[],
+    rules: &[],
+    brain: crate::brain::BrainDef::EMPTY,
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),
     locomotion: &[
         (Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)),
