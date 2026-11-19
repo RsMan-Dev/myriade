@@ -1,0 +1,20 @@
+# the Mob's figures (instr per creature and tick), measured 2026-11-19 with Horizon at d7e2c0f62e (53d99a0844): MOB=1 ./bilan.sh to measure again
+mob_chase1 53425 
+mob_chase2 68087 
+mob_chicken_active 53538 
+mob_chicken_idle 39322 
+mob_chicken_solicited 44942 
+mob_cow_active 68312 
+mob_cow_idle 50440 
+mob_cow_solicited 60824 
+mob_crowd0.5 82763 
+mob_crowd0.8 68305 
+mob_pig_active 61055 
+mob_pig_idle 44280 
+mob_pig_solicited 52209 
+mob_sheep_active 68043 
+mob_sheep_idle 49818 
+mob_sheep_solicited 60837 
+mob_zombie_active 66173 
+mob_zombie_idle 41857 
+mob_zone 43595 0 0 43388 0 0 

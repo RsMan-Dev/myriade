@@ -1036,6 +1036,21 @@ pub fn skip_if_fire_immune(test: &str) -> bool {
     }
     immune
 }
+/// `HORIZON_QUICK` (set by `suites.sh`, `FULL=1` removes it): the scenes that repeat a trial many times (laws against the
+/// `Mob` over dozens of seeds) do a quarter of them. 
+pub fn trials(n: usize) -> usize {
+    if std::env::var_os("HORIZON_QUICK").is_some() { (n / 4).max(3) } else { n }
+}
+/// Skips (printed) in the process of any species but the default one: a law test that builds its OWN configuration (the enderman's
+/// block, the panda's roll, the horse's rear...) gives the same answer whatever species the process has, and costs seconds: it runs once.
+pub fn skip_unless_default_species(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let skip = name != crate::species::PROCESS_DEFAULT;
+    if skip {
+        eprintln!("SKIP {test}: a law test of its own configuration, run once (in the process of {})", crate::species::PROCESS_DEFAULT);
+    }
+    skip
+}
 /// Skips (printed) unless the species of the process has all these capabilities.
 pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());

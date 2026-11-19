@@ -134,6 +134,9 @@ mod tests {
 
     #[test]
     fn no_run_from_a_llama_whose_strength_never_passes_the_draw() {
+        if crate::cow::skip_unless_walker("no_run_from_a_llama_whose_strength_never_passes_the_draw") {
+            return;
+        }
         let (mut h, wolf, _) = wolf_with(Some(-1));
         h.world.resource_mut::<Requests>().0.push(Req::Start(wolf, 0));
         for _ in 0..10 {
@@ -144,6 +147,9 @@ mod tests {
 
     #[test]
     fn strength_roll_is_the_law_of_the_mob() {
+        if crate::cow::skip_unless_walker("strength_roll_is_the_law_of_the_mob") {
+            return;
+        }
         let mut w = World::new();
         let weak = w.spawn(LlamaStrength(1)).id();
         let none = w.spawn_empty().id();
