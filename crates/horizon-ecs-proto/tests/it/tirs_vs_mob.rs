@@ -126,8 +126,15 @@ fn the_pillager_shoots_its_crossbow_as_a_mob_does() {
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:crossbow", CROSSBOW)), false);
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
     let mut v = Vec::new();
+    let mut last_phase = String::new();
     for t in 1..=200 {
         v.push(s.step(&view));
+        let st = s.h.world.get::<ranged_crossbow::Crossbow>(s.ecs).map(|c| format!("{c:?}")).unwrap_or_default();
+        let ph: String = st.split("phase: ").nth(1).map(|x| x.split(',').next().unwrap_or("").to_string()).unwrap_or_default();
+        if ph != last_phase {
+            eprintln!("t={t}: ecs phase {ph} ({st})");
+            last_phase = ph;
+        }
         if t % 10 == 0 && t <= 120 {
             eprintln!("t={t}: mob x {:.2} / ecs x {:.2}", s.r.mobs[s.mob].position.x, s.h.world.get::<Pos>(s.ecs).unwrap().0.x);
         }
@@ -229,6 +236,40 @@ fn the_drowned_throws_its_trident_as_a_mob_does() {
 #[test]
 fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
     if !is("minecraft:blaze") {
+        return;
+    }
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(8.5, 1.0, 0.5), None, false);
+    let view = player_view(Vec3::new(8.5, 1.0, 0.5), None);
+    let (mut v, mut charged) = (Vec::new(), Vec::new());
+    for _ in 0..150 {
+        v.push(s.step(&view));
+        charged.push(s.h.world.get::<burst_shot::Charged>(s.ecs).is_some());
+    }
+    let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
+    close(&m, &e, 6, "fireballs");
+    assert_eq!(m.len(), e.len(), "mob {m:?}, ecs {e:?}");
+    assert_eq!(e.len(), 3, "three per salve: {e:?}");
+    assert!(charged[..e[0] as usize].iter().any(|c| *c), "charged while charging");
+    assert!(!charged[e[2] as usize + 100..].iter().any(|c| *c) || e[2] as usize + 100 >= 150, "not charged after the rest");
+}
+
+/// The blaze under 2 blocks of a seen target: a blow every 20 ticks of the blaze's own damage (the ECS side; the `Mob`'s blow is the
+/// `do_hurt_target` event, not compared here).
+#[test]
+fn the_blaze_strikes_in_melee_under_two_blocks() {
+    if !is("minecraft:blaze") {
+        return;
+    }
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(1.9, 1.0, 0.5), None, false);
+    let view = player_view(Vec3::new(1.9, 1.0, 0.5), None);
+    run(&mut s, &view, 120);
+    let hits: Vec<(u64, f32)> = s.h.world.resource::<PlayerState>().hits.iter().map(|h| (h.tick, h.amount)).collect();
+    eprintln!("melee hits: {hits:?}");
+    assert!(hits.len() >= 3, "{hits:?}");
+    assert!(hits.windows(2).all(|w| w[1].0 - w[0].0 == 20), "every 20 ticks: {hits:?}");
+    assert!(hits.iter().all(|h| (h.1 - burst_shot::Params::BLAZE.melee_damage).abs() < 1e-3));
+}
+
 /// The witch underwater drinks water breathing: `Drinking` lasts 32 ticks, the speed is 0.25 lower meanwhile, the effect comes at the end.
 /// The draws differ between the `Mob` and the ECS (own seeds): the rules are checked, not the instants.
 #[test]
@@ -268,34 +309,6 @@ fn a_drinking_witch_does_not_throw() {
     }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(8.5, 1.0, 0.5), None, false);
     let view = player_view(Vec3::new(8.5, 1.0, 0.5), None);
-    let (mut v, mut charged) = (Vec::new(), Vec::new());
-    for _ in 0..150 {
-        v.push(s.step(&view));
-        charged.push(s.h.world.get::<burst_shot::Charged>(s.ecs).is_some());
-    }
-    let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
-    close(&m, &e, 6, "fireballs");
-    assert_eq!(m.len(), e.len(), "mob {m:?}, ecs {e:?}");
-    assert_eq!(e.len(), 3, "three per salve: {e:?}");
-    assert!(charged[..e[0] as usize].iter().any(|c| *c), "charged while charging");
-    assert!(!charged[e[2] as usize + 100..].iter().any(|c| *c) || e[2] as usize + 100 >= 150, "not charged after the rest");
-}
-
-/// The blaze under 2 blocks of a seen target: a blow every 20 ticks of the blaze's own damage (the ECS side; the `Mob`'s blow is the
-/// `do_hurt_target` event, not compared here).
-#[test]
-fn the_blaze_strikes_in_melee_under_two_blocks() {
-    if !is("minecraft:blaze") {
-        return;
-    }
-    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(1.9, 1.0, 0.5), None, false);
-    let view = player_view(Vec3::new(1.9, 1.0, 0.5), None);
-    run(&mut s, &view, 120);
-    let hits: Vec<(u64, f32)> = s.h.world.resource::<PlayerState>().hits.iter().map(|h| (h.tick, h.amount)).collect();
-    eprintln!("melee hits: {hits:?}");
-    assert!(hits.len() >= 3, "{hits:?}");
-    assert!(hits.windows(2).all(|w| w[1].0 - w[0].0 == 20), "every 20 ticks: {hits:?}");
-    assert!(hits.iter().all(|h| (h.1 - burst_shot::Params::BLAZE.melee_damage).abs() < 1e-3));
     let saved_speed = s.h.world.get::<Body>(s.ecs).unwrap().speed;
     s.h.world.entity_mut(s.ecs).insert(drink_potion::Drinking { potion: drink_potion::Potion::Healing, left: 150, saved_speed });
     let v = run(&mut s, &view, 160);
