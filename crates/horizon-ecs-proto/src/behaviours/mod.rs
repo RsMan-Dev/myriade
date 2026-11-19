@@ -151,6 +151,7 @@ pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
 pub mod panda_lie_on_back;
+pub mod panda_roll;
 pub mod panda_sneeze;
 pub mod panda_state;
 pub mod tempt;
@@ -172,4 +173,5 @@ pub static TABLE: &[&Module] = &[
     &stroll::MODULE,
     &panda_sneeze::MODULE,
     &panda_lie_on_back::MODULE,
+    &panda_roll::MODULE,
 ];
