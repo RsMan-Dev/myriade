@@ -90,9 +90,6 @@ fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate:
     }
     i.item == LEAD && attach(w, e, Holder::Player(i.player))
 }
-pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(leash_tick.after(move_control).before(travel));
-}
 
 pub fn holder_of(w: &World, e: Entity) -> Option<Holder> {
     w.get::<Leash>(e).map(|l| l.holder)
@@ -208,15 +205,20 @@ fn walk_to_holder(w: &mut World, e: Entity, target: [f64; 3], speed: f64) {
 }
 
 /// `Leashable.tickLeash`, each tick of each leashed creature.
+/// Not a system of its own (a registered system costs a thousand instructions a tick even when nothing is held): `mount::ridden_drive`, which runs
+/// every tick anyway before the move, calls it with its parameters; the writes to the body go through commands (the velocity, the yaw and the fall distance belong to
+/// other queries of that system). A held creature that is itself ridden skips the tick's tension.
+pub(crate) type Held<'a> = (Entity, &'a mut Leash, &'a Leashable, &'a Pos, &'a Vel, &'a Yaw, &'a Bounds, &'a Body, &'a Contact, &'a FluidState, Option<&'a crate::spots::Home>, Has<crate::behaviours::panic::Panicking>);
+pub(crate) type HeldFilter = Without<crate::mount::Ridden>;
 #[allow(clippy::type_complexity)]
-fn leash_tick(
-    level: Res<Level>,
-    on: Res<Online>,
-    mut q: Query<(Entity, &mut Leash, &Leashable, &Pos, &mut Vel, &mut Yaw, &Bounds, &Body, &mut Contact, &FluidState, Option<&crate::spots::Home>, Has<crate::behaviours::panic::Panicking>), ()>,
-    holders: Query<(&Pos, &Bounds, Option<&Vel>, Option<&Yaw>), Without<Leash>>,
-    mut commands: Commands,
+pub(crate) fn tick(
+    level: &Level,
+    on: &Online,
+    q: &mut Query<Held, HeldFilter>,
+    holders: &Query<(&Pos, &Bounds, Option<&Vel>, Option<&Yaw>), (Without<Leash>, Without<crate::mount::Ridden>)>,
+    commands: &mut Commands,
 ) {
-    for (e, mut l, k, pos, mut vel, mut yaw, bounds, body, mut c, fs, home, panicking) in &mut q {
+    for (e, mut l, k, pos, vel, yaw, bounds, body, c, fs, home, panicking) in q.iter_mut() {
         let state = match l.holder {
             Holder::Player(id) => on.get(id).map(player_state),
             Holder::Knot(p) => Some(knot_state(p)),
@@ -261,11 +263,14 @@ fn leash_tick(
             && elastic_pull(pos.0, yaw.0, (f64::from(body.width), f64::from(body.height)), &state, vel.0, k.elastic).is_some_and(|(force, torque)| {
                 l.spin += 10.0 * torque;
                 let rel = Vec3::new(state.velocity.x - vel.0.x, state.velocity.y - vel.0.y, state.velocity.z - vel.0.z);
-                vel.0 = Vec3::new(vel.0.x + (force[0] * 0.8 + rel.x * 0.11), vel.0.y + (force[1] * 0.2 + rel.y * 0.11), vel.0.z + (force[2] * 0.8 + rel.z * 0.11));
-                if vel.0.y > -0.5 && c.fall_distance > 1.0 {
-                    c.fall_distance = 1.0;
-                }
-                commands.entity(e).insert(Moving);
+                let dv = Vec3::new(force[0] * 0.8 + rel.x * 0.11, force[1] * 0.2 + rel.y * 0.11, force[2] * 0.8 + rel.z * 0.11);
+                let low = vel.0.y + dv.y > -0.5 && c.fall_distance > 1.0;
+                commands.queue(move |w: &mut World| {
+                    impulse(w, e, dv);
+                    if low && let Some(mut c) = w.get_mut::<Contact>(e) {
+                        c.fall_distance = 1.0;
+                    }
+                });
                 true
             });
         if !pulled && !panicking {
@@ -278,7 +283,12 @@ fn leash_tick(
         }
         // `tickLeash`: the yaw turns by the spin, which the ground's friction wears.
         if l.spin != 0.0 {
-            yaw.0 = (f64::from(yaw.0) - l.spin) as f32;
+            let turned = (f64::from(yaw.0) - l.spin) as f32;
+            commands.queue(move |w: &mut World| {
+                if let Some(mut y) = w.get_mut::<Yaw>(e) {
+                    y.0 = turned;
+                }
+            });
             let friction = if c.on_ground {
                 let mw = level.mw.0;
                 let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.500_001).floor() as i32, pos.0.z.floor() as i32);

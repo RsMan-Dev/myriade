@@ -191,7 +191,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if cs.0 >= 64 || n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
