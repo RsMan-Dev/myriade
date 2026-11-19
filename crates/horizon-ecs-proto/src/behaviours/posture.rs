@@ -48,6 +48,16 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Posture { sitting: false, since: now - p.stand_up as i64 - 1, sit_down: p.sit_down, stand_up: p.stand_up });
 }
 
+impl Posture {
+    /// `refuse_to_move` at own time `now`: sitting, or in a transition.
+    pub fn refuses(&self, now: i64) -> bool {
+        self.sitting || now - self.since < transition(self)
+    }
+    /// Sitting with the sit-down over (the camel may stand up).
+    pub fn sat(&self, now: i64) -> bool {
+        self.sitting && now - self.since >= transition(self)
+    }
+}
 fn transition(p: &Posture) -> i64 {
     if p.sitting { p.sit_down as i64 } else { p.stand_up as i64 }
 }

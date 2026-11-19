@@ -49,7 +49,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
     p.downcast_ref::<T>().expect("the parameters of another rule")
 }
 /// The rules of the base, in the order of their registration (a mod adds its own to `species::Builder`).
-pub static BUILTIN: &[&Rule] = &[&crate::farm::WOOL, &crate::farm::LAY_EGG, &crate::farm::WING_FLAP, &crate::hostile::SUN_BURN, &crate::tame::TAME, &crate::loot::XP, &crate::mount::RIDE, &crate::size::SIZE, &crate::effects::ON_HIT];
+pub static BUILTIN: &[&Rule] = &[&crate::farm::WOOL, &crate::farm::LAY_EGG, &crate::farm::WING_FLAP, &crate::hostile::SUN_BURN, &crate::tame::TAME, &crate::loot::XP, &crate::mount::RIDE, &crate::leash::LEASH, &crate::size::SIZE, &crate::effects::ON_HIT];
 /// Gives an entity the state of every rule of its configuration.
 pub fn equip_all(world: &mut World, e: Entity, rules: &[RuleEntry]) {
     for r in rules {

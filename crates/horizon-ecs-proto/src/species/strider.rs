@@ -5,6 +5,8 @@
 use super::Def;
 use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, strider_go_to_lava, tempt, Cap, Entry};
 use crate::locomotion::{lava, walk, Medium};
+use crate::mount::{RideParams, RIDE};
+use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:strider",
@@ -18,7 +20,8 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
+    rules: &[RuleEntry::new(&RIDE, &RideParams::STRIDER)],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)), (Medium::Lava, Entry::new(&lava::MODULE, 0, &lava::Params::DEFAULT))],
     ..Def::EMPTY
 };

@@ -214,6 +214,9 @@ pub mod bee;
 pub mod squid_goals;
 pub mod fly_stroll;
 pub mod float;
+pub mod defend_leash_holder;
+pub mod follow_caravan;
+pub mod follow_player_vehicle;
 pub mod follow_parent;
 pub mod look_at_player;
 pub mod melee;
@@ -306,6 +309,9 @@ pub static TABLE: &[&Module] = &[
     &breed::MODULE,
     &breath_air::MODULE,
     &swim_with_player::MODULE,
+    &follow_caravan::MODULE,
+    &defend_leash_holder::MODULE,
+    &follow_player_vehicle::MODULE,
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,

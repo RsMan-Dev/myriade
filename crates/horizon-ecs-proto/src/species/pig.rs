@@ -1,7 +1,9 @@
 //! `Pig.registerGoals`: two tempt goals of one priority (the carrot on a stick, then its foods), each with its
 //! calm-down; the others a priority later.
 use super::{templates::farm_animal, Change, Def};
-use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, tempt, Entry};
+use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, tempt, Cap, Entry};
+use crate::mount::{RideParams, RIDE};
+use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:pig",
@@ -23,5 +25,7 @@ pub static DEF: Def = Def {
         Change::Priority { module: &look_at_player::MODULE, nth: 0, priority: 7 },
         Change::Priority { module: &random_look::MODULE, nth: 0, priority: 8 },
     ],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::PIG), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT)],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable]),
     ..Def::EMPTY
 };

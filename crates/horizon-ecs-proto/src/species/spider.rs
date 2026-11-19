@@ -3,8 +3,10 @@
 //! the nearest player (2). Left out: the armadillo avoidance (not in the registry), the darkness gate of the targets and of the attack, the
 //! iron golem target.
 use super::Def;
-use crate::behaviours::{float, hurt_by, leap_at_target, look_at_player, melee, nearest_target, random_look, stroll, Entry};
+use crate::behaviours::{Cap, float, hurt_by, leap_at_target, look_at_player, melee, nearest_target, random_look, stroll, Entry};
 use crate::locomotion::{walk, Medium};
+use crate::mount::{RideParams, RIDE};
+use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:spider",
@@ -18,5 +20,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true }))],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable]),
     ..Def::EMPTY
 };

@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),
     ],
-    rules: &[RuleEntry::new(&RIDE, &RideParams::HORSE)],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     ..Def::EMPTY
 };

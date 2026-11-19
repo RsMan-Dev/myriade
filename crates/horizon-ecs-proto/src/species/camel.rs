@@ -2,6 +2,8 @@
 //! (priority 255, no flag, never asked). The sitting camel refuses to move: `is_sitting` (the occupation the posture takes)
 //! stands for `refuseToMove` (the stand-up included). Camel food by tag (`#camel_food`): `cactus` is the repli (DOUTE).
 use super::Def;
+use crate::mount::{RideParams, RIDE};
+use crate::rules::RuleEntry;
 use crate::behaviours::{animal_panic, breed, follow_parent, float, look_at_player, posture, random_look, random_sitting, stroll, tempt, Cap, Cond, Entry};
 
 static NOT_SITTING: Cond = Cond::Not(&Cond::Is("horizon:is_sitting"));
@@ -22,5 +24,6 @@ pub static DEF: Def = Def {
         Entry::new(&posture::MODULE, 255, &posture::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
+    rules: &[RuleEntry::new(&RIDE, &RideParams::CAMEL), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT)],
     ..Def::EMPTY
 };

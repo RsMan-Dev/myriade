@@ -48,6 +48,10 @@ fn has_rider(w: &World, e: Entity) -> bool {
 fn is_mounted(w: &World, e: Entity) -> bool {
     w.get::<crate::mount::Riding>(e).is_some()
 }
+/// `horizon:is_leashed`: it is on a lead (`leash::Leash`).
+fn is_leashed(w: &World, e: Entity) -> bool {
+    crate::leash::is_leashed(w, e)
+}
 /// `horizon:is_sitting`: it is ordered to sit (the occupation `SITTING`).
 fn is_sitting(w: &World, e: Entity) -> bool {
     crate::goals::is_occupied(w, e, crate::goals::OCC_SITTING)
@@ -108,6 +112,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:has_rider", has_rider),
     ("horizon:is_mounted", is_mounted),
     ("horizon:is_sitting", is_sitting),
+    ("horizon:is_leashed", is_leashed),
     ("ocelot:trusting", ocelot_trusting),
     ("panda:acts", panda_acts),
     ("panda:avoids", panda_avoids),

@@ -33,6 +33,8 @@ pub mod wolf;
 pub mod cat;
 pub mod ocelot;
 pub mod llama;
+pub mod trader_llama;
+pub mod wandering_trader;
 pub mod zombie;
 pub mod cod;
 pub mod parrot;
@@ -132,6 +134,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &camel::DEF,
     &camel_husk::DEF,
     &nautilus::DEF,
+    &trader_llama::DEF,
+    &wandering_trader::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -522,6 +526,7 @@ mod tests {
         ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:dolphin", &[("breath_air", 0), ("try_find_water", 0), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9)]),
+        ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
         ("minecraft:drowned", &[("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
@@ -534,10 +539,13 @@ mod tests {
         ("minecraft:parrot", &[("panic", 0), ("float", 0), ("look_at_player", 1), ("sit_when_ordered", 2), ("follow_owner", 2), ("fly_stroll", 2), ("follow_mob", 3)]),
         ("minecraft:ghast", &[("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
         ("minecraft:bat", &[("bat_flutter", 0)]),
+        ("minecraft:trader_llama", &[("defend_leash_holder", 1), ("nearest_target", 2), ("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:wandering_trader", &[("float", 0), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("panic", 1), ("stroll", 8), ("look_at_player", 9)]),
         ("minecraft:strider", &[("panic", 1), ("breed", 2), ("tempt", 3), ("strider_go_to_lava", 4), ("follow_parent", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:turtle", &[("turtle_go_to_water", 3), ("turtle_travel", 7), ("turtle_stroll", 9)]),
         ("minecraft:goat", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ram", 2), ("long_jump", 2)]),
         ("minecraft:llama", &[("float", 0), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:llama", &[("float", 0), ("run_around_like_crazy", 1), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
         ("minecraft:cat", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("cat_relax_on_owner", 3), ("tempt", 4), ("cat_lie_on_block", 5), ("follow_owner", 6), ("cat_sit_on_block", 7), ("leap_at_target", 8), ("ocelot_attack", 9), ("breed", 10), ("stroll", 11), ("look_at_player", 12), ("avoid_entity", 4)]),
         ("minecraft:ocelot", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("tempt", 3), ("leap_at_target", 7), ("ocelot_attack", 8), ("breed", 9), ("stroll", 10), ("look_at_player", 11), ("avoid_entity", 4)]),
         ("minecraft:wolf", &[("neutral_anger", 255), ("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 4), ("nearest_target", 5), ("nearest_target", 6), ("nearest_target", 7), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("avoid_entity", 3), ("forget_target", 3), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("breed", 7), ("stroll", 8), ("beg", 9), ("look_at_player", 10), ("random_look", 10)]),

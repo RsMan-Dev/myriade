@@ -57,3 +57,6 @@ mod lot5_vs_mob;
 mod audit_fixes_vs_mob;
 mod clients_vs_mob;
 mod lot7_vs_mob;
+mod leash_vs_mob;
+mod mount2_vs_mob;
+mod vehicle_vs_mob;

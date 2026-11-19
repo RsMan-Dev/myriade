@@ -88,6 +88,8 @@ pub struct Drive {
     pub discard_friction: bool,
     /// `Mob.xRot` of a swimmer steered by `SmoothSwimmingMoveControl` (the pitch the inputs follow).
     pub pitch: f32,
+    /// `LivingEntity.getFlyingSpeed` of a mount its player steers: a tenth of its speed (`mount.rs`); none: 0,02.
+    pub air_speed: Option<f32>,
 }
 /// `MoveControl`: the spot to walk to this tick.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -1287,6 +1289,7 @@ pub fn schedule() -> Schedule {
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
+    crate::leash::register(&mut s);
     crate::hostile::register(&mut s);
     s
 }
@@ -1637,9 +1640,15 @@ pub(crate) fn follow(
     }
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
-pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
-    for (e, g) in &q {
+pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet, Option<&crate::mount::Mount>), With<PathEnded>>, sets: Query<&crate::goals::GoalSet>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
+    for (e, g, mount) in &q {
         crate::goals::path_ended(e, g, &mut reqs);
+        // The walk of a mount steered by a creature is the creature's walk (`Mob.getNavigation` of a rider).
+        if let Some(crate::targeting::Who::Entity(r)) = mount.and_then(|m| m.rider)
+            && let Ok(rg) = sets.get(r)
+        {
+            crate::goals::path_ended(r, rg, &mut reqs);
+        }
         commands.entity(e).remove::<PathEnded>();
     }
 }
@@ -2005,7 +2014,7 @@ pub(crate) fn travel_one(
     let speed = if c.on_ground {
         if friction > 0.6 { d.speed * (0.216_000_02 / (friction * friction * friction)) } else { d.speed }
     } else {
-        0.02
+        d.air_speed.unwrap_or(0.02)
     };
     move_relative(vel, yaw.0, speed, d.xxa, d.zza);
     // `LivingEntity.handleOnClimbable`, the move, then the climb up a wall (a wall climber pressed against one).
@@ -2048,7 +2057,7 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
-        (With<Moving>, Without<Overlapping>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
+        (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
