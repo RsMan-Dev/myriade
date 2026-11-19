@@ -296,12 +296,23 @@ pub fn enable(world: &mut World, radius: i32) {
     world.resource_mut::<Players>().dirty = true;
 }
 
+/// New creatures (armed, in the index): the ones whose chunk does not tick go to sleep at once.
+pub fn admit(world: &mut World, fresh: &[Entity]) {
+    let now = world.resource::<Clock>().0;
+    let idx = world.resource::<Index>();
+    if !idx.zone.on {
+        return;
+    }
+    let asleep: Vec<Entity> = fresh.iter().copied().filter(|&e| world.get::<crate::cow::Cell>(e).is_some_and(|c| !idx.zone.simulated_cell(c.0))).collect();
+    for e in asleep {
+        sleep(world, e, now);
+        world.resource_mut::<Index>().zone.stats.slept += 1;
+    }
+}
+
 /// Puts a creature to sleep: out of the queries, its markers and wheel entries aside.
 pub fn sleep(world: &mut World, e: Entity, now: u64) {
     let entries = world.resource_mut::<Wheel>().take_entries(e);
-    if std::env::var_os("ZDEBUG").is_some() {
-        eprintln!("sleep {e:?} at {now}: {entries:?}");
-    }
     let wheel = entries.into_iter().map(|(at, d)| (at - now, d)).collect();
     let mut em = world.entity_mut(e);
     let mut stash = Vec::new();
@@ -320,14 +331,16 @@ pub fn sleep(world: &mut World, e: Entity, now: u64) {
     if em.take::<Meleeing>().is_some() {
         stash.push(Stashed::Meleeing);
     }
-    em.insert((Disabled, Dormant { since: now, wheel, stash }));
+    // `Recheck` goes in with it: the creature is looked at again when it wakes, with no second move of its row.
+    em.insert((Disabled, Dormant { since: now, wheel, stash }, Recheck));
 }
 
 /// Wakes a creature: every deadline it holds moves by the time it slept, its markers and wheel entries come back.
 pub fn wake(world: &mut World, e: Entity, now: u64) {
     let mut em = world.entity_mut(e);
-    let Some(Dormant { since, wheel, stash }) = em.take::<Dormant>() else { return };
-    em.remove::<Disabled>();
+    let Some(mut dormant) = em.get_mut::<Dormant>() else { return };
+    let (since, wheel, stash) = (dormant.since, std::mem::take(&mut dormant.wheel), std::mem::take(&mut dormant.stash));
+    em.remove::<(Disabled, Dormant)>();
     let d = now - since;
     shift_times(&mut em, e, d);
     for s in stash {
@@ -366,10 +379,7 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
         }
     }
     // The world may have changed under it while it slept (a block, a fluid): its physics looks again.
-    em.insert((Moving, Recheck));
-    if std::env::var_os("ZDEBUG").is_some() {
-        eprintln!("wake {e:?} at {now} (slept {d}): {wheel:?}");
-    }
+    em.insert(Moving);
     let mut wh = world.resource_mut::<Wheel>();
     for (rem, due) in wheel {
         wh.push(now + rem, e, due);
@@ -421,4 +431,112 @@ fn shift_times(em: &mut EntityWorldMut, e: Entity, d: u64) {
         Some(p) => p,
     };
     em.insert(Phase(phase + d));
+}
+
+// ---- form (b): out of the world --------------------------------------------------------------------------------
+// The creature leaves the world altogether: its components are kept in a record in a store by chunk, and a new entity is made
+// from it when the chunk ticks. It is the form of Hytale's `Holder`. The entity's identity does not survive (the lists that
+// name it, `Mother`, a `Breeding` partner, `Forced`, would need to be mapped): this one is for the measure of what the form
+// costs, not wired into `zone_step`.
+macro_rules! cold {
+    ($($f:ident : $t:ty),* $(,)?) => {
+        /// The components of an animal, kept apart.
+        #[derive(Default)]
+        pub struct Cold {
+            $( pub $f: Option<$t>, )*
+            pub since: u64,
+            pub wheel: Vec<(u64, Due)>,
+            pub stash: Vec<Stashed>,
+        }
+        impl Cold {
+            /// What the components alone take, as they would be packed.
+            pub fn packed_bytes(&self) -> usize {
+                0 $( + self.$f.as_ref().map_or(0, std::mem::size_of_val) )*
+            }
+            fn take(em: &mut EntityWorldMut) -> Self {
+                Self { $( $f: em.take::<$t>(), )* ..Default::default() }
+            }
+            fn put(self, em: &mut EntityWorldMut) {
+                $( if let Some(c) = self.$f { em.insert(c); } )*
+            }
+        }
+    };
+}
+cold!(
+    pos: crate::cow::Pos,
+    species: crate::cow::SpeciesId,
+    vel: crate::cow::Vel,
+    yaw: crate::cow::Yaw,
+    body: crate::cow::Body,
+    bounds: crate::cow::Bounds,
+    contact: crate::cow::Contact,
+    drive: crate::cow::Drive,
+    sizes: crate::cow::Sizes,
+    move_to: crate::cow::MoveTo,
+    nav: Nav,
+    active: ActiveUntil,
+    stroll: crate::cow::Stroll,
+    goals: crate::goals::GoalSet,
+    panic: Panic,
+    tempts: Tempts,
+    breed: crate::goals::BreedData,
+    follow_parent: crate::goals::FollowParent,
+    glance: crate::goals::Glance,
+    scan: crate::goals::Scan,
+    timers: crate::goals::GoalTimers,
+    look: crate::goals::Look,
+    head: crate::goals::Head,
+    buoyancy: crate::goals::Buoyancy,
+    jump: crate::goals::Jump,
+    phase: Phase,
+    health: crate::cow::Health,
+    hurt: HurtAt,
+    frozen: crate::cow::Frozen,
+    fluid: crate::cow::FluidState,
+    air: crate::cow::Air,
+    rng: crate::cow::Rng,
+    grow: GrowAt,
+    love: Love,
+    resting: Resting,
+    burning: Burning,
+    egg: Egg,
+    graze: crate::farm::Graze,
+    wool: crate::farm::Wool,
+);
+
+/// Takes a creature out of the world into a record (its cell stays in the index list the caller keeps).
+pub fn sleep_cold(world: &mut World, e: Entity, now: u64) -> Cold {
+    if let Some(cell) = world.get::<crate::cow::Cell>(e).map(|c| c.0) {
+        world.resource_mut::<Index>().remove(e, cell);
+    }
+    let entries = world.resource_mut::<Wheel>().take_entries(e);
+    let mut em = world.entity_mut(e);
+    let mut stash = Vec::new();
+    macro_rules! unit {
+        ($($t:ident),*) => { $( if em.take::<crate::cow::$t>().is_some() { stash.push(Stashed::$t); } )* };
+    }
+    unit!(Moving, Following, NeedsPath, Touching, Overlapping, Crowded);
+    let mut c = Cold::take(&mut em);
+    c.since = now;
+    c.wheel = entries.into_iter().map(|(at, d)| (at - now, d)).collect();
+    c.stash = stash;
+    em.despawn();
+    c
+}
+
+/// Makes a new entity from a record, deadlines shifted, wheel entries back; the caller enters it in the index.
+pub fn wake_cold(world: &mut World, c: Cold, now: u64) -> Entity {
+    let (since, wheel) = (c.since, c.wheel.clone());
+    let mut em = world.spawn_empty();
+    let e = em.id();
+    let d = now - since;
+    c.put(&mut em);
+    shift_times(&mut em, e, d);
+    em.insert((Moving, Recheck, crate::cow::Cell(u32::MAX)));
+    let mut wh = world.resource_mut::<Wheel>();
+    for (rem, due) in wheel {
+        wh.push(now + rem, e, due);
+    }
+    crate::cow::enter_index(world, e);
+    e
 }

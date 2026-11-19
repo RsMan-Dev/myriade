@@ -396,6 +396,9 @@ impl Wheel {
         }
         self.owned[i].push((e, at, d));
     }
+    pub fn enable_tracking_pub(&mut self) {
+        self.enable_tracking();
+    }
     /// Starts to keep the entries of each entity (reads the ones already there).
     pub(crate) fn enable_tracking(&mut self) {
         self.track = true;
@@ -456,7 +459,7 @@ pub struct Index {
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
     pub(crate) crossed: Vec<Entity>,
     /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
-    pub(crate) zone: crate::zone::Zone,
+    pub zone: crate::zone::Zone,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
@@ -2416,6 +2419,28 @@ impl Herd {
         // The cows are listed in the index from the start (a player event is read at the first tick).
         world.run_system_cached(reindex).unwrap();
         Self { world, schedule: schedule() }
+    }
+    /// Adds animals of the process's species at `at` (x, z), their timers armed as `build` arms them (call it once, on a herd
+    /// that has none: `arm_all` arms every animal).
+    pub fn populate(&mut self, at: &[(f64, f64)], seed: u64) -> Vec<Entity> {
+        let sp = *species();
+        let mut rng = Rng(seed | 1);
+        let mut out = Vec::with_capacity(at.len());
+        for &(x, z) in at {
+            let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
+            out.push(spawn_species(&mut self.world, &sp, x, z, s));
+        }
+        let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
+        for &e in &out {
+            let now = self.world.resource::<Clock>().0;
+            let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
+            self.world.resource_mut::<Wheel>().push(at.min(now + WHEEL as u64 - 1), e, Due::Stroll);
+            self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+        }
+        crate::goals::arm_all(&mut self.world);
+        self.world.run_system_cached(reindex).unwrap();
+        crate::zone::admit(&mut self.world, &out);
+        out
     }
     /// Turns the simulated chunks on (`zone.rs`): only the chunks within `radius` chunks of a player tick, the creatures of the
     /// others sleep (at the next tick for the players set later).
