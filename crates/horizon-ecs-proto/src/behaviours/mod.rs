@@ -202,6 +202,10 @@ pub mod fox_state;
 pub mod fox_faceplant;
 pub mod fox_stalk_prey;
 pub mod fox_pounce;
+pub mod armadillo_state;
+pub mod baby_follow_adult;
+pub mod rolled;
+pub mod swell;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -227,4 +231,7 @@ pub static TABLE: &[&Module] = &[
     &fox_faceplant::MODULE,
     &fox_stalk_prey::MODULE,
     &fox_pounce::MODULE,
+    &swell::MODULE,
+    &baby_follow_adult::MODULE,
+    &rolled::MODULE,
 ];
