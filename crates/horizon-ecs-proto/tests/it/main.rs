@@ -33,6 +33,7 @@ mod no_species_names;
 mod no_tick_all;
 mod occupancy_contract;
 mod orb_vs_original;
+mod parallel_equals_sequential;
 mod path_equal;
 mod pilot_vs_mob;
 mod player_ring;

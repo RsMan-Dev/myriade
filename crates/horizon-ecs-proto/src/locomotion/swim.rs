@@ -132,7 +132,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
 fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &NavParams, &SwimParams), (With<NeedsPath>, With<SwimMode>)>,
 ) {
     let level = &*level;
@@ -168,7 +168,7 @@ fn pathfind(
                 Finder::new(mw, &pm, evaluator).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32)
             })
             .flatten();
-        par.command_scope(|mut cmd| match path {
+        par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
                 nav.last_check = now;
@@ -182,6 +182,7 @@ fn pathfind(
             }
         });
     }
+    par.flush();
 }
 
 /// `PathNavigation.tick` -> `followThePath` of the water: the node is reached within 0.5 vertically, the mob is the middle of its body,
@@ -190,7 +191,7 @@ fn pathfind(
 fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo, &SwimParams, &FluidState), (With<Following>, With<SwimMode>)>,
 ) {
     let level = &*level;
@@ -239,11 +240,12 @@ fn follow(
             drive.zza = 0.0;
             drive.jump = false;
             m.active = false;
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Following>().insert(PathEnded);
             });
         }
     }
+    par.flush();
 }
 /// `PathNavigation.shouldTargetNextNode` with the water's `canMoveDirectly`.
 #[allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -484,7 +486,7 @@ fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, g
 #[allow(clippy::type_complexity)]
 fn travel(
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
@@ -529,16 +531,17 @@ fn travel(
             travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
         }
         if was_in_air && c.on_ground {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
         if fall > 0.0 && !imm.has(IMMUNE_FALL) {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
     }
+    par.flush();
 }
 
 #[allow(dead_code)]

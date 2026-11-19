@@ -107,7 +107,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
 fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &NavParams), (With<NeedsPath>, With<FlyMode>)>,
 ) {
     let level = &*level;
@@ -134,7 +134,7 @@ fn pathfind(
         nav.searches += 1;
         crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = Finder::new(mw, &pm, Evaluator::Fly).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32);
-        par.command_scope(|mut cmd| match path {
+        par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
                 nav.last_check = now;
@@ -148,6 +148,7 @@ fn pathfind(
             }
         });
     }
+    par.flush();
 }
 
 /// Whether a flying path from where the animal is reaches the block `target` (`createPath(pos, reach).reached`): the search `pathfind` makes,
@@ -180,7 +181,7 @@ pub fn reaches(w: &World, e: Entity, target: [i32; 3], reach: i32) -> bool {
 fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, With<FlyMode>)>,
 ) {
     let level = &*level;
@@ -226,11 +227,12 @@ fn follow(
             drive.zza = 0.0;
             drive.yya = 0.0;
             m.active = false;
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Following>().insert(PathEnded);
             });
         }
     }
+    par.flush();
 }
 
 /// `FlyingMoveControl.tick`: toward the wanted spot, the heading follows at 90 degrees a tick, the speed is the modifier times the
@@ -411,7 +413,7 @@ fn approach(from: f32, to: f32, step: f32) -> f32 {
 #[allow(clippy::type_complexity)]
 pub(crate) fn travel(
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &FlyParams, Has<Following>, &MoveTo), (With<Moving>, Without<Overlapping>, With<FlyMode>)>,
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fluid, imm, fp, following, wanted) in &mut q {
@@ -419,7 +421,7 @@ pub(crate) fn travel(
         let rest_vy = (0.0 - b.gravity) * f64::from(fp.vertical_drag);
         if !fs.in_water && !fs.in_lava && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && d.yya == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest_vy {
             if !following {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Moving>();
                 });
             }
@@ -436,7 +438,7 @@ pub(crate) fn travel(
             c.on_ground = false;
             // Nothing wanted and no motion left: out of the physics until a goal steers it (a resting vex costs nothing).
             if !wanted.active && v.0 == Vec3::ZERO {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Moving>();
                 });
             }
@@ -470,16 +472,17 @@ pub(crate) fn travel(
             v.0.y *= fp.glide;
         }
         if was_in_air && c.on_ground {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
         if fall > 0.0 && !imm.has(IMMUNE_FALL) {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
     }
+    par.flush();
 }
 /// `Entity.moveRelative` with a vertical input.
 pub(crate) fn move_relative_3d(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32, zza: f32) {

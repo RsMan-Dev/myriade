@@ -859,6 +859,9 @@ pub struct Config {
     /// Batch mode: an animal that overlaps another stays in `push` every tick even if it does not move (`vanilla` runs
     /// `pushEntities` for every entity, at rest or not).
     pub keep_touching: bool,
+    /// The most path searches `pathfind` runs in a tick (0: no limit). The others keep `NeedsPath` and are served the next tick, in the table order
+    /// (first asked, first served, in the main); a guard against the bursts (suivi/ecs-echelle.md, H): a zombie that waits does not move.
+    pub path_budget: usize,
     /// EXPERIMENT (calibration of the batch push): the form (0: all impulses x k; 1: only the impulse from a lower index x k)
     /// and the factor k, from the environment (PUSH_FORM, PUSH_K).
     pub push_form: u8,
@@ -1607,7 +1610,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     day: Res<crate::hostile::Daylight>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
@@ -1643,7 +1646,7 @@ pub(crate) fn pathfind(
         if climber {
             // `WallClimberNavigation.pathToPosition`: the climb goes on straight to the target when the path is over (or when there is none).
             let (to, speed) = (target, nav.speed);
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| crate::locomotion::climb::wish(w, e, to, speed));
             });
         }
@@ -1659,7 +1662,7 @@ pub(crate) fn pathfind(
             }
             p
         });
-        par.command_scope(|mut cmd| match path {
+        par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
                 crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1675,13 +1678,32 @@ pub(crate) fn pathfind(
             }
         });
     };
-    if cfg.parallel {
+    if cfg.path_budget > 0 {
+        // The first `path_budget` of the queue, in the table order (the same whatever the thread count).
+        let chosen: Vec<Entity> = q.iter().map(|x| x.0).take(cfg.path_budget).collect();
+        if cfg.parallel {
+            // SAFETY: the entities come from one iteration of the query: they are distinct.
+            let set = unsafe { bevy_ecs::entity::UniqueEntityVec::from_vec_unchecked(chosen) };
+            q.par_iter_many_unique_mut(set).for_each(|r| {
+                if let Ok((e, p, b, c, mut s, mut n, f, v, i, l, cl, u)) = r {
+                    one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+                }
+            });
+        } else {
+            for e in chosen {
+                if let Ok((e, p, b, c, mut s, mut n, f, v, i, l, cl, u)) = q.get_mut(e) {
+                    one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+                }
+            }
+        }
+    } else if cfg.parallel {
         q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
     } else {
         for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
             one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
         }
     }
+    par.flush();
 }
 
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
@@ -1691,7 +1713,7 @@ pub(crate) fn follow(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
@@ -1747,7 +1769,7 @@ pub(crate) fn follow(
             drive.zza = 0.0;
             drive.jump = false;
             m.active = false;
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Following>().insert(PathEnded);
             });
         }
@@ -1759,6 +1781,7 @@ pub(crate) fn follow(
             one(e, p, b, &mut d, &mut s, &mut n, &mut m);
         }
     }
+    par.flush();
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
 pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
@@ -2169,7 +2192,7 @@ pub(crate) fn travel_one(
 pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
@@ -2190,23 +2213,23 @@ pub(crate) fn travel(
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
         // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
         if was_on_ground && !c.on_ground && !b.object {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
             });
         }
         if was_in_air && c.on_ground && !b.object {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
         if fall > 0.0 && !b.object && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
         }
@@ -2218,6 +2241,7 @@ pub(crate) fn travel(
             one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
         }
     }
+    par.flush();
 }
 
 /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
@@ -2574,6 +2598,40 @@ fn hazard_tick(
         }
     }
 }
+/// `ParallelCommands` with a DETERMINISTIC order: the commands each entity's visit emits are kept with the entity, and `flush` (at the end of
+/// the system) applies them sorted by entity, whatever thread ran the visit. The order commands are applied in decides the rows of the tables
+/// (an entity that changes table takes the last row), hence the iteration order of every later system: with the per-thread queues of
+/// `ParallelCommands` two runs, or two thread counts, gave different rows and so different games (suivi/ecs-echelle.md, G').
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct OrdCmds<'w, 's> {
+    pending: Local<'s, std::sync::Mutex<Vec<(Entity, bevy_ecs::world::CommandQueue)>>>,
+    par: ParallelCommands<'w, 's>,
+    allocator: &'w bevy_ecs::entity::EntityAllocator,
+    entities: &'w bevy_ecs::entity::Entities,
+}
+impl OrdCmds<'_, '_> {
+    /// Commands emitted by the visit of `by` (the sort key); callable from the threads of a parallel iteration.
+    pub fn command_scope(&self, by: Entity, f: impl FnOnce(Commands)) {
+        let mut q = bevy_ecs::world::CommandQueue::default();
+        f(Commands::new_from_entities(&mut q, self.allocator, self.entities));
+        if !q.is_empty() {
+            self.pending.lock().unwrap().push((by, q));
+        }
+    }
+    /// Hands the collected commands to the system's buffer, sorted by emitter (stable: one entity's commands keep their order).
+    pub fn flush(&mut self) {
+        let mut v = std::mem::take(self.pending.get_mut().unwrap());
+        if v.is_empty() {
+            return;
+        }
+        v.sort_by_key(|c| c.0);
+        self.par.command_scope(|mut cmd| {
+            for (_, mut q) in v {
+                cmd.append(&mut q);
+            }
+        });
+    }
+}
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
 #[derive(Component, Default)]
 pub struct Recompute;
@@ -2687,7 +2745,7 @@ pub struct PushIn(pub Vec3);
 fn push(
     cfg: Res<Config>,
     idx: Res<Index>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
     // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
     boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
@@ -2737,46 +2795,43 @@ fn push(
             // An overlap begins: in the ordered mode this one and its neighbour are handled by `ordered_pass` from the
             // next tick (this tick's impulse was given above).
             if cfg.ordered_push {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Overlapping);
                     cmd.entity(o).insert(Overlapping);
                 });
             }
             if cfg.keep_touching {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(o).insert(Touching);
                 });
             }
             if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
-                    if asleep {
-                        cmd.entity(o).insert(PushIn(Vec3::new(xa, 0.0, za)));
-                    } else {
-                        cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
-                    }
+                    let (push, wake) = (Vec3::new(xa, 0.0, za), !asleep);
+                    cmd.queue(move |w: &mut World| add_push(w, o, push, wake));
                 });
             }
         });
         if cfg.keep_touching {
             if overlapping > 0 {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Touching);
                 });
             } else if was_touching {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Touching>();
                 });
             }
         }
         // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
         if overlapping + 1 >= MAX_ENTITY_CRAMMING {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
                 if o != e && boxes.get(o).is_ok_and(|(ob, _)| !is_object(o) && b.0.intersects(ob.0)) {
-                    par.command_scope(|mut cmd| {
+                    par.command_scope(e, |mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
                 }
@@ -2785,7 +2840,7 @@ fn push(
         if dv != (0.0, 0.0) {
             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
             if !moving {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Moving);
                 });
             }
@@ -2798,6 +2853,7 @@ fn push(
             one(e, b, &mut v, m, t);
         }
     }
+    par.flush();
 }
 /// How near (blocks) another animal must come for an animal to stay in the ordered pass: a little more than the largest
 /// step of an animal in a tick.
@@ -3137,6 +3193,20 @@ fn cramming(
     }
 }
 /// The half of a push a cow that did not move is owed: its velocity changes, its physics is active.
+/// Adds an impulse to the neighbour `o`'s pending push: the impulses of all its neighbours are SUMMED (`Entity.push` adds to the velocity), not
+/// overwritten by the last one, so the total does not depend on the order the pairs were visited in.
+fn add_push(w: &mut World, o: Entity, push: Vec3, wake: bool) {
+    let Ok(mut em) = w.get_entity_mut(o) else { return };
+    match em.get_mut::<PushIn>() {
+        Some(mut p) => p.0 = Vec3::new(p.0.x + push.x, p.0.y + push.y, p.0.z + push.z),
+        None => {
+            em.insert(PushIn(push));
+        }
+    }
+    if wake {
+        em.insert(Moving);
+    }
+}
 fn apply_pushes(mut q: Query<(Entity, &PushIn, &mut Vel)>, mut commands: Commands) {
     for (e, p, mut v) in &mut q {
         v.0 = Vec3::new(v.0.x + p.0.x, v.0.y, v.0.z + p.0.z);
@@ -3265,7 +3335,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
+        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());

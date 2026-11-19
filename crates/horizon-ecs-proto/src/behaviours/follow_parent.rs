@@ -154,7 +154,9 @@ fn cell_moves(
     pos: Query<(&Pos, Has<GrowAt>)>,
     follow: Query<&FollowParent, With<GrowAt>>,
     mut reqs: ResMut<Requests>,
+    mut asked: Local<std::collections::HashSet<Entity>>,
 ) {
+    asked.clear();
     for &m in &moves.0 {
         if let Ok(f) = follow.get(m) {
             reqs.0.push(Req::Start(m, f.slot));
@@ -169,7 +171,8 @@ fn cell_moves(
                 return;
             }
             let (Ok(f), Ok((bp, _))) = (follow.get(b), pos.get(b)) else { return };
-            if (at.x - bp.0.x).abs() <= 9.0 && (at.z - bp.0.z).abs() <= 9.0 {
+            // The goal's `can_use` draws nothing: one ask a tick per baby answers all the movers around it.
+            if (at.x - bp.0.x).abs() <= 9.0 && (at.z - bp.0.z).abs() <= 9.0 && asked.insert(b) {
                 reqs.0.push(Req::Start(b, f.slot));
             }
         });
