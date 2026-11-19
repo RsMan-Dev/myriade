@@ -22,7 +22,7 @@ pub const MOVE: u8 = 1;
 pub const LOOK: u8 = 2;
 pub const JUMP: u8 = 4;
 pub const TARGET: u8 = 8;
-pub(crate) const WHEEL_MAX: u64 = 4095;
+// (the wheel takes any deadline: no ceiling)
 /// The widest tempting range of any species (the index scan radius).
 pub(crate) const SCAN: f64 = 10.0;
 
@@ -37,7 +37,7 @@ pub struct GoalSlot(pub u8);
 /// slot bitmasks (16 goals at most); `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and
 /// starts when it frees. Resolved once at creation: nothing is looked up by name afterwards.
 #[derive(Component, Clone)]
-#[component(on_add = goalset_added, on_remove = goalset_removed)]
+#[component(on_add = goalset_added, on_insert = goalset_counted, on_discard = goalset_uncounted)]
 pub struct GoalSet {
     entries: &'static [Entry],
     nth: [u8; 16],
@@ -511,15 +511,18 @@ pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries
         }
     }
 }
-fn goalset_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+// Counted at every insertion (a replaced component counts again) and uncounted when it is replaced or removed.
+fn goalset_uncounted(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let Some(entries) = world.get::<GoalSet>(ctx.entity).map(|g| g.entries) else { return };
     count_carriers(&mut world, entries, -1);
 }
-fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
-    let e = ctx.entity;
-    if let Some(entries) = world.get::<GoalSet>(e).map(|g| g.entries) {
+fn goalset_counted(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if let Some(entries) = world.get::<GoalSet>(ctx.entity).map(|g| g.entries) {
         count_carriers(&mut world, entries, 1);
     }
+}
+fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
     world.commands().queue(move |w: &mut World| equip_goals(w, e));
 }
 

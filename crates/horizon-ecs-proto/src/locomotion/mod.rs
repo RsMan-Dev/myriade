@@ -34,7 +34,7 @@ pub struct SwimMode;
 
 /// The modes of the entity (what `equip` of each was called with): read at the events of entering and leaving a fluid.
 #[derive(Component, Clone, Copy)]
-#[component(on_add = modes_added, on_remove = modes_removed)]
+#[component(on_add = modes_added, on_insert = modes_counted, on_discard = modes_uncounted)]
 pub struct Modes(pub &'static [ModeEntry]);
 impl Modes {
     /// Whether the entity has a mode for the medium.
@@ -42,17 +42,18 @@ impl Modes {
         self.0.iter().any(|x| x.0 == m)
     }
 }
-fn modes_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+fn modes_uncounted(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let Some(m) = world.get::<Modes>(ctx.entity).map(|m| m.0) else { return };
     let entries: Vec<crate::behaviours::Entry> = m.iter().map(|x| x.1).collect();
     crate::goals::count_carriers(&mut world, &entries, -1);
 }
+fn modes_counted(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(m) = world.get::<Modes>(ctx.entity).map(|m| m.0) else { return };
+    let entries: Vec<crate::behaviours::Entry> = m.iter().map(|x| x.1).collect();
+    crate::goals::count_carriers(&mut world, &entries, 1);
+}
 fn modes_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
-    if let Some(m) = world.get::<Modes>(e).map(|m| m.0) {
-        let entries: Vec<crate::behaviours::Entry> = m.iter().map(|x| x.1).collect();
-        crate::goals::count_carriers(&mut world, &entries, 1);
-    }
     world.commands().queue(move |w: &mut World| {
         let Some(m) = w.get::<Modes>(e).copied() else { return };
         for (_, en) in m.0 {
