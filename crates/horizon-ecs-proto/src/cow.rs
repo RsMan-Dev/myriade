@@ -3449,7 +3449,7 @@ impl Herd {
     }
     /// The block writes, sounds and particles written since the last call (`host_out`), for the host to apply.
     pub fn drain_host_out(&mut self) -> Vec<crate::host_out::HostEvent> {
-        self.world.resource_mut::<crate::host_out::HostOut>().drain().collect()
+        self.world.resource_mut::<crate::goals::Events>().host.drain().collect()
     }
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);

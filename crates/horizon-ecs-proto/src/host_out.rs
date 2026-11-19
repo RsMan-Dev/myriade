@@ -1,8 +1,7 @@
 //! Outputs toward the host: a block write, a sound, particles. The `Mob` pushes `MobEvent::SetBlock`, `Sound` and `LevelParticles`
 //! for the host to apply; here a module writes one at the moment of the act (an event, never a scan) and the host reads them all
-//! once per tick with `drain`. One resource, three empty `Vec`s at rest: no allocation and no byte per entity. Fire and forget, as
+//! once per tick with `drain`. One queue (a field of `goals::Events`, `events.host`), empty at rest: no allocation and no byte per entity. Fire and forget, as
 //! the `Mob`'s: the host's refusal of a block is not reported back.
-use bevy_ecs::prelude::*;
 use horizon_world::registry::BlockStateId;
 
 /// One output, one for one with the `MobEvent` of the same name.
@@ -13,7 +12,7 @@ pub enum HostEvent {
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
 }
 
-#[derive(Resource, Default)]
+#[derive(Default)]
 pub struct HostOut {
     out: Vec<HostEvent>,
 }

@@ -592,7 +592,6 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
     world.insert_resource(Events::default());
-    world.insert_resource(crate::host_out::HostOut::default());
     world.insert_resource(crate::farm::Grown::default());
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
@@ -666,6 +665,9 @@ impl<T: Copy> Ev<T> {
 /// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
 #[derive(Resource, Default)]
 pub struct Events {
+    /// Outputs toward the host (block writes, sounds, particles): a field here and not a resource of its own, because one more
+    /// resource moves the cost of the solicited scenes (+6,6 % measured at 14 448 against 13 544 on the cow).
+    pub host: crate::host_out::HostOut,
     /// `Burning` was set (from not burning).
     pub ignited: Ev,
     /// `Burning` ended (water, or the fire burnt out).
