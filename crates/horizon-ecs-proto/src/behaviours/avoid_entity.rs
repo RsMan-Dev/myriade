@@ -1,0 +1,377 @@
+//! `AvoidEntityGoal`: an animal that sees a player (or an animal of a listed species) within `max_dist` runs to a random
+//! spot away from it, walking, or sprinting while the target is within 7 blocks. Woken by events only: a player that comes
+//! within range, an animal of a listed species that changes column of the index, and the animal's own column change.
+use super::*;
+use crate::{cow::*, goals::*};
+use horizon_core::geometry::{Vec3, trig};
+use horizon_core::jmath;
+
+/// The range of the index scan: the widest `max_dist` a configuration may give (`Params` checks it).
+const REACH: f64 = 24.0;
+
+/// What the goal runs from: the nearest player, or the nearest animal of the listed species (`Species::id`).
+#[derive(Clone, Copy)]
+pub enum Avoid {
+    Player,
+    Species(&'static [u8]),
+}
+#[derive(Clone, Copy)]
+pub struct Params {
+    pub what: Avoid,
+    /// The range of the target, in blocks.
+    pub max_dist: f64,
+    pub walk: f64,
+    pub sprint: f64,
+    /// The animal's own condition (`when`).
+    pub avoider_when: Option<fn(&World, Entity) -> bool>,
+    /// The player's condition (`player_when`), for `Avoid::Player`.
+    pub player_when: Option<fn(&Player) -> bool>,
+    /// The listed animal's condition (`seen_when`), for `Avoid::Species`.
+    pub target_when: Option<fn(&World, Entity) -> bool>,
+}
+impl Params {
+    pub const DEFAULT: Self = Self { what: Avoid::Player, max_dist: 6.0, walk: 1.0, sprint: 1.2, avoider_when: None, player_when: None, target_when: None };
+}
+/// One instance of the goal: its parameters, and what `can_use` chose for `start` (the point run from, the player if
+/// one is the target, the spot to walk to).
+#[derive(Clone, Copy)]
+pub struct Avoider {
+    what: Avoid,
+    max_dist: f64,
+    walk: f64,
+    sprint: f64,
+    avoider_when: Option<fn(&World, Entity) -> bool>,
+    player_when: Option<fn(&Player) -> bool>,
+    target_when: Option<fn(&World, Entity) -> bool>,
+    pub slot: u8,
+    from: Vec3,
+    player: u32,
+    spot: (f64, f64),
+}
+/// The avoid goals of the animal, by `Inst::nth`.
+#[derive(Component, Clone)]
+pub struct Avoiders(pub Vec<Avoider>);
+/// The animal has an avoid goal whose target is a listed species: the moves of the other animals matter to it (the
+/// systems do nothing, not even scan the index, in a world with none).
+#[derive(Component, Clone, Copy)]
+#[component(storage = "SparseSet")]
+pub struct AvoidsAnimals;
+/// An avoid goal runs: which instance (`nth`).
+#[derive(Component, Clone, Copy)]
+#[component(storage = "SparseSet")]
+pub struct Avoiding(pub u8);
+
+pub static MODULE: Module = Module {
+    name: "avoid_entity",
+    flags: MOVE,
+    ends_with_path: true,
+    retry_on_end: true,
+    equip,
+    can_use,
+    start,
+    stop,
+    systems,
+    requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
+    ..Module::DEFAULT
+};
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+    let p = params::<Params>(p);
+    debug_assert!(p.max_dist <= REACH, "the index scan does not reach {} blocks", p.max_dist);
+    let a = Avoider {
+        what: p.what,
+        max_dist: p.max_dist,
+        walk: p.walk,
+        sprint: p.sprint,
+        avoider_when: p.avoider_when,
+        player_when: p.player_when,
+        target_when: p.target_when,
+        slot: inst.slot,
+        from: Vec3::ZERO,
+        player: 0,
+        spot: (0.0, 0.0),
+    };
+    if matches!(p.what, Avoid::Species(_)) {
+        w.entity_mut(e).insert(AvoidsAnimals);
+    }
+    match w.get_mut::<Avoiders>(e) {
+        Some(mut v) => {
+            debug_assert_eq!(v.0.len(), inst.nth as usize);
+            v.0.push(a);
+        }
+        None => {
+            w.entity_mut(e).insert(Avoiders(vec![a]));
+        }
+    }
+}
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    // Each wake-up system returns at once in a world with no avoider (a move of any animal would scan 24 blocks of index).
+    s.add_systems((wake_on_player, cell_moves, avoid_run).chain().in_set(slot));
+}
+/// Whether `to` is within the range of the avoid goal from `from`: the distance and the height (`|dy| <= max + 3`).
+fn in_reach(a: &Avoider, from: Vec3, to: Vec3) -> bool {
+    let r = a.max_dist.max(2.0);
+    (to.y - from.y).abs() <= a.max_dist + 3.0 && d2(from, to) <= r * r
+}
+/// A player came within range (or was within it and moved out of it: no wake, the goal decides).
+fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, any: Query<(), With<Avoiders>>, mut reqs: ResMut<Requests>) {
+    if any.is_empty() {
+        return;
+    }
+    for &(old, new) in &on.seen {
+        let Some(n) = new else { continue };
+        let at = Vec3::new(n.x, n.y, n.z);
+        idx.for_radius(n.x, n.z, REACH, |c| {
+            let Ok((pos, avs)) = q.get(c) else { return };
+            for a in avs.0.iter().filter(|a| matches!(a.what, Avoid::Player)) {
+                let wanted = |p: Player| a.player_when.is_none_or(|f| f(&p));
+                let was = old.is_some_and(|o| wanted(o) && in_reach(a, pos.0, Vec3::new(o.x, o.y, o.z)));
+                if wanted(n) && in_reach(a, pos.0, at) && !was {
+                    reqs.0.push(Req::Start(c, a.slot));
+                }
+            }
+        });
+    }
+}
+/// The animals that changed column: the animal itself (its goal looks again), and the avoiders within range of it when
+/// its species is one they list.
+fn cell_moves(
+    moved: Res<CellMoves>,
+    idx: Res<Index>,
+    q: Query<(&Pos, &Avoiders)>,
+    ids: Query<(&Pos, &SpeciesId)>,
+    listing: Query<(), With<AvoidsAnimals>>,
+    any: Query<(), With<Avoiders>>,
+    mut reqs: ResMut<Requests>,
+) {
+    if any.is_empty() {
+        return;
+    }
+    let listed = !listing.is_empty();
+    for &m in &moved.0 {
+        if let Ok((_, avs)) = q.get(m) {
+            reqs.0.extend(avs.0.iter().map(|a| Req::Start(m, a.slot)));
+        }
+        if !listed {
+            continue;
+        }
+        let Ok((mp, sid)) = ids.get(m) else { continue };
+        let at = mp.0;
+        idx.for_radius(at.x, at.z, REACH, |c| {
+            let Ok((pos, avs)) = q.get(c) else { return };
+            if c == m {
+                return;
+            }
+            for a in &avs.0 {
+                if let Avoid::Species(list) = a.what
+                    && list.contains(&sid.0)
+                    && in_reach(a, pos.0, at)
+                {
+                    reqs.0.push(Req::Start(c, a.slot));
+                }
+            }
+        });
+    }
+}
+/// The tick of a running avoid goal: its speed, sprint within 7 blocks of the point it runs from (a player's position is
+/// read now). Visits only the animals that run.
+fn avoid_run(on: Res<Online>, mut q: Query<(&Pos, &Avoiding, &mut Avoiders, &mut Nav)>) {
+    for (pos, run, mut avs, mut nav) in &mut q {
+        let a = &mut avs.0[run.0 as usize];
+        let from = if a.player != 0 { on.get(a.player).map_or(a.from, |p| Vec3::new(p.x, p.y, p.z)) } else { a.from };
+        nav.speed = speed_at(a, d2(pos.0, from));
+    }
+}
+/// `AvoidEntityGoal.avoidTarget`: the player (nearest, wanted and seen) or the first seen animal of a listed species, by
+/// distance. Returns the point to run from and the player's id (0 for an animal).
+fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u32)> {
+    let eye = w.get::<Look>(e).map_or(0.0, |l| l.eye);
+    let from_eye = Vec3::new(pos.x, pos.y + eye, pos.z);
+    let mw = w.resource::<Level>().mw.0;
+    let sees = |to: Vec3| mw.line_of_sight_for(Some(pos.y), from_eye, to);
+    match a.what {
+        Avoid::Player => {
+            let r = a.max_dist.max(2.0);
+            let mut best: Option<(f64, Player)> = None;
+            w.resource::<Online>().for_near(pos.x, pos.z, r, |p| {
+                let d = d2(pos, Vec3::new(p.x, p.y, p.z));
+                let near = (p.y - pos.y).abs() <= a.max_dist + 3.0 && d <= r * r;
+                let wanted = a.player_when.is_none_or(|f| f(&p));
+                if near && wanted && best.is_none_or(|b| d < b.0) && sees(Vec3::new(p.x, p.eye(), p.z)) {
+                    best = Some((d, p));
+                }
+            });
+            best.map(|(_, p)| (Vec3::new(p.x, p.y, p.z), p.id))
+        }
+        Avoid::Species(list) => {
+            let mut c: Vec<(f64, Entity, Vec3)> = Vec::new();
+            w.resource::<Index>().for_radius(pos.x, pos.z, a.max_dist, |t| {
+                let (Some(tp), Some(sid)) = (w.get::<Pos>(t), w.get::<SpeciesId>(t)) else { return };
+                let tp = tp.0;
+                let boxed = t != e
+                    && (tp.x - pos.x).abs() <= a.max_dist
+                    && (tp.z - pos.z).abs() <= a.max_dist
+                    && (tp.y - pos.y).abs() <= 3.0 + a.max_dist
+                    && list.contains(&sid.0)
+                    && a.target_when.is_none_or(|f| f(w, t));
+                if boxed {
+                    c.push((d2(pos, tp), t, tp));
+                }
+            });
+            c.sort_by(|x, y| x.0.total_cmp(&y.0));
+            let (_, t, tp) = c.into_iter().find(|&(_, t, tp)| {
+                let eye_t = w.get::<Look>(t).map_or(0.0, |l| l.eye);
+                sees(Vec3::new(tp.x, tp.y + eye_t, tp.z))
+            })?;
+            let _ = t;
+            (d2(pos, tp) <= a.max_dist * a.max_dist).then_some((tp, 0))
+        }
+    }
+}
+/// `DefaultRandomPos.getPosAway(16, 7)`: a direction within a quarter turn of the one away from `from`, a distance up to
+/// 16 blocks, a height 0 (the slab's standing level, as `panic.rs`). The first valid of 10 tries.
+fn random_spot(w: &mut World, e: Entity, pos: Vec3, from: Vec3) -> Option<(f64, f64)> {
+    const H: f64 = 16.0;
+    const V: i32 = 7;
+    let half_pi = std::f64::consts::FRAC_PI_2;
+    let center = trig::atan2(pos.z - from.z, pos.x - from.x) - half_pi;
+    let tries: Vec<(i32, i32, i32)> = with_rng(w, e, |r| {
+        (0..10)
+            .filter_map(|_| {
+                let yrad = center + (2.0 * r.next_f64() - 1.0) * half_pi;
+                let dist = r.next_f64().sqrt() * H * std::f64::consts::SQRT_2;
+                let (xt, zt) = (-dist * jmath::sin(yrad), dist * jmath::cos(yrad));
+                if xt.abs() > H || zt.abs() > H {
+                    return None;
+                }
+                let yt = r.next_int(2 * V + 1) - V;
+                // `RandomPos.generateRandomPosTowardDirection`: the offset is floored first (a block offset), then
+                // added to the position and floored again.
+                Some(((f64::from(xt.floor() as i32) + pos.x).floor() as i32, yt, (f64::from(zt.floor() as i32) + pos.z).floor() as i32))
+            })
+            .collect()
+    });
+    let lim = w.resource::<Level>().half - 2;
+    let hazards = w.get_resource::<Hazards>();
+    tries.into_iter().find_map(|(x, dy, z)| {
+        let at = box_at(Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5), 0.2, 0.2);
+        let safe = hazards.is_none_or(|h| h.of_box(&at) == 0);
+        (dy == 0 && x.abs() < lim && z.abs() < lim && safe).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
+    })
+}
+fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
+    let nth = inst.nth as usize;
+    let Some(a) = w.get::<Avoiders>(e).and_then(|v| v.0.get(nth).copied()) else { return false };
+    let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
+    if a.avoider_when.is_some_and(|f| !f(w, e)) {
+        return false;
+    }
+    let Some((from, player)) = avoid_target(w, e, &a, pos) else { return false };
+    // The target is there: when no spot is found, or the spot is not farther than the animal, `canUse` is asked again.
+    let spot = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot)).or_else(|| random_spot(w, e, pos, from));
+    let Some((x, z)) = spot.filter(|&(x, z)| d2(Vec3::new(x, 1.0, z), from) >= d2(pos, from)) else {
+        arm(w, e, inst.slot, 2);
+        return false;
+    };
+    let mut avs = w.get_mut::<Avoiders>(e).unwrap();
+    let chosen = &mut avs.0[nth];
+    chosen.from = from;
+    chosen.player = player;
+    chosen.spot = (x, z);
+    true
+}
+fn speed_at(a: &Avoider, d2_to_target: f64) -> f64 {
+    if d2_to_target < 49.0 { a.sprint } else { a.walk }
+}
+fn start(w: &mut World, e: Entity, inst: Inst) {
+    let a = w.get::<Avoiders>(e).unwrap().0[inst.nth as usize];
+    let pos = w.get::<Pos>(e).unwrap().0;
+    let from = if a.player != 0 { w.resource::<Online>().get(a.player).map_or(a.from, |p| Vec3::new(p.x, p.y, p.z)) } else { a.from };
+    w.entity_mut(e).insert(Avoiding(inst.nth));
+    {
+        let mut nav = w.get_mut::<Nav>(e).unwrap();
+        // The `Mob` ticks a goal in the tick it starts: the speed is the one of this distance already.
+        nav.speed = speed_at(&a, d2(pos, from));
+        // `nav_move_to_path` of `AvoidEntityGoal` asks a path to the block of the spot (reach 0).
+        nav.reach = 0;
+    }
+    {
+        let mut s = w.get_mut::<Stroll>(e).unwrap();
+        (s.tx, s.ty, s.tz) = (a.spot.0, 1, a.spot.1);
+    }
+    w.entity_mut(e).insert(NeedsPath);
+}
+fn stop(w: &mut World, e: Entity, _: Inst) {
+    w.entity_mut(e).remove::<Avoiding>();
+    // Back to the reach of the other goals (stroll asks its paths with the default).
+    if let Some(mut nav) = w.get_mut::<Nav>(e) {
+        nav.reach = 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::species::Config;
+
+    static FLEE: Params = Params { max_dist: 8.0, sprint: 1.2, ..Params::DEFAULT };
+    static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 3, &FLEE)];
+
+    /// A walled slab with one animal of the process's species whose only goal is this one (a test configuration: the
+    /// species table is not changed), settled on the ground.
+    fn herd_with(entries: &'static [Entry]) -> (Herd, Entity) {
+        let mut h = Herd::with_slab(20, false, false);
+        let mut sp = *species();
+        sp.goals = Config { entries };
+        let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+        for _ in 0..20 {
+            h.tick();
+        }
+        (h, e)
+    }
+    fn put_player(h: &mut Herd, x: f64) {
+        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+    }
+    fn gap(h: &Herd, e: Entity, x: f64) -> f64 {
+        let p = h.world.get::<Pos>(e).unwrap().0;
+        (p.x - x).hypot(p.z - 0.5)
+    }
+
+    #[test]
+    fn runs_from_a_player_in_range_and_walks_away() {
+        let (mut h, e) = herd_with(&ENTRIES);
+        put_player(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        assert!(h.world.get::<Avoiding>(e).is_some(), "no run from a player 6 blocks away");
+        for _ in 0..100 {
+            h.tick();
+        }
+        assert!(gap(&h, e, 6.5) > 6.5, "the animal did not move away: {:.2} blocks", gap(&h, e, 6.5));
+    }
+
+    #[test]
+    fn does_not_run_from_a_player_out_of_range() {
+        let (mut h, e) = herd_with(&ENTRIES);
+        put_player(&mut h, 9.5);
+        for _ in 0..30 {
+            h.tick();
+        }
+        assert!(h.world.get::<Avoiding>(e).is_none(), "a run from a player 9 blocks away");
+    }
+
+    #[test]
+    fn stops_when_the_player_goes_away() {
+        let (mut h, e) = herd_with(&ENTRIES);
+        put_player(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        assert!(h.world.get::<Avoiding>(e).is_some(), "no run to begin with");
+        put_player(&mut h, 19.5);
+        for _ in 0..400 {
+            h.tick();
+        }
+        assert!(h.world.get::<Avoiding>(e).is_none(), "the run went on after the player left");
+    }
+}
