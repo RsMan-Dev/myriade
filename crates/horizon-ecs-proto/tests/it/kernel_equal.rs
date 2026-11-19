@@ -125,6 +125,47 @@ fn the_shape_table_keeps_only_contextual_dynamic_and_moving_states_with_the_kern
     }
 }
 
+/// Every state of the registry that is hard, by (large, piston): the enumeration shows that hard and large without being a piston exists (the
+/// shulker boxes, whose lid can reach out of the cell), so the section's large-column word cannot be set by pistons alone.
+#[test]
+fn the_hard_states_are_enumerated_by_large_and_piston() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let occ = occupancy_of(mw);
+    let mut kinds: std::collections::BTreeMap<(bool, bool), std::collections::BTreeSet<String>> = Default::default();
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        if let Some(k) = occ.hard_flags(mw.collision, id) {
+            kinds.entry(k).or_default().insert(mw.registry.state(id).unwrap().name.trim_start_matches("minecraft:").to_string());
+        }
+    }
+    assert!(kinds.get(&(true, false)).is_some_and(|n| n.contains("shulker_box")), "{kinds:?}");
+    assert!(kinds.get(&(true, true)).is_some_and(|n| n.contains("moving_piston")), "{kinds:?}");
+    assert!(kinds.keys().all(|k| k.0 || k.1), "a hard state that is neither large nor a piston: {kinds:?}");
+}
+
+/// A shulker box in the ring of the box (none inside it) makes the lock-free path decline (to the locked masks), as a large hard cell must: its lid may reach into the box.
+/// Equal to the reference, in a world of open shulker boxes at y = 1 and air above.
+#[test]
+fn a_large_hard_cell_in_the_ring_sends_the_call_to_the_kernel() {
+    use horizon_core::geometry::{Aabb, Vec3};
+    use std::sync::atomic::Ordering::Relaxed;
+    let (world, _) = horizon_ecs_proto::kernel_lab::shulker_floor_world();
+    let occ = occupancy_of(world);
+    let sub = subjects()[0];
+    let (mut declined, mut calls) = (0, 0);
+    for (x, z) in [(3.3, 4.4), (5.5, 6.1), (7.2, 2.9), (9.1, 9.9), (1.7, 8.3)] {
+        let bounds = Aabb::new(Vec3::new(x - 0.3, 2.5, z - 0.3), Vec3::new(x + 0.3, 4.3, z + 0.3));
+        let c = Call { bounds, movement: Vec3::new(0.1, 0.0, 0.05), step: 0.0, on_ground: false };
+        let before = occ.declined.load(Relaxed);
+        let (new, old) = (run_as(world, &c, sub, Mode::Masks), run_as(world, &c, sub, Mode::Reference));
+        assert!(same(&new, &old), "{:?}: masks {new:?} reference {old:?}", c.bounds);
+        declined += occ.declined.load(Relaxed) - before;
+        calls += 1;
+    }
+    assert_eq!(declined, calls, "the lock-free path answered a call with a large hard cell in the ring");
+}
+
 /// Water and lava are empty for a body with no subject and the kernel's business for one that stands on fluids (a strider): both
 /// equal the reference bit for bit over liquid-rich worlds and over calls built on the liquid cells.
 #[test]

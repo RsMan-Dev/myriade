@@ -402,6 +402,13 @@ impl Occupancy {
             Class::Liquid { .. } => "liquid",
         }
     }
+    /// For a hard state (one the kernel is asked about per cell): whether its shape is large and whether it is a piston in motion; `None` for any other class.
+    pub fn hard_flags(&self, binding: &Binding<'_>, s: BlockStateId) -> Option<(bool, bool)> {
+        match self.inner.lock().unwrap().table.class_of(binding, s) {
+            Class::Hard { large, piston } => Some((large, piston)),
+            _ => None,
+        }
+    }
     /// The class of a state as a number, for the measurements: 0 empty, 1 plain cube, 2 fixed shape, 3 hard, 4 liquid.
     pub fn probe_class(&self, binding: &Binding<'_>, s: BlockStateId) -> u8 {
         match self.inner.lock().unwrap().table.class_of(binding, s) {

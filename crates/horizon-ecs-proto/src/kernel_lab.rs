@@ -487,6 +487,25 @@ pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static M
     (w, p)
 }
 
+/// A stone floor at y = 0 and, above it at y = 1, a floor of open shulker boxes (lids at full progress) over x, z in [-14, 14); air above.
+pub fn shulker_floor_world() -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+        insert_chunks(w, -2, 2);
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let shulker = registry.default_state("minecraft:shulker_box").unwrap();
+        for x in -14..14 {
+            for z in -14..14 {
+                w.set(x, 0, z, stone).unwrap();
+                w.set(x, 1, z, shulker).unwrap();
+                use horizon_client_render::block_entity_anim::{Shulker, ShulkerStatus};
+                w.shulkers.insert([x, 1, z], Shulker { open_count: 1, status: ShulkerStatus::Opening, progress: 1.0, progress_old: 1.0 });
+            }
+        }
+    })
+    .expect("HORIZON_TEST_RESOURCES");
+    (w, p)
+}
+
 /// A world whose features lie on the seams between sections (x, z = -1 | 0 and 15 | 16, y = 15 | 16): plain cubes, shapes that reach out of their
 /// cell (fences, walls, pistons' heads), fixed shapes and hard blocks, so that boxes near a seam read cells of the neighbouring sections. Returns the
 /// world and the calls (boxes standing on the floor at y = 16, or inside the features).
