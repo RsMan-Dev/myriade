@@ -357,3 +357,39 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
     eprintln!("dolphin: best air in 600 ticks {best} (started at 120)");
     assert!(best > 250, "breath_air takes the dolphin up to breathe: best air {best}");
 }
+
+/// 300 goats on a walled slab (the 33 blocks of the farm test), 800 ticks: the share of the animals that left the slab (over the wall, or
+/// below the world) is the `Mob`'s. Law over 300 animals and 3 repeats per side.
+#[test]
+fn goats_leave_the_walled_slab_as_often_as_the_mob() {
+    if !on() {
+        return;
+    }
+    let side = 18_i32;
+    let half = 33_i32;
+    let (mut out_m, mut out_e, mut n) = (0usize, 0usize, 0usize);
+    for rep in 0..3_usize {
+        let mut r = MobRef::new(half, false);
+        let mut h = Herd::with_slab(half, false, false);
+        let mut ids = Vec::new();
+        let mut es = Vec::new();
+        for k in 0..300_usize {
+            let j = rep * 300 + k + 1;
+            let at = Vec3::new(-f64::from(side) * 3.0 / 2.0 + f64::from(k as i32 % side) * 3.0 + 0.5, 1.0, -f64::from(side) * 3.0 / 2.0 + f64::from(k as i32 / side) * 3.0 + 0.5);
+            ids.push(mob_add(&mut r, mob_kind("minecraft:goat"), at, j));
+            es.push(ecs_named(&mut h, "minecraft:goat", None, at.x, at.z, 30_000 + j as u64, u64::from(far_id(j))));
+        }
+        for _ in 0..800 {
+            r.step(None);
+            h.tick();
+        }
+        let hf = f64::from(half);
+        let outside = |p: Vec3| !(p.x.abs() < hf && p.z.abs() < hf && p.y > 0.99 && p.y < 1.2);
+        out_m += ids.iter().filter(|&&i| outside(r.mobs[i].position)).count();
+        out_e += es.iter().filter(|&&e| h.world.get::<Pos>(e).is_none_or(|p| outside(p.0))).count();
+        n += 300;
+    }
+    eprintln!("goats out of the slab after 800 ticks: Mob {out_m}/{n}, ecs {out_e}/{n}");
+    // Measured: Mob 0/900 (its goats never leap in 6 x 12000 ticks: `goat_rams`), ecs 83/900. Like the Mob: no more than its share plus 2 points.
+    assert!(out_e * 100 <= out_m * 100 + 2 * n, "ecs goats leave the slab {out_e}/{n} against the Mob's {out_m}/{n}");
+}
