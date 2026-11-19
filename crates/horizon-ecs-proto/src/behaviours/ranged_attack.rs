@@ -74,8 +74,11 @@ pub struct Shooter {
 pub struct Shooting;
 /// A shot was made (`Params.marks`): the llama's `flag2`, read by the variant of `hurt_by` of lot B.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = shot_marked)]
 pub struct DidShot;
+fn shot_marked(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    crate::behaviours::hurt_by::on_shot(&mut world, ctx.entity);
+}
 
 pub static MODULE: Module = Module {
     name: "ranged_attack",
