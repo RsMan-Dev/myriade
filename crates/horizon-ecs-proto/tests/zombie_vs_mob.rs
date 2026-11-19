@@ -10,6 +10,7 @@ use horizon_ecs_proto::{
     cow::*,
     goals::*,
     hostile::*,
+    targeting::*,
 };
 use std::sync::Arc;
 
@@ -196,7 +197,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64, player_at: impl Fn(i64) -> Vec3, die: i
         }
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
-            let has = h.world.get::<Aggro>(e).is_some();
+            let has = h.world.get::<Target>(e).is_some();
             if has && out.acquired[i].is_none() {
                 out.acquired[i] = Some(t);
             }
@@ -342,7 +343,7 @@ fn a_hurt_zombie_alerts_the_zombies_around_it() {
     for _ in 0..3 {
         h.tick();
     }
-    let hunting = |e: Entity| h.world.get::<Aggro>(e).is_some();
+    let hunting = |e: Entity| h.world.get::<Target>(e).is_some();
     assert!(near.iter().all(|&e| hunting(e)), "the zombies around it are alerted");
     assert!(!hunting(far), "the one 70 blocks away is not");
 }
@@ -372,8 +373,11 @@ fn trace_one_zombie() {
         if !acquired && m.ai.target.is_some() {
             acquired = true;
             h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: 1.0, z: pz, main: 0, off: 0 });
-            h.world.entity_mut(e).insert(Aggro::new(1, 30));
-            h.world.resource_mut::<Requests>().0.push(Req::Call(e, horizon_ecs_proto::hostile::hunt));
+            let slot = h.world.get::<GoalSet>(e).unwrap().slot_of(&horizon_ecs_proto::behaviours::nearest_target::MODULE).unwrap();
+            force_start(&mut h.world, e, slot);
+            let mut tg = Target::player(1, 30);
+            tg.slot = slot;
+            set_target(&mut h.world, e, tg);
             eprintln!("t={t}: target acquired by the Mob; imposed on the ECS");
         }
         h.tick();
@@ -457,7 +461,7 @@ fn the_alert_reaches_the_same_zombies_at_the_same_tick_as_a_mob_s() {
     for t in 1..=6 {
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
-            if h.world.get::<Aggro>(e).is_some() {
+            if h.world.get::<Target>(e).is_some() {
                 ecs_alerted[i].get_or_insert(t);
             }
         }
@@ -511,7 +515,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
             rf.step(Some(&view));
             h.tick();
             for i in 0..n {
-                let (ma, ea) = (rf.mobs[i].ai.target.is_some(), h.world.get::<Aggro>(ids[i]).is_some());
+                let (ma, ea) = (rf.mobs[i].ai.target.is_some(), h.world.get::<Target>(ids[i]).is_some());
                 if ma && m.acquired[i].is_none() { m.acquired[i] = Some(t); }
                 if !ma && m.acquired[i].is_some() && m.lost[i].is_none() { m.lost[i] = Some(t); }
                 if ea && e.acquired[i].is_none() { e.acquired[i] = Some(t); }

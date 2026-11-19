@@ -101,7 +101,7 @@ fn counter_for(name: &str) -> Option<CountFn> {
         "float_events" => filter::<With<InFluid>>(),
         "float_run" => filter::<With<Floating>>(),
         "look_control" => filter::<With<Looking>>(),
-        "aggro_run" => filter::<(With<Attack>, With<Aggro>)>(),
+        "target_continue" | "sight_eval" => filter::<With<crate::targeting::Target>>(),
         "melee_run" => filter::<With<Meleeing>>(),
         "sun_burn" => filter::<With<Exposed>>(),
         "pathfind" => filter::<With<NeedsPath>>(),

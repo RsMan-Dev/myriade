@@ -2,7 +2,7 @@
 //! one for the target selector (the same model). Nothing else ties a species to a goal. A module can appear several times
 //! (the pig's two tempt goals). Priorities are vanilla's `registerGoals`; the lists are in registration order.
 use crate::behaviours::*;
-use crate::behaviours::{breed, eat_block, float, follow_parent, look_at_player, melee, panic, random_look, stroll, target, tempt};
+use crate::behaviours::{breed, eat_block, float, follow_parent, hurt_by, look_at_player, melee, nearest_target, panic, random_look, stroll, tempt};
 
 /// What the selectors of an animal are built from: the target entries then the goal entries (same model; a target goal
 /// takes no flag), resolved once into the animal's `GoalSet`.
@@ -105,7 +105,14 @@ pub static CHICKEN: Def = Def {
 };
 /// `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player (priority 2).
 pub static ZOMBIE: Def = Def {
-    targets: &[Entry::new(&target::MODULE, 2, &target::Params::DEFAULT)],
+    // `Zombie.addBehaviourGoals`: hurt-by (alerting the others but the zombified piglin), the nearest player. Still to add
+    // when the species exist here (an instance for a kind with no species is never armed but still costs its entry): the
+    // villagers and the wandering trader (priority 3, not seen needed: `types: [minecraft:villager, minecraft:wandering_trader],
+    // must_see: false`), the iron golem (3), a baby turtle (5: `types: [minecraft:turtle], predicate: "baby"`).
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_except: &["minecraft:zombified_piglin"], ..hurt_by::Params::DEFAULT }),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),
+    ],
     goals: &[
         Entry::new(&melee::MODULE, 3, &melee::Params::DEFAULT),
         at(WANDER, 7),

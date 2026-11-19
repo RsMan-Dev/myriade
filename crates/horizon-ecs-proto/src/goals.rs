@@ -21,6 +21,7 @@ pub use crate::behaviours::{
 pub const MOVE: u8 = 1;
 pub const LOOK: u8 = 2;
 pub const JUMP: u8 = 4;
+pub const TARGET: u8 = 8;
 pub(crate) const WHEEL_MAX: u64 = 4095;
 /// The widest tempting range of any species (the index scan radius).
 pub(crate) const SCAN: f64 = 10.0;
@@ -42,7 +43,7 @@ pub struct GoalSet {
     nth: [u8; 16],
     running: u16,
     pending: u16,
-    lock: [Option<u8>; 3],
+    lock: [Option<u8>; 4],
     /// Some module wants to hear that a goal started or ended.
     watchers: bool,
 }
@@ -54,7 +55,7 @@ impl GoalSet {
             nth[i] = entries[..i].iter().filter(|o| std::ptr::eq(o.module, e.module)).count() as u8;
         }
         let watchers = entries.iter().any(|e| e.module.after_change.is_some());
-        Self { entries, nth, running: 0, pending: 0, lock: [None; 3], watchers }
+        Self { entries, nth, running: 0, pending: 0, lock: [None; 4], watchers }
     }
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -94,13 +95,13 @@ impl GoalSet {
     /// Every flag it needs is free or held by a goal of lower priority (a larger number).
     pub fn replaceable(&self, slot: u8) -> bool {
         let e = &self.entries[slot as usize];
-        (0..3).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
+        (0..4).filter(|b| e.module.flags >> b & 1 == 1).all(|b| self.lock[b].is_none_or(|j| e.priority < self.entries[j as usize].priority))
     }
     /// Starts `slot`, taking its flags; returns the mask of the goals it stopped.
     pub fn start(&mut self, slot: u8) -> u16 {
         let flags = self.entries[slot as usize].module.flags;
         let mut stopped = 0u16;
-        for b in 0..3 {
+        for b in 0..4 {
             if flags >> b & 1 == 1
                 && let Some(j) = self.lock[b]
             {
@@ -112,7 +113,7 @@ impl GoalSet {
                 self.stop(j);
             }
         }
-        for b in 0..3 {
+        for b in 0..4 {
             if flags >> b & 1 == 1 {
                 self.lock[b] = Some(slot);
             }
@@ -428,6 +429,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
+    world.insert_resource(crate::targeting::TargetWatchers::default());
     for m in TABLE {
         (m.resources)(world);
     }
@@ -436,6 +438,7 @@ pub fn insert_resources(world: &mut World) {
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
+    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
     for i in 0..TABLE.len() {
         let slot = GoalSlot(i as u8);
         s.configure_sets(slot.after(online_events).after(entered_events).before(arbitrate).before(pathfind));
@@ -608,6 +611,25 @@ fn timer_fired(w: &mut World, e: Entity, slot: u8) {
         start_goal(w, e, slot);
     }
 }
+/// Starts the goal of this slot without asking `can_use` and without its `start` (the caller does what `start` does): the
+/// goals that hold its flags are stopped. For a goal that is taken from outside (an alerted creature's target).
+pub fn force_start(w: &mut World, e: Entity, slot: u8) {
+    let stopped = {
+        let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
+        if slot as usize >= g.len() || g.running >> slot & 1 == 1 {
+            return;
+        }
+        g.start(slot)
+    };
+    for s in 0..16u8 {
+        if stopped >> s & 1 == 1
+            && let Some((sm, si)) = of(w, e, s)
+        {
+            (sm.stop)(w, e, si);
+        }
+    }
+    changed(w, e, Change::Started);
+}
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
@@ -692,7 +714,7 @@ pub fn counts(world: &mut World) -> Vec<(&'static str, usize)> {
     vec![
         ("following", n!(Following)),
         ("moving", n!(Moving)),
-        ("hunting", n!(crate::hostile::Aggro)),
+        ("hunting", n!(crate::targeting::Target)),
         ("meleeing", n!(crate::hostile::Meleeing)),
         ("panicking", n!(Panicking)),
         ("tempting", n!(Tempting)),
@@ -840,7 +862,7 @@ pub(crate) type Aim<'a> = (Entity, &'a Pos, &'a mut Look, Has<Looking>, Has<Foll
 mod tests {
     use super::*;
     use crate::behaviours::{self, breed, float, follow_parent, look_at_player, panic, random_look, stroll, tempt};
-    use crate::behaviours::{eat_block, melee, target};
+    use crate::behaviours::{eat_block, melee};
 
     /// The item that tempts the species of the process (`HORIZON_SPECIES`).
     fn item() -> u32 {
@@ -863,9 +885,6 @@ mod tests {
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;
-        }
-        if let Some(mut t) = h.world.get_mut::<target::TargetGoal>(e) {
-            t.armed = armed;
         }
         if let Some(mut g) = h.world.get_mut::<eat_block::Graze>(e) {
             g.armed = armed;
@@ -1163,7 +1182,8 @@ mod tests {
         // A species that hunts walks toward the player during the 150 ticks: a far one may glance once it is near.
         let hunts = species().goals.has(&melee::MODULE);
         assert!((far_hit == 0 || hunts) && rate > 0.62 && rate < 0.92, "near {near_hit}/{near}, far {far_hit}");
-        assert!(scan > 0.62 && scan < 0.92, "scan {scan}");
+        // A hunting species spends part of the 150 ticks in melee, which takes the flags of the look around.
+        assert!(scan > if hunts { 0.5 } else { 0.62 } && scan < 0.92, "scan {scan}");
         let turned = cows.iter().filter(|c| h.world.get::<Head>(c.0).is_some_and(|hd| !hd.yaw.is_nan())).count();
         assert!(turned > 50, "{turned} heads moved");
         eprintln!("glance {rate:.2}, scan {scan:.2}");

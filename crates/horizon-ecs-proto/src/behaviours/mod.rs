@@ -88,7 +88,8 @@ pub mod melee;
 pub mod panic;
 pub mod random_look;
 pub mod stroll;
-pub mod target;
+pub mod hurt_by;
+pub mod nearest_target;
 pub mod tempt;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
@@ -100,7 +101,8 @@ pub static TABLE: &[&Module] = &[
     &random_look::MODULE,
     &float::MODULE,
     &panic::MODULE,
-    &target::MODULE,
+    &hurt_by::MODULE,
+    &nearest_target::MODULE,
     &melee::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
