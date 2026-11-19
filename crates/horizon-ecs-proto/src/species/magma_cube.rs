@@ -1,4 +1,5 @@
-//! `MagmaCube`: the slime's bounds with a wait of four times as long, and armor by size (not ported). Same missing parts as the slime.
+//! `MagmaCube`: the slime's bounds with a wait of four times as long, and armor by size (not ported). Targets: the iron golem at 3
+//! (`cube.rs:47`, the same register as the slime). `attend : nearest_target hauteur |dy| <= 4` for the nearest player at 1 (`cube.rs:37-44`).
 use super::Def;
 use crate::behaviours::{cube_attack, float, nearest_target, Entry};
 use crate::locomotion::{hop, Medium};
