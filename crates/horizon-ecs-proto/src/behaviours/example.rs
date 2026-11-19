@@ -18,18 +18,13 @@ pub struct Sniff {
 pub static MODULE: Module = Module {
     name: "example",
     flags: 0,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
-    fired: always,
     can_use,
     start,
     stop,
-    systems: no_systems,
+    requires: &[Cap::Body],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Sniff { every: params::<Params>(p).every, done: 0 });

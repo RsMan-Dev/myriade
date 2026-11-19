@@ -27,11 +27,7 @@ pub struct Scanning {
 pub static MODULE: Module = Module {
     name: "random_look",
     flags: MOVE | LOOK,
-    ends_with_path: false,
     blocked: Some(blocked),
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
     fired,
@@ -39,6 +35,8 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
+    requires: &[Cap::Body],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Scan { period: params::<Params>(p).period, armed: false, slot: inst.slot });

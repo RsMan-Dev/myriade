@@ -23,4 +23,5 @@ pub static DEF: Def = Def {
         RANDOM_LOOK,
     ],
     changes: &[],
+    caps: None,
 };

@@ -1,6 +1,6 @@
 //! The goal modules. A behaviour is ONE file here that exports `pub static MODULE: Module` (its entry points and its
 //! flags) and its `Params` (typed, with a `DEFAULT`); the selector (`goals.rs`) knows no behaviour, and a species
-//! (`species.rs`) is only a list of `Entry { module, priority, params }`. Adding a behaviour: see LISEZMOI.md.
+//! (`species/<name>.rs`) is only a list of `Entry { module, priority, params }`. Adding a behaviour: see LISEZMOI.md.
 use crate::goals::GoalSlot;
 use bevy_ecs::{prelude::*, schedule::Schedule};
 use std::any::Any;
@@ -43,6 +43,60 @@ pub struct Module {
     pub stop: fn(&mut World, Entity, Inst),
     /// Its bevy systems (each filtered by the module's own marker) and the events that wake it, `.in_set(slot)`.
     pub systems: fn(&mut Schedule, GoalSlot),
+    /// The capabilities the module supposes of the entity it is on (what its state components and its systems read).
+    /// A species whose configuration has the module without one of them is a startup error (`species::registry`).
+    pub requires: &'static [Cap],
+    /// Optional, not called yet (the `Damaged` event of the reactions step): the entity took damage.
+    pub damaged: fn(&mut World, Entity, Inst, &Damaged),
+    /// Optional, not called yet (the interactions step): a player used an item on the entity; true = handled (the first
+    /// module that answers true is the only one).
+    pub interact: fn(&mut World, Entity, Inst, &Interaction) -> bool,
+}
+impl Module {
+    /// The module that does nothing: write `Module { name, flags, <your entry points>, ..Module::DEFAULT }`, so a field
+    /// added later never touches an existing module.
+    pub const DEFAULT: Module = Module {
+        name: "",
+        flags: 0,
+        ends_with_path: false,
+        blocked: None,
+        retry_on_end: false,
+        after_change: None,
+        resources: no_resources,
+        equip: no_equip,
+        arm: no_arm,
+        fired: always,
+        can_use: always,
+        start: no_inst,
+        stop: no_inst,
+        systems: no_systems,
+        requires: &[],
+        damaged: no_damaged,
+        interact: no_interact,
+    };
+}
+/// What an entity can be made of (the sections of its configuration): an entity has the capabilities its configuration
+/// declares and nothing else; no capability supposes another except what `Module::requires` states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Cap {
+    /// A physical body (position, box, gravity, contacts, fluids, index).
+    Body,
+    /// Life: health, damage, knockback, death, immunities.
+    Living,
+    Goals,
+    Targets,
+    /// Walking, paths, the move control.
+    Locomotion,
+}
+/// The damage an entity just took (the reactions step fills and sends it).
+pub struct Damaged {
+    pub amount: f32,
+    pub attacker: Option<Entity>,
+}
+/// A player's use of an item on an entity (the interactions step fills and sends it).
+pub struct Interaction {
+    pub player: u32,
+    pub item: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
@@ -70,6 +124,11 @@ pub fn no_equip(_: &mut World, _: Entity, _: Inst, _: &(dyn Any + Sync)) {}
 pub fn no_arm(_: &mut World, _: Entity, _: Inst) {}
 pub fn always(_: &mut World, _: Entity, _: Inst) -> bool {
     true
+}
+pub fn no_inst(_: &mut World, _: Entity, _: Inst) {}
+pub fn no_damaged(_: &mut World, _: Entity, _: Inst, _: &Damaged) {}
+pub fn no_interact(_: &mut World, _: Entity, _: Inst, _: &Interaction) -> bool {
+    false
 }
 pub fn no_systems(_: &mut Schedule, _: GoalSlot) {}
 pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {

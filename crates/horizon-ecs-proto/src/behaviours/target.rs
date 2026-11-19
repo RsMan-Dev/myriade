@@ -20,11 +20,6 @@ pub struct TargetGoal {
 pub static MODULE: Module = Module {
     name: "target",
     flags: 0,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
     fired,
@@ -32,6 +27,8 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
+    requires: &[Cap::Targets],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
     hostile::ensure_attack(w, e);

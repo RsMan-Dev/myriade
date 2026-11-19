@@ -6,7 +6,7 @@
 //!
 //! Extending (a mod, or the next species): `install(|b| ...)` before the first `registry()` call; see `Builder`.
 //! The framework assumes nothing about the entity: a `Def` with empty sections is a valid entity without goals.
-use crate::behaviours::{self, Entry, Module};
+use crate::behaviours::{self, Cap, Entry, Module};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -46,9 +46,16 @@ pub struct Def {
     pub targets: &'static [Entry],
     pub goals: &'static [Entry],
     pub changes: &'static [Change],
+    /// The capabilities of the entity (`None`: the reference's, or all of `Cap::ALL` at the root). A section the entity
+    /// has no capability for is not read; a module that requires a missing capability is a startup error.
+    pub caps: Option<&'static [Cap]>,
 }
+pub const ALL_CAPS: &[Cap] = &[Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[] };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None };
+    fn capabilities(&self) -> &'static [Cap] {
+        self.caps.or_else(|| self.reference.map(|r| r.capabilities())).unwrap_or(ALL_CAPS)
+    }
 }
 
 /// What the selectors of an animal are built from: the target entries then the goal entries (same model; a target goal
@@ -162,6 +169,14 @@ impl Builder {
             };
             let (list, targets) = &mut lists[i];
             apply(src, name, changes, list, targets, &self.modules)?;
+        }
+        for ((_, d), (list, _)) in self.defs.iter().zip(&lists) {
+            let caps = d.capabilities();
+            for e in list {
+                if let Some(c) = e.module.requires.iter().find(|c| !caps.contains(c)) {
+                    return Err(Error(format!("species `{}`: module `{}` requires the capability {c:?}, which the species does not have", d.name, e.module.name)));
+                }
+            }
         }
         for (r, (list, _)) in species.iter_mut().zip(lists) {
             r.config = Config { entries: Box::leak(list.into_boxed_slice()) };
@@ -298,6 +313,14 @@ mod tests {
         assert_eq!(c("minecraft:chicken").param::<panic::Params>(&panic::MODULE, 0).unwrap().speed, 1.4);
         assert_eq!(c("minecraft:sheep").param::<follow_parent::Params>(&follow_parent::MODULE, 0).unwrap().speed, 1.1);
         assert_eq!(c("minecraft:cow").param::<tempt::Params>(&tempt::MODULE, 0).unwrap().speed, 1.25);
+    }
+    #[test]
+    fn a_module_without_its_capability_is_a_startup_error() {
+        static NO_LOCOMOTION: Def = Def { name: "mod:post", reference: Some(&cow::DEF), caps: Some(&[Cap::Body, Cap::Living, Cap::Goals]), ..Def::EMPTY };
+        let mut b = Builder::new();
+        b.species(&NO_LOCOMOTION);
+        let e = b.freeze().err().expect("an error").to_string();
+        assert!(e.contains("mod:post") && e.contains("Locomotion"), "{e}");
     }
     #[test]
     fn an_unknown_species_and_a_bad_change_are_errors_that_name_their_source() {

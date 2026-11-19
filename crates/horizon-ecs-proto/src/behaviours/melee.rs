@@ -16,17 +16,14 @@ pub static MODULE: Module = Module {
     name: "melee",
     flags: MOVE | LOOK,
     ends_with_path: true,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
     fired,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Targets, Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     hostile::ensure_attack(w, e);
