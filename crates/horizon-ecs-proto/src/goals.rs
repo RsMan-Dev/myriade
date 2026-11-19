@@ -793,18 +793,18 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 /// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
 /// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
 /// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
-/// changes or the player moves; the radius is at most 64 blocks; players with id < 64.
-#[derive(Component, Clone, Copy, Debug)]
+/// changes or the player moves; the radius is at most 64 blocks; any player id (the ids inside are a sorted list).
+#[derive(Component, Clone, Debug)]
 pub struct PlayerWatch {
     pub radius: f32,
-    inside: u64,
+    inside: Vec<u32>,
 }
 impl PlayerWatch {
     pub const fn new(radius: f32) -> Self {
-        Self { radius, inside: 0 }
+        Self { radius, inside: Vec::new() }
     }
     pub fn is_inside(&self, player: u32) -> bool {
-        player < 64 && self.inside >> player & 1 == 1
+        self.inside.binary_search(&player).is_ok()
     }
 }
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
@@ -815,16 +815,14 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
         return;
     }
     let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
-        if id >= 64 {
-            return;
-        }
         let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
-        let was = w.inside >> id & 1 == 1;
+        let at = w.inside.binary_search(&id);
+        let was = at.is_ok();
         if now && !was {
-            w.inside |= 1 << id;
+            w.inside.insert(at.unwrap_err(), id);
             ev.player_entered.push((e, id));
         } else if !now && was {
-            w.inside &= !(1 << id);
+            w.inside.remove(at.unwrap());
             ev.player_left.push((e, id));
         }
     };
