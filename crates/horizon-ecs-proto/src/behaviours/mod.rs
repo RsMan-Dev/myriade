@@ -246,6 +246,9 @@ pub mod sit_when_ordered;
 pub mod neutral_anger;
 pub mod reset_universal_anger;
 pub mod panda_sit;
+pub mod follow_flock_leader;
+pub mod pufferfish_puff;
+pub mod raid_garden;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -302,4 +305,7 @@ pub static TABLE: &[&Module] = &[
     &follow_owner::MODULE,
     &owner_target::MODULE,
     &sit_when_ordered::MODULE,
+    &follow_flock_leader::MODULE,
+    &pufferfish_puff::MODULE,
+    &raid_garden::MODULE,
 ];
