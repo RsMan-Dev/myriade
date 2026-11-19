@@ -3505,7 +3505,8 @@ mod tests {
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
         // (A hen's glide cuts her sinking speed in water too; whether she drowns as a `Mob` hen does was not compared.)
-        if species().eye_height <= 1.4 && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
+        // (An amphibian or an aquatic animal does not drown, as in the `Mob`: `breathes_water`, the frog, the axolotl, the fish.)
+        if species().eye_height <= 1.4 && !species().breathes_water && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
         }
         assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
