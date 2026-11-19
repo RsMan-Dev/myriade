@@ -198,6 +198,10 @@ pub mod panda_roll;
 pub mod panda_sneeze;
 pub mod panda_state;
 pub mod tempt;
+pub mod fox_state;
+pub mod fox_faceplant;
+pub mod fox_stalk_prey;
+pub mod fox_pounce;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -220,4 +224,7 @@ pub static TABLE: &[&Module] = &[
     &panda_sneeze::MODULE,
     &panda_lie_on_back::MODULE,
     &panda_roll::MODULE,
+    &fox_faceplant::MODULE,
+    &fox_stalk_prey::MODULE,
+    &fox_pounce::MODULE,
 ];
