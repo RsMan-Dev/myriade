@@ -104,12 +104,12 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
+    use crate::cow::{species, spawn_species, Herd, Level, Pos};
     use crate::species::Config;
     use crate::targeting::{set_target, Eye, Who};
 
-    /// `SpiderAttackGoal.canContinue`: in light the goal gives up (here one chance in 1) and the target goes; without the option the same
-    /// attacker keeps its target. The light is read from the world at the attacker's eyes, not from the code under test.
+    /// `SpiderAttackGoal.canContinue`: in light the goal gives up (here one chance in 1) and the target goes; without the option, or at night,
+    /// the same attacker keeps its target. The light is set by the day flag of the world and read back at the attacker's eyes.
     #[test]
     fn the_goal_gives_up_in_light_only_with_the_option() {
         if crate::cow::skip_unless_walker("melee quit in light") {
@@ -117,32 +117,30 @@ mod tests {
         }
         static QUITS: Params = Params { quit_in_light: Some(1), follow_unseen: true, ..Params::DEFAULT };
         static KEEPS: Params = Params { follow_unseen: true, ..Params::DEFAULT };
-        for (p, option) in [(&KEEPS, false), (&QUITS, true)] {
-            let mut h = Herd::with_slab(60, true, false);
-            let table = h.world.resource::<SpeciesTable>().0.clone();
-            let mut sp = *table.iter().find(|s| s.name == "minecraft:cow").unwrap();
-            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
-            sp.goals = Config { entries };
-            let mut prey_sp = sp;
-            prey_sp.goals = Config { entries: &[] };
-            let attacker = spawn_species(&mut h.world, &sp, 0.5, 0.5, 61);
-            let prey = spawn_species(&mut h.world, &prey_sp, 4.5, 0.5, 62);
-            for e in [attacker, prey] {
-                h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-            }
-            for _ in 0..5 {
-                h.tick();
-            }
-            let (pos, eye) = (h.world.get::<Pos>(attacker).unwrap().0, h.world.get::<Eye>(attacker).unwrap().0);
-            let bright = h.world.resource::<Level>().mw.0.brightness(pos.x.floor() as i32, (pos.y + eye).floor() as i32, pos.z.floor() as i32) >= BRIGHT;
-            set_target(&mut h.world, attacker, crate::targeting::Target::new(Who::Entity(prey), 200, u8::MAX));
-            for _ in 0..30 {
-                h.tick();
-            }
-            let kept = h.world.get::<crate::targeting::Target>(attacker).is_some();
-            assert_eq!(kept, !(option && bright), "option {option}, bright {bright}: the target is kept");
-            if !bright {
-                eprintln!("note: the test world is dark here, the give-up branch was not exercised");
+        for day in [true, false] {
+            for (p, option) in [(&KEEPS, false), (&QUITS, true)] {
+                let mut h = Herd::with_slab(60, true, false);
+                h.set_daylight(day);
+                let mut sp = *species();
+                let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+                sp.goals = Config { entries };
+                let mut prey_sp = sp;
+                prey_sp.goals = Config { entries: &[] };
+                let attacker = spawn_species(&mut h.world, &sp, 0.5, 0.5, 61);
+                let prey = spawn_species(&mut h.world, &prey_sp, 4.5, 0.5, 62);
+                for _ in 0..5 {
+                    h.tick();
+                }
+                let (pos, eye) = (h.world.get::<Pos>(attacker).unwrap().0, h.world.get::<Eye>(attacker).unwrap().0);
+                let bright = h.world.resource::<Level>().mw.0.brightness(pos.x.floor() as i32, (pos.y + eye).floor() as i32, pos.z.floor() as i32) >= BRIGHT;
+                assert_eq!(bright, day, "the world's light is the one asked for");
+                set_target(&mut h.world, attacker, crate::targeting::Target::new(Who::Entity(prey), 200, u8::MAX));
+                h.world.resource_mut::<Requests>().0.push(Req::Start(attacker, 0));
+                for _ in 0..30 {
+                    h.tick();
+                }
+                let kept = h.world.get::<crate::targeting::Target>(attacker).is_some();
+                assert_eq!(kept, !(option && day), "day {day}, option {option}: the target is kept");
             }
         }
     }

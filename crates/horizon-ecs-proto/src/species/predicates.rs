@@ -129,3 +129,23 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
 ];
+
+#[cfg(test)]
+mod dark_tests {
+    use super::*;
+    use crate::cow::{species, spawn_species, Herd};
+
+    /// `dark_enough`: true at night, false by day, for the same creature in the same open world.
+    #[test]
+    fn dark_enough_follows_the_light_at_the_eyes() {
+        if crate::cow::skip_unless_walker("dark_enough") {
+            return;
+        }
+        let mut h = Herd::with_slab(20, false, false);
+        let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 1);
+        for day in [true, false] {
+            h.set_daylight(day);
+            assert_eq!(dark_enough(&h.world, e), !day, "day {day}");
+        }
+    }
+}

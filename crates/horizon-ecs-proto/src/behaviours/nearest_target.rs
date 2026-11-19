@@ -243,3 +243,40 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     }
     rearm(w, e, inst);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::species::Config;
+
+    /// `max_dy` (the slime's `|dy| <= 4`): the nearer candidate, too far in height, is skipped for the farther one in range; without the
+    /// limit (the witness) the nearer one is the pick.
+    #[test]
+    fn max_dy_skips_a_candidate_too_far_in_height() {
+        if crate::cow::skip_unless_walker("nearest max_dy") {
+            return;
+        }
+        let name = species().name;
+        let types: &'static [&'static str] = Box::leak(vec![name].into_boxed_slice());
+        for (max_dy, expect_near) in [(None, true), (Some(2.0), false)] {
+            let p: &'static Params = Box::leak(Box::new(Params { types, must_see: false, max_dy, range: Some(16.0), ..Params::DEFAULT }));
+            let mut h = Herd::with_slab(30, false, false);
+            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+            let mut sp = *species();
+            sp.goals = Config { entries };
+            let hunter = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
+            let mut quiet = sp;
+            quiet.goals = Config { entries: &[] };
+            let (near, far) = (spawn_species(&mut h.world, &quiet, 3.5, 0.5, 2), spawn_species(&mut h.world, &quiet, 8.5, 0.5, 3));
+            for _ in 0..3 {
+                h.tick();
+            }
+            let y = h.world.get::<Pos>(hunter).unwrap().0.y;
+            h.world.get_mut::<Pos>(near).unwrap().0.y = y + 3.0;
+            h.world.get_mut::<Pos>(far).unwrap().0.y = y + 1.0;
+            assert!(can_use(&mut h.world, hunter, Inst { slot: 0, nth: 0 }), "a candidate is in range");
+            let pick = state(&h.world, hunter, Inst { slot: 0, nth: 0 }).unwrap().pick;
+            assert_eq!(pick, Some(Who::Entity(if expect_near { near } else { far })), "max_dy {max_dy:?}");
+        }
+    }
+}
