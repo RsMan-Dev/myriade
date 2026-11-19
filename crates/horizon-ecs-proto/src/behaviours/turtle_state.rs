@@ -12,6 +12,8 @@ pub struct Turtle {
     pub going_home: bool,
     /// The spot of the current trip in water (`Turtle.travelPos`).
     pub travel: Option<[i32; 3]>,
+    /// `in_love` set to 600 by the laying of an egg (`TurtleLayEggGoal`); its countdown belongs to the breeding goal (not ported).
+    pub in_love: u64,
 }
 
 /// Gives the animal its state if it has none; its home is the block it stands in (`homePos` when it is set at spawn).
@@ -31,6 +33,12 @@ pub fn update(w: &mut World, e: Entity, f: impl FnOnce(&mut Turtle)) {
     if let Some(mut t) = w.get_mut::<Turtle>(e) {
         f(&mut t);
     }
+}
+
+/// The same test as `close_to_home`, for a state already read (a system that holds the turtle's query, not the world).
+pub fn is_near_home(t: &Turtle, p: [f64; 3], distance: f64) -> bool {
+    let d = [f64::from(t.home[0]) + 0.5 - p[0], f64::from(t.home[1]) + 0.5 - p[1], f64::from(t.home[2]) + 0.5 - p[2]];
+    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < distance * distance
 }
 
 /// `homePos.closerToCenterThan(position, distance)`: the centre of the home block is nearer than `distance`.

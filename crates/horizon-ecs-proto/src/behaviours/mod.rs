@@ -257,6 +257,9 @@ pub mod turtle_state;
 pub mod turtle_go_to_water;
 pub mod turtle_travel;
 pub mod turtle_stroll;
+pub mod turtle_lay_egg;
+pub mod turtle_go_home;
+pub mod snow_trail;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -321,4 +324,7 @@ pub static TABLE: &[&Module] = &[
     &turtle_go_to_water::MODULE,
     &turtle_travel::MODULE,
     &turtle_stroll::MODULE,
+    &turtle_lay_egg::MODULE,
+    &turtle_go_home::MODULE,
+    &snow_trail::MODULE,
 ];
