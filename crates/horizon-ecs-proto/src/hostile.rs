@@ -327,11 +327,11 @@ pub fn melee_run(
     clock: Res<Clock>,
     tg: targeting::Targets,
     mut dq: ResMut<DamageQueue>,
-    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>), With<Meleeing>>,
+    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>), With<Meleeing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects) in &mut q {
         let Some((g, i)) = g.and_then(|g| tg.info(g.who).map(|i| (g, i))) else {
             reqs.0.push(Req::End(e, a.melee_slot));
             continue;
@@ -367,7 +367,12 @@ pub fn melee_run(
                     let by = Who::Entity(e);
                     cmd.queue(move |w: &mut World| w.resource_mut::<PlayerState>().hurt(tick, id, amount, from, Some(by)));
                 }
-                Who::Entity(t) => dq.add_by_entity(t, a.damage, (pos.0.x, pos.0.z), e),
+                Who::Entity(t) => {
+                    dq.add_by_entity(t, a.damage, (pos.0.x, pos.0.z), e);
+                    if effects {
+                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, t));
+                    }
+                }
             }
         }
     }

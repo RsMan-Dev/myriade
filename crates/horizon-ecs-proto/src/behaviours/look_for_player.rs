@@ -190,6 +190,9 @@ fn stare_run(
             if stared(&level, &ps, p, feet, eye.0) {
                 if d < st.p.near_sqr {
                     st.asked_near += 1;
+                    cmd.queue(move |w: &mut World| {
+                        super::ender_teleport::random(w, e);
+                    });
                 }
                 st.teleport = 0;
             } else {
@@ -202,6 +205,10 @@ fn stare_run(
                     // DOUBT: the rule's `teleport_towards` may fail; the count is taken as done here.
                     st.asked_far += 1;
                     st.teleport = 0;
+                    let (at, eye_y) = (Vec3::new(p.x, p.y, p.z), p.eye());
+                    cmd.queue(move |w: &mut World| {
+                        super::ender_teleport::towards(w, e, at, eye_y);
+                    });
                 }
             }
         }

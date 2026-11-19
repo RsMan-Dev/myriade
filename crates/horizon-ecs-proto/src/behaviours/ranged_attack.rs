@@ -24,6 +24,9 @@ pub struct Params {
     pub start_down: f64,
     pub aim_down: f64,
     pub lift: f64,
+    /// A witch's throw: the potion is chosen by the target (`Witch.performRangedAttack`), the aim leads the target's motion, and the speed
+    /// is 0.45 within 2 blocks, 0.75 beyond.
+    pub witch: bool,
 }
 impl Params {
     /// Le golem de neige (`golem.rs:554-557`, `golem.rs:580`).
@@ -38,7 +41,10 @@ impl Params {
         start_down: 0.1,
         aim_down: 1.1,
         lift: 0.2,
+        witch: false,
     };
+    /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
+    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -158,7 +164,38 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let Some(i) = targeting::info(w, who) else { return };
     let (Some(pos), Some(eye)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Eye>(e).map(|x| x.0)) else { return };
     let start = Vec3::new(pos.x, pos.y + eye - p.start_down, pos.z);
-    let (xd, zd) = (i.pos.x - pos.x, i.pos.z - pos.z);
+    let motion = match who {
+        Who::Entity(t) if p.witch => w.get::<Vel>(t).map_or(Vec3::ZERO, |v| v.0),
+        _ => Vec3::ZERO,
+    };
+    let (xd, zd) = (i.pos.x + motion.x - pos.x, i.pos.z + motion.z - pos.z);
+    let (mut p, dist) = (p, (xd * xd + zd * zd).sqrt());
+    if p.witch {
+        let health = match who {
+            Who::Entity(t) => w.get::<Health>(t).map_or(20.0, |h| h.0),
+            Who::Player(_) => 20.0,
+        };
+        use crate::effects::{Brew, Kind};
+        let has = |w: &World, kind| matches!(who, Who::Entity(t) if crate::effects::has(w, t, kind));
+        let (slow, poison, weak) = (has(w, Kind::Slowness), has(w, Kind::Poison), has(w, Kind::Weakness));
+        static SLOW: [Brew; 1] = [Brew::Timed(Kind::Slowness, 0, 1800)];
+        static POISON: [Brew; 1] = [Brew::Timed(Kind::Poison, 0, 900)];
+        static WEAK: [Brew; 1] = [Brew::Timed(Kind::Weakness, 0, 1800)];
+        static HARM: [Brew; 1] = [Brew::Harm(0)];
+        // `Witch.performRangedAttack`: slowness from afar, poison on the healthy, weakness up close (a quarter of the time), else harming.
+        let brews: &'static [Brew] = if dist >= 8.0 && !slow {
+            &SLOW
+        } else if health >= 8.0 && !poison {
+            &POISON
+        } else if dist <= 3.0 && !weak && w.get_mut::<Rng>(e).unwrap().next_float() < 0.25 {
+            &WEAK
+        } else {
+            &HARM
+        };
+        p.flight.hit = crate::projectile::OnHit::Splash(brews);
+        p.shot_speed = if dist <= 2.0 { 0.45 } else { 0.75 };
+    }
+    let p = p;
     let yd = i.eye - p.aim_down;
     let yo = (xd * xd + zd * zd).sqrt() * p.lift;
     let dir = Vec3::new(xd, yd + yo - start.y, zd).normalize();

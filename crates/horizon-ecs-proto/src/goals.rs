@@ -566,6 +566,7 @@ pub fn insert_resources(world: &mut World) {
     crate::item::insert_resources(world);
     crate::orb::insert_resources(world);
     crate::poi::insert_resources(world);
+    crate::explosion::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
@@ -661,6 +662,8 @@ pub struct Events {
     pub target_lost: Ev,
     /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
     pub projectile_hit: Ev,
+    pub exploded: Ev<crate::projectile::Blast>,
+    pub effect_changed: Ev,
     /// A creature picked up an item from the ground (`item::pick_up`): the creature.
     pub picked_up: Ev,
     /// A rider took the seat of this mount / left it (`mount.rs`).
@@ -680,6 +683,8 @@ impl Events {
         self.target_acquired.swap();
         self.target_lost.swap();
         self.projectile_hit.swap();
+        self.exploded.swap();
+        self.effect_changed.swap();
         self.hurt.swap();
         self.hurt_by_entity.swap();
         self.entered_powder_snow.swap();

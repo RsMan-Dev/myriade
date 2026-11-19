@@ -157,6 +157,9 @@ mod tests {
 
     #[test]
     fn begs_when_a_player_near_holds_a_bone() {
+        if crate::cow::skip_unless_walker("begs_when_a_player_near_holds_a_bone") {
+            return;
+        }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 5.5, bone());
         for _ in 0..5 {
@@ -170,6 +173,9 @@ mod tests {
 
     #[test]
     fn does_not_beg_without_a_bone_and_begs_once_one_is_held() {
+        if crate::cow::skip_unless_walker("does_not_beg_without_a_bone_and_begs_once_one_is_held") {
+            return;
+        }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 5.5, 0);
         for _ in 0..30 {
@@ -203,6 +209,9 @@ mod tests {
 
     #[test]
     fn does_not_beg_from_beyond_eight_blocks() {
+        if crate::cow::skip_unless_walker("does_not_beg_from_beyond_eight_blocks") {
+            return;
+        }
         let (mut h, e) = herd_with(&ENTRIES);
         put_player(&mut h, 9.5, bone());
         for _ in 0..30 {

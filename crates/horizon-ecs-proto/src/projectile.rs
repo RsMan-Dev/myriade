@@ -26,11 +26,41 @@ pub struct Flight {
     pub size: f64,
     /// The order of the tick: an arrow moves, then slows and falls; a thrown item falls and slows, then moves.
     pub order: Order,
+    /// `AbstractHurtingProjectile.accelerationPower` (a fireball 0.1): the push along its velocity each tick, before the inertia.
+    pub accel: f64,
+    /// The age at which it is gone in the air (a fireball 1 200 ticks, the rest 6 000).
+    pub max_age: u32,
+    /// What it does where it ends, after the damage.
+    pub hit: OnHit,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Order {
     MoveThenDrag,
     DragThenMove,
+    /// `AbstractHurtingProjectile`: the acceleration and the inertia, then the move; no gravity.
+    Hurting,
+}
+/// What a projectile does where it ends (the damage is `Flight.damage`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OnHit {
+    Nothing,
+    /// The creature it hits burns for this many ticks (`igniteForSeconds`).
+    Ignite(u64),
+    /// An explosion of this power where it ends, on a creature or a block; with fire or not (`LargeFireball.onHit`). The frame has no
+    /// explosion yet: `Events.exploded` says it, the damage in the radius and the blocks are the explosion capability's.
+    Explode { power: i32, fire: bool },
+    /// A thrown potion breaks and splashes these brews (`effects::splash`).
+    Splash(&'static [crate::effects::Brew]),
+}
+/// An explosion asked by a projectile.
+#[derive(Clone, Copy, Debug)]
+pub struct Blast {
+    pub at: Vec3,
+    pub radius: f32,
+    pub fire: bool,
+    pub owner: Option<Who>,
+    /// The exploding creature itself (spared by its own blast).
+    pub source: Option<Entity>,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Damage {
@@ -42,8 +72,19 @@ pub enum Damage {
 /// `0.99F`, the way vanilla multiplies the velocity of a projectile.
 const INERTIA: f64 = 0.99_f32 as f64;
 impl Flight {
-    pub const ARROW: Flight = Flight { gravity: 0.05, inertia: INERTIA, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, order: Order::MoveThenDrag };
-    pub const SNOWBALL: Flight = Flight { gravity: 0.03, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::DragThenMove };
+    const BASE: Flight = Flight { gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing };
+    pub const ARROW: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
+    /// `SmallFireball`: 5 damage and fire for 5 seconds; no explosion.
+    pub const SMALL_FIREBALL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(5.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Ignite(100), ..Self::BASE };
+    /// `LargeFireball` of the explosion power `power`: 6 damage, then the explosion (with fire).
+    pub const fn large_fireball(power: i32) -> Flight {
+        Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(6.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power, fire: true }, ..Self::BASE }
+    }
+    /// `LlamaSpit`: 1 damage, gravity 0.06. Not done: it flies on through a creature, and goes at a block its box touches.
+    pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Fixed(1.0), ..Self::BASE };
+    /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
+    pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, ..Self::BASE };
+    pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
 }
 /// The projectile: whose it is, its age, whether it has left its owner's box, the ticks it spent stuck.
 #[derive(Component, Clone, Copy, Debug)]
@@ -118,6 +159,7 @@ pub fn fly(
     mut events: ResMut<Events>,
     mut stuck: ResMut<StuckIndex>,
     creatures: Query<&Bounds, With<Health>>,
+    dodgers: Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
     mut commands: Commands,
 ) {
@@ -131,6 +173,12 @@ pub fn fly(
         if f.order == Order::DragThenMove {
             // `ThrowableProjectile`: gravity, then inertia, before the move.
             vel.0 = Vec3::new(vel.0.x, vel.0.y - f.gravity, vel.0.z).scale(f.inertia);
+        }
+        if f.order == Order::Hurting {
+            // `AbstractHurtingProjectile.applyInertia`: the push along the velocity, then the inertia.
+            let v = vel.0;
+            let len = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt().max(1.0e-9);
+            vel.0 = Vec3::new((v.x + v.x / len * f.accel) * f.inertia, (v.y + v.y / len * f.accel) * f.inertia, (v.z + v.z / len * f.accel) * f.inertia);
         }
         let (original, movement) = (pos.0, vel.0);
         let end = Vec3::new(original.x + movement.x, original.y + movement.y, original.z + movement.z);
@@ -172,6 +220,16 @@ pub fn fly(
         if let Some((who, at, _)) = best {
             // The projectile ends at the creature; the damage is queued with the shooter as the source.
             pos.0 = at;
+            if let Who::Entity(t) = who
+                && dodgers.contains(t)
+            {
+                // `Enderman.hurtServer`: a projectile does it no harm and it tries 64 times to leave.
+                commands.queue(move |w: &mut World| {
+                    crate::behaviours::ender_teleport::repeatedly(w, t, 64);
+                });
+                commands.entity(e).despawn();
+                continue;
+            }
             let amount = match f.damage {
                 Damage::BySpeed(base) => (movement.length() * base).clamp(0.0, f64::from(i32::MAX)).ceil() as f32,
                 Damage::Fixed(a) => a,
@@ -185,6 +243,18 @@ pub fn fly(
             }
             if let Who::Entity(t) = who {
                 events.projectile_hit.push(t);
+                if let OnHit::Ignite(ticks) = f.hit {
+                    commands.queue(move |w: &mut World| crate::cow::set_on_fire(w, t, ticks));
+                }
+            }
+            if let OnHit::Explode { power, fire } = f.hit {
+                let blast = Blast { at, radius: power as f32, fire, owner: p.owner, source: None };
+                events.exploded.push(blast);
+                commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+            }
+            if let OnHit::Splash(brews) = f.hit {
+                let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
+                commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
             }
             commands.entity(e).despawn();
             continue;
@@ -202,6 +272,15 @@ pub fn fly(
                     stuck.at.entry(at).or_default().push(e);
                     commands.entity(e).remove::<Flying>().insert(Stuck { block: at });
                 } else {
+                    if let OnHit::Explode { power, fire } = f.hit {
+                        let blast = Blast { at: pos.0, radius: power as f32, fire, owner: p.owner, source: None };
+                        events.exploded.push(blast);
+                        commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                    }
+                    if let OnHit::Splash(brews) = f.hit {
+                        let (at, owner) = (pos.0, p.owner);
+                        commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, brews, owner));
+                    }
                     commands.entity(e).despawn();
                 }
                 continue;
@@ -213,7 +292,7 @@ pub fn fly(
             vel.0 = vel.0.scale(f.inertia);
             vel.0 = Vec3::new(vel.0.x, vel.0.y - f.gravity, vel.0.z);
         }
-        if pos.0.y < mw.world.below_world_y() || p.age >= 6000 && !f.sticks {
+        if pos.0.y < mw.world.below_world_y() || p.age >= f.max_age && !f.sticks {
             commands.entity(e).despawn();
         }
     }

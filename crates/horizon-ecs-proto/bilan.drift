@@ -111,3 +111,226 @@ kernel-collisions d0a22a9c3a (426dbeb571)|zone near ring (cow, 6, 10)|ecs|5063.4
 kernel-collisions d0a22a9c3a (426dbeb571)|zone far ring (cow, 6, 10)|ecs|-0.9|0.2
 kernel-collisions d0a22a9c3a (426dbeb571)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
 kernel-collisions d0a22a9c3a (426dbeb571)|schedule at rest (empty world, per tick)|ecs|124602|125418
+kernel 4a91e97207 delta (bee)|cow idle|ecs|2149|2144
+kernel 4a91e97207 delta (bee)|cow idle|ecs-eager|2505|2500
+kernel 4a91e97207 delta (bee)|cow active(1000 players, no solicitation)|ecs|9966|9956
+kernel 4a91e97207 delta (bee)|cow active(1000 players, no solicitation)|ecs-eager|9865|9856
+kernel 4a91e97207 delta (bee)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19808|19796
+kernel 4a91e97207 delta (bee)|pig idle|ecs|324|323
+kernel 4a91e97207 delta (bee)|pig idle|ecs-eager|503|502
+kernel 4a91e97207 delta (bee)|pig active(1000 players, no solicitation)|ecs|8415|8402
+kernel 4a91e97207 delta (bee)|pig active(1000 players, no solicitation)|ecs-eager|8277|8265
+kernel 4a91e97207 delta (bee)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17987|17971
+kernel 4a91e97207 delta (bee)|sheep idle|ecs|999|995
+kernel 4a91e97207 delta (bee)|sheep idle|ecs-eager|1176|1172
+kernel 4a91e97207 delta (bee)|sheep active(1000 players, no solicitation)|ecs|9578|9566
+kernel 4a91e97207 delta (bee)|sheep active(1000 players, no solicitation)|ecs-eager|9444|9433
+kernel 4a91e97207 delta (bee)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19183|19168
+kernel 4a91e97207 delta (bee)|chicken idle|ecs-eager|213|212
+kernel 4a91e97207 delta (bee)|chicken active(1000 players, no solicitation)|ecs|5422|5414
+kernel 4a91e97207 delta (bee)|chicken active(1000 players, no solicitation)|ecs-eager|5298|5290
+kernel 4a91e97207 delta (bee)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12237|12220
+kernel 4a91e97207 delta (bee)|zombie active(1000 players, no solicitation)|ecs|14004|13994
+kernel 4a91e97207 delta (bee)|zombie active(1000 players, no solicitation)|ecs-eager|13952|13940
+kernel 4a91e97207 delta (bee)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6386|6353
+kernel 4a91e97207 delta (bee)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9290|9253
+kernel 4a91e97207 delta (bee)|crowd 0.5 (cow, 2000, 0 player)|batch|13240|13238
+kernel 4a91e97207 delta (bee)|crowd 0.5 (cow, 2000, 0 player)|ordered|25641|25699
+kernel 4a91e97207 delta (bee)|crowd 0.8 (cow, 2000, 0 player)|batch|11948|11944
+kernel 4a91e97207 delta (bee)|crowd 0.8 (cow, 2000, 0 player)|ordered|19789|19843
+kernel 4a91e97207 delta (bee)|zone near ring (cow, 6, 10)|ecs|5077.4|5073.0
+kernel 4a91e97207 delta (bee)|zone far ring (cow, 6, 10)|ecs|0.2|1.2
+kernel 4a91e97207 delta (bee)|schedule at rest (empty world, per tick)|ecs|125418|125389
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow idle|ecs|2144|2142
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow idle|ecs-eager|2500|2499
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19796|19799
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|pig active(1000 players, no solicitation)|ecs|8402|8403
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17971|17969
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep idle|ecs|995|994
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep idle|ecs-eager|1172|1173
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep active(1000 players, no solicitation)|ecs|9566|9567
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19168|19173
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken idle|ecs|42|43
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken active(1000 players, no solicitation)|ecs|5414|5416
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken active(1000 players, no solicitation)|ecs-eager|5290|5292
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12220|12225
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie idle|ecs|185|184
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie idle|ecs-eager|399|398
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie active(1000 players, no solicitation)|ecs|13994|14001
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie active(1000 players, no solicitation)|ecs-eager|13940|13941
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6353|6349
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9253|9255
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.5 (cow, 2000, 0 player)|batch|13238|13235
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.5 (cow, 2000, 0 player)|ordered|25699|25698
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.8 (cow, 2000, 0 player)|batch|11944|11941
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|crowd 0.8 (cow, 2000, 0 player)|ordered|19843|19842
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone near ring (cow, 6, 10)|ecs|5073.0|5075.8
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone mid ring (cow, 6, 10)|ecs|34.0|34.1
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|zone far ring (cow, 6, 10)|ecs|1.2|-0.0
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+cow-goals 4193b902f9 (golem, POI, restrict_sun, projectiles)|schedule at rest (empty world, per tick)|ecs|125389|127137
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow idle|ecs-eager|2499|2500
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow active(1000 players, no solicitation)|ecs-eager|9856|9862
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19799|20175
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig idle|ecs-eager|502|505
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig active(1000 players, no solicitation)|ecs|8403|8402
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig active(1000 players, no solicitation)|ecs-eager|8265|8235
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17969|18182
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep idle|ecs|994|996
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep active(1000 players, no solicitation)|ecs|9567|9572
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep active(1000 players, no solicitation)|ecs-eager|9433|9432
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19173|20914
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken active(1000 players, no solicitation)|ecs|5416|5417
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken active(1000 players, no solicitation)|ecs-eager|5292|5296
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12225|12412
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie active(1000 players, no solicitation)|ecs|14001|14062
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie active(1000 players, no solicitation)|ecs-eager|13941|13946
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6349|6350
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9255|9252
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zone near ring (cow, 6, 10)|ecs|5075.8|5075.7
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|zone far ring (cow, 6, 10)|ecs|-0.0|1.6
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+bench protocol: loot preloaded, nothing dropped (cumuls re-based; no code change)|schedule at rest (empty world, per tick)|ecs|127137|127140
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow idle|ecs|2142|2143
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow active(1000 players, no solicitation)|ecs|9956|9957
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|cow active(1000 players, no solicitation)|ecs-eager|9862|9863
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig idle|ecs-eager|505|501
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig active(1000 players, no solicitation)|ecs|8402|8403
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|pig active(1000 players, no solicitation)|ecs-eager|8235|8236
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep idle|ecs|996|995
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep idle|ecs-eager|1173|1172
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep active(1000 players, no solicitation)|ecs-eager|9432|9433
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20914|20913
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken idle|ecs|43|42
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken idle|ecs-eager|212|213
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken active(1000 players, no solicitation)|ecs|5417|5418
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken active(1000 players, no solicitation)|ecs-eager|5296|5304
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12412|12413
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie active(1000 players, no solicitation)|ecs|14062|14064
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie active(1000 players, no solicitation)|ecs-eager|13946|13951
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6350|6358
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9252|9260
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|crowd 0.5 (cow, 2000, 0 player)|batch|13235|13236
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|crowd 0.8 (cow, 2000, 0 player)|batch|11941|11942
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone near ring (cow, 6, 10)|ecs|5075.7|5076.1
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|zone far ring (cow, 6, 10)|ecs|1.6|1.3
+lot5-a2 a14d4c1b56 (species: strider, parrot, enderman, skeleton, ghast, piglin)|schedule at rest (empty world, per tick)|ecs|127140|127134
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow idle|ecs|2143|2144
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow active(1000 players, no solicitation)|ecs|9957|9996
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20175|18723
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig idle|ecs-eager|501|502
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig active(1000 players, no solicitation)|ecs|8403|8430
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig active(1000 players, no solicitation)|ecs-eager|8236|8164
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18182|16360
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep active(1000 players, no solicitation)|ecs|9572|9577
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep active(1000 players, no solicitation)|ecs-eager|9433|9444
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20913|20322
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken idle|ecs-eager|213|211
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken active(1000 players, no solicitation)|ecs|5418|5420
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken active(1000 players, no solicitation)|ecs-eager|5304|5299
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12413|11590
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie idle|ecs|184|186
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie idle|ecs-eager|398|399
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie active(1000 players, no solicitation)|ecs|14064|14053
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie active(1000 players, no solicitation)|ecs-eager|13951|13956
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6358|6353
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9260|9188
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.5 (cow, 2000, 0 player)|batch|13236|13241
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.5 (cow, 2000, 0 player)|ordered|25698|25633
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.8 (cow, 2000, 0 player)|batch|11942|11950
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|crowd 0.8 (cow, 2000, 0 player)|ordered|19842|19807
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone near ring (cow, 6, 10)|ecs|5076.1|5079.1
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone far ring (cow, 6, 10)|ecs|1.3|-0.4
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|schedule at rest (empty world, per tick)|ecs|127134|127219
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow idle|ecs|2144|1059
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow idle|ecs-eager|2500|1290
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow active(1000 players, no solicitation)|ecs|9996|5627
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow active(1000 players, no solicitation)|ecs-eager|9863|5456
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18723|13983
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig idle|ecs|323|189
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig idle|ecs-eager|502|362
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig active(1000 players, no solicitation)|ecs|8430|5130
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig active(1000 players, no solicitation)|ecs-eager|8164|4866
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|16360|13242
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep idle|ecs|995|487
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep idle|ecs-eager|1172|671
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep active(1000 players, no solicitation)|ecs|9577|5476
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep active(1000 players, no solicitation)|ecs-eager|9444|5315
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20322|15765
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken idle|ecs|42|35
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken active(1000 players, no solicitation)|ecs|5420|3760
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken active(1000 players, no solicitation)|ecs-eager|5299|3644
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|11590|10013
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie idle|ecs|186|112
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie idle|ecs-eager|399|305
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie active(1000 players, no solicitation)|ecs|14053|11382
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie active(1000 players, no solicitation)|ecs-eager|13956|11287
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6353|5639
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9188|7180
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.5 (cow, 2000, 0 player)|batch|13241|6631
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.5 (cow, 2000, 0 player)|ordered|25633|19413
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.8 (cow, 2000, 0 player)|batch|11950|5754
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.8 (cow, 2000, 0 player)|ordered|19807|13690
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone near ring (cow, 6, 10)|ecs|5079.1|2957.9
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone mid ring (cow, 6, 10)|ecs|34.1|33.3
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone far ring (cow, 6, 10)|ecs|-0.4|1.2
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|schedule at rest (empty world, per tick)|ecs|127219|126741
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs|1059|1066
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs-eager|1290|1294
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs|5627|5636
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs-eager|5456|5462
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13983|13988
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs|189|193
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs-eager|362|363
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs|5130|5149
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs-eager|4866|4885
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13242|13263
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs|487|489
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs-eager|671|673
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs|5476|5482
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs-eager|5315|5322
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15765|15770
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken idle|ecs-eager|211|210
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs|3760|3766
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs-eager|3644|3651
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10013|10019
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie idle|ecs|112|113
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs|11382|11387
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs-eager|11287|11305
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5639|5646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7180|7179
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|batch|6631|6646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|ordered|19413|19436
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|batch|5754|5765
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|ordered|13690|13710
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone near ring (cow, 6, 10)|ecs|2957.9|2980.1
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone far ring (cow, 6, 10)|ecs|1.2|-0.2
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|schedule at rest (empty world, per tick)|ecs|126741|125462
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs|1066|1067
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow idle|ecs-eager|1294|1295
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs|5636|5646
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow active(1000 players, no solicitation)|ecs-eager|5462|5471
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13988|14012
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs|5149|5157
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig active(1000 players, no solicitation)|ecs-eager|4885|4892
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13263|13273
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep idle|ecs-eager|673|674
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs|5482|5490
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep active(1000 players, no solicitation)|ecs-eager|5322|5330
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15770|15793
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs|3766|3771
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken active(1000 players, no solicitation)|ecs-eager|3651|3656
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10019|10024
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs|11387|11395
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie active(1000 players, no solicitation)|ecs-eager|11305|11312
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5646|5645
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7179|7183
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|batch|6646|6750
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.5 (cow, 2000, 0 player)|ordered|19436|19432
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|batch|5765|5827
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|crowd 0.8 (cow, 2000, 0 player)|ordered|13710|13707
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone near ring (cow, 6, 10)|ecs|2980.1|2978.3
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone far ring (cow, 6, 10)|ecs|-0.2|-0.4
+lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|schedule at rest (empty world, per tick)|ecs|125462|127264

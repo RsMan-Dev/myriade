@@ -179,3 +179,26 @@ fn poi_changes(level: Res<Level>, changed: Res<ChangedBlocks>, mut reg: ResMut<P
         }
     }
 }
+
+impl PoiRegistry {
+    /// `occupied_pois_in_range`: the points within `radius` of `center` (a cube, as `getInRange`) that someone holds a ticket of.
+    pub fn occupied_in_range(&self, center: [i32; 3], radius: i32) -> Vec<[i32; 3]> {
+        let mut v: Vec<[i32; 3]> = self.points.iter().filter(|(p, poi)| poi.taken > 0 && (0..3).all(|i| (p[i] - center[i]).abs() <= radius)).map(|(p, _)| *p).collect();
+        v.sort_by_key(|p| ((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, p[1], p[2], p[0]));
+        v
+    }
+    /// The sections that hold a village point.
+    pub fn village_sections(&self) -> impl Iterator<Item = [i32; 3]> + '_ {
+        self.sections.keys().copied()
+    }
+    /// The sections of the village only the points with a ticket taken make (what the `Mob` reads from the villagers' memories).
+    pub fn held_sections(&self) -> Vec<[i32; 3]> {
+        let mut v: Vec<[i32; 3]> = Vec::new();
+        for (p, poi) in &self.points {
+            if poi.taken > 0 && is_village(poi.kind) && !v.contains(&section(*p)) {
+                v.push(section(*p));
+            }
+        }
+        v
+    }
+}

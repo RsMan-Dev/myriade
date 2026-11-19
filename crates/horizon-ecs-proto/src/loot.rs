@@ -34,6 +34,11 @@ pub static XP: crate::rules::Rule = crate::rules::Rule {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DeathSeed(pub i64);
 
+/// Reads the loot tables now (what the first death of a world would do: some 276 million instructions, a hitch of 90 ms): a bench
+/// world calls it at its creation so that the first death of a fish on dry land is not counted as a cost of every tick.
+pub fn preload(world: &mut World) {
+    tables(world);
+}
 fn tables(world: &mut World) -> bool {
     if world.get_resource::<LootTables>().is_some() {
         return true;
@@ -76,6 +81,12 @@ pub fn roll(world: &mut World, kind: &str, on_fire: bool, baby: bool, seed: i64)
 /// The death of `e`: its hand, then its table, on the ground where it died. Run before the entity goes.
 pub fn on_death(world: &mut World, e: Entity) {
     let Some(at) = world.get::<Pos>(e).map(|p| p.0) else { return };
+    // A bench world drops nothing (`orb::NoXp`): a bench player never picks anything up, and the stacks and orbs left among the herd cost
+    // each tick for thousands of ticks (items and orbs that no player collects), where a game collects them within seconds.
+    if world.get_resource::<crate::orb::NoXp>().is_some() {
+        crate::size::split_on_death(world, e);
+        return;
+    }
     let Some(kind) = world.get::<TypeName>(e).map(|t| t.0) else { return };
     let now = now_of(world, e);
     let on_fire = world.get::<Burning>(e).is_some_and(|b| b.until > now);

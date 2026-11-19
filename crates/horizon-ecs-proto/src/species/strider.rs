@@ -1,12 +1,24 @@
-//! `Strider`: walks on the ground and ON lava (the lava mode: its path map has lava as ground, the lava holds it up, it floats). The goals of
-//! the species (`StriderGoToLava`...) are not declared here: `go_to` moves it.
+//! `Strider` (`mobs/strider.rs:20-36`): walks on the ground and ON lava (the lava mode: its path map has lava as ground, the lava holds
+//! it up, it floats). Goals: panic, breed and tempt by warped fungus, going to the lava, follow its parent, stroll, look.
+//! Left out: `LookAtPlayer::species([Strider], 8)` (priority 9): `look_at_player` has no species option (DOUBT: look at the other striders).
+//! The stroll: the Mob's `Stroll::new` does not avoid water (fiche 07: RandomStroll), the default of `stroll` does (0.001): DOUBT, not decided here.
 use super::Def;
-use crate::behaviours::{Cap, Entry};
+use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, strider_go_to_lava, tempt, Cap, Entry};
 use crate::locomotion::{lava, walk, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:strider",
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),
+    goals: &[
+        Entry::new(&panic::MODULE, 1, &panic::Params { speed: 1.65, ..panic::Params::DEFAULT }),
+        Entry::new(&breed::MODULE, 2, &breed::Params { speed: 1.0, foods: &["minecraft:warped_fungus"], ..breed::Params::DEFAULT }),
+        Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.4, items: &["minecraft:warped_fungus", "minecraft:warped_fungus_on_a_stick"], ..tempt::Params::DEFAULT }),
+        Entry::new(&strider_go_to_lava::MODULE, 4, &strider_go_to_lava::Params::DEFAULT),
+        Entry::new(&follow_parent::MODULE, 5, &follow_parent::Params { speed: 1.0 }),
+        Entry::new(&stroll::MODULE, 7, &stroll::Params { interval: Some(60), ..stroll::Params::DEFAULT }),
+        Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
+    ],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion]),
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)), (Medium::Lava, Entry::new(&lava::MODULE, 0, &lava::Params::DEFAULT))],
     ..Def::EMPTY
 };

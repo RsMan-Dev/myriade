@@ -196,7 +196,9 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 }
 
 pub mod avoid_entity;
+pub mod breath_air;
 pub mod breed;
+pub mod swim_with_player;
 pub mod climb_on_powder_snow;
 pub mod do_nothing;
 pub mod silverfish_wake_up_friends;
@@ -252,6 +254,11 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod burst_shot;
+pub mod ender_teleport;
+pub mod charged_shot;
+pub mod restrict_sun;
+pub mod village_walk;
 pub mod run_around_like_crazy;
 pub mod owner_target;
 pub mod sit_when_ordered;
@@ -276,11 +283,19 @@ pub mod cat_relax_on_owner;
 pub mod cat_lie_on_block;
 pub mod cat_sit_on_block;
 pub mod ocelot_attack;
+pub mod cube_attack;
+pub mod move_towards_restriction;
+pub mod fox_stroll_village;
+pub mod try_find_water;
+pub mod drowned_go_to_beach;
+pub mod drowned_swim_up;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &tempt::MODULE,
     &breed::MODULE,
+    &breath_air::MODULE,
+    &swim_with_player::MODULE,
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,
@@ -348,6 +363,11 @@ pub static TABLE: &[&Module] = &[
     &flier_goals::PHANTOM_SWEEP_ATTACK,
     &flier_goals::PHANTOM_CIRCLE_AROUND_ANCHOR,
     &follow_owner::MODULE,
+    &village_walk::MODULE,
+    &restrict_sun::MODULE,
+    &burst_shot::MODULE,
+    &ender_teleport::MODULE,
+    &charged_shot::MODULE,
     &run_around_like_crazy::MODULE,
     &owner_target::MODULE,
     &sit_when_ordered::MODULE,
@@ -367,4 +387,11 @@ pub static TABLE: &[&Module] = &[
     &cat_lie_on_block::MODULE,
     &cat_sit_on_block::MODULE,
     &ocelot_attack::MODULE,
+    &cube_attack::MODULE,
+    &move_towards_restriction::MODULE,
+    &move_towards_restriction::MODULE_LOOK,
+    &fox_stroll_village::MODULE,
+    &try_find_water::MODULE,
+    &drowned_go_to_beach::MODULE,
+    &drowned_swim_up::MODULE,
 ];

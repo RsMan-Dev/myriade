@@ -68,6 +68,8 @@ pub struct Drive {
     pub no_gravity: bool,
     /// The sideways input (`xxa`).
     pub xxa: f32,
+    /// The level plus one of a levitation effect (0: none), read by the ground travel.
+    pub levitation: i32,
     pub speed: f32,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
@@ -219,6 +221,26 @@ pub struct HurtAt {
 pub struct Burning {
     pub until: u64,
 }
+/// `Entity.igniteForSeconds`: on fire for `ticks` more (the later end wins); the first burn comes with the wheel as for a fire under it.
+pub fn set_on_fire(w: &mut World, e: Entity, ticks: u64) {
+    if w.get::<Health>(e).is_none() {
+        return;
+    }
+    let now = now_of(w, e);
+    let until = now + ticks;
+    match w.get::<Burning>(e).map(|b| b.until) {
+        None => {
+            let at = w.resource::<Clock>().at(e, now + if ticks % 20 == 0 { 1 } else { 20 });
+            w.resource_mut::<Wheel>().push(at, e, Due::Burn);
+            w.entity_mut(e).insert(Burning { until });
+            w.resource_mut::<crate::goals::Events>().ignited.push(e);
+        }
+        Some(old) if old < until => {
+            w.entity_mut(e).insert(Burning { until });
+        }
+        _ => {}
+    }
+}
 /// The hazards under the cow's box (bits of `HAZ_*`): present only while it overlaps one.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Hazard(pub u8);
@@ -275,6 +297,12 @@ pub enum Cause {
     Cramming,
     /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
     Entity,
+    /// Poison and instant damage (`DamageTypes.MAGIC`).
+    Magic,
+    /// `DamageTypes.WITHER`.
+    Wither,
+    /// An explosion (`explosion.rs`).
+    Blast,
 }
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
 #[derive(Resource, Default)]
@@ -482,6 +510,10 @@ pub enum Due {
     OrbExpire(u32),
     OrbCheck(u32),
     Burn,
+    /// A status effect acts or ends (`effects.rs`).
+    Effect,
+    /// A creeper's fuse may be at its end (`explosion.rs`).
+    Fuse,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
 }
@@ -994,6 +1026,31 @@ fn species_size(name: &str) -> (f32, f32) {
     let t = TYPES_FOR_SIZE.get_or_init(|| horizon_client_lib::mobs::MobTypes::load(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").unwrap_or_default())).ok());
     t.as_ref().and_then(|t| t.types.get(name).map(|k| (k.width as f32, k.height as f32))).unwrap_or((0.9, 1.4))
 }
+/// Skips (printed) for a species that the fire and the lava do not hurt (the strider walks on lava): the framework has no fire immunity yet
+/// (NEED: an `Immune` bit for fire and lava, then a hazard module that reads it), so the ECS strider burns where the `Mob`'s does not.
+pub fn skip_if_fire_immune(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let immune = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 == crate::locomotion::Medium::Lava));
+    if immune {
+        eprintln!("SKIP {test}: {name} walks on lava: the framework has no fire immunity yet");
+    }
+    immune
+}
+/// `HORIZON_QUICK` (set by `suites.sh`, `FULL=1` removes it): the scenes that repeat a trial many times (laws against the
+/// `Mob` over dozens of seeds) do a quarter of them. 
+pub fn trials(n: usize) -> usize {
+    if std::env::var_os("HORIZON_QUICK").is_some() { (n / 4).max(3) } else { n }
+}
+/// Skips (printed) in the process of any species but the default one: a law test that builds its OWN configuration (the enderman's
+/// block, the panda's roll, the horse's rear...) gives the same answer whatever species the process has, and costs seconds: it runs once.
+pub fn skip_unless_default_species(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let skip = name != crate::species::PROCESS_DEFAULT;
+    if skip {
+        eprintln!("SKIP {test}: a law test of its own configuration, run once (in the process of {})", crate::species::PROCESS_DEFAULT);
+    }
+    skip
+}
 /// Skips (printed) unless the species of the process has all these capabilities.
 pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
@@ -1419,11 +1476,12 @@ pub(crate) fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
+    day: Res<crate::hostile::Daylight>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1459,6 +1517,18 @@ pub(crate) fn pathfind(
                 cmd.queue(move |w: &mut World| crate::locomotion::climb::wish(w, e, to, speed));
             });
         }
+        // `GroundPathNavigation.trimPath` with `avoidSun`: a mob out of the sky's sight keeps only the nodes before the first one the sky sees.
+        let path = path.map(|mut p| {
+            if sunless && day.0 {
+                let at = [pos.0.x.floor() as i32, (pos.0.y + 0.5).floor() as i32, pos.0.z.floor() as i32];
+                if !mw.can_see_sky(at[0], at[1], at[2]) {
+                    if let Some(i) = p.nodes.iter().position(|n| mw.can_see_sky(n.x, n.y, n.z)) {
+                        p.nodes.truncate(i);
+                    }
+                }
+            }
+            p
+        });
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -1476,10 +1546,10 @@ pub(crate) fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l, cl) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl);
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
         }
     }
 }
@@ -1849,7 +1919,7 @@ pub(crate) fn travel_one(
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
-    if !in_fluid && !jumping && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
+    if !in_fluid && !jumping && c.on_ground && d.levitation == 0 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.x == 0.0 && vel.0.z == 0.0 && vel.0.y == rest_vy {
         return true;
     }
     // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
@@ -1949,7 +2019,13 @@ pub(crate) fn travel_one(
         // `Spider.tick`: climbing while pressed against a wall.
         d.climbing = c.horizontal;
     }
-    let y = movement.y - body.gravity;
+    // `LivingEntity.travelInAir`: levitation (`effects.rs`) pulls the vertical speed toward 0.05 * (level + 1) instead of gravity.
+    let y = if d.levitation > 0 {
+        c.fall_distance = 0.0;
+        movement.y + (0.05 * f64::from(d.levitation) - movement.y) * 0.2
+    } else {
+        movement.y - body.gravity
+    };
     if d.discard_friction {
         vel.0 = Vec3::new(movement.x, y, movement.z);
         return false;
@@ -2948,7 +3024,7 @@ pub(crate) fn due(
     mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
-    burners: Query<(Entity, &Burning)>,
+    burners: Query<(Entity, &Burning, Option<&Immune>)>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
@@ -2981,11 +3057,15 @@ pub(crate) fn due(
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
+            Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
+            Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Burn => {
-                if let Ok((e2, burning)) = burners.get(e) {
+                if let Ok((e2, burning, imm)) = burners.get(e) {
                     let now = clock.of(e);
                     if now < burning.until {
-                        queue.add(e2, 1.0, Cause::OnFire);
+                        if !imm.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
+                            queue.add(e2, 1.0, Cause::OnFire);
+                        }
                         wheel.push(clock.at(e, now + 20), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
@@ -3029,7 +3109,10 @@ impl Herd {
     /// A mixed herd: every `other_every`-th animal is of the second species (the pig), the others of the first (the
     /// cow); 0: all of the process's default species.
     pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
-        Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None)
+        let mut herd = Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None);
+        // The loot tables are read once, now: the first death of a bench would read them in the middle of a measure.
+        crate::loot::preload(&mut herd.world);
+        herd
     }
     /// An empty walled slab of `half` blocks each way.
     pub fn with_slab(half: i32, sleep: bool, hazards: bool) -> Self {

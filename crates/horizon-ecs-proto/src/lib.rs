@@ -6,6 +6,8 @@ pub mod bench_support;
 pub mod blocks;
 pub mod brain;
 pub mod cow;
+pub mod effects;
+pub mod explosion;
 pub mod farm;
 pub mod flat;
 pub mod goals;
