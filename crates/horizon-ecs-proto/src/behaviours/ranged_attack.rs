@@ -184,6 +184,9 @@ fn shoot_run(
 /// `snowball_attack` : le départ sous les yeux, la visée à la hauteur des yeux de la cible moins 1,1 et 0,2 par bloc
 /// horizontal, puis l'écart triangulaire de `Projectile.shoot`.
 fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
+    if w.get::<super::drink_potion::Drinking>(e).is_some() {
+        return;
+    }
     let Some(i) = targeting::info(w, who) else { return };
     let (Some(pos), Some(eye)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Eye>(e).map(|x| x.0)) else { return };
     let start = if p.front > 0.0 {

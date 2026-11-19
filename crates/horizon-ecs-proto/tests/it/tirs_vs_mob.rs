@@ -229,6 +229,41 @@ fn the_drowned_throws_its_trident_as_a_mob_does() {
 #[test]
 fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
     if !is("minecraft:blaze") {
+/// The witch underwater drinks water breathing: `Drinking` lasts 32 ticks, the speed is 0.25 lower meanwhile, the effect comes at the end.
+/// The draws differ between the `Mob` and the ECS (own seeds): the rules are checked, not the instants.
+#[test]
+fn a_witch_in_water_drinks_water_breathing() {
+    if !is("minecraft:witch") {
+        return;
+    }
+    let mut s = scene(Vec3::new(0.5, 2.0, 0.5), Vec3::new(30.5, 2.0, 0.5), None, true);
+    let view = player_view(Vec3::new(30.5, 2.0, 0.5), None);
+    let base = s.h.world.get::<Body>(s.ecs).unwrap().speed;
+    let (mut len, mut seen_len) = (0, None);
+    for _ in 0..600 {
+        s.step(&view);
+        match s.h.world.get::<drink_potion::Drinking>(s.ecs).copied() {
+            Some(d) => {
+                assert_eq!(d.potion, drink_potion::Potion::WaterBreathing);
+                assert!((s.h.world.get::<Body>(s.ecs).unwrap().speed - (base - 0.25).max(0.0)).abs() < 1e-9);
+                len += 1;
+            }
+            None if len > 0 => {
+                seen_len = Some(len);
+                break;
+            }
+            None => {}
+        }
+    }
+    assert_eq!(seen_len, Some(33), "it drinks for 32 ticks (left counts 32..=0)");
+    assert!(horizon_ecs_proto::effects::has(&s.h.world, s.ecs, horizon_ecs_proto::effects::Kind::WaterBreathing));
+    assert_eq!(s.h.world.get::<Body>(s.ecs).unwrap().speed, base);
+}
+
+/// A drinking witch throws nothing (`isDrinkingPotion`), and throws again afterwards.
+#[test]
+fn a_drinking_witch_does_not_throw() {
+    if !is("minecraft:witch") {
         return;
     }
     let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(8.5, 1.0, 0.5), None, false);
@@ -261,4 +296,9 @@ fn the_blaze_strikes_in_melee_under_two_blocks() {
     assert!(hits.len() >= 3, "{hits:?}");
     assert!(hits.windows(2).all(|w| w[1].0 - w[0].0 == 20), "every 20 ticks: {hits:?}");
     assert!(hits.iter().all(|h| (h.1 - burst_shot::Params::BLAZE.melee_damage).abs() < 1e-3));
+    let saved_speed = s.h.world.get::<Body>(s.ecs).unwrap().speed;
+    s.h.world.entity_mut(s.ecs).insert(drink_potion::Drinking { potion: drink_potion::Potion::Healing, left: 150, saved_speed });
+    let v = run(&mut s, &view, 160);
+    let e = at(&v, |t| t.ecs_shot > 0);
+    assert!(e.iter().all(|t| *t > 150), "no throw while drinking: {e:?}");
 }
