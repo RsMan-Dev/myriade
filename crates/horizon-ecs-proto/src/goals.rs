@@ -1065,7 +1065,8 @@ mod tests {
         assert!(started <= 4 && ended - started > 5, "panic from {started} to {ended}");
         assert!(dist(from, at(&h, e)) < 25.0);
         // Moving: modifier 2 gives 2 x 2 the pull of modifier 1 (`setSpeed` is both the speed and the input).
-        let fast = steps.iter().cloned().fold(0.0, f64::max);
+        // The recoil of the blow (0.4 of impulse, fading in about ten ticks) is not the walk: the walk is read after it.
+        let fast = steps.iter().skip(12).cloned().fold(0.0, f64::max);
         let slow = stroll_steps.iter().cloned().fold(0.0, f64::max);
         let want = panic_speed().powi(2);
         assert!(fast / slow > want * 0.75 && fast / slow < want * 1.15, "{fast} / {slow}, expected about {want}");

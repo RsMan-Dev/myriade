@@ -600,6 +600,20 @@ pub struct Config {
     pub push_form: u8,
     pub push_k: f64,
 }
+/// `getWalkTargetValue` of the template `Mob`, as data (the species the prototype ports; the others read zero).
+fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::spots::WalkValue {
+    use crate::spots::WalkValue as W;
+    use horizon_client_lib::mobs::Species as S;
+    match mob.species() {
+        S::Mooshroom => W::Mooshroom,
+        S::Bee => W::Bee,
+        S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
+        S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
+        _ if mob.hostile() => W::Monster,
+        _ if kind.flags.animal => W::Animal,
+        _ => W::Zero,
+    }
+}
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -638,6 +652,8 @@ pub struct Species {
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
     pub burns_in_day: bool,
+    /// What the species prefers to walk to (`getWalkTargetValue`).
+    pub walk: crate::spots::WalkValue,
     /// The capabilities of the configuration (its sections): the entity is made of these only.
     pub caps: &'static [crate::behaviours::Cap],
 }
@@ -772,6 +788,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
+            walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
         });
         if name == chosen {
@@ -870,6 +887,7 @@ pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
         MoveTo::default(),
         Nav::default(),
         Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        sp.walk,
         NavParams {
             malus: sp.malus,
             can_float: sp.can_float,
@@ -987,24 +1005,24 @@ fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &m
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
 /// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Returns whether a spot was picked.
-pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
+pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, nav: &NavParams, walk: crate::spots::WalkValue, in_water: bool) -> bool {
+    use crate::spots::{spotter, Pick};
     let (h, v) = (s.horizontal_range, s.vertical_range);
-    let lim = level.half - 2;
-    for _ in 0..10 {
-        let dx = r.next_int(2 * h + 1) - h;
-        let dy = r.next_int(2 * v + 1) - v;
-        let dz = r.next_int(2 * h + 1) - h;
-        let x = (pos.0.x + f64::from(dx)).floor() as i32;
-        let z = (pos.0.z + f64::from(dz)).floor() as i32;
-        // A spot in the air has nothing under it; one in the stone is lifted out of it onto the slab.
-        if dy <= 0 && x.abs() < lim && z.abs() < lim {
-            s.walking = true;
-            s.tx = f64::from(x) + 0.5;
-            s.tz = f64::from(z) + 0.5;
-            return true;
-        }
-    }
-    false
+    let mut sp = spotter(level, [pos.0.x, pos.0.y, pos.0.z], nav, walk, r);
+    // `WaterAvoidingRandomStrollGoal.getPosition`: in water a land spot first, else a land spot, a plain one 1 time in 1000.
+    let picked = if in_water {
+        sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
+    } else if sp.rng.next_float() >= 0.001 {
+        sp.pick(Pick::Land { h, v })
+    } else {
+        sp.pick(Pick::Default { h, v })
+    };
+    let Some(p) = picked else { return false };
+    s.walking = true;
+    s.tx = p[0];
+    s.tz = p[2];
+    s.ty = p[1].floor() as i32;
+    true
 }
 
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of

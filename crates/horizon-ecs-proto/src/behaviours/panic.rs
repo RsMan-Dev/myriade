@@ -101,26 +101,10 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         pick(w, spot);
         return true;
     }
-    let lim = w.resource::<Level>().half - 2;
-    // DefaultRandomPos: 10 tries; on the slab only the standing level is a stable destination.
-    let tries: Vec<(i32, i32, i32)> = with_rng(w, e, |r| {
-        (0..10)
-            .map(|_| {
-                let (dx, dy, dz) = (r.next_int(2 * p.h + 1) - p.h, r.next_int(2 * p.v + 1) - p.v, r.next_int(2 * p.h + 1) - p.h);
-                ((pos.x + f64::from(dx)).floor() as i32, dy, (pos.z + f64::from(dz)).floor() as i32)
-            })
-            .collect()
-    });
-    // `DefaultRandomPos.isValid`: a path type of malus 0 only (no cactus, fire, lava, water, powder snow).
-    let hazards = w.get_resource::<Hazards>();
-    let spot = tries.into_iter().find_map(|(x, dy, z)| {
-        let at = box_at(Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5), 0.2, 0.2);
-        let safe = hazards.is_none_or(|h| h.of_box(&at) == 0);
-        (dy == 0 && x.abs() < lim && z.abs() < lim && safe).then(|| (f64::from(x) + 0.5, f64::from(z) + 0.5))
-    });
-    match spot {
-        Some((x, z)) => {
-            pick(w, (x, 1, z));
+    // `DefaultRandomPos.getPos(mob, h, v)`: the best of ten by the species' walk value (`spots.rs`).
+    match crate::spots::pick_for(w, e, crate::spots::Pick::Default { h: p.h, v: p.v }) {
+        Some([x, y, z]) => {
+            pick(w, (x, y.floor() as i32, z));
             true
         }
         None => {
