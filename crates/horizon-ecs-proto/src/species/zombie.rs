@@ -1,5 +1,6 @@
 //! `Zombie.registerGoals`: melee 3, stroll 7, look 8, 8; the target selector's nearest player (priority 2).
 use super::Def;
+use crate::rules::RuleEntry;
 use crate::behaviours::{hurt_by, look_at_player, melee, nearest_target, random_look, stroll, Entry};
 
 pub static DEF: Def = Def {
@@ -20,5 +21,6 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
     changes: &[],
+    rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &())],
     caps: None,
 };

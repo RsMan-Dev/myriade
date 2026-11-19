@@ -13,6 +13,7 @@ pub mod kernel_lab;
 pub mod move_to_block;
 pub mod profile;
 pub mod projectile;
+pub mod rules;
 pub mod spots;
 pub mod species;
 pub mod targeting;

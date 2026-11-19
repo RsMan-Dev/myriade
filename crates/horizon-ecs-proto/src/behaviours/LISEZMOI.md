@@ -141,3 +141,11 @@ Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contr
 - Occupation : `goals::occupy(w, e, OCC_*)` / `release` / `is_occupied(w, e, masque)` (`OCC_GRAZING`, `MOUNTED`, `SITTING`, `REARING`, `SLEEPING`, `ROLLED`) : le module qui immobilise pose son bit (le broutage le fait), les buts consultent sans connaître ce module.
 - Équipement : `goals::equipped(w, e, Slot::Head)` rend l'objet (0 si vide ou si l'entité n'a pas de composant `Equipment`).
 - Hasard imposé en 3D : `Forced::impose_spot(e, slot, [x, y, z])` et, dans le module, `Forced::take_spot(e, slot, y_par_défaut)`.
+
+## Règles, réactions, interactions, tête (conformité : aucun nom d'espèce dans le cadre)
+
+- RÈGLES (hors buts) : `rules::Rule { name, equip, attrs, interact }` + `RuleEntry::new(&RULE, &params)` dans la section `rules` de `Def` (héritée du gabarit, la première d'abord). Les règles de la base : `farm::WOOL`, `farm::LAY_EGG` (`EggDef`), `farm::WING_FLAP` (`WingParams` : glissade et immunité à la chute), `hostile::SUN_BURN`. `equip` pose l'état une fois ; `attrs` donne les attributs du corps lus quand les paquets de composants sont faits (`Body.fall_factor`, `Immune`) ; `interact` répond à un objet de joueur (la laine : cisailles). `FarmDef`, `farm_def(nom)` et `burns_in_day` n'existent plus.
+- RÉACTIONS : le dégât appelle le point d'entrée `damaged(w, e, inst, &Damaged)` de chaque module du sélecteur (`goals::dispatch_damaged`) : `breed` finit l'amour, `stroll` remet `noActionTime` à zéro. Le cadre ne sait plus ce qu'elles font. Ordre inchangé : dégât, réactions (au point de synchronisation), recul, physique.
+- INTERACTIONS : `goals::interact(w, e, &Interaction)` : le premier module qui répond vrai gagne (`breed` : les aliments `Params.foods` mettent en amour), puis les règles (cisailles). 
+- TÊTE : `Cap::Head` (`Look`, `Head`) est une capacité à part ; tout but qui regarde ou vise la déclare dans `requires`.
+- GARDE-FOU : `tests/no_species_names.rs` : aucun nom d'espèce (`"minecraft:..."` de `species::names()`) dans `src/` hors `species/`, `bin/` et les modules `#[cfg(test)]` ; la tolérance `ALLOWANCE` est vide.

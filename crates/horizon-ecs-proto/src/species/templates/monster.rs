@@ -13,5 +13,6 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],
     changes: &[],
+    rules: &[],
     caps: None,
 };

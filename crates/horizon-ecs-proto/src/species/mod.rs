@@ -20,6 +20,8 @@ pub mod templates;
 pub mod zombie;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
+/// The species a process builds its level for when `HORIZON_SPECIES` is not set.
+pub const PROCESS_DEFAULT: &str = "minecraft:cow";
 pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,15 +50,22 @@ pub struct Def {
     pub targets: &'static [Entry],
     pub goals: &'static [Entry],
     pub changes: &'static [Change],
+    /// The rules (not goals) of the species: `rules.rs`. With a `reference`, its rules come first.
+    pub rules: &'static [crate::rules::RuleEntry],
     /// The capabilities of the entity (`None`: the reference's, or all of `Cap::ALL` at the root). A section the entity
     /// has no capability for is not read; a module that requires a missing capability is a startup error.
     pub caps: Option<&'static [Cap]>,
 }
-pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion];
+pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], caps: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None };
+    fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
+        let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
+        v.extend_from_slice(self.rules);
+        v
+    }
     fn capabilities(&self) -> &'static [Cap] {
         self.caps.or_else(|| self.reference.map(|r| r.capabilities())).unwrap_or(ALL_CAPS)
     }
@@ -83,6 +92,7 @@ impl Config {
 pub struct Resolved {
     pub name: &'static str,
     pub config: Config,
+    pub rules: &'static [crate::rules::RuleEntry],
     pub caps: &'static [Cap],
 }
 
@@ -192,7 +202,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities() });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities() });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {

@@ -8,6 +8,7 @@ pub static DEF: Def = Def {
     reference: Some(&farm_animal::DEF),
     changes: &[
         Change::Set { module: &panic::MODULE, nth: 0, params: &panic::Params { speed: 1.25, ..panic::Params::DEFAULT } },
+        Change::Set { module: &breed::MODULE, nth: 0, params: &breed::Params { foods: &["minecraft:carrot", "minecraft:potato", "minecraft:beetroot"], ..breed::Params::DEFAULT } },
         Change::Priority { module: &breed::MODULE, nth: 0, priority: 3 },
         Change::Set { module: &tempt::MODULE, nth: 0, params: &tempt::Params { speed: 1.2, items: &["minecraft:carrot_on_a_stick"], ..tempt::Params::DEFAULT } },
         Change::Priority { module: &tempt::MODULE, nth: 0, priority: 4 },

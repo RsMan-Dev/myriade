@@ -28,7 +28,7 @@ for sp in 0.5 0.8; do
 done
 # The three rings of the simulated chunks (cow, spacing 6, view = simulation = 10): instructions per creature and per tick, the
 # marginal cost of the creature (ECS) and of the mob (the Mob's pass), near (< 30 blocks), mid (in the zone, > 36 blocks), far.
-unset HUNT
+unset HUNT WARM
 export HORIZON_SPECIES=minecraft:cow
 zr=$("$D/zone_bench" rings 6 10 2>/dev/null | awk '/--- zone on/{on=1} on && /^(near|mid|far)/{ for(i=1;i<=NF;i++) if ($i ~ /^marginal\/creature\/tick=/) { v=$i; sub(/.*=/,"",v); if (v=="") v=$(i+1); print v } }')
 mn=$("$D/mob_zone_bench" rings 6 10 2>/dev/null | sed -n 's/.*per mob: near *\([0-9]*\).*rest-of-zone *\([0-9]*\).*/\1 \2/p;')

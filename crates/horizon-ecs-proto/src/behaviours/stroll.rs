@@ -28,9 +28,30 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
+    damaged,
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
+/// `ai::after_hurt`: `noActionTime = 0`: the animal is active for 100 more ticks and its stroll attempt, if none is armed, is armed
+/// (the wait is drawn from a stream of its own: the animal's random belongs to its goals, which the hit must not shift).
+fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
+    let now = crate::cow::now_of(w, e);
+    let Some(uid) = w.get::<Uid>(e).map(|u| u.0) else { return };
+    let Some(mut a) = w.get_mut::<ActiveUntil>(e) else { return };
+    if a.0 == u64::MAX {
+        return;
+    }
+    a.0 = a.0.max(now + 100);
+    let Some(mut s) = w.get::<Stroll>(e).copied() else { return };
+    if !s.scheduled && !s.walking {
+        let mut own = Rng((uid << 32 ^ now ^ 0x9e37_79b9_7f4a_7c15) | 1);
+        w.resource_scope(|w: &mut World, mut wheel: Mut<Wheel>| {
+            let clock = w.resource::<Clock>();
+            crate::cow::arm_stroll(&mut wheel, clock, e, &mut s, &mut own);
+        });
+        *w.get_mut::<Stroll>(e).unwrap() = s;
+    }
+}
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(StrollGoal { speed: params::<Params>(p).speed });
 }

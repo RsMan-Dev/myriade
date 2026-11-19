@@ -24,7 +24,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
-    requires: &[Cap::Targets, Cap::Locomotion],
+    requires: &[Cap::Targets, Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
 /// The target service tells the melee goal when its animal gets a target: the first check is armed on the grid.

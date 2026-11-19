@@ -148,6 +148,7 @@ pub const WHEAT_SEEDS: u32 = 6;
 pub const BEETROOT_SEEDS: u32 = 7;
 pub const MELON_SEEDS: u32 = 8;
 pub const PUMPKIN_SEEDS: u32 = 9;
+pub const SHEARS: u32 = 10;
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -160,6 +161,7 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:beetroot_seeds" => BEETROOT_SEEDS,
         "minecraft:melon_seeds" => MELON_SEEDS,
         "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
+        "minecraft:shears" => SHEARS,
         _ => 0,
     }
 }
@@ -470,10 +472,15 @@ impl Online {
 pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
-        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, x_default: 40.0, max_head_y: 75.0, eye: sp.eye_height },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
         Phase(uid),
+    )
+}
+/// `Head`: the look and the head state (the look goals and any goal that aims).
+pub fn head_bundle(sp: &Species) -> impl Bundle {
+    (
+        Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, x_default: 40.0, max_head_y: 75.0, eye: sp.eye_height },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
     )
 }
 /// Creates the state of every module of the animal's configuration from the parameters of its entries (once).
@@ -775,6 +782,28 @@ pub fn force_start(w: &mut World, e: Entity, slot: u8) {
         }
     }
     changed(w, e, Change::Started);
+}
+/// The entity took damage: every module of its selector reacts through its `damaged` entry point (a default that does nothing).
+pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    let Some(g) = w.get::<GoalSet>(e) else { return };
+    for slot in 0..g.len() as u8 {
+        let Some((m, inst)) = of(w, e, slot) else { return };
+        (m.damaged)(w, e, inst, d);
+    }
+}
+/// A player uses an item on the entity: the first module of its selector that answers true handles it (`Mob.mobInteract`), then
+/// its rules (shearing); false when nothing did.
+pub fn interact(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) -> bool {
+    if let Some(g) = w.get::<GoalSet>(e) {
+        for slot in 0..g.len() as u8 {
+            let Some((m, inst)) = of(w, e, slot) else { break };
+            if (m.interact)(w, e, inst, i) {
+                return true;
+            }
+        }
+    }
+    let rules = w.get::<SpeciesId>(e).map_or(&[][..], |s| w.resource::<SpeciesTable>().0[s.0 as usize].rules);
+    rules.iter().any(|r| (r.rule.interact)(w, e, r.params, i))
 }
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);

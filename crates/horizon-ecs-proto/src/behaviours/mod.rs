@@ -92,6 +92,8 @@ pub enum Cap {
     /// Life: health, damage, knockback, death, immunities.
     Living,
     Goals,
+    /// The head: where it looks and how it turns (`Look`, `Head`); the look goals and every goal that aims need it.
+    Head,
     Targets,
     /// Walking, paths, the move control.
     Locomotion,

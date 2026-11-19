@@ -235,3 +235,27 @@ fn a_goal_that_is_not_interruptable_keeps_its_flags() {
     b.start(0);
     assert!(b.replaceable(1), "an interruptible goal gives MOVE to a better priority");
 }
+
+/// `goals::interact`: the first module that answers handles the item (the cow's food puts it in love), then the rules (the
+/// sheep's shears); anything else is refused.
+#[test]
+fn a_player_item_is_handled_by_the_module_or_the_rule_that_wants_it() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::{behaviours::Interaction, goals::{interact, item_id, Love}};
+    let mut h = Herd::with_slab(8, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let named = |n: &str| table.iter().find(|s| s.name == n).copied().unwrap();
+    let cow = spawn_species(&mut h.world, &named("minecraft:cow"), 0.5, 0.5, 1);
+    let sheep = spawn_species(&mut h.world, &named("minecraft:sheep"), 3.5, 0.5, 2);
+    for _ in 0..10 {
+        h.tick();
+    }
+    let with = |item: &str| Interaction { player: 1, item: item_id(item) };
+    assert!(!interact(&mut h.world, cow, &with("minecraft:shears")), "a cow is not shorn");
+    assert!(!interact(&mut h.world, cow, &with("minecraft:carrot")), "a cow does not eat a carrot");
+    assert!(interact(&mut h.world, cow, &with("minecraft:wheat")) && h.world.get::<Love>(cow).is_some(), "wheat puts a cow in love");
+    assert!(interact(&mut h.world, sheep, &with("minecraft:shears")), "the sheep is shorn");
+    assert!(!interact(&mut h.world, sheep, &with("minecraft:shears")), "a shorn sheep is not shorn again");
+}

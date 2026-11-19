@@ -55,7 +55,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
-    requires: &[Cap::Locomotion],
+    requires: &[Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {

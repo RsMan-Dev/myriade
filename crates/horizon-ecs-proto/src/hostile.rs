@@ -169,12 +169,12 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems((sun_eval, sun_burn).chain().after(crate::cow::reindex));
 }
 
-/// The data of a species that attacks (the vanilla values of `Zombie` and its attributes).
-pub fn equip(world: &mut World, e: Entity, sp: &Species) {
-    if sp.burns_in_day {
-        world.entity_mut(e).insert(BurnsInDay { eye: sp.eye_height, block: (i32::MIN, 0, 0) });
-        world.resource_mut::<SunDirty>().0.push(e);
-    }
+/// The rule `sun_burn` (no params): the undead that burn in daylight (`Mob.isSunBurnTick`): the eye height they look at the sky from.
+pub static SUN_BURN: crate::rules::Rule = crate::rules::Rule { name: "sun_burn", equip: equip_sun_burn, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_sun_burn(world: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+    let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
+    world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0) });
+    world.resource_mut::<SunDirty>().0.push(e);
 }
 /// The monster's `Attack` data from its species (the melee module's).
 pub fn ensure_attack(w: &mut World, e: Entity) {
