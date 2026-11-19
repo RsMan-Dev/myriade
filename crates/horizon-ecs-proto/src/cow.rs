@@ -2248,6 +2248,7 @@ pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
+    plain: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
@@ -2284,7 +2285,8 @@ pub(crate) fn travel(
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
-            par.command_scope(e, |mut cmd| {
+            // Removing a component from the entity itself commutes across entities: no need of the ordered buffer.
+            plain.command_scope(|mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
         }
