@@ -64,3 +64,6 @@ mod lot7_vs_mob;
 mod leash_vs_mob;
 mod mount2_vs_mob;
 mod vehicle_vs_mob;
+mod axolotl_vs_mob;
+mod sniffer_vs_mob;
+mod frog_vs_mob;

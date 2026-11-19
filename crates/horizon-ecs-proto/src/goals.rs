@@ -709,6 +709,8 @@ pub struct Events {
     pub unleashed: Ev,
     /// The vehicle of a player moved, stopped or went (`vehicle.rs`): the player's id.
     pub vehicle_moved: Ev<u32>,
+    /// A parent took `Carrying` (a pregnancy, `breed`).
+    pub carrying: Ev,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -739,6 +741,7 @@ impl Events {
         self.leashed.swap();
         self.unleashed.swap();
         self.vehicle_moved.swap();
+        self.carrying.swap();
     }
 }
 

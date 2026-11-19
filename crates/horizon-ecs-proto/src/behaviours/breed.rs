@@ -19,9 +19,12 @@ pub struct Params {
     /// `finalizeSpawnChildFromBreeding`: with the `mob_drops` rule on, a draw of `1 + nextInt(7)` orbs at the parents'
     /// place. False for a species whose birth gives no experience.
     pub xp: bool,
+    /// The birth is a pregnancy, not a baby (`Frog.spawnChildFromBreeding`): the parent that breeds takes `Carrying`, both rest, and the
+    /// species' behaviour (`lay_spawn`) does the rest.
+    pub carries: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[], xp: true };
+    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[], xp: true, carries: false };
 }
 /// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -34,6 +37,7 @@ pub struct BreedData {
     pub baby_age: u64,
     pub foods: &'static [&'static str],
     pub xp: bool,
+    pub carries: bool,
     pub slot: u8,
     partner: Option<Entity>,
 }
@@ -44,6 +48,10 @@ pub const NO_SLOT: u8 = u8::MAX;
 pub struct Love(pub u64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resting(pub u64);
+/// The parent carries what it will lay (`Params.carries`): erased by the behaviour that lays it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Carrying;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Breeding {
@@ -80,7 +88,7 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, slot: inst.slot, partner: None });
+    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: inst.slot, partner: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(breed_run.in_set(slot));
@@ -218,7 +226,13 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     if w.get::<Breeding>(a).is_none() || w.get::<Love>(a).is_none_or(|l| l.0 <= now) {
         return;
     }
-    give_birth(w, a, b);
+    if w.get::<BreedData>(a).is_some_and(|d| d.carries) {
+        finish_birth(w, a, b);
+        w.entity_mut(a).insert(Carrying);
+        w.resource_mut::<Events>().carrying.push(a);
+    } else {
+        give_birth(w, a, b);
+    }
     let reqs: Vec<Req> = [a, b].iter().filter_map(|&p| w.get::<BreedData>(p).filter(|d| d.slot != NO_SLOT).map(|d| Req::End(p, d.slot))).collect();
     w.resource_mut::<Requests>().0.extend(reqs);
 }
@@ -282,7 +296,7 @@ pub static LOVE: crate::rules::Rule = crate::rules::Rule {
     name: "love",
     equip: |w, e, p| {
         let p = crate::rules::params::<Params>(p);
-        w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, slot: NO_SLOT, partner: None });
+        w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: NO_SLOT, partner: None });
     },
     attrs: crate::rules::no_attrs,
     interact: |w, e, p, i| {
