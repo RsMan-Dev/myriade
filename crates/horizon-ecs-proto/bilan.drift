@@ -47,3 +47,35 @@ dispatch step 1 (7 modules tick)|crowd 0.8 (cow, 2000, 0 player)|ordered|19727|1
 dispatch step 1 (7 modules tick)|zone near ring (cow, 6, 10)|ecs|5062.5|5063.0
 dispatch step 1 (7 modules tick)|zone far ring (cow, 6, 10)|ecs|-0.4|-1.0
 dispatch step 1 (7 modules tick)|schedule at rest (empty world, per tick)|ecs|125737|118767
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|cow idle|ecs|2138|2143
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|cow idle|ecs-eager|2495|2499
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|cow active(1000 players, no solicitation)|ecs|9960|9941
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|cow active(1000 players, no solicitation)|ecs-eager|9837|9841
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20550|20047
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|pig idle|ecs|322|323
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|pig idle|ecs-eager|503|502
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|pig active(1000 players, no solicitation)|ecs|8395|8392
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|pig active(1000 players, no solicitation)|ecs-eager|8170|8255
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18634|18272
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|sheep idle|ecs|993|995
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|sheep idle|ecs-eager|1150|1173
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|sheep active(1000 players, no solicitation)|ecs|9547|9555
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|sheep active(1000 players, no solicitation)|ecs-eager|9419|9422
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|21211|19417
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|chicken idle|ecs|43|42
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|chicken idle|ecs-eager|210|211
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|chicken active(1000 players, no solicitation)|ecs|5403|5408
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12914|12427
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie idle|ecs|184|185
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie idle|ecs-eager|398|397
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie active(1000 players, no solicitation)|ecs|14031|13948
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie active(1000 players, no solicitation)|ecs-eager|13934|13894
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6344|6375
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9253|9270
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|crowd 0.5 (cow, 2000, 0 player)|batch|13205|13210
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|crowd 0.5 (cow, 2000, 0 player)|ordered|25518|25522
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|crowd 0.8 (cow, 2000, 0 player)|batch|11916|11919
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|crowd 0.8 (cow, 2000, 0 player)|ordered|19725|19730
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zone near ring (cow, 6, 10)|ecs|5063.0|5063.4
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|zone far ring (cow, 6, 10)|ecs|-1.0|-0.9
+lot 4 (ecs/lot4-review b16569fff5, NoXp bench)|schedule at rest (empty world, per tick)|ecs|118767|124602

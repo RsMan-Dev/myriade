@@ -16,9 +16,12 @@ pub struct Params {
     pub baby_age: u64,
     /// The items that put the animal in love (`Animal.isFood`), by name.
     pub foods: &'static [&'static str],
+    /// `finalizeSpawnChildFromBreeding`: with the `mob_drops` rule on, a draw of `1 + nextInt(7)` orbs at the parents'
+    /// place. False for a species whose birth gives no experience.
+    pub xp: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[] };
+    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[], xp: true };
 }
 /// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -30,6 +33,7 @@ pub struct BreedData {
     pub rest: u64,
     pub baby_age: u64,
     pub foods: &'static [&'static str],
+    pub xp: bool,
     pub slot: u8,
     partner: Option<Entity>,
 }
@@ -74,7 +78,7 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, slot: inst.slot, partner: None });
+    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, slot: inst.slot, partner: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(breed_run.in_set(slot));
@@ -213,6 +217,12 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;
     make_baby(w, baby, data.baby_age);
+    // `finalizeSpawnChildFromBreeding`: the draw only inside the `mob_drops` check, then the orbs at the parents' place.
+    if data.xp && w.get_resource::<crate::orb::NoXp>().is_none() && w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_drops) {
+        let amount = (1 + with_rng(w, a, |r| r.next_int(7))) as u32;
+        let orb_seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
+        crate::orb::award(w, pos, amount, &mut horizon_core::random::LegacyRandom::new(orb_seed as i64));
+    }
     adopt(w, a, baby);
     if active > now {
         stroll::arm_now(w, baby);
@@ -220,4 +230,61 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     arm_timers(w, baby);
     let reqs: Vec<Req> = [a, b].iter().filter_map(|&p| w.get::<BreedData>(p).map(|d| Req::End(p, d.slot))).collect();
     w.resource_mut::<Requests>().0.extend(reqs);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::behaviours::Entry;
+    use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_armed};
+    use crate::orb::Orb;
+    use crate::species::Config;
+
+    /// Two cows in love side by side, with this module (its `xp` as given). Runs until a baby is born or 600 ticks pass.
+    fn breed(xp: bool) -> Option<(u64, u32, usize)> {
+        std::env::var_os("HORIZON_TEST_RESOURCES")?;
+        let mut h = Herd::with_slab(60, true, false);
+        crate::goals::set_lazy_look(&mut h.world, false);
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let mut sp = *table.iter().find(|s| s.name == "minecraft:cow").unwrap();
+        let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 2, Box::leak(Box::new(Params { xp, ..Params::DEFAULT })))]));
+        sp.goals = Config { entries };
+        let a = spawn_armed(&mut h.world, &sp, 0.5, 0.5, 71);
+        let b = spawn_armed(&mut h.world, &sp, 2.5, 0.5, 72);
+        for e in [a, b] {
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        }
+        h.tick();
+        assert!(feed(&mut h.world, a) && feed(&mut h.world, b));
+        let mut born_at = None;
+        for t in 1..=600_u64 {
+            h.tick();
+            if born_at.is_none() && h.world.query::<&GrowAt>().iter(&h.world).count() > 0 {
+                born_at = Some(t);
+            }
+        }
+        let born = born_at?;
+        let mut total = 0;
+        let mut stacks = 0;
+        for o in h.world.query::<&Orb>().iter(&h.world) {
+            total += o.value.max(0) as u32 * o.count;
+            stacks += 1;
+        }
+        Some((born, total, stacks))
+    }
+
+    /// A birth with the rule on gives 1 to 7 experience at the parents' place; with the module's `xp` off, none
+    /// (the baby is born in both cases: the positive witness).
+    #[test]
+    fn a_birth_gives_one_to_seven_experience_and_none_without_the_draw() {
+        let Some((born, total, stacks)) = breed(true) else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        assert!(born > 0, "témoin : un bébé naît");
+        assert!((1..=7).contains(&total) && stacks >= 1, "un montant de 1 à 7 : {total}");
+        let Some((born_off, total_off, _)) = breed(false) else { return };
+        assert!(born_off > 0, "témoin : un bébé naît sans l'expérience");
+        assert_eq!(total_off, 0, "sans le tirage, aucune orbe");
+    }
 }

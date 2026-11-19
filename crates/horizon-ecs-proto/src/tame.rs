@@ -89,6 +89,16 @@ pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
     }
     order_sit(w, e, true);
     wake(w, e, &crate::behaviours::follow_owner::MODULE);
+    // `Not(is_tame)` is read at the start only: a tamed animal that is running away (from players, from llamas) stops (the `Mob` tests `!tame` each tick).
+    crate::goals::end(w, e, &crate::behaviours::avoid_entity::MODULE);
+    wake_block_goals(w, e);
+}
+/// The goals that lie or sit on a block, which refused it for lack of an owner or for sitting are asked again (`Mob`: asked every other tick).
+fn wake_block_goals(w: &mut World, e: Entity) {
+    use crate::behaviours::{cat_lie_on_block, cat_relax_on_owner, cat_sit_on_block};
+    wake(w, e, &cat_lie_on_block::MODULE);
+    wake(w, e, &cat_sit_on_block::MODULE);
+    wake(w, e, &cat_relax_on_owner::MODULE);
 }
 /// `TamableAnimal.setOrderedToSit`: the order is the occupation `SITTING`; the module that obeys it is woken (to sit) or ended (to stand).
 pub fn order_sit(w: &mut World, e: Entity, sit: bool) {
@@ -100,6 +110,7 @@ pub fn order_sit(w: &mut World, e: Entity, sit: bool) {
     } else {
         release(w, e, OCC_SITTING);
         wake(w, e, &crate::behaviours::follow_owner::MODULE);
+        wake_block_goals(w, e);
         if let Some(slot) = slot_of(w, e, &crate::behaviours::sit_when_ordered::MODULE) {
             w.resource_mut::<Requests>().0.push(Req::End(e, slot));
         }

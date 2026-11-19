@@ -17,6 +17,9 @@ fn main() {
     let item = goals::item_id(&std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into()));
     horizon_ecs_proto::bench_support::install_dummies(0);
     let mut herd = Herd::new(n, spacing, true, false, 42);
+    if std::env::var_os("NO_XP").is_some() {
+        herd.world.insert_resource(horizon_ecs_proto::orb::NoXp);
+    }
     // The lazy look is on by default (owner decision); `EAGER=1` runs the look goals for every animal.
     if std::env::var_os("EAGER").is_some() {
         goals::set_lazy_look(&mut herd.world, false);

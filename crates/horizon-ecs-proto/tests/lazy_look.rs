@@ -88,6 +88,10 @@ fn the_lazy_look_wakes_when_a_player_comes() {
     if horizon_ecs_proto::cow::skip_unless_walker("the_lazy_look_wakes_when_a_player_comes") {
         return;
     }
+    // A wild cat or ocelot runs from the player it sees (`avoid_entity`, 16 blocks): it does not look around.
+    if horizon_ecs_proto::cow::skip_if(&horizon_ecs_proto::behaviours::ocelot_attack::MODULE, "the_lazy_look_wakes_when_a_player_comes") {
+        return;
+    }
     if !have_data() {
         return;
     }

@@ -268,6 +268,13 @@ pub mod turtle_stroll;
 pub mod turtle_lay_egg;
 pub mod turtle_go_home;
 pub mod snow_trail;
+pub mod beg;
+pub mod forget_target;
+pub mod cat_state;
+pub mod cat_relax_on_owner;
+pub mod cat_lie_on_block;
+pub mod cat_sit_on_block;
+pub mod ocelot_attack;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -345,4 +352,10 @@ pub static TABLE: &[&Module] = &[
     &turtle_lay_egg::MODULE,
     &turtle_go_home::MODULE,
     &snow_trail::MODULE,
+    &beg::MODULE,
+    &forget_target::MODULE,
+    &cat_relax_on_owner::MODULE,
+    &cat_lie_on_block::MODULE,
+    &cat_sit_on_block::MODULE,
+    &ocelot_attack::MODULE,
 ];

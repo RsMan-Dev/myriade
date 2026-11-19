@@ -58,6 +58,9 @@ fn main() {
         std::env::var("HAZARDS").is_ok(),
         std::env::var("MIX").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
     );
+    if std::env::var_os("NO_XP").is_some() {
+        herd.world.insert_resource(horizon_ecs_proto::orb::NoXp);
+    }
     if std::env::var_os("ORDERED_PUSH").is_some() {
         herd.set_ordered_push(true);
     }

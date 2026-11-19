@@ -6,6 +6,8 @@
 : "${HORIZON_TEST_RESOURCES:?set HORIZON_TEST_RESOURCES}"
 export HORIZON_TEST_RESOURCES
 export WARM=200
+# A bench player never collects an orb: births give no experience in the bench worlds (see `orb::NoXp`).
+export NO_XP=1
 D=${D:?set D to the directory of the benches (target/fast)}
 g() { grep -o 'instr_per_entity_tick=[0-9]*' | head -n1 | cut -d= -f2; }
 declare -A ITEM=( [cow]=minecraft:wheat [pig]=minecraft:carrot [sheep]=minecraft:wheat [chicken]=minecraft:wheat_seeds [zombie]=minecraft:wheat )
