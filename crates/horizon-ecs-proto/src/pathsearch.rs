@@ -1703,6 +1703,8 @@ impl Small {
 // --- the shared layer of walk path types, per 16 x 16 x 16 section ------------------------------
 /// `path_type_static` of a cell does not depend on the mob: one byte per block (0 unknown, else 1 + the type), filled the first
 /// time a search asks, shared by every search, dropped around a change (`layer_changed`). 4096 bytes a section.
+/// The herd's navigation uses this search instead of Horizon's `Finder` (bench option `OWN`).
+pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub static LAYER_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 /// `stat`: 0 unknown, else 1 + the type; `top`: 0xFF unknown, else the collision top of the block in sixteenths (0xFE: not a multiple of 1/16, read the block).
 pub struct Sect {
