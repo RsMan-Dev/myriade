@@ -334,3 +334,34 @@ lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowne
 lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone near ring (cow, 6, 10)|ecs|2980.1|2978.3
 lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|zone far ring (cow, 6, 10)|ecs|-0.2|-0.4
 lot5-review 07cb32778f (lot 5: species, brains, cube_attack, bee, fliers, drowned, dolphin)|schedule at rest (empty world, per tick)|ecs|125462|127264
+audit-fixes 510f5bde3f|cow idle|ecs|1067|1063
+audit-fixes 510f5bde3f|cow idle|ecs-eager|1295|1291
+audit-fixes 510f5bde3f|cow active(1000 players, no solicitation)|ecs|5646|5631
+audit-fixes 510f5bde3f|cow active(1000 players, no solicitation)|ecs-eager|5471|5457
+audit-fixes 510f5bde3f|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14012|13984
+audit-fixes 510f5bde3f|pig idle|ecs-eager|363|362
+audit-fixes 510f5bde3f|pig active(1000 players, no solicitation)|ecs|5157|5145
+audit-fixes 510f5bde3f|pig active(1000 players, no solicitation)|ecs-eager|4892|4881
+audit-fixes 510f5bde3f|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13273|13257
+audit-fixes 510f5bde3f|sheep idle|ecs|489|488
+audit-fixes 510f5bde3f|sheep idle|ecs-eager|674|673
+audit-fixes 510f5bde3f|sheep active(1000 players, no solicitation)|ecs|5490|5478
+audit-fixes 510f5bde3f|sheep active(1000 players, no solicitation)|ecs-eager|5330|5318
+audit-fixes 510f5bde3f|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15793|15762
+audit-fixes 510f5bde3f|chicken active(1000 players, no solicitation)|ecs|3771|3767
+audit-fixes 510f5bde3f|chicken active(1000 players, no solicitation)|ecs-eager|3656|3649
+audit-fixes 510f5bde3f|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10024|10022
+audit-fixes 510f5bde3f|zombie idle|ecs|113|104
+audit-fixes 510f5bde3f|zombie idle|ecs-eager|305|296
+audit-fixes 510f5bde3f|zombie active(1000 players, no solicitation)|ecs|11395|11376
+audit-fixes 510f5bde3f|zombie active(1000 players, no solicitation)|ecs-eager|11312|11293
+audit-fixes 510f5bde3f|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5645|5629
+audit-fixes 510f5bde3f|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7183|7157
+audit-fixes 510f5bde3f|crowd 0.5 (cow, 2000, 0 player)|batch|6750|6633
+audit-fixes 510f5bde3f|crowd 0.5 (cow, 2000, 0 player)|ordered|19432|19423
+audit-fixes 510f5bde3f|crowd 0.8 (cow, 2000, 0 player)|batch|5827|5753
+audit-fixes 510f5bde3f|crowd 0.8 (cow, 2000, 0 player)|ordered|13707|13698
+audit-fixes 510f5bde3f|zone near ring (cow, 6, 10)|ecs|2978.3|2978.6
+audit-fixes 510f5bde3f|zone far ring (cow, 6, 10)|ecs|-0.4|0.3
+audit-fixes 510f5bde3f|items at rest (slope per stack, 500 to 2000)|ecs|27|28
+audit-fixes 510f5bde3f|schedule at rest (empty world, per tick)|ecs|127264|127386

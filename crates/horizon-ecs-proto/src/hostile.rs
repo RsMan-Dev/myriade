@@ -430,7 +430,8 @@ fn failures_before(rng: &mut Rng, p: f64) -> u64 {
     let u = rng.next_f64().max(1.0e-12);
     (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64
 }
-/// Looks at the sun again for the monsters an event names and those whose eye changed block: no scan of the others.
+/// Looks at the sun again for the monsters an event names and those whose eye changed block: only the animals whose physics is
+/// active (`Moving`, a sparse marker) are looked at, not every burner each tick (`Changed<Bounds>` scanned them all).
 #[allow(clippy::type_complexity)]
 fn sun_eval(
     clock: Res<Clock>,
@@ -440,7 +441,7 @@ fn sun_eval(
     mut now_fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
     mut p: ParamSet<(
-        Query<(Entity, &Pos, &BurnsInDay), Changed<Bounds>>,
+        Query<(Entity, &Pos, &BurnsInDay), With<Moving>>,
         Query<(&Pos, &mut BurnsInDay, &mut Rng, Has<Exposed>)>,
     )>,
     mut cmd: Commands,

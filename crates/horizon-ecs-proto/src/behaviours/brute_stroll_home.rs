@@ -57,7 +57,10 @@ fn center(block: [i32; 3]) -> Vec3 {
 }
 /// Squared distance from the animal to home, and whether it lies in the band where the walk home applies.
 fn in_band(w: &World, e: Entity, h: &Home) -> bool {
-    let (p, c) = (w.get::<Pos>(e).unwrap().0, center(h.block));
+    in_band_at(w.get::<Pos>(e).unwrap().0, h)
+}
+fn in_band_at(p: Vec3, h: &Home) -> bool {
+    let c = center(h.block);
     let d2 = (p.x - c.x).powi(2) + (p.y - c.y).powi(2) + (p.z - c.z).powi(2);
     d2 > h.def.near * h.def.near && d2 < h.def.far * h.def.far
 }
@@ -96,25 +99,13 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(wake_on_move.in_set(slot));
 }
-/// A brute that changed its column may now be in the band: its goal is asked (through the selector, at its phase). Nothing
-/// runs while no brute with a home exists or none moved.
-fn wake_on_move(w: &mut World, q: &mut QueryState<(Entity, &Home), Without<GoingHome>>) {
-    let homed: Vec<(Entity, Home)> = q.iter(w).map(|(e, h)| (e, *h)).collect();
-    if homed.is_empty() {
-        return;
-    }
-    let now = |w: &World, e| now_of(w, e);
-    let wake: Vec<Entity> = {
-        let moved = &w.resource::<CellMoves>().0;
-        homed
-            .iter()
-            .filter(|(e, h)| moved.contains(e) && now(w, *e) >= h.next_ok && in_band(w, *e, h))
-            .map(|(e, _)| *e)
-            .collect()
-    };
-    for e in wake {
-        if let Some(slot) = slot_of(w, e, &MODULE) {
-            w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
+/// A brute that changed its column may now be in the band: its goal is asked (through the selector, at its phase). Only the
+/// animals that moved are visited (`CellMoves`): a world where nobody moves costs nothing here.
+fn wake_on_move(moved: Res<CellMoves>, clock: Res<Clock>, homes: Query<(&Home, &Pos, &GoalSet), Without<GoingHome>>, mut reqs: ResMut<Requests>) {
+    for &e in &moved.0 {
+        let Ok((h, p, g)) = homes.get(e) else { continue };
+        if clock.of(e) >= h.next_ok && in_band_at(p.0, h) && let Some(slot) = g.slot_of(&MODULE) {
+            reqs.0.push(Req::Start(e, slot));
         }
     }
 }

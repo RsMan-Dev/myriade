@@ -58,13 +58,11 @@ fn after_change(w: &mut World, e: Entity, c: Change) {
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(forget.in_set(slot));
 }
-/// Each animal of this module whose avoid goal runs loses its target (the start of the run, then each tick of it).
-fn forget(mine: Query<(Entity, &Forgets)>, avoiding: Query<&Avoiding>, any: Query<(), With<Forgets>>, mut reqs: ResMut<Requests>) {
-    if any.is_empty() {
-        return;
-    }
-    for (e, f) in &mine {
-        if avoiding.get(e).is_ok_and(|a| a.0 == f.avoid) {
+/// Each animal of this module whose avoid goal runs loses its target (the start of the run, then each tick of it). Only the animals
+/// that run (`Avoiding`, a sparse marker) are visited: a herd of wolves that flee nothing costs nothing here.
+fn forget(mine: Query<(Entity, &Forgets, &Avoiding)>, mut reqs: ResMut<Requests>) {
+    for (e, f, a) in &mine {
+        if a.0 == f.avoid {
             reqs.0.push(Req::Call(e, clear));
         }
     }
