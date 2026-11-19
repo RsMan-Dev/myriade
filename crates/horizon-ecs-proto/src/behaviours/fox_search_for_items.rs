@@ -120,6 +120,13 @@ fn gate(w: &World, e: Entity, now: u64) -> Gate {
     }
     Gate::Open
 }
+/// `fox_state::set` cleared sleeping, sitting or faceplanted: the draws go on from now (the `Mob` asks at every selector tick, so
+/// the first ask after the wake draws with the same odds).
+pub fn flags_cleared(w: &mut World, e: Entity) {
+    if w.get::<Seek>(e).is_some() && w.get::<Seeking>(e).is_none() {
+        arm_draw(w, e);
+    }
+}
 fn attacker_alive(w: &World, who: Who) -> bool {
     match who {
         Who::Entity(c) => w.get::<Health>(c).is_some_and(|h| h.0 > 0.0),
@@ -153,10 +160,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
             crate::goals::arm(w, e, s.slot, (until - now).max(1) as i32);
             return false;
         }
-        Gate::Moving => {
-            arm_draw(w, e);
-            return false;
-        }
+        // A state that ends by an event (`fox_state::set` clears the flag and calls `flags_cleared`): no periodic draw meanwhile.
+        Gate::Moving => return false,
         Gate::Hand | Gate::Target => return false,
     }
     if point(w, e, s.scan).is_some() {

@@ -50,6 +50,9 @@ pub fn set(w: &mut World, e: Entity, mask: u8, on: bool) {
     }
     let is = f.0 & CROUCHING != 0;
     drop(f);
+    if !on && mask & (SLEEPING | SITTING | FACEPLANTED) != 0 {
+        super::fox_search_for_items::flags_cleared(w, e);
+    }
     if let Some(mut c) = w.get_mut::<Crouch>(e) {
         if !is {
             c.0 = None;
