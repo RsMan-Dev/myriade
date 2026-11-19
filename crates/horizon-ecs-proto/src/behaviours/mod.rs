@@ -213,6 +213,8 @@ pub mod fox_state;
 pub mod fox_faceplant;
 pub mod fox_stalk_prey;
 pub mod fox_pounce;
+pub mod fox_sleep;
+pub mod fox_eat_berries;
 pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
@@ -266,4 +268,6 @@ pub static TABLE: &[&Module] = &[
     &freeze_when_looked_at::MODULE,
     &strider_go_to_lava::MODULE,
     &ghast_look::MODULE,
+    &fox_sleep::MODULE,
+    &fox_eat_berries::MODULE,
 ];
