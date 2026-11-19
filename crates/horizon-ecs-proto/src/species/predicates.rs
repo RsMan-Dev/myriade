@@ -104,7 +104,23 @@ fn rabbit_killer(_: &World, _: Entity) -> bool {
 }
 use bevy_ecs::prelude::*;
 
+/// `pose:can_bite`: not sitting, sleeping, crouching nor faceplanted (the fox's melee). DOUTE: read from the notes, not from the Mob.
+fn pose_can_bite(w: &World, e: Entity) -> bool {
+    use crate::behaviours::fox_state as f;
+    !f::has(w, e, f::SITTING | f::SLEEPING | f::CROUCHING | f::FACEPLANTED)
+}
+/// `pose:look_free`: neither faceplanted nor interested (the fox's look and stalk). DOUTE: same.
+fn pose_look_free(w: &World, e: Entity) -> bool {
+    use crate::behaviours::fox_state as f;
+    !f::has(w, e, f::FACEPLANTED | f::INTERESTED)
+}
+
 pub static BUILTIN: &[(&str, Pred)] = &[
+    ("minecraft:hoglin_retreating", crate::species::hoglin::retreating),
+    ("minecraft:hoglin_pacified", crate::species::hoglin::pacified),
+    ("variant:snow", crate::behaviours::variant::is_snow),
+    ("pose:can_bite", pose_can_bite),
+    ("pose:look_free", pose_look_free),
     ("horizon:is_baby", is_baby),
     ("horizon:is_adult", is_adult),
     ("horizon:is_day", is_day),
