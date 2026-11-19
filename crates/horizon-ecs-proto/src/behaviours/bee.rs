@@ -5,8 +5,8 @@
 //! next release time is the only thing looked at each tick.
 //! What it asks of the frame (and has here): `Hives` (the occupants of each hive: entity, tick it went in, minimum stay), `InHive` (the bee is
 //! out of every query: `zone::sleep`; the zone does not wake it), the release (position in front of the hive, nectar delivered, honey).
-//! Not ported: the sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `HurtByTarget` of the bee: the melee and the targets of the
-//! frame serve), the bee's growth and love while in the hive, the honey level of the block (no block entity: the hive is the resource), the
+//! The sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `BeeHurtByOtherGoal`) are the frame's melee, nearest_target, hurt_by and
+//! neutral_anger, configured in `species/bee.rs`; `sting` is the melee's `on_hit` hook. Not ported: the bee's growth and love while in the hive, the honey level of the block (no block entity: the hive is the resource), the
 //! random hop of `pathfindRandomlyTowards` (the bee goes straight to a hive or a flower by its flying path), `Wander`'s direction towards a far
 //! hive (`fly_stroll`), the sounds, the particles of the nectar.
 use super::*;

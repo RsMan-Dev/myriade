@@ -176,3 +176,44 @@ fn a_removed_hive_lets_its_bees_out() {
     }
     assert!(h.world.get::<InHive>(e).is_none(), "the hive is gone: it is out");
 }
+
+/// `Bee.doHurtTarget`: an angry bee that reaches its target stings it (poison), has stung, forgets its anger and drops its target; then it
+/// dies by the draw of `customServerAiStep`. The Mob side of this (a creature to hit in the harness) is not compared: only the rules are checked.
+#[test]
+fn an_angry_bee_stings_once_and_is_spent() {
+    use horizon_ecs_proto::behaviours::{bee::Stung, neutral_anger::is_angry};
+    use horizon_ecs_proto::effects::{has, Kind};
+    use horizon_ecs_proto::targeting::{set_target, Target, Who};
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:bee" {
+        return;
+    }
+    let (_r, mut h) = flat_pair();
+    let e = ecs_cow(&mut h, 0.5, 1.5, 0.5, 3500);
+    let foe = ecs_cow(&mut h, 1.5, 1.5, 0.5, 3501);
+    arm_all(&mut h.world);
+    for _ in 0..10 {
+        h.tick();
+    }
+    assert!(!h.world.get::<Bee>(e).unwrap().stung && !has(&h.world, foe, Kind::Poison), "witness: nothing stung before the anger");
+    let mut t = Target::new(Who::Entity(foe), u16::MAX, u8::MAX);
+    t.must_see = false;
+    t.follow_scale = f64::INFINITY;
+    set_target(&mut h.world, e, t);
+    h.tick();
+    assert!(is_angry(&h.world, e), "the target makes it angry (witness: the sting needs the anger)");
+    for _ in 0..200 {
+        h.tick();
+        if h.world.get::<Bee>(e).is_none_or(|b| b.stung) {
+            break;
+        }
+    }
+    let Some(b) = h.world.get::<Bee>(e) else { panic!("the bee is gone before the check") };
+    assert!(b.stung && !b.nectar, "it has stung and its nectar is gone");
+    assert!(h.world.get::<Stung>(e).is_some(), "the slow death is under way");
+    assert!(has(&h.world, foe, Kind::Poison), "the victim is poisoned");
+    assert!(!is_angry(&h.world, e) && h.world.get::<Target>(e).is_none(), "it forgot its anger and its target");
+}
