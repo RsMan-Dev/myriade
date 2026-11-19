@@ -41,3 +41,7 @@ pub fn set_state(w: &mut World, p: [i32; 3], name: &'static str, props: &'static
 pub fn world_of(w: &World) -> &'static MobWorld<'static> {
     w.resource::<Level>().mw.0
 }
+/// Asks for the block state `id` at `p` (made with `resolve` from names and properties the module owns: no `&'static` needed).
+pub fn set_state_id(w: &mut World, p: [i32; 3], id: BlockStateId) {
+    w.resource_mut::<StateChanges>().1.push((p[0], p[1], p[2], id));
+}

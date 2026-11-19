@@ -265,7 +265,7 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
 /// The block changes WITH properties waiting for the next step: (x, y, z, block name, properties): `blocks::set_state`.
 #[derive(Resource, Default)]
-pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>);
+pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>, pub Vec<(i32, i32, i32, horizon_world::registry::BlockStateId)>);
 /// The hazard blocks of the world by column and height: only the columns that hold one have an entry. A cow's hazard
 /// bits are those of the entries its box (widened by a block each way, as a prefilter) meets; a block change at any
 /// height updates its entry (`set`).
@@ -2274,14 +2274,16 @@ pub(crate) fn block_changes(
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
 ) {
-    if changes.0.is_empty() && state_changes.0.is_empty() {
+    if changes.0.is_empty() && state_changes.0.is_empty() && state_changes.1.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..]));
-    let with_state = std::mem::take(&mut state_changes.0).into_iter();
-    for (x, y, z, name, props) in named.chain(with_state).collect::<Vec<_>>() {
-        let Some(state) = crate::blocks::resolve(mw, name, props) else { continue };
+    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..], None));
+    let with_state = std::mem::take(&mut state_changes.0).into_iter().map(|(x, y, z, n, p)| (x, y, z, n, p, None));
+    let by_id = std::mem::take(&mut state_changes.1).into_iter().map(|(x, y, z, id)| (x, y, z, "", &[][..], Some(id)));
+    for (x, y, z, name, props, id) in named.chain(with_state).chain(by_id).collect::<Vec<_>>() {
+        let Some(state) = id.or_else(|| crate::blocks::resolve(mw, name, props)) else { continue };
+        let name: &str = if id.is_some() { mw.registry.state(state).map_or("", |s| s.name.as_str()) } else { name };
         // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
         unsafe {
             let world = &mut *level.blocks.0;

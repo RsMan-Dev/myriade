@@ -114,6 +114,9 @@ impl Def {
     fn modes(&self) -> &'static [crate::locomotion::ModeEntry] {
         if !self.locomotion.is_empty() {
             self.locomotion
+        } else if !self.capabilities().contains(&Cap::Locomotion) {
+            // An entity that does not move by itself (a mannequin, a display): nothing is imposed, not even the walk.
+            &[]
         } else {
             self.reference.map_or(crate::locomotion::DEFAULT_MODES, |r| r.modes())
         }
@@ -422,41 +425,67 @@ mod tests {
     use super::*;
     use crate::behaviours::*;
 
-    /// The inherited configurations are the flat lists they replaced (module, priority and the parameters that differ).
+    /// What every species resolves to (module, priority, in order), written out by hand when the species was verified: the
+    /// inheritance (`reference`, `changes`) must give exactly these lists. ALL the species are checked and ALL the differences
+    /// are listed; a species of the registry that is not here is a difference too (add its line when you add the species).
+    const RESOLVED: &[(&str, &[(&str, u8)])] = &[
+        ("minecraft:cow", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:pig", &[("float", 0), ("panic", 1), ("breed", 3), ("tempt", 4), ("tempt", 4), ("follow_parent", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
+        ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:sheep", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("eat_block", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
+        ("minecraft:chicken", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("ranged_bow", 4)]),
+        ("minecraft:copper_golem", &[]),
+        ("minecraft:cod", &[("fish_swim", 4)]),
+        ("minecraft:parrot", &[("fly_stroll", 2), ("follow_mob", 3)]),
+        ("minecraft:ghast", &[("float_around", 5)]),
+        ("minecraft:wolf", &[("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 5), ("panic", 1), ("sit_when_ordered", 2), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("stroll", 8), ("look_at_player", 10), ("random_look", 10)]),
+        ("minecraft:armadillo", &[("float", 0), ("rolled", 2), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:endermite", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("melee", 2), ("stroll", 3), ("look_at_player", 7), ("random_look", 8)]),
+        ("minecraft:enderman", &[("look_for_player", 1), ("hurt_by", 2), ("float", 0), ("freeze_when_looked_at", 1), ("melee", 2), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("leave_block", 10), ("take_block", 11)]),
+        ("minecraft:silverfish", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("silverfish_wake_up_friends", 3), ("melee", 4), ("silverfish_merge", 5)]),
+        ("minecraft:piglin_brute", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("brute_stroll_home", 5), ("stroll", 5), ("look_at_player", 6)]),
+        ("minecraft:panda", &[("float", 0), ("tempt", 4), ("panda_sit", 7), ("panda_lie_on_back", 8), ("panda_sneeze", 8), ("random_look", 10), ("panda_roll", 12), ("follow_parent", 13), ("stroll", 14)]),
+        ("minecraft:zoglin", &[("hurt_by", 1), ("nearest_target", 2), ("float", 0), ("stroll", 5), ("look_at_player", 6)]),
+        ("minecraft:mooshroom", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:zombified_piglin", &[("hurt_by", 1), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8)]),
+        ("minecraft:horse", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:donkey", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:mule", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:skeleton_horse", &[("breed", 2), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:zombie_horse", &[("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+    ];
     #[test]
-    fn the_resolved_species_equal_their_flat_configuration() {
-        type Flat = Vec<(&'static Module, u8)>;
-        let flat = |name: &str| -> Flat {
-            let f = |m: &'static Module, p: u8| (m, p);
-            match name {
-                "minecraft:cow" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 2), f(&tempt::MODULE, 3), f(&follow_parent::MODULE, 4), f(&stroll::MODULE, 5), f(&look_at_player::MODULE, 6), f(&random_look::MODULE, 7)],
-                "minecraft:pig" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 3), f(&tempt::MODULE, 4), f(&tempt::MODULE, 4), f(&follow_parent::MODULE, 5), f(&stroll::MODULE, 6), f(&look_at_player::MODULE, 7), f(&random_look::MODULE, 8)],
-                "minecraft:sheep" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 2), f(&tempt::MODULE, 3), f(&follow_parent::MODULE, 4), f(&eat_block::MODULE, 5), f(&stroll::MODULE, 6), f(&look_at_player::MODULE, 7), f(&random_look::MODULE, 8)],
-                "minecraft:chicken" => vec![f(&float::MODULE, 0), f(&panic::MODULE, 1), f(&breed::MODULE, 2), f(&tempt::MODULE, 3), f(&follow_parent::MODULE, 4), f(&stroll::MODULE, 5), f(&look_at_player::MODULE, 6), f(&random_look::MODULE, 7)],
-                "minecraft:cod" => vec![f(&fish_swim::MODULE, 4)],
-                "minecraft:parrot" => vec![f(&fly_stroll::MODULE, 2)],
-                "minecraft:ghast" => vec![f(&float_around::MODULE, 5)],
-                "minecraft:skeleton" => vec![f(&hurt_by::MODULE, 1), f(&nearest_target::MODULE, 2), f(&stroll::MODULE, 5), f(&look_at_player::MODULE, 6), f(&random_look::MODULE, 6), f(&ranged_bow::MODULE, 4)],
-                _ => vec![f(&hurt_by::MODULE, 1), f(&nearest_target::MODULE, 2), f(&melee::MODULE, 3), f(&stroll::MODULE, 7), f(&look_at_player::MODULE, 8), f(&random_look::MODULE, 8)],
-            }
-        };
+    fn the_resolved_species_equal_their_expected_configuration() {
+        let mut diffs: Vec<String> = Vec::new();
         for name in names() {
-            if name == "minecraft:copper_golem" || name == "minecraft:wolf" {
-                continue; // its behaviours are a brain, not a selector
+            let got: Vec<(&str, u8)> = config(name).entries.iter().map(|e| (e.module.name, e.priority)).collect();
+            match RESOLVED.iter().find(|r| r.0 == name) {
+                None => diffs.push(format!("{name}: not in the expected table (resolves to {got:?})")),
+                Some((_, want)) if got != *want => diffs.push(format!("{name}: expected {want:?}, resolved {got:?}")),
+                _ => {}
             }
-            let got: Flat = config(name).entries.iter().map(|e| (e.module, e.priority)).collect();
-            let want = flat(name);
-            assert_eq!(got.len(), want.len(), "{name}");
-            for (g, w) in got.iter().zip(&want) {
-                assert!(same(g.0, w.0) && g.1 == w.1, "{name}: {} {} instead of {} {}", g.0.name, g.1, w.0.name, w.1);
+        }
+        for (name, _) in RESOLVED {
+            if !names().contains(name) {
+                diffs.push(format!("{name}: in the expected table, not in the registry"));
             }
         }
         let c = |n| config(n);
-        assert_eq!(c("minecraft:pig").param::<tempt::Params>(&tempt::MODULE, 1).unwrap().items, &["minecraft:carrot", "minecraft:potato", "minecraft:beetroot"]);
-        assert_eq!(c("minecraft:pig").param::<tempt::Params>(&tempt::MODULE, 0).unwrap().items, &["minecraft:carrot_on_a_stick"]);
-        assert_eq!(c("minecraft:chicken").param::<panic::Params>(&panic::MODULE, 0).unwrap().speed, 1.4);
-        assert_eq!(c("minecraft:sheep").param::<follow_parent::Params>(&follow_parent::MODULE, 0).unwrap().speed, 1.1);
-        assert_eq!(c("minecraft:cow").param::<tempt::Params>(&tempt::MODULE, 0).unwrap().speed, 1.25);
+        let check = |ok: bool, what: &str, diffs: &mut Vec<String>| {
+            if !ok {
+                diffs.push(what.to_string());
+            }
+        };
+        check(c("minecraft:pig").param::<tempt::Params>(&tempt::MODULE, 1).is_some_and(|p| p.items == ["minecraft:carrot", "minecraft:potato", "minecraft:beetroot"]), "pig: second tempt goal's foods", &mut diffs);
+        check(c("minecraft:pig").param::<tempt::Params>(&tempt::MODULE, 0).is_some_and(|p| p.items == ["minecraft:carrot_on_a_stick"]), "pig: first tempt goal's item", &mut diffs);
+        check(c("minecraft:chicken").param::<panic::Params>(&panic::MODULE, 0).is_some_and(|p| p.speed == 1.4), "chicken: panic speed", &mut diffs);
+        check(c("minecraft:sheep").param::<follow_parent::Params>(&follow_parent::MODULE, 0).is_some_and(|p| p.speed == 1.1), "sheep: follow speed", &mut diffs);
+        check(c("minecraft:cow").param::<tempt::Params>(&tempt::MODULE, 0).is_some_and(|p| p.speed == 1.25), "cow: tempt speed", &mut diffs);
+        assert!(diffs.is_empty(), "{} differences:\n{}", diffs.len(), diffs.join("\n"));
     }
     #[test]
     fn a_module_without_its_capability_is_a_startup_error() {
