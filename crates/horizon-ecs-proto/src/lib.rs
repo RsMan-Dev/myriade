@@ -21,6 +21,7 @@ pub mod hostile;
 pub mod kernel_lab;
 pub mod locomotion;
 pub mod move_to_block;
+pub mod occupancy;
 pub mod poi;
 pub mod profile;
 pub mod projectile;

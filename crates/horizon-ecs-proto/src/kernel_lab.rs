@@ -113,7 +113,7 @@ pub fn cow_box(x: f64, y: f64, z: f64) -> Aabb {
     Aabb::new(Vec3::new(x - 0.45, y, z - 0.45), Vec3::new(x + 0.45, y + 1.4, z + 0.45))
 }
 
-pub const CASES: [&str; 5] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture"];
+pub const CASES: [&str; 6] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air"];
 
 /// The calls of one cow case (a few hundred, cycled by the bench).
 pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
@@ -127,6 +127,7 @@ pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
                 "a-rest" => (cow_box(x, 1.0, z), Vec3::new(0.0, g, 0.0), true),
                 "b-walk" => (cow_box(x, 1.0, z), walk, true),
                 "c-wall" => (cow_box(19.0 - 0.45 - r.range(0.0, 0.3), 1.0, z), Vec3::new(0.12, g, r.range(-0.05, 0.05)), true),
+                "f-air" => (cow_box(x, r.range(40.0, 60.0), z), Vec3::new(r.range(-0.3, 0.3), r.range(-0.3, 0.3), r.range(-0.3, 0.3)), false),
                 "d-fall" => (cow_box(x, r.range(5.0, 30.0), z), Vec3::new(0.0, r.range(-1.2, -0.1), 0.0), false),
                 _ => (cow_box(r.range(24.0, 44.0), 1.0, r.range(-20.0, 20.0)), walk, true),
             };
@@ -135,7 +136,33 @@ pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
         .collect()
 }
 
+/// The masks of a lab world (one per world, kept for the process).
+pub fn occupancy_of(world: &MobWorld<'_>) -> &'static crate::occupancy::Occupancy {
+    static MAP: std::sync::Mutex<Vec<(usize, &'static crate::occupancy::Occupancy)>> = std::sync::Mutex::new(Vec::new());
+    let key = world.world as *const _ as usize;
+    let mut m = MAP.lock().unwrap();
+    if let Some(&(_, o)) = m.iter().find(|(k, _)| *k == key) {
+        return o;
+    }
+    let o: &'static crate::occupancy::Occupancy = Box::leak(Box::default());
+    m.push((key, o));
+    o
+}
+
+/// [`run`] with the masks already at hand (the walk reaches them through its `Level`).
+pub fn run_with(occ: &crate::occupancy::Occupancy, world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject: None };
+    occ.resolve(scene, c.bounds, c.movement, c.step, c.on_ground).map_err(|e| e.to_string())
+}
+
+/// The kernel as the walk calls it: through the occupancy masks (`occupancy.rs`), the kernel itself when they do not decide.
 pub fn run(world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject: None };
+    occupancy_of(world).resolve(scene, c.bounds, c.movement, c.step, c.on_ground).map_err(|e| e.to_string())
+}
+
+/// The kernel alone, without the masks.
+pub fn run_kernel(world: &MobWorld<'_>, c: &Call) -> Result<Vec3, String> {
     let scene = SceneCollisions { world: world.world, binding: world.collision, subject: None };
     scene
         .resolve_in_border_with(c.bounds, c.movement, c.step, c.on_ground, None, &[])
@@ -262,4 +289,59 @@ pub fn random_calls(seed: u64, n: usize) -> Vec<Call> {
             Call { bounds, movement: m, step, on_ground: r.below(2) == 0 }
         })
         .collect()
+}
+
+/// A world of plain cubes over x, z in [-14, 14) (y 0 to 6, regions of several densities), with, when `tricky` is set, a
+/// few percent of non-cubic blocks; and the pointer that lets a test change blocks between calls (`occupancy.rs`).
+pub fn cube_world(seed: u64, tricky: bool) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+        insert_chunks(w, -2, 2);
+        let cubes: Vec<BlockStateId> = ["stone", "dirt", "cobblestone", "oak_planks", "glass", "ice", "sand", "gravel"]
+            .iter()
+            .map(|n| registry.default_state(&format!("minecraft:{n}")).unwrap())
+            .collect();
+        let odd = varied_states(registry);
+        let mut r = Rng(seed | 1);
+        for bx in (-16..16).step_by(4) {
+            for by in (0..8).step_by(2) {
+                for bz in (-16..16).step_by(4) {
+                    let density = [0, 3, 10, 30, 60, 100][r.below(6)];
+                    for x in bx..bx + 4 {
+                        for y in by..by + 2 {
+                            for z in bz..bz + 4 {
+                                if r.below(100) >= density {
+                                    continue;
+                                }
+                                if tricky && r.below(25) == 0 {
+                                    let k = r.below(odd.len());
+                                    w.set(x, y, z, odd[k][r.below(odd[k].len())]).unwrap();
+                                } else {
+                                    w.set(x, y, z, cubes[r.below(cubes.len())]).unwrap();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        for x in -16..16 {
+            for z in -16..16 {
+                w.set(x, 0, z, stone).unwrap();
+            }
+        }
+    })
+    .expect("HORIZON_TEST_RESOURCES");
+    (w, p)
+}
+
+/// Changes one block of a lab world as the herd does (the block, then the mask of its section).
+///
+/// # Safety
+/// No call of the kernel may run at the same time.
+pub unsafe fn change_block(world: &MobWorld<'_>, ptr: *mut horizon_client_render::world::World, x: i32, y: i32, z: i32, state: BlockStateId) {
+    unsafe {
+        let _ = (*ptr).set(x, y, z, state);
+    }
+    occupancy_of(world).invalidate([x >> 4, y >> 4, z >> 4]);
 }

@@ -716,8 +716,17 @@ unsafe impl Sync for Blocks {}
 pub struct Level {
     pub mw: Mw,
     pub blocks: Blocks,
+    /// The occupancy masks of the world's sections (`occupancy.rs`): the block kernel's fast path.
+    pub occ: &'static crate::occupancy::Occupancy,
     /// The walls are at |x| or |z| = `half`.
     pub half: i32,
+}
+impl Level {
+    /// `MobWorld::no_collision` through the occupancy masks.
+    pub fn no_collision(&self, b: Aabb) -> bool {
+        let mw = self.mw.0;
+        self.occ.no_collision(SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b)
+    }
 }
 #[derive(Resource, Clone, Copy)]
 pub struct Config {
@@ -956,7 +965,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
     let _ = TABLE.set(table.clone());
     let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
-    (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), half }, species, chosen_kind.expect("a known species"))
+    (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), occ: Box::leak(Box::default()), half }, species, chosen_kind.expect("a known species"))
 }
 /// The prepared vanilla types of the process, for the species the tests compare with a `Mob`.
 static TYPES: std::sync::OnceLock<&'static horizon_client_lib::mobs::MobTypes> = std::sync::OnceLock::new();
@@ -1769,9 +1778,7 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     let p = pos.0;
     let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
-    let moved = scene
-        .resolve_in_border_with(bounds.0, wanted, body.step_height, c.on_ground, None, &[])
-        .unwrap_or(Vec3::ZERO);
+    let moved = level.occ.resolve(scene, bounds.0, wanted, body.step_height, c.on_ground).unwrap_or(Vec3::ZERO);
     pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
     if moved != Vec3::ZERO {
         bounds.0 = bounds.0.move_by(moved);
@@ -1851,7 +1858,7 @@ fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &
     let mw = level.mw.0;
     if fs.eye_in_water {
         vel.0 = Vec3::new(vel.0.x * f64::from(0.99_f32), (vel.0.y + f64::from(5.0e-4_f32)).min(f64::from(0.06_f32)), vel.0.z * f64::from(0.99_f32));
-    } else if mw.no_collision(bounds.0) {
+    } else if level.no_collision(bounds.0) {
         vel.0.y -= body.gravity;
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
@@ -1968,7 +1975,7 @@ pub(crate) fn travel_one(
         let m = vel.0;
         let ahead = bounds.0.move_by(Vec3::new(m.x, m.y + f64::from(0.6_f32) - pos.0.y + old_y, m.z));
         let mw = level.mw.0;
-        if c.horizontal && mw.no_collision(ahead) && !mw.contains_any_liquid(ahead) {
+        if c.horizontal && level.no_collision(ahead) && !mw.contains_any_liquid(ahead) {
             vel.0.y = f64::from(0.3_f32);
         }
         return false;
@@ -2477,6 +2484,7 @@ pub(crate) fn block_changes(
         unsafe {
             let world = &mut *level.blocks.0;
             let _ = world.set(x, y, z, state);
+            level.occ.invalidate([x >> 4, y >> 4, z >> 4]);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
             // The real light engine: the sky above a column changed with the block.
             horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);

@@ -17,7 +17,7 @@ pub static MODULE: Module = Module {
     arm,
     can_use,
     start,
-    systems,
+    tick: Some(watch),
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -44,14 +44,13 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     });
     *w.get_mut::<MoveTo>(e).unwrap() = MoveTo { active: true, x: t[0], y: t[1], z: t[2], speed_modifier: 1.0 };
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(watch.in_set(slot));
-}
-/// The ghast is asked again when its wanted spot is gone.
-fn watch(q: Query<(Entity, &MoveTo, &Pos, &GoalSet), With<crate::locomotion::FlyMode>>, mut reqs: ResMut<Requests>) {
-    for (e, m, p, g) in &q {
-        if wants_a_spot(m, p.0) && let Some(slot) = g.slot_of(&MODULE) {
-            reqs.0.push(Req::Start(e, slot));
+/// The ghast is asked again when its wanted spot is gone (the tick of the module: only the animals with the float control, read through a kept query).
+fn watch(w: &mut World) {
+    let es = crate::goals::entities::<With<crate::locomotion::fly::FloatState>>(w);
+    for e in es {
+        let (Some(m), Some(p), Some(slot)) = (w.get::<MoveTo>(e).copied(), w.get::<Pos>(e).map(|p| p.0), w.get::<GoalSet>(e).and_then(|g| g.slot_of(&MODULE))) else { continue };
+        if wants_a_spot(&m, p) {
+            w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
         }
     }
 }

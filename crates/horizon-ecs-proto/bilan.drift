@@ -243,3 +243,36 @@ cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone near ring 
 cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|zone far ring (cow, 6, 10)|ecs|1.3|-0.4
 cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|items at rest (slope per stack, 500 to 2000)|ecs|27|28
 cow-goals ab6ef7847b (effects, witch, explosion, fuse, teleport)|schedule at rest (empty world, per tick)|ecs|127134|127219
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow idle|ecs|2144|1059
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow idle|ecs-eager|2500|1290
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow active(1000 players, no solicitation)|ecs|9996|5627
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow active(1000 players, no solicitation)|ecs-eager|9863|5456
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|18723|13983
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig idle|ecs|323|189
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig idle|ecs-eager|502|362
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig active(1000 players, no solicitation)|ecs|8430|5130
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig active(1000 players, no solicitation)|ecs-eager|8164|4866
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|16360|13242
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep idle|ecs|995|487
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep idle|ecs-eager|1172|671
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep active(1000 players, no solicitation)|ecs|9577|5476
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep active(1000 players, no solicitation)|ecs-eager|9444|5315
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|20322|15765
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken idle|ecs|42|35
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken active(1000 players, no solicitation)|ecs|5420|3760
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken active(1000 players, no solicitation)|ecs-eager|5299|3644
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|11590|10013
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie idle|ecs|186|112
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie idle|ecs-eager|399|305
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie active(1000 players, no solicitation)|ecs|14053|11382
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie active(1000 players, no solicitation)|ecs-eager|13956|11287
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6353|5639
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9188|7180
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.5 (cow, 2000, 0 player)|batch|13241|6631
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.5 (cow, 2000, 0 player)|ordered|25633|19413
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.8 (cow, 2000, 0 player)|batch|11950|5754
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|crowd 0.8 (cow, 2000, 0 player)|ordered|19807|13690
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone near ring (cow, 6, 10)|ecs|5079.1|2957.9
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone mid ring (cow, 6, 10)|ecs|34.1|33.3
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone far ring (cow, 6, 10)|ecs|-0.4|1.2
+kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|schedule at rest (empty world, per tick)|ecs|127219|126741
