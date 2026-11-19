@@ -35,6 +35,8 @@ pub struct Body {
     pub speed: f64,
     /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
     pub fall_factor: f64,
+    /// `Strider`: lava holds it up (the collision stands it on the lava surface).
+    pub lava_walker: bool,
     /// The motion of an object (`ItemEntity.tick`: the gravity before the move, the drags of the air and the ground, the bounce, the water
     /// and the lava slowing it) instead of a creature's (`LivingEntity.travel`).
     pub object: bool,
@@ -694,6 +696,7 @@ fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::
     match mob.species() {
         S::Mooshroom => W::Mooshroom,
         S::Bee => W::Bee,
+        S::Turtle => W::Turtle,
         S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
         S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
         _ if mob.hostile() => W::Monster,
@@ -719,6 +722,7 @@ pub struct Species {
     pub follow_range: f32,
     pub max_health: f32,
     pub water_slowdown: f32,
+    pub lava_walker: bool,
     pub water_efficiency: f32,
     pub eye_height: f64,
     pub breathes_water: bool,
@@ -877,6 +881,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             follow_range: mob.attrs.follow_range as f32,
             max_health: mob.health,
             water_slowdown: kind.water_slowdown,
+            lava_walker: kind.flags.lava_walker,
             water_efficiency: kind.water_efficiency as f32,
             eye_height: kind.eye_height,
             breathes_water: kind.flags.breathes_water,
@@ -1032,7 +1037,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -1394,10 +1399,10 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1413,7 +1418,7 @@ pub(crate) fn pathfind(
             can_open_doors: sp.can_open_doors,
             can_pass_doors: sp.can_pass_doors,
             can_walk_over_fences: sp.can_walk_over_fences,
-            stands_on_lava: false,
+            stands_on_lava: lava,
         };
         let max_len = sp.follow_range;
         let max_visited = (max_len * 16.0).floor() as i32;
@@ -1443,10 +1448,10 @@ pub(crate) fn pathfind(
         });
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i)| one(e, p, b, c, &mut s, &mut n, f, v, i));
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l)| one(e, p, b, c, &mut s, &mut n, f, v, i, l));
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i) in &mut q {
-            one(e, p, b, c, &mut s, &mut n, f, v, i);
+        for (e, p, b, c, mut s, mut n, f, v, i, l) in &mut q {
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l);
         }
     }
 }
@@ -1459,7 +1464,7 @@ pub(crate) fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1561,7 +1566,7 @@ fn should_target_next_node(path: &Path, mob: Vec3, width: f32) -> bool {
     a.x * b.x + a.y * b.y + a.z * b.z < 0.0
 }
 
-fn wrap(a: f32) -> f32 {
+pub(crate) fn wrap(a: f32) -> f32 {
     let mut a = a % 360.0;
     if a >= 180.0 {
         a -= 360.0;
@@ -1655,7 +1660,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>)>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1688,7 +1693,8 @@ pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: 
 pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
     let wanted = vel.0;
     let p = pos.0;
-    let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
+    let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
+    let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
     let moved = scene
         .resolve_in_border_with(bounds.0, wanted, body.step_height, c.on_ground, None, &[])
         .unwrap_or(Vec3::ZERO);
@@ -2116,13 +2122,13 @@ pub(crate) fn reindex(
             events.entered_fluid.push(e);
             // The mode of the water, if the entity has one, becomes the active one: an event, not a test each tick.
             if let Ok(m) = all_modes.get(e) {
-                crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0);
+                crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0, bits & HAZ_LAVA != 0);
             }
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             events.left_fluid.push(e);
             if let Ok(m) = all_modes.get(e) {
-                crate::locomotion::fluid_changed(&mut commands, e, m, false);
+                crate::locomotion::fluid_changed(&mut commands, e, m, false, false);
             }
             *fs = FluidState::default();
         }

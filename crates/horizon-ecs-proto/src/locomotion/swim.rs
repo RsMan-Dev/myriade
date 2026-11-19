@@ -17,9 +17,23 @@ use horizon_core::geometry::{trig, Vec3};
 pub struct Params {
     /// The animal's air runs down out of the water, and it drowns there (`WaterAnimal`: a fish, a squid).
     pub needs_water: bool,
+    /// `AmphibiousPathNavigation` (the turtle, the axolotl): the path is searched on land and in water (`Evaluator::Amphibious`, with its
+    /// `prefers_shallow`), the node is reached within 1 vertically, a node in a straight line is taken at once only in a liquid.
+    pub amphibious: Option<bool>,
+    /// `Turtle.TurtleMoveControl` (in both media) instead of `FishMoveControl`.
+    pub turtle_control: bool,
+    /// What `moveRelative` pushes by in the water (0.01 for a fish, 0.1 for the turtle's `travelInWater`).
+    pub push: f32,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { needs_water: true };
+    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, turtle_control: false, push: 0.01 };
+}
+/// The swim's parameters of the entity, as the systems read them.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct SwimParams {
+    pub amphibious: Option<bool>,
+    pub turtle_control: bool,
+    pub push: f32,
 }
 /// The animal's air runs down while it is out of the water (set by `equip`, with `Dry` out of the water).
 #[derive(Component, Clone, Copy, Debug)]
@@ -31,7 +45,9 @@ pub struct Dry;
 
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
-    if crate::behaviours::params::<Params>(p).needs_water {
+    let sp = *crate::behaviours::params::<Params>(p);
+    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, turtle_control: sp.turtle_control, push: sp.push });
+    if sp.needs_water {
         // Out of the water until the first event says otherwise.
         w.entity_mut(e).insert((NeedsWater, Dry));
     }
@@ -69,10 +85,10 @@ fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &NavParams), (With<NeedsPath>, With<SwimMode>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &NavParams, &SwimParams), (With<NeedsPath>, With<SwimMode>)>,
 ) {
     let level = &*level;
-    for (e, pos, body, c, mut s, mut nav, fluid, sp) in &mut q {
+    for (e, pos, body, c, mut s, mut nav, fluid, sp, swp) in &mut q {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -92,11 +108,16 @@ fn pathfind(
         };
         let max_len = sp.follow_range;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
-        let path = fluid
+        let evaluator = match swp.amphibious {
+            Some(prefers_shallow) => Evaluator::Amphibious { prefers_shallow },
+            None => Evaluator::Swim { breach: false },
+        };
+        // `canUpdatePath`: the water's navigation only in the liquid, the amphibious one anywhere.
+        let path = (fluid || swp.amphibious.is_some())
             .then(|| {
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                Finder::new(mw, &pm, Evaluator::Swim { breach: false }).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32)
+                Finder::new(mw, &pm, evaluator).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32)
             })
             .flatten();
         par.command_scope(|mut cmd| match path {
@@ -122,13 +143,15 @@ fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, With<SwimMode>)>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo, &SwimParams, &FluidState), (With<Following>, With<SwimMode>)>,
 ) {
     let level = &*level;
-    for (e, pos, body, mut drive, mut s, mut nav, mut m) in &mut q {
+    for (e, pos, body, mut drive, mut s, mut nav, mut m, swp, fs) in &mut q {
         let now = clock.of(e);
         let mw = level.mw.0;
         let mut end = false;
+        let vertical = if swp.amphibious.is_some() { 1.0 } else { 0.5 };
+        let liquid = swp.amphibious.is_none() || fs.in_water || fs.in_lava;
         match nav.path.as_mut() {
             None => end = true,
             Some(path) => {
@@ -137,8 +160,8 @@ fn follow(
                 let max = f64::from(if width > 0.75 { width / 2.0 } else { 0.75 - width / 2.0 });
                 let n = path.next_node();
                 let (xd, yd, zd) = ((pos.0.x - (f64::from(n.x) + 0.5)).abs(), (pos.0.y - f64::from(n.y)).abs(), (pos.0.z - (f64::from(n.z) + 0.5)).abs());
-                let close = xd < max && zd < max && yd < 0.5;
-                let direct = |from: Vec3, to: Vec3| mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), false);
+                let close = xd < max && zd < max && yd < vertical;
+                let direct = |from: Vec3, to: Vec3| liquid && mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), false);
                 if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && target_next_node(path, mob, &direct, width)) {
                     path.advance();
                 }
@@ -203,8 +226,12 @@ pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob:
 /// `FishMoveControl.tick`, every tick of a fish in the water: the water lifts it a little, and while a path is followed the speed
 /// goes toward the wanted one by an eighth of the gap, it climbs or dives toward the wanted height and turns toward the node.
 #[allow(clippy::type_complexity)]
-fn move_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, Has<Following>), With<SwimMode>>) {
-    for (pos, mut vel, mut yaw, mut m, mut d, body, fs, following) in &mut q {
+fn move_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>), With<SwimMode>>) {
+    for (pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following) in &mut q {
+        if swp.turtle_control {
+            turtle_control(pos, &mut vel, &mut yaw, &mut m, &mut d, body, fs, c, following);
+            continue;
+        }
         if fs.eye_in_water {
             vel.0.y += 0.005;
         }
@@ -228,6 +255,41 @@ fn move_control(mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive,
         }
         m.active = false;
     }
+}
+
+/// `Turtle.TurtleMoveControl.tick` (an adult at home: no home yet): in the water the lift of 0.005; on the ground the speed is halved each tick
+/// (never under 0.06); no path or no wanted spot: stopped; else the speed eases an eighth toward the wanted one, the turtle faces the spot
+/// and is lifted toward it. Used in both media.
+#[allow(clippy::too_many_arguments)]
+fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, fs: &FluidState, c: &Contact, following: bool) {
+    d.xxa = 0.0;
+    if fs.in_water {
+        vel.0.y += 0.005;
+    } else if c.on_ground {
+        let s = (d.speed / 2.0).max(0.06);
+        d.speed = s;
+        d.zza = s;
+    }
+    if !(m.active && following) {
+        d.speed = 0.0;
+        d.zza = 0.0;
+        m.active = false;
+        return;
+    }
+    let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+    let dist = (xd * xd + yd * yd + zd * zd).sqrt();
+    m.active = false;
+    if dist < f64::from(1.0e-5_f32) {
+        d.speed = 0.0;
+        d.zza = 0.0;
+        return;
+    }
+    yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);
+    let wanted = (m.speed_modifier * body.speed) as f32;
+    let speed = d.speed + 0.125 * (wanted - d.speed);
+    d.speed = speed;
+    d.zza = speed;
+    vel.0.y += f64::from(speed) * (yd / dist) * 0.1;
 }
 
 /// `WaterAnimal.handleAirSupply` out of the water (the air runs down, drowning hurts 2 at -20) and `AbstractFish.aiStep`'s flop: an
@@ -261,11 +323,11 @@ fn travel(
     level: Res<Level>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
     >,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm) in &mut q {
+    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp) in &mut q {
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
         if fs.in_water {
@@ -275,7 +337,7 @@ fn travel(
             // `LivingEntity.aiStep`: the tiny motions are dropped.
             let u = v.0;
             v.0 = Vec3::new(if u.x.abs() < 0.003 { 0.0 } else { u.x }, if u.y.abs() < 0.003 { 0.0 } else { u.y }, if u.z.abs() < 0.003 { 0.0 } else { u.z });
-            move_relative(&mut v, y.0, 0.01, d.xxa, d.zza);
+            move_relative(&mut v, y.0, swp.push, d.xxa, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
             // `Vec3.add(0.0, -0.005, 0.0)`: a fish with no target sinks a little.

@@ -1,9 +1,11 @@
-//! `Turtle` (`mobs/turtle.rs:28-56`): tempted by seagrass (the tag `turtle_food`), going to the water, travelling in the water, looking at
+//! `Turtle` (`mobs/turtle.rs:28-56`), amphibious (`AmphibiousPathNavigation`, `TurtleMoveControl` in both media, `travelInWater` at 0.1: the
+//! swim mode with its amphibious parameters, the only mode it declares; its walk preference is water and sand, `WalkValue::Turtle`): tempted by seagrass (the tag `turtle_food`), going to the water, travelling in the water, looking at
 //! players, strolling in the water. Left out, waiting for their parameter or module: the panic that looks for water (`looking_for_water`
 //! is not a parameter of `panic`), the breeding that lays an egg (`breed` has no egg variant), (`turtle_lay_egg` and `turtle_go_home` are in).
 //! The water malus, the door maluses and the amphibious navigation have no field in `Def`: not in this file.
 use super::Def;
-use crate::behaviours::{panic, look_at_player, tempt, turtle_go_home, turtle_go_to_water, turtle_lay_egg, turtle_stroll, turtle_travel, Entry};
+use crate::locomotion::{swim, Medium};
+use crate::behaviours::{Cap, panic, look_at_player, tempt, turtle_go_home, turtle_go_to_water, turtle_lay_egg, turtle_stroll, turtle_travel, Entry};
 
 pub static DEF: Def = Def {
     name: "minecraft:turtle",
@@ -19,5 +21,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&turtle_stroll::MODULE, 9, &turtle_stroll::Params::DEFAULT),
     ],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), turtle_control: true, push: 0.1 }))],
     ..Def::EMPTY
 };

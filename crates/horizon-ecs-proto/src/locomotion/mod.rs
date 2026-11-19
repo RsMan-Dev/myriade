@@ -8,6 +8,7 @@ use bevy_ecs::prelude::*;
 
 pub mod fly;
 pub mod hop;
+pub mod lava;
 pub mod swim;
 pub mod walk;
 
@@ -17,9 +18,10 @@ pub enum Medium {
     Ground,
     Water,
     Air,
+    Lava,
 }
 /// The registration: one line per mode; the modes are modules of the registry like the goals.
-pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE, &hop::MODULE];
+pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE, &hop::MODULE, &lava::MODULE];
 
 /// A mode the species declares: its medium and the module with its parameters (the `priority` of the entry is not used).
 pub type ModeEntry = (Medium, Entry);
@@ -34,6 +36,11 @@ pub struct WalkMode;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct SwimMode;
+
+/// The lava mode is active: the walk's `pathfind`, `follow` and `move_control` visit it, `lava::travel` moves it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct LavaMode;
 
 /// The modes of the entity (what `equip` of each was called with): read at the events of entering and leaving a fluid.
 #[derive(Component, Clone, Copy)]
@@ -74,18 +81,19 @@ pub struct FlyMode;
 /// Puts the marker of the medium's mode on the entity and takes the others off (the systems of a mode visit what has its marker).
 fn set_marker(w: &mut World, e: Entity, to: Medium) {
     let mut em = w.entity_mut(e);
-    em.remove::<(WalkMode, SwimMode, FlyMode)>();
+    em.remove::<(WalkMode, SwimMode, FlyMode, LavaMode)>();
     match to {
         Medium::Ground => drop(em.insert(WalkMode)),
         Medium::Water => drop(em.insert(SwimMode)),
         Medium::Air => drop(em.insert(FlyMode)),
+        Medium::Lava => drop(em.insert(LavaMode)),
     };
 }
 /// The service of the change of mode: the entity goes to the mode of `to` if it declares one (a goal asks it to take off or land; a
 /// fluid asks it through `fluid_changed`). An event (`Events.mode_changed`) tells the rules. False: no such mode, or already in it.
 pub fn switch(w: &mut World, e: Entity, to: Medium) -> bool {
     let Some(m) = w.get::<Modes>(e).copied() else { return false };
-    let now = if w.get::<WalkMode>(e).is_some() { Some(Medium::Ground) } else if w.get::<SwimMode>(e).is_some() { Some(Medium::Water) } else if w.get::<FlyMode>(e).is_some() { Some(Medium::Air) } else { None };
+    let now = if w.get::<WalkMode>(e).is_some() { Some(Medium::Ground) } else if w.get::<SwimMode>(e).is_some() { Some(Medium::Water) } else if w.get::<FlyMode>(e).is_some() { Some(Medium::Air) } else if w.get::<LavaMode>(e).is_some() { Some(Medium::Lava) } else { None };
     if !m.has(to) || now == Some(to) {
         return false;
     }
@@ -97,17 +105,29 @@ pub fn switch(w: &mut World, e: Entity, to: Medium) -> bool {
 }
 /// The entity enters (`true`) or leaves a fluid: an entity with a water mode takes it over in the water and gives it back on leaving to
 /// its ground mode, or to its air mode (a flier that falls into a lake and comes out of it).
-pub fn fluid_changed(cmd: &mut Commands, e: Entity, modes: &Modes, in_water: bool) {
-    if !modes.has(Medium::Water) {
+pub fn fluid_changed(cmd: &mut Commands, e: Entity, modes: &Modes, in_water: bool, in_lava: bool) {
+    let water = modes.has(Medium::Water) && in_water;
+    let lava = modes.has(Medium::Lava) && in_lava && !water;
+    if !water && !lava && (in_water || in_lava) {
+        return;
+    }
+    if !modes.has(Medium::Water) && !modes.has(Medium::Lava) {
         return;
     }
     let back = if modes.has(Medium::Ground) { Some(Medium::Ground) } else if modes.has(Medium::Air) { Some(Medium::Air) } else { None };
     cmd.queue(move |w: &mut World| {
-        swim::water_changed(w, e, in_water);
-        if in_water {
+        if modes_has_water(w, e) {
+            swim::water_changed(w, e, water);
+        }
+        if water {
             switch(w, e, Medium::Water);
+        } else if lava {
+            switch(w, e, Medium::Lava);
         } else if let Some(b) = back {
             switch(w, e, b);
         }
     });
+}
+fn modes_has_water(w: &World, e: Entity) -> bool {
+    w.get::<Modes>(e).is_some_and(|m| m.has(Medium::Water))
 }

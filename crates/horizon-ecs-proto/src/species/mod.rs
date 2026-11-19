@@ -27,6 +27,9 @@ pub mod zombie;
 pub mod cod;
 pub mod parrot;
 pub mod ghast;
+pub mod bat;
+pub mod strider;
+pub mod turtle;
 pub mod armadillo;
 pub mod creeper;
 pub mod endermite;
@@ -48,7 +51,6 @@ pub mod tropical_fish;
 pub mod pufferfish;
 pub mod tadpole;
 pub mod snow_golem;
-pub mod turtle;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -80,6 +82,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &turtle::DEF,
     &slime::DEF,
     &magma_cube::DEF,
+    &bat::DEF,
+    &strider::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -464,6 +468,9 @@ mod tests {
         ("minecraft:turtle", &[("panic", 0), ("turtle_lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("fly_stroll", 2), ("follow_mob", 3)]),
         ("minecraft:ghast", &[("float_around", 5)]),
+        ("minecraft:bat", &[("bat_flutter", 0)]),
+        ("minecraft:strider", &[]),
+        ("minecraft:turtle", &[("turtle_go_to_water", 3), ("turtle_travel", 7), ("turtle_stroll", 9)]),
         ("minecraft:wolf", &[("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 5), ("panic", 1), ("sit_when_ordered", 2), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("stroll", 8), ("look_at_player", 10), ("random_look", 10)]),
         ("minecraft:armadillo", &[("float", 0), ("panic", 1), ("rolled", 2), ("breed", 3), ("tempt", 4), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),

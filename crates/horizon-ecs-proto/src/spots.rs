@@ -21,6 +21,8 @@ pub enum WalkValue {
     Mooshroom,
     /// `Bee`: any air block.
     Bee,
+    /// `Turtle.getWalkTargetValue` (not going home): water or sand under the spot 10, else the light.
+    Turtle,
 }
 /// The value of walking to the block `p` (the species' preference).
 pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
@@ -30,6 +32,13 @@ pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
         WalkValue::Monster => -light(),
         WalkValue::Mooshroom => {
             if mw.block_name(p[0], p[1] - 1, p[2]) == "minecraft:mycelium" {
+                10.0
+            } else {
+                light()
+            }
+        }
+        WalkValue::Turtle => {
+            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water || mw.has_tag("minecraft:sand", mw.block_name(p[0], p[1] - 1, p[2])) {
                 10.0
             } else {
                 light()
@@ -56,6 +65,25 @@ pub fn stable_destination(mw: &MobWorld, p: [i32; 3]) -> bool {
     mw.facts.get(mw.world.block(p[0], p[1] - 1, p[2])).solid_render
 }
 
+/// `PathNavigation.isStableDestination` of the navigation the entity moves with (the active mode of locomotion gives it).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Stable {
+    /// A solid block under the spot (a walker).
+    #[default]
+    Ground,
+    /// The spot is not a solid block (a swimmer: `WaterBoundPathNavigation`).
+    Water,
+    /// Something other than air under the spot (`AmphibiousPathNavigation`: a turtle).
+    Amphibious,
+}
+fn stable_for(kind: Stable, mw: &MobWorld, p: [i32; 3]) -> bool {
+    match kind {
+        Stable::Ground => stable_destination(mw, p),
+        Stable::Water => !mw.facts.get(mw.world.block(p[0], p[1], p[2])).solid_render,
+        Stable::Amphibious => !mw.facts.is_air(mw.world.block(p[0], p[1] - 1, p[2])),
+    }
+}
+
 /// What a draw needs of the entity: where it is, its stream, its path maluses and its preference.
 pub struct Spotter<'a> {
     pub mw: &'a MobWorld<'a>,
@@ -63,6 +91,8 @@ pub struct Spotter<'a> {
     pub nav: &'a NavParams,
     pub walk: WalkValue,
     pub rng: &'a mut Rng,
+    /// The stable destination of the navigation in use (a swimmer's is not a walker's).
+    pub stable: Stable,
 }
 /// The forms of the vanilla position pickers.
 #[derive(Clone, Copy, Debug)]
@@ -129,7 +159,7 @@ impl Spotter<'_> {
         p[1] >= self.mw.world.bottom_y() && p[1] < self.mw.world.top_y()
     }
     fn default_check(&self, p: [i32; 3]) -> bool {
-        self.in_height(p) && stable_destination(self.mw, p) && self.malus_is_zero(p)
+        self.in_height(p) && stable_for(self.stable, self.mw, p) && self.malus_is_zero(p)
     }
     /// `LandRandomPos.movePosUpOutOfSolid` and the water / malus refusal.
     fn land_up_out_of_solid(&self, mut p: [i32; 3]) -> Option<[i32; 3]> {
@@ -273,7 +303,7 @@ impl Spotter<'_> {
 }
 /// Everything a system needs to build a `Spotter` for an entity.
 pub fn spotter<'a>(level: &'a Level, pos: [f64; 3], nav: &'a NavParams, walk: WalkValue, rng: &'a mut Rng) -> Spotter<'a> {
-    Spotter { mw: level.mw.0, pos, nav, walk, rng }
+    Spotter { mw: level.mw.0, pos, nav, walk, rng, stable: Stable::Ground }
 }
 /// The call a module makes: a position for the entity `e` by the vanilla picker `pick`, drawn from its own random stream
 /// (written back), with its position, its path maluses and its walk preference read from its components. `None` when the
@@ -284,7 +314,10 @@ pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
     let walk = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
     let level = *w.get_resource::<Level>()?;
     let mut rng = Rng(w.get::<Rng>(e)?.0);
-    let out = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng).pick(pick);
+    let stable = if w.get::<crate::locomotion::SwimMode>(e).is_some() { Stable::Water } else { Stable::Ground };
+    let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng);
+    sp.stable = stable;
+    let out = sp.pick(pick);
     w.get_mut::<Rng>(e)?.0 = rng.0;
     out
 }

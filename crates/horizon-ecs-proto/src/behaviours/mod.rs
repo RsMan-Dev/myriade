@@ -201,6 +201,7 @@ pub mod eat_block;
 pub mod flee_sun;
 pub mod fish_swim;
 pub mod float_around;
+pub mod bat_flutter;
 pub mod fly_stroll;
 pub mod float;
 pub mod follow_parent;
@@ -313,6 +314,7 @@ pub static TABLE: &[&Module] = &[
     &silverfish_merge::MODULE,
     &fly_stroll::MODULE,
     &float_around::MODULE,
+    &bat_flutter::MODULE,
     &follow_owner::MODULE,
     &run_around_like_crazy::MODULE,
     &owner_target::MODULE,

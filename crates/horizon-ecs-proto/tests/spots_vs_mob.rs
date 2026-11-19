@@ -155,3 +155,53 @@ fn the_nearest_block_search_is_the_mobs() {
     }
     eprintln!("{agree} searches agree");
 }
+
+/// The default picker of a swimmer (`HORIZON_SPECIES=minecraft:cod`) in a pool: its stable destination is the water navigation's (not a solid
+/// block under the spot). With the walker's rule the picker found nothing in water (0 of 200: the blocker of `SwimStroll`).
+#[test]
+fn the_default_picker_of_a_swimmer_has_the_laws_of_the_mob() {
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:cod" {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    for x in -16..=16 {
+        for z in -16..=16 {
+            for y in 1..=4 {
+                r.set_block(x, y, z, "minecraft:water");
+                h.set_block(x, y, z, "minecraft:water");
+            }
+        }
+    }
+    h.tick();
+    let at = Vec3::new(0.5, 2.5, 0.5);
+    let i = r.add(at);
+    r.step(None);
+    let level = *h.world.resource::<Level>();
+    let sp = *species();
+    let nav = NavParams { malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, follow_range: sp.follow_range };
+    let mut rng = Rng(0x1234_5678_9ABC_DEF1);
+    let n = 20000;
+    for (h_, v_) in [(1, 1), (5, 5), (10, 7)] {
+        let (mut mob, mut ecs, mut mf, mut ef) = (Vec::new(), Vec::new(), 0, 0);
+        for _ in 0..n {
+            match r.mobs[i].default_random_pos(r.w, h_, v_) {
+                Some(p) => mob.push(p),
+                None => mf += 1,
+            }
+            let mut s = spotter(&level, [at.x, at.y, at.z], &nav, sp.walk, &mut rng);
+            s.stable = Stable::Water;
+            match s.pick(Pick::Default { h: h_, v: v_ }) {
+                Some(p) => ecs.push(p),
+                None => ef += 1,
+            }
+        }
+        let (a, b) = (stats(&mob, mf, n), stats(&ecs, ef, n));
+        eprintln!("swim default {h_},{v_}: mob fail {:.3} x {:.2} z {:.2} | ecs fail {:.3} x {:.2} z {:.2}", a.3, a.1, a.2, b.3, b.1, b.2);
+        assert!(a.3 < 0.9, "the mob finds spots in water");
+        assert!((a.1 - b.1).abs() < 0.25 && (a.2 - b.2).abs() < 0.25 && (a.3 - b.3).abs() < 0.03, "{h_},{v_}");
+    }
+}

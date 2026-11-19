@@ -11,3 +11,4 @@ pub mod follow_temptation;
 pub mod gate_all;
 pub mod stay_in_fluid;
 pub mod walk_to_look_target;
+pub mod swim_stroll;
