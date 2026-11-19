@@ -224,3 +224,60 @@ fn trace_two_animals() {
         eprintln!("t={t}: MOB {m:?} pushes {pushes:?}\n     ECS {e:?}");
     }
 }
+
+/// Small groups (2, 3, 4, 6 animals that overlap at the start) in several layouts: the positions after 10 and 40 ticks and
+/// the spread of the group, against the `Mob`. Prints one line per group size (`GROUP n=...`): the mean position error
+/// at ticks 10 and 40 and the mean largest distance between two animals (Mob, ECS).
+#[test]
+#[ignore = "report"]
+fn small_groups_report() {
+    if !have_data() {
+        return;
+    }
+    let _first = MobRef::new(20, false);
+    let w = f64::from(species().width);
+    let layouts = |n: usize| -> Vec<Vec<(f64, f64)>> {
+        let mut out = vec![];
+        for (ph, r) in [(0.0, 0.3), (0.7, 0.45), (2.1, 0.2)] {
+            out.push((0..n).map(|i| {
+                let a = ph + std::f64::consts::TAU * i as f64 / n as f64;
+                (0.5 + r * w * a.cos(), 0.5 + r * w * a.sin())
+            }).collect());
+        }
+        // A line, and a line with a bump.
+        out.push((0..n).map(|i| (0.5 + 0.25 * w * i as f64, 0.5)).collect());
+        out.push((0..n).map(|i| (0.5 + 0.3 * w * i as f64, 0.5 + 0.15 * w * (i % 2) as f64)).collect());
+        out
+    };
+    for n in [2usize, 3, 4, 6] {
+        let (mut e10, mut e40, mut sm, mut se, mut cnt) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for lay in layouts(n) {
+            let mut r = MobRef::new(20, false);
+            let mut h = Herd::with_slab(20, true, false);
+            let mut ids = vec![];
+            for (i, s) in lay.iter().enumerate() {
+                r.add(Vec3::new(s.0, 1.0, s.1));
+                let e = h.world.spawn(cow_bundle(s.0, s.1, 3 + i as u64)).id();
+                h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
+                horizon_ecs_proto::cow::enter_index(&mut h.world, e);
+                ids.push(e);
+            }
+            let pos_m = |r: &MobRef| r.mobs.iter().map(|m| (m.position.x, m.position.z)).collect::<Vec<_>>();
+            let pos_e = |h: &Herd| ids.iter().map(|&e| { let p = h.world.get::<Pos>(e).unwrap().0; (p.x, p.z) }).collect::<Vec<_>>();
+            let err = |a: &[(f64, f64)], b: &[(f64, f64)]| a.iter().zip(b).map(|(p, q)| ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt()).sum::<f64>() / a.len() as f64;
+            let spread = |a: &[(f64, f64)]| a.iter().flat_map(|p| a.iter().map(move |q| ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt())).fold(0.0, f64::max);
+            for t in 1..=40 {
+                r.step(None);
+                h.tick();
+                if t == 10 {
+                    e10 += err(&pos_m(&r), &pos_e(&h));
+                }
+            }
+            e40 += err(&pos_m(&r), &pos_e(&h));
+            sm += spread(&pos_m(&r));
+            se += spread(&pos_e(&h));
+            cnt += 1.0;
+        }
+        println!("GROUP n={n} err10={:.4} err40={:.4} spread_mob={:.3} spread_ecs={:.3}", e10 / cnt, e40 / cnt, sm / cnt, se / cnt);
+    }
+}
