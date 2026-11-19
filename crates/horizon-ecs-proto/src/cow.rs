@@ -1060,7 +1060,7 @@ pub(crate) fn player_near(
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
     mut entered: ResMut<crate::goals::Entered>,
-    mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
+    mut active: Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>,
 ) {
     const BIN: f64 = 32.0;
     const R2: f64 = BIN * BIN;
@@ -1124,14 +1124,18 @@ pub(crate) fn player_near(
             })
         })
     };
-    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>, wheel: &mut Wheel| {
+    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>, wheel: &mut Wheel| {
         let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { return };
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if now_in && a.0 != u64::MAX {
             a.0 = u64::MAX;
             entered.0.push(e);
-            if !s.scheduled && !s.walking {
+            // The first stroll attempt belongs to an entity that walks and has goals; an object only wakes.
+            if let (Some(mut s), Some(mut r)) = (s, r)
+                && !s.scheduled
+                && !s.walking
+            {
                 arm_stroll(wheel, &clock, e, &mut s, &mut r);
             }
         } else if !now_in && a.0 == u64::MAX {
