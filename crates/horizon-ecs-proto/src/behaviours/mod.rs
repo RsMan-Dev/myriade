@@ -259,6 +259,7 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod land_on_shoulder;
 pub mod burst_shot;
 pub mod ender_teleport;
 pub mod charged_shot;
@@ -381,6 +382,7 @@ pub static TABLE: &[&Module] = &[
     &flier_goals::PHANTOM_SWEEP_ATTACK,
     &flier_goals::PHANTOM_CIRCLE_AROUND_ANCHOR,
     &follow_owner::MODULE,
+    &land_on_shoulder::MODULE,
     &village_walk::MODULE,
     &restrict_sun::MODULE,
     &burst_shot::MODULE,
