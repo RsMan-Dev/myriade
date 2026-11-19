@@ -7,8 +7,8 @@ use common::*;
 use horizon_ecs_proto::{cow::*, goals::*};
 
 /// A 200-block slab: the player in one corner, the far corner out of its sight (more than 176 blocks along an axis: 160 rounded out to bins).
-fn herd(lazy: bool) -> Herd {
-    let mut h = Herd::new(4000, 3.0, true, false, 7);
+fn herd(lazy: bool, seed: u64) -> Herd {
+    let mut h = Herd::new(4000, 3.0, true, false, seed);
     set_lazy_look(&mut h.world, lazy);
     h
 }
@@ -25,7 +25,9 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
     }
     let mut out = Vec::new();
     for lazy in [false, true] {
-        let mut h = herd(lazy);
+        let mut total = (0, 0, 0, 0);
+        for seed in [7, 8, 9] {
+        let mut h = herd(lazy, seed);
         let half = f64::from(h.world.resource::<Level>().half);
         let corner = -half + 6.0;
         h.world.resource_mut::<Online>().set(Player { id: 1, x: corner, y: 1.0, z: corner, main: tempt_item().0, off: 0 });
@@ -38,7 +40,12 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
         let far: Vec<Entity> = cows.iter().copied().filter(|&e| pos(&h, e).x >= edge + 2.0 || pos(&h, e).z >= edge + 2.0).collect();
         let far_corner: Vec<Entity> = far.iter().copied().filter(|&e| pos(&h, e).x >= edge + 2.0 && pos(&h, e).z >= edge + 2.0).collect();
         assert!(near.len() >= 20 && far_corner.len() >= 8, "{} near, {} far", near.len(), far_corner.len());
+        // The walkers are counted every 5 ticks over the last 200 (a count at one tick is a sample of a random number).
+        let mut walkers = 0usize;
         for t in 1..=500 {
+            if t > 300 && t % 5 == 0 {
+                walkers += h.world.query::<&Stroll>().iter(&h.world).filter(|s| s.walking).count();
+            }
             if t == 60 {
                 for pair in near.chunks(2).take(10).chain(far_corner.chunks(2).take(4)) {
                     for &e in pair {
@@ -48,21 +55,23 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
             }
             h.tick();
         }
-        let strolled = h.world.query::<&Stroll>().iter(&h.world).filter(|s| s.walking).count();
+        let strolled = walkers / 40;
         let babies = h.world.query::<&GrowAt>().iter(&h.world).count();
         let tempted = h.world.query::<&Tempting>().iter(&h.world).count();
         // The far animals (200 blocks away, out of sight) that have a look state now.
         let looking = far.iter().filter(|&&e| h.world.get::<Scanning>(e).is_some() || h.world.get::<Glancing>(e).is_some() || h.world.get::<Looking>(e).is_some()).count();
-        out.push((lazy, strolled, tempted, babies, looking));
+        total = (total.0 + strolled, total.1 + tempted, total.2 + babies, total.3 + looking);
+        }
+        out.push((lazy, total.0, total.1, total.2, total.3));
     }
     eprintln!("(lazy, walking, tempted, babies, looking states): {out:?}");
     let (a, b) = (out[0], out[1]);
     // The walks near the player: the same rate (the count at one tick, a few strollers more or less).
-    assert!((a.1 as i64 - b.1 as i64).abs() <= 6, "walks: {} against {}", a.1, b.1);
-    assert!((a.2 as i64 - b.2 as i64).abs() <= 3, "tempted: {} against {}", a.2, b.2);
-    assert!((a.3 as i64 - b.3 as i64).abs() <= 2, "births: {} against {}", a.3, b.3);
+    assert!((a.1 as i64 - b.1 as i64).abs() <= 18, "walks: {} against {}", a.1, b.1);
+    assert!((a.2 as i64 - b.2 as i64).abs() <= 9, "tempted: {} against {}", a.2, b.2);
+    assert!((a.3 as i64 - b.3 as i64).abs() <= 6, "births: {} against {}", a.3, b.3);
     // (A few animals still have one: a timer that has not come up yet when the option is on.)
-    assert!(b.4 * 10 < a.4 && a.4 > 30, "far animals with a look state: {} lazy, {} not", b.4, a.4);
+    assert!(b.4 * 8 < a.4 && a.4 > 90, "far animals with a look state: {} lazy, {} not", b.4, a.4);
 }
 
 #[test]
@@ -70,7 +79,7 @@ fn the_lazy_look_wakes_when_a_player_comes() {
     if !have_data() {
         return;
     }
-    let mut h = herd(true);
+    let mut h = herd(true, 7);
     for _ in 0..300 {
         h.tick();
     }

@@ -79,7 +79,11 @@ impl Module {
 /// declares and nothing else; no capability supposes another except what `Module::requires` states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cap {
-    /// A physical body (position, box, gravity, contacts, fluids, index).
+    /// Position, velocity, own time and identity: all a projectile or a display has.
+    Transform,
+    /// A box in the spatial index (pushed, searched, targeted): `Bounds`, `Cell`.
+    Solid,
+    /// A body that falls, lands, floats and is pushed by blocks and fluids (`travel`): needs `Transform` and `Solid`.
     Body,
     /// Life: health, damage, knockback, death, immunities.
     Living,

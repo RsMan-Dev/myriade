@@ -604,6 +604,20 @@ pub struct Config {
     pub push_form: u8,
     pub push_k: f64,
 }
+/// `getWalkTargetValue` of the template `Mob`, as data (the species the prototype ports; the others read zero).
+fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::spots::WalkValue {
+    use crate::spots::WalkValue as W;
+    use horizon_client_lib::mobs::Species as S;
+    match mob.species() {
+        S::Mooshroom => W::Mooshroom,
+        S::Bee => W::Bee,
+        S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
+        S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
+        _ if mob.hostile() => W::Monster,
+        _ if kind.flags.animal => W::Animal,
+        _ => W::Zero,
+    }
+}
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -642,6 +656,8 @@ pub struct Species {
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
     pub burns_in_day: bool,
+    /// What the species prefers to walk to (`getWalkTargetValue`).
+    pub walk: crate::spots::WalkValue,
     /// The capabilities of the configuration (its sections): the entity is made of these only.
     pub caps: &'static [crate::behaviours::Cap],
 }
@@ -776,6 +792,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
+            walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
         });
         if name == chosen {
@@ -832,25 +849,24 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
 /// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
-/// `Body`: where it is, its box, its physics, its fluids; its identity (`SpeciesId`, `Uid`) and its eye.
-pub fn body_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
+/// `Transform`: where it is, how fast, its own time and its identity. All a projectile has.
+pub fn transform_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
+    (Pos(Vec3::new(x, 1.0, z)), Vel(Vec3::ZERO), SpeciesId(sp.id), crate::goals::Uid(uid), OwnTime)
+}
+/// `Solid`: a box in the spatial index (what the pushes, the searches and the targeting see).
+pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
+    (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX))
+}
+/// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
+pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Pos(Vec3::new(x, 1.0, z)),
-        SpeciesId(sp.id),
-        crate::goals::Uid(uid),
-        Vel(Vec3::ZERO),
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
-        Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
-        Cell(u32::MAX),
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        (
-            FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
-            crate::targeting::Eye(sp.eye_height),
-            FluidState::default(),
-            Recheck,
-            Moving,
-            OwnTime,
-        ),
+        FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+        crate::targeting::Eye(sp.eye_height),
+        FluidState::default(),
+        Recheck,
+        Moving,
     )
 }
 /// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
@@ -874,6 +890,7 @@ pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
         MoveTo::default(),
         Nav::default(),
         Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        sp.walk,
         NavParams {
             malus: sp.malus,
             can_float: sp.can_float,
@@ -898,7 +915,7 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     let mut rng = Rng(seed | 1);
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
-    (body_bundle(sp, x, z, uid), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+    (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
 }
 /// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
 fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
@@ -906,7 +923,13 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
-    let mut e = world.spawn(body_bundle(sp, x, z, uid));
+    let mut e = world.spawn(transform_bundle(sp, x, z, uid));
+    if has(crate::behaviours::Cap::Solid) {
+        e.insert(solid_bundle(sp, x, z));
+    }
+    if has(crate::behaviours::Cap::Body) {
+        e.insert(body_bundle(sp));
+    }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
     }
@@ -992,24 +1015,24 @@ fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &m
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
 /// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Returns whether a spot was picked.
-pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng) -> bool {
+pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, nav: &NavParams, walk: crate::spots::WalkValue, in_water: bool) -> bool {
+    use crate::spots::{spotter, Pick};
     let (h, v) = (s.horizontal_range, s.vertical_range);
-    let lim = level.half - 2;
-    for _ in 0..10 {
-        let dx = r.next_int(2 * h + 1) - h;
-        let dy = r.next_int(2 * v + 1) - v;
-        let dz = r.next_int(2 * h + 1) - h;
-        let x = (pos.0.x + f64::from(dx)).floor() as i32;
-        let z = (pos.0.z + f64::from(dz)).floor() as i32;
-        // A spot in the air has nothing under it; one in the stone is lifted out of it onto the slab.
-        if dy <= 0 && x.abs() < lim && z.abs() < lim {
-            s.walking = true;
-            s.tx = f64::from(x) + 0.5;
-            s.tz = f64::from(z) + 0.5;
-            return true;
-        }
-    }
-    false
+    let mut sp = spotter(level, [pos.0.x, pos.0.y, pos.0.z], nav, walk, r);
+    // `WaterAvoidingRandomStrollGoal.getPosition`: in water a land spot first, else a land spot, a plain one 1 time in 1000.
+    let picked = if in_water {
+        sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
+    } else if sp.rng.next_float() >= 0.001 {
+        sp.pick(Pick::Land { h, v })
+    } else {
+        sp.pick(Pick::Default { h, v })
+    };
+    let Some(p) = picked else { return false };
+    s.walking = true;
+    s.tx = p[0];
+    s.tz = p[2];
+    s.ty = p[1].floor() as i32;
+    true
 }
 
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
@@ -1065,7 +1088,7 @@ pub(crate) fn player_near(
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
     mut entered: ResMut<crate::goals::Entered>,
-    mut active: Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>,
+    mut active: Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>,
 ) {
     const BIN: f64 = 32.0;
     const R2: f64 = BIN * BIN;
@@ -1129,14 +1152,18 @@ pub(crate) fn player_near(
             })
         })
     };
-    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, &mut Stroll, &mut Rng)>, wheel: &mut Wheel| {
+    let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>, wheel: &mut Wheel| {
         let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { return };
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if now_in && a.0 != u64::MAX {
             a.0 = u64::MAX;
             entered.0.push(e);
-            if !s.scheduled && !s.walking {
+            // The first stroll attempt belongs to an entity that walks and has goals; an object only wakes.
+            if let (Some(mut s), Some(mut r)) = (s, r)
+                && !s.scheduled
+                && !s.walking
+            {
                 arm_stroll(wheel, &clock, e, &mut s, &mut r);
             }
         } else if !now_in && a.0 == u64::MAX {

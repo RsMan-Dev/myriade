@@ -88,3 +88,17 @@ Sizes, Health, HurtAt, Frozen, Air, Resist, Immune, TypeName ; `Locomotion` : Ya
 `Targets` : FollowRange, AttackDamage ; `Goals` : GoalSet, Look, Head, Jump, Phase, ActiveUntil, Rng. Un module déclare dans
 `requires` ce qu'il suppose ; le registre refuse l'espèce qui a le module sans la capacité. `spawn_bundle` (tests, bancs) pose tout.
 Ne jamais supposer un composant d'une capacité que `requires` ne cite pas : `world.get::<X>(e)` rend `None` pour un objet.
+
+## Service : positions aléatoires (`spots.rs`)
+
+Un module ne tire JAMAIS sa propre position. `spots::pick_for(w, e, Pick::...) -> Option<[f64; 3]>` : `Pick::Default{h,v}`, `DefaultAway{h,v,from}`,
+`DefaultTowards{h,v,to,max_rad}`, `Land{h,v}`, `LandAway{min_h,max_h,v,from}`, `LandTowards{h,v,to}` = `DefaultRandomPos` / `LandRandomPos` du `Mob` :
+décalage arrondi en bloc AVANT d'être ajouté à la position, hauteur, destination stable (bloc solide dessous), malus de chemin nul, meilleur de dix
+par `walk_target_value` de l'espèce (composant `WalkValue` : `Animal` herbe 10 sinon luminosité - 0,5 ; `Monster` l'ombre ; `Mooshroom`, `Bee`, `Zero`).
+Le résultat est (x + 0,5, y, z + 0,5) ; la rangée y est celle du bloc : l'écrire dans la cible du chemin. Stroll (`WaterAvoiding`) et Panic l'emploient.
+Limites : navigation au sol seule, pas de `home` (`restricted` toujours faux), le `Mob` a douze cas d'espèce de plus (gardien, strider, tortue...).
+Contrôle : `tests/spots_vs_mob.rs` (30 000 tirages par picker contre un vrai `Mob` : part d'herbe, moyennes, taux d'échec).
+
+## Capacités : le corps est en trois
+
+`Transform` (Pos, Vel, SpeciesId, Uid, OwnTime : tout ce qu'a un projectile), `Solid` (Bounds, Cell : dans l'index, poussé, cherché, ciblé), `Body` (Body, Contact, FluidParams, Eye, FluidState, Recheck, Moving : `travel`, chute, fluides ; exige Transform et Solid). `Living` et `Locomotion` exigent `Body` ; les dépendances sont déclarées (`species::NEEDS`) et vérifiées au gel. Test : `no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_velocity`.

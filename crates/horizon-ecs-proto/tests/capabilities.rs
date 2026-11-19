@@ -137,9 +137,9 @@ fn spawn_makes_only_the_declared_capabilities() {
         sp.caps = caps;
         spawn_species(&mut h.world, &sp, x, 0.5, 11)
     };
-    let object = spawn(&mut h, &[Cap::Body], 0.5);
-    let stand = spawn(&mut h, &[Cap::Body, Cap::Living], 2.5);
-    let full = spawn(&mut h, &[Cap::Body, Cap::Living, Cap::Locomotion, Cap::Goals], 4.5);
+    let object = spawn(&mut h, &[Cap::Transform, Cap::Solid, Cap::Body], 0.5);
+    let stand = spawn(&mut h, &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living], 2.5);
+    let full = spawn(&mut h, &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Goals], 4.5);
     let has = |h: &Herd, e: Entity| {
         (
             h.world.get::<Health>(e).is_some(),
@@ -154,4 +154,27 @@ fn spawn_makes_only_the_declared_capabilities() {
         h.tick();
     }
     assert!(h.world.get::<Contact>(object).unwrap().on_ground && h.world.get::<Contact>(stand).unwrap().on_ground);
+}
+
+/// An entity with only a position and a velocity (a projectile in flight, a display) is visited by no system of the
+/// framework: after a hundred ticks next to creatures it is where it was, with the components it had.
+#[test]
+fn no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_velocity() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(8, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    for i in 0..4 {
+        spawn_species(&mut h.world, &table[0], 0.5 + f64::from(i), 0.5, 5 + i as u64);
+    }
+    let p = Vec3::new(1.5, 5.0, 0.5);
+    let e = h.world.spawn((Pos(p), Vel(Vec3::new(0.1, 0.0, 0.0)))).id();
+    let (n, vel) = (h.world.entity(e).archetype().components().len(), Vec3::new(0.1, 0.0, 0.0));
+    for _ in 0..100 {
+        h.tick();
+    }
+    assert_eq!(h.world.get::<Pos>(e).unwrap().0, p, "a system moved the entity");
+    assert_eq!(h.world.get::<Vel>(e).unwrap().0, vel, "a system changed its velocity");
+    assert_eq!(h.world.entity(e).archetype().components().len(), n, "a system added or removed a component");
 }

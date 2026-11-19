@@ -66,7 +66,15 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             (s.walking, s.tx, s.tz) = (true, x, z);
             true
         }
-        None => pick_spot(&level, &Pos(pos), &mut s, &mut r),
+        None => {
+            let nav = w.get::<NavParams>(e).copied();
+            let walk = w.get::<crate::spots::WalkValue>(e).copied().unwrap_or(crate::spots::WalkValue::Zero);
+            let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+            match nav {
+                Some(nav) => pick_spot(&level, &Pos(pos), &mut s, &mut r, &nav, walk, in_water),
+                None => false,
+            }
+        }
     };
     w.get_mut::<Rng>(e).unwrap().0 = r.0;
     *w.get_mut::<Stroll>(e).unwrap() = s;
