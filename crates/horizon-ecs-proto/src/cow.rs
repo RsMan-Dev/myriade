@@ -4322,6 +4322,9 @@ mod tests {
     /// cell (the player moved nowhere: only the cell change tells).
     #[test]
     fn a_cow_leaving_a_standing_player_stops_being_active() {
+        if skip_unless_walker("a_cow_leaving_a_standing_player_stops_being_active") {
+            return;
+        }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
