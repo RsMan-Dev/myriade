@@ -525,6 +525,7 @@ pub fn insert_resources(world: &mut World) {
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
+    s.add_systems(player_watch.after(online_events).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
     s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
     let modules = &crate::species::registry().modules;
@@ -546,16 +547,20 @@ pub fn register(s: &mut Schedule) {
 /// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
 /// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
 /// clears or takes them; a system that does not run every tick may miss events.
-#[derive(Default)]
-pub struct Ev {
-    cur: Vec<Entity>,
-    prev: Vec<Entity>,
+pub struct Ev<T = Entity> {
+    cur: Vec<T>,
+    prev: Vec<T>,
 }
-impl Ev {
-    pub fn push(&mut self, e: Entity) {
+impl<T> Default for Ev<T> {
+    fn default() -> Self {
+        Self { cur: Vec::new(), prev: Vec::new() }
+    }
+}
+impl<T: Copy> Ev<T> {
+    pub fn push(&mut self, e: T) {
         self.cur.push(e);
     }
-    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
         self.prev.iter().copied()
     }
     pub fn is_empty(&self) -> bool {
@@ -588,6 +593,13 @@ pub struct Events {
     /// The box entered / left powder snow.
     pub entered_powder_snow: Ev,
     pub left_powder_snow: Ev,
+    /// The feet left the ground (after being on it).
+    pub left_ground: Ev,
+    /// A player's view vector changed (the id).
+    pub gaze_changed: Ev<u32>,
+    /// A player entered / left the `PlayerWatch` radius of an entity (the watcher, the player id).
+    pub player_entered: Ev<(Entity, u32)>,
+    pub player_left: Ev<(Entity, u32)>,
     /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
     pub target_acquired: Ev,
     pub target_lost: Ev,
@@ -596,9 +608,24 @@ pub struct Events {
 }
 impl Events {
     pub fn swap(&mut self) {
-        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit, &mut self.hurt, &mut self.hurt_by_entity, &mut self.entered_powder_snow, &mut self.left_powder_snow] {
-            ev.swap();
-        }
+        self.ignited.swap();
+        self.extinguished.swap();
+        self.entered_fluid.swap();
+        self.left_fluid.swap();
+        self.landed.swap();
+        self.grew.swap();
+        self.ate.swap();
+        self.target_acquired.swap();
+        self.target_lost.swap();
+        self.projectile_hit.swap();
+        self.hurt.swap();
+        self.hurt_by_entity.swap();
+        self.entered_powder_snow.swap();
+        self.left_powder_snow.swap();
+        self.left_ground.swap();
+        self.gaze_changed.swap();
+        self.player_entered.swap();
+        self.player_left.swap();
     }
 }
 
@@ -650,7 +677,7 @@ pub(crate) fn phase_of(w: &World, e: Entity) -> u64 {
     w.get::<Phase>(e).map_or(0, |p| p.0)
 }
 /// Asks every module of the animal for its first deadlines.
-pub(crate) fn arm_timers(w: &mut World, e: Entity) {
+pub fn arm_timers(w: &mut World, e: Entity) {
     crate::brain::arm(w, e);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     let (entries, n) = (g.entries, g.len());
@@ -676,6 +703,65 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 }
 /// The player events of the tick: the lazy look wakes the animals a player now watches, the list of the players is
 /// given to the other systems; the modules read `Online::seen` for their own wake-ups (a player takes an item...).
+/// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
+/// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
+/// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
+/// changes or the player moves; the radius is at most 64 blocks; players with id < 64.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerWatch {
+    pub radius: f32,
+    inside: u64,
+}
+impl PlayerWatch {
+    pub const fn new(radius: f32) -> Self {
+        Self { radius, inside: 0 }
+    }
+    pub fn is_inside(&self, player: u32) -> bool {
+        player < 64 && self.inside >> player & 1 == 1
+    }
+}
+/// Updates the watchers touched by the player events of the tick and by the cell moves.
+fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
+    const R: f64 = 64.0;
+    if on.seen.is_empty() && moves.0.is_empty() {
+        return;
+    }
+    let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
+        if id >= 64 {
+            return;
+        }
+        let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
+        let was = w.inside >> id & 1 == 1;
+        if now && !was {
+            w.inside |= 1 << id;
+            ev.player_entered.push((e, id));
+        } else if !now && was {
+            w.inside &= !(1 << id);
+            ev.player_left.push((e, id));
+        }
+    };
+    for (old, new) in &on.seen {
+        let Some(id) = new.or(*old).map(|p| p.id) else { continue };
+        let mut near: Vec<Entity> = Vec::new();
+        for p in [old, new].into_iter().flatten() {
+            idx.for_radius(p.x, p.z, R, |c| near.push(c));
+        }
+        near.sort_unstable();
+        near.dedup();
+        for e in near {
+            if let Ok((pos, mut w)) = q.get_mut(e) {
+                eval(e, pos, &mut w, id, *new, &mut ev);
+            }
+        }
+    }
+    for &e in &moves.0 {
+        if let Ok((pos, mut w)) = q.get_mut(e) {
+            for p in on.list.iter().flatten() {
+                eval(e, pos, &mut w, p.id, Some(*p), &mut ev);
+            }
+        }
+    }
+}
 fn online_events(
     mut on: ResMut<Online>,
     mut pl: ResMut<Players>,

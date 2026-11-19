@@ -62,6 +62,8 @@ pub struct PlayerState {
     pub sneaking: Vec<bool>,
     pub helmet: Vec<u32>,
     pub gaze: Vec<[f64; 3]>,
+    /// The players whose view vector changed since the last tick (drained into `Events.gaze_changed`).
+    pub gaze_dirty: Vec<u32>,
     pub team: Vec<u32>,
     pub peaceful: bool,
 }
@@ -118,6 +120,9 @@ impl PlayerState {
         let i = id as usize;
         if self.gaze.len() <= i {
             self.gaze.resize(i + 1, [0.0, 0.0, 1.0]);
+        }
+        if self.gaze[i] != v {
+            self.gaze_dirty.push(id);
         }
         self.gaze[i] = v;
     }

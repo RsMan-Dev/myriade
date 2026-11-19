@@ -255,6 +255,9 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// The block changes waiting for the next step: (x, y, z, block name).
 #[derive(Resource, Default)]
 pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
+/// The block changes WITH properties waiting for the next step: (x, y, z, block name, properties): `blocks::set_state`.
+#[derive(Resource, Default)]
+pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>);
 /// The hazard blocks of the world by column and height: only the columns that hold one have an entry. A cow's hazard
 /// bits are those of the entries its box (widened by a block each way, as a prefilter) meets; a block change at any
 /// height updates its entry (`set`).
@@ -687,6 +690,13 @@ pub struct Species {
     /// The modes of locomotion (`locomotion.rs`).
     pub modes: &'static [crate::locomotion::ModeEntry],
 }
+/// The last attacker (`LivingEntity.getLastHurtByMob`): written by `apply_damage` for every hit that has an attacker; `at` is
+/// the entity's own time (a module forgets it after 100 ticks as the `Mob` does).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LastHurtBy {
+    pub who: crate::targeting::Who,
+    pub at: u64,
+}
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct FluidParams {
@@ -1033,6 +1043,13 @@ pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) 
     let e = spawn_declared(world, &sp, x, z, seed);
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
+    e
+}
+/// `spawn_species` and the first deadlines of its modules (what a creature born at the start of a scene needs; `breed` does it for
+/// a baby). `spawn_species` alone arms nothing: the herds arm in bulk (`goals::arm_all`), a test calls this or `arm_all`.
+pub fn spawn_armed(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let e = spawn_species(world, sp, x, z, seed);
+    crate::goals::arm_timers(world, e);
     e
 }
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
@@ -1728,7 +1745,13 @@ pub(crate) fn travel(
             None => &mut none,
         };
         let was_in_air = !c.on_ground;
+        let was_on_ground = c.on_ground;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        if was_on_ground && !c.on_ground {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
+            });
+        }
         if was_in_air && c.on_ground {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
@@ -1995,6 +2018,10 @@ pub(crate) fn apply_damage(
         }
         // The reactions of the modules to the hurt (`Animal.actuallyHurt` ends love, `after_hurt` resets `noActionTime`...): each
         // module of the entity has its `damaged` entry point; the frame does not know what they do.
+        // `getLastHurtByMob`: who hurt it last, readable by every module (`ResetUniversalAngerTarget`, revenge...), with its own time.
+        if let Some(who) = hit.by {
+            commands.entity(e).insert(LastHurtBy { who, at: clock.of(e) });
+        }
         let attacker = match hit.by {
             Some(crate::targeting::Who::Entity(a)) => Some(a),
             _ => None,
@@ -2124,6 +2151,7 @@ fn recompute(
 #[allow(clippy::type_complexity)]
 pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
+    mut state_changes: ResMut<StateChanges>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
@@ -2133,12 +2161,14 @@ pub(crate) fn block_changes(
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
 ) {
-    if changes.0.is_empty() {
+    if changes.0.is_empty() && state_changes.0.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    for (x, y, z, name) in std::mem::take(&mut changes.0) {
-        let Some(state) = mw.registry.default_state(name) else { continue };
+    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..]));
+    let with_state = std::mem::take(&mut state_changes.0).into_iter();
+    for (x, y, z, name, props) in named.chain(with_state).collect::<Vec<_>>() {
+        let Some(state) = crate::blocks::resolve(mw, name, props) else { continue };
         // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
         unsafe {
             let world = &mut *level.blocks.0;
@@ -2657,6 +2687,7 @@ pub(crate) fn due(
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
     mut events: ResMut<crate::goals::Events>,
+    mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -2665,6 +2696,9 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    for id in std::mem::take(&mut players.gaze_dirty) {
+        events.gaze_changed.push(id);
+    }
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
     if wheel.track {
@@ -2748,6 +2782,7 @@ impl Herd {
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(BlockChanges::default());
+        world.insert_resource(StateChanges::default());
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
@@ -2859,6 +2894,10 @@ impl Herd {
     /// A block placed or removed (`name`: `minecraft:stone`, `minecraft:air`, `minecraft:lava`...): taken at the next step.
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, name: &'static str) {
         self.world.resource_mut::<BlockChanges>().0.push((x, y, z, name));
+    }
+    /// A block placed with properties (`minecraft:sweet_berry_bush`, `&[("age", "3")]`): taken at the next step.
+    pub fn set_block_state(&mut self, x: i32, y: i32, z: i32, name: &'static str, props: &'static [(&'static str, &'static str)]) {
+        self.world.resource_mut::<StateChanges>().0.push((x, y, z, name, props));
     }
     /// A hit by an entity at `from` (x, z): the damage and the knockback away from it are one event.
     /// A hit by player `player` (of `Online`): from where it stands.
