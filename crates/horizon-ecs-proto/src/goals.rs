@@ -1200,6 +1200,8 @@ mod tests {
     #[test]
     fn cows_glance_at_a_near_player_and_look_around() {
         let Some(mut h) = herd() else { return };
+        // The control compares the rates of the look goals of every animal: the lazy look is off here.
+        set_lazy_look(&mut h.world, false);
         let mut cows = Vec::new();
         for i in 0..15 {
             for j in 0..13 {
