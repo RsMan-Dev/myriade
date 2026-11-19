@@ -12,7 +12,7 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&ANGRY),
     ],
     goals: &[
-        Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
+        Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params { boost: 0.05, ..neutral_anger::Params::DEFAULT }),
         Entry::new(&spear_use::MODULE, 1, &spear_use::Params::DEFAULT),
         Entry::new(&melee::MODULE, 2, &melee::Params::DEFAULT),
         Entry::new(&attack_turtle_egg::MODULE, 4, &attack_turtle_egg::Params::DEFAULT),
