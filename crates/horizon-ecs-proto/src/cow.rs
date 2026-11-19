@@ -1731,28 +1731,24 @@ pub(crate) fn pathfind(
             }
         });
     };
-    if cfg.path_budget > 0 {
-        // The first `path_budget` of the queue, in the table order (the same whatever the thread count).
-        let chosen: Vec<Entity> = q.iter().map(|x| x.0).take(cfg.path_budget).collect();
-        if cfg.parallel {
-            // SAFETY: the entities come from one iteration of the query: they are distinct.
-            let set = unsafe { bevy_ecs::entity::UniqueEntityVec::from_vec_unchecked(chosen) };
-            q.par_iter_many_unique_mut(set).for_each(|r| {
-                if let Ok((e, p, b, c, mut s, mut n, f, v, i, l, cl, u)) = r {
-                    one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
-                }
-            });
-        } else {
-            for e in chosen {
-                if let Ok((e, p, b, c, mut s, mut n, f, v, i, l, cl, u)) = q.get_mut(e) {
-                    one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
-                }
+    // At most `path_budget` searches (0: no limit): the first of the queue in the table order, the same whatever the thread count. ONE call
+    // site of `one` per mode: a third inlined copy slowed the unbudgeted systems by 0.5 % (measured, goal_bench cow idle 1530 -> 1538).
+    let mut left = if cfg.path_budget > 0 { cfg.path_budget } else { usize::MAX };
+    if cfg.parallel {
+        let mut chosen: Vec<Entity> = if cfg.path_budget > 0 { q.iter().map(|x| x.0).take(left).collect() } else { Vec::new() };
+        chosen.sort_unstable();
+        let (limited, chosen) = (cfg.path_budget > 0, &chosen);
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| {
+            if !limited || chosen.binary_search(&e).is_ok() {
+                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
             }
-        }
-    } else if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
+        });
     } else {
         for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+            if left == 0 {
+                break;
+            }
+            left -= 1;
             one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
         }
     }
@@ -2664,7 +2660,7 @@ fn hazard_tick(
         }
     }
 }
-/// The commands collected by `OrdCmds` (with the emitting entity) and the empty queues kept for the next scopes (no allocation per scope).
+/// The commands collected by `OrdCmds` on one thread (with the emitting entity) and the empty queues kept for the next scopes (no allocation per scope).
 #[derive(Default)]
 pub struct Pending {
     done: Vec<(Entity, bevy_ecs::world::CommandQueue)>,
@@ -2674,9 +2670,11 @@ pub struct Pending {
 /// the system) applies them sorted by entity, whatever thread ran the visit. The order commands are applied in decides the rows of the tables
 /// (an entity that changes table takes the last row), hence the iteration order of every later system: with the per-thread queues of
 /// `ParallelCommands` two runs, or two thread counts, gave different rows and so different games (suivi/ecs-echelle.md, G').
+/// One `Pending` per thread (no lock: the first version took a mutex twice per visit, +50 instr per visit measured).
 #[derive(bevy_ecs::system::SystemParam)]
 pub struct OrdCmds<'w, 's> {
-    pending: Local<'s, std::sync::Mutex<Pending>>,
+    pending: Local<'s, bevy_utils::Parallel<Pending>>,
+    gathered: Local<'s, Vec<(Entity, bevy_ecs::world::CommandQueue)>>,
     par: ParallelCommands<'w, 's>,
     allocator: &'w bevy_ecs::entity::EntityAllocator,
     entities: &'w bevy_ecs::entity::Entities,
@@ -2684,33 +2682,38 @@ pub struct OrdCmds<'w, 's> {
 impl OrdCmds<'_, '_> {
     /// Commands emitted by the visit of `by` (the sort key); callable from the threads of a parallel iteration.
     pub fn command_scope(&self, by: Entity, f: impl FnOnce(Commands)) {
-        let mut q = self.pending.lock().unwrap().spare.pop().unwrap_or_default();
-        f(Commands::new_from_entities(&mut q, self.allocator, self.entities));
-        let mut p = self.pending.lock().unwrap();
-        if q.is_empty() {
-            p.spare.push(q);
-        } else {
-            p.done.push((by, q));
-        }
+        self.pending.scope(|p| {
+            let mut q = p.spare.pop().unwrap_or_default();
+            f(Commands::new_from_entities(&mut q, self.allocator, self.entities));
+            if q.is_empty() {
+                p.spare.push(q);
+            } else {
+                p.done.push((by, q));
+            }
+        });
     }
     /// Hands the collected commands to the system's buffer, sorted by emitter (stable: one entity's commands keep their order).
     pub fn flush(&mut self) {
-        let p = self.pending.get_mut().unwrap();
-        if p.done.is_empty() {
+        let all = &mut *self.gathered;
+        for p in self.pending.iter_mut() {
+            all.append(&mut p.done);
+        }
+        if all.is_empty() {
             return;
         }
-        let mut v = std::mem::take(&mut p.done);
-        v.sort_by_key(|c| c.0);
-        let mut spare = std::mem::take(&mut p.spare);
+        // Sorted by emitter; the sort is stable and each thread's list is in its visit order, so one entity's commands keep their order.
+        all.sort_by_key(|c| c.0);
         self.par.command_scope(|mut cmd| {
-            for (_, mut q) in v.drain(..) {
-                cmd.append(&mut q);
-                spare.push(q);
+            for (_, q) in all.iter_mut() {
+                cmd.append(q);
             }
         });
-        let p = self.pending.get_mut().unwrap();
-        p.done = v;
-        p.spare = spare;
+        // The emptied queues go back to the threads' pools (round robin), their allocations kept.
+        let mut pools: Vec<&mut Vec<bevy_ecs::world::CommandQueue>> = self.pending.iter_mut().map(|p| &mut p.spare).collect();
+        let n = pools.len().max(1);
+        for (i, (_, q)) in all.drain(..).enumerate() {
+            pools[i % n].push(q);
+        }
     }
 }
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
