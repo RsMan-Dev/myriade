@@ -233,7 +233,7 @@ pub struct Requests(pub Vec<Req>);
 /// The option of the lazy look: when on, the look goals (`LookAtPlayer`, `RandomLookAround`) and the look control run
 /// only for an animal that a player can see, i.e. within `range` blocks, the client tracking range of an animal
 /// (10 chunks = 160 blocks; the client renders an entity at most 64 x 2.5 = 160 blocks away), rounded out to 16-block
-/// bins. Off by default: the owner decides.
+/// bins. ON by default (owner decision 2026-11-19: "useless for inactive and invisible mobs"); `set_lazy_look(world, false)` turns it off.
 #[derive(Resource)]
 pub struct LazyLook {
     pub enabled: bool,
@@ -245,7 +245,7 @@ pub struct LazyLook {
 }
 impl Default for LazyLook {
     fn default() -> Self {
-        Self { enabled: false, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
+        Self { enabled: true, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
     }
 }
 fn bin16(x: f64, z: f64) -> (i32, i32) {
