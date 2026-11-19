@@ -165,9 +165,9 @@ pub fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 pub fn tempt_item() -> (u32, &'static str) {
     match species().name {
-        "minecraft:pig" => (CARROT, "minecraft:carrot"),
-        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
-        _ => (WHEAT, "minecraft:wheat"),
+        "minecraft:pig" => (carrot(), "minecraft:carrot"),
+        "minecraft:chicken" => (wheat_seeds(), "minecraft:wheat_seeds"),
+        _ => (wheat(), "minecraft:wheat"),
     }
 }
 pub fn have_data() -> bool {

@@ -133,7 +133,8 @@ fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
 /// mount needs its saddle: without it nobody takes the seat).
 fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let Some(m) = w.get::<Mount>(e) else { return false };
-    if i.item == LEAD || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {
+    // A saddle or a body armor in hand is for `equipment::EQUIP`, a lead for `leash::LEASH`.
+    if matches!(crate::items::worn_in(i.item), Some(Slot::Saddle | Slot::Body)) || i.item == lead() || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {
         return false;
     }
     let _ = i.item;

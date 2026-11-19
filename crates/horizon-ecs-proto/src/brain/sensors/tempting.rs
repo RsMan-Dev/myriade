@@ -29,12 +29,12 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Tempting {
     pub range: f64,
-    pub items: u32,
+    pub items: crate::items::ItemSet,
 }
 
 /// Writes the species' tempting data on the entity.
 pub fn equip(w: &mut World, e: Entity, p: &Params) {
-    let items = p.foods.iter().fold(0u32, |m, n| m | 1 << item_id(n));
+    let items = crate::items::ItemSet::of(p.foods);
     w.entity_mut(e).insert(Tempting { range: p.range, items });
 }
 
@@ -63,7 +63,7 @@ fn scan(w: &mut World, e: Entity, _: &Ctx) {
 mod tests {
     use super::*;
     use crate::cow::{spawn_species, Herd, SpeciesTable};
-    use crate::goals::{Player, CARROT};
+    use crate::goals::{Player, carrot};
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     const FOOD: &[&str] = &["minecraft:carrot"];
@@ -101,10 +101,10 @@ mod tests {
     fn a_player_with_food_within_range_tempts() {
         let mut h = Herd::with_slab(40, true, false);
         let e = brained(&mut h);
-        player(&mut h, 1, 8.5, CARROT);
+        player(&mut h, 1, 8.5, carrot());
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });
         assert_eq!(tempting(&h, e), Some(Who::Player(1)));
-        player(&mut h, 1, 12.5, CARROT);
+        player(&mut h, 1, 12.5, carrot());
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });
         assert_eq!(tempting(&h, e), None);
         player(&mut h, 1, 8.5, 0);
@@ -117,7 +117,7 @@ mod tests {
     fn without_the_species_data_nobody_tempts() {
         let mut h = Herd::with_slab(40, true, false);
         let e = brained(&mut h);
-        player(&mut h, 1, 4.5, CARROT);
+        player(&mut h, 1, 4.5, carrot());
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });
         assert_eq!(tempting(&h, e), Some(Who::Player(1)));
         h.world.entity_mut(e).remove::<Tempting>();

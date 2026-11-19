@@ -100,6 +100,16 @@ pub fn on_death(world: &mut World, e: Entity) {
     if let Some(h) = world.get::<crate::goals::HandStack>(e).and_then(|h| h.0.clone()) {
         out.push(h);
     }
+    // `Mob.dropCustomDeathLoot`: what it picked up and wears (drop chance 2,0) always comes out, the pieces of armor too.
+    if let Some(looted) = world.get::<crate::behaviours::pick_up_gear::Looted>(e).map(|l| l.0) {
+        use crate::goals::{equipped, Slot};
+        for slot in [Slot::Head, Slot::Chest, Slot::Legs, Slot::Feet, Slot::Off] {
+            let id = equipped(world, e, slot);
+            if id != 0 && looted & crate::behaviours::pick_up_gear::slot_bit(slot) != 0 && let Some(n) = crate::items::item_name(id) {
+                out.push(horizon_client_lib::items::ItemStack::new(n, 1));
+            }
+        }
+    }
     out.extend(roll(world, kind, on_fire, baby, seed));
     let mut r = LegacyRandom::new(seed ^ 0x2545_F491 ^ i64::from(world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32)));
     for stack in out {

@@ -801,6 +801,8 @@ pub struct Species {
     pub rules: &'static [crate::rules::RuleEntry],
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
+    /// The base armor and toughness of the type (`Attributes.ARMOR`, `ARMOR_TOUGHNESS`): worn pieces add to it.
+    pub armor: (f32, f32),
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
@@ -956,6 +958,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             goals: crate::species::config(name),
             rules: crate::species::registry().by_name(name).unwrap().rules,
             knockback_resistance: mob.attrs.knockback_resistance,
+            armor: (kind.armor as f32, kind.armor_toughness as f32),
             attack_damage: mob.attrs.attack_damage,
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
@@ -965,6 +968,9 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         if name == chosen {
             chosen_kind = Some(kind);
         }
+    }
+    if let Some(items) = mw.items {
+        crate::items::install(items);
     }
     let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());
@@ -1193,6 +1199,9 @@ fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) ->
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
+        if sp.armor != (0.0, 0.0) {
+            e.insert(crate::equipment::Armor { armor: sp.armor.0.floor(), toughness: sp.armor.1 });
+        }
         if sp.undead {
             e.insert(crate::effects::Undead);
         }
@@ -2304,7 +2313,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
@@ -2316,12 +2325,12 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
         let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
-        let applied = if cooldown {
+        let mut applied = if cooldown {
             if hit.amount <= hurt.last {
                 continue;
             }
@@ -2329,6 +2338,10 @@ pub(crate) fn apply_damage(
         } else {
             hit.amount
         };
+        // `LivingEntity.getDamageAfterArmorAbsorb`: what the worn armor stops, unless the hurt is in `#bypasses_armor`.
+        if let Some(a) = armor.filter(|_| crate::equipment::armor_applies(hit.cause)) {
+            applied = crate::equipment::absorb(applied, a.armor, a.toughness);
+        }
         *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;
         if h.0 <= 0.0 {
@@ -3582,7 +3595,7 @@ mod tests {
     /// two kinds push each other, and they do not breed with each other.
     #[test]
     fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
-        use crate::goals::{CARROT, Online, Panic, Player, Tempting, WHEAT, feed};
+        use crate::goals::{carrot, Online, Panic, Player, Tempting, wheat, feed};
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3603,12 +3616,12 @@ mod tests {
         let tempted = |herd: &mut Herd, id: u8| {
             all.iter().filter(|a| a.1 == id && herd.world.get::<Tempting>(a.0).is_some()).count()
         };
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: CARROT, off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: carrot(), off: 0 });
         for _ in 0..8 {
             herd.tick();
         }
         let (cows_c, pigs_c) = (tempted(&mut herd, 0), tempted(&mut herd, 1));
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: WHEAT, off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: wheat(), off: 0 });
         for _ in 0..8 {
             herd.tick();
         }

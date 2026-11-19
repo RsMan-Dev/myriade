@@ -68,7 +68,7 @@ fn a_bone_tames_one_wild_wolf_in_three_and_the_owner_orders_it_to_sit() {
     let mut last = None;
     for k in 0..300 {
         let e = spawn_species(&mut h.world, species(), 0.5 + (k % 50) as f64, 0.5 + (k / 50) as f64, 11 + k as u64);
-        let handled = interact(&mut h.world, e, &Interaction { player: 1, item: BONE });
+        let handled = interact(&mut h.world, e, &Interaction { player: 1, item: bone() });
         assert!(handled);
         if h.world.get::<Owner>(e).unwrap().0 == Some(Who::Player(1)) {
             tamed += 1;
