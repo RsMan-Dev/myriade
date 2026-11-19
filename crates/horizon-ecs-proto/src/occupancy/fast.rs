@@ -189,15 +189,40 @@ fn expand(lo: [f64; 3], hi: [f64; 3], v: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     (lo, hi)
 }
 
-/// `floor`, as an integer, with no library call and no range fix-up: `i64::MIN` for what does not fit (a NaN, an infinity, 2^63 and more).
+/// `floor(lo - EPS)` and `floor(hi + EPS)` per axis as `i32`, or `None` when one is not a number or beyond ±2^30 (the conversion answers `i32::MIN` for what it cannot hold, which fails the same test).
 #[inline(always)]
-fn floor_i(v: f64) -> i64 {
+fn cells(lo: [f64; 3], hi: [f64; 3]) -> Option<(i32, i32, i32, i32, i32, i32)> {
     #[cfg(target_arch = "x86_64")]
-    // SAFETY: SSE2 is part of the x86-64 baseline; the instruction answers `i64::MIN` for what it cannot convert.
-    let t = unsafe { core::arch::x86_64::_mm_cvttsd_si64(core::arch::x86_64::_mm_set_sd(v)) };
+    {
+        use core::arch::x86_64::*;
+        // SAFETY: SSE2 is part of the x86-64 baseline.
+        unsafe {
+            let floor2 = |v: __m128d| {
+                let t = _mm_cvttpd_epi32(v);
+                let up = _mm_castpd_ps(_mm_cmpgt_pd(_mm_cvtepi32_pd(t), v));
+                _mm_add_epi32(t, _mm_castps_si128(_mm_shuffle_ps::<0b1000>(up, up)))
+            };
+            let a = floor2(_mm_add_pd(_mm_set_pd(lo[1], lo[0]), _mm_set1_pd(-EPS)));
+            let b = floor2(_mm_add_pd(_mm_set_pd(hi[0], lo[2]), _mm_set_pd(EPS, -EPS)));
+            let c = floor2(_mm_add_pd(_mm_set_pd(hi[2], hi[1]), _mm_set1_pd(EPS)));
+            let fits = |t: i32| (t as u32).wrapping_add(1 << 30) < 1 << 31;
+            let (x0, y0) = (_mm_cvtsi128_si32(a), _mm_cvtsi128_si32(_mm_srli_si128::<4>(a)));
+            let (z0, x1) = (_mm_cvtsi128_si32(b), _mm_cvtsi128_si32(_mm_srli_si128::<4>(b)));
+            let (y1, z1) = (_mm_cvtsi128_si32(c), _mm_cvtsi128_si32(_mm_srli_si128::<4>(c)));
+            if !(fits(x0) & fits(y0) & fits(z0) & fits(x1) & fits(y1) & fits(z1)) {
+                return None;
+            }
+            Some((x0, y0, z0, x1, y1, z1))
+        }
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    let t = if v.is_finite() && v.abs() < 9.0e18 { v as i64 } else { i64::MIN };
-    t - i64::from((t as f64) > v)
+    {
+        let f = |v: f64| {
+            let t = v.floor();
+            (t.abs() < 1.0e9).then_some(t as i32)
+        };
+        Some((f(lo[0] - EPS)?, f(lo[1] - EPS)?, f(lo[2] - EPS)?, f(hi[0] + EPS)?, f(hi[1] + EPS)?, f(hi[2] + EPS)?))
+    }
 }
 
 pub(super) fn resolve(occ: &Occupancy, scene: &SceneCollisions<'_, '_>, bounds: Aabb, movement: Vec3, max_step: f32, on_ground: bool) -> Option<Vec3> {
@@ -281,13 +306,11 @@ fn resolve_in(tl: &mut Tl, occ: &Occupancy, scene: &SceneCollisions<'_, '_>, bou
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX_CUBES], occ: &Occupancy, world: &World, binding: &Binding<'_>, subject: bool, lo: [f64; 3], hi: [f64; 3]) -> Option<usize> {
-    let (x0, y0, z0, x1, y1, z1) = (floor_i(lo[0] - EPS), floor_i(lo[1] - EPS), floor_i(lo[2] - EPS), floor_i(hi[0] + EPS), floor_i(hi[1] + EPS), floor_i(hi[2] + EPS));
-    // Beyond a few cells the kernel's own errors and budget rules apply; a value that is not a number is `i64::MIN` and fails here.
-    let fits = |t: i64| (t.wrapping_add(2_000_000_000) as u64) <= 4_000_000_000;
-    if !(fits(x0) & fits(y0) & fits(z0)) || x1 < x0 || y1 < y0 || z1 < z0 || x1 - x0 > 14 || y1 - y0 > 14 || z1 - z0 > 14 {
+    // The six cell bounds, two to an SSE register; what is not a number or lies beyond 2^30 cells is `None`: beyond a few cells the kernel's own rules apply.
+    let (x0, y0, z0, x1, y1, z1) = cells(lo, hi)?;
+    if x1 < x0 || y1 < y0 || z1 < z0 || x1 - x0 > 14 || y1 - y0 > 14 || z1 - z0 > 14 {
         return None;
     }
-    let (x0, y0, z0, x1, y1, z1) = (x0 as i32, y0 as i32, z0 as i32, x1 as i32, y1 as i32, z1 as i32);
     // The box inside one section, and no section around holds a shape that reaches out of its cell: that section's words are all there is to read.
     if x0 >> 4 == x1 >> 4 && y0 >> 4 == y1 >> 4 && z0 >> 4 == z1 >> 4 {
         let key = super::key([x0 >> 4, y0 >> 4, z0 >> 4]);
@@ -360,13 +383,18 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
             return Some(n);
         }
     }
-    let (kx0, kx1, ky0, ky1, kz0, kz1) = ((x0 - 1) >> 4, (x1 + 1) >> 4, (y0 - 1) >> 4, (y1 + 1) >> 4, (z0 - 1) >> 4, (z1 + 1) >> 4);
-    let (ny, nz) = ((ky1 - ky0 + 1) as usize, (kz1 - kz0 + 1) as usize);
-    let single = kx0 == kx1 && ky0 == ky1 && kz0 == kz1;
+    // First the sections of the box alone: when none has held a shape, a liquid or a neighbour's reaching shape (flags 2, 4, 8, 16), the ring holds nothing
+    // to look at; otherwise the sections of the box and its ring.
+    let (mut kx0, mut kx1, mut ky0, mut ky1, mut kz0, mut kz1) = (x0 >> 4, x1 >> 4, y0 >> 4, y1 >> 4, z0 >> 4, z1 >> 4);
+    let (mut ny, mut nz) = (0usize, 0usize);
     let mut secs: [*const Section; 27] = [std::ptr::null(); 27];
     let mut flags = 0u8;
-    let mut first: *const Section = std::ptr::null();
-    {
+    for pass in 0..2 {
+        if pass == 1 {
+            (kx0, kx1, ky0, ky1, kz0, kz1) = ((x0 - 1) >> 4, (x1 + 1) >> 4, (y0 - 1) >> 4, (y1 + 1) >> 4, (z0 - 1) >> 4, (z1 + 1) >> 4);
+        }
+        (ny, nz) = ((ky1 - ky0 + 1) as usize, (kz1 - kz0 + 1) as usize);
+        flags = 0;
         let mut m = 0;
         for kx in kx0..=kx1 {
             for ky in ky0..=ky1 {
@@ -376,26 +404,57 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
                     let p = if recent[slot].0 == key && !recent[slot].1.is_null() { recent[slot].1 } else { fetch(recent, occ, world, binding, key, [kx, ky, kz], slot) };
                     // SAFETY: a box of the map's, kept until `clear` (which changes the generation the cache is checked against).
                     flags |= unsafe { (*p).flags.load(Relaxed) };
-                    if single {
-                        first = p;
-                    } else {
-                        secs[m] = p;
-                        m += 1;
-                    }
+                    secs[m] = p;
+                    m += 1;
                 }
             }
+        }
+        if flags & 0x1e == 0 {
+            break;
         }
     }
     if flags & 1 == 0 {
         return Some(0);
     }
-    // SAFETY: as above.
-    let at = |kx: i32, ky: i32, kz: i32| -> &Section {
-        if single {
-            unsafe { &*first }
-        } else {
-            unsafe { &*secs[(((kx - kx0) as usize * ny) + (ky - ky0) as usize) * nz + (kz - kz0) as usize] }
+    if flags & 0x1e == 0 {
+        // Only cubes in the box's sections: the cells of x are one word over (at most) two sections, cut to the box and to what it does not merely graze.
+        let (bx0, bx1) = (x0 >> 4, x1 >> 4);
+        let mut word = (((1u32 << (x1 - x0 + 1)) - 1) << (x0 - (bx0 << 4))) as u32;
+        if lo[0] >= f64::from(x0) + 1.0 {
+            word &= !(1 << (x0 - (bx0 << 4)));
         }
+        if hi[0] <= f64::from(x1) {
+            word &= !(1 << (x1 - (bx0 << 4)));
+        }
+        let (ya, yb) = (if lo[1] < f64::from(y0) + 1.0 { y0 } else { y0 + 1 }, if hi[1] > f64::from(y1) { y1 } else { y1 - 1 });
+        let (za, zb) = (if lo[2] < f64::from(z0) + 1.0 { z0 } else { z0 + 1 }, if hi[2] > f64::from(z1) { z1 } else { z1 - 1 });
+        let (base, mut n) = (f64::from(bx0 << 4), 0);
+        for z in za..=zb {
+            let zi = ((z >> 4) - kz0) as usize;
+            for y in ya..=yb {
+                let at_y = ((y >> 4) - ky0) as usize * nz + zi;
+                let row = (((y & 15) << 4) | (z & 15)) as usize;
+                // SAFETY: sections of the box, kept until `clear`.
+                let mut bits = u32::from(unsafe { &*secs[at_y] }.full[row]) & word;
+                if bx1 > bx0 {
+                    bits |= (u32::from(unsafe { &*secs[ny * nz + at_y] }.full[row]) << 16) & word;
+                }
+                while bits != 0 {
+                    let bit = bits.trailing_zeros();
+                    bits &= bits - 1;
+                    if n == MAX_CUBES {
+                        return None;
+                    }
+                    out[n] = [base + f64::from(bit), f64::from(y), f64::from(z)];
+                    n += 1;
+                }
+            }
+        }
+        return Some(n);
+    }
+    let at = |kx: i32, ky: i32, kz: i32| -> &Section {
+        // SAFETY: as above.
+        unsafe { &*secs[(((kx - kx0) as usize * ny) + (ky - ky0) as usize) * nz + (kz - kz0) as usize] }
     };
     let span = |kx: i32, lo: i32, hi: i32| -> u16 {
         let (a, c) = (lo.max(kx << 4) - (kx << 4), hi.min((kx << 4) + 15) - (kx << 4));
@@ -454,6 +513,8 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
         }
         inner[i] = keep;
     }
+    let (bx0, bx1) = (x0 >> 4, x1 >> 4);
+    let i0 = (bx0 - kx0) as usize;
     let mut n = 0;
     for z in z0..=z1 {
         if !((z > z0 || lz_ok) && (z < z1 || hz_ok)) {
@@ -464,18 +525,19 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
                 continue;
             }
             let row = (((y & 15) << 4) | (z & 15)) as usize;
-            for (i, kx) in (kx0..=kx1).enumerate() {
-                let s = at(kx, y >> 4, z >> 4);
-                let mut bits = s.full[row] & inner[i];
-                while bits != 0 {
-                    let bit = bits.trailing_zeros() as i32;
-                    bits &= bits - 1;
-                    if n == MAX_CUBES {
-                        return None;
-                    }
-                    out[n] = [f64::from((kx << 4) + bit), f64::from(y), f64::from(z)];
-                    n += 1;
+            // A box spans at most 15 cells: two sections in x; their two words are read as one, cells in x order.
+            let mut bits = u32::from(at(bx0, y >> 4, z >> 4).full[row] & inner[i0]);
+            if bx1 > bx0 {
+                bits |= u32::from(at(bx1, y >> 4, z >> 4).full[row] & inner[i0 + 1]) << 16;
+            }
+            while bits != 0 {
+                let bit = bits.trailing_zeros() as i32;
+                bits &= bits - 1;
+                if n == MAX_CUBES {
+                    return None;
                 }
+                out[n] = [f64::from((bx0 << 4) + bit), f64::from(y), f64::from(z)];
+                n += 1;
             }
         }
     }
