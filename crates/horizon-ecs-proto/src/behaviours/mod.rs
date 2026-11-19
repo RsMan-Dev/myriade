@@ -228,6 +228,9 @@ pub mod ghast_look;
 pub mod move_towards_target;
 pub mod ranged_attack;
 pub mod leap_at_target;
+pub mod attack_turtle_egg;
+pub mod brute_stroll_home;
+pub mod silverfish_merge;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -270,4 +273,7 @@ pub static TABLE: &[&Module] = &[
     &ghast_look::MODULE,
     &fox_sleep::MODULE,
     &fox_eat_berries::MODULE,
+    &attack_turtle_egg::MODULE,
+    &brute_stroll_home::MODULE,
+    &silverfish_merge::MODULE,
 ];
