@@ -2,7 +2,7 @@
 //! creatures of the same kind around it that have no target are alerted (`alertOthers`). What wakes it: the damage event
 //! (`apply_damage` writes `HurtBy`), heard on the selector's next tick; nothing else, no polling.
 use super::*;
-use crate::targeting::{self, Target, Who};
+use crate::targeting::{self, FollowRange, Target, Who};
 use crate::{cow::*, goals::*, hostile::HurtBy};
 
 #[derive(Clone, Copy, Debug)]
@@ -35,27 +35,18 @@ pub struct HurtByGoal {
 pub static MODULE: Module = Module {
     name: "hurt_by",
     flags: TARGET,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Living, Cap::Targets],
+    ..Module::DEFAULT
 };
+
 fn mask_of(w: &World, names: &[&str]) -> u64 {
-    let mut m = 0u64;
-    for (i, sp) in w.resource::<SpeciesTable>().0.iter().enumerate().take(64) {
-        if names.contains(&sp.name) {
-            m |= 1 << i;
-        }
-    }
-    m
+    let _ = w;
+    names.iter().filter_map(|n| crate::species::registry().id(n)).filter(|&i| i < 64).fold(0u64, |m, i| m | 1 << i)
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
@@ -103,7 +94,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 /// have no target take the same one.
 fn alert_others(w: &mut World, e: Entity, who: Who, g: HurtByGoal) {
     let (pos, sid) = (w.get::<Pos>(e).unwrap().0, w.get::<SpeciesId>(e).unwrap().0);
-    let follow = f64::from(w.resource::<SpeciesTable>().0[sid as usize].follow_range);
+    let follow = w.get::<FollowRange>(e).map_or(16.0, |f| f.0);
     let kinds = if g.alert_types == 0 { 1u64 << sid } else { g.alert_types };
     let mut others = Vec::new();
     w.resource::<Index>().for_radius(pos.x, pos.z, follow, |o| others.push(o));
@@ -123,8 +114,9 @@ fn alert_others(w: &mut World, e: Entity, who: Who, g: HurtByGoal) {
         }
     }
 }
-/// An alerted creature takes the target of the one that called it (`MobEvent::SetTarget`): the goal that holds a target
-/// is started for it, without asking.
+/// An alerted creature takes the target of the one that called it: `MobEvent::SetTarget` writes the target of the creature
+/// without any of its goals running, so it keeps it until the target dies (no memory, no follow distance), and a target
+/// goal of the creature can still replace it.
 fn called(w: &mut World, e: Entity) {
     let Some(g) = w.get::<HurtByGoal>(e).copied() else { return };
     let Some(who) = g.called_by else { return };
@@ -132,8 +124,9 @@ fn called(w: &mut World, e: Entity) {
         return;
     }
     w.get_mut::<HurtByGoal>(e).unwrap().called_by = None;
-    force_start(w, e, g.slot);
-    targeting::set_target(w, e, Target::new(who, 15, g.slot));
+    let mut t = Target::new(who, u16::MAX, u8::MAX);
+    (t.must_see, t.follow_scale) = (false, f64::INFINITY);
+    targeting::set_target(w, e, t);
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     if w.get::<Target>(e).is_some_and(|t| t.slot == inst.slot) {

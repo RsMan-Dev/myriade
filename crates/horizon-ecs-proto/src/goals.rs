@@ -2,7 +2,7 @@
 //! the list of its goals (module, priority, flags), the locks, what runs and what waits. It knows NO goal: a goal is a
 //! `behaviours::Module` (one file) that a species lists with its parameters (`species.rs`). A goal is woken by a
 //! deadline of the timer wheel or by an event and never scans; only a goal that runs ticks, through its own marker.
-use crate::behaviours::{Change, Entry, Inst, Module, TABLE};
+use crate::behaviours::{Change, Entry, Inst, Module};
 use crate::cow::*;
 use bevy_ecs::{prelude::*, schedule::Schedule};
 use horizon_core::geometry::{Vec3, trig};
@@ -398,6 +398,8 @@ pub fn goals_bundle(sp: &Species) -> impl Bundle {
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
+        crate::targeting::FollowRange(f64::from(sp.follow_range)),
+        crate::targeting::Eye(sp.eye_height),
         Uid(uid),
         Phase(uid),
     )
@@ -430,7 +432,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
     world.insert_resource(crate::targeting::TargetWatchers::default());
-    for m in TABLE {
+    for m in &crate::species::registry().modules {
         (m.resources)(world);
     }
 }
@@ -439,13 +441,14 @@ pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
     s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
-    for i in 0..TABLE.len() {
+    let modules = &crate::species::registry().modules;
+    for i in 0..modules.len() {
         let slot = GoalSlot(i as u8);
         s.configure_sets(slot.after(online_events).after(entered_events).before(arbitrate).before(pathfind));
         if i > 0 {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
-        (TABLE[i].systems)(s, slot);
+        (modules[i].systems)(s, slot);
     }
 }
 
@@ -612,7 +615,7 @@ fn timer_fired(w: &mut World, e: Entity, slot: u8) {
     }
 }
 /// Starts the goal of this slot without asking `can_use` and without its `start` (the caller does what `start` does): the
-/// goals that hold its flags are stopped. For a goal that is taken from outside (an alerted creature's target).
+/// goals that hold its flags are stopped. For the tests that impose what a `Mob` drew (an acquisition at a given tick).
 pub fn force_start(w: &mut World, e: Entity, slot: u8) {
     let stopped = {
         let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };

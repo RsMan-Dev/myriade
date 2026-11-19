@@ -13,7 +13,7 @@ use horizon_ecs_proto::{
     behaviours::{Entry, hurt_by, nearest_target},
     cow::*,
     goals::*,
-    species::{Config, ZOMBIE},
+    species::{Config, zombie},
     targeting::*,
 };
 
@@ -26,7 +26,7 @@ fn zombie_config() -> Config {
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),
         Entry::new(&nearest_target::MODULE, 3, cow),
     ];
-    entries.extend_from_slice(ZOMBIE.goals);
+    entries.extend_from_slice(zombie::DEF.goals);
     Config { entries: Box::leak(entries.into_boxed_slice()) }
 }
 struct World2 {

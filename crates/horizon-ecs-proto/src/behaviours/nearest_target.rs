@@ -6,7 +6,7 @@
 //! (armed when the animal enters the active zone, when a refused ask is over, and when its target ends); nothing else.
 //! The candidates come from the spatial index, only when the ask comes up.
 use super::*;
-use crate::targeting::{self, Target, Who};
+use crate::targeting::{self, FollowRange, Target, Who};
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
 
@@ -57,25 +57,22 @@ pub struct NearestTargets(pub Vec<Nearest>);
 pub static MODULE: Module = Module {
     name: "nearest_target",
     flags: TARGET,
-    ends_with_path: false,
     blocked: Some(blocked),
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
     fired,
     can_use,
     start,
     stop,
-    systems: no_systems,
+    requires: &[Cap::Targets],
+    ..Module::DEFAULT
 };
+
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    let table = w.resource::<SpeciesTable>().0.clone();
     let mw = w.resource::<Level>().mw.0;
     let mut mask = 0u64;
-    for (i, sp) in table.iter().enumerate().take(64) {
+    for (i, sp) in crate::species::registry().species.iter().enumerate().take(64) {
         if p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name)) {
             mask |= 1 << i;
         }
@@ -139,9 +136,8 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(n) = state(w, e, inst) else { return false };
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    let sid = w.get::<SpeciesId>(e).unwrap().0;
-    let eye = w.get::<Look>(e).map_or(1.0, |l| l.eye);
-    let range = f64::from(w.resource::<SpeciesTable>().0[sid as usize].follow_range) * n.p.follow_scale;
+    let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
+    let range = w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale;
     let mw = w.resource::<Level>().mw.0;
     let from = Vec3::new(pos.x, pos.y + eye, pos.z);
     let mut found: Option<Who> = None;
@@ -176,7 +172,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
             if dx <= range && dy <= range && dz <= range {
                 let d = dx * dx + dy * dy + dz * dz;
-                cands.push((d, c, cp.0, w.resource::<SpeciesTable>().0[cs.0 as usize].eye_height));
+                cands.push((d, c, cp.0, w.get::<targeting::Eye>(c).map_or(1.0, |l| l.0)));
             }
         });
         cands.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));

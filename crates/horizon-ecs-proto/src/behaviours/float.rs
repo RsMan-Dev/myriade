@@ -18,18 +18,13 @@ pub struct Floating;
 pub static MODULE: Module = Module {
     name: "float",
     flags: JUMP,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Body],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
     let eye = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(e).unwrap().0 as usize].eye_height;

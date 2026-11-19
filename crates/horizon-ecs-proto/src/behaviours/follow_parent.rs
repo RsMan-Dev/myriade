@@ -33,18 +33,14 @@ pub struct Babies(pub Vec<Entity>);
 pub static MODULE: Module = Module {
     name: "follow_parent",
     flags: 0,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
     resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn resources(w: &mut World) {
     w.insert_resource(Babies::default());

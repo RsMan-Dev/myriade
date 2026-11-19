@@ -23,16 +23,13 @@ pub static MODULE: Module = Module {
     flags: MOVE,
     ends_with_path: true,
     blocked: Some(blocked),
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
     fired,
     can_use,
     start,
     stop,
-    systems: no_systems,
+    requires: &[Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(StrollGoal { speed: params::<Params>(p).speed });

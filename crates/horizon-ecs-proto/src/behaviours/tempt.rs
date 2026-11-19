@@ -49,18 +49,14 @@ pub struct Tempting(pub u8);
 pub static MODULE: Module = Module {
     name: "tempt",
     flags: MOVE | LOOK,
-    ends_with_path: false,
-    blocked: None,
-    retry_on_end: false,
     after_change: Some(after_change),
-    resources: no_resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);

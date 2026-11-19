@@ -17,17 +17,15 @@ pub static MODULE: Module = Module {
     name: "melee",
     flags: MOVE | LOOK,
     ends_with_path: true,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
     resources,
     equip,
-    arm: no_arm,
     fired,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Targets, Cap::Locomotion],
+    ..Module::DEFAULT
 };
 /// The target service tells the melee goal when its animal gets a target: the first check is armed on the grid.
 fn resources(w: &mut World) {

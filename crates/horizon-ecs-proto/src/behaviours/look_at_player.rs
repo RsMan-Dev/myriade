@@ -31,11 +31,7 @@ pub struct Glancing {
 pub static MODULE: Module = Module {
     name: "look_at_player",
     flags: LOOK,
-    ends_with_path: false,
     blocked: Some(blocked),
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm,
     fired,
@@ -43,6 +39,8 @@ pub static MODULE: Module = Module {
     start,
     stop,
     systems,
+    requires: &[Cap::Body],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);

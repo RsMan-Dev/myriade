@@ -41,6 +41,12 @@ impl Target {
         Self::new(Who::Player(id), memory, u8::MAX)
     }
 }
+/// The height of the eyes above the feet (the line of sight starts there): a capability component of the targeting service.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Eye(pub f64);
+/// How far the animal follows a target (`Attributes.FOLLOW_RANGE`): a capability component of the targeting service.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FollowRange(pub f64);
 /// The functions called when an attacker gets a target (an attack module arms its first check there).
 #[derive(Resource, Default)]
 pub struct TargetWatchers(pub Vec<fn(&mut World, Entity)>);
@@ -62,7 +68,7 @@ pub fn player_box(p: &Player) -> Aabb {
     Aabb::new(Vec3::new(p.x - 0.3, p.y, p.z - 0.3), Vec3::new(p.x + 0.3, p.y + 1.8, p.z + 0.3))
 }
 /// The reading of a target from the resources and a creature lookup.
-fn read(on: &Online, ps: &PlayerState, table: &SpeciesTable, who: Who, ent: impl Fn(Entity) -> Option<(Vec3, Aabb, u8, bool)>) -> Option<Info> {
+fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<(Vec3, Aabb, u8, bool, f64)>) -> Option<Info> {
     match who {
         Who::Player(id) => {
             let p = on.get(id)?;
@@ -72,8 +78,8 @@ fn read(on: &Online, ps: &PlayerState, table: &SpeciesTable, who: Who, ent: impl
             Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: ps.creative(id) || ps.spectator(id) })
         }
         Who::Entity(e) => {
-            let (pos, bounds, sid, baby) = ent(e)?;
-            Some(Info { pos, eye: pos.y + table.0[sid as usize].eye_height, bounds, baby, species: sid, player: false, exempt: false })
+            let (pos, bounds, sid, baby, eye) = ent(e)?;
+            Some(Info { pos, eye: pos.y + eye, bounds, baby, species: sid, player: false, exempt: false })
         }
     }
 }
@@ -82,18 +88,17 @@ fn read(on: &Online, ps: &PlayerState, table: &SpeciesTable, who: Who, ent: impl
 pub struct Targets<'w, 's> {
     pub on: Res<'w, Online>,
     pub ps: Res<'w, PlayerState>,
-    pub table: Res<'w, SpeciesTable>,
-    ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>)>,
+    ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>, &'static Eye)>,
 }
 impl Targets<'_, '_> {
     pub fn info(&self, who: Who) -> Option<Info> {
-        read(&self.on, &self.ps, &self.table, who, |e| self.ents.get(e).ok().map(|(p, b, s, g)| (p.0, b.0, s.0, g)))
+        read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l)| (p.0, b.0, s.0, g, l.0)))
     }
 }
 /// [`Targets::info`] for the code that holds the world.
 pub fn info(w: &World, who: Who) -> Option<Info> {
-    read(w.resource::<Online>(), w.resource::<PlayerState>(), w.resource::<SpeciesTable>(), who, |e| {
-        Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some()))
+    read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
+        Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some(), w.get::<Eye>(e)?.0))
     })
 }
 /// `TargetingConditions`: the range an attacker sees a target at: the follow range, scaled by the target's visibility,
@@ -117,12 +122,12 @@ pub fn clear_target(w: &mut World, e: Entity) {
 /// `Mob.sees` for the attackers that have a target: the line of sight is read again only when the attacker's eyes or the
 /// target's change block, or a block changes on the box of the segment between them (inflated by a block); an attacker
 /// that stands still, with a still target and still blocks, costs a comparison.
-pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlocks>, mut q: Query<(&Pos, &Look, &mut Target)>) {
+pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlocks>, mut q: Query<(&Pos, &Eye, &mut Target)>) {
     let mw = level.mw.0;
     let block = |p: Vec3, eye: f64| (p.x.floor() as i32, (p.y + eye).floor() as i32, p.z.floor() as i32);
     for (pos, look, mut g) in &mut q {
         let Some(i) = tg.info(g.who) else { continue };
-        let (zb, pb) = (block(pos.0, look.eye), (i.pos.x.floor() as i32, i.eye.floor() as i32, i.pos.z.floor() as i32));
+        let (zb, pb) = (block(pos.0, look.0), (i.pos.x.floor() as i32, i.eye.floor() as i32, i.pos.z.floor() as i32));
         let mut dirty = zb != g.zblock || pb != g.pblock;
         if !dirty && !changed.0.is_empty() {
             let (lo, hi) = ((zb.0.min(pb.0) - 1, zb.1.min(pb.1) - 1, zb.2.min(pb.2) - 1), (zb.0.max(pb.0) + 1, zb.1.max(pb.1) + 1, zb.2.max(pb.2) + 1));
@@ -130,19 +135,19 @@ pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlo
         }
         if dirty {
             (g.zblock, g.pblock) = (zb, pb);
-            g.seen = mw.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + look.eye, pos.0.z), Vec3::new(i.pos.x, i.eye, i.pos.z));
+            g.seen = mw.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + look.0, pos.0.z), Vec3::new(i.pos.x, i.eye, i.pos.z));
         }
     }
     changed.0.clear();
 }
 /// `TargetGoal.canContinueToUse`, asked every other tick of the attackers that have a target: alive, not creative, within
 /// the follow range, and (with `must_see`) seen at least once in `memory` evaluations; else the target is lost.
-pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Pos, &SpeciesId, &mut Target)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Pos, &FollowRange, &mut Target)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
     if clock.0 % 2 != 0 {
         return;
     }
-    for (e, pos, sid, mut g) in &mut q {
-        let follow = f64::from(tg.table.0[sid.0 as usize].follow_range) * g.follow_scale;
+    for (e, pos, range, mut g) in &mut q {
+        let follow = range.0 * g.follow_scale;
         let ok = tg.info(g.who).is_some_and(|i| !i.exempt && d2(pos.0, i.pos) <= follow * follow);
         if g.seen {
             g.unseen = 0;

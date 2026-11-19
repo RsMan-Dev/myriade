@@ -37,17 +37,15 @@ pub static MODULE: Module = Module {
     name: "panic",
     flags: MOVE,
     ends_with_path: true,
-    blocked: None,
     retry_on_end: true,
-    after_change: None,
     resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Living, Cap::Locomotion],
+    ..Module::DEFAULT
 };
 /// The animals hurt this tick, in the order the damage was applied (written by `apply_damage`).
 #[derive(Resource, Default)]

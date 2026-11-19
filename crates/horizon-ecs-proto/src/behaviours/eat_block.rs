@@ -36,18 +36,15 @@ pub struct Grazing {
 pub static MODULE: Module = Module {
     name: "eat_block",
     flags: MOVE | LOOK | JUMP,
-    ends_with_path: false,
     blocked: Some(blocked),
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
     arm: arm_graze_inst,
     fired,
     can_use,
     start,
     stop,
-    systems: no_systems,
+    requires: &[Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Graze { def: *params::<Params>(p), armed: false, slot: inst.slot });
