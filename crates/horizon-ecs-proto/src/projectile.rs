@@ -53,6 +53,8 @@ pub enum OnHit {
     Explode { power: i32, fire: bool },
     /// A thrown potion breaks and splashes these brews (`effects::splash`).
     Splash(&'static [crate::effects::Brew]),
+    /// A wind charge bursts where it ends: knockback only, no damage, on the creatures within `radius` (`explosion::wind_burst`).
+    WindBurst { radius: f32 },
 }
 /// An explosion asked by a projectile.
 #[derive(Clone, Copy, Debug)]
@@ -85,6 +87,8 @@ impl Flight {
     /// `LlamaSpit`: 1 damage, gravity 0.06. Not done: it flies on through a creature, and goes at a block its box touches.
     pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Fixed(1.0), ..Self::BASE };
     /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
+    /// `BreezeWindCharge`: straight flight at constant speed (inertia 1, no acceleration), one point of damage, a burst of radius 3.
+    pub const BREEZE_WIND_CHARGE: Flight = Flight { inertia: 1.0, damage: Damage::Fixed(1.0), size: 0.3125, order: Order::Hurting, accel: 0.0, hit: OnHit::WindBurst { radius: 3.0 }, ..Self::BASE };
     pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, ..Self::BASE };
     pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
 }
@@ -259,6 +263,10 @@ pub fn fly(
                 events.exploded.push(blast);
                 commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
             }
+            if let OnHit::WindBurst { radius } = f.hit {
+                let owner = p.owner;
+                commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
+            }
             if let OnHit::Splash(brews) = f.hit {
                 let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
                 commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
@@ -283,6 +291,10 @@ pub fn fly(
                         let blast = Blast { at: pos.0, radius: power as f32, fire, owner: p.owner, source: None };
                         events.exploded.push(blast);
                         commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                    }
+                    if let OnHit::WindBurst { radius } = f.hit {
+                        let (at, owner) = (pos.0, p.owner);
+                        commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
                     }
                     if let OnHit::Splash(brews) = f.hit {
                         let (at, owner) = (pos.0, p.owner);

@@ -4,7 +4,7 @@
 //! (`Sensor.wasEntityAttackableLastNTicks(100)`) needs a sensor that the frame does not have: not ported (DOUTE).
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::targeting;
+use crate::targeting::{self, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:stop_attacking_if_target_invalid",
@@ -21,12 +21,18 @@ pub struct Params {
     pub tired_ticks: i64,
     /// The creaking's `isAttackTargetStillReachable`: the target must still be in `NEAREST_VISIBLE_TARGETABLE_PLAYERS`.
     pub still_visible: bool,
+    /// The breeze's `Sensor.wasEntityAttackableLastNTicks(window)`: `attackable` says whether the target is attackable now; the target is
+    /// dropped when it was last attackable more than `window` ticks ago (read at the brain's steps: the sensor's scans and the running behaviours).
+    pub attackable: Option<(fn(&World, Entity, Who) -> bool, i64)>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { tired_ticks: 200, still_visible: false };
+    pub const DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None };
 }
 
-fn invalid(w: &World, e: Entity, p: &Params) -> bool {
+/// The own time at which the target was last attackable (the window of `Params.attackable`).
+#[derive(Component, Default)]
+pub struct LastAttackable(Option<u64>);
+fn invalid(w: &mut World, e: Entity, p: &Params) -> bool {
     let target = match get(w, e, &ATTACK_TARGET) {
         Some(MemValue::Who(who)) => *who,
         _ => return false,
@@ -34,7 +40,15 @@ fn invalid(w: &World, e: Entity, p: &Params) -> bool {
     let alive = targeting::info(w, target).is_some();
     let tired = int(w, e, &CANT_REACH_WALK_TARGET_SINCE).is_some_and(|since| now_of(w, e) as i64 - since > p.tired_ticks);
     let still = !p.still_visible || matches!(get(w, e, &NEAREST_VISIBLE_TARGETABLE_PLAYERS), Some(MemValue::Whos(l)) if l.contains(&target));
-    !super::start_attacking::can_attack(w, target) || tired || !alive || !still
+    let mut stale = false;
+    if let Some((f, window)) = p.attackable {
+        let now = now_of(w, e);
+        if f(w, e, target) {
+            w.entity_mut(e).insert(LastAttackable(Some(now)));
+        }
+        stale = w.get::<LastAttackable>(e).and_then(|l| l.0).is_none_or(|t| now.saturating_sub(t) as i64 > window);
+    }
+    !super::start_attacking::can_attack(w, target) || tired || !alive || !still || stale
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -57,8 +71,8 @@ mod tests {
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[(&ATTACK_TARGET, Need::Present)];
-    static DEFAULT: Params = Params { tired_ticks: 200, still_visible: false };
-    static CREAK: Params = Params { tired_ticks: 200, still_visible: true };
+    static DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None };
+    static CREAK: Params = Params { tired_ticks: 200, still_visible: true, attackable: None };
 
     fn brained(h: &mut Herd, params: &'static Params) -> Entity {
         let entries: &'static [BEntry] = Box::leak(Box::new([BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 1, params, needs: NEEDS, duration: None, kids: &[] }]));

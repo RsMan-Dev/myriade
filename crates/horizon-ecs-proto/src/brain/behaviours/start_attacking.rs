@@ -8,7 +8,7 @@ use crate::targeting::{self, Target, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:start_attacking",
-    mems: &[&ATTACK_TARGET, &HURT_BY_ENTITY, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &CANT_REACH_WALK_TARGET_SINCE],
+    mems: &[&ATTACK_TARGET, &crate::brain::sensors::attackable::NEAREST_ATTACKABLE, &HURT_BY_ENTITY, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &CANT_REACH_WALK_TARGET_SINCE],
     requires: &[Cap::Brain, Cap::Targets],
     one_shot: true,
     can_start,
@@ -20,6 +20,8 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
 pub enum Finder {
     HurtBy,
     NearestVisiblePlayer,
+    /// The `nearest_attackable` memory (the breeze's `BreezeAttackEntitySensor`).
+    NearestAttackable,
 }
 
 /// `active` is the creaking's `isActive` rule. It is read only by `NearestVisiblePlayer`; the frame has no such rule yet,
@@ -27,12 +29,17 @@ pub enum Finder {
 pub struct Params {
     pub finder: Finder,
     pub active: fn(&World, Entity) -> bool,
+    /// The species' own `canAttack` rule on top of the generic one (the breeze: players and iron golems only).
+    pub allowed: fn(&World, Who) -> bool,
 }
 fn inactive(_: &World, _: Entity) -> bool {
     false
 }
+fn anyone(_: &World, _: Who) -> bool {
+    true
+}
 impl Params {
-    pub const DEFAULT: Params = Params { finder: Finder::HurtBy, active: inactive };
+    pub const DEFAULT: Params = Params { finder: Finder::HurtBy, active: inactive, allowed: anyone };
 }
 
 /// `canAttack` without the species' rule: a living player that is not creative or spectator, or a creature. The breeze's
@@ -48,6 +55,10 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
             Some(MemValue::Who(who)) => *who,
             _ => return None,
         },
+        Finder::NearestAttackable => match get(w, e, &crate::brain::sensors::attackable::NEAREST_ATTACKABLE) {
+            Some(MemValue::Who(who)) => *who,
+            _ => return None,
+        },
         Finder::NearestVisiblePlayer => {
             if !(p.active)(w, e) {
                 return None;
@@ -58,7 +69,7 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
             }
         }
     };
-    can_attack(w, who).then_some(who)
+    (can_attack(w, who) && (p.allowed)(w, who)).then_some(who)
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -84,12 +95,12 @@ mod tests {
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[(&ATTACK_TARGET, Need::Absent)];
-    static HURT: Params = Params { finder: Finder::HurtBy, active: inactive };
-    static CREAK_OFF: Params = Params { finder: Finder::NearestVisiblePlayer, active: inactive };
+    static HURT: Params = Params { finder: Finder::HurtBy, active: inactive, allowed: anyone };
+    static CREAK_OFF: Params = Params { finder: Finder::NearestVisiblePlayer, active: inactive, allowed: anyone };
     fn active_yes(_: &World, _: Entity) -> bool {
         true
     }
-    static CREAK_ON: Params = Params { finder: Finder::NearestVisiblePlayer, active: active_yes };
+    static CREAK_ON: Params = Params { finder: Finder::NearestVisiblePlayer, active: active_yes, allowed: anyone };
 
     fn brained(h: &mut Herd, params: &'static Params) -> Entity {
         let entries: &'static [BEntry] = Box::leak(Box::new([BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 1, params, needs: NEEDS, duration: None, kids: &[] }]));
