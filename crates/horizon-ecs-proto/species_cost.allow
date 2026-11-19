@@ -6,3 +6,6 @@ rabbit ## bounds along its path (hop mode)
 silverfish ## wanders and searches paths (pathfind 100 000 instr per search, 3 per tick at 2 000)
 enderman ## goals asked at the vanilla cadence (1/10 per tick): arbitrate visits 10 % of the herd per tick
 zoglin ## walks all the time (18 visits of travel per tick at 2 000)
+phantom ## banks toward its point every tick (control, travel and the circle's tick: a flier that is always in motion; 8 400 instr per phantom and tick)
+vex ## flies straight through the blocks every tick it has a point (control, noclip travel, goals): a mover, not a rest cost
+cave_spider ## the climb wish never ends: the Mob pushes at the CORNER of the target block (0.707 from its centre) and the cave spider's width is 0.7, so `closerToCenterThan(width)` never holds (vanilla's own quirk); the tick is ~240 instr per wish
