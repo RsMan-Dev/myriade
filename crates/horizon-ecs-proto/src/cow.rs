@@ -425,6 +425,8 @@ pub enum Due {
     /// A sensor of the brain is due (its rank in the plan), and a memory's time is up (its slot and the token it had).
     Sensor(u8),
     Forget(u16, u32),
+    /// The brain has something to do (a timed behaviour's end).
+    BrainWake,
     Burn,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
@@ -2606,6 +2608,7 @@ pub(crate) fn due(
             Due::Egg => commands.queue(move |w: &mut World| crate::farm::lay_deadline(w, e)),
             Due::Expire => commands.queue(move |w: &mut World| crate::projectile::expire(w, e)),
             Due::Sensor(i) => commands.queue(move |w: &mut World| crate::brain::sensor_due(w, e, i)),
+            Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Burn => {

@@ -1,9 +1,9 @@
 //! `CopperGolem` and `CopperGolemAi` WITHOUT the transport between containers (a module to come): two sensors, the core and idle
-//! activities, and the generic behaviours. The transport's cooldown starts as the constructor sets it and counts down; the
+//! activities, and the generic behaviours. The transport's cooldown starts as the constructor sets it and is a memory that expires (no countdown); the
 //! stroll waits for it (as the `Mob` does), so a golem walks while it lasts.
 use super::Def;
 use crate::behaviours::Cap;
-use crate::brain::behaviours::{countdown, do_nothing, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
+use crate::brain::behaviours::{do_nothing, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
 
@@ -32,7 +32,6 @@ pub static DEF: Def = Def {
                     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 1, params: &(), needs: &[], duration: Some((30, 60)) },
                 ],
             },
-            BEntry { behaviour: &countdown::BEHAVIOUR, activity: "core", priority: 5, params: &countdown::Params { key: &TRANSPORT_ITEMS_COOLDOWN_TICKS }, needs: &[(&TRANSPORT_ITEMS_COOLDOWN_TICKS, Need::Present)], duration: None, kids: &[] },
         ],
     },
     ..Def::EMPTY

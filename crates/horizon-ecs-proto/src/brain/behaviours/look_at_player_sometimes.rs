@@ -7,7 +7,7 @@ use crate::targeting::Who;
 
 #[derive(Component)]
 pub struct Ticker(i32);
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:look_at_player_sometimes", mems: &[&LOOK_TARGET, &VISIBLE_MOBS], one_shot: true, poll: true, equip, can_start, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:look_at_player_sometimes", mems: &[&LOOK_TARGET, &VISIBLE_MOBS], one_shot: true, equip, can_start, ..Behaviour::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: &Ctx) {
     w.entity_mut(e).insert(Ticker(0));
 }
@@ -15,6 +15,8 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let found = find_closest(w, e, |w, who| matches!(who, Who::Player(_)) && crate::targeting::info(w, who).is_some_and(|i| d2(pos, i.pos) <= 36.0));
     let Some(who) = found else { return false };
+    // The ticker counts while a player is in sight: the brain is stepped again next tick (and not otherwise).
+    wake(w, e);
     let t = w.get::<Ticker>(e).unwrap().0;
     if t == 0 {
         let n = 40 + with_rng(w, e, |r| r.next_int(41)) - 1;

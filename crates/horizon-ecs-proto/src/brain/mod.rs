@@ -156,8 +156,8 @@ pub struct Behaviour {
     pub requires: &'static [Cap],
     /// Starts and stops in the same tick (`OneShot`).
     pub one_shot: bool,
-    /// Its start depends on more than memories (a timer, a roll): the entity stays awake while it is active and its needs are met.
-    pub poll: bool,
+    /// Nothing to do while it runs (no `tick` work): the brain is woken at its end, not every tick.
+    pub passive: bool,
     pub gate: Option<Gate>,
     pub equip: fn(&mut World, Entity, &Ctx),
     pub can_start: fn(&mut World, Entity, &Ctx) -> bool,
@@ -176,7 +176,7 @@ impl Behaviour {
         mems: &[],
         requires: &[],
         one_shot: false,
-        poll: false,
+        passive: false,
         gate: None,
         equip: nothing,
         can_start: yes,
@@ -383,7 +383,7 @@ pub fn start(w: &mut World, e: Entity) {
     let Some(plan) = w.get::<Brain>(e).map(|b| b.plan) else { return };
     for i in &plan.initial {
         let v = i.base + i64::from(with_rng(w, e, |r| r.next_int(i.range)));
-        set(w, e, i.key, MemValue::Int(v), None);
+        set(w, e, i.key, MemValue::Int(v), Some(v as u64));
     }
     for (id, inst) in plan.insts.iter().enumerate() {
         (inst.b.equip)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params });
@@ -534,24 +534,21 @@ fn step(w: &mut World, e: Entity) {
     b.awake = false;
     let plan = b.plan;
     drop(b);
-    let mut poll = false;
     for &id in &plan.order {
         let inst = &plan.insts[id as usize];
         if active(w, e, inst.act) && !running(w, e, id) && needs_ok(w, e, inst.needs) {
-            if !try_start(w, e, plan, id) && inst.b.poll {
-                poll = true;
-            }
+            try_start(w, e, plan, id);
         }
     }
-    let mut any = false;
+    let mut any;
     for &id in &plan.order {
         if running(w, e, id) {
-            any = true;
             tick_or_stop(w, e, plan, id);
         }
     }
     update_activity(w, e, plan);
-    if any || poll || plan.order.iter().any(|&id| running(w, e, id)) {
+    any = plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && running(w, e, i as u16));
+    if any {
         wake(w, e);
     }
 }
@@ -576,6 +573,9 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
         let d = min + with_rng(w, e, |r| r.next_int(max + 1 - min));
         let now = now_of(w, e);
         w.get_mut::<Brain>(e).unwrap().run[id as usize].end = now + d as u64;
+        if inst.b.passive {
+            arm_at(w, e, now + d as u64 + 1, Due::BrainWake);
+        }
     }
     set_running(w, e, id, true);
     if let Some(g) = inst.b.gate {
