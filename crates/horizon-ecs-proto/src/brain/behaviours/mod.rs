@@ -7,3 +7,5 @@ pub mod move_to_target_sink;
 pub mod panic;
 pub mod run_one;
 pub mod stroll;
+pub mod gate_all;
+pub mod stay_in_fluid;
