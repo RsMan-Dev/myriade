@@ -113,10 +113,46 @@ pub struct Entry {
     pub module: &'static Module,
     pub priority: u8,
     pub params: &'static (dyn Any + Sync),
+    /// The condition of the species for this entry, asked by the framework before the module's `can_use`.
+    pub when: Option<&'static Cond>,
 }
 impl Entry {
     pub const fn new(module: &'static Module, priority: u8, params: &'static (dyn Any + Sync)) -> Self {
-        Self { module, priority, params }
+        Self { module, priority, params, when: None }
+    }
+    /// The same entry that starts only while `cond` holds: `Entry::new(..).when(&Cond::Is("horizon:is_baby"))`.
+    pub const fn when(self, cond: &'static Cond) -> Self {
+        Self { when: Some(cond), ..self }
+    }
+}
+/// A condition on an entity, in DATA: named predicates (registered with the registry: `horizon:is_baby`, `horizon:is_day`,
+/// `horizon:in_water`...) combined with not / all / any. A predicate reads components of the entity, never a species. The
+/// names are checked when the registry is frozen (an unknown one is a startup error naming the species).
+#[derive(Debug)]
+pub enum Cond {
+    Is(&'static str),
+    Not(&'static Cond),
+    All(&'static [Cond]),
+    Any(&'static [Cond]),
+}
+/// A named predicate: a plain function of the world and the entity.
+pub type Pred = fn(&World, Entity) -> bool;
+impl Cond {
+    pub fn eval(&self, w: &World, e: Entity) -> bool {
+        match self {
+            Cond::Is(name) => crate::species::registry().predicate(name).is_some_and(|p| p(w, e)),
+            Cond::Not(c) => !c.eval(w, e),
+            Cond::All(cs) => cs.iter().all(|c| c.eval(w, e)),
+            Cond::Any(cs) => cs.iter().any(|c| c.eval(w, e)),
+        }
+    }
+    /// The predicate names in it.
+    pub fn names(&self, out: &mut Vec<&'static str>) {
+        match self {
+            Cond::Is(n) => out.push(n),
+            Cond::Not(c) => c.names(out),
+            Cond::All(cs) | Cond::Any(cs) => cs.iter().for_each(|c| c.names(out)),
+        }
     }
 }
 pub fn same(a: &'static Module, b: &'static Module) -> bool {

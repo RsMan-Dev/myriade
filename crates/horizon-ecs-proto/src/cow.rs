@@ -1229,6 +1229,8 @@ pub(crate) fn pathfind(
             .flatten();
         par.command_scope(|mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
+                crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 nav.path = Some(p);
                 nav.last_check = now;
                 nav.last_pos = pos.0;

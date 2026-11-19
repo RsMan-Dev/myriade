@@ -178,3 +178,42 @@ fn no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_veloci
     assert_eq!(h.world.get::<Vel>(e).unwrap().0, vel, "a system changed its velocity");
     assert_eq!(h.world.entity(e).archetype().components().len(), n, "a system added or removed a component");
 }
+
+/// `Entry::when`: the framework asks the species' condition before the module's `canUse`. The panic of an adult is given
+/// `horizon:is_baby`: struck, the adult does not run, a control adult does; combinations (`Not`, `All`, `Any`) evaluate.
+#[test]
+fn a_named_condition_gates_an_entry_before_its_module() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::{
+        behaviours::{panic, Cond, Entry},
+        goals::{GoalSet, Phase},
+    };
+    if horizon_ecs_proto::cow::skip_unless(&panic::MODULE, "a_named_condition_gates_an_entry_before_its_module") {
+        return;
+    }
+    let mut h = Herd::with_slab(8, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let (gated, control) = (spawn_species(&mut h.world, &table[0], 0.5, 0.5, 21), spawn_species(&mut h.world, &table[0], 4.5, 4.5, 22));
+    for _ in 0..20 {
+        h.tick();
+    }
+    static BABY: Cond = Cond::Is("horizon:is_baby");
+    static NOT_BABY_AND_DAY: Cond = Cond::All(&[Cond::Not(&BABY), Cond::Is("horizon:on_ground")]);
+    assert!(!BABY.eval(&h.world, gated) && NOT_BABY_AND_DAY.eval(&h.world, gated), "the conditions read the entity");
+    let entries: Vec<Entry> = h.world.get::<GoalSet>(gated).unwrap().entries().iter().map(|e| if horizon_ecs_proto::behaviours::same(e.module, &panic::MODULE) { e.when(&BABY) } else { *e }).collect();
+    h.world.get_mut::<GoalSet>(gated).unwrap().replace_entries(Box::leak(entries.into_boxed_slice()));
+    let _ = Phase(0);
+    for e in [gated, control] {
+        h.world.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Entity);
+    }
+    let (mut c, mut g) = (false, false);
+    for _ in 0..12 {
+        h.tick();
+        c |= h.world.get::<horizon_ecs_proto::behaviours::panic::Panicking>(control).is_some();
+        g |= h.world.get::<horizon_ecs_proto::behaviours::panic::Panicking>(gated).is_some();
+    }
+    assert!(c, "the control adult flees");
+    assert!(!g, "the adult whose panic needs a baby does not");
+}

@@ -102,3 +102,14 @@ Contrôle : `tests/spots_vs_mob.rs` (30 000 tirages par picker contre un vrai `M
 ## Capacités : le corps est en trois
 
 `Transform` (Pos, Vel, SpeciesId, Uid, OwnTime : tout ce qu'a un projectile), `Solid` (Bounds, Cell : dans l'index, poussé, cherché, ciblé), `Body` (Body, Contact, FluidParams, Eye, FluidState, Recheck, Moving : `travel`, chute, fluides ; exige Transform et Solid). `Living` et `Locomotion` exigent `Body` ; les dépendances sont déclarées (`species::NEEDS`) et vérifiées au gel. Test : `no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_velocity`.
+
+## Condition d'espèce : `Entry::when` (prédicats nommés)
+
+`Entry::new(&m::MODULE, prio, &params).when(&Cond::Is("horizon:is_baby"))` : le CADRE évalue la condition avant le `can_use` du module
+(`start_goal`) ; refusée, le but ne démarre pas et le `blocked` du module (« redemander plus tard ») est appelé s'il en a un. `Cond` est une
+donnée : `Is(nom)`, `Not`, `All`, `Any` (composables, chargeables depuis des données). Prédicats de base : `horizon:is_baby`, `is_adult`, `is_day`,
+`is_night`, `in_water`, `on_ground`, `on_fire`. Un prédicat est une `fn(&World, Entity) -> bool` qui lit des composants de capacité, jamais une
+espèce : `species/predicates.rs`. Un mod ou un module en ajoute un avec `Builder::predicate("monmod:nom", f)` ; un nom inconnu dans une
+configuration est une erreur de démarrage qui nomme l'espèce et le module. Limite : la condition est évaluée au DÉMARRAGE, pas pendant le but
+(un but en cours ne s'arrête pas quand elle devient fausse) ; un module dont la condition peut changer sans événement fournit un `blocked`.
+Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contre le `Mob` : les modules de `PORTABLES.md` qui l'emploient (TamePanic...) n'existent pas encore.

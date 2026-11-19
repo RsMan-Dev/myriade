@@ -74,6 +74,12 @@ fn main() {
     if std::env::var_os("HUNT").is_some() {
         let c = horizon_ecs_proto::goals::counts(&mut herd.world);
         let hits = herd.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
+        {
+            let a = |i: usize| horizon_ecs_proto::goals::ASKS[i].load(std::sync::atomic::Ordering::Relaxed);
+            eprintln!("path searches over the run ({} ticks): asked by stroll {} panic {} melee {}; searches run {}", 300, a(0), a(1), a(5), horizon_ecs_proto::goals::FINDS.load(std::sync::atomic::Ordering::Relaxed));
+            let (n, p) = (horizon_ecs_proto::goals::PATH_NODES.load(std::sync::atomic::Ordering::Relaxed), horizon_ecs_proto::goals::PATHS_FOUND.load(std::sync::atomic::Ordering::Relaxed));
+            eprintln!("paths found {p}, mean length {:.2} nodes", n as f64 / p.max(1) as f64);
+        }
         eprintln!("hunting {:?} meleeing {:?} player hits so far {hits}", c.iter().find(|x| x.0 == "hunting"), c.iter().find(|x| x.0 == "meleeing"));
     }
     if std::env::var_os("COUNT_OVERLAPS").is_some() {

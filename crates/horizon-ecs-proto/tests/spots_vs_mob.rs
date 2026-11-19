@@ -76,3 +76,32 @@ fn the_pickers_have_the_laws_of_the_mob() {
         assert!((a.0 - b.0).abs() < 0.03 && (a.1 - b.1).abs() < 0.25 && (a.2 - b.2).abs() < 0.25 && (a.3 - b.3).abs() < 0.03, "{name}");
     }
 }
+
+/// What one call of the picker costs, in instructions (the exact counter of the thread): ten tries and ten walk values.
+#[test]
+fn the_cost_of_a_pick_is_reported() {
+    if !have_data() {
+        return;
+    }
+    let (_r, h) = flat_pair();
+    let level = *h.world.resource::<Level>();
+    let sp = *species();
+    let nav = NavParams { malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, follow_range: sp.follow_range };
+    let Some(counter) = horizon_ecs_proto::instr::Counter::new() else { return };
+    let mut rng = Rng(77);
+    for (name, pick) in [("land 10,7", Pick::Land { h: 10, v: 7 }), ("default 5,4", Pick::Default { h: 5, v: 4 })] {
+        let a = counter.read();
+        let n = 20000;
+        for _ in 0..n {
+            let _ = spotter(&level, [0.5, 1.0, 0.5], &nav, sp.walk, &mut rng).pick(pick);
+        }
+        eprintln!("{name}: {} instructions per pick", (counter.read() - a) / n);
+        for wv in [WalkValue::Zero, WalkValue::Animal, WalkValue::Monster] {
+            let a = counter.read();
+            for _ in 0..n {
+                let _ = spotter(&level, [0.5, 1.0, 0.5], &nav, wv, &mut rng).pick(pick);
+            }
+            eprintln!("  {wv:?}: {} per pick", (counter.read() - a) / n);
+        }
+    }
+}

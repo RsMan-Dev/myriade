@@ -6,13 +6,14 @@
 //!
 //! Extending (a mod, or the next species): `install(|b| ...)` before the first `registry()` call; see `Builder`.
 //! The framework assumes nothing about the entity: a `Def` with empty sections is a valid entity without goals.
-use crate::behaviours::{self, Cap, Entry, Module};
+use crate::behaviours::{self, Cap, Entry, Module, Pred};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod chicken;
 pub mod cow;
 pub mod pig;
+pub mod predicates;
 pub mod skeleton;
 pub mod sheep;
 pub mod templates;
@@ -99,11 +100,16 @@ pub struct Registry {
     pub modules: Vec<&'static Module>,
     pub species: Vec<Resolved>,
     by_name: HashMap<&'static str, usize>,
+    predicates: HashMap<&'static str, Pred>,
 }
 impl Registry {
     /// A module's id: its position (the slot of its systems).
     pub fn module_id(&self, m: &'static Module) -> Option<usize> {
         self.modules.iter().position(|x| behaviours::same(x, m))
+    }
+    /// The named predicate (`Cond::Is`).
+    pub fn predicate(&self, name: &str) -> Option<Pred> {
+        self.predicates.get(name).copied()
     }
     pub fn id(&self, name: &str) -> Option<usize> {
         self.by_name.get(name).copied()
@@ -122,10 +128,14 @@ pub struct Builder {
     modules: Vec<&'static Module>,
     defs: Vec<(&'static str, &'static Def)>,
     alters: Vec<(&'static str, &'static str, &'static [Change])>,
+    predicates: Vec<(&'static str, &'static str, Pred)>,
 }
 impl Builder {
     fn new() -> Self {
-        let mut b = Builder { source: "base", modules: Vec::new(), defs: Vec::new(), alters: Vec::new() };
+        let mut b = Builder { source: "base", modules: Vec::new(), defs: Vec::new(), alters: Vec::new(), predicates: Vec::new() };
+        for (n, f) in predicates::BUILTIN {
+            b.predicates.push(("base", n, *f));
+        }
         for m in behaviours::TABLE {
             b.modules.push(m);
         }
@@ -154,7 +164,18 @@ impl Builder {
         self.alters.push((self.source, species, changes));
         self
     }
+    /// A named predicate for `Cond::Is` (name it `yourmod:what`).
+    pub fn predicate(&mut self, name: &'static str, f: Pred) -> &mut Self {
+        self.predicates.push((self.source, name, f));
+        self
+    }
     fn freeze(self) -> Result<Registry, Error> {
+        let mut preds: HashMap<&'static str, Pred> = HashMap::new();
+        for (src, name, f) in &self.predicates {
+            if preds.insert(name, *f).is_some() {
+                return Err(Error(format!("{src}: predicate `{name}` is declared twice")));
+            }
+        }
         let mut species = Vec::new();
         let mut by_name = HashMap::new();
         let mut lists: Vec<(Vec<Entry>, usize)> = Vec::new();
@@ -185,10 +206,21 @@ impl Builder {
                 }
             }
         }
+        for ((src, d), (list, _)) in self.defs.iter().zip(&lists) {
+            for e in list {
+                let mut names = Vec::new();
+                if let Some(c) = e.when {
+                    c.names(&mut names);
+                }
+                if let Some(n) = names.iter().find(|n| !preds.contains_key(*n)) {
+                    return Err(Error(format!("{src}: species `{}`, module `{}`: unknown predicate `{n}`", d.name, e.module.name)));
+                }
+            }
+        }
         for (r, (list, _)) in species.iter_mut().zip(lists) {
             r.config = Config { entries: Box::leak(list.into_boxed_slice()) };
         }
-        Ok(Registry { modules: self.modules, species, by_name })
+        Ok(Registry { modules: self.modules, species, by_name, predicates: preds })
     }
 }
 /// The entries of a def (its reference first), the number of those in the targets section.
@@ -329,6 +361,16 @@ mod tests {
         b.species(&NO_LOCOMOTION);
         let e = b.freeze().err().expect("an error").to_string();
         assert!(e.contains("mod:post") && e.contains("Locomotion"), "{e}");
+    }
+    #[test]
+    fn an_unknown_predicate_is_a_startup_error_naming_species_and_module() {
+        use crate::behaviours::Cond;
+        static ENTRY: [Entry; 1] = [Entry::new(&melee::MODULE, 3, &melee::Params::DEFAULT).when(&Cond::Not(&Cond::Is("mod:nope")))];
+        static BAD: Def = Def { name: "mod:cond", reference: None, goals: &ENTRY, ..Def::EMPTY };
+        let mut b = Builder::new();
+        b.source("a-mod").species(&BAD);
+        let e = b.freeze().err().expect("an error").to_string();
+        assert!(e.contains("a-mod") && e.contains("mod:cond") && e.contains("melee") && e.contains("mod:nope"), "{e}");
     }
     #[test]
     fn an_unknown_species_and_a_bad_change_are_errors_that_name_their_source() {

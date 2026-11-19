@@ -114,6 +114,7 @@ fn main() {
         attacks += events.iter().filter(|e| matches!(e, MobEvent::AttackPlayer(..))).count();
         std::hint::black_box(&events);
     }
+    eprintln!("path searches over the run: {}", horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed));
     eprintln!("player hits {attacks}; with a target: {}", mobs.iter().filter(|m| m.ai.target.is_some()).count());
     println!("instr_per_entity_tick={}", counter.as_ref().map_or(0, |c| c.read() - i0) / ((ticks - warm).max(1) * n) as u64);
     let walking = mobs.iter().filter(|m| !m.ai.nav.is_done()).count();

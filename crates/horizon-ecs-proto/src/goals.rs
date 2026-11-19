@@ -66,6 +66,11 @@ impl GoalSet {
     pub fn entries(&self) -> &'static [Entry] {
         self.entries
     }
+    /// The same entries in the same order with other conditions or parameters (tests; the list's length must not change).
+    pub fn replace_entries(&mut self, entries: &'static [Entry]) {
+        assert_eq!(entries.len(), self.entries.len());
+        self.entries = entries;
+    }
     pub fn module(&self, slot: u8) -> &'static Module {
         self.entries[slot as usize].module
     }
@@ -714,6 +719,16 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         }
         return;
     }
+    // The species' condition for this entry, before the module's own `canUse`; a refusal is a `blocked` (ask again later).
+    let when = w.get::<GoalSet>(e).unwrap().entries[slot as usize].when;
+    if let Some(c) = when
+        && !c.eval(w, e)
+    {
+        if let Some(f) = m.blocked {
+            f(w, e, inst);
+        }
+        return;
+    }
     if !(m.can_use)(w, e, inst) {
         return;
     }
@@ -877,6 +892,9 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 pub static ASKS: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
 /// The searches `pathfind` ran.
 pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// The nodes of the paths those searches found (the mean length of a path is `PATH_NODES / paths found`).
+pub static PATH_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static PATHS_FOUND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, goal: usize) {
     ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     cmd.queue(move |w: &mut World| {
