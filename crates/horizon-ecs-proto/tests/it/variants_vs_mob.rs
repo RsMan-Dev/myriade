@@ -20,7 +20,7 @@ fn spider_has_target(day: bool) -> (bool, bool) {
     }
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), horizon_ecs_proto::cow::mob_kind("minecraft:spider"));
     let mut h = Herd::with_slab(40, true, false);
-    h.set_day(day);
+    h.set_daylight(day);
     let sp = species_of(&h, "minecraft:spider");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
