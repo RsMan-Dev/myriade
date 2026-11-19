@@ -159,6 +159,10 @@ pub struct PathEnded;
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 #[component(on_add = crate::locomotion::hop::following_started)]
 pub struct Following;
+/// The entity stands still (`stare_freeze`): `follow` and `move_control` skip it, its path is kept.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Stilled;
 /// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
 /// the marker off when the cow is back at rest.
 #[derive(Component, Clone, Copy, Debug)]
@@ -1615,7 +1619,7 @@ pub(crate) fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<Stilled>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1817,7 +1821,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Without<Stilled>, Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -2100,13 +2104,13 @@ pub(crate) fn travel(
     level: Res<Level>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
         let mut fall = 0.0_f32;
-        let jumping = jump.is_some_and(|j| j.0);
+        let jumping = jump.is_some_and(|j| j.0) && !still;
         // A body without walking (an object) has no yaw and no input.
         let mut none = Drive::default();
         let mut d = d;
@@ -2140,10 +2144,10 @@ pub(crate) fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
+        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m, st) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st);
         }
     }
 }

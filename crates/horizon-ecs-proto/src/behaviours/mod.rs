@@ -197,6 +197,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 
 pub mod avoid_entity;
 pub mod breath_air;
+pub mod stare_freeze;
 pub mod breed;
 pub mod swim_with_player;
 pub mod climb_on_powder_snow;
@@ -306,6 +307,7 @@ pub mod drowned_swim_up;
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &tempt::MODULE,
+    &stare_freeze::MODULE,
     &breed::MODULE,
     &breath_air::MODULE,
     &swim_with_player::MODULE,

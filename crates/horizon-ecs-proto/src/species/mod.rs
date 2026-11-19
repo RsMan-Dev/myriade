@@ -79,6 +79,7 @@ pub mod goat;
 pub mod camel;
 pub mod camel_husk;
 pub mod polar_bear;
+pub mod creaking;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -128,6 +129,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &iron_golem::DEF,
     &blaze::DEF,
     &polar_bear::DEF,
+    &creaking::DEF,
     &witch::DEF,
  &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
     &goat::DEF,
@@ -649,6 +651,7 @@ mod tests {
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("charge_attack", 3)]),
+        ("minecraft:creaking", &[("float", 0), ("stare_freeze", 0)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
     ];
     #[test]
