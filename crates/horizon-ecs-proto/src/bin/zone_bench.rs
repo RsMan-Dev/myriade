@@ -159,6 +159,44 @@ fn main() {
         "burst" => {
             burst(n, radius);
         }
+        "border" => {
+            // A player runs along a populated frontier, then jitters across a chunk boundary: cost per tick with the zone on
+            // (a creature sleeps the tick its chunk stops ticking, no grace) and off.
+            let ticks: usize = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(400);
+            let at = grid(n, |_, _| true);
+            let run_path = |label: &str, path: &dyn Fn(usize) -> (f64, f64), rad: Option<i32>| {
+                let mut herd = Herd::with_slab(half(), true, false);
+                herd.populate(&at, 7);
+                herd.set_players(vec![path(0)]);
+                let c = counter();
+                let warm = 300;
+                for t in 0..warm {
+                    if t + 20 == warm
+                        && let Some(r) = rad
+                    {
+                        herd.set_simulation(r);
+                    }
+                    herd.tick();
+                }
+                let before = herd.world.resource::<horizon_ecs_proto::cow::Index>().zone.stats;
+                let c0 = c.read();
+                for t in 0..ticks {
+                    herd.set_players(vec![path(t)]);
+                    herd.tick();
+                }
+                let total = c.read() - c0;
+                let st = herd.world.resource::<horizon_ecs_proto::cow::Index>().zone.stats;
+                println!("{label:<34} zone {:<4} creatures {:>6}: {:>10.0} instr/tick (slept {}, woke {})", if rad.is_some() { "on" } else { "off" }, at.len(), total as f64 / ticks as f64, st.slept - before.slept, st.woke - before.woke);
+            };
+            let run = |t: usize| (-100.0 + 0.28 * t as f64, 8.0);
+            let jitter = |t: usize| (if (t / 2) % 2 == 0 { 15.9 } else { 16.1 }, 8.0);
+            let still = |_t: usize| (15.9, 8.0);
+            for rad in [None, Some(radius)] {
+                run_path("player running (0.28 block/tick)", &run, rad);
+                run_path("player jittering across a chunk edge", &jitter, rad);
+                run_path("player standing", &still, rad);
+            }
+        }
         "cycle" => {
             // Sleep and wake the creatures of one chunk again and again (for a profile).
             let at = grid(n, |x, z| (0.0..16.0).contains(&x) && (0.0..16.0).contains(&z));
