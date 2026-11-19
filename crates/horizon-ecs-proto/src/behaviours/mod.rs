@@ -212,6 +212,7 @@ pub mod fox_faceplant;
 pub mod fox_stalk_prey;
 pub mod fox_pounce;
 pub mod fox_sleep;
+pub mod fox_eat_berries;
 pub mod armadillo_state;
 pub mod baby_follow_adult;
 pub mod rolled;
@@ -248,4 +249,5 @@ pub static TABLE: &[&Module] = &[
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
     &fox_sleep::MODULE,
+    &fox_eat_berries::MODULE,
 ];
