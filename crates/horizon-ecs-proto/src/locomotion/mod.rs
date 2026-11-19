@@ -6,6 +6,7 @@
 use crate::behaviours::{Entry, Module};
 use bevy_ecs::prelude::*;
 
+pub mod fly;
 pub mod swim;
 pub mod walk;
 
@@ -14,9 +15,10 @@ pub mod walk;
 pub enum Medium {
     Ground,
     Water,
+    Air,
 }
 /// The registration: one line per mode; the modes are modules of the registry like the goals.
-pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE];
+pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE];
 
 /// A mode the species declares: its medium and the module with its parameters (the `priority` of the entry is not used).
 pub type ModeEntry = (Medium, Entry);
@@ -59,18 +61,52 @@ fn modes_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
         for (_, en) in m.0 {
             (en.module.equip)(w, e, crate::behaviours::Inst { slot: 0, nth: 0 }, en.params);
         }
+        // The first mode is the ground's when the species has one, else the first it declares.
+        let first = if m.has(Medium::Ground) { Medium::Ground } else { m.0[0].0 };
+        set_marker(w, e, first);
     });
 }
-/// The entity enters (`true`) or leaves a fluid: the mode of the medium becomes the active one. Only an entity with a water mode
-/// changes; the others keep their walk.
+/// The air mode is active (a flier: the walk's systems do not visit it).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FlyMode;
+
+/// Puts the marker of the medium's mode on the entity and takes the others off (the systems of a mode visit what has its marker).
+fn set_marker(w: &mut World, e: Entity, to: Medium) {
+    let mut em = w.entity_mut(e);
+    em.remove::<(WalkMode, SwimMode, FlyMode)>();
+    match to {
+        Medium::Ground => drop(em.insert(WalkMode)),
+        Medium::Water => drop(em.insert(SwimMode)),
+        Medium::Air => drop(em.insert(FlyMode)),
+    };
+}
+/// The service of the change of mode: the entity goes to the mode of `to` if it declares one (a goal asks it to take off or land; a
+/// fluid asks it through `fluid_changed`). An event (`Events.mode_changed`) tells the rules. False: no such mode, or already in it.
+pub fn switch(w: &mut World, e: Entity, to: Medium) -> bool {
+    let Some(m) = w.get::<Modes>(e).copied() else { return false };
+    let now = if w.get::<WalkMode>(e).is_some() { Some(Medium::Ground) } else if w.get::<SwimMode>(e).is_some() { Some(Medium::Water) } else if w.get::<FlyMode>(e).is_some() { Some(Medium::Air) } else { None };
+    if !m.has(to) || now == Some(to) {
+        return false;
+    }
+    set_marker(w, e, to);
+    // The physics looks again from the new mode.
+    w.entity_mut(e).insert(crate::cow::Moving);
+    w.resource_mut::<crate::goals::Events>().mode_changed.push(e);
+    true
+}
+/// The entity enters (`true`) or leaves a fluid: an entity with a water mode takes it over in the water and gives it back on leaving to
+/// its ground mode, or to its air mode (a flier that falls into a lake and comes out of it).
 pub fn fluid_changed(cmd: &mut Commands, e: Entity, modes: &Modes, in_water: bool) {
     if !modes.has(Medium::Water) {
         return;
     }
-    cmd.queue(move |w: &mut World| swim::water_changed(w, e, in_water));
-    if in_water {
-        cmd.entity(e).remove::<WalkMode>().insert(SwimMode);
-    } else if modes.has(Medium::Ground) {
-        cmd.entity(e).remove::<SwimMode>().insert(WalkMode);
-    }
+    let back = if modes.has(Medium::Ground) { Some(Medium::Ground) } else if modes.has(Medium::Air) { Some(Medium::Air) } else { None };
+    cmd.queue(move |w: &mut World| {
+        swim::water_changed(w, e, in_water);
+        if in_water {
+            switch(w, e, Medium::Water);
+        } else if let Some(b) = back {
+            switch(w, e, b);
+        }
+    });
 }

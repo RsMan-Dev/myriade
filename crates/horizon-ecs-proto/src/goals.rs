@@ -630,6 +630,8 @@ pub struct Events {
     pub left_fluid: Ev,
     /// The feet reached the ground after being in the air.
     pub landed: Ev,
+    /// The active mode of locomotion changed (`locomotion::switch`: a fluid, or a goal that takes off or lands).
+    pub mode_changed: Ev,
     /// A baby grew up (same as `farm::Grown`, readable by several).
     pub grew: Ev,
     /// A grazing animal ate its block (`eat_block`).
@@ -662,6 +664,7 @@ impl Events {
         self.entered_fluid.swap();
         self.left_fluid.swap();
         self.landed.swap();
+        self.mode_changed.swap();
         self.grew.swap();
         self.ate.swap();
         self.target_acquired.swap();

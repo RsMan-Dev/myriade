@@ -44,12 +44,14 @@ fn the_pickers_have_the_laws_of_the_mob() {
     };
     let from = [4.5, 1.0, 0.5];
     let to = [-4.5, 1.0, 4.5];
-    let cases: [(&str, Pick); 5] = [
+    let cases: [(&str, Pick); 6] = [
         ("default 10,7", Pick::Default { h: 10, v: 7 }),
         ("land 10,7", Pick::Land { h: 10, v: 7 }),
         ("default away 16,7", Pick::DefaultAway { h: 16, v: 7, from }),
         ("land away 0..16,7", Pick::LandAway { min_h: 0.0, max_h: 16.0, v: 7, from }),
         ("land towards 10,7", Pick::LandTowards { h: 10, v: 7, to }),
+        // The view of a `Mob` that has not turned: toward +z.
+        ("flying (hover 8,7 else air 8,4)", Pick::Flying { xd: 0.0, zd: 1.0 }),
     ];
     let mut rng = Rng(0x1234_5678_9ABC_DEF1);
     for (name, pick) in cases {
@@ -62,6 +64,7 @@ fn the_pickers_have_the_laws_of_the_mob() {
                 Pick::DefaultAway { h, v, from } => m.default_random_pos_away(r.w, h, v, from),
                 Pick::LandAway { min_h, max_h, v, from } => m.land_random_pos_away_between(r.w, min_h, max_h, v, from),
                 Pick::LandTowards { h, v, to } => m.land_random_pos_towards(r.w, h, v, to),
+                Pick::Flying { .. } => m.flying_stroll_pos(r.w),
                 Pick::DefaultTowards { h, v, to, max_rad } => m.default_random_pos_towards(r.w, h, v, to, max_rad),
             };
             match p {

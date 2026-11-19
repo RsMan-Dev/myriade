@@ -176,7 +176,7 @@ fn follow(
 }
 /// `PathNavigation.shouldTargetNextNode` with the water's `canMoveDirectly`.
 #[allow(clippy::neg_cmp_op_on_partial_ord)]
-fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob: Vec3, direct: &dyn Fn(Vec3, Vec3) -> bool, width: f32) -> bool {
+pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob: Vec3, direct: &dyn Fn(Vec3, Vec3) -> bool, width: f32) -> bool {
     if path.next + 1 >= path.nodes.len() {
         return false;
     }

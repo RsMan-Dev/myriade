@@ -196,6 +196,8 @@ pub mod example;
 pub mod eat_block;
 pub mod flee_sun;
 pub mod fish_swim;
+pub mod float_around;
+pub mod fly_stroll;
 pub mod float;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -284,4 +286,6 @@ pub static TABLE: &[&Module] = &[
     &attack_turtle_egg::MODULE,
     &brute_stroll_home::MODULE,
     &silverfish_merge::MODULE,
+    &fly_stroll::MODULE,
+    &float_around::MODULE,
 ];
