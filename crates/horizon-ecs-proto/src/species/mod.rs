@@ -23,11 +23,46 @@ pub mod zombie;
 pub mod cod;
 pub mod parrot;
 pub mod ghast;
+pub mod armadillo;
+pub mod creeper;
+pub mod endermite;
+pub mod enderman;
+pub mod silverfish;
+pub mod piglin_brute;
+pub mod panda;
+pub mod zoglin;
+pub mod mooshroom;
+pub mod husk;
+pub mod zombie_villager;
+pub mod zombified_piglin;
+pub mod horse;
+pub mod donkey;
+pub mod mule;
+pub mod skeleton_horse;
+pub mod zombie_horse;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF];
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF,
+    &armadillo::DEF,
+    &creeper::DEF,
+    &endermite::DEF,
+    &enderman::DEF,
+    &silverfish::DEF,
+    &piglin_brute::DEF,
+    &panda::DEF,
+    &zoglin::DEF,
+    &mooshroom::DEF,
+    &husk::DEF,
+    &zombie_villager::DEF,
+    &zombified_piglin::DEF,
+    &horse::DEF,
+    &donkey::DEF,
+    &mule::DEF,
+    &skeleton_horse::DEF,
+    &zombie_horse::DEF,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {

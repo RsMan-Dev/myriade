@@ -1,5 +1,6 @@
-//! `Ghast`: a free flier (`GhastMoveControl`, no path): it floats toward spots it picks around itself (`RandomFloatAround`). The look
-//! goal, the target and the fireball are not ported yet.
+//! `Ghast`: a free flier (`GhastMoveControl`, no path): it floats toward spots it picks around itself (`RandomFloatAround`). The target
+//! and the fireball are not ported yet. Left out: the look goal (`ghast_look`, priority 7): it requires `Cap::Head`, which this
+//! species does not have (the sheet does not say to add it): DOUTE, to decide by the integrator.
 use super::Def;
 use crate::behaviours::{float_around, Cap, Entry};
 use crate::locomotion::{fly, Medium};
