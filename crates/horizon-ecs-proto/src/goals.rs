@@ -437,8 +437,10 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(CellMoves::default());
     crate::projectile::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
-    for m in &crate::species::registry().modules {
-        (m.resources)(world);
+    for (i, m) in crate::species::registry().modules.iter().enumerate() {
+        if crate::species::registry().carried(i) {
+            (m.resources)(world);
+        }
     }
 }
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
@@ -453,7 +455,10 @@ pub fn register(s: &mut Schedule) {
         if i > 0 {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
-        (modules[i].systems)(s, slot);
+        // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
+        if crate::species::registry().carried(i) {
+            (modules[i].systems)(s, slot);
+        }
     }
 }
 
@@ -909,9 +914,24 @@ pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, g
         w.entity_mut(e).insert(NeedsPath);
     });
 }
+/// A path to `at` (x, y, z: the row of the block is `floor(y)`) at `speed`, ending `reach` blocks from it: the way for a module to walk
+/// somewhere; it writes nothing of its own in the walking state. The end of the path is the `path_ended` event.
+pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) {
+    if let Some(mut s) = w.get_mut::<Stroll>(e) {
+        s.tx = at[0];
+        s.ty = at[1].floor() as i32;
+        s.tz = at[2];
+    }
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.speed = speed;
+        n.reach = reach;
+    }
+    w.entity_mut(e).insert(NeedsPath);
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.path = None;
+        n.reach = 1;
     }
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.zza = 0.0;

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # bilan.sh : the reference table of the integrated branch, exact instruction counter (src/instr.rs), 1 thread
-export HORIZON_TEST_RESOURCES=/tmp/claude-1000/-home-rsman-projects-horizon-server-tests/f80a876d-5501-4517-a3ca-22948ac8b0bb/scratchpad/new-main-perf/resources
+# HORIZON_TEST_RESOURCES: the prepared vanilla data; D: the directory of the built benches (cargo build --profile fast --bins).
+: "${HORIZON_TEST_RESOURCES:?set HORIZON_TEST_RESOURCES}"
+export HORIZON_TEST_RESOURCES
 export WARM=200
-D=/home/rsman/projects/horizon-server-tests/wt/.tgt-ecs/fast
+D=${D:?set D to the directory of the benches (target/fast)}
 g() { grep -o 'instr_per_entity_tick=[0-9]*' | head -n1 | cut -d= -f2; }
 declare -A ITEM=( [cow]=minecraft:wheat [pig]=minecraft:carrot [sheep]=minecraft:wheat [chicken]=minecraft:wheat_seeds [zombie]=minecraft:wheat )
 for sp in cow pig sheep chicken zombie; do

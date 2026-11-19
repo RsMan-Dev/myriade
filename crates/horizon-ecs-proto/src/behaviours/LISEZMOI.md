@@ -113,3 +113,15 @@ espèce : `species/predicates.rs`. Un mod ou un module en ajoute un avec `Builde
 configuration est une erreur de démarrage qui nomme l'espèce et le module. Limite : la condition est évaluée au DÉMARRAGE, pas pendant le but
 (un but en cours ne s'arrête pas quand elle devient fausse) ; un module dont la condition peut changer sans événement fournit un `blocked`.
 Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contre le `Mob` : les modules de `PORTABLES.md` qui l'emploient (TamePanic...) n'existent pas encore.
+
+## Coût : un module que personne ne porte ne coûte rien
+
+`Registry::carried(i)` : les systèmes et les ressources d'un module ne sont inscrits au schedule que si une espèce résolue le porte (`REGISTER_ALL=1` pour tout inscrire, mesure). Mesure (`goal_bench`, 2 000 vaches au repos, `DUMMY=n` modules factices de 2 systèmes) : 0 module 59, 20 modules 59 (garde) / 65 (tout inscrit), 200 modules 59 / 123 instr par animal et par tick : environ 640 instr par tick et par module inscrit sans garde. Un module porté coûte ses propres systèmes : garde dans le CORPS (sortie immédiate sans porteur vivant), `ProfExec` ignore les `run_if`.
+
+## Services de marche
+
+`goals::go_to_at(w, e, [x, y, z], vitesse, portée)` : chemin vers (x, rangée `floor(y)`, z), terminé à `portée` blocs ; ne rien écrire dans `Stroll` ni `Nav.reach` ; `stop_nav` remet la portée à 1. `move_to_block::MoveToBlock` (composant de l'état du module) : `find_nearest(base, mw, valid)` (anneaux vers l'extérieur, hauteurs alternées : le `Mob` à l'identique, `tests/spots_vs_mob.rs`), `zone`/`invalid_after_change(base, blocs)` (la recherche est une échéance ; un `BlockChanges` dans la zone invalide le bloc), `start(rng)` (les deux tirages du séjour), `tick(pos, distance)` (vrai = redemander le chemin, toutes les 40 ticks), `can_continue`, `target`.
+
+## Barrière de régression
+
+`bilan_check.sh` (dans `crates/horizon-ecs-proto`) : `HORIZON_TEST_RESOURCES=... D=<target>/fast ./bilan_check.sh` lance `bilan.sh` et échoue (sortie 1) si une ligne ECS dépasse sa référence `bilan.ref` de plus de `THRESHOLD` % (1 par défaut) ; une dérogation écrite dans `bilan.waivers` (`ligne|colonne ## pourcent ## raison`) excuse un surcoût qui achète de la fidélité au `Mob` ; `./bilan_check.sh --update "pourquoi"` change la référence et écrit la raison dans `bilan.ref.log`. À lancer à chaque fusion.

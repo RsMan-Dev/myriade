@@ -15,6 +15,7 @@ fn main() {
     let (hold, hurt, love, spacing) = (arg(4, 0.0) / 100.0, arg(5, 0.0) as usize, arg(6, 0.0) as usize, arg(7, 2.0));
     // The item the holders hold (`ITEM`, default wheat): the one that tempts the species of the run.
     let item = goals::item_id(&std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into()));
+    horizon_ecs_proto::bench_support::install_dummies(0);
     let mut herd = Herd::new(n, spacing, true, false, 42);
     // The lazy look is on by default (owner decision); `EAGER=1` runs the look goals for every animal.
     if std::env::var_os("EAGER").is_some() {

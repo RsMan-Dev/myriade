@@ -107,6 +107,12 @@ impl Registry {
     pub fn module_id(&self, m: &'static Module) -> Option<usize> {
         self.modules.iter().position(|x| behaviours::same(x, m))
     }
+    /// Whether some resolved species has the module of rank `module`: its systems and resources exist only then (the cost of a
+    /// module nobody carries is zero). `REGISTER_ALL=1` registers every module (to measure what the guarantee saves).
+    pub fn carried(&self, module: usize) -> bool {
+        std::env::var_os("REGISTER_ALL").is_some()
+            || self.species.iter().any(|s| s.config.entries.iter().any(|e| self.module_id(e.module) == Some(module)))
+    }
     /// The named predicate (`Cond::Is`).
     pub fn predicate(&self, name: &str) -> Option<Pred> {
         self.predicates.get(name).copied()

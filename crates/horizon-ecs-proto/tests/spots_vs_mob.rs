@@ -105,3 +105,47 @@ fn the_cost_of_a_pick_is_reported() {
         }
     }
 }
+
+/// `MoveToBlock::find_nearest` against the `Mob`'s: the same block for the same scattered blocks, from many bases.
+#[test]
+fn the_nearest_block_search_is_the_mobs() {
+    if !have_data() {
+        return;
+    }
+    use horizon_client_lib::mobs::goals::MoveToBlock as MobSearch;
+    let (mut r, mut h) = flat_pair();
+    let mi = r.add(Vec3::new(0.5, 1.0, 0.5));
+    let mut seed = 0x2545_F491_u64;
+    let mut next = |m: i64| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 11) as i64 % m
+    };
+    for _ in 0..120 {
+        let (x, y, z) = (next(31) as i32 - 15, next(5) as i32, next(31) as i32 - 15);
+        r.set_block(x, y, z, "minecraft:gold_block");
+        h.set_block(x, y, z, "minecraft:gold_block");
+    }
+    h.tick();
+    let level = *h.world.resource::<Level>();
+    let valid = |mw: &horizon_client_lib::mobs::MobWorld, p: [i32; 3]| mw.block_name(p[0], p[1], p[2]) == "minecraft:gold_block";
+    let mut agree = 0;
+    for _ in 0..300 {
+        let base = [next(21) as i32 - 10, 1 + next(3) as i32, next(21) as i32 - 10];
+        for (range, vr, vs) in [(8, 2, 0), (24, 2, 0), (16, 4, -1)] {
+            let mut a = MobSearch::new(1.0, range, vr);
+            a.vertical_start = vs;
+            let mut b = horizon_ecs_proto::move_to_block::MoveToBlock::new(1.0, range, vr);
+            b.vertical_start = vs;
+            r.mobs[mi].position = Vec3::new(f64::from(base[0]) + 0.5, f64::from(base[1]), f64::from(base[2]) + 0.5);
+            let (fa, fb) = (a.find_nearest(&r.mobs[mi], r.w, valid), b.find_nearest(base, level.mw.0, valid));
+            assert_eq!(fa, fb, "base {base:?} range {range}");
+            if fa {
+                assert_eq!(a.block, b.block, "base {base:?} range {range}");
+            }
+            agree += 1;
+        }
+    }
+    eprintln!("{agree} searches agree");
+}
