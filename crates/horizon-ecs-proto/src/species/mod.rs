@@ -40,6 +40,13 @@ pub mod donkey;
 pub mod mule;
 pub mod skeleton_horse;
 pub mod zombie_horse;
+pub mod salmon;
+pub mod tropical_fish;
+pub mod pufferfish;
+pub mod tadpole;
+pub mod snow_golem;
+pub mod rabbit;
+pub mod turtle;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -62,6 +69,13 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &mule::DEF,
     &skeleton_horse::DEF,
     &zombie_horse::DEF,
+    &salmon::DEF,
+    &tropical_fish::DEF,
+    &pufferfish::DEF,
+    &tadpole::DEF,
+    &snow_golem::DEF,
+    &rabbit::DEF,
+    &turtle::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -436,22 +450,29 @@ mod tests {
         ("minecraft:chicken", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("ranged_bow", 4)]),
         ("minecraft:copper_golem", &[]),
-        ("minecraft:cod", &[("fish_swim", 4)]),
+        ("minecraft:cod", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
+        ("minecraft:salmon", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
+        ("minecraft:tropical_fish", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
+        ("minecraft:pufferfish", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("pufferfish_puff", 1)]),
+        ("minecraft:tadpole", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4)]),
+        ("minecraft:snow_golem", &[("nearest_target", 1), ("ranged_attack", 1), ("stroll", 2), ("look_at_player", 3), ("random_look", 4)]),
+        ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
+        ("minecraft:turtle", &[("panic", 0), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("fly_stroll", 2), ("follow_mob", 3)]),
         ("minecraft:ghast", &[("float_around", 5)]),
         ("minecraft:wolf", &[("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 5), ("panic", 1), ("sit_when_ordered", 2), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("stroll", 8), ("look_at_player", 10), ("random_look", 10)]),
-        ("minecraft:armadillo", &[("float", 0), ("rolled", 2), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:armadillo", &[("float", 0), ("panic", 1), ("rolled", 2), ("breed", 3), ("tempt", 4), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:endermite", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("melee", 2), ("stroll", 3), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:enderman", &[("look_for_player", 1), ("hurt_by", 2), ("float", 0), ("freeze_when_looked_at", 1), ("melee", 2), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("leave_block", 10), ("take_block", 11)]),
         ("minecraft:silverfish", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("silverfish_wake_up_friends", 3), ("melee", 4), ("silverfish_merge", 5)]),
         ("minecraft:piglin_brute", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("brute_stroll_home", 5), ("stroll", 5), ("look_at_player", 6)]),
-        ("minecraft:panda", &[("float", 0), ("tempt", 4), ("panda_sit", 7), ("panda_lie_on_back", 8), ("panda_sneeze", 8), ("random_look", 10), ("panda_roll", 12), ("follow_parent", 13), ("stroll", 14)]),
-        ("minecraft:zoglin", &[("hurt_by", 1), ("nearest_target", 2), ("float", 0), ("stroll", 5), ("look_at_player", 6)]),
+        ("minecraft:panda", &[("hurt_by", 1), ("float", 0), ("panic", 2), ("melee", 3), ("tempt", 4), ("avoid_entity", 6), ("avoid_entity", 6), ("panda_sit", 7), ("panda_lie_on_back", 8), ("panda_sneeze", 8), ("random_look", 10), ("panda_roll", 12), ("follow_parent", 13), ("stroll", 14)]),
+        ("minecraft:zoglin", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("stroll", 5), ("look_at_player", 6)]),
         ("minecraft:mooshroom", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
-        ("minecraft:zombified_piglin", &[("hurt_by", 1), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8)]),
+        ("minecraft:zombified_piglin", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8)]),
         ("minecraft:horse", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:donkey", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:mule", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),

@@ -13,4 +13,4 @@ zone near ring (cow, 6, 10)|ecs ## 3 ## same
 cow idle|ecs-eager ## 2 ## item merge and fly: new systems at rest (item_moved +5 600 per tick at 3 000 creatures)
 pig idle|ecs ## 5 ## 11 instructions on 328 (new systems at rest)
 chicken idle|ecs ## 15 ## 8 instructions on 66 (new systems at rest)
-zombie idle|ecs ## 6 ## 8 instructions on 181 (new systems at rest)
+zombie idle|ecs ## 6 ## 9 instructions on 181 (new systems at rest: 187 already at the brain-sensor merge 6e0b7f404c before lot 3, 190 now; the egg module itself costs 1 instruction, measured by removing its entry)

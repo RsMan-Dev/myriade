@@ -29,9 +29,16 @@ pub struct Params {
     pub beyond_sqr: Option<f64>,
     /// The owner (`tame::Owner`) is never picked.
     pub spare_owner: bool,
+    /// Every creature is a candidate (`Prey::Filter(!(A | B))`), but the species of `except` (names), which no candidate ever is.
+    pub any: bool,
+    pub except: &'static [&'static str],
+    /// The monsters (type category `monster`: the snow golem's `Prey::Filter(hostile)`) are candidates.
+    pub hostile: bool,
+    /// The distance of the search in blocks, instead of the follow range times `follow_scale`.
+    pub range: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -75,7 +82,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let mw = w.resource::<Level>().mw.0;
     let mut mask = 0u64;
     for (i, sp) in crate::species::registry().species.iter().enumerate().take(64) {
-        if p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name)) {
+        let named = p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name));
+        let hostile = p.hostile && crate::cow::mob_kind(sp.name).category == "monster";
+        if (named || p.any || hostile) && !p.except.contains(&sp.name) {
             mask |= 1 << i;
         }
     }
@@ -139,7 +148,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(n) = state(w, e, inst) else { return false };
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
-    let range = w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale;
+    let range = n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale);
     let mw = w.resource::<Level>().mw.0;
     let from = Vec3::new(pos.x, pos.y + eye, pos.z);
     let owner = w.get::<crate::tame::Owner>(e).and_then(|o| o.0);

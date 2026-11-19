@@ -13,9 +13,13 @@ pub struct Params {
     pub v: i32,
     /// How long after the last damage the goal can start (ticks).
     pub window: u64,
+    /// `looking_for_water(range)` (the turtle's 7): water within that many blocks is the spot, burning or not.
+    pub water: Option<i32>,
+    /// Only the environment panics it (`environmental`: cactus, fire, lava, freezing: the armadillo and the panda); a hit by a creature does not.
+    pub environmental: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 2.0, h: 5, v: 4, window: 40 };
+    pub const DEFAULT: Self = Self { speed: 2.0, h: 5, v: 4, window: 40, water: None, environmental: false };
 }
 /// The parameters, and the end of the window after the last damage; `pick` is what `can_use` chose for `start`:
 /// (x, y, z) of the target and whether it is water.
@@ -25,6 +29,8 @@ pub struct Panic {
     pub h: i32,
     pub v: i32,
     pub window: u64,
+    pub water: Option<i32>,
+    pub environmental: bool,
     pub until: u64,
     pub slot: u8,
     pick: (f64, i32, f64),
@@ -55,7 +61,7 @@ fn resources(w: &mut World) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(Panic { speed: p.speed, h: p.h, v: p.v, window: p.window, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
+    w.entity_mut(e).insert(Panic { speed: p.speed, h: p.h, v: p.v, window: p.window, water: p.water, environmental: p.environmental, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(hurt_events.after(apply_damage).in_set(slot));
@@ -75,8 +81,10 @@ pub(crate) fn hurt_events(
 ) {
     for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
         let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming));
+        let environment = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| matches!(c.1, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze));
         if let Ok(mut p) = q.get_mut(e)
             && panics
+            && (!p.environmental || environment)
         {
             p.until = clock.of(e) + p.window;
             reqs.0.push(Req::Start(e, p.slot));
@@ -97,7 +105,9 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return true;
     }
     // `PanicGoal.lookForWater`: a burning cow looks for water within 5 blocks first (nearest first).
-    if burning && let Some(spot) = water_spot(w, pos, 5) {
+    if let Some(range) = p.water.or(burning.then_some(5))
+        && let Some(spot) = water_spot(w, pos, range)
+    {
         pick(w, spot);
         return true;
     }

@@ -11,7 +11,7 @@ pub static DEF: Def = Def {
         Entry::new(&swell::MODULE, 2, &swell::Params::DEFAULT),
         // attend : avoid_entity Species [ocelot] et [cat] (priorité 3, max 6, walk 1.0, sprint 1.2) : espèces absentes du registre
         Entry::new(&melee::MODULE, 4, &melee::Params::DEFAULT),
-        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.8 }),
+        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.8, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],

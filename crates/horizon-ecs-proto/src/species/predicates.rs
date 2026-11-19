@@ -35,6 +35,26 @@ fn is_tame(w: &World, e: Entity) -> bool {
 fn is_sitting(w: &World, e: Entity) -> bool {
     crate::goals::is_occupied(w, e, crate::goals::OCC_SITTING)
 }
+/// `panda:acts` (`Panda.canPerformAction`): not on its back, rolling, sitting, eating or scared (`panda_state`).
+fn panda_acts(w: &World, e: Entity) -> bool {
+    crate::behaviours::panda_state::acts(w, e)
+}
+/// `panda:avoids` (`panda.rs:678`): a worried panda that acts.
+fn panda_avoids(w: &World, e: Entity) -> bool {
+    crate::behaviours::panda_state::gene(w, e) == crate::behaviours::panda_state::Gene::Worried && panda_acts(w, e)
+}
+/// `armadillo:idle` (`armadillo.rs:574`): not rolled up or scared (the state machine of `armadillo_state`).
+fn armadillo_idle(w: &World, e: Entity) -> bool {
+    crate::behaviours::armadillo_state::of(w, e) == crate::behaviours::armadillo_state::IDLE
+}
+/// `neutral:angry` (`tame::angry_at_player`): the entity is angry (`neutral_anger`).
+fn neutral_angry(w: &World, e: Entity) -> bool {
+    crate::behaviours::neutral_anger::is_angry(w, e)
+}
+/// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`. The ECS has no coats yet: no animal is one (DOUTE: a coat component).
+fn rabbit_killer(_: &World, _: Entity) -> bool {
+    false
+}
 use bevy_ecs::prelude::*;
 
 pub static BUILTIN: &[(&str, Pred)] = &[
@@ -47,4 +67,9 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:on_fire", on_fire),
     ("horizon:is_tame", is_tame),
     ("horizon:is_sitting", is_sitting),
+    ("panda:acts", panda_acts),
+    ("panda:avoids", panda_avoids),
+    ("armadillo:idle", armadillo_idle),
+    ("neutral:angry", neutral_angry),
+    ("rabbit:killer", rabbit_killer),
 ];

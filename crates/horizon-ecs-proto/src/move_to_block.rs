@@ -67,6 +67,11 @@ impl MoveToBlock {
             [base[0].saturating_add(reach), base[1].saturating_add(height), base[2].saturating_add(reach)],
         ))
     }
+    /// `MoveToBlockGoal` of the `Mob`: whether the search from `base` may find a block whose state `matches` (false when no section of
+    /// the cells it walks holds such a state in its palette: the walk would find nothing, and is not made).
+    pub fn may_find(&self, base: [i32; 3], mw: &MobWorld, matches: impl FnMut(horizon_world::registry::BlockStateId) -> bool) -> bool {
+        self.zone(base).is_some_and(|(lo, hi)| mw.world.may_hold(lo, hi, matches))
+    }
     /// A block of `blocks` (changed positions) lies in the zone of the search from `base`.
     pub fn invalid_after_change(&self, base: [i32; 3], blocks: &[(i32, i32, i32)]) -> bool {
         self.zone(base).is_some_and(|(lo, hi)| blocks.iter().any(|&(x, y, z)| (lo[0]..=hi[0]).contains(&x) && (lo[1]..=hi[1]).contains(&y) && (lo[2]..=hi[2]).contains(&z)))

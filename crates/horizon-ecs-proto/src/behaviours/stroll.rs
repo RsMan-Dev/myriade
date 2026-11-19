@@ -7,9 +7,13 @@ use crate::{cow::*, goals::*};
 pub struct Params {
     /// The speed modifier of the walk.
     pub speed: f64,
+    /// The interval of the attempts in ticks (`RandomStrollGoal.interval`: 120; the turtle's 100), halved as `reducedTickDelay`.
+    pub interval: Option<i32>,
+    /// The chance of a plain spot (water allowed) instead of a land one: `WaterAvoidingRandomStrollGoal.probability`.
+    pub water_avoiding: f32,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0 };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: None, water_avoiding: 0.001 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct StrollGoal {
@@ -53,7 +57,14 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
     }
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(StrollGoal { speed: params::<Params>(p).speed });
+    let p = params::<Params>(p);
+    w.entity_mut(e).insert(StrollGoal { speed: p.speed });
+    if let Some(mut s) = w.get_mut::<Stroll>(e) {
+        if let Some(n) = p.interval {
+            s.interval = (n + 1) / 2;
+        }
+        s.plain = p.water_avoiding;
+    }
 }
 /// Arms the next attempt, unless one is armed.
 pub fn arm_now(w: &mut World, e: Entity) {

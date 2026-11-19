@@ -1,7 +1,7 @@
-//! The base of the fish (`AbstractFish.registerGoals`, the part that is ported): random swimming at priority 4 (the panic at 0, the
-//! avoidance of the player at 2 and the school are not ported yet). A fish has no targets: no `Targets` capability. It swims in the
+//! The base of the fish (`AbstractFish.registerGoals`): panic at 0 (1.25), the avoidance of the player at 2 (8 blocks, 1.6, 1.4) and random
+//! swimming at 4. The school is added by the species that have one. A fish has no targets: no `Targets` capability. It swims in the
 //! water and walks (falls, flops) out of it: both modes, one active.
-use crate::behaviours::{fish_swim, Cap, Entry};
+use crate::behaviours::{avoid_entity, fish_swim, panic, Cap, Entry};
 use crate::locomotion::{swim, walk, Medium};
 use crate::species::Def;
 
@@ -9,7 +9,11 @@ pub static DEF: Def = Def {
     name: "template:fish",
     reference: None,
     targets: &[],
-    goals: &[Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params::DEFAULT)],
+    goals: &[
+        Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.25, ..panic::Params::DEFAULT }),
+        Entry::new(&avoid_entity::MODULE, 2, &avoid_entity::Params { what: avoid_entity::Avoid::Player, max_dist: 8.0, walk: 1.6, sprint: 1.4, ..avoid_entity::Params::DEFAULT }),
+        Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params::DEFAULT),
+    ],
     changes: &[],
     rules: &[],
     brain: crate::brain::BrainDef::EMPTY,

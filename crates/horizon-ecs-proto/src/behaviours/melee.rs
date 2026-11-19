@@ -8,9 +8,14 @@ use crate::{cow::*, goals::*, hostile};
 pub struct Params {
     /// The speed modifier of the chase.
     pub speed: f64,
+    /// Ticks between two strikes (`MeleeAttackGoal`: 20), and for a baby when it differs (`intervals(adult, baby)`: the zoglin 41 and 16).
+    pub interval: i32,
+    pub interval_baby: Option<i32>,
+    /// `MeleeAttackGoal(speed, true)`: follows its target even when it does not see it, and goes on after its path ends (zoglin, panda).
+    pub follow_unseen: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0 };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false };
 }
 
 pub static MODULE: Module = Module {
@@ -39,7 +44,11 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     hostile::ensure_attack(w, e);
     let mut a = w.get_mut::<hostile::Attack>(e).unwrap();
     a.melee_slot = inst.slot;
-    a.speed = params::<Params>(p).speed;
+    let p = params::<Params>(p);
+    a.speed = p.speed;
+    a.interval = p.interval;
+    a.interval_baby = p.interval_baby;
+    a.follow_unseen = p.follow_unseen;
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(hostile::melee_run.in_set(slot));

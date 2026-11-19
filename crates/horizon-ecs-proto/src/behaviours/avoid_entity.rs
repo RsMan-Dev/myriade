@@ -14,6 +14,10 @@ const REACH: f64 = 24.0;
 pub enum Avoid {
     Player,
     Species(&'static [u8]),
+    /// Species by name (resolved once, at creation: the ids are the registry's order).
+    Named(&'static [&'static str]),
+    /// Every monster: the species whose type is in the `monster` category (`Avoid::Species(monsters)` of the `Mob`).
+    Monsters,
 }
 #[derive(Clone, Copy)]
 pub struct Params {
@@ -28,9 +32,11 @@ pub struct Params {
     pub player_when: Option<fn(&Player) -> bool>,
     /// The listed animal's condition (`seen_when`), for `Avoid::Species`.
     pub target_when: Option<fn(&World, Entity) -> bool>,
+    /// A condition that draws (`WolfAvoidEntityGoal`: the llama's strength against `nextInt(5)`): the uniform draw in [0, 1) is the third argument.
+    pub target_roll: Option<fn(&World, Entity, f64) -> bool>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { what: Avoid::Player, max_dist: 6.0, walk: 1.0, sprint: 1.2, avoider_when: None, player_when: None, target_when: None };
+    pub const DEFAULT: Self = Self { what: Avoid::Player, max_dist: 6.0, walk: 1.0, sprint: 1.2, avoider_when: None, player_when: None, target_when: None, target_roll: None };
 }
 /// One instance of the goal: its parameters, and what `can_use` chose for `start` (the point run from, the player if
 /// one is the target, the spot to walk to).
@@ -43,6 +49,9 @@ pub struct Avoider {
     avoider_when: Option<fn(&World, Entity) -> bool>,
     player_when: Option<fn(&Player) -> bool>,
     target_when: Option<fn(&World, Entity) -> bool>,
+    target_roll: Option<fn(&World, Entity, f64) -> bool>,
+    /// The species the goal avoids, as a mask by `SpeciesId`.
+    mask: u64,
     pub slot: u8,
     from: Vec3,
     player: u32,
@@ -74,6 +83,16 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
+/// The species a `what` names, as a mask by `SpeciesId` (at most 64 species).
+fn species_mask(what: Avoid) -> u64 {
+    let reg = crate::species::registry();
+    match what {
+        Avoid::Player => 0,
+        Avoid::Species(ids) => ids.iter().filter(|&&i| i < 64).fold(0, |m, &i| m | 1 << i),
+        Avoid::Named(names) => reg.species.iter().enumerate().take(64).filter(|(_, s)| names.contains(&s.name)).fold(0, |m, (i, _)| m | 1 << i),
+        Avoid::Monsters => reg.species.iter().enumerate().take(64).filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").fold(0, |m, (i, _)| m | 1 << i),
+    }
+}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     debug_assert!(p.max_dist <= REACH, "the index scan does not reach {} blocks", p.max_dist);
@@ -85,12 +104,14 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         avoider_when: p.avoider_when,
         player_when: p.player_when,
         target_when: p.target_when,
+        target_roll: p.target_roll,
+        mask: species_mask(p.what),
         slot: inst.slot,
         from: Vec3::ZERO,
         player: 0,
         spot: (0.0, 0.0, 0.0),
     };
-    if matches!(p.what, Avoid::Species(_)) {
+    if !matches!(p.what, Avoid::Player) {
         w.entity_mut(e).insert(AvoidsAnimals);
     }
     match w.get_mut::<Avoiders>(e) {
@@ -162,8 +183,8 @@ fn cell_moves(
                 return;
             }
             for a in &avs.0 {
-                if let Avoid::Species(list) = a.what
-                    && list.contains(&sid.0)
+                if !matches!(a.what, Avoid::Player)
+                    && a.mask >> sid.0 & 1 == 1
                     && in_reach(a, pos.0, at)
                 {
                     reqs.0.push(Req::Start(c, a.slot));
@@ -183,7 +204,7 @@ fn avoid_run(on: Res<Online>, mut q: Query<(&Pos, &Avoiding, &mut Avoiders, &mut
 }
 /// `AvoidEntityGoal.avoidTarget`: the player (nearest, wanted and seen) or the first seen animal of a listed species, by
 /// distance. Returns the point to run from and the player's id (0 for an animal).
-fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u32)> {
+fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option<Entity>) -> Option<(Vec3, u32)> {
     let eye = w.get::<Look>(e).map_or(0.0, |l| l.eye);
     let from_eye = Vec3::new(pos.x, pos.y + eye, pos.z);
     let mw = w.resource::<Level>().mw.0;
@@ -202,7 +223,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u
             });
             best.map(|(_, p)| (Vec3::new(p.x, p.y, p.z), p.id))
         }
-        Avoid::Species(list) => {
+        Avoid::Species(_) | Avoid::Named(_) | Avoid::Monsters => {
             let mut c: Vec<(f64, Entity, Vec3)> = Vec::new();
             w.resource::<Index>().for_radius(pos.x, pos.z, a.max_dist, |t| {
                 let (Some(tp), Some(sid)) = (w.get::<Pos>(t), w.get::<SpeciesId>(t)) else { return };
@@ -211,7 +232,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u
                     && (tp.x - pos.x).abs() <= a.max_dist
                     && (tp.z - pos.z).abs() <= a.max_dist
                     && (tp.y - pos.y).abs() <= 3.0 + a.max_dist
-                    && list.contains(&sid.0)
+                    && a.mask >> sid.0 & 1 == 1
                     && a.target_when.is_none_or(|f| f(w, t));
                 if boxed {
                     c.push((d2(pos, tp), t, tp));
@@ -222,7 +243,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3) -> Option<(Vec3, u
                 let eye_t = w.get::<Look>(t).map_or(0.0, |l| l.eye);
                 sees(Vec3::new(tp.x, tp.y + eye_t, tp.z))
             })?;
-            let _ = t;
+            *found = Some(t);
             (d2(pos, tp) <= a.max_dist * a.max_dist).then_some((tp, 0))
         }
     }
@@ -238,7 +259,15 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if a.avoider_when.is_some_and(|f| !f(w, e)) {
         return false;
     }
-    let Some((from, player)) = avoid_target(w, e, &a, pos) else { return false };
+    let mut found = None;
+    let Some((from, player)) = avoid_target(w, e, &a, pos, &mut found) else { return false };
+    // `target_roll`: a draw of the avoider against what it found (the wolf and the llama's strength), made once the target is there.
+    if let (Some(roll), Some(t)) = (a.target_roll, found) {
+        let u = with_rng(w, e, |r| r.next_f64());
+        if !roll(w, t, u) {
+            return false;
+        }
+    }
     // The target is there: when no spot is found, or the spot is not farther than the animal, `canUse` is asked again.
     let spot = w.resource_mut::<Forced>().take_spot(e, inst.slot, pos.y.floor()).map(|p| (p[0], p[1], p[2])).or_else(|| random_spot(w, e, pos, from));
     let Some((x, y, z)) = spot.filter(|&(x, y, z)| d2(Vec3::new(x, y, z), from) >= d2(pos, from)) else {

@@ -74,10 +74,12 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let mw = w.resource::<Level>().mw.0;
     let base = feet(w, e);
-    // No egg in the zone of the search (the world keeps the cells of its eggs): nothing to walk, the same answer as the walk.
+    // No egg in the zone of the search (the world keeps the cells of its eggs), then none in any section of it (the palette
+    // sweep of the `Mob`, `may_find`): the cells are walked only when an egg can be there; same answer as the walk.
     let hunt = w.get::<EggHunt>(e).unwrap();
     let nothing = hunt.walk.zone(base).is_none_or(|(lo, hi)| w.get_resource::<Hazards>().is_some_and(|h| !h.egg_in(lo, hi)));
-    let found = !nothing && w.get_mut::<EggHunt>(e).unwrap().walk.find_nearest(base, mw, egg_target);
+    let mut hunt = w.get_mut::<EggHunt>(e).unwrap();
+    let found = !nothing && hunt.walk.may_find(base, mw, |s| &*mw.facts.get(s).name == "minecraft:turtle_egg") && hunt.walk.find_nearest(base, mw, egg_target);
     if found {
         return true;
     }

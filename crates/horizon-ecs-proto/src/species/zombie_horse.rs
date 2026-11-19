@@ -10,7 +10,7 @@ pub static DEF: Def = Def {
         Entry::new(&breed::MODULE, 2, &breed::Params::DEFAULT),
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, ..tempt::Params::DEFAULT }),
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params { speed: 1.0 }),
-        Entry::new(&stroll::MODULE, 6, &stroll::Params { speed: 0.7 }),
+        Entry::new(&stroll::MODULE, 6, &stroll::Params { speed: 0.7, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 7, &look_at_player::Params::DEFAULT),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),

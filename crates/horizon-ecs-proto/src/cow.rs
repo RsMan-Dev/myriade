@@ -94,6 +94,8 @@ pub struct Stroll {
     pub vertical_range: i32,
     /// The attempt's chance is 1 in this (`reducedTickDelay(120)`).
     pub interval: i32,
+    /// The chance of a plain spot instead of a land one (`WaterAvoidingRandomStrollGoal.probability`: 0.001; the snow golem's 1.0000001e-5).
+    pub plain: f32,
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rng(pub u64);
@@ -1049,7 +1051,7 @@ pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
-        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60, plain: 0.001 },
         sp.walk,
         NavParams {
             malus: sp.malus,
@@ -1203,7 +1205,7 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, n
     // `WaterAvoidingRandomStrollGoal.getPosition`: in water a land spot first, else a land spot, a plain one 1 time in 1000.
     let picked = if in_water {
         sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
-    } else if sp.rng.next_float() >= 0.001 {
+    } else if sp.rng.next_float() >= s.plain {
         sp.pick(Pick::Land { h, v })
     } else {
         sp.pick(Pick::Default { h, v })

@@ -14,8 +14,15 @@ use horizon_core::geometry::{Aabb, Vec3};
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Attack {
     pub damage: f32,
-    /// Ticks between two strikes.
+    /// Ticks between two strikes, and for a baby (`MeleeAttackGoal.intervals(adult, baby)`).
     pub interval: i32,
+    pub interval_baby: Option<i32>,
+    /// `MeleeAttackGoal.followingTargetEvenIfNotSeen`: the goal does not end with its path, it goes on while the target lives, and its
+    /// cooldown runs on through a restart (`stopped_at`: the world tick the goal last stopped at).
+    pub follow_unseen: bool,
+    pub stopped_at: u64,
+    /// For the goal that follows unseen: the world tick of the next strike (a restart at the end of a path loses nothing).
+    pub next_strike: u64,
     pub speed: f64,
     /// `Mob.isWithinMeleeAttackRange`: the box widened by this on x and z meets the target's box.
     pub reach: f64,
@@ -216,6 +223,10 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Attack {
         damage: if damage <= 0.0 { 1.0 } else { damage },
         interval: 20,
+        interval_baby: None,
+        follow_unseen: false,
+        stopped_at: 0,
+        next_strike: 0,
         speed: 1.0,
         reach: 2.04_f32.sqrt() as f64 - 0.6,
         phase: now,
@@ -250,7 +261,7 @@ pub fn arm_melee_after(w: &mut World, e: Entity) {
     }
     a.armed = true;
     let a_slot = a.melee_slot;
-    let wait = if now >= a.phase + 20 { 1 } else { (a.phase + 20 - now) as i32 };
+    let wait = if a.follow_unseen || now >= a.phase + 20 { 1 } else { (a.phase + 20 - now) as i32 };
     let slot = a_slot;
     arm(w, e, slot, wait);
 }
@@ -263,9 +274,19 @@ pub fn melee_target(w: &mut World, e: Entity) -> Option<Who> {
 /// `MeleeAttackGoal.start`: a path to the target, the cooldown and the repath timer reset.
 pub fn start_melee(w: &mut World, e: Entity, who: Who) {
     let Some(p) = info(w, who).map(|i| i.pos) else { return };
+    let now = w.resource::<Clock>().0;
     let speed = {
         let mut a = w.get_mut::<Attack>(e).unwrap();
-        (a.recalc, a.until, a.path_target) = (0, 0, Vec3::ZERO);
+        (a.recalc, a.path_target) = (0, Vec3::ZERO);
+        // The goal that follows its target unseen is restarted by the frame at the end of each path: its cooldown went on meanwhile.
+        if a.follow_unseen {
+            // A restart within a few ticks of the stop is the frame's (the path ended): the cooldown is a date and goes on.
+            if now.saturating_sub(a.stopped_at) > 3 {
+                a.next_strike = 0;
+            }
+        } else {
+            a.until = 0;
+        }
         a.speed
     };
     w.entity_mut(e).insert(Meleeing);
@@ -282,6 +303,10 @@ pub fn start_melee(w: &mut World, e: Entity, who: Who) {
 }
 /// `MeleeAttackGoal.stop`: the path is dropped; the next check is on the grid.
 pub fn stop_melee(w: &mut World, e: Entity) {
+    let now = w.resource::<Clock>().0;
+    if let Some(mut a) = w.get_mut::<Attack>(e) {
+        a.stopped_at = now;
+    }
     w.entity_mut(e).remove::<Meleeing>();
     if let Some(mut nav) = w.get_mut::<Nav>(e) {
         nav.reach = 1;
@@ -299,11 +324,11 @@ pub fn melee_run(
     clock: Res<Clock>,
     tg: targeting::Targets,
     mut dq: ResMut<DamageQueue>,
-    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng), With<Meleeing>>,
+    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>), With<Meleeing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby) in &mut q {
         let Some((g, i)) = g.and_then(|g| tg.info(g.who).map(|i| (g, i))) else {
             reqs.0.push(Req::End(e, a.melee_slot));
             continue;
@@ -313,7 +338,7 @@ pub fn melee_run(
         a.recalc = (a.recalc - 1).max(0);
         let moved = d2(at, a.path_target) >= 1.0;
         // `follow_unseen` is false for the zombie: no new path while the target is not in sight.
-        if g.seen && a.recalc <= 0 && (a.path_target == Vec3::ZERO || moved || rng.next_f64() < 0.05) {
+        if (g.seen || a.follow_unseen) && a.recalc <= 0 && (a.path_target == Vec3::ZERO || moved || rng.next_f64() < 0.05) {
             a.path_target = at;
             a.recalc = 4 + rng.next_int(7);
             let d = d2(pos.0, at);
@@ -325,8 +350,11 @@ pub fn melee_run(
             go_to(&mut cmd, e, at.x, at.z, a.speed, 5);
         }
         a.until = (a.until - 1).max(0);
-        if a.until <= 0 && g.seen && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(i.bounds) {
-            a.until = a.interval;
+        let ready = if a.follow_unseen { clock.0 >= a.next_strike } else { a.until <= 0 };
+        if ready && g.seen && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(i.bounds) {
+            let interval = if baby { a.interval_baby.unwrap_or(a.interval) } else { a.interval };
+            a.until = interval;
+            a.next_strike = clock.0 + interval as u64;
             match g.who {
                 Who::Player(id) => {
                     let (tick, amount, from) = (clock.0, a.damage, (pos.0.x, pos.0.z));

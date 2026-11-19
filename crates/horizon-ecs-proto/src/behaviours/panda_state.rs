@@ -52,6 +52,10 @@ pub fn is_baby(w: &World, e: Entity) -> bool {
 pub fn gene(w: &World, e: Entity) -> Gene {
     w.get::<Gene>(e).copied().unwrap_or_default()
 }
+/// `panda.rs:122`: the aggressive gene (`hurt_by.alert_when` of the other pandas).
+pub fn is_aggressive(w: &World, e: Entity) -> bool {
+    gene(w, e) == Gene::Aggressive
+}
 /// `Panda.isScared` needs a thunderstorm, which the world does not have yet: no storm (DOUTE in the notes).
 fn thundering(_: &World) -> bool {
     false

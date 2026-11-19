@@ -15,7 +15,7 @@ pub static DEF: Def = Def {
         // DOUTE : le cooldown de mêlée de 20 ticks n'a pas de paramètre dans melee
         Entry::new(&melee::MODULE, 2, &melee::Params::DEFAULT),
         Entry::new(&brute_stroll_home::MODULE, 5, &brute_stroll_home::Params::DEFAULT),
-        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.6 }),
+        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
     ],
     ..Def::EMPTY

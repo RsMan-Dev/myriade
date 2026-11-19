@@ -16,9 +16,11 @@ pub struct Params {
     pub unseen_memory: i32,
     /// The owner (`tame::Owner`) is never taken for a target, whoever hit.
     pub spare_owner: bool,
+    /// `alert_if`: a condition the ALERTED creature must meet (the panda: only the aggressive ones are called).
+    pub alert_when: Option<fn(&World, Entity) -> bool>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false };
+    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None };
     pub const ALERT: Self = Self { alert: true, ..Self::DEFAULT };
 }
 /// The state: the last hit (who, tick) and the one the goal answered, the kinds resolved to masks.
@@ -110,6 +112,7 @@ fn alert_others(w: &mut World, e: Entity, who: Who, g: HurtByGoal) {
         let (Some(op), Some(os), true) = (w.get::<Pos>(o), w.get::<SpeciesId>(o), w.get::<HurtByGoal>(o).is_some()) else { continue };
         if kinds >> os.0 & 1 == 1
             && g.alert_except >> os.0 & 1 == 0
+            && g.p.alert_when.is_none_or(|f| f(w, o))
             && (op.0.x - pos.x).abs() <= follow + 1.0
             && (op.0.z - pos.z).abs() <= follow + 1.0
             && (op.0.y - pos.y).abs() <= 11.0
