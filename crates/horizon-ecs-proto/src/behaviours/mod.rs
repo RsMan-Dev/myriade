@@ -180,21 +180,39 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
     p.downcast_ref::<T>().expect("the parameters of another module")
 }
 
+pub mod avoid_entity;
 pub mod breed;
+pub mod climb_on_powder_snow;
+pub mod do_nothing;
+pub mod silverfish_wake_up_friends;
 #[cfg(test)]
 pub mod example;
 pub mod eat_block;
+pub mod flee_sun;
 pub mod float;
 pub mod follow_parent;
 pub mod look_at_player;
 pub mod melee;
 pub mod panic;
 pub mod random_look;
+pub mod random_stand;
 pub mod ranged_bow;
 pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
+pub mod panda_lie_on_back;
+pub mod panda_roll;
+pub mod panda_sneeze;
+pub mod panda_state;
 pub mod tempt;
+pub mod fox_state;
+pub mod fox_faceplant;
+pub mod fox_stalk_prey;
+pub mod fox_pounce;
+pub mod armadillo_state;
+pub mod baby_follow_adult;
+pub mod rolled;
+pub mod swell;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -203,6 +221,7 @@ pub static TABLE: &[&Module] = &[
     &follow_parent::MODULE,
     &look_at_player::MODULE,
     &random_look::MODULE,
+    &random_stand::MODULE,
     &float::MODULE,
     &panic::MODULE,
     &hurt_by::MODULE,
@@ -211,4 +230,18 @@ pub static TABLE: &[&Module] = &[
     &ranged_bow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &avoid_entity::MODULE,
+    &flee_sun::MODULE,
+    &panda_sneeze::MODULE,
+    &panda_lie_on_back::MODULE,
+    &panda_roll::MODULE,
+    &fox_faceplant::MODULE,
+    &fox_stalk_prey::MODULE,
+    &fox_pounce::MODULE,
+    &swell::MODULE,
+    &baby_follow_adult::MODULE,
+    &rolled::MODULE,
+    &climb_on_powder_snow::MODULE,
+    &silverfish_wake_up_friends::MODULE,
+    &do_nothing::MODULE,
 ];
