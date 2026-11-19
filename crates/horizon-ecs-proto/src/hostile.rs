@@ -57,6 +57,13 @@ pub struct PlayerState {
     pub creative: Vec<bool>,
     pub spectator: Vec<bool>,
     pub visibility: Vec<f64>,
+    /// Sneaking, the helmet worn (an item id, 0 none), the view vector (what the player looks at) and the team (0 none), by
+    /// player: what the creatures read of a player beyond where it is. `peaceful`: the difficulty (monsters do not target).
+    pub sneaking: Vec<bool>,
+    pub helmet: Vec<u32>,
+    pub gaze: Vec<[f64; 3]>,
+    pub team: Vec<u32>,
+    pub peaceful: bool,
 }
 impl PlayerState {
     pub fn creative(&self, id: u32) -> bool {
@@ -74,6 +81,52 @@ impl PlayerState {
             self.visibility.resize(i + 1, 1.0);
         }
         self.visibility[i] = v;
+    }
+    pub fn sneaking(&self, id: u32) -> bool {
+        self.sneaking.get(id as usize).copied().unwrap_or(false)
+    }
+    pub fn helmet(&self, id: u32) -> u32 {
+        self.helmet.get(id as usize).copied().unwrap_or(0)
+    }
+    /// The view vector of the player (`getViewVector`), the south by default.
+    pub fn gaze(&self, id: u32) -> [f64; 3] {
+        self.gaze.get(id as usize).copied().unwrap_or([0.0, 0.0, 1.0])
+    }
+    /// 0: no team. Two players of the same non-zero team are allies.
+    pub fn team(&self, id: u32) -> u32 {
+        self.team.get(id as usize).copied().unwrap_or(0)
+    }
+    /// The single rule of "a monster may target / flee this player": alive, not creative, not spectator, not Peaceful.
+    pub fn targetable(&self, id: u32) -> bool {
+        self.alive(id) && !self.creative(id) && !self.spectator(id) && !self.peaceful
+    }
+    pub fn set_sneaking(&mut self, id: u32, on: bool) {
+        let i = id as usize;
+        if self.sneaking.len() <= i {
+            self.sneaking.resize(i + 1, false);
+        }
+        self.sneaking[i] = on;
+    }
+    pub fn set_helmet(&mut self, id: u32, item: u32) {
+        let i = id as usize;
+        if self.helmet.len() <= i {
+            self.helmet.resize(i + 1, 0);
+        }
+        self.helmet[i] = item;
+    }
+    pub fn set_gaze(&mut self, id: u32, v: [f64; 3]) {
+        let i = id as usize;
+        if self.gaze.len() <= i {
+            self.gaze.resize(i + 1, [0.0, 0.0, 1.0]);
+        }
+        self.gaze[i] = v;
+    }
+    pub fn set_team(&mut self, id: u32, team: u32) {
+        let i = id as usize;
+        if self.team.len() <= i {
+            self.team.resize(i + 1, 0);
+        }
+        self.team[i] = team;
     }
     pub fn set_creative(&mut self, id: u32, on: bool) {
         let i = id as usize;

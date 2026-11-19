@@ -1,3 +1,5 @@
 f4ba0711c6 reference of 2026-11-19 after spots, Body split, when (the head f4ba0711c6 + module guard)
 2dbc7394eb release build (CARGO_INCREMENTAL=0) of 2dbc7394eb: the previous reference came from an incremental build, 5 to 8 % too high
 2dbc7394eb release build (CARGO_INCREMENTAL=0) of 2dbc7394eb: the first reference came from an incremental build, 5 to 8 % too high
+53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference
+53d99a0844 release build of the head with the zone rings (cow, spacing 6, view = simulation = 10) in the reference

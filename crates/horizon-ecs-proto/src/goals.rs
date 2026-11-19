@@ -310,12 +310,79 @@ pub fn set_lazy_look(world: &mut World, on: bool) {
 #[derive(Resource, Default)]
 pub struct Forced {
     pub spots: HashMap<(Entity, u8), (f64, f64)>,
+    /// The row (y) of an imposed spot, when the test gives one (`impose_spot`): the `Mob` draws a row too.
+    pub rows: HashMap<(Entity, u8), f64>,
     /// The partner a cow in love takes instead of the nearest one.
     pub partners: HashMap<Entity, Entity>,
     /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
     pub strafes: HashMap<Entity, (bool, bool)>,
 }
 
+impl Forced {
+    /// A spot in 3D for the goal of `slot`: the module takes it with `take_spot` instead of drawing one.
+    pub fn impose_spot(&mut self, e: Entity, slot: u8, at: [f64; 3]) {
+        self.spots.insert((e, slot), (at[0], at[2]));
+        self.rows.insert((e, slot), at[1]);
+    }
+    /// The imposed spot of this goal (x, y, z), or `None`; `default_y` is the row when only (x, z) was imposed.
+    pub fn take_spot(&mut self, e: Entity, slot: u8, default_y: f64) -> Option<[f64; 3]> {
+        let (x, z) = self.spots.remove(&(e, slot))?;
+        Some([x, self.rows.remove(&(e, slot)).unwrap_or(default_y), z])
+    }
+}
+/// What stops an entity from acting (`Mob.isImmobile` / the goals' "cannot act" tests): a bit per reason, set by the module that
+/// causes it and read by any goal, which never needs to know that module. Absent: free.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Occupied(pub u32);
+pub const OCC_GRAZING: u32 = 1;
+pub const OCC_MOUNTED: u32 = 2;
+pub const OCC_SITTING: u32 = 4;
+pub const OCC_REARING: u32 = 8;
+pub const OCC_SLEEPING: u32 = 16;
+pub const OCC_ROLLED: u32 = 32;
+pub fn occupy(w: &mut World, e: Entity, reason: u32) {
+    let now = w.get::<Occupied>(e).map_or(0, |o| o.0);
+    w.entity_mut(e).insert(Occupied(now | reason));
+}
+pub fn release(w: &mut World, e: Entity, reason: u32) {
+    if let Some(mut o) = w.get_mut::<Occupied>(e) {
+        o.0 &= !reason;
+    }
+}
+/// Whether the entity is busy with any reason of `mask` (`u32::MAX`: any).
+pub fn is_occupied(w: &World, e: Entity, mask: u32) -> bool {
+    w.get::<Occupied>(e).is_some_and(|o| o.0 & mask != 0)
+}
+/// The equipment slots a goal reads (an item id, 0 empty): `Equipment` is absent on an entity that wears nothing.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Equipment {
+    pub head: u32,
+    pub chest: u32,
+    pub legs: u32,
+    pub feet: u32,
+    pub main: u32,
+    pub off: u32,
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Slot {
+    Head,
+    Chest,
+    Legs,
+    Feet,
+    Main,
+    Off,
+}
+/// The item in a slot of the entity (0 when it has none or no equipment at all).
+pub fn equipped(w: &World, e: Entity, slot: Slot) -> u32 {
+    w.get::<Equipment>(e).map_or(0, |q| match slot {
+        Slot::Head => q.head,
+        Slot::Chest => q.chest,
+        Slot::Legs => q.legs,
+        Slot::Feet => q.feet,
+        Slot::Main => q.main,
+        Slot::Off => q.off,
+    })
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
     pub id: u32,

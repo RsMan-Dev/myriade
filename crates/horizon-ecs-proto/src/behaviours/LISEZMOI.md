@@ -134,3 +134,10 @@ Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contr
 - Règle de partie : `goals::mob_griefing(w)`.
 - `Module.interruptable` (défaut vrai) : un but en cours non interruptible garde ses drapeaux contre toute priorité.
 - Événements (lus une fois, au tick suivant) : `Events.hurt` (blessé), `hurt_by_entity` (blessé par une entité ; l'attaquant par `HurtBy`), `entered_powder_snow`, `left_powder_snow`, en plus des précédents.
+
+## État du joueur, occupation, équipement, hasard imposé en 3D
+
+- Joueur : `hostile::PlayerState` est LA source (une seule) : `creative`, `spectator`, `visibility`, `sneaking`, `helmet`, `gaze` (vecteur de regard), `team`, `peaceful` (difficulté) et la règle `targetable(id)` = vivant, ni créatif ni spectateur, pas Peaceful (le ciblage l'emploie). Le `Mob` ne fuit ni ne cible un joueur non ciblable : tout but qui fuit ou vise un joueur appelle `targetable`.
+- Occupation : `goals::occupy(w, e, OCC_*)` / `release` / `is_occupied(w, e, masque)` (`OCC_GRAZING`, `MOUNTED`, `SITTING`, `REARING`, `SLEEPING`, `ROLLED`) : le module qui immobilise pose son bit (le broutage le fait), les buts consultent sans connaître ce module.
+- Équipement : `goals::equipped(w, e, Slot::Head)` rend l'objet (0 si vide ou si l'entité n'a pas de composant `Equipment`).
+- Hasard imposé en 3D : `Forced::impose_spot(e, slot, [x, y, z])` et, dans le module, `Forced::take_spot(e, slot, y_par_défaut)`.

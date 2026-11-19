@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# RULE: build the benches with CARGO_INCREMENTAL=0 (e.g. INC=0 ./dev.sh cargo build -p horizon-ecs-proto --profile fast --bins, its own target
+# directory). An incremental build is 5 to 8 % higher on every line, the Mob's included: never compare two build modes.
 # bilan.sh : the reference table of the integrated branch, exact instruction counter (src/instr.rs), 1 thread
 # HORIZON_TEST_RESOURCES: the prepared vanilla data; D: the directory of the built benches (cargo build --profile fast --bins).
 : "${HORIZON_TEST_RESOURCES:?set HORIZON_TEST_RESOURCES}"
@@ -24,3 +26,13 @@ export HORIZON_SPECIES=minecraft:cow
 for sp in 0.5 0.8; do
   echo "crowd $sp (cow, 2000, 0 player): batch $("$D/cow_bench" sleep 2000 300 1 $sp 0 2>/dev/null | g) ordered $(ORDERED_PUSH=1 "$D/cow_bench" sleep 2000 300 1 $sp 0 2>/dev/null | g) mob $("$D/mob_bench" 2000 300 0 $sp 2>/dev/null | g)"
 done
+# The three rings of the simulated chunks (cow, spacing 6, view = simulation = 10): instructions per creature and per tick, the
+# marginal cost of the creature (ECS) and of the mob (the Mob's pass), near (< 30 blocks), mid (in the zone, > 36 blocks), far.
+unset HUNT
+export HORIZON_SPECIES=minecraft:cow
+zr=$("$D/zone_bench" rings 6 10 2>/dev/null | awk '/--- zone on/{on=1} on && /^(near|mid|far)/{ for(i=1;i<=NF;i++) if ($i ~ /^marginal\/creature\/tick=/) { v=$i; sub(/.*=/,"",v); if (v=="") v=$(i+1); print v } }')
+mn=$("$D/mob_zone_bench" rings 6 10 2>/dev/null | sed -n 's/.*per mob: near *\([0-9]*\).*rest-of-zone *\([0-9]*\).*/\1 \2/p;')
+set -- $zr
+echo "zone near ring (cow, 6, 10): ecs ${1:-0} mob $(echo "$mn" | sed -n 1p | cut -d' ' -f1)"
+echo "zone mid ring (cow, 6, 10): ecs ${2:-0} mob $(echo "$mn" | sed -n 2p | cut -d' ' -f2)"
+echo "zone far ring (cow, 6, 10): ecs ${3:-0} mob 0"
