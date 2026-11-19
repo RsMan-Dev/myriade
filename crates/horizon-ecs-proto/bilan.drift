@@ -276,3 +276,35 @@ kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone near ring
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone mid ring (cow, 6, 10)|ecs|34.1|33.3
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|zone far ring (cow, 6, 10)|ecs|-0.4|1.2
 kernel-collisions 0a772f2de2 (occupancy-mask collision fast path)|schedule at rest (empty world, per tick)|ecs|127219|126741
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs|1059|1066
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow idle|ecs-eager|1290|1294
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs|5627|5636
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow active(1000 players, no solicitation)|ecs-eager|5456|5462
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13983|13988
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs|189|193
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig idle|ecs-eager|362|363
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs|5130|5149
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig active(1000 players, no solicitation)|ecs-eager|4866|4885
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13242|13263
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs|487|489
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep idle|ecs-eager|671|673
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs|5476|5482
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep active(1000 players, no solicitation)|ecs-eager|5315|5322
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|15765|15770
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken idle|ecs-eager|211|210
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs|3760|3766
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken active(1000 players, no solicitation)|ecs-eager|3644|3651
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|10013|10019
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie idle|ecs|112|113
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs|11382|11387
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie active(1000 players, no solicitation)|ecs-eager|11287|11305
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5639|5646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7180|7179
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|batch|6631|6646
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.5 (cow, 2000, 0 player)|ordered|19413|19436
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|batch|5754|5765
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|crowd 0.8 (cow, 2000, 0 player)|ordered|13690|13710
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone near ring (cow, 6, 10)|ecs|2957.9|2980.1
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|zone far ring (cow, 6, 10)|ecs|1.2|-0.2
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
+kernel-collisions ab7f5e58bb (permanent shape table, bit-flip masks)|schedule at rest (empty world, per tick)|ecs|126741|125462

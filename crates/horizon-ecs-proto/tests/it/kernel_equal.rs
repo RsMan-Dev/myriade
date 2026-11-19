@@ -1,6 +1,6 @@
 //! The optimised block-collision kernel against the reference one, bit for bit, over random calls in a varied
 //! random world (suivi/ecs-noyau-collisions.md). `HORIZON_TEST_RESOURCES` must be set.
-use horizon_ecs_proto::kernel_lab::{change_block, cube_world, occupancy_of, random_calls, run, run_kernel, run_reference, varied_world, Rng};
+use horizon_ecs_proto::kernel_lab::{change_block, cube_world, occupancy_of, random_calls, run, run_kernel, run_lava_walker, run_reference, varied_world, Rng};
 
 fn same(a: &Result<horizon_core::geometry::Vec3, String>, b: &Result<horizon_core::geometry::Vec3, String>) -> bool {
     match (a, b) {
@@ -26,6 +26,8 @@ fn the_fast_kernel_equals_the_reference_bit_for_bit() {
             calls += 1;
             moved += usize::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
         }
+        let o = occupancy_of(world);
+        eprintln!("seed {seed}: masks answered {} calls, kernel {}, states classified {:?}", o.fast.load(std::sync::atomic::Ordering::Relaxed), o.fallback.load(std::sync::atomic::Ordering::Relaxed), o.table_size());
     }
     // The cases must actually collide, or the equality says nothing.
     assert!(moved * 5 > calls, "only {moved} of {calls} calls were stopped by a block");
@@ -93,4 +95,175 @@ fn the_occupancy_masks_equal_the_reference_in_cube_worlds_and_after_changes() {
         }
     }
     assert!(fast_pure * 2 > calls / 2, "the fast path answered only {fast_pure} of the pure-cube calls");
+}
+
+/// The table's classes by state name: the states of a shape that depends on the entity, the world or a piston in motion stay with
+/// the kernel; the fixed shapes (slabs, stairs, fences, walls, doors, beds, snow layers, anvils...) are in the table.
+#[test]
+fn the_shape_table_keeps_only_contextual_dynamic_and_moving_states_with_the_kernel() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let occ = occupancy_of(mw);
+    let mut by_class: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> = Default::default();
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        let name = mw.registry.state(id).unwrap().name.trim_start_matches("minecraft:").to_string();
+        by_class.entry(occ.class_name(mw.collision, id)).or_default().insert(name);
+    }
+    let has = |class: &str, name: &str| by_class.get(class).is_some_and(|s| s.contains(name));
+    for name in ["scaffolding", "powder_snow", "moving_piston"] {
+        assert!(has("hard", name), "{name} must stay with the kernel");
+    }
+    for name in ["oak_slab", "oak_stairs", "snow", "white_bed", "anvil", "oak_door", "hopper", "cauldron"] {
+        assert!(has("shaped", name) || has("large shaped", name), "{name} must be in the table");
+    }
+    for name in ["oak_fence", "cobblestone_wall"] {
+        assert!(has("large shaped", name), "{name} reaches out of its cell");
+    }
+    for (c, names) in &by_class {
+        eprintln!("{c}: {} names{}", names.len(), if *c == "hard" { format!(" {names:?}") } else { String::new() });
+    }
+}
+
+/// Water and lava are empty for a body with no subject and the kernel's business for one that stands on fluids (a strider): both
+/// equal the reference bit for bit over liquid-rich worlds and over calls built on the liquid cells.
+#[test]
+fn liquids_collide_for_a_lava_walker_and_not_for_the_others_as_the_reference_says() {
+    for seed in [1u64, 3, 5] {
+        let world = varied_world(seed);
+        for c in random_calls(seed, 6_000) {
+            let (a, b) = (run_lava_walker(world, &c, false), run_lava_walker(world, &c, true));
+            assert!(same(&a, &b), "seed {seed} lava walker: {:?} {:?}: masks {a:?} reference {b:?}", c.bounds, c.movement);
+            let (n, o) = (run(world, &c), run_reference(world, &c));
+            assert!(same(&n, &o));
+        }
+    }
+    // Calls built over the liquid cells themselves: a box standing just above one, falling or walking.
+    let world = varied_world(3);
+    let (mut over, mut stopped_w, mut stopped_o) = (0, 0, 0);
+    for x in -32..32 {
+        for z in -32..32 {
+            for y in -4..12 {
+                let name = &world.registry.state(world.world.block(x, y, z)).unwrap().name;
+                if name != "minecraft:lava" && name != "minecraft:water" {
+                    continue;
+                }
+                for dy in [-0.5, -0.0784, 0.0] {
+                    let (cx, cz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
+                    let bounds = horizon_core::geometry::Aabb::new(
+                        horizon_core::geometry::Vec3::new(cx - 0.3, f64::from(y) + 1.0, cz - 0.3),
+                        horizon_core::geometry::Vec3::new(cx + 0.3, f64::from(y) + 2.8, cz + 0.3),
+                    );
+                    let c = horizon_ecs_proto::kernel_lab::Call { bounds, movement: horizon_core::geometry::Vec3::new(0.05, dy, 0.0), step: 0.6, on_ground: false };
+                    let (a, b) = (run_lava_walker(world, &c, false), run_lava_walker(world, &c, true));
+                    assert!(same(&a, &b), "over liquid: masks {a:?} reference {b:?}");
+                    let (n, o) = (run(world, &c), run_reference(world, &c));
+                    assert!(same(&n, &o));
+                    over += 1;
+                    stopped_w += usize::from(b.as_ref().is_ok_and(|v| v.y != dy));
+                    stopped_o += usize::from(o.as_ref().is_ok_and(|v| v.y != dy));
+                }
+            }
+        }
+    }
+    eprintln!("over liquids: {over} calls, a lava walker stopped in {stopped_w}, another body in {stopped_o}");
+    assert!(over > 50, "only {over} calls over liquids");
+}
+
+/// Why the ring's x-edge cells can be dropped without changing a result (and why a mutation that drops them survives): no fixed shape
+/// reaches out of its cell horizontally; a shape that reaches out does so upward (fences, walls: 1.5) or downward, and the ring
+/// cells the scan reads for it lie above and below the box. A shape inside its cell in x never meets a box that stays inside the
+/// cells of the box (the box's own x cells end where the ring begins).
+#[test]
+fn no_fixed_shape_reaches_out_of_its_cell_horizontally() {
+    use horizon_core::geometry::Axis;
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let (mut large, mut vertical_only, mut horizontal) = (0, 0, Vec::new());
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        let b = mw.collision;
+        let Ok(Some(shape)) = b.cached_shapes().cached_shape(id) else { continue };
+        if shape.is_empty() || b.has_context_rule(id) {
+            continue;
+        }
+        let out = |a: Axis| shape.min(a) < 0.0 || shape.max(a) > 1.0;
+        if out(Axis::X) || out(Axis::Z) {
+            horizontal.push(mw.registry.state(id).unwrap().name.clone());
+        } else if out(Axis::Y) {
+            vertical_only += 1;
+        }
+        large += usize::from(b.reaches_out(id));
+    }
+    eprintln!("{large} states reach out; {vertical_only} only vertically; horizontally: {horizontal:?}");
+    // Only the piston head reaches out sideways (its arm): the ring's x and z cells matter for it, and the next test puts heads there.
+    assert!(horizontal.iter().all(|n| n == "minecraft:piston_head"), "shapes that reach out horizontally: {horizontal:?}");
+}
+
+/// Piston heads (the one shape that reaches out sideways) scattered through a cube world, among boxes of every size: the masks
+/// read the ring cells beside and around the box for them, as the scan does.
+#[test]
+fn piston_heads_in_the_ring_agree_with_the_reference() {
+    use horizon_world::registry::BlockStateId;
+    let (world, ptr) = cube_world(12, false);
+    let heads: Vec<BlockStateId> = (0..world.registry.len() as u32).map(BlockStateId).filter(|&id| world.registry.state(id).unwrap().name == "minecraft:piston_head").collect();
+    let mut r = Rng(0xB15_704);
+    for round in 0..8 {
+        for _ in 0..40 {
+            let (x, y, z) = (r.below(28) as i32 - 14, r.below(7) as i32, r.below(28) as i32 - 14);
+            unsafe { change_block(world, ptr, x, y, z, heads[r.below(heads.len())]) };
+        }
+        for c in random_calls(12, 6_000) {
+            let (new, old) = (run(world, &c), run_reference(world, &c));
+            assert!(same(&new, &old), "round {round}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+        }
+    }
+}
+
+/// Faces exactly on cell boundaries (touching boxes, half-cell steps, snapped movements) in dense worlds, on the ground and
+/// off it, with steps: the calls where a cube that only touches the swept box, or a shape that overlaps by nothing, could change
+/// the step heights or the joins.
+#[test]
+fn touching_faces_agree_with_the_reference() {
+    let mut r = Rng(0xFACE_5EED);
+    let mut calls = 0;
+    for (seed, tricky) in [(2u64, false), (4, true), (6, true)] {
+        let (world, _) = cube_world(seed, tricky);
+        let occ = occupancy_of(world);
+        for _ in 0..40_000 {
+            let half = |r: &mut Rng, lo: i32, hi: i32| f64::from(lo + r.below((hi - lo) as usize) as i32) / 2.0;
+            let (w, h) = [(0.5, 1.0), (1.0, 1.0), (1.0, 2.0), (0.5, 1.5), (1.0, 1.5)][r.below(5)];
+            let (x, y, z) = (half(&mut r, -24, 24), half(&mut r, 0, 12), half(&mut r, -24, 24));
+            let bounds = horizon_core::geometry::Aabb::new(horizon_core::geometry::Vec3::new(x, y, z), horizon_core::geometry::Vec3::new(x + w, y + h, z + w));
+            let q = |r: &mut Rng| [0.0, 0.25, -0.25, 0.5, -0.5, 1.0, -1.0, 0.0784, -0.0784][r.below(9)];
+            let c = horizon_ecs_proto::kernel_lab::Call { bounds, movement: horizon_core::geometry::Vec3::new(q(&mut r), q(&mut r), q(&mut r)), step: [0.0_f32, 0.5, 0.6, 1.0][r.below(4)], on_ground: r.below(2) == 0 };
+            let (new, old) = (run(world, &c), run_reference(world, &c));
+            assert!(same(&new, &old), "seed {seed}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+            calls += 1;
+        }
+        eprintln!("seed {seed}: masks {} kernel {}", occ.fast.load(std::sync::atomic::Ordering::Relaxed), occ.fallback.load(std::sync::atomic::Ordering::Relaxed));
+    }
+    assert!(calls > 100_000);
+}
+
+/// Why taking a contextual state for a fixed one cannot change a result today (a mutation that does survives): the states with a
+/// contextual rule or entity-kind variants (other than water and lava) are exactly those with no cached shape, which the table
+/// refuses anyway. A registry that gave one a cached shape would turn this test red, and the table's own check then decides.
+#[test]
+fn contextual_states_have_no_cached_shape() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let b = mw.collision;
+    let mut with_shape = std::collections::BTreeSet::new();
+    let mut without = std::collections::BTreeSet::new();
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        let name = mw.registry.state(id).unwrap().name.clone();
+        if !b.has_context_rule(id) || name == "minecraft:water" || name == "minecraft:lava" {
+            continue;
+        }
+        if matches!(b.cached_shapes().cached_shape(id), Ok(Some(_))) { with_shape.insert(name); } else { without.insert(name); }
+    }
+    eprintln!("contextual states without a cached shape: {without:?}");
+    assert!(with_shape.is_empty(), "contextual states with a cached shape: {with_shape:?}");
 }
