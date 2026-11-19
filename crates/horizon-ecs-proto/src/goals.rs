@@ -424,6 +424,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Requests::default());
     world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
+    world.insert_resource(Events::default());
     world.insert_resource(crate::farm::Grown::default());
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
@@ -444,6 +445,54 @@ pub fn register(s: &mut Schedule) {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
         (modules[i].systems)(s, slot);
+    }
+}
+
+// ---- the events of the framework (a module never polls a component) ------------------------------------------
+/// The entities one event happened to: those of the tick before, then those of this one so far (a module's system reads
+/// both with `iter`; `due`, the first system of the tick, swaps the two). Nobody clears or takes them.
+#[derive(Default)]
+pub struct Ev {
+    cur: Vec<Entity>,
+    prev: Vec<Entity>,
+}
+impl Ev {
+    pub fn push(&mut self, e: Entity) {
+        self.cur.push(e);
+    }
+    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.prev.iter().chain(&self.cur).copied()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.prev.is_empty() && self.cur.is_empty()
+    }
+    fn swap(&mut self) {
+        std::mem::swap(&mut self.prev, &mut self.cur);
+        self.cur.clear();
+    }
+}
+/// The state changes other modules wait for, in the form of `Hurts` and `Grown` (an entity list per kind, read the tick it
+/// happened and the next one). Written by the framework's systems; a new kind is one field and one line in `swap`.
+#[derive(Resource, Default)]
+pub struct Events {
+    /// `Burning` was set (from not burning).
+    pub ignited: Ev,
+    /// `Burning` ended (water, or the fire burnt out).
+    pub extinguished: Ev,
+    pub entered_fluid: Ev,
+    pub left_fluid: Ev,
+    /// The feet reached the ground after being in the air.
+    pub landed: Ev,
+    /// A baby grew up (same as `farm::Grown`, readable by several).
+    pub grew: Ev,
+    /// A grazing animal ate its block (`eat_block`).
+    pub ate: Ev,
+}
+impl Events {
+    pub fn swap(&mut self) {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate] {
+            ev.swap();
+        }
     }
 }
 

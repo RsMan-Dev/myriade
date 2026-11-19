@@ -532,3 +532,40 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
     eprintln!("wall built at tick 60: acquired mob {na} at {ma:.1}, ecs {ne} at {ea:.1}; target lost mob {nm} at {ml:.1}, ecs {nl} at {el:.1}");
     assert!(nm > 0 && nl > 0 && (ml - el).abs() < 15.0, "lost: mob {ml}, ecs {el}");
 }
+
+/// The world is lit by the real light engine: a roof over a zombie hides it from the sun (and from `can_see_sky`), the same
+/// zombie in the open burns, and removing the roof lets it burn.
+#[test]
+fn a_roof_over_a_zombie_stops_the_sun_and_removing_it_lets_it_burn() {
+    if !have_data() { return; }
+    let mut h = Herd::with_slab(20, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let (cx, cz) = (0.5, 0.5);
+    let level_sees = |h: &Herd, x: i32, y: i32, z: i32| h.world.resource::<Level>().mw.0.can_see_sky(x, y, z);
+    assert!(level_sees(&h, 0, 2, 0), "the open slab sees the sky");
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            h.set_block(dx, 4, dz, "minecraft:stone");
+        }
+    }
+    h.tick();
+    assert!(!level_sees(&h, 0, 2, 0), "a roof of stone over the column: the sky is no longer seen");
+    let under = spawn_species(&mut h.world, &table[2], cx, cz, 0x9E37_79B9);
+    let open = spawn_species(&mut h.world, &table[2], 10.5, 10.5, 0x7F4A_7C15);
+    h.set_day(true);
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert!(h.world.get::<Burning>(open).is_some(), "the zombie in the open burns in the day");
+    assert!(h.world.get::<Burning>(under).is_none(), "the zombie under the roof does not burn");
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            h.set_block(dx, 4, dz, "minecraft:air");
+        }
+    }
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert!(level_sees(&h, 0, 2, 0), "the roof is gone: the sky is seen again");
+    assert!(h.world.get::<Burning>(under).is_some() || h.world.get_entity(under).is_err(), "without the roof the zombie burns");
+}

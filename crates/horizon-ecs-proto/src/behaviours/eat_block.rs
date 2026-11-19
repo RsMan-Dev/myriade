@@ -129,6 +129,7 @@ fn graze_deadline(w: &mut World, e: Entity) {
     } else if now >= g.eat_at && !g.eaten {
         w.get_mut::<Grazing>(e).unwrap().eaten = true;
         eat(w, e);
+        w.resource_mut::<Events>().ate.push(e);
     }
 }
 /// The block goes: short grass is broken, a grass block under it becomes dirt (both through the block-change event of

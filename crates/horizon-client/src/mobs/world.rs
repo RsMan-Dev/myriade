@@ -904,6 +904,9 @@ struct TestResources {
     items: crate::items::Items,
     collision: std::sync::Arc<BlockCollisionRegistry<'static>>,
     suffocation: horizon_world::suffocation::SuffocationRegistry<'static>,
+    /// The real light engine's tables (the prototype's world is lit: `can_see_sky`, roofs).
+    #[cfg(feature = "proto")]
+    light: crate::light::LightTables,
 }
 #[cfg(any(test, feature = "proto"))]
 impl TestResources {
@@ -934,6 +937,8 @@ impl TestResources {
         let collision = std::sync::Arc::new(crate::collisions::load(root, registry).unwrap());
         let suffocation =
             super::suffocation::bind(collision.clone(), &motion.causes_suffocation).unwrap();
+        #[cfg(feature = "proto")]
+        let light = crate::light::LightTables::load(root, registry, &facts).unwrap();
         Some(Self {
             assets,
             facts,
@@ -944,6 +949,8 @@ impl TestResources {
             items,
             collision,
             suffocation,
+            #[cfg(feature = "proto")]
+            light,
         })
     }
     /// The checkout's prepared vanilla data, loaded on first use; `None`
@@ -963,6 +970,36 @@ impl TestResources {
             })
             .as_ref()
     }
+}
+/// Lights every chunk of the prototype's world with the real light engine (the sky light of an open column is 15, a roof
+/// shades what is under it); `relight_test_world` keeps it right after a block change.
+#[cfg(feature = "proto")]
+fn light_test_world(world: &mut crate::world::World, tables: &crate::light::LightTables) {
+    let keys: Vec<(i32, i32)> = world.chunks.keys().copied().collect();
+    let mut lit = Vec::new();
+    for &(cx, cz) in &keys {
+        let at = |dx: i32, dz: i32| world.chunks.get(&(cx + dx, cz + dz)).map(|c| &**c);
+        let region = [
+            [at(-1, -1), at(0, -1), at(1, -1)],
+            [at(-1, 0), at(0, 0), at(1, 0)],
+            [at(-1, 1), at(0, 1), at(1, 1)],
+        ];
+        lit.push(((cx, cz), crate::light::light_chunk(&region, tables, true)));
+    }
+    for (key, lights) in lit {
+        if let Some(chunk) = world.chunks.get_mut(&key) {
+            let chunk = std::sync::Arc::make_mut(chunk);
+            crate::light::apply_lighting(chunk, lights);
+            chunk.lit = true;
+        }
+    }
+}
+/// After blocks of the leaked prototype world changed (the caller promises that no system runs): the real engine's relight.
+#[cfg(feature = "proto")]
+pub fn relight_test_world(world: &mut crate::world::World, positions: &[(i32, i32, i32)]) {
+    let Some(resources) = TestResources::vanilla() else { return };
+    let mut changed = crate::light::LightChanges::default();
+    crate::light::relight(&mut world.chunks, &resources.light, true, positions, false, &mut changed);
 }
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
 #[cfg(any(test, feature = "proto"))]
@@ -984,6 +1021,7 @@ fn run_test_world(
         items,
         collision,
         suffocation,
+        ..
     } = resources;
     let registry = assets.registry;
     let air = registry.default_state("minecraft:air").unwrap();
@@ -1201,11 +1239,12 @@ pub fn leaked_test_world_mut(
     build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
 ) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
     let resources: &'static TestResources = TestResources::vanilla()?;
-    let TestResources { assets, facts, motion, data, types, biomes, items, collision, suffocation } = resources;
+    let TestResources { assets, facts, motion, data, types, biomes, items, collision, suffocation, .. } = resources;
     let registry = assets.registry;
     let air = registry.default_state("minecraft:air").unwrap();
     let mut world = crate::world::World::new(air, 0);
     build(&mut world, registry);
+    light_test_world(&mut world, &resources.light);
     let leaked: &'static mut crate::world::World = Box::leak(Box::new(world));
     let blocks: *mut crate::world::World = &mut *leaked;
     let world: &'static crate::world::World = leaked;

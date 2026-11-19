@@ -478,6 +478,7 @@ fn sun_burn(
     day: Res<Daylight>,
     mut fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
+    mut events: ResMut<crate::goals::Events>,
     mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng)>,
     mut cmd: Commands,
 ) {
@@ -493,6 +494,7 @@ fn sun_burn(
                 None => {
                     wheel.push(now + 1, e, Due::Burn);
                     cmd.entity(e).insert(Burning { until });
+                    events.ignited.push(e);
                 }
                 Some(bn) if bn.until < until => {
                     cmd.entity(e).insert(Burning { until });

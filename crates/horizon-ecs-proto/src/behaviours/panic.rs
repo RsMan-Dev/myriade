@@ -163,7 +163,11 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 /// Sets the animal on fire for `ticks`: its damage every 20 ticks, and the panic that a burning animal has.
 pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
     let now = world.resource::<Clock>().0;
+    let already = world.get::<Burning>(e).is_some();
     world.entity_mut(e).insert(Burning { until: now + ticks });
+    if !already {
+        world.resource_mut::<Events>().ignited.push(e);
+    }
     // `Entity.baseTick`: the fire hurts on the ticks where the remaining fire is a multiple of 20, the first included.
     world.resource_mut::<Wheel>().push(now + if ticks % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
     wake(world, e, &MODULE);
