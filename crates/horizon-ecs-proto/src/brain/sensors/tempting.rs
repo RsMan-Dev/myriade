@@ -29,12 +29,12 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Tempting {
     pub range: f64,
-    pub items: u32,
+    pub items: crate::goals::ItemSet,
 }
 
 /// Writes the species' tempting data on the entity.
 pub fn equip(w: &mut World, e: Entity, p: &Params) {
-    let items = p.foods.iter().fold(0u32, |m, n| m | 1 << item_id(n));
+    let items = crate::goals::ItemSet::of(p.foods.iter().map(|n| item_id(n)));
     w.entity_mut(e).insert(Tempting { range: p.range, items });
 }
 

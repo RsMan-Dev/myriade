@@ -323,3 +323,49 @@ fn players_entering_and_leaving_a_radius_the_gaze_and_leaving_the_ground_are_eve
     assert_eq!(gaze, 1, "the gaze changed once");
     assert_eq!(off, 1, "the feet left the ground once");
 }
+
+/// A hundred players around one watcher: each one is reported once on entering and once on leaving, none is taken for another
+/// (the watch held a 64-bit mask by player id, so the 70th was the 6th).
+#[test]
+fn a_hundred_players_are_each_reported_once_by_a_watcher() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::goals::{Events, Online, Player, PlayerWatch};
+    let mut h = Herd::with_slab(30, true, false);
+    let e = inert(&mut h, 0.5, 1.0, 0.5);
+    h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
+    for _ in 0..30 {
+        h.tick();
+    }
+    let mut entered = std::collections::HashMap::<u32, i32>::new();
+    let mut left = std::collections::HashMap::<u32, i32>::new();
+    let mut run = |h: &mut Herd, entered: &mut std::collections::HashMap<u32, i32>, left: &mut std::collections::HashMap<u32, i32>| {
+        for _ in 0..3 {
+            h.tick();
+            let ev = h.world.resource::<Events>();
+            for (w, p) in ev.player_entered.iter() {
+                if w == e {
+                    *entered.entry(p).or_default() += 1;
+                }
+            }
+            for (w, p) in ev.player_left.iter() {
+                if w == e {
+                    *left.entry(p).or_default() += 1;
+                }
+            }
+        }
+    };
+    for id in 1..=100u32 {
+        h.world.resource_mut::<Online>().set(Player { id, x: 4.0 + f64::from(id % 5) * 0.1, y: 1.0, z: 0.5, main: 0, off: 0 });
+    }
+    run(&mut h, &mut entered, &mut left);
+    assert_eq!(entered.len(), 100, "every player entered: {}", entered.len());
+    assert!(entered.values().all(|&n| n == 1) && left.is_empty());
+    for id in 1..=100u32 {
+        h.world.resource_mut::<Online>().set(Player { id, x: 30.0, y: 1.0, z: 0.5, main: 0, off: 0 });
+    }
+    run(&mut h, &mut entered, &mut left);
+    assert_eq!(left.len(), 100, "every player left: {}", left.len());
+    assert!(left.values().all(|&n| n == 1));
+}

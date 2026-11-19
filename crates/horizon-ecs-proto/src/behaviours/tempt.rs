@@ -24,7 +24,7 @@ impl Params {
 #[derive(Clone, Copy, Debug)]
 pub struct Tempt {
     /// The items that tempt, a bit per item id.
-    pub items: u32,
+    pub items: crate::goals::ItemSet,
     pub speed: f64,
     pub stop: f64,
     pub range: f64,
@@ -60,7 +60,7 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    let items = p.items.iter().fold(0u32, |m, n| m | 1 << item_id(n));
+    let items = crate::goals::ItemSet::of(p.items.iter().map(|n| item_id(n)));
     let t = Tempt { items, speed: p.speed, stop: p.stop, range: p.range, look_y: p.look_y, calm: p.calm, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };
     match w.get_mut::<Tempts>(e) {
         Some(mut ts) => {
