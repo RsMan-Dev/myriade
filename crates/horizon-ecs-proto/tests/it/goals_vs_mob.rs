@@ -892,27 +892,40 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
         eprintln!("SKIP: {name}: no goal holding MOVE has a larger priority number than the random look {look:?}: it stops nothing");
         return;
     }
-    let (mut r, mut h) = flat_pair();
-    let spots: Vec<(f64, f64)> = (0..8).flat_map(|i| (0..5).map(move |j| (-14.5 + 4.0 * f64::from(i), -12.5 + 5.0 * f64::from(j)))).collect();
-    let mobs: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
-    let cows: Vec<Entity> = spots.iter().enumerate().map(|(k, &(x, z))| ecs_cow(&mut h, x, 1.0, z, 900 + k as u64)).collect();
-    for &e in &cows {
-        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-        horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
-    }
-    let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
-    for _ in 0..1200 {
-        for &i in &mobs {
-            r.mobs[i].ai.no_action_time = 0;
+    // 4 repeats: other ids for the Mob (dummies first: its seed comes from its id), other seeds for the ecs animals.
+    let (mut mob_runs, mut ecs_runs) = (Vec::new(), Vec::new());
+    for rep in 0..4_usize {
+        let (mut r, mut h) = flat_pair();
+        let spots: Vec<(f64, f64)> = (0..8).flat_map(|i| (0..5).map(move |j| (-14.5 + 4.0 * f64::from(i), -12.5 + 5.0 * f64::from(j)))).collect();
+        let dummies: Vec<usize> = (0..rep * 97).map(|_| r.add(Vec3::new(-18.5, 1.0, -18.5))).collect();
+        let mobs: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+        let cows: Vec<Entity> = spots.iter().enumerate().map(|(k, &(x, z))| ecs_cow(&mut h, x, 1.0, z, 900 + 1000 * rep as u64 + k as u64)).collect();
+        for &e in &cows {
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+            horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
         }
-        r.step(None);
-        h.tick();
-        mob_ticks += mobs.iter().filter(|&&i| r.names(i).contains(&"RandomLookAround")).count();
-        ecs_ticks += cows.iter().filter(|&&e| h.world.get::<random_look::Scanning>(e).is_some()).count();
+        let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
+        for _ in 0..1200 {
+            for &i in mobs.iter().chain(&dummies) {
+                r.mobs[i].ai.no_action_time = 0;
+            }
+            r.step(None);
+            h.tick();
+            mob_ticks += mobs.iter().filter(|&&i| r.names(i).contains(&"RandomLookAround")).count();
+            ecs_ticks += cows.iter().filter(|&&e| h.world.get::<random_look::Scanning>(e).is_some()).count();
+        }
+        eprintln!("rep {rep}: ticks looking around: Mob {mob_ticks}, ecs {ecs_ticks} (40 animals, 1200 ticks)");
+        mob_runs.push(mob_ticks as f64);
+        ecs_runs.push(ecs_ticks as f64);
     }
-    eprintln!("ticks looking around: Mob {mob_ticks}, ecs {ecs_ticks} (40 animals, 1200 ticks)");
-    assert!(mob_ticks > 500, "the Mob hardly looks around: {mob_ticks}");
-    assert!(ecs_ticks * 10 >= mob_ticks * 7 && ecs_ticks * 7 <= mob_ticks * 10, "Mob {mob_ticks} ecs {ecs_ticks}");
+    let sd = |v: &[f64]| {
+        let m = v.iter().sum::<f64>() / v.len() as f64;
+        (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (v.len() - 1) as f64).sqrt()
+    };
+    let (mm, me) = (mob_runs.iter().sum::<f64>() / 4.0, ecs_runs.iter().sum::<f64>() / 4.0);
+    eprintln!("mean over 4 repeats: Mob {mm:.0} (sd {:.0}), ecs {me:.0} (sd {:.0}); ratio {:.3}", sd(&mob_runs), sd(&ecs_runs), me / mm);
+    assert!(mm > 500.0, "the Mob hardly looks around: {mm}");
+    assert!(me >= mm * 0.85 && me <= mm * 1.18, "Mob {mm} ecs {me}");
 }
 
 /// Three cows in love: the `Mob` picks its partner (the first in its list), the ecs cow takes the same one
