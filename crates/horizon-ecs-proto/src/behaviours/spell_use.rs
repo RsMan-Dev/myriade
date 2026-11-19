@@ -61,6 +61,7 @@ pub struct Fang {
 pub static MODULE: Module = Module {
     name: "spell_use",
     flags: 0,
+    resources,
     equip,
     can_use,
     start,
@@ -69,6 +70,17 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Goals, Cap::Targets, Cap::Locomotion],
     ..Module::DEFAULT
 };
+/// A new target wakes every spell entry (the selector asks `can_use` again every 2 ticks while the target stays: `can_use` re-arms itself).
+fn resources(w: &mut World) {
+    w.resource_mut::<targeting::TargetWatchers>().0.push(|w, e| {
+        if let Some(s) = w.get::<Spells>(e) {
+            let slots: Vec<u8> = s.slot.iter().copied().filter(|&x| x != u8::MAX).collect();
+            for slot in slots {
+                w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
+            }
+        }
+    });
+}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let n = (inst.nth as usize).min(2);
     let p = *params::<Params>(p);
@@ -83,6 +95,14 @@ fn alive_target(w: &World, e: Entity) -> bool {
     w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some_and(|i| !i.exempt))
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
+    let ok = wants(w, e, inst);
+    if !ok && w.get::<Target>(e).is_some() {
+        // Asked again in 2 ticks while there is a target (`Goal.canUse` is asked every 2 ticks): no scan, one deadline.
+        crate::goals::arm(w, e, inst.slot, 2);
+    }
+    ok
+}
+fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
     let n = (inst.nth as usize).min(2);
     let Some(s) = w.get::<Spells>(e).copied() else { return false };
     let Some(p) = s.p[n] else { return false };
@@ -108,7 +128,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         let mut s = w.get_mut::<Spells>(e).unwrap();
         let p = s.p[n].unwrap();
         s.running = n as u8;
-        s.warmup = (p.warmup + 1) / 2;
+        s.warmup = p.warmup;
         s.next[n] = now + p.interval as u64;
         p
     };

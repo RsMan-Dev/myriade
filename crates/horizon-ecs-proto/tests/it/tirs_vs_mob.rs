@@ -154,6 +154,7 @@ fn the_evoker_casts_as_a_mob_does() {
     let view = player_view(Vec3::new(8.5, 1.0, 0.5), None);
     let v = run(&mut s, &view, 400);
     let (m, e) = (at(&v, |t| t.mob_fangs + t.mob_vex > 0), at(&v, |t| t.ecs_fangs + t.ecs_vex > 0));
+    eprintln!("state: spells {:?}, target {}, now {}", s.h.world.get::<spell_use::Spells>(s.ecs), s.h.world.get::<Target>(s.ecs).is_some(), now_of(&s.h.world, s.ecs));
     close(&m, &e, 8, "spells");
     let sum = |f: fn(&Tick) -> u32| v.iter().map(f).sum::<u32>();
     eprintln!("fangs: mob {}, ecs {}; vexes: mob {}, ecs {}", sum(|t| t.mob_fangs), sum(|t| t.ecs_fangs), sum(|t| t.mob_vex), sum(|t| t.ecs_vex));
@@ -181,6 +182,7 @@ fn the_illusioner_casts_its_spell() {
         }
         was = now;
     }
+    eprintln!("state: spells {:?}, target {}, now {}", s.h.world.get::<spell_use::Spells>(s.ecs), s.h.world.get::<Target>(s.ecs).is_some(), now_of(&s.h.world, s.ecs));
     eprintln!("illusioner casts (ECS): {casts}");
     assert!(casts >= 1);
 }
