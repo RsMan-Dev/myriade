@@ -841,6 +841,21 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
             }
         }
         r.step(None);
+        // The `Mob`'s own draw of RandomLookAround (one chance in 50, priority 10: it replaces a stroll of a panda, 14) is imposed on the ecs
+        // animal as the spot is: at the tick the `Mob` starts it.
+        for &k in &begun {
+            let e = cows[k].1;
+            if r.names(cows[k].0).contains(&"RandomLookAround")
+                && let Some(slot) = horizon_ecs_proto::goals::slot_of(&h.world, e, &horizon_ecs_proto::behaviours::random_look::MODULE)
+            {
+                horizon_ecs_proto::goals::force_start(&mut h.world, e, slot);
+            } else if let Some(slot) = horizon_ecs_proto::goals::slot_of(&h.world, e, &horizon_ecs_proto::behaviours::random_look::MODULE)
+                && h.world.get::<horizon_ecs_proto::goals::GoalSet>(e).is_some_and(|g| g.is_running(&horizon_ecs_proto::behaviours::random_look::MODULE))
+            {
+                // The `Mob` ended it: so does the ecs animal.
+                h.world.resource_mut::<horizon_ecs_proto::goals::Requests>().0.push(horizon_ecs_proto::goals::Req::End(e, slot));
+            }
+        }
         h.tick();
         for &k in &begun {
             let (s, _) = start[k].unwrap();
