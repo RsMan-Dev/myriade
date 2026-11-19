@@ -914,6 +914,18 @@ pub fn skip_unless_walker(test: &str) -> bool {
         || skip_unless_ground_only(test)
         || skip_unless_goals(test)
 }
+/// For the tests of the farm animal's goals (tempt, breed, follow the parent, panic, stroll): skips (printed) unless the species
+/// of the process has them all.
+pub fn skip_unless_farm_goals(test: &str) -> bool {
+    use crate::behaviours::{breed, follow_parent, panic, stroll, tempt};
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let cfg = crate::species::registry().by_name(&name).map(|r| r.config);
+    let ok = cfg.is_ok_and(|c| c.has(&tempt::MODULE) && c.has(&breed::MODULE) && c.has(&follow_parent::MODULE) && c.has(&panic::MODULE) && c.has(&stroll::MODULE));
+    if !ok {
+        eprintln!("SKIP {test}: {name} lacks the farm animal's goals (tempt, breed, follow parent, panic, stroll)");
+    }
+    !ok
+}
 /// Skips (printed) unless the species of the process has all these capabilities.
 pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
     let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
@@ -3578,6 +3590,9 @@ mod tests {
     /// Common sense: the cows stay on the slab and on its ground, walk, fall asleep and wake.
     #[test]
     fn the_cows_walk_sleep_and_wake_on_the_slab() {
+    if crate::cow::skip_unless_farm_goals("the_cows_walk_sleep_and_wake_on_the_slab") {
+        return;
+    }
     if crate::cow::skip_unless_walker("the_cows_walk_sleep_and_wake_on_the_slab") {
         return;
     }

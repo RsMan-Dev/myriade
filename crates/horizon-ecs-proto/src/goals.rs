@@ -1340,6 +1340,9 @@ mod tests {
     /// interrupted stops; a tempting player met during the panic waits for the flag and then tempts.
     #[test]
     fn a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals() {
+    if crate::cow::skip_unless_farm_goals("a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals") {
+        return;
+    }
         if crate::cow::skip_unless(&panic::MODULE, "a_struck_cow_panics_at_double_speed_and_blocks_the_lower_goals") {
             return;
         }

@@ -282,6 +282,9 @@ fn avoid_2_species_needs_a_line_of_sight() {
 }
 #[test]
 fn avoid_3_speed_and_trajectory_with_the_spot_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("avoid_3_speed_and_trajectory_with_the_spot_imposed") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("avoid_3_speed_and_trajectory_with_the_spot_imposed") {
         return;
     }

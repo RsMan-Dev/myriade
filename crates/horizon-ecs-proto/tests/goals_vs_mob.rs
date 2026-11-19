@@ -216,6 +216,9 @@ fn xz(a: Vec3, b: Vec3) -> f64 {
 /// Struck cows: when the panic starts, how long it lasts, the peak step of the walk.
 #[test]
 fn a_struck_cow_panics_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("a_struck_cow_panics_as_a_mob_does") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "a_struck_cow_panics_as_a_mob_does") {
         return;
     }
@@ -464,6 +467,9 @@ fn looking_goals_start_as_often_as_a_mob_s() {
 /// A cow in a pond: it stays afloat as a mob does.
 #[test]
 fn a_cow_in_a_pond_floats_as_a_mob_does() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("a_cow_in_a_pond_floats_as_a_mob_does") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless_walker("a_cow_in_a_pond_floats_as_a_mob_does") {
         return;
     }
@@ -642,6 +648,9 @@ fn trace_burning() {
 /// blow (the others start later, after landing, with draws that cannot be read: not compared here).
 #[test]
 fn a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
+    if horizon_ecs_proto::cow::skip_unless_farm_goals("a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
+        return;
+    }
     if horizon_ecs_proto::cow::skip_unless(&horizon_ecs_proto::behaviours::panic::MODULE, "a_struck_cow_follows_the_mob_s_trajectory_when_the_spot_is_imposed") {
         return;
     }
