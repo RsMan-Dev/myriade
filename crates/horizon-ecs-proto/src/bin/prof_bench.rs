@@ -8,6 +8,7 @@ use horizon_ecs_proto::{
 };
 
 fn main() {
+    horizon_ecs_proto::bench_support::require_optimized();
     let a: Vec<String> = std::env::args().collect();
     let scene = a.get(1).map_or("idle", String::as_str);
     let arg = |i: usize, d: usize| a.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);

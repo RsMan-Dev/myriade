@@ -365,3 +365,4 @@ audit-fixes 510f5bde3f|zone near ring (cow, 6, 10)|ecs|2978.3|2978.6
 audit-fixes 510f5bde3f|zone far ring (cow, 6, 10)|ecs|-0.4|0.3
 audit-fixes 510f5bde3f|items at rest (slope per stack, 500 to 2000)|ecs|27|28
 audit-fixes 510f5bde3f|schedule at rest (empty world, per tick)|ecs|127264|127386
+dated 2026-11-19|solicited lines re-based (new definition: species food, mean of six variants; PlayerEffects lazy)

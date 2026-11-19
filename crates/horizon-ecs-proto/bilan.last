@@ -2,22 +2,22 @@ cow idle|ecs 1063
 cow idle|ecs-eager 1291
 cow active(1000 players, no solicitation)|ecs 5631
 cow active(1000 players, no solicitation)|ecs-eager 5457
-cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 13984
+cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 13854
 pig idle|ecs 193
 pig idle|ecs-eager 362
 pig active(1000 players, no solicitation)|ecs 5145
 pig active(1000 players, no solicitation)|ecs-eager 4881
-pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 13257
+pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 14528
 sheep idle|ecs 488
 sheep idle|ecs-eager 673
 sheep active(1000 players, no solicitation)|ecs 5478
 sheep active(1000 players, no solicitation)|ecs-eager 5318
-sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 15762
+sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 15034
 chicken idle|ecs 35
 chicken idle|ecs-eager 210
 chicken active(1000 players, no solicitation)|ecs 3767
 chicken active(1000 players, no solicitation)|ecs-eager 3649
-chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 10022
+chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8331
 zombie idle|ecs 104
 zombie idle|ecs-eager 296
 zombie active(1000 players, no solicitation)|ecs 11376

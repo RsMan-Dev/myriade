@@ -37,6 +37,7 @@ impl PathLog {
 }
 
 fn main() {
+    horizon_ecs_proto::bench_support::require_optimized();
     let a: Vec<String> = std::env::args().collect();
     let mode = a.get(1).map_or("sleep", String::as_str);
     let n: usize = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(2000);

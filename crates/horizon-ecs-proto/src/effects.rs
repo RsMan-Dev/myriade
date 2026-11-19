@@ -58,9 +58,6 @@ pub struct Effects {
 #[component(storage = "SparseSet")]
 pub struct Invisible;
 
-pub fn insert_resources(w: &mut World) {
-    w.insert_resource(PlayerEffects::default());
-}
 /// Fire resistance: no fire damage (`Immune` bit read by the burn).
 pub const IMMUNE_FIRE: u32 = 8;
 
@@ -284,7 +281,8 @@ pub struct PlayerEffects(pub std::collections::HashMap<u32, Vec<(Kind, i32, u64)
 pub fn add_player(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i32) {
     let now = w.resource::<Clock>().0;
     let ends = now + ticks.max(0) as u64;
-    let mut res = w.resource_mut::<PlayerEffects>();
+    // Born at the first effect of a player (a resource registered at the world's creation costs `arbitrate` even when nothing reads it).
+    let mut res = w.get_resource_or_insert_with(PlayerEffects::default);
     let list = res.0.entry(id).or_default();
     list.retain(|x| x.2 > now);
     match list.iter().position(|x| x.0 == kind) {

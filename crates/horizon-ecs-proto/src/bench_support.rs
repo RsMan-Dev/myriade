@@ -31,3 +31,12 @@ pub fn install_dummies(n: usize) {
     let _ = n;
     let _ = crate::species::install(add);
 }
+
+/// The benches count instructions: on a library compiled below `opt-level` 2 (the development profile `ecsdev`) the figures mean nothing.
+/// They stop with a clear message; the instructions come from `bilan_check.sh` on the `fast` profile only.
+pub fn require_optimized() {
+    if cfg!(unoptimized) {
+        eprintln!("REFUSED: this bench was built with an unoptimized prototype (development profile). No cost is read on it: build with `--profile fast` (bilan_check.sh does).");
+        std::process::exit(3);
+    }
+}

@@ -127,6 +127,7 @@ fn run(label: &str, at: Vec<(f64, f64)>, players: Vec<(f64, f64)>, walk: bool, r
 }
 
 fn main() {
+    horizon_ecs_proto::bench_support::require_optimized();
     let a: Vec<String> = std::env::args().collect();
     let mode = a.get(1).map_or("rings", String::as_str);
     let n: f64 = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(6.0);

@@ -44,6 +44,9 @@ done
 job zone "env -u WARM $C $D/zone_bench rings 6 10 | awk '/--- zone on/{on=1} on && /^(near|mid|far)/{ for(i=1;i<=NF;i++) if (\$i ~ /^marginal\\/creature\\/tick=/) { v=\$i; sub(/.*=/,\"\",v); if (v==\"\") v=\$(i+1); print v } }'"
 it() { echo "env $C $D/prof_bench items $1 400 0 200 | head -n1 | sed -n 's/.*whole Schedule::run)=\\([0-9]*\\).*/\\1/p'"; }
 job items_500 "$(it 500)"; job items_2000 "$(it 2000)"; job empty "$(it 0)"
+# The profile per SYSTEM of three scenes (what a rise on a line is made of: `bilan_check.sh` prints the three systems that rose most).
+for sc in "idle 2000 600 0 400" "active 2000 300 300 200"; do job sys_${sc%% *} "env $C $D/prof_bench $sc | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"; done
+job sys_zombie "env HORIZON_SPECIES=minecraft:zombie $D/prof_bench idle 2000 600 0 400 | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"
 # The Mob (only when asked): its figures are kept in bilan.mob.
 if [ -n "${MOB:-}" ]; then
   for sp in $SPECIES; do
@@ -79,3 +82,4 @@ echo "zone mid ring (cow, 6, 10): ecs ${2:-0} mob $(echo $mn | cut -d' ' -f2)"
 echo "zone far ring (cow, 6, 10): ecs ${3:-0} mob 0"
 echo "items at rest (slope per stack, 500 to 2000): ecs $(( ($(v items_2000) - $(v items_500)) / 1500 ))"
 echo "schedule at rest (empty world, per tick): ecs $(v empty)"
+for sc in idle active zombie; do awk -v sc="$sc" '{print "systems " sc " " $1 " " $2}' "$J/sys_$sc" 2>/dev/null; done

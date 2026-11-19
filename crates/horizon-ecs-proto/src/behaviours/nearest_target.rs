@@ -162,7 +162,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
         let ps = w.resource::<crate::hostile::PlayerState>();
         // No player has an effect (the usual): the list is not asked per candidate.
-        let any_effect = !w.resource::<crate::effects::PlayerEffects>().0.is_empty();
+        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
         let mut best: Option<(u32, f64)> = None;
         w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
             let reach = if any_effect {

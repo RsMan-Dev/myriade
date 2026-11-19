@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish = false
+build = "build.rs"
 description = "Prototype: a cow as a bevy_ecs herd (data components, batch systems, sleeping), with Horizon's real block collision kernel (suivi/ecs-prototype.md section 12)"
 
 [dependencies]

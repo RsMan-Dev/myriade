@@ -576,7 +576,6 @@ pub fn insert_resources(world: &mut World) {
     crate::orb::insert_resources(world);
     crate::poi::insert_resources(world);
     crate::explosion::insert_resources(world);
-    crate::effects::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
