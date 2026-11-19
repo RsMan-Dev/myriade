@@ -138,6 +138,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 
 pub mod breed;
 pub mod climb_on_powder_snow;
+pub mod silverfish_wake_up_friends;
 #[cfg(test)]
 pub mod example;
 pub mod eat_block;
@@ -169,4 +170,5 @@ pub static TABLE: &[&Module] = &[
     &eat_block::MODULE,
     &stroll::MODULE,
     &climb_on_powder_snow::MODULE,
+    &silverfish_wake_up_friends::MODULE,
 ];
