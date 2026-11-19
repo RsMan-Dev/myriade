@@ -107,10 +107,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let g = *w.get::<FleeSunGoal>(e).unwrap();
     let (x, y, z) = g.pick;
-    w.get_mut::<Nav>(e).unwrap().speed = g.speed;
-    let mut s = w.get_mut::<Stroll>(e).unwrap();
-    (s.tx, s.ty, s.tz) = (x, y, z);
-    w.entity_mut(e).insert(NeedsPath);
+    crate::goals::go_to_at(w, e, [x, f64::from(y), z], g.speed, 1);
 }
 /// The path ended (or another goal took the flags): while the animal still burns, it is asked again in 2 ticks, as the
 /// selector asks a goal that is not running.

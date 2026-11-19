@@ -156,23 +156,11 @@ pub fn in_snow(w: &World, p: Vec3) -> bool {
 /// Asks the path to `at` at `speed`, to reach it exactly (reach 0). The `go_to` of the goals (`goals.rs:880`) without its
 /// statistics (its array holds six goals), with reach 0 instead of 1; `stop_walk` gives the reach back.
 pub fn walk_to(w: &mut World, e: Entity, at: Vec3, speed: f64) {
-    if let Some(mut s) = w.get_mut::<Stroll>(e) {
-        s.tx = at.x;
-        s.tz = at.z;
-        s.ty = at.y.floor() as i32;
-    }
-    if let Some(mut n) = w.get_mut::<Nav>(e) {
-        n.speed = speed;
-        n.reach = 0;
-    }
-    w.entity_mut(e).insert(NeedsPath);
+    crate::goals::go_to_at(w, e, [at.x, at.y, at.z], speed, 0);
 }
 
 /// Gives back the reach of `walk_to`.
 pub fn stop_walk(w: &mut World, e: Entity) {
-    if let Some(mut n) = w.get_mut::<Nav>(e) {
-        n.reach = 1;
-    }
     stop_nav(w, e);
 }
 

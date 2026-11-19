@@ -1035,6 +1035,12 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
     }
     w.entity_mut(e).insert(NeedsPath);
 }
+/// The reach of the next paths of the entity (`go_to_at` sets it; a goal that ends puts the default 1 back).
+pub fn set_reach(w: &mut World, e: Entity, reach: i32) {
+    if let Some(mut n) = w.get_mut::<Nav>(e) {
+        n.reach = reach;
+    }
+}
 /// `go_to_at` toward the position of the entity `target` now (follow: ask again as it moves; the module decides when). False
 /// when the target has no position.
 pub fn go_to_entity(w: &mut World, e: Entity, target: Entity, speed: f64, reach: i32) -> bool {

@@ -73,7 +73,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         return;
     }
     let asks = with_rng(w, e, |r| asks_until_draw(r, s.next));
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let phase = crate::goals::phase_of(w, e);
     let first = if (now + 1 + phase) % 2 == 0 { now + 1 } else { now + 2 };
     let at = first + 2 * (asks as u64 - 1);
@@ -85,7 +85,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 /// A deadline came up: the ask happens only if the animal is active (a sleeping animal lets the cycle lapse; its
 /// arming resumes when it enters the active zone).
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let active = w.get::<ActiveUntil>(e).is_some_and(|a| a.0 > now);
     if let Some(mut s) = w.get_mut::<Stand>(e) {
         s.armed = false;
