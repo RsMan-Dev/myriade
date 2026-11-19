@@ -27,7 +27,7 @@ use std::{
     collections::HashMap,
     hash::{BuildHasherDefault, Hasher},
     sync::{
-        atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering::Relaxed},
+        atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering::Relaxed},
         Mutex,
     },
 };
@@ -57,12 +57,17 @@ pub struct Section {
     /// (Bit 16, set under the lock while other threads read: this section or one of its 26 neighbours holds a shape that reaches out of its cell
     /// or a moving piston, so the scan reads cells of the ring that lie in other sections.)
     flags: AtomicU8,
+    /// The x columns (bits) in which a cell has ever held a shape that is not a cube or a hard cell (`dirty_x`), a liquid (`liquid_x`), a shape reaching out of
+    /// its cell or a moving piston (`large_x`). Only ever turned on, so a superset of what the rows hold: a box away from those columns reads no row for them.
+    dirty_x: AtomicU16,
+    liquid_x: AtomicU16,
+    large_x: AtomicU16,
     /// Which of the 26 neighbours hold such a shape (bit `rel` of the neighbour's offset: (dx + 1) * 9 + (dy + 1) * 3 + dz + 1).
     halo: AtomicU32,
 }
 impl Section {
     fn void() -> Self {
-        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), halo: AtomicU32::new(0) }
+        Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0) }
     }
     fn refresh_flags(&self) {
         let own = u8::from(self.any_cells) | u8::from(self.any_shaped || self.any_hard) << 1 | u8::from(self.any_large || self.any_piston) << 2 | u8::from(self.any_liquid) << 3;
@@ -105,7 +110,9 @@ impl Section {
                 self.shaped[row] |= bit;
                 self.any_shaped = true;
                 self.near[row] |= bit;
+                self.dirty_x.fetch_or(bit, Relaxed);
                 if large {
+                    self.large_x.fetch_or(bit, Relaxed);
                     self.large[row] |= bit;
                     self.any_large = true;
                 }
@@ -116,11 +123,14 @@ impl Section {
                 self.near[row] |= bit;
                 self.any_hard = true;
                 self.any_cells = true;
+                self.dirty_x.fetch_or(bit, Relaxed);
                 if large {
+                    self.large_x.fetch_or(bit, Relaxed);
                     self.large[row] |= bit;
                     self.any_large = true;
                 }
                 if piston {
+                    self.large_x.fetch_or(bit, Relaxed);
                     self.piston[row] |= bit;
                     self.any_piston = true;
                 }
@@ -129,7 +139,9 @@ impl Section {
                 self.liquid[row] |= bit;
                 self.any_liquid = true;
                 self.any_cells = true;
+                self.liquid_x.fetch_or(bit, Relaxed);
                 if large {
+                    self.large_x.fetch_or(bit, Relaxed);
                     self.large[row] |= bit;
                     self.any_large = true;
                 }
@@ -137,7 +149,7 @@ impl Section {
         }
     }
 }
-static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), halo: AtomicU32::new(0) };
+static VOID: Section = Section { full: [0; 256], near: [0; 256], shaped: [0; 256], large: [0; 256], hard: [0; 256], piston: [0; 256], liquid: [0; 256], any_cells: false, any_hard: false, any_liquid: false, any_large: false, any_piston: false, any_shaped: false, flags: AtomicU8::new(0), dirty_x: AtomicU16::new(0), liquid_x: AtomicU16::new(0), large_x: AtomicU16::new(0), halo: AtomicU32::new(0) };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Class {

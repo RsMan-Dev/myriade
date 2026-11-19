@@ -142,10 +142,25 @@ fn resolve_cubes(mv: [f64; 3], lo: [f64; 3], hi: [f64; 3], cubes: &[[f64; 3]]) -
     }
     let mut result = [0.0; 3];
     let order = if mv[0].abs() < mv[2].abs() { [1, 2, 0] } else { [1, 0, 2] };
+    // The cubes' rows (y) bound: a box that no cube's row can meet in y leaves x and z as they are (the loops below would pass every cube).
+    let (mut ymin, mut ymax, mut bounded) = (f64::INFINITY, f64::NEG_INFINITY, false);
     for axis in order {
         let amount = mv[axis];
         if amount == 0.0 {
             continue;
+        }
+        if axis != 1 {
+            if !bounded {
+                bounded = true;
+                for c in cubes {
+                    ymin = if c[1] < ymin { c[1] } else { ymin };
+                    ymax = if c[1] > ymax { c[1] } else { ymax };
+                }
+            }
+            if !((lo[1] + result[1]) + EPS < ymax + 1.0 && ymin <= (hi[1] + result[1]) - EPS) {
+                result[axis] = if amount.abs() < EPS { 0.0 } else { amount };
+                continue;
+            }
         }
         let mlo = [lo[0] + result[0], lo[1] + result[1], lo[2] + result[2]];
         let mhi = [hi[0] + result[0], hi[1] + result[1], hi[2] + result[2]];
@@ -288,8 +303,8 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
             if f & 1 == 0 {
                 return Some(0);
             }
-            let dirty = f & 2 != 0 || (subject && f & 8 != 0);
             let whole = (((1u32 << (x1 - x0 + 1)) - 1) << (x0 & 15)) as u16;
+            let dirty = (f & 10 != 0) && (if f & 2 != 0 { s.dirty_x.load(Relaxed) } else { 0 } | if subject && f & 8 != 0 { s.liquid_x.load(Relaxed) } else { 0 }) & whole != 0;
             let mut m = whole;
             if lo[0] >= f64::from(x0) + 1.0 {
                 m &= !(1 << (x0 & 15));
@@ -330,6 +345,9 @@ fn collect(recent: &mut [(u64, *const Section); SLOTS], out: &mut [[f64; 3]; MAX
                 let (sx, sy, sz) = ((x0 >> 4) << 4, (y0 >> 4) << 4, (z0 >> 4) << 4);
                 let (ax, bx) = ((x0 - 1).max(sx) - sx, (x1 + 1).min(sx + 15) - sx);
                 let pm = (((1u32 << (bx - ax + 1)) - 1) << ax) as u16;
+                if s.large_x.load(Relaxed) & pm == 0 {
+                    return Some(n);
+                }
                 for z in (z0 - 1).max(sz)..=(z1 + 1).min(sz + 15) {
                     for y in (y0 - 1).max(sy)..=(y1 + 1).min(sy + 15) {
                         let row = (((y & 15) << 4) | (z & 15)) as usize;
