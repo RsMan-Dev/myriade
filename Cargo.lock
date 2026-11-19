@@ -2450,6 +2450,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "bevy_tasks",
+ "bevy_utils",
  "horizon-client-lib",
  "horizon-client-render",
  "horizon-core",

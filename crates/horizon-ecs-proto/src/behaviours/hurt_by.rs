@@ -18,9 +18,16 @@ pub struct Params {
     pub spare_owner: bool,
     /// `alert_if`: a condition the ALERTED creature must meet (the panda: only the aggressive ones are called).
     pub alert_when: Option<fn(&World, Entity) -> bool>,
+    /// `LlamaHurtByTargetGoal`: a shot by this creature (`ranged_attack::DidShot`) ends the goal, once: a shot made while the goal did
+    /// not run is held and ends it right after its next start (the `Mob`'s `flag2`, cleared when read).
+    pub ends_on_shot: bool,
+    /// `PolarBearHurtByTargetGoal`: the others are alerted only when THIS creature is a baby (a cub calls the adults; combine with `alert_when`).
+    pub alert_if_baby: bool,
+    /// Attackers of these species (names) are never answered (`HurtByTarget.ignoring`: the drowned ignore the drowned, the dolphin the guardians).
+    pub ignoring: &'static [&'static str],
 }
 impl Params {
-    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None };
+    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None, ends_on_shot: false, alert_if_baby: false, ignoring: &[] };
     pub const ALERT: Self = Self { alert: true, ..Self::DEFAULT };
 }
 /// The state: the last hit (who, tick) and the one the goal answered, the kinds resolved to masks.
@@ -32,6 +39,7 @@ pub struct HurtByGoal {
     handled: u64,
     alert_types: crate::species::SpeciesSet,
     alert_except: crate::species::SpeciesSet,
+    ignore: crate::species::SpeciesSet,
     /// A target an alerted creature takes (written by the one that called it).
     called_by: Option<Who>,
 }
@@ -54,11 +62,20 @@ fn mask_of(w: &World, names: &[&str]) -> crate::species::SpeciesSet {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    let (alert_types, alert_except) = (mask_of(w, p.alert_types), mask_of(w, p.alert_except));
-    w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, called_by: None });
+    let (alert_types, alert_except, ignore) = (mask_of(w, p.alert_types), mask_of(w, p.alert_except), mask_of(w, p.ignoring));
+    w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, ignore, called_by: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(hurt_events.after(apply_damage).in_set(slot));
+    s.add_systems((hurt_events.after(apply_damage), shot_ends).in_set(slot));
+}
+/// A creature that shot while its hunt (this goal's target) runs ends the hunt: `ends_on_shot`.
+fn shot_ends(q: Query<(Entity, &HurtByGoal, Option<&Target>), Changed<crate::behaviours::ranged_attack::DidShot>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+    for (e, g, t) in &q {
+        if g.p.ends_on_shot && t.is_some_and(|t| t.slot == g.slot) {
+            cmd.entity(e).remove::<crate::behaviours::ranged_attack::DidShot>();
+            reqs.0.push(Req::End(e, g.slot));
+        }
+    }
 }
 /// A creature was hurt by a player or a creature: the goal is woken at the selector's next tick.
 fn hurt_events(clock: Res<Clock>, mut by: ResMut<HurtBy>, mut q: Query<&mut HurtByGoal>, mut reqs: ResMut<Requests>) {
@@ -81,6 +98,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if g.p.spare_owner && w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(who)) {
         return false;
     }
+    if let Who::Entity(o) = who
+        && w.get::<SpeciesId>(o).is_some_and(|s| g.ignore.contains(s.0))
+    {
+        return false;
+    }
     match targeting::info(w, who) {
         Some(i) => !i.exempt,
         None => false,
@@ -93,8 +115,11 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     w.get_mut::<HurtByGoal>(e).unwrap().handled = at;
     let memory = ((g.p.unseen_memory + 1) / 2) as u16;
     targeting::set_target(w, e, Target::new(who, memory, inst.slot));
-    if g.p.alert {
+    if g.p.alert || (g.p.alert_if_baby && w.get::<GrowAt>(e).is_some()) {
         alert_others(w, e, who, g);
+    }
+    if g.p.ends_on_shot && w.entity_mut(e).take::<crate::behaviours::ranged_attack::DidShot>().is_some() {
+        w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
     }
 }
 /// `HurtByTargetGoal.alertOthers`: the others of the alerted kinds within the follow range (10 blocks up and down) that
@@ -139,5 +164,101 @@ fn called(w: &mut World, e: Entity) {
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     if w.get::<Target>(e).is_some_and(|t| t.slot == inst.slot) {
         targeting::clear_target(w, e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::behaviours::ranged_attack::DidShot;
+    use crate::species::Config;
+
+    /// A victim whose `hurt_by` is `p`, and a hitter; the victim is hit once, and given a few ticks to answer.
+    fn hit_world(p: &'static Params) -> Option<(Herd, Entity, Entity)> {
+        if crate::cow::skip_unless_walker("hurt_by") {
+            return None;
+        }
+        let mut h = Herd::with_slab(20, false, false);
+        let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+        let mut sp = *species();
+        sp.goals = Config { entries };
+        let (victim, hitter) = (spawn_species(&mut h.world, &sp, 0.5, 0.5, 7), spawn_species(&mut h.world, &sp, 4.5, 0.5, 9));
+        for _ in 0..5 {
+            h.tick();
+        }
+        h.world.resource_mut::<HurtBy>().0.push((victim, Who::Entity(hitter)));
+        for _ in 0..4 {
+            h.tick();
+        }
+        Some((h, victim, hitter))
+    }
+
+    /// `LlamaHurtByTargetGoal`: a shot ends the hunt (witness: without the option the hunt stays after the same shot).
+    #[test]
+    fn a_shot_ends_the_hunt_only_with_the_option() {
+        static ENDS: Params = Params { ends_on_shot: true, ..Params::DEFAULT };
+        static KEEPS: Params = Params::DEFAULT;
+        for (p, ends) in [(&KEEPS, false), (&ENDS, true)] {
+            let Some((mut h, victim, hitter)) = hit_world(p) else { return };
+            assert_eq!(h.world.get::<Target>(victim).map(|t| t.who), Some(Who::Entity(hitter)), "witness: the hit gives a target");
+            h.world.entity_mut(victim).insert(crate::behaviours::ranged_attack::DidShot);
+            for _ in 0..4 {
+                h.tick();
+            }
+            assert_eq!(h.world.get::<Target>(victim).is_none(), ends, "ends_on_shot = {ends}");
+        }
+    }
+
+    /// The `Mob`'s `flag2` is held: a shot made before the goal runs ends the next hunt right after it starts, once.
+    #[test]
+    fn a_shot_made_before_the_hunt_ends_it_once() {
+        static ENDS: Params = Params { ends_on_shot: true, ..Params::DEFAULT };
+        if crate::cow::skip_unless_walker("hurt_by") {
+            return;
+        }
+        let mut h = Herd::with_slab(20, false, false);
+        let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, &ENDS)].into_boxed_slice());
+        let mut sp = *species();
+        sp.goals = Config { entries };
+        let (victim, hitter) = (spawn_species(&mut h.world, &sp, 0.5, 0.5, 7), spawn_species(&mut h.world, &sp, 4.5, 0.5, 9));
+        h.world.entity_mut(victim).insert(DidShot);
+        for _ in 0..5 {
+            h.tick();
+        }
+        h.world.resource_mut::<HurtBy>().0.push((victim, Who::Entity(hitter)));
+        for _ in 0..6 {
+            h.tick();
+        }
+        assert!(h.world.get::<Target>(victim).is_none(), "the held shot ended the hunt");
+        assert!(h.world.get::<DidShot>(victim).is_none(), "and was consumed");
+    }
+
+    /// `PolarBearHurtByTargetGoal`: only a hurt cub calls the others; an adult hit the same way calls nobody (the witness).
+    #[test]
+    fn only_a_hurt_baby_alerts_the_others() {
+        static P: Params = Params { alert_if_baby: true, ..Params::DEFAULT };
+        if crate::cow::skip_unless_walker("hurt_by") {
+            return;
+        }
+        for baby in [false, true] {
+            let mut h = Herd::with_slab(20, false, false);
+            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, &P)].into_boxed_slice());
+            let mut sp = *species();
+            sp.goals = Config { entries };
+            let victim = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+            let ally = spawn_species(&mut h.world, &sp, 2.5, 0.5, 8);
+            let hitter = spawn_species(&mut h.world, &sp, 6.5, 0.5, 9);
+            if baby {
+                h.world.entity_mut(victim).insert(GrowAt(u64::MAX));
+            }
+            for _ in 0..5 {
+                h.tick();
+            }
+            h.world.resource_mut::<HurtBy>().0.push((victim, Who::Entity(hitter)));
+            for _ in 0..4 {
+                h.tick();
+            }
+            assert_eq!(h.world.get::<Target>(ally).map(|t| t.who), baby.then_some(Who::Entity(hitter)), "baby {baby}: the ally's target");
+        }
     }
 }

@@ -20,6 +20,7 @@ impl Params {
 /// The puffing state: the size (0, 1, 2), the goal's rank, the local time of the only valid deadline (`armed_at`, older ones
 /// match nothing), and the local time the goal ended (`stopped_at`) the deflation counts from.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::cow::watch_in::<{ crate::cow::WATCH_PUFFER }>, on_discard = crate::cow::watch_out::<{ crate::cow::WATCH_PUFFER }>)]
 pub struct Puff {
     pub size: u8,
     pub range: f64,
@@ -160,7 +161,7 @@ fn puff_cells(w: &mut World, q: &mut QueryState<Entity, With<Puff>>) {
         let (Some(mp), Some(mb), Some(sp), Some(h)) = (w.get::<Pos>(m).map(|p| p.0), w.get::<Bounds>(m).map(|b| b.0), w.get::<SpeciesId>(m), w.get::<Health>(m)) else {
             continue;
         };
-        if h.0 <= 0.0 {
+        if h.0 <= 0.0 || !w.resource::<Index>().watched_near(crate::cow::WATCH_PUFFER, w.resource::<Index>().cell_of(mp.x, mp.z)) {
             continue;
         }
         let table = &w.resource::<SpeciesTable>().0;

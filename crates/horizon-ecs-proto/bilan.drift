@@ -366,3 +366,32 @@ audit-fixes 510f5bde3f|zone far ring (cow, 6, 10)|ecs|-0.4|0.3
 audit-fixes 510f5bde3f|items at rest (slope per stack, 500 to 2000)|ecs|27|28
 audit-fixes 510f5bde3f|schedule at rest (empty world, per tick)|ecs|127264|127386
 dated 2026-11-19|solicited lines re-based (new definition: species food, mean of six variants; PlayerEffects lazy)
+port-abeille + head-fixes + HostOut|cow idle|ecs|1063|1064
+port-abeille + head-fixes + HostOut|cow idle|ecs-eager|1292|1294
+port-abeille + head-fixes + HostOut|cow active(1000 players, no solicitation)|ecs|5572|5592
+port-abeille + head-fixes + HostOut|cow active(1000 players, no solicitation)|ecs-eager|5410|5415
+port-abeille + head-fixes + HostOut|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13520|13543
+port-abeille + head-fixes + HostOut|pig idle|ecs-eager|364|367
+port-abeille + head-fixes + HostOut|pig active(1000 players, no solicitation)|ecs|5079|5102
+port-abeille + head-fixes + HostOut|pig active(1000 players, no solicitation)|ecs-eager|4861|4866
+port-abeille + head-fixes + HostOut|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14157|14186
+port-abeille + head-fixes + HostOut|sheep idle|ecs-eager|676|678
+port-abeille + head-fixes + HostOut|sheep active(1000 players, no solicitation)|ecs|5426|5450
+port-abeille + head-fixes + HostOut|sheep active(1000 players, no solicitation)|ecs-eager|5278|5282
+port-abeille + head-fixes + HostOut|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14660|14688
+port-abeille + head-fixes + HostOut|chicken idle|ecs-eager|213|215
+port-abeille + head-fixes + HostOut|chicken active(1000 players, no solicitation)|ecs|3716|3742
+port-abeille + head-fixes + HostOut|chicken active(1000 players, no solicitation)|ecs-eager|3603|3605
+port-abeille + head-fixes + HostOut|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8111|8138
+port-abeille + head-fixes + HostOut|zombie idle|ecs|104|105
+port-abeille + head-fixes + HostOut|zombie idle|ecs-eager|298|300
+port-abeille + head-fixes + HostOut|zombie active(1000 players, no solicitation)|ecs|10073|10101
+port-abeille + head-fixes + HostOut|zombie active(1000 players, no solicitation)|ecs-eager|10026|10028
+port-abeille + head-fixes + HostOut|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5657|5681
+port-abeille + head-fixes + HostOut|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7226|7250
+port-abeille + head-fixes + HostOut|crowd 0.5 (cow, 2000, 0 player)|batch|6579|6584
+port-abeille + head-fixes + HostOut|crowd 0.8 (cow, 2000, 0 player)|batch|5719|5724
+port-abeille + head-fixes + HostOut|zone near ring (cow, 6, 10)|ecs|2947.2|2951.0
+port-abeille + head-fixes + HostOut|zone mid ring (cow, 6, 10)|ecs|33.9|34.0
+port-abeille + head-fixes + HostOut|zone far ring (cow, 6, 10)|ecs|0.0|-0.6
+port-abeille + head-fixes + HostOut|schedule at rest (empty world, per tick)|ecs|125922|126074

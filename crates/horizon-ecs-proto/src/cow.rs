@@ -422,8 +422,12 @@ impl Hazards {
 }
 /// The top of what the bench worlds generate (the patches reach y = 3).
 const BUILD_TOP: i32 = 6;
+/// An object (an item on the ground, an experience orb) neither pushes nor is pushed (`Entity.isPushable`): `push` does not visit it.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct PushFree;
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = watch_in::<WATCH_FOLLOW_PARENT>, on_discard = watch_out::<WATCH_FOLLOW_PARENT>)]
 pub struct GrowAt(pub u64);
 
 impl Rng {
@@ -628,8 +632,12 @@ impl Wheel {
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
+/// The widening of a slot's extent (blocks): covers the `f32` rounding of the relative extent.
+const SLOT_MARGIN: f64 = 1e-3;
 /// The side of a block of columns of the index, in columns.
 const BLOCK: usize = 8;
+/// `BLOCK` as a signed column count.
+const B: i64 = BLOCK as i64;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -637,6 +645,10 @@ pub struct Index {
     pub(crate) origin: f64,
     pub(crate) width: usize,
     pub(crate) cells: Vec<Vec<Entity>>,
+    /// Parallel to `cells`: the XZ extent of each entity's box (min x, max x, min z, max z) relative to the column's corner, widened by `SLOT_MARGIN`,
+    /// as `f32` (16 bytes per entity): `push` skips the neighbours whose extent does not touch its own without an ECS lookup. An entity whose box
+    /// `reindex` has not seen yet holds an infinite extent (always a candidate).
+    slots: Vec<Vec<[f32; 4]>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
     pub(crate) crossed: Vec<(Entity, u32)>,
@@ -646,10 +658,96 @@ pub struct Index {
     /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
     blocks: Vec<u64>,
     bw: usize,
+    /// The watched columns of each consumer of `CellMoves` that looks at the NEIGHBOURS of a mover (see `Watch`).
+    watch: [Watch; WATCHERS],
+    /// By entity index: the consumers (bit `WATCH_*`) the entity is a watcher of.
+    watching: Vec<u8>,
+}
+/// The consumers of the moves of columns that wake the watchers around a mover. A consumer registers its watchers (an entity
+/// carrying its component, see `watch_hooks!`); a mover that enters a column far from every watcher of the consumer costs it nothing.
+pub const WATCH_FOLLOW_PARENT: usize = 0;
+pub const WATCH_AVOID: usize = 1;
+pub const WATCH_FOLLOW_MOB: usize = 2;
+pub const WATCH_PUFFER: usize = 3;
+const WATCHERS: usize = 4;
+/// The side of a bucket of watched columns: a watcher within 32 columns of a mover is in the 3 x 3 buckets around its column.
+const BUCKET: i64 = 32;
+/// The watchers of one consumer, counted by bucket of 32 x 32 columns; `total` is zero while nobody watches (the whole cost then).
+#[derive(Default)]
+struct Watch {
+    total: u32,
+    counts: Vec<u32>,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK) }
+        Self { origin, width, cells: vec![Vec::new(); width * width], slots: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK), watch: Default::default(), watching: Vec::new() }
+    }
+    #[inline]
+    fn bucket_of(&self, cell: u32) -> (usize, usize) {
+        let (cx, cz) = ((cell as usize % self.width) as i64 / BUCKET, (cell as usize / self.width) as i64 / BUCKET);
+        (cx as usize, cz as usize)
+    }
+    fn buckets(&self) -> usize {
+        self.width.div_ceil(BUCKET as usize)
+    }
+    /// `e`, in column `cell`, watches for consumer `k` (adds it to the count of its bucket).
+    fn watch_count(&mut self, k: usize, cell: u32, delta: i32) {
+        let n = self.buckets();
+        let (bx, bz) = self.bucket_of(cell);
+        let w = &mut self.watch[k];
+        if w.counts.is_empty() {
+            w.counts = vec![0; n * n];
+        }
+        let c = &mut w.counts[bz * n + bx];
+        *c = (*c as i64 + delta as i64) as u32;
+        w.total = (w.total as i64 + delta as i64) as u32;
+    }
+    /// `e` became a watcher of consumer `k` (its component was inserted); `cell` is its column (`u32::MAX`: not placed yet,
+    /// `move_watcher` counts it at its first column).
+    pub fn watch_add(&mut self, e: Entity, k: usize, cell: u32) {
+        let i = e.index().index() as usize;
+        if self.watching.len() <= i {
+            self.watching.resize(i + 1, 0);
+        }
+        self.watching[i] |= 1 << k;
+        if cell != u32::MAX {
+            self.watch_count(k, cell, 1);
+        }
+    }
+    pub fn watch_remove(&mut self, e: Entity, k: usize, cell: u32) {
+        if let Some(m) = self.watching.get_mut(e.index().index() as usize) {
+            *m &= !(1 << k);
+        }
+        if cell != u32::MAX {
+            self.watch_count(k, cell, -1);
+        }
+    }
+    /// `reindex`: the entity went from column `old` to `new`; its counts follow when it watches and the bucket changed.
+    #[inline]
+    pub(crate) fn move_watcher(&mut self, e: Entity, old: u32, new: u32) {
+        let m = self.watching.get(e.index().index() as usize).copied().unwrap_or(0);
+        if m == 0 || (old != u32::MAX && self.bucket_of(old) == self.bucket_of(new)) {
+            return;
+        }
+        for k in 0..WATCHERS {
+            if m >> k & 1 == 1 {
+                if old != u32::MAX {
+                    self.watch_count(k, old, -1);
+                }
+                self.watch_count(k, new, 1);
+            }
+        }
+    }
+    /// Does consumer `k` have a watcher within 32 columns of column `cell`? (zero cost while it has none.)
+    #[inline]
+    pub fn watched_near(&self, k: usize, cell: u32) -> bool {
+        let w = &self.watch[k];
+        if w.total == 0 {
+            return false;
+        }
+        let n = self.buckets();
+        let (bx, bz) = self.bucket_of(cell);
+        (bz.saturating_sub(1)..=(bz + 1).min(n - 1)).any(|z| (bx.saturating_sub(1)..=(bx + 1).min(n - 1)).any(|x| w.counts[z * n + x] > 0))
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -661,6 +759,7 @@ impl Index {
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
         self.cells[cell as usize].push(e);
+        self.slots[cell as usize].push([f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY]);
         let (b, bit) = self.block_of(cell);
         self.blocks[b] |= bit;
     }
@@ -673,6 +772,7 @@ impl Index {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+            self.slots[cell as usize].swap_remove(i);
             let emptied = list.is_empty();
             if emptied {
                 let (b, bit) = self.block_of(cell);
@@ -681,14 +781,44 @@ impl Index {
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
+    /// Two levels: the blocks of 8 x 8 columns hold a bit per occupied column, so the cost follows the occupied columns, not the area.
+    /// The visit order is the plain row-major order of the columns (rows outer, columns inner), as a loop over every column would give.
     pub fn for_radius(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Entity)) {
         let w = self.width as i64;
-        for zz in self.column(z - r - 1.0).max(0)..=self.column(z + r + 1.0).min(w - 1) {
-            for xx in self.column(x - r - 1.0).max(0)..=self.column(x + r + 1.0).min(w - 1) {
-                for &e in &self.cells[(zz * w + xx) as usize] {
-                    f(e);
+        let (x0, x1) = (self.column(x - r - 1.0).max(0), self.column(x + r + 1.0).min(w - 1));
+        let (z0, z1) = (self.column(z - r - 1.0).max(0), self.column(z + r + 1.0).min(w - 1));
+        if x0 > x1 || z0 > z1 {
+            return;
+        }
+        let (bx0, bx1) = ((x0 / B) as usize, (x1 / B) as usize);
+        let mut zz = z0;
+        while zz <= z1 {
+            let band = (zz / B) as usize * self.bw;
+            let row_end = z1.min(zz / B * B + B - 1);
+            if self.blocks[band + bx0..=band + bx1].iter().all(|&m| m == 0) {
+                zz = row_end + 1;
+                continue;
+            }
+            for z in zz..=row_end {
+                let shift = (z % B) * B;
+                for bx in bx0..=bx1 {
+                    let mut bits = (self.blocks[band + bx] >> shift) & 0xff;
+                    if bits == 0 {
+                        continue;
+                    }
+                    let lo = if bx == bx0 { x0 % B } else { 0 };
+                    let hi = if bx == bx1 { x1 % B } else { B - 1 };
+                    bits &= (0xffu64 << lo) & (0xffu64 >> (B - 1 - hi));
+                    while bits != 0 {
+                        let i = bits.trailing_zeros() as i64;
+                        bits &= bits - 1;
+                        for &e in &self.cells[(z * w + bx as i64 * B + i) as usize] {
+                            f(e);
+                        }
+                    }
                 }
             }
+            zz = row_end + 1;
         }
     }
     /// Calls `f` for the entities whose column may lie in the disk of radius `r` around `old` and not in the one around `new` (a
@@ -726,6 +856,38 @@ impl Index {
         }
     }
     /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
+    /// Records the XZ extent of the box of `e`, which is in `cell` (see `slots`).
+    pub(crate) fn set_box(&mut self, e: Entity, cell: u32, mn: (f64, f64), mx: (f64, f64)) {
+        let Some(i) = self.cells[cell as usize].iter().rposition(|&o| o == e) else { return };
+        let (x0, z0) = self.corner(cell);
+        self.slots[cell as usize][i] = [(mn.0 - x0 - SLOT_MARGIN) as f32, (mx.0 - x0 + SLOT_MARGIN) as f32, (mn.1 - z0 - SLOT_MARGIN) as f32, (mx.1 - z0 + SLOT_MARGIN) as f32];
+    }
+    #[inline]
+    fn corner(&self, cell: u32) -> (f64, f64) {
+        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
+        (self.origin + cx as f64 * CELL, self.origin + cz as f64 * CELL)
+    }
+    /// `for_near` for the entities whose box may touch the XZ extent `mn..mx` (a superset: the caller tests the real boxes).
+    pub fn for_near_touching(&self, x: f64, z: f64, mn: (f64, f64), mx: (f64, f64), mut f: impl FnMut(Entity)) {
+        let (cx, cz) = (self.column(x), self.column(z));
+        let w = self.width as i64;
+        for zz in (cz - 1).max(0)..=(cz + 1).min(w - 1) {
+            for xx in (cx - 1).max(0)..=(cx + 1).min(w - 1) {
+                let c = (zz * w + xx) as usize;
+                let list = &self.cells[c];
+                if list.is_empty() {
+                    continue;
+                }
+                let (x0, z0) = self.corner(c as u32);
+                let (ax, bx, az, bz) = ((mn.0 - x0) as f32, (mx.0 - x0) as f32, (mn.1 - z0) as f32, (mx.1 - z0) as f32);
+                for (&e, s) in list.iter().zip(&self.slots[c]) {
+                    if s[1] >= ax && s[0] <= bx && s[3] >= az && s[2] <= bz {
+                        f(e);
+                    }
+                }
+            }
+        }
+    }
     pub fn for_near(&self, x: f64, z: f64, mut f: impl FnMut(Entity)) {
         let (cx, cz) = (self.column(x), self.column(z));
         let w = self.width as i64;
@@ -777,6 +939,9 @@ pub struct Config {
     /// Batch mode: an animal that overlaps another stays in `push` every tick even if it does not move (`vanilla` runs
     /// `pushEntities` for every entity, at rest or not).
     pub keep_touching: bool,
+    /// The most path searches `pathfind` runs in a tick (0: no limit). The others keep `NeedsPath` and are served the next tick, in the table order
+    /// (first asked, first served, in the main); a guard against the bursts (suivi/ecs-echelle.md, H): a zombie that waits does not move.
+    pub path_budget: usize,
     /// EXPERIMENT (calibration of the batch push): the form (0: all impulses x k; 1: only the impulse from a lower index x k)
     /// and the factor k, from the environment (PUSH_FORM, PUSH_K).
     pub push_form: u8,
@@ -1285,7 +1450,15 @@ pub fn enter_index(world: &mut World, e: Entity) {
     let Some(b) = world.get::<Bounds>(e).copied() else { return };
     let (mn, mx) = (b.0.min_position(), b.0.max_position());
     let cell = world.resource::<Index>().cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-    world.resource_mut::<Index>().insert(e, cell);
+    let old = world.get::<Cell>(e).unwrap().0;
+    {
+        let mut idx = world.resource_mut::<Index>();
+        if old != u32::MAX {
+            idx.remove(e, old);
+        }
+        idx.insert(e, cell);
+        idx.move_watcher(e, old, cell);
+    }
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);
 }
@@ -1548,7 +1721,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     day: Res<crate::hostile::Daylight>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
@@ -1588,7 +1761,7 @@ pub(crate) fn pathfind(
         if climber {
             // `WallClimberNavigation.pathToPosition`: the climb goes on straight to the target when the path is over (or when there is none).
             let (to, speed) = (target, nav.speed);
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| crate::locomotion::climb::wish(w, e, to, speed));
             });
         }
@@ -1604,7 +1777,7 @@ pub(crate) fn pathfind(
             }
             p
         });
-        par.command_scope(|mut cmd| match path {
+        par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
                 crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1620,13 +1793,28 @@ pub(crate) fn pathfind(
             }
         });
     };
+    // At most `path_budget` searches (0: no limit): the first of the queue in the table order, the same whatever the thread count. ONE call
+    // site of `one` per mode: a third inlined copy slowed the unbudgeted systems by 0.5 % (measured, goal_bench cow idle 1530 -> 1538).
+    let mut left = if cfg.path_budget > 0 { cfg.path_budget } else { usize::MAX };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
+        let mut chosen: Vec<Entity> = if cfg.path_budget > 0 { q.iter().map(|x| x.0).take(left).collect() } else { Vec::new() };
+        chosen.sort_unstable();
+        let (limited, chosen) = (cfg.path_budget > 0, &chosen);
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| {
+            if !limited || chosen.binary_search(&e).is_ok() {
+                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+            }
+        });
     } else {
         for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+            if left == 0 {
+                break;
+            }
+            left -= 1;
             one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
         }
     }
+    par.flush();
 }
 
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
@@ -1636,7 +1824,7 @@ pub(crate) fn follow(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
@@ -1692,7 +1880,7 @@ pub(crate) fn follow(
             drive.zza = 0.0;
             drive.jump = false;
             m.active = false;
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Following>().insert(PathEnded);
             });
         }
@@ -1704,6 +1892,7 @@ pub(crate) fn follow(
             one(e, p, b, &mut d, &mut s, &mut n, &mut m);
         }
     }
+    par.flush();
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
 pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet, Option<&crate::mount::Mount>), With<PathEnded>>, sets: Query<&crate::goals::GoalSet>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
@@ -2120,7 +2309,8 @@ pub(crate) fn travel_one(
 pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
+    plain: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
@@ -2140,24 +2330,25 @@ pub(crate) fn travel(
         let was_in_air = !c.on_ground;
         let was_on_ground = c.on_ground;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
-        if was_on_ground && !c.on_ground {
-            par.command_scope(|mut cmd| {
+        // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
+        if was_on_ground && !c.on_ground && !b.object {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
             });
         }
-        if was_in_air && c.on_ground {
-            par.command_scope(|mut cmd| {
+        if was_in_air && c.on_ground && !b.object {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
-        if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
-            par.command_scope(|mut cmd| {
+        if fall > 0.0 && !b.object && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
         // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
         if p.0.y < void_y {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| {
                     // An experience orb is not alive: it is discarded (`Entity.checkBelowWorld`), a creature is hurt.
                     if w.get::<crate::orb::Orb>(e).is_some() {
@@ -2170,7 +2361,8 @@ pub(crate) fn travel(
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
-            par.command_scope(|mut cmd| {
+            // Removing a component from the entity itself commutes across entities: no need of the ordered buffer.
+            plain.command_scope(|mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
         }
@@ -2182,6 +2374,7 @@ pub(crate) fn travel(
             one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
         }
     }
+    par.flush();
 }
 
 /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
@@ -2330,10 +2523,12 @@ pub(crate) fn reindex(
                 idx.remove(e, c.0);
             }
             idx.insert(e, cell);
+            idx.move_watcher(e, c.0, cell);
             c.0 = cell;
             moves.0.push(e);
             idx.crossed.push((e, cell));
         }
+        idx.set_box(e, cell, (mn.x, mn.z), (mx.x, mx.z));
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
         if fluid && !in_fluid {
@@ -2544,6 +2739,62 @@ fn hazard_tick(
         }
     }
 }
+/// The commands collected by `OrdCmds` on one thread (with the emitting entity) and the empty queues kept for the next scopes (no allocation per scope).
+#[derive(Default)]
+pub struct Pending {
+    done: Vec<(Entity, bevy_ecs::world::CommandQueue)>,
+    spare: Vec<bevy_ecs::world::CommandQueue>,
+}
+/// `ParallelCommands` with a DETERMINISTIC order: the commands each entity's visit emits are kept with the entity, and `flush` (at the end of
+/// the system) applies them sorted by entity, whatever thread ran the visit. The order commands are applied in decides the rows of the tables
+/// (an entity that changes table takes the last row), hence the iteration order of every later system: with the per-thread queues of
+/// `ParallelCommands` two runs, or two thread counts, gave different rows and so different games (suivi/ecs-echelle.md, G').
+/// One `Pending` per thread (no lock: the first version took a mutex twice per visit, +50 instr per visit measured).
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct OrdCmds<'w, 's> {
+    pending: Local<'s, bevy_utils::Parallel<Pending>>,
+    gathered: Local<'s, Vec<(Entity, bevy_ecs::world::CommandQueue)>>,
+    par: ParallelCommands<'w, 's>,
+    allocator: &'w bevy_ecs::entity::EntityAllocator,
+    entities: &'w bevy_ecs::entity::Entities,
+}
+impl OrdCmds<'_, '_> {
+    /// Commands emitted by the visit of `by` (the sort key); callable from the threads of a parallel iteration.
+    pub fn command_scope(&self, by: Entity, f: impl FnOnce(Commands)) {
+        self.pending.scope(|p| {
+            let mut q = p.spare.pop().unwrap_or_default();
+            f(Commands::new_from_entities(&mut q, self.allocator, self.entities));
+            if q.is_empty() {
+                p.spare.push(q);
+            } else {
+                p.done.push((by, q));
+            }
+        });
+    }
+    /// Hands the collected commands to the system's buffer, sorted by emitter (stable: one entity's commands keep their order).
+    pub fn flush(&mut self) {
+        let all = &mut *self.gathered;
+        for p in self.pending.iter_mut() {
+            all.append(&mut p.done);
+        }
+        if all.is_empty() {
+            return;
+        }
+        // Sorted by emitter; the sort is stable and each thread's list is in its visit order, so one entity's commands keep their order.
+        all.sort_by_key(|c| c.0);
+        self.par.command_scope(|mut cmd| {
+            for (_, q) in all.iter_mut() {
+                cmd.append(q);
+            }
+        });
+        // The emptied queues go back to the threads' pools (round robin), their allocations kept.
+        let mut pools: Vec<&mut Vec<bevy_ecs::world::CommandQueue>> = self.pending.iter_mut().map(|p| &mut p.spare).collect();
+        let n = pools.len().max(1);
+        for (i, (_, q)) in all.drain(..).enumerate() {
+            pools[i % n].push(q);
+        }
+    }
+}
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
 #[derive(Component, Default)]
 pub struct Recompute;
@@ -2661,14 +2912,14 @@ pub struct PushIn(pub Vec3);
 fn push(
     cfg: Res<Config>,
     idx: Res<Index>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
     // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
     boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
     objects: Query<&Body>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
-    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
+    mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>, Without<PushFree>)>,
 ) {
     // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
     let is_object = |e: Entity| objects.get(e).is_ok_and(|b| b.object);
@@ -2677,12 +2928,15 @@ fn push(
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
         let mut overlapping = 0;
-        idx.for_near(cx, cz, |o| {
+        // An object (an item on the ground) neither pushes nor is pushed: it scans nothing.
+        let e_object = is_object(e);
+        if !e_object {
+        idx.for_near_touching(cx, cz, (mn.x, mn.z), (mx.x, mx.z), |o| {
             if o == e {
                 return;
             }
             let Ok((ob, asleep)) = boxes.get(o) else { return };
-            if !b.0.intersects(ob.0) || is_object(o) || is_object(e) {
+            if !b.0.intersects(ob.0) || is_object(o) {
                 return;
             }
             overlapping += 1;
@@ -2711,46 +2965,44 @@ fn push(
             // An overlap begins: in the ordered mode this one and its neighbour are handled by `ordered_pass` from the
             // next tick (this tick's impulse was given above).
             if cfg.ordered_push {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Overlapping);
                     cmd.entity(o).insert(Overlapping);
                 });
             }
             if cfg.keep_touching {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(o).insert(Touching);
                 });
             }
             if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
-                    if asleep {
-                        cmd.entity(o).insert(PushIn(Vec3::new(xa, 0.0, za)));
-                    } else {
-                        cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
-                    }
+                    let (push, wake) = (Vec3::new(xa, 0.0, za), !asleep);
+                    cmd.queue(move |w: &mut World| add_push(w, o, push, wake));
                 });
             }
         });
+        }
         if cfg.keep_touching {
             if overlapping > 0 {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Touching);
                 });
             } else if was_touching {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Touching>();
                 });
             }
         }
         // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
         if overlapping + 1 >= MAX_ENTITY_CRAMMING {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
                 if o != e && boxes.get(o).is_ok_and(|(ob, _)| !is_object(o) && b.0.intersects(ob.0)) {
-                    par.command_scope(|mut cmd| {
+                    par.command_scope(e, |mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
                 }
@@ -2759,7 +3011,7 @@ fn push(
         if dv != (0.0, 0.0) {
             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
             if !moving {
-                par.command_scope(|mut cmd| {
+                par.command_scope(e, |mut cmd| {
                     cmd.entity(e).insert(Moving);
                 });
             }
@@ -2772,6 +3024,7 @@ fn push(
             one(e, b, &mut v, m, t);
         }
     }
+    par.flush();
 }
 /// How near (blocks) another animal must come for an animal to stay in the ordered pass: a little more than the largest
 /// step of an animal in a tick.
@@ -3111,6 +3364,20 @@ fn cramming(
     }
 }
 /// The half of a push a cow that did not move is owed: its velocity changes, its physics is active.
+/// Adds an impulse to the neighbour `o`'s pending push: the impulses of all its neighbours are SUMMED (`Entity.push` adds to the velocity), not
+/// overwritten by the last one, so the total does not depend on the order the pairs were visited in.
+fn add_push(w: &mut World, o: Entity, push: Vec3, wake: bool) {
+    let Ok(mut em) = w.get_entity_mut(o) else { return };
+    match em.get_mut::<PushIn>() {
+        Some(mut p) => p.0 = Vec3::new(p.0.x + push.x, p.0.y + push.y, p.0.z + push.z),
+        None => {
+            em.insert(PushIn(push));
+        }
+    }
+    if wake {
+        em.insert(Moving);
+    }
+}
 #[allow(clippy::type_complexity)]
 fn apply_pushes(
     mut q: Query<(Entity, &PushIn, &mut Vel)>,
@@ -3280,7 +3547,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
-        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
+        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());
         world.insert_resource(Players::default());
@@ -4091,5 +4358,67 @@ pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::li
         world.commands().entity(ctx.entity).insert(crate::item::ItemAwake);
     } else if world.get::<crate::orb::Orb>(ctx.entity).is_some() {
         world.commands().entity(ctx.entity).insert(crate::orb::OrbAwake);
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+    /// The two-level `for_radius` visits the same entities in the same order as a loop over every column of the box.
+    #[test]
+    fn for_radius_matches_column_loop() {
+        let mut world = World::new();
+        let width = 70;
+        let mut idx = Index::new(0.0, width);
+        let mut s = 12345u64;
+        let mut rnd = move |n: u64| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s % n
+        };
+        let mut placed = Vec::new();
+        for _ in 0..400 {
+            let e = world.spawn_empty().id();
+            let c = (rnd((width * width) as u64)) as u32;
+            idx.insert(e, c);
+            placed.push((e, c));
+        }
+        for k in 0..60 {
+            let (e, c) = placed.swap_remove(rnd(placed.len() as u64) as usize);
+            idx.remove(e, c);
+            if k % 2 == 0 {
+                let c2 = rnd((width * width) as u64) as u32;
+                idx.insert(e, c2);
+                placed.push((e, c2));
+            }
+        }
+        for _ in 0..300 {
+            let (x, z, r) = (rnd(90) as f64 - 10.0, rnd(90) as f64 - 10.0, rnd(40) as f64);
+            let mut got = Vec::new();
+            idx.for_radius(x, z, r, |e| got.push(e));
+            let w = width as i64;
+            let mut want = Vec::new();
+            for zz in idx.column(z - r - 1.0).max(0)..=idx.column(z + r + 1.0).min(w - 1) {
+                for xx in idx.column(x - r - 1.0).max(0)..=idx.column(x + r + 1.0).min(w - 1) {
+                    want.extend_from_slice(&idx.cells[(zz * w + xx) as usize]);
+                }
+            }
+            assert_eq!(got, want, "x {x} z {z} r {r}");
+        }
+    }
+}
+
+/// The hooks that register the carriers of a watcher component with the `Index`: `on_insert = watch_in::<K>, on_discard = watch_out::<K>`.
+pub(crate) fn watch_in<const K: usize>(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let cell = world.get::<Cell>(ctx.entity).map_or(u32::MAX, |c| c.0);
+    if let Some(mut idx) = world.get_resource_mut::<Index>() {
+        idx.watch_add(ctx.entity, K, cell);
+    }
+}
+pub(crate) fn watch_out<const K: usize>(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let cell = world.get::<Cell>(ctx.entity).map_or(u32::MAX, |c| c.0);
+    if let Some(mut idx) = world.get_resource_mut::<Index>() {
+        idx.watch_remove(ctx.entity, K, cell);
     }
 }
