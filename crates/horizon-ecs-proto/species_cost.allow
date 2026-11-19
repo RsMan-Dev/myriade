@@ -12,3 +12,4 @@ cave_spider ## the climb wish never ends: the Mob pushes at the CORNER of the ta
 dolphin ## swims every tick (the smooth control and the travel of the water run each tick: a mover; 1 360 instr per creature and tick, as the turtle's)
 axolotl ## swims every tick (same control and travel as the dolphin)
 drowned ## swims every tick (its control and the travel of the water run each tick)
+bee ## the six asks of its cycle (enter, validate x2, pollinate, locate, go to hive, known flower) come every 20 to 40 ticks per bee (conditions of state, no event yet): 775 instr per creature and tick; the Mob asks each goal every second tick
