@@ -6,7 +6,7 @@ use common::*;
 use horizon_client_lib::mobs::{self, Mob, MobEvent};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    behaviours::{Entry, follow_parent, look_at_player, random_look, stroll, panda_lie_on_back, panda_roll, panda_sneeze, panda_state as ps, swell, silverfish_wake_up_friends as silver, fox_faceplant, fox_state as fs, nearest_target},
+    behaviours::{Entry, armadillo_state, baby_follow_adult, climb_on_powder_snow, do_nothing, fox_pounce, fox_stalk_prey, rolled, follow_parent, look_at_player, random_look, stroll, panda_lie_on_back, panda_roll, panda_sneeze, panda_state as ps, swell, silverfish_wake_up_friends as silver, fox_faceplant, fox_state as fs, nearest_target},
     cow::*,
     goals::*,
 };
@@ -34,6 +34,18 @@ fn mob_add(r: &mut MobRef, kind: Arc<mobs::MobType>, at: Vec3) -> usize {
 }
 fn grid(k: usize) -> Vec3 {
     Vec3::new(-16.0 + 2.5 * (k % 14) as f64 + 0.5, 1.0, -16.0 + 2.5 * (k / 14) as f64 + 0.5)
+}
+/// The lot-1 controls are written for a cow body (the zombie burns and hunts by itself on both sides): printed skip else.
+fn on() -> bool {
+    if !have_data() {
+        return false;
+    }
+    let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    if sp != "minecraft:cow" {
+        eprintln!("SKIP lot1_vs_mob: written for HORIZON_SPECIES=minecraft:cow, not {sp}");
+        return false;
+    }
+    true
 }
 fn mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len().max(1) as f64
@@ -146,7 +158,7 @@ fn first(v: &[(Vec<usize>, usize)]) -> (usize, f64) {
 
 #[test]
 fn panda_sneeze_rate_of_a_cub() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let ticks = 20_000;
@@ -159,7 +171,7 @@ fn panda_sneeze_rate_of_a_cub() {
 }
 #[test]
 fn panda_lie_on_back_law() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let ticks = 30_000;
@@ -174,7 +186,7 @@ fn panda_lie_on_back_law() {
 }
 #[test]
 fn panda_roll_first_roll_of_a_cub() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let (m, e) = pandas(Pk::Roll, 80, 6_000, true, 0, ps::Gene::Normal);
@@ -244,7 +256,7 @@ fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize
 }
 #[test]
 fn swell_direction_follows_the_player() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let first_up = |v: &[i32]| v.iter().position(|&d| d > 0);
@@ -277,7 +289,7 @@ fn swell_direction_follows_the_player() {
 
 #[test]
 fn silverfish_wake_up_friends_after_a_hit() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let ring: Vec<(i32, i32, i32)> = (-4i32..=4).flat_map(|x| (-4i32..=4).flat_map(move |z| (1i32..=2).map(move |y| (x, y, z)))).filter(|&(x, _, z)| x.abs() >= 2 || z.abs() >= 2).collect();
@@ -364,7 +376,7 @@ fn silverfish_wake_up_friends_after_a_hit() {
 
 #[test]
 fn fox_faceplant_lasts_forty_ticks() {
-    if !have_data() {
+    if !on() {
         return;
     }
     let mut r = MobRef::new(20, false);
@@ -398,5 +410,238 @@ fn fox_faceplant_lasts_forty_ticks() {
     }
     for (a, b) in dm.iter().zip(&de) {
         assert!(a.abs_diff(*b) <= 2, "{dm:?} vs {de:?}");
+    }
+}
+
+/// A rabbit (in the tag) in powder snow, three layouts: snow only, a stone block above, powder snow above. The climb runs
+/// per tick on both sides (`running_names` / the goal's marker).
+#[test]
+fn climb_runs_under_the_same_conditions() {
+    if !on() {
+        return;
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&climb_on_powder_snow::MODULE, 1, &climb_on_powder_snow::Params::DEFAULT)]);
+    let mut out = Vec::new();
+    for (name, above) in [("snow only", None), ("stone above", Some("minecraft:stone")), ("snow above", Some("minecraft:powder_snow"))] {
+        let mut r = MobRef::new(20, false);
+        let i = mob_add(&mut r, mob_kind("minecraft:rabbit"), Vec3::new(0.5, 1.0, 0.5));
+        r.mobs[i].ai.no_action_time = 0;
+        let mut h = Herd::with_slab(20, false, false);
+        let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
+        for _ in 0..20 {
+            r.step(None);
+            h.tick();
+        }
+        r.set_block(0, 1, 0, "minecraft:powder_snow");
+        h.set_block(0, 1, 0, "minecraft:powder_snow");
+        if let Some(b) = above {
+            r.set_block(0, 2, 0, b);
+            h.set_block(0, 2, 0, b);
+        }
+        let (mut m_on, mut e_on) = (0, 0);
+        let (mut m_first, mut e_first) = (None, None);
+        for t in 0..40 {
+            r.step(None);
+            h.tick();
+            let a = r.names(i).contains(&"ClimbOnTopOfPowderSnow");
+            let b = h.world.get::<climb_on_powder_snow::Climbing>(e).is_some();
+            m_on += usize::from(a);
+            e_on += usize::from(b);
+            if a && m_first.is_none() {
+                m_first = Some(t);
+            }
+            if b && e_first.is_none() {
+                e_first = Some(t);
+            }
+        }
+        eprintln!("climb {name}: ticks running (of 40) mob {m_on} ecs {e_on}; first tick mob {m_first:?} ecs {e_first:?}");
+        out.push((m_on > 0, e_on > 0));
+    }
+    assert_eq!(out[0].0, out[0].1, "snow only");
+    assert_eq!(out[1].0, out[1].1, "stone above");
+    assert_eq!(out[2].0, out[2].1, "snow above");
+}
+
+/// An armadillo state of fear: the `Rolled` goal appears and the walking goals stop (Mob), the same here.
+#[test]
+fn rolled_holds_the_flags_until_the_state_is_idle() {
+    if !on() {
+        return;
+    }
+    use horizon_ecs_proto::behaviours::{look_at_player, stroll};
+    let entries: &'static [Entry] = leak([
+        Entry::new(&rolled::MODULE, 2, &rolled::Params::DEFAULT),
+        Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params::DEFAULT),
+        Entry::new(&stroll::MODULE, 5, &stroll::Params::DEFAULT),
+    ]);
+    let mut r = MobRef::new(20, false);
+    let i = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5, 1.0, 0.5));
+    let mut h = Herd::with_slab(20, false, false);
+    let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
+    h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
+    for _ in 0..30 {
+        r.step(None);
+        h.tick();
+    }
+    mobs::armadillo::set_state(&mut r.mobs[i], 2);
+    horizon_ecs_proto::behaviours::rolled::set_state(&mut h.world, e, armadillo_state::SCARED);
+    let (mut ma, mut ea): (Option<usize>, Option<usize>) = (None, None);
+    for t in 0..40 {
+        r.step(None);
+        h.tick();
+        if ma.is_none() && r.names(i).contains(&"Rolled") {
+            ma = Some(t);
+        }
+        if ea.is_none() && h.world.get::<GoalSet>(e).unwrap().is_running(&rolled::MODULE) {
+            ea = Some(t);
+        }
+    }
+    let walking_m = r.names(i).iter().any(|n| n.contains("Stroll") || *n == "LookAtPlayer");
+    let walking_e = h.world.get::<GoalSet>(e).unwrap().is_running(&stroll::MODULE) || h.world.get::<GoalSet>(e).unwrap().is_running(&look_at_player::MODULE);
+    eprintln!("rolled: first tick running mob {ma:?} ecs {ea:?}; a walking or looking goal runs after 40 ticks: mob {walking_m} ecs {walking_e}");
+    assert!(ma.zip(ea).is_some_and(|(a, b)| a.abs_diff(b) <= 2));
+    assert_eq!(walking_m, walking_e);
+}
+
+/// The charge of the wither: while the counter is above zero `DoNothing` runs on the `Mob`; the ECS module runs for as many
+/// ticks as the counter it is given.
+#[test]
+fn do_nothing_runs_while_the_counter_is_positive() {
+    if !on() {
+        return;
+    }
+    let mut r = MobRef::new(20, false);
+    let i = mob_add(&mut r, mob_kind("minecraft:wither"), Vec3::new(0.5, 1.0, 0.5));
+    mobs::wither::make_invulnerable(&mut r.mobs[i]);
+    let c0 = r.mobs[i].extra.counter;
+    let mut run = 0usize;
+    let mut first = None;
+    for t in 0..(c0 as usize + 40) {
+        r.step(None);
+        if r.names(i).contains(&"DoNothing") {
+            run += 1;
+            first.get_or_insert(t);
+        }
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&do_nothing::MODULE, 0, &do_nothing::Params::DEFAULT)]);
+    let mut h = Herd::with_slab(20, false, false);
+    let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
+    for _ in 0..20 {
+        h.tick();
+    }
+    do_nothing::set(&mut h.world, e, c0);
+    let (mut erun, mut efirst) = (0usize, None);
+    for t in 0..(c0 as usize + 40) {
+        h.tick();
+        // The rule that is not ported counts the charge down, one per tick.
+        let left = h.world.get::<do_nothing::Invulnerable>(e).unwrap().0;
+        if left > 0 {
+            do_nothing::set(&mut h.world, e, left - 1);
+        }
+        if h.world.get::<GoalSet>(e).unwrap().is_running(&do_nothing::MODULE) {
+            erun += 1;
+            efirst.get_or_insert(t);
+        }
+    }
+    eprintln!("do_nothing: counter {c0}: ticks running mob {run} (first {first:?}) ecs {erun} (first {efirst:?})");
+    assert!(run.abs_diff(erun) <= 4);
+}
+
+/// A fox with a prey (a chicken for the `Mob`, a body of the species `cow` listed as prey here) imposed as target: from the
+/// tick it crouches to the leap, and the speed it leaps with.
+#[test]
+fn fox_crouches_then_pounces_the_same_way() {
+    if !on() {
+        return;
+    }
+    let mut r = MobRef::new(20, false);
+    let f = mob_add(&mut r, mob_kind("minecraft:fox"), Vec3::new(0.5, 1.0, 0.5));
+    let c = mob_add(&mut r, mob_kind("minecraft:chicken"), Vec3::new(11.5, 1.0, 0.5));
+    r.mobs[c].ai.goals.clear();
+    r.mobs[f].ai.no_action_time = 0;
+    let cid = r.mobs[c].id;
+    for _ in 0..20 {
+        r.step(None);
+    }
+    eprintln!("fox pre: flags {} pos ({:.1},{:.1})", r.mobs[f].extra.ints[0], r.mobs[f].position.x, r.mobs[f].position.z);
+    r.mobs[f].extra.ints[0] = 0;
+    r.mobs[f].position = Vec3::new(0.5, 1.0, 0.5);
+    r.mobs[f].ai.target = Some(mobs::Who::Mob(cid));
+    let (mut crouch_m, mut pounce_m, mut v_m) = (None, None, Vec3::ZERO);
+    for t in 0..300 {
+        r.step(None);
+        let m = &r.mobs[f];
+        if crouch_m.is_none() && mobs::fox::flag(m, mobs::fox::CROUCHING) {
+            crouch_m = Some(t);
+            eprintln!("fox mob crouches at {t}: distance to the prey {:.2}", (r.mobs[c].position.x - m.position.x).abs());
+        }
+        if pounce_m.is_none() && mobs::fox::flag(m, mobs::fox::POUNCING) {
+            pounce_m = Some(t);
+            v_m = m.velocity;
+        }
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&fox_stalk_prey::MODULE, 5, leak(fox_stalk_prey::Params { types: &["minecraft:cow"], ..fox_stalk_prey::Params::DEFAULT})), Entry::new(&fox_pounce::MODULE, 6, &fox_pounce::Params::DEFAULT)]);
+    let mut h = Herd::with_slab(20, false, false);
+    let fe = ecs_with(&mut h, entries, 0.5, 0.5, 3);
+    let pe = ecs_with(&mut h, &[], 11.5, 0.5, 4);
+    for _ in 0..20 {
+        h.tick();
+    }
+    let mut t = horizon_ecs_proto::targeting::Target::new(horizon_ecs_proto::targeting::Who::Entity(pe), 100, u8::MAX);
+    t.must_see = false;
+    horizon_ecs_proto::targeting::set_target(&mut h.world, fe, t);
+    let (mut crouch_e, mut pounce_e, mut v_e) = (None, None, Vec3::ZERO);
+    for t in 0..300 {
+        h.tick();
+        if crouch_e.is_none() && fs::has(&h.world, fe, fs::CROUCHING) {
+            crouch_e = Some(t);
+        }
+        if pounce_e.is_none() && fs::has(&h.world, fe, fs::POUNCING) {
+            pounce_e = Some(t);
+            v_e = h.world.get::<Vel>(fe).unwrap().0;
+        }
+    }
+    let gap = |c: Option<usize>, p: Option<usize>| c.zip(p).map(|(c, p)| p - c);
+    eprintln!(
+        "fox: crouch at mob {crouch_m:?} ecs {crouch_e:?}; leap at mob {pounce_m:?} ecs {pounce_e:?}; crouch -> leap mob {:?} ecs {:?}; velocity at the leap mob ({:.2},{:.2},{:.2}) ecs ({:.2},{:.2},{:.2})",
+        gap(crouch_m, pounce_m), gap(crouch_e, pounce_e), v_m.x, v_m.y, v_m.z, v_e.x, v_e.y, v_e.z
+    );
+    assert!(gap(crouch_m, pounce_m).is_some() && gap(crouch_e, pounce_e).is_some(), "both leap");
+    assert!(gap(crouch_m, pounce_m).unwrap().abs_diff(gap(crouch_e, pounce_e).unwrap()) <= 3);
+    assert!((v_m.y - v_e.y).abs() < 0.1, "the vertical speed of the leap");
+}
+
+/// A baby armadillo and an adult at 3, 7 and 20 blocks: does the baby follow (a path to the adult), and how close it gets.
+#[test]
+fn baby_follows_the_adult_between_five_and_sixteen_blocks() {
+    if !on() {
+        return;
+    }
+    let entries: &'static [Entry] = leak([Entry::new(&baby_follow_adult::MODULE, 4, &baby_follow_adult::Params::DEFAULT)]);
+    for d in [3.0, 7.0, 20.0] {
+        let mut r = MobRef::new(24, false);
+        let b = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5, 1.0, 0.5));
+        let a = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5 + d, 1.0, 0.5));
+        mobs::finalize::set_baby(&mut r.mobs[b], true);
+        r.mobs[a].ai.goals.clear();
+        let mut h = Herd::with_slab(24, false, false);
+        let be = ecs_with(&mut h, entries, 0.5, 0.5, 3);
+        follow_parent::make_baby(&mut h.world, be, 24_000);
+        ecs_with(&mut h, &[], 0.5 + d, 0.5, 4);
+        h.world.get_mut::<Phase>(be).unwrap().0 = u64::from(r.mobs[b].id);
+        let (mut ms, mut es) = (None, None);
+        for t in 0..160 {
+            r.step(None);
+            h.tick();
+            if ms.is_none() && r.names(b).contains(&"BabyFollowAdult") {
+                ms = Some(t);
+            }
+            if es.is_none() && h.world.get::<baby_follow_adult::FollowsAdult>(be).is_some() {
+                es = Some(t);
+            }
+        }
+        let (pm, pe) = (r.mobs[b].position, h.world.get::<Pos>(be).unwrap().0);
+        eprintln!("baby_follow d={d}: first run mob {ms:?} ecs {es:?}; distance to the adult after 160 ticks mob {:.2} ecs {:.2}", (r.mobs[a].position.x - pm.x).abs(), (0.5 + d - pe.x).abs());
+        assert_eq!(ms.is_some(), es.is_some(), "d {d}");
     }
 }

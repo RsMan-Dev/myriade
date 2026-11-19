@@ -43,6 +43,8 @@ pub static MODULE: Module = Module {
     stop,
     systems,
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion, Cap::Living],
+    // `FoxPounceGoal.isInterruptible` is false (`fox.rs:1247`): a goal of a higher priority cannot take MOVE | JUMP from the leap.
+    interruptable: false,
     ..Module::DEFAULT
 };
 

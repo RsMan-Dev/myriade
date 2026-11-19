@@ -36,6 +36,8 @@ pub static MODULE: Module = Module {
     start,
     stop,
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
+    // `PandaRollGoal.isInterruptible` is false (`panda.rs:1028`).
+    interruptable: false,
     ..Module::DEFAULT
 };
 

@@ -122,6 +122,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !is_baby(w, e) || st::of(w, e) != IDLE {
         return false;
     }
+    // `canUse` of the `Mob` needs the navigation done (`armadillo.rs:158`): a baby that walks a path (a stroll) goes on.
+    if w.get::<Following>(e).is_some() || w.get::<NeedsPath>(e).is_some() {
+        rearm(w, e);
+        return false;
+    }
     let Some(f) = w.get::<Follow>(e).copied() else { return false };
     let p = f.params;
     match nearest_adult(w, e, p).filter(|(_, d)| *d >= p.min * p.min && *d < (p.max + 1.0) * (p.max + 1.0)) {
@@ -138,10 +143,14 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    if let Some(mut f) = w.get_mut::<Follow>(e) {
-        f.fresh = true;
-    }
     w.entity_mut(e).insert(FollowsAdult);
+    // `nav_move_to_entity(adult, FOLLOW_MIN - 1, speed)` at the start (the `Mob` asks its path in `start`): the path ends 4
+    // blocks from the adult (`go_to_entity` with its reach).
+    if let Some(f) = w.get::<Follow>(e).copied()
+        && let Some(a) = f.adult
+    {
+        crate::goals::go_to_entity(w, e, a, f.params.speed, f.params.min as i32 - 1);
+    }
 }
 /// `stop` : arrête la marche, oublie l'adulte, rend le regard, et redemande le but à +2 si le bébé l'attend encore.
 fn stop(w: &mut World, e: Entity, _: Inst) {
@@ -171,10 +180,6 @@ fn follow_run(
             reqs.0.push(Req::End(e, f.slot));
             continue;
         };
-        if f.fresh {
-            f.fresh = false;
-            go_to(&mut cmd, e, ap.0.x, ap.0.z, f.params.speed, 4);
-        }
         aim(&mut cmd, e, &mut look, looking, [ap.0.x, ap.0.y + ce.0, ap.0.z], None);
     }
 }
@@ -262,11 +267,28 @@ mod tests {
         }
         assert!(started, "le but a démarré");
         let end_d = dist(at(&h, baby), at(&h, adult));
-        assert!(end_d < start_d && end_d <= 4.0, "le bébé s'est approché : {start_d} -> {end_d}");
+        // The `Mob` stops at 4,44 blocks (path reach 4, measured in tests/lot1_vs_mob.rs).
+        assert!(end_d < start_d && end_d <= 4.5, "le bébé s'est approché : {start_d} -> {end_d}");
         assert!(!running(&h, baby), "le but s'arrête à 4 blocs");
     }
 
     /// Un état de boule (le but de priorité 2 tient les drapeaux) : le suivi ne tourne pas ; au retour à IDLE il démarre.
+    /// `canUse` of the `Mob` needs the navigation done: a baby that follows a path (a stroll) does not start; once the path
+    /// is over it does (the witness: the same baby without the path starts).
+    #[test]
+    fn a_baby_on_a_path_does_not_start_until_the_path_is_over() {
+        let Some((mut h, baby, _adult)) = world(7.0) else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        let inst = Inst { slot: 1, nth: 0 };
+        // `can_use` asked at once (a tick would take the marker of a path that does not exist off).
+        h.world.entity_mut(baby).insert(Following);
+        assert!(!can_use(&mut h.world, baby, inst), "a baby that walks a path does not follow");
+        h.world.entity_mut(baby).remove::<Following>();
+        assert!(can_use(&mut h.world, baby, inst), "the witness: without the path it follows");
+    }
+
     #[test]
     fn a_scared_baby_does_not_follow_until_its_state_is_idle() {
         let Some((mut h, baby, _adult)) = world(7.0) else {
