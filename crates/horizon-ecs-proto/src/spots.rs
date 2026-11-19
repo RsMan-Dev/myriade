@@ -111,6 +111,8 @@ pub enum Pick {
     LandTowards { h: i32, v: i32, to: [f64; 3] },
     /// `Mob.flying_stroll_pos`: `HoverRandomPos(8, 7, 3, 1)` in the half circle of the view `(xd, zd)`, else `AirAndWaterRandomPos(8, 4, -2)`.
     Flying { xd: f64, zd: f64 },
+    /// `AirRandomPos.getPosTowards(h, v, fly_height, to, max_rad)`: an `AirAndWaterRandomPos` towards a point, out of the water (the bee's).
+    AirTowards { h: i32, v: i32, fly: i32, to: [f64; 3], max_rad: f64 },
 }
 impl Rng {
     /// `RandomSource.nextFloat`.
@@ -200,7 +202,7 @@ impl Spotter<'_> {
                 }
                 self.land_up_out_of_solid(p)
             }
-            Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } => unreachable!("drawn by `pick`"),
+            Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } | Pick::AirTowards { .. } => unreachable!("drawn by `pick`"),
         }
     }
     /// `HoverRandomPos.generateRandomPos(8, 7, 3, 1)`: a stable spot (a solid with a sturdy top) raised 1..=3 blocks above the ground, out of water.
@@ -238,7 +240,10 @@ impl Spotter<'_> {
     }
     /// `AirAndWaterRandomPos.generateRandomPos(8, 4, -2)`.
     fn air_and_water(&mut self, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
-        let d = self.direction_within_height(0.0, 8.0, 4, -2, xd, zd, max_rad)?;
+        self.air_and_water_p(8, 4, -2, xd, zd, max_rad)
+    }
+    fn air_and_water_p(&mut self, h: i32, v: i32, fly: i32, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
+        let d = self.direction_within_height(0.0, f64::from(h), v, fly, xd, zd, max_rad)?;
         let mut p = self.toward(d);
         if !self.in_height(p) {
             return None;
@@ -296,6 +301,13 @@ impl Spotter<'_> {
             Pick::Flying { xd, zd } => {
                 let max_rad = f64::from(std::f32::consts::FRAC_PI_2);
                 self.best_of_ten(|s| s.hover(xd, zd, max_rad)).or_else(|| self.best_of_ten(|s| s.air_and_water(xd, zd, max_rad)))
+            }
+            Pick::AirTowards { h, v, fly, to, max_rad } => {
+                let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
+                self.best_of_ten(|s| {
+                    let p = s.air_and_water_p(h, v, fly, xd, zd, max_rad)?;
+                    (s.mw.fluid(p[0], p[1], p[2]) != horizon_client_lib::blocks::Fluid::Water).then_some(p)
+                })
             }
             other => self.best_of_ten(|s| s.candidate(other)),
         }

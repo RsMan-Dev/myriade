@@ -111,3 +111,33 @@ kernel-collisions d0a22a9c3a (426dbeb571)|zone near ring (cow, 6, 10)|ecs|5063.4
 kernel-collisions d0a22a9c3a (426dbeb571)|zone far ring (cow, 6, 10)|ecs|-0.9|0.2
 kernel-collisions d0a22a9c3a (426dbeb571)|items at rest (slope per stack, 500 to 2000)|ecs|28|27
 kernel-collisions d0a22a9c3a (426dbeb571)|schedule at rest (empty world, per tick)|ecs|124602|125418
+kernel 4a91e97207 delta (bee)|cow idle|ecs|2149|2144
+kernel 4a91e97207 delta (bee)|cow idle|ecs-eager|2505|2500
+kernel 4a91e97207 delta (bee)|cow active(1000 players, no solicitation)|ecs|9966|9956
+kernel 4a91e97207 delta (bee)|cow active(1000 players, no solicitation)|ecs-eager|9865|9856
+kernel 4a91e97207 delta (bee)|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19808|19796
+kernel 4a91e97207 delta (bee)|pig idle|ecs|324|323
+kernel 4a91e97207 delta (bee)|pig idle|ecs-eager|503|502
+kernel 4a91e97207 delta (bee)|pig active(1000 players, no solicitation)|ecs|8415|8402
+kernel 4a91e97207 delta (bee)|pig active(1000 players, no solicitation)|ecs-eager|8277|8265
+kernel 4a91e97207 delta (bee)|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|17987|17971
+kernel 4a91e97207 delta (bee)|sheep idle|ecs|999|995
+kernel 4a91e97207 delta (bee)|sheep idle|ecs-eager|1176|1172
+kernel 4a91e97207 delta (bee)|sheep active(1000 players, no solicitation)|ecs|9578|9566
+kernel 4a91e97207 delta (bee)|sheep active(1000 players, no solicitation)|ecs-eager|9444|9433
+kernel 4a91e97207 delta (bee)|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|19183|19168
+kernel 4a91e97207 delta (bee)|chicken idle|ecs-eager|213|212
+kernel 4a91e97207 delta (bee)|chicken active(1000 players, no solicitation)|ecs|5422|5414
+kernel 4a91e97207 delta (bee)|chicken active(1000 players, no solicitation)|ecs-eager|5298|5290
+kernel 4a91e97207 delta (bee)|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|12237|12220
+kernel 4a91e97207 delta (bee)|zombie active(1000 players, no solicitation)|ecs|14004|13994
+kernel 4a91e97207 delta (bee)|zombie active(1000 players, no solicitation)|ecs-eager|13952|13940
+kernel 4a91e97207 delta (bee)|zombie chase clear (1024, spacing 6, 1024 players)|ecs|6386|6353
+kernel 4a91e97207 delta (bee)|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|9290|9253
+kernel 4a91e97207 delta (bee)|crowd 0.5 (cow, 2000, 0 player)|batch|13240|13238
+kernel 4a91e97207 delta (bee)|crowd 0.5 (cow, 2000, 0 player)|ordered|25641|25699
+kernel 4a91e97207 delta (bee)|crowd 0.8 (cow, 2000, 0 player)|batch|11948|11944
+kernel 4a91e97207 delta (bee)|crowd 0.8 (cow, 2000, 0 player)|ordered|19789|19843
+kernel 4a91e97207 delta (bee)|zone near ring (cow, 6, 10)|ecs|5077.4|5073.0
+kernel 4a91e97207 delta (bee)|zone far ring (cow, 6, 10)|ecs|0.2|1.2
+kernel 4a91e97207 delta (bee)|schedule at rest (empty world, per tick)|ecs|125418|125389

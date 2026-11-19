@@ -68,6 +68,13 @@ fn armadillo_idle(w: &World, e: Entity) -> bool {
 fn neutral_angry(w: &World, e: Entity) -> bool {
     crate::behaviours::neutral_anger::is_angry(w, e)
 }
+/// `bee:calm` (`BaseBeeGoal`): not angry. `bee:can_target` (`Bee.canTarget`): angry and not yet stung.
+fn bee_calm(w: &World, e: Entity) -> bool {
+    !crate::behaviours::neutral_anger::is_angry(w, e)
+}
+fn bee_can_target(w: &World, e: Entity) -> bool {
+    crate::behaviours::neutral_anger::is_angry(w, e) && !w.get::<crate::behaviours::bee::Bee>(e).is_some_and(|b| b.stung)
+}
 /// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`. The ECS has no coats yet: no animal is one (DOUTE: a coat component).
 fn rabbit_killer(_: &World, _: Entity) -> bool {
     false
@@ -92,5 +99,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("panda:avoids", panda_avoids),
     ("armadillo:idle", armadillo_idle),
     ("neutral:angry", neutral_angry),
+    ("bee:calm", bee_calm),
+    ("bee:can_target", bee_can_target),
     ("rabbit:killer", rabbit_killer),
 ];
