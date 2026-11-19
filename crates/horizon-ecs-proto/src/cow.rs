@@ -2423,7 +2423,7 @@ pub(crate) fn block_changes(
         unsafe {
             let world = &mut *level.blocks.0;
             let _ = world.set(x, y, z, state);
-            level.occ.invalidate([x >> 4, y >> 4, z >> 4]);
+            level.occ.changed(&*world, level.mw.0.collision, x, y, z);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
             // The real light engine: the sky above a column changed with the block.
             horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);

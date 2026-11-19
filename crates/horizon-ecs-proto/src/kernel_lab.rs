@@ -76,8 +76,8 @@ fn insert_chunks(w: &mut horizon_client_render::world::World, c0: i32, c1: i32) 
 
 /// Bench world: a stone floor at y = 0 over x, z in [-48, 48), a wall x = 20 (y 1..=3) and, for x in [24, 44),
 /// z in [-20, 20), a field of random non-cubic blocks at y = 1 (and some at y = 2).
-pub fn bench_world() -> &'static MobWorld<'static> {
-    leaked(|w, registry| {
+pub fn bench_world_mut() -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -3, 3);
         let stone = registry.default_state("minecraft:stone").unwrap();
         let states = varied_states(registry);
@@ -107,13 +107,19 @@ pub fn bench_world() -> &'static MobWorld<'static> {
             }
         }
     })
+    .expect("HORIZON_TEST_RESOURCES");
+    (w, p)
+}
+
+pub fn bench_world() -> &'static MobWorld<'static> {
+    bench_world_mut().0
 }
 
 pub fn cow_box(x: f64, y: f64, z: f64) -> Aabb {
     Aabb::new(Vec3::new(x - 0.45, y, z - 0.45), Vec3::new(x + 0.45, y + 1.4, z + 0.45))
 }
 
-pub const CASES: [&str; 6] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air"];
+pub const CASES: [&str; 7] = ["a-rest", "b-walk", "c-wall", "d-fall", "e-furniture", "f-air", "g-churn"];
 
 /// The calls of one cow case (a few hundred, cycled by the bench).
 pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
@@ -127,6 +133,7 @@ pub fn case_calls(case: &str, n: usize) -> Vec<Call> {
                 "a-rest" => (cow_box(x, 1.0, z), Vec3::new(0.0, g, 0.0), true),
                 "b-walk" => (cow_box(x, 1.0, z), walk, true),
                 "c-wall" => (cow_box(19.0 - 0.45 - r.range(0.0, 0.3), 1.0, z), Vec3::new(0.12, g, r.range(-0.05, 0.05)), true),
+                "g-churn" => (cow_box(r.range(-15.5, -0.5), 1.0, r.range(0.5, 15.5)), walk, true),
                 "f-air" => (cow_box(x, r.range(40.0, 60.0), z), Vec3::new(r.range(-0.3, 0.3), r.range(-0.3, 0.3), r.range(-0.3, 0.3)), false),
                 "d-fall" => (cow_box(x, r.range(5.0, 30.0), z), Vec3::new(0.0, r.range(-1.2, -0.1), 0.0), false),
                 _ => (cow_box(r.range(24.0, 44.0), 1.0, r.range(-20.0, 20.0)), walk, true),
@@ -343,5 +350,16 @@ pub unsafe fn change_block(world: &MobWorld<'_>, ptr: *mut horizon_client_render
     unsafe {
         let _ = (*ptr).set(x, y, z, state);
     }
-    occupancy_of(world).invalidate([x >> 4, y >> 4, z >> 4]);
+    occupancy_of(world).changed(world.world, world.collision, x, y, z);
+}
+
+/// [`run`] and [`run_reference`] for a body that walks on lava (`subject`: the kernel's contextual liquid shapes apply).
+pub fn run_lava_walker(world: &MobWorld<'_>, c: &Call, reference: bool) -> Result<Vec3, String> {
+    let subject = Some(horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
+    let scene = SceneCollisions { world: world.world, binding: world.collision, subject };
+    if reference {
+        scene.resolve_in_border_with_reference(c.bounds, c.movement, c.step, c.on_ground, None, &[]).map_err(|e| e.to_string())
+    } else {
+        occupancy_of(world).resolve(scene, c.bounds, c.movement, c.step, c.on_ground).map_err(|e| e.to_string())
+    }
 }
