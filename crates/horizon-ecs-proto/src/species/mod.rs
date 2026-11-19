@@ -604,7 +604,7 @@ mod tests {
         ("minecraft:axolotl", &[]),
         ("minecraft:drowned", &[("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
-        ("minecraft:frog", &[("long_jump", 3)]),
+        ("minecraft:frog", &[("long_jump", 3), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8), ("look_at_player", 9)]),

@@ -294,6 +294,8 @@ pub enum Cause {
     Freeze,
     Fall,
     Drown,
+    /// `Entity.checkBelowWorld`: 4 a tick under the world (`DamageTypes.OUT_OF_WORLD`).
+    OutOfWorld,
     InWall,
     /// `cramming`: too many entities in one place (`LivingEntity.pushEntities`); not a panic cause, no knockback.
     Cramming,
@@ -799,6 +801,22 @@ fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SpeciesId(pub u8);
+/// A set of species by `SpeciesId`: 256 bits, one per value of the id (no species is left out of a set).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpeciesSet([u64; 4]);
+impl SpeciesSet {
+    pub const EMPTY: Self = Self([0; 4]);
+    pub fn with(mut self, id: usize) -> Self {
+        self.0[id >> 6 & 3] |= 1 << (id & 63);
+        self
+    }
+    pub fn has(&self, id: u8) -> bool {
+        self.0[usize::from(id) >> 6] >> (id & 63) & 1 == 1
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0 == [0; 4]
+    }
+}
 /// The data of every species of the world, by `SpeciesId`: what a system needs of a species it reads here, per entity.
 #[derive(Resource, Clone)]
 pub struct SpeciesTable(pub Vec<Species>);
@@ -2104,6 +2122,7 @@ pub(crate) fn travel(
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
+    let void_y = f64::from(level.mw.0.world.bottom_y() - 64);
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
@@ -2130,6 +2149,19 @@ pub(crate) fn travel(
         if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
+            });
+        }
+        // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
+        if p.0.y < void_y {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| {
+                    // An experience orb is not alive: it is discarded (`Entity.checkBelowWorld`), a creature is hurt.
+                    if w.get::<crate::orb::Orb>(e).is_some() {
+                        w.despawn(e);
+                    } else {
+                        w.resource_mut::<DamageQueue>().add(e, 4.0, Cause::OutOfWorld);
+                    }
+                });
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
@@ -3592,7 +3624,8 @@ mod tests {
         }
         // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
         // (A hen's glide cuts her sinking speed in water too; whether she drowns as a `Mob` hen does was not compared.)
-        if species().eye_height <= 1.4 && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
+        // (An amphibian or an aquatic animal does not drown, as in the `Mob`: `breathes_water`, the frog, the axolotl, the fish.)
+        if species().eye_height <= 1.4 && !species().breathes_water && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
             assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
         }
         assert!(health(&herd, wall).is_none(), "the cow in the wall lives");
@@ -3975,8 +4008,17 @@ mod tests {
         }
         let now: Vec<Vec3> = herd.world.query::<&Pos>().iter(&herd.world).map(|p| p.0).collect();
         let travelled = start.iter().zip(&now).filter(|(a, b)| (a.x - b.x).abs() + (a.z - b.z).abs() > 3.0).count();
-        for p in &now {
-            assert!(p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2, "{p:?}");
+        // The wall of the slab holds the walkers. An animal that leaps (the goat up to 5 blocks, the frog 2) can go over it, as in the `Mob` (a leap
+        // lands on any block with a solid one below it); what it may not do is stay under the world: there it is hurt 4 a tick and dies
+        // (`Cause::OutOfWorld`), so no creature is left below it. The other species stay on the slab, on its ground.
+        let void_y = f64::from(herd.world.resource::<Level>().mw.0.world.bottom_y() - 64);
+        let rows: Vec<(Vec3, bool)> = herd.world.query::<(&Pos, Has<crate::behaviours::long_jump::LongJumpState>)>().iter(&herd.world).map(|(p, l)| (p.0, l)).collect();
+        for (p, leaps) in rows {
+            if leaps {
+                assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite() && p.y >= void_y, "a leaper under the world is still there: {p:?}");
+            } else {
+                assert!(p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2, "{p:?}");
+            }
         }
         assert!(travelled > 100, "only {travelled} cows travelled more than 3 blocks");
         assert!(max_asleep > 30 && min_asleep < 300, "{min_asleep}..{max_asleep} asleep of 300");
@@ -3985,7 +4027,14 @@ mod tests {
         for _ in 0..400 {
             herd.tick();
         }
-        assert!(herd.counts().0 >= 295, "{} asleep after the player left", herd.counts().0);
+        // On the slab (a leaper that went over the wall is where its leap took it, not on the ground of the test: it is left out of both counts).
+        let on_slab = |herd: &mut Herd| -> (usize, usize) {
+            let rows: Vec<(Vec3, bool, bool)> = herd.world.query::<(&Pos, Has<Moving>, Has<Following>)>().iter(&herd.world).map(|(p, m, f)| (p.0, m, f)).collect();
+            let here: Vec<&(Vec3, bool, bool)> = rows.iter().filter(|(p, _, _)| p.x.abs() < half && p.z.abs() < half && p.y > 0.99 && p.y < 1.2).collect();
+            (here.iter().filter(|(_, m, f)| !m && !f).count(), here.len())
+        };
+        let (idle, here) = on_slab(&mut herd);
+        assert!(idle * 300 >= here * 295, "{idle} of {here} on the slab asleep after the player left");
         // And the player comes back: the cows around it wake.
         herd.set_players(vec![(0.0, 0.0)]);
         let mut least = 300;
