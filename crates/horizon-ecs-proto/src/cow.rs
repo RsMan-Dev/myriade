@@ -630,6 +630,8 @@ impl Wheel {
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
+/// The widening of a slot's extent (blocks): covers the `f32` rounding of the relative extent.
+const SLOT_MARGIN: f64 = 1e-3;
 /// The side of a block of columns of the index, in columns.
 const BLOCK: usize = 8;
 /// `BLOCK` as a signed column count.
@@ -641,6 +643,10 @@ pub struct Index {
     pub(crate) origin: f64,
     pub(crate) width: usize,
     pub(crate) cells: Vec<Vec<Entity>>,
+    /// Parallel to `cells`: the XZ extent of each entity's box (min x, max x, min z, max z) relative to the column's corner, widened by `SLOT_MARGIN`,
+    /// as `f32` (16 bytes per entity): `push` skips the neighbours whose extent does not touch its own without an ECS lookup. An entity whose box
+    /// `reindex` has not seen yet holds an infinite extent (always a candidate).
+    slots: Vec<Vec<[f32; 4]>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
     pub(crate) crossed: Vec<(Entity, u32)>,
@@ -672,7 +678,7 @@ struct Watch {
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK), watch: Default::default(), watching: Vec::new() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], slots: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK), watch: Default::default(), watching: Vec::new() }
     }
     #[inline]
     fn bucket_of(&self, cell: u32) -> (usize, usize) {
@@ -751,6 +757,7 @@ impl Index {
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
         self.cells[cell as usize].push(e);
+        self.slots[cell as usize].push([f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY]);
         let (b, bit) = self.block_of(cell);
         self.blocks[b] |= bit;
     }
@@ -763,6 +770,7 @@ impl Index {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+            self.slots[cell as usize].swap_remove(i);
             let emptied = list.is_empty();
             if emptied {
                 let (b, bit) = self.block_of(cell);
@@ -846,6 +854,38 @@ impl Index {
         }
     }
     /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
+    /// Records the XZ extent of the box of `e`, which is in `cell` (see `slots`).
+    pub(crate) fn set_box(&mut self, e: Entity, cell: u32, mn: (f64, f64), mx: (f64, f64)) {
+        let Some(i) = self.cells[cell as usize].iter().rposition(|&o| o == e) else { return };
+        let (x0, z0) = self.corner(cell);
+        self.slots[cell as usize][i] = [(mn.0 - x0 - SLOT_MARGIN) as f32, (mx.0 - x0 + SLOT_MARGIN) as f32, (mn.1 - z0 - SLOT_MARGIN) as f32, (mx.1 - z0 + SLOT_MARGIN) as f32];
+    }
+    #[inline]
+    fn corner(&self, cell: u32) -> (f64, f64) {
+        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
+        (self.origin + cx as f64 * CELL, self.origin + cz as f64 * CELL)
+    }
+    /// `for_near` for the entities whose box may touch the XZ extent `mn..mx` (a superset: the caller tests the real boxes).
+    pub fn for_near_touching(&self, x: f64, z: f64, mn: (f64, f64), mx: (f64, f64), mut f: impl FnMut(Entity)) {
+        let (cx, cz) = (self.column(x), self.column(z));
+        let w = self.width as i64;
+        for zz in (cz - 1).max(0)..=(cz + 1).min(w - 1) {
+            for xx in (cx - 1).max(0)..=(cx + 1).min(w - 1) {
+                let c = (zz * w + xx) as usize;
+                let list = &self.cells[c];
+                if list.is_empty() {
+                    continue;
+                }
+                let (x0, z0) = self.corner(c as u32);
+                let (ax, bx, az, bz) = ((mn.0 - x0) as f32, (mx.0 - x0) as f32, (mn.1 - z0) as f32, (mx.1 - z0) as f32);
+                for (&e, s) in list.iter().zip(&self.slots[c]) {
+                    if s[1] >= ax && s[0] <= bx && s[3] >= az && s[2] <= bz {
+                        f(e);
+                    }
+                }
+            }
+        }
+    }
     pub fn for_near(&self, x: f64, z: f64, mut f: impl FnMut(Entity)) {
         let (cx, cz) = (self.column(x), self.column(z));
         let w = self.width as i64;
@@ -2452,6 +2492,7 @@ pub(crate) fn reindex(
             moves.0.push(e);
             idx.crossed.push((e, cell));
         }
+        idx.set_box(e, cell, (mn.x, mn.z), (mx.x, mx.z));
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
         if fluid && !in_fluid {
@@ -2851,12 +2892,15 @@ fn push(
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         let mut dv = (0.0_f64, 0.0_f64);
         let mut overlapping = 0;
-        idx.for_near(cx, cz, |o| {
+        // An object (an item on the ground) neither pushes nor is pushed: it scans nothing.
+        let e_object = is_object(e);
+        if !e_object {
+        idx.for_near_touching(cx, cz, (mn.x, mn.z), (mx.x, mx.z), |o| {
             if o == e {
                 return;
             }
             let Ok((ob, asleep)) = boxes.get(o) else { return };
-            if !b.0.intersects(ob.0) || is_object(o) || is_object(e) {
+            if !b.0.intersects(ob.0) || is_object(o) {
                 return;
             }
             overlapping += 1;
@@ -2903,6 +2947,7 @@ fn push(
                 });
             }
         });
+        }
         if cfg.keep_touching {
             if overlapping > 0 {
                 par.command_scope(e, |mut cmd| {
