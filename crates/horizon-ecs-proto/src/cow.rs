@@ -439,6 +439,11 @@ const WHEEL: usize = 4096;
 #[derive(Resource)]
 pub struct Wheel {
     slots: Vec<Vec<(Entity, Due)>>,
+    /// What is due further than the wheel's horizon (`WHEEL` ticks): by tick, moved into the slots when it comes within the
+    /// horizon. A deadline of ANY length can be pushed: no caller knows the width of the wheel.
+    far: std::collections::BTreeMap<u64, Vec<(Entity, Due)>>,
+    /// The tick the wheel is at (set by `advance`, each tick, before the slot is read).
+    now: u64,
     /// With the simulation zone on (`zone.rs`): what each entity has in the wheel (by entity index), so that a creature
     /// that leaves the zone takes its entries out without a scan of the wheel.
     track: bool,
@@ -446,12 +451,27 @@ pub struct Wheel {
 }
 impl Default for Wheel {
     fn default() -> Self {
-        Self { slots: vec![Vec::new(); WHEEL], track: false, owned: Vec::new() }
+        Self { slots: vec![Vec::new(); WHEEL], far: Default::default(), now: 0, track: false, owned: Vec::new() }
     }
 }
 impl Wheel {
+    /// The wheel is at tick `now`: what has come within its horizon leaves the far list for its slot (called by `due`).
+    pub(crate) fn advance(&mut self, now: u64) {
+        self.now = now;
+        while let Some(entry) = self.far.first_entry() {
+            if *entry.key() >= now + WHEEL as u64 {
+                break;
+            }
+            let (at, list) = entry.remove_entry();
+            self.slots[(at % WHEEL as u64) as usize].extend(list);
+        }
+    }
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
-        self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        if at >= self.now + WHEEL as u64 {
+            self.far.entry(at).or_default().push((e, d));
+        } else {
+            self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        }
         if self.track {
             self.own(e, at, d);
         }
@@ -493,7 +513,7 @@ impl Wheel {
         list.retain(|o| o.0 != e);
         let mut out = Vec::with_capacity(mine.len());
         for (_, at, d) in mine {
-            let slot = &mut self.slots[(at % WHEEL as u64) as usize];
+            let slot = if at >= self.now + WHEEL as u64 { self.far.entry(at).or_default() } else { &mut self.slots[(at % WHEEL as u64) as usize] };
             if let Some(i) = slot.iter().position(|o| o.0 == e && o.1 == d) {
                 slot.swap_remove(i);
                 out.push((at, d));
@@ -507,7 +527,7 @@ impl Wheel {
     }
     /// How many entries the wheel holds in all.
     pub fn len(&self) -> usize {
-        self.slots.iter().map(Vec::len).sum()
+        self.slots.iter().map(Vec::len).sum::<usize>() + self.far.values().map(Vec::len).sum::<usize>()
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -1100,7 +1120,7 @@ pub fn schedule() -> Schedule {
 pub(crate) fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
     let now = clock.of(e);
     let at = now + idle_wait(r, s.interval).max(1) as u64;
-    wheel.push(clock.at(e, at.min(now + WHEEL as u64 - 1)), e, Due::Stroll);
+    wheel.push(clock.at(e, at), e, Due::Stroll);
     s.scheduled = true;
 }
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
@@ -1907,10 +1927,12 @@ pub(crate) fn reindex(
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState, Option<&crate::locomotion::Modes>), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
+    // Read only when the entity enters or leaves a fluid (rare): not part of the query that runs over every moved entity.
+    all_modes: Query<&crate::locomotion::Modes>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz, in_fluid, mut fs, modes) in &mut q {
+    for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -1929,13 +1951,13 @@ pub(crate) fn reindex(
             commands.entity(e).insert((InFluid, Moving));
             events.entered_fluid.push(e);
             // The mode of the water, if the entity has one, becomes the active one: an event, not a test each tick.
-            if let Some(m) = modes {
+            if let Ok(m) = all_modes.get(e) {
                 crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0);
             }
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             events.left_fluid.push(e);
-            if let Some(m) = modes {
+            if let Ok(m) = all_modes.get(e) {
                 crate::locomotion::fluid_changed(&mut commands, e, m, false);
             }
             *fs = FluidState::default();
@@ -2696,6 +2718,7 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    wheel.advance(clock.0);
     for id in std::mem::take(&mut players.gaze_dirty) {
         events.gaze_changed.push(id);
     }
@@ -2722,7 +2745,7 @@ pub(crate) fn due(
                     let now = clock.of(e);
                     if now < burning.until {
                         queue.add(e2, 1.0, Cause::OnFire);
-                        wheel.push(clock.at(e, (now + 20).min(now + WHEEL as u64 - 1)), e, Due::Burn);
+                        wheel.push(clock.at(e, now + 20), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
                         events.extinguished.push(e);
@@ -2734,7 +2757,7 @@ pub(crate) fn due(
                     let now = clock.of(e);
                     if g.0 > now {
                         // A wait longer than the wheel is put back (a calf grows in 24 000 ticks).
-                        wheel.push(clock.at(e, g.0.min(now + WHEEL as u64 - 1)), e, Due::Grow);
+                        wheel.push(clock.at(e, g.0), e, Due::Grow);
                     } else if g.0 == now {
                         b.width = sizes.adult.0;
                         b.height = sizes.adult.1;
@@ -2808,7 +2831,7 @@ impl Herd {
             let ids: Vec<Entity> = world.query_filtered::<Entity, With<Stroll>>().iter(&world).collect();
             for e in ids {
                 let at = 1 + idle_wait(&mut arm, 60).max(0) as u64;
-                world.resource_mut::<Wheel>().push(at.min(WHEEL as u64 - 1), e, Due::Stroll);
+                world.resource_mut::<Wheel>().push(at, e, Due::Stroll);
                 world.get_mut::<Stroll>(e).unwrap().scheduled = true;
             }
         }
@@ -2831,7 +2854,7 @@ impl Herd {
         for &e in &out {
             let now = now_of(&self.world, e);
             let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
-            arm_at(&mut self.world, e, at.min(now + WHEEL as u64 - 1), Due::Stroll);
+            arm_at(&mut self.world, e, at, Due::Stroll);
             self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
         }
         crate::goals::arm_all(&mut self.world);
@@ -2966,6 +2989,26 @@ impl Herd {
 
 #[cfg(test)]
 mod tests {
+    /// A deadline of ANY length lands on its exact tick: the wheel keeps what is beyond its horizon and brings it in by itself.
+    #[test]
+    fn a_wait_of_ten_thousand_ticks_falls_at_the_exact_tick() {
+        let mut w = Wheel::default();
+        let e = Entity::from_raw_u32(7).unwrap();
+        for at in [5_u64, 4095, 4096, 4097, 8192, 10_000, 20_000] {
+            w.push(at, e, Due::Burn);
+        }
+        let mut fired = Vec::new();
+        for t in 1..=20_001_u64 {
+            w.advance(t);
+            let n = w.due_len(t);
+            for _ in 0..n {
+                fired.push(t);
+            }
+            w.slots[(t % WHEEL as u64) as usize].clear();
+        }
+        assert_eq!(fired, vec![5, 4095, 4096, 4097, 8192, 10_000, 20_000]);
+        assert!(w.far.is_empty());
+    }
     use super::*;
 
     /// Two cows standing in each other are pushed apart; a sleeping cow they overlap is woken; a baby grows up.

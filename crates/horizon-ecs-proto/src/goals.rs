@@ -37,7 +37,7 @@ pub struct GoalSlot(pub u8);
 /// slot bitmasks (16 goals at most); `lock[b]` is the slot holding flag `b`. A pending goal is blocked by a lock and
 /// starts when it frees. Resolved once at creation: nothing is looked up by name afterwards.
 #[derive(Component, Clone)]
-#[component(on_add = goalset_added)]
+#[component(on_add = goalset_added, on_remove = goalset_removed)]
 pub struct GoalSet {
     entries: &'static [Entry],
     nth: [u8; 16],
@@ -496,13 +496,36 @@ fn equip_goals(w: &mut World, e: Entity) {
     }
 }
 
+/// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
+/// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
+#[derive(Resource, Default)]
+pub struct Carriers(pub Vec<u32>);
+pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries: &[Entry], delta: i32) {
+    let reg = crate::species::registry();
+    let Some(mut c) = world.get_resource_mut::<Carriers>() else { return };
+    for en in entries {
+        if let Some(i) = reg.module_id(en.module)
+            && let Some(n) = c.0.get_mut(i)
+        {
+            *n = n.saturating_add_signed(delta);
+        }
+    }
+}
+fn goalset_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(entries) = world.get::<GoalSet>(ctx.entity).map(|g| g.entries) else { return };
+    count_carriers(&mut world, entries, -1);
+}
 fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
+    if let Some(entries) = world.get::<GoalSet>(e).map(|g| g.entries) {
+        count_carriers(&mut world, entries, 1);
+    }
     world.commands().queue(move |w: &mut World| equip_goals(w, e));
 }
 
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
+    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()]));
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
@@ -538,6 +561,8 @@ pub fn register(s: &mut Schedule) {
         // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
         if crate::species::registry().carried(i) {
             (modules[i].systems)(s, slot);
+            // Registered but nobody alive carries it: the whole set is skipped (one test per tick).
+            s.configure_sets(slot.run_if(move |c: Res<Carriers>| c.0.get(i).is_some_and(|n| *n > 0)));
         }
     }
 }
@@ -636,7 +661,7 @@ pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> 
 /// Arms a deadline of the goal of this slot, `wait` ticks from now.
 pub(crate) fn arm(w: &mut World, e: Entity, slot: u8, wait: i32) {
     let now = crate::cow::now_of(w, e);
-    crate::cow::arm_at(w, e, (now + wait.max(1) as u64).min(now + WHEEL_MAX), Due::Goal(slot));
+    crate::cow::arm_at(w, e, now + wait.max(1) as u64, Due::Goal(slot));
 }
 /// The rank of the module's (first) entry in the animal's selector.
 pub fn slot_of(w: &World, e: Entity, m: &'static Module) -> Option<u8> {

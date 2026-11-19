@@ -198,7 +198,7 @@ pub fn fly(
                     let at = [bpos.x, bpos.y, bpos.z];
                     // Its life is counted in its own time (a projectile in a chunk nobody simulates does not age).
                     p.expires = clock.of(e) + LIFE;
-                    wheel.push(clock.at(e, p.expires).min(clock.0 + 4095), e, Due::Expire);
+                    wheel.push(clock.at(e, p.expires), e, Due::Expire);
                     stuck.at.entry(at).or_default().push(e);
                     commands.entity(e).remove::<Flying>().insert(Stuck { block: at });
                 } else {
@@ -225,7 +225,7 @@ pub fn expire(w: &mut World, e: Entity) {
     let Some(p) = w.get::<Projectile>(e).copied() else { return };
     let Some(s) = w.get::<Stuck>(e).copied() else { return };
     if now < p.expires {
-        let at = w.resource::<Clock>().at(e, p.expires).min(world_now + 4095);
+        let at = w.resource::<Clock>().at(e, p.expires);
         w.resource_mut::<Wheel>().push(at, e, Due::Expire);
         return;
     }

@@ -83,7 +83,7 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     world.entity_mut(e).insert(GrowAt(now + ticks));
     world.resource_mut::<Babies>().0.push(e);
     wake(world, e, &MODULE);
-    crate::cow::arm_at(world, e, (now + ticks).min(now + WHEEL_MAX), Due::Grow);
+    crate::cow::arm_at(world, e, now + ticks, Due::Grow);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
