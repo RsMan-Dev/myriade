@@ -51,7 +51,7 @@ pub struct Charging;
 
 /// `VexChargeAttackGoal`: a target alive, nothing wanted, one chance in 7 per ask, farther than 2 blocks: fly straight at its eyes; the
 /// charge ends at the first contact (a strike) or when the point is reached.
-pub static VEX_CHARGE: Module = Module { name: "vex_charge", flags: MOVE, arm: arm_vex_charge, fired: charge_fired, can_use: charge_can_use, start: charge_start, stop: charge_stop, systems: charge_systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static VEX_CHARGE: Module = Module { name: "vex_charge", flags: MOVE, arm: arm_vex_charge, fired: charge_fired, can_use: charge_can_use, start: charge_start, stop: charge_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn arm_vex_charge(w: &mut World, e: Entity, _: Inst) {
     let wait = with_rng(w, e, |r| idle_wait(r, reduced(7) * 2));
     arm_module(w, e, &VEX_CHARGE, wait.max(2));
@@ -81,23 +81,19 @@ fn charge_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Charging>();
     arm_vex_charge(w, e, Inst { slot: 0, nth: 0 });
 }
-fn charge_systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(charge_tick.in_set(slot));
-}
-fn charge_tick(q: Query<Entity, With<Charging>>, mut cmd: Commands) {
-    for e in &q {
-        cmd.queue(move |w: &mut World| {
-            let Some((who, t)) = target_of(w, e) else { return end(w, e, &VEX_CHARGE) };
-            let (Some(b), Some(p)) = (w.get::<Bounds>(e).map(|b| b.0), w.get::<Pos>(e).map(|p| p.0)) else { return };
-            if b.intersects(t.bounds) {
-                hit(w, e, who);
-                end(w, e, &VEX_CHARGE);
-            } else if !wanted_active(w, e) {
-                end(w, e, &VEX_CHARGE);
-            } else if (t.pos.x - p.x).powi(2) + (t.pos.y - p.y).powi(2) + (t.pos.z - p.z).powi(2) < 9.0 {
-                crate::locomotion::fly::steer_to(w, e, [t.pos.x, t.eye, t.pos.z], 1.0);
-            }
-        });
+fn charge_tick(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Charging>>().iter(w).collect();
+    for e in es {
+        let Some((who, t)) = target_of(w, e) else { end(w, e, &VEX_CHARGE); continue };
+        let (Some(b), Some(p)) = (w.get::<Bounds>(e).map(|b| b.0), w.get::<Pos>(e).map(|p| p.0)) else { continue };
+        if b.intersects(t.bounds) {
+            hit(w, e, who);
+            end(w, e, &VEX_CHARGE);
+        } else if !wanted_active(w, e) {
+            end(w, e, &VEX_CHARGE);
+        } else if (t.pos.x - p.x).powi(2) + (t.pos.y - p.y).powi(2) + (t.pos.z - p.z).powi(2) < 9.0 {
+            crate::locomotion::fly::steer_to(w, e, [t.pos.x, t.eye, t.pos.z], 1.0);
+        }
     }
 }
 
@@ -136,28 +132,21 @@ fn random_stop(w: &mut World, e: Entity, i: Inst) {
 
 /// `VexCopyOwnerTargetGoal` (flag TARGET): when the owner (a creature, `tame::Owner`) gets a target that is not the vex and is alive, the vex
 /// takes it. By EVENT: the target the owner just got (`Events.target_acquired`).
-pub static VEX_COPY_OWNER_TARGET: Module = Module { name: "vex_copy_owner_target", flags: TARGET, systems: copy_systems, requires: &[Cap::Targets], ..Module::DEFAULT };
-fn copy_systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(copy_owner_target.in_set(slot));
-}
-#[allow(clippy::type_complexity)]
-fn copy_owner_target(ev: Res<Events>, vexes: Query<(Entity, &crate::tame::Owner, &GoalSet, Has<Target>)>, owners: Query<&Target>, mut cmd: Commands) {
-    if ev.target_acquired.is_empty() {
-        return;
-    }
-    for o in ev.target_acquired.iter() {
-        let Ok(t) = owners.get(o) else { continue };
-        for (e, owner, g, has) in &vexes {
-            if owner.0 != Some(Who::Entity(o)) || has || t.who == Who::Entity(e) {
-                continue;
+pub static VEX_COPY_OWNER_TARGET: Module = Module { name: "vex_copy_owner_target", flags: TARGET, requires: &[Cap::Targets], ..Module::DEFAULT };
+fn copy_owner_target(w: &mut World) {
+    let acquired: Vec<Entity> = w.resource::<Events>().target_acquired.iter().collect();
+    for o in acquired {
+        let Some(t) = w.get::<Target>(o).copied() else { continue };
+        let vexes: Vec<(Entity, u8)> = w
+            .query::<(Entity, &crate::tame::Owner, &GoalSet, Has<Target>)>()
+            .iter(w)
+            .filter(|(e, owner, _, has)| owner.0 == Some(Who::Entity(o)) && !has && t.who != Who::Entity(*e))
+            .filter_map(|(e, _, g, _)| g.slot_of(&VEX_COPY_OWNER_TARGET).map(|s| (e, s)))
+            .collect();
+        for (e, slot) in vexes {
+            if targeting::info(w, t.who).is_some_and(|i| !i.exempt) {
+                targeting::set_target(w, e, Target::new(t.who, 0, slot));
             }
-            let Some(slot) = g.slot_of(&VEX_COPY_OWNER_TARGET) else { continue };
-            let who = t.who;
-            cmd.queue(move |w: &mut World| {
-                if targeting::info(w, who).is_some_and(|i| !i.exempt) {
-                    targeting::set_target(w, e, Target::new(who, 0, slot));
-                }
-            });
         }
     }
 }
@@ -257,7 +246,7 @@ fn set_diving(w: &mut World, e: Entity, on: bool) {
 
 /// `PhantomAttackStrategyGoal` (no flag): with a target, the circle above it, then every 8 to 11 seconds a dive. Started and ended by the
 /// target (events).
-pub static PHANTOM_ATTACK_STRATEGY: Module = Module { name: "phantom_attack_strategy", flags: 0, can_use: strategy_can_use, start: strategy_start, stop: strategy_stop, systems: strategy_systems, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_ATTACK_STRATEGY: Module = Module { name: "phantom_attack_strategy", flags: 0, can_use: strategy_can_use, start: strategy_start, stop: strategy_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
 fn strategy_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     target_of(w, e).is_some()
 }
@@ -273,44 +262,41 @@ fn strategy_stop(w: &mut World, e: Entity, _: Inst) {
         w.entity_mut(e).insert(Anchor([a[0], y, a[2]]));
     }
 }
-fn strategy_systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((strategy_events, strategy_tick).chain().in_set(slot));
-}
-/// A target gained starts the strategy, a target lost ends it (the events, once).
-fn strategy_events(ev: Res<Events>, q: Query<(&GoalSet, Has<Strategy>)>, mut reqs: ResMut<Requests>) {
-    if ev.target_acquired.is_empty() && ev.target_lost.is_empty() {
-        return;
-    }
-    for e in ev.target_acquired.iter() {
-        if let Ok((g, false)) = q.get(e) && let Some(s) = g.slot_of(&PHANTOM_ATTACK_STRATEGY) {
-            reqs.0.push(Req::Start(e, s));
+/// A target gained starts the strategy, a target lost ends it (the events, once); the countdown to the dive.
+fn strategy_tick(w: &mut World) {
+    let (got, lost): (Vec<Entity>, Vec<Entity>) = {
+        let ev = w.resource::<Events>();
+        (ev.target_acquired.iter().collect(), ev.target_lost.iter().collect())
+    };
+    for e in got {
+        if w.get::<Strategy>(e).is_none() && let Some(s) = w.get::<GoalSet>(e).and_then(|g| g.slot_of(&PHANTOM_ATTACK_STRATEGY)) {
+            w.resource_mut::<Requests>().0.push(Req::Start(e, s));
         }
     }
-    for e in ev.target_lost.iter() {
-        if let Ok((g, true)) = q.get(e) && let Some(s) = g.slot_of(&PHANTOM_ATTACK_STRATEGY) {
-            reqs.0.push(Req::End(e, s));
+    for e in lost {
+        if w.get::<Strategy>(e).is_some() && let Some(s) = w.get::<GoalSet>(e).and_then(|g| g.slot_of(&PHANTOM_ATTACK_STRATEGY)) {
+            w.resource_mut::<Requests>().0.push(Req::End(e, s));
         }
     }
-}
-fn strategy_tick(mut q: Query<(Entity, &mut Strategy), Without<Diving>>, mut cmd: Commands) {
-    for (e, mut s) in &mut q {
-        s.next_sweep -= 1;
-        if s.next_sweep <= 0 {
-            cmd.queue(move |w: &mut World| {
-                anchor_above_target(w, e);
-                let next = 2 * reduced((8 + with_rng(w, e, |r| r.next_int(4))) * 20);
-                if let Some(mut s) = w.get_mut::<Strategy>(e) {
-                    s.next_sweep = next;
-                }
-                set_diving(w, e, true);
-            });
+    let es: Vec<Entity> = w.query_filtered::<Entity, (With<Strategy>, Without<Diving>)>().iter(w).collect();
+    for e in es {
+        let due = {
+            let mut s = w.get_mut::<Strategy>(e).unwrap();
+            s.next_sweep -= 1;
+            s.next_sweep <= 0
+        };
+        if due {
+            anchor_above_target(w, e);
+            let next = 2 * reduced((8 + with_rng(w, e, |r| r.next_int(4))) * 20);
+            w.get_mut::<Strategy>(e).unwrap().next_sweep = next;
+            set_diving(w, e, true);
         }
     }
 }
 
 /// `PhantomSweepAttackGoal` (MOVE): the dive: the wanted point is the target's middle; a contact ends the dive with a strike; a wall or a
 /// hurt ends it; the goal ends the target.
-pub static PHANTOM_SWEEP_ATTACK: Module = Module { name: "phantom_sweep_attack", flags: MOVE, can_use: sweep_can_use, start: sweep_start, stop: sweep_stop, systems: sweep_systems, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_SWEEP_ATTACK: Module = Module { name: "phantom_sweep_attack", flags: MOVE, can_use: sweep_can_use, start: sweep_start, stop: sweep_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
 fn sweep_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Diving>(e).is_some() && w.get::<Target>(e).is_some()
 }
@@ -326,34 +312,31 @@ fn sweep_stop(w: &mut World, e: Entity, _: Inst) {
         set_diving(w, e, false);
     }
 }
-fn sweep_systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(sweep_tick.in_set(slot));
-}
-fn sweep_tick(q: Query<Entity, With<Sweeping>>, mut cmd: Commands) {
-    for e in &q {
-        cmd.queue(move |w: &mut World| {
-            let Some((who, t)) = target_of(w, e) else { return end(w, e, &PHANTOM_SWEEP_ATTACK) };
-            if w.get::<Diving>(e).is_none() {
-                return end(w, e, &PHANTOM_SWEEP_ATTACK);
-            }
-            let mid = (t.bounds.min_position().y + t.bounds.max_position().y) * 0.5;
-            if let Some(mut m) = w.get_mut::<MoveTo>(e) {
-                *m = MoveTo { active: true, x: t.pos.x, y: mid, z: t.pos.z, speed_modifier: 1.0 };
-            }
-            let reach = w.get::<Bounds>(e).map(|b| b.0.inflate(Vec3::new(0.2, 0.2, 0.2)));
-            if reach.is_some_and(|r| r.intersects(t.bounds)) {
-                hit(w, e, who);
-                set_diving(w, e, false);
-            } else if w.get::<Contact>(e).is_some_and(|c| c.horizontal) {
-                set_diving(w, e, false);
-            }
-        });
+fn sweep_tick(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Sweeping>>().iter(w).collect();
+    for e in es {
+        let Some((who, t)) = target_of(w, e) else { end(w, e, &PHANTOM_SWEEP_ATTACK); continue };
+        if w.get::<Diving>(e).is_none() {
+            end(w, e, &PHANTOM_SWEEP_ATTACK);
+            continue;
+        }
+        let mid = (t.bounds.min_position().y + t.bounds.max_position().y) * 0.5;
+        if let Some(mut m) = w.get_mut::<MoveTo>(e) {
+            *m = MoveTo { active: true, x: t.pos.x, y: mid, z: t.pos.z, speed_modifier: 1.0 };
+        }
+        let reach = w.get::<Bounds>(e).map(|b| b.0.inflate(Vec3::new(0.2, 0.2, 0.2)));
+        if reach.is_some_and(|r| r.intersects(t.bounds)) {
+            hit(w, e, who);
+            set_diving(w, e, false);
+        } else if w.get::<Contact>(e).is_some_and(|c| c.horizontal) {
+            set_diving(w, e, false);
+        }
     }
 }
 
 /// `PhantomCircleAroundAnchorGoal` (MOVE): without a target or out of the dive, fly round the anchor at a radius of 5 to 15 blocks, 15
 /// degrees a point; the height, the radius and the angle are drawn again by chance (1 in 350, 250, 450 ticks of the goal).
-pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle_around_anchor", flags: MOVE, equip: circle_equip, arm: circle_arm, can_use: circle_can_use, start: circle_start, stop: circle_stop, systems: circle_systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle_around_anchor", flags: MOVE, equip: circle_equip, arm: circle_arm, can_use: circle_can_use, start: circle_start, stop: circle_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn circle_equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
     // `Phantom.register`: the anchor is 5 blocks above where it appeared.
     if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
@@ -386,14 +369,12 @@ fn circle_start(w: &mut World, e: Entity, _: Inst) {
 fn circle_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Circling>();
 }
-fn circle_systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(circle_tick.in_set(slot));
-}
 /// Every other tick (the `Mob` ticks a goal that is not `every_tick` on the ticks where tick + id is even).
-fn circle_tick(clock: Res<Clock>, q: Query<Entity, With<Circling>>, mut cmd: Commands) {
-    for e in &q {
-        let now = clock.of(e);
-        cmd.queue(move |w: &mut World| {
+fn circle_tick(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Circling>>().iter(w).collect();
+    for e in es {
+        let now = crate::cow::now_of(w, e);
+        let one = |w: &mut World| {
             if (now + phase_of(w, e)) % 2 != 0 {
                 return;
             }
@@ -444,6 +425,34 @@ fn circle_tick(clock: Res<Clock>, q: Query<Entity, With<Circling>>, mut cmd: Com
                 *w.get_mut::<Circle>(e).unwrap() = c;
                 select_next(w, e);
             }
-        });
+        };
+        one(w);
+    }
+}
+
+/// The ticks of the goals above, run by `arbitrate` (one call, no system of their own: the modules cost the schedule nothing). Each is
+/// skipped while no creature carries its goal.
+pub fn tick_all(w: &mut World) {
+    // The rank of each module in the registry, found once.
+    static IDS: std::sync::OnceLock<[Option<usize>; 5]> = std::sync::OnceLock::new();
+    let ids = IDS.get_or_init(|| {
+        let r = crate::species::registry();
+        [&VEX_CHARGE, &VEX_COPY_OWNER_TARGET, &PHANTOM_ATTACK_STRATEGY, &PHANTOM_SWEEP_ATTACK, &PHANTOM_CIRCLE_AROUND_ANCHOR].map(|m| r.module_id(m))
+    });
+    let alive = |w: &World, k: usize| ids[k].is_some_and(|i| w.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0));
+    if alive(w, 0) {
+        charge_tick(w);
+    }
+    if alive(w, 1) && !w.resource::<Events>().target_acquired.is_empty() {
+        copy_owner_target(w);
+    }
+    if alive(w, 2) {
+        strategy_tick(w);
+    }
+    if alive(w, 3) {
+        sweep_tick(w);
+    }
+    if alive(w, 4) {
+        circle_tick(w);
     }
 }
