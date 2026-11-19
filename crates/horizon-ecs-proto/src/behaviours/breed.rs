@@ -65,7 +65,7 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 /// `Animal.setInLove` by feeding: refused for a baby, a resting or a loving animal. Wakes the goal, and the loving
 /// animals around (their partner just appeared).
 pub fn feed(world: &mut World, e: Entity) -> bool {
-    let now = world.resource::<Clock>().0;
+    let now = crate::cow::now_of(world, e);
     if world.get::<GrowAt>(e).is_some()
         || world.get::<Resting>(e).is_some_and(|r| r.0 > now)
         || world.get::<Love>(e).is_some_and(|l| l.0 > now)
@@ -81,7 +81,7 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
     let mut reqs = vec![Req::Start(e, b.slot)];
     for c in near {
         if c != e
-            && world.get::<Love>(c).is_some_and(|l| l.0 > now)
+            && world.get::<Love>(c).is_some_and(|l| l.0 > crate::cow::now_of(world, c))
             && let Some(d) = world.get::<BreedData>(c)
         {
             reqs.push(Req::Start(c, d.slot));
@@ -91,11 +91,11 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
     true
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     !w.get::<Love>(e).is_none_or(|l| l.0 <= now)
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let Some(b) = w.get::<BreedData>(e).copied() else { return false };
     if w.get::<Love>(e).is_none_or(|l| l.0 <= now) {
@@ -107,13 +107,13 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     for c in near {
         let Some(cp) = w.get::<Pos>(c) else { continue };
         let d = d2(pos, cp.0);
-        let lovers = w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<Love>(c).is_some_and(|l| l.0 > now) && w.get::<GrowAt>(c).is_none() && w.get::<Panicking>(c).is_none();
+        let lovers = w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<Love>(c).is_some_and(|l| l.0 > crate::cow::now_of(w, c)) && w.get::<GrowAt>(c).is_none() && w.get::<Panicking>(c).is_none();
         if c != e && lovers && d <= b.range * b.range && best.is_none_or(|x| d < x.1) {
             best = Some((c, d));
         }
     }
     if let Some(c) = w.resource_mut::<Forced>().partners.remove(&e)
-        && w.get::<Love>(c).is_some_and(|l| l.0 > now)
+        && w.get::<Love>(c).is_some_and(|l| l.0 > crate::cow::now_of(w, c))
     {
         best = Some((c, 0.0));
     }
@@ -130,7 +130,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(c) = w.get::<BreedData>(e).and_then(|b| b.partner) else { return };
     w.entity_mut(e).insert(Breeding { partner: c, since: now, aim: (i32::MIN, 0) });
     wake(w, c, &MODULE);
@@ -147,9 +147,10 @@ fn breed_run(
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    let now = clock.0;
     for ((e, pos, mut look, looking, following, asked), mut b, data, love, phase) in &mut q {
-        let partner = partners.get(b.partner).ok().filter(|(_, l, panicking)| l.is_some_and(|l| l.0 > now) && !panicking);
+        let now = clock.of(e);
+        let partner_now = clock.of(b.partner);
+        let partner = partners.get(b.partner).ok().filter(|(_, l, panicking)| l.is_some_and(|l| l.0 > partner_now) && !panicking);
         let (Some((pp, _, _)), true) = (partner, love.is_some_and(|l| l.0 > now)) else {
             reqs.0.push(Req::End(e, data.slot));
             continue;
@@ -178,19 +179,22 @@ fn breed_run(
 }
 /// `Animal.spawnChildFromBreeding`: a baby of age -`baby_age`, both parents rest, love ends.
 fn birth(w: &mut World, a: Entity, b: Entity) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, a);
     if w.get::<Breeding>(a).is_none() || w.get::<Love>(a).is_none_or(|l| l.0 <= now) {
         return;
     }
     let data = *w.get::<BreedData>(a).unwrap();
     let (pos, active) = (w.get::<Pos>(a).unwrap().0, w.get::<ActiveUntil>(a).unwrap().0);
     for e in [a, b] {
-        w.entity_mut(e).insert(Resting(now + data.rest)).remove::<Love>();
+        let own = crate::cow::now_of(w, e);
+        w.entity_mut(e).insert(Resting(own + data.rest)).remove::<Love>();
     }
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
     // The baby is of its parents' species (the mate was checked to be the same).
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
-    w.get_mut::<ActiveUntil>(baby).unwrap().0 = active;
+    // The parent's deadline is in its own time: the baby's own time is the world's.
+    let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
+    w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;
     make_baby(w, baby, data.baby_age);
     adopt(w, a, baby);
     if active > now {

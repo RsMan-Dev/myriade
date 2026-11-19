@@ -107,12 +107,14 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 /// `EatBlockGoal.start`: the navigation stops, the head goes down; its two deadlines go in the wheel.
 fn start(w: &mut World, e: Entity, inst: Inst) {
     stop_nav(w, e);
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let d = w.get::<Graze>(e).unwrap().def;
     w.entity_mut(e).insert(Grazing { eat_at: now + d.eat_at, end_at: now + d.ticks, eaten: false });
+    let clock = w.resource::<Clock>();
+    let (a, b) = (clock.at(e, now + d.eat_at), clock.at(e, now + d.ticks));
     let mut wheel = w.resource_mut::<Wheel>();
-    wheel.push(now + d.eat_at, e, Due::Goal(inst.slot));
-    wheel.push(now + d.ticks, e, Due::Goal(inst.slot));
+    wheel.push(a, e, Due::Goal(inst.slot));
+    wheel.push(b, e, Due::Goal(inst.slot));
 }
 /// `EatBlockGoal.stop`.
 fn stop(w: &mut World, e: Entity, _: Inst) {
@@ -121,7 +123,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// A deadline of a grazing animal: the block goes (`EatBlockGoal.tick`), or the head comes up.
 fn graze_deadline(w: &mut World, e: Entity) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(g) = w.get::<Grazing>(e).copied() else { return };
     if now >= g.end_at {
         let slot = w.get::<Graze>(e).unwrap().slot;
@@ -154,10 +156,10 @@ fn ate(w: &mut World, e: Entity) {
     if let Some(mut wool) = w.get_mut::<crate::farm::Wool>(e) {
         wool.sheared = false;
     }
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     if let Some(mut g) = w.get_mut::<GrowAt>(e) {
         g.0 = g.0.saturating_sub(1200).max(now + 1);
         let at = g.0;
-        w.resource_mut::<Wheel>().push(at.min(now + 4095), e, Due::Grow);
+        crate::cow::arm_at(w, e, at.min(now + 4095), Due::Grow);
     }
 }

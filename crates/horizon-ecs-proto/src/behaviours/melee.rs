@@ -46,14 +46,16 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 }
 /// `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     if now > 1 && (now + phase_of(w, e)) % 2 == 1 {
         arm(w, e, inst.slot, 1);
         return false;
     }
+    let world_now = w.resource::<Clock>().0;
     if let Some(mut a) = w.get_mut::<hostile::Attack>(e) {
         a.armed = false;
-        a.phase = now;
+        // The grid of the check is the world's time, as the vanilla goal's `lastCanUseCheck`.
+        a.phase = world_now;
     }
     if w.get::<Target>(e).is_none() {
         return false;

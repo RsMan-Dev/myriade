@@ -509,8 +509,8 @@ pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> 
 }
 /// Arms a deadline of the goal of this slot, `wait` ticks from now.
 pub(crate) fn arm(w: &mut World, e: Entity, slot: u8, wait: i32) {
-    let now = w.resource::<Clock>().0;
-    w.resource_mut::<Wheel>().push((now + wait.max(1) as u64).min(now + WHEEL_MAX), e, Due::Goal(slot));
+    let now = crate::cow::now_of(w, e);
+    crate::cow::arm_at(w, e, (now + wait.max(1) as u64).min(now + WHEEL_MAX), Due::Goal(slot));
 }
 /// The rank of the module's (first) entry in the animal's selector.
 pub fn slot_of(w: &World, e: Entity, m: &'static Module) -> Option<u8> {
@@ -558,6 +558,9 @@ pub(crate) fn arm_timers(w: &mut World, e: Entity) {
     for (i, en) in entries.iter().enumerate().take(n) {
         (en.module.arm)(w, e, insts[i]);
     }
+    // A creature created in a chunk that does not tick is born asleep (a `Mob` there is not ticked either): this is the last
+    // step of every creation, once its deadlines exist.
+    crate::zone::admit(w, &[e]);
 }
 /// Arms the timers of every animal (the herd starts active).
 pub fn arm_all(world: &mut World) {
@@ -641,7 +644,7 @@ pub(crate) fn arbitrate(world: &mut World) {
             // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
             // heard at the next such tick (the same as the next one at most).
             Req::Start(e, k) => {
-                let now = world.resource::<Clock>().0;
+                let now = crate::cow::now_of(world, e);
                 if now > 1 && (now + phase_of(world, e)) % 2 == 1 {
                     arm(world, e, k, 1);
                 } else {
