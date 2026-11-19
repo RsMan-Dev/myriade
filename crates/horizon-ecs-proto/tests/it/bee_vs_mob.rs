@@ -3,6 +3,7 @@
 //! at, 16 draws on each side (the laws: the draws differ); then, with a hive, the bee with nectar goes home and the ecs bee is out of the world
 //! while it is inside (the `Mob` side has no hive block entity in the harness: only the ecs side is checked there).
 use crate::common;
+use bevy_ecs::prelude::Entity;
 use common::*;
 use horizon_client_lib::mobs::bee as mbee;
 use horizon_core::geometry::Vec3;
@@ -175,4 +176,177 @@ fn a_removed_hive_lets_its_bees_out() {
         h.tick();
     }
     assert!(h.world.get::<InHive>(e).is_none(), "the hive is gone: it is out");
+}
+
+/// `Bee.doHurtTarget`: an angry bee that reaches its target stings it (poison), has stung, forgets its anger and drops its target; then it
+/// dies by the draw of `customServerAiStep`. The Mob side of this (a creature to hit in the harness) is not compared: only the rules are checked.
+#[test]
+fn an_angry_bee_stings_once_and_is_spent() {
+    use horizon_ecs_proto::behaviours::{bee::Stung, neutral_anger::is_angry};
+    use horizon_ecs_proto::effects::{has, Kind};
+    use horizon_ecs_proto::targeting::{set_target, Target, Who};
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:bee" {
+        return;
+    }
+    let (_r, mut h) = flat_pair();
+    let e = ecs_cow(&mut h, 0.5, 1.5, 0.5, 3500);
+    let foe = ecs_cow(&mut h, 1.5, 1.5, 0.5, 3501);
+    arm_all(&mut h.world);
+    for _ in 0..10 {
+        h.tick();
+    }
+    assert!(!h.world.get::<Bee>(e).unwrap().stung && !has(&h.world, foe, Kind::Poison), "witness: nothing stung before the anger");
+    let mut t = Target::new(Who::Entity(foe), u16::MAX, u8::MAX);
+    t.must_see = false;
+    t.follow_scale = f64::INFINITY;
+    set_target(&mut h.world, e, t);
+    h.tick();
+    assert!(is_angry(&h.world, e), "the target makes it angry (witness: the sting needs the anger)");
+    for _ in 0..200 {
+        h.tick();
+        if h.world.get::<Bee>(e).is_none_or(|b| b.stung) {
+            break;
+        }
+    }
+    for _ in 0..6 {
+        h.tick();
+    }
+    let Some(b) = h.world.get::<Bee>(e) else { panic!("the bee is gone before the check") };
+    assert!(b.stung && !b.nectar, "it has stung and its nectar is gone");
+    assert!(h.world.get::<Stung>(e).is_some(), "the slow death is under way");
+    assert!(has(&h.world, foe, Kind::Poison), "the victim is poisoned");
+    assert!(!is_angry(&h.world, e) && h.world.get::<Target>(e).is_none(), "it forgot its anger and its target");
+}
+
+/// An angry bee and its victim (a second bee), the bee holding the victim as its target; the world ticked once so the anger is taken.
+fn angry_pair(seed: u64) -> (Herd, Entity, Entity) {
+    use horizon_ecs_proto::targeting::{set_target, Target, Who};
+    let (_r, mut h) = flat_pair();
+    let e = ecs_cow(&mut h, 0.5, 1.5, 0.5, seed);
+    let foe = ecs_cow(&mut h, 1.5, 1.5, 0.5, seed + 1);
+    arm_all(&mut h.world);
+    for _ in 0..10 {
+        h.tick();
+    }
+    let mut t = Target::new(Who::Entity(foe), u16::MAX, u8::MAX);
+    t.must_see = false;
+    t.follow_scale = f64::INFINITY;
+    set_target(&mut h.world, e, t);
+    h.tick();
+    (h, e, foe)
+}
+/// The poison of the sting by the level's difficulty (`Bee.doHurtTarget`: none on easy, 10 s on normal, 18 s on hard).
+#[test]
+fn the_poison_of_a_sting_follows_the_difficulty() {
+    use horizon_ecs_proto::effects::{Difficulty, Effects, Kind};
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:bee" {
+        return;
+    }
+    for (id, seconds) in [(1_u8, 0_u64), (2, 10), (3, 18)] {
+        let (mut h, e, foe) = angry_pair(3600 + u64::from(id));
+        h.world.insert_resource(Difficulty(id));
+        let mut seen = None;
+        for _ in 0..300 {
+            h.tick();
+            let now = now_of(&h.world, foe);
+            if let Some(f) = h.world.get::<Effects>(foe).and_then(|f| f.list.iter().find(|f| f.kind == Kind::Poison).copied()) {
+                seen = Some(f.ends.saturating_sub(now));
+                break;
+            }
+            if h.world.get::<Bee>(e).is_some_and(|b| b.stung) && seconds == 0 {
+                for _ in 0..10 {
+                    h.tick();
+                }
+                break;
+            }
+        }
+        assert!(h.world.get::<Bee>(e).unwrap().stung, "difficulty {id}: the bee stung");
+        match seen {
+            Some(left) => assert!(seconds > 0 && left.abs_diff(seconds * 20) <= 4, "difficulty {id}: {left} ticks of poison left, wanted {}", seconds * 20),
+            None => assert_eq!(seconds, 0, "difficulty {id}: no poison"),
+        }
+    }
+}
+/// A refused hit (the victim is in its hurt cooldown against a bigger blow) gives the stinger and the anger back: no poison, the bee tries again.
+#[test]
+fn a_refused_sting_is_given_back() {
+    use horizon_ecs_proto::behaviours::neutral_anger::is_angry;
+    use horizon_ecs_proto::effects::{has, Kind};
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:bee" {
+        return;
+    }
+    let (mut h, e, foe) = angry_pair(3700);
+    let (mut tried, mut given_back) = (false, false);
+    for _ in 0..80 {
+        let now = now_of(&h.world, foe);
+        h.world.entity_mut(foe).insert(HurtAt { at: now, last: 1000.0 });
+        h.tick();
+        assert!(!has(&h.world, foe, Kind::Poison), "a refused sting poisoned");
+        let stung = h.world.get::<Bee>(e).unwrap().stung;
+        tried |= stung;
+        given_back |= tried && !stung && is_angry(&h.world, e);
+    }
+    assert!(tried, "witness: the bee struck (and its sting was taken)");
+    assert!(given_back, "the refused sting was not given back");
+    for _ in 0..200 {
+        h.tick();
+        if h.world.get::<Bee>(e).is_none_or(|b| b.stung) {
+            break;
+        }
+    }
+    for _ in 0..5 {
+        h.tick();
+    }
+    assert!(h.world.get::<Bee>(e).unwrap().stung && has(&h.world, foe, Kind::Poison), "witness: without the cooldown the sting lands");
+}
+/// The time a baby bee spends in the hive counts for its growth, and the love of an adult for its length (`setBeeReleaseData`).
+#[test]
+fn the_time_in_a_hive_ages_and_calms_a_bee() {
+    use horizon_ecs_proto::behaviours::{breed::Love, follow_parent::make_baby};
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    if species().name != "minecraft:bee" {
+        return;
+    }
+    let (_r, mut h) = flat_pair();
+    h.world.insert_resource(horizon_ecs_proto::behaviours::bee::StayInHive(Some(false)));
+    h.set_block(4, 1, 0, "minecraft:bee_nest");
+    h.tick();
+    let (baby, adult) = (ecs_cow(&mut h, 4.5, 1.5, 0.5, 3800), ecs_cow(&mut h, 4.5, 1.5, 1.5, 3801));
+    arm_all(&mut h.world);
+    make_baby(&mut h.world, baby, 3000);
+    let now = now_of(&h.world, adult);
+    h.world.entity_mut(adult).insert(Love(now + 2000));
+    let left = |h: &Herd, e: Entity| h.world.get::<GrowAt>(e).map(|g| g.0.saturating_sub(now_of(&h.world, e)));
+    let love_left = |h: &Herd, e: Entity| h.world.get::<Love>(e).map(|l| l.0.saturating_sub(now_of(&h.world, e)));
+    let (g0, l0) = (left(&h, baby).unwrap(), love_left(&h, adult).unwrap());
+    let t0 = h.world.resource::<Clock>().0;
+    for e in [baby, adult] {
+        horizon_ecs_proto::behaviours::bee::enter_hive(&mut h.world, e, [4, 1, 0]);
+    }
+    for _ in 0..800 {
+        h.tick();
+        if h.world.get::<InHive>(baby).is_none() && h.world.get::<InHive>(adult).is_none() {
+            break;
+        }
+    }
+    let stay = h.world.resource::<Clock>().0 - t0;
+    assert!(h.world.get::<InHive>(baby).is_none() && stay >= 600, "witness: both came out after the stay ({stay} ticks)");
+    let (g1, l1) = (left(&h, baby).unwrap(), love_left(&h, adult).unwrap());
+    assert!((g0 - g1).abs_diff(stay) <= 3, "the baby grew by {} ticks in {stay}", g0 - g1);
+    assert!((l0 - l1).abs_diff(stay) <= 3, "the love shortened by {} ticks in {stay}", l0 - l1);
 }
