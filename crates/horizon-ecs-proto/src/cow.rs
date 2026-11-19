@@ -294,6 +294,8 @@ pub enum Cause {
     Freeze,
     Fall,
     Drown,
+    /// `Entity.checkBelowWorld`: 4 a tick under the world (`DamageTypes.OUT_OF_WORLD`).
+    OutOfWorld,
     InWall,
     /// `cramming`: too many entities in one place (`LivingEntity.pushEntities`); not a panic cause, no knockback.
     Cramming,
@@ -2059,6 +2061,7 @@ pub(crate) fn travel(
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
+    let void_y = f64::from(level.mw.0.world.bottom_y() - 64);
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
@@ -2085,6 +2088,12 @@ pub(crate) fn travel(
         if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
+            });
+        }
+        // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
+        if p.0.y < void_y {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, 4.0, Cause::OutOfWorld));
             });
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
