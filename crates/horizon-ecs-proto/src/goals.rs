@@ -779,7 +779,8 @@ impl PlayerWatch {
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
 fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
     const R: f64 = 64.0;
-    if on.seen.is_empty() && moves.0.is_empty() {
+    // Nobody watches (the common case): not one index scan per moving player.
+    if (on.seen.is_empty() && moves.0.is_empty()) || q.is_empty() {
         return;
     }
     let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
