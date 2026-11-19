@@ -99,6 +99,8 @@ pub enum Cap {
     Brain,
     /// Walking, paths, the move control.
     Locomotion,
+    /// A stack on the ground (`item.rs`): needs `Transform`; no life, no goals, no box in the creature index.
+    Item,
 }
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {

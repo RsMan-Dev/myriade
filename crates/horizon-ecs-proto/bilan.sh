@@ -36,3 +36,6 @@ set -- $zr
 echo "zone near ring (cow, 6, 10): ecs ${1:-0} mob $(echo "$mn" | sed -n 1p | cut -d' ' -f1)"
 echo "zone mid ring (cow, 6, 10): ecs ${2:-0} mob $(echo "$mn" | sed -n 2p | cut -d' ' -f2)"
 echo "zone far ring (cow, 6, 10): ecs ${3:-0} mob 0"
+# Items lying on the ground (2 000 stacks of stone at rest, no creature): instructions per item and per tick (the whole schedule).
+items=$("$D/prof_bench" items 2000 400 0 200 2>/dev/null | head -n1 | sed -n 's/.*whole Schedule::run)=\([0-9]*\).*/\1/p')
+echo "items at rest (2000 stacks): ecs $(( ${items:-0} / 2000 ))"

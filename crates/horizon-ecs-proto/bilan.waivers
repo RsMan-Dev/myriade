@@ -6,3 +6,10 @@ pig idle|ecs ## 3 ## 6 instructions on 328 (the merges: larger crate, same syste
 sheep idle|ecs ## 2 ## 10 instructions on 937 (larger crate, reindex +9 000 instr per tick at rest: to look at)
 chicken idle|ecs ## 12 ## 6 instructions on 66
 zombie idle|ecs ## 4 ## 6 instructions on 181
+cow idle|ecs ## 2 ## item merge: the system `item_moved` costs 5 600 instr per tick at 3 000 cows at rest (1.9 per creature), `push` +800
+pig idle|ecs-eager ## 2 ## same
+pig active(1000 players, no solicitation)|ecs-eager ## 2 ## same
+chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs ## 3 ## same (small herds: the fixed cost of the new systems)
+crowd 0.5 (cow, 2000, 0 player)|batch ## 3 ## same: `push` changed for the items
+crowd 0.8 (cow, 2000, 0 player)|batch ## 3 ## same
+zone near ring (cow, 6, 10)|ecs ## 3 ## same

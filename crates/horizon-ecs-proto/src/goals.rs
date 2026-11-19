@@ -367,6 +367,24 @@ pub struct Equipment {
     pub main: u32,
     pub off: u32,
 }
+/// The whole stack held in the main hand (`LivingEntity.getMainHandItem`), when an item of the ground was picked up or put there; `Equipment.main`
+/// mirrors its item id for the goals that read ids.
+#[derive(Component, Clone, Debug, Default)]
+pub struct HandStack(pub Option<horizon_client_lib::items::ItemStack>);
+/// `LivingEntity.setItemSlot(MAINHAND, stack)`: the stack in the hand, its id in `Equipment` (created if the entity wore nothing).
+pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<horizon_client_lib::items::ItemStack>) {
+    let id = stack.as_ref().map_or(0, |s| item_id(&s.item));
+    if let Some(mut q) = w.get_mut::<Equipment>(e) {
+        q.main = id;
+    } else {
+        w.entity_mut(e).insert(Equipment { main: id, ..Default::default() });
+    }
+    w.entity_mut(e).insert(HandStack(stack));
+}
+/// The stack in the main hand.
+pub fn main_hand(w: &World, e: Entity) -> Option<&horizon_client_lib::items::ItemStack> {
+    w.get::<HandStack>(e)?.0.as_ref()
+}
 #[derive(Clone, Copy, Debug)]
 pub enum Slot {
     Head,
@@ -541,6 +559,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(CellMoves::default());
     crate::projectile::insert_resources(world);
     crate::brain::insert_resources(world);
+    crate::item::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {
@@ -633,6 +652,8 @@ pub struct Events {
     pub target_lost: Ev,
     /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
     pub projectile_hit: Ev,
+    /// A creature picked up an item from the ground (`item::pick_up`): the creature.
+    pub picked_up: Ev,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -654,6 +675,7 @@ impl Events {
         self.gaze_changed.swap();
         self.player_entered.swap();
         self.player_left.swap();
+        self.picked_up.swap();
     }
 }
 

@@ -149,3 +149,17 @@ Test : `a_named_condition_gates_an_entry_before_its_module`. Non vérifié contr
 - INTERACTIONS : `goals::interact(w, e, &Interaction)` : le premier module qui répond vrai gagne (`breed` : les aliments `Params.foods` mettent en amour), puis les règles (cisailles). 
 - TÊTE : `Cap::Head` (`Look`, `Head`) est une capacité à part ; tout but qui regarde ou vise la déclare dans `requires`.
 - GARDE-FOU : `tests/no_species_names.rs` : aucun nom d'espèce (`"minecraft:..."` de `species::names()`) dans `src/` hors `species/`, `bin/` et les modules `#[cfg(test)]` ; la tolérance `ALLOWANCE` est vide.
+
+## Les capacités sont indépendantes (règle du propriétaire)
+
+Aucune capacité n'en exclut une autre et aucune n'en suppose une autre au-delà de ce que `requires` / `NEEDS` déclarent. Un système ne demande que les composants qu'il traite : pas de `Without<...>` pour écarter une autre capacité, pas de lecture de `Health` pour un objet. Un objet qui marche, qui a une vie ou des buts est un objet. Les endroits du cadre qui supposaient « toute entité qui a une boîte est une créature » et ont été corrigés pour les objets au sol : `push` (un objet ne pousse pas et n'est pas poussé : `Entity.isPushable`, lu dans `Body.object`) ; `apply_damage` (un objet encaisse chaque coup en entier : `Immune` porte `NO_HURT_COOLDOWN`, `ItemEntity.hurtServer` n'a pas de fenêtre d'invulnérabilité).
+
+## Objets au sol (`item.rs`, `Cap::Item`)
+
+Un objet au sol de vanilla = `Transform` + `Solid` + `Body` (avec `Body.object`) + `Item`, et ses 5 points de vie (`Living` : la lave, le feu et le cactus du cadre le blessent comme une créature). Rien d'autre : ni buts, ni marche.
+- `Item { stack, born, age_base, ready_at, target, cell, id }` : la pile, son âge, son délai de ramassage sont des TEMPS PROPRES (`age = now - age_base`), personne ne les compte par tick. `drop_item(w, pile, position, vitesse, délai)` crée tout. La fusion de deux piles et la fin de vie à 6 000 ticks sont celles de Horizon (`merge_with_neighbours`).
+- Mouvement : `Body.object` met `travel` en mode objet (`ItemEntity.tick` : gravité AVANT le déplacement, eau 0,99 / lave 0,95 avec poussée de 5,0E-4, frottement de l'air 0,98 et du bloc sous l'objet, rebond -0,5). Un objet posé n'a plus `Moving` : coût nul, il se réveille par les événements des corps (un bloc change, un fluide arrive).
+- Fusion par événement : (a) un objet qui bouge (`Moving`) la demande à son tick (tous les 2 ticks tant que son bloc change, tous les 40 sinon, comme `ItemEntity.tick`) ; (b) une échéance de la roue à son multiple de 40 propre, réarmée SEULEMENT tant qu'une pile fusionnable est à portée (un objet seul n'est plus regardé). Vanilla regarde chaque objet tous les 40 ticks même seul : l'écart est la scrutation, pas le résultat (même tick de fusion, mesuré).
+- Fin de vie : une échéance (`Due::ItemExpire`), réarmée quand une fusion change l'âge. Elle retire l'objet au début du tick où l'âge atteint 6 000 (vanilla le retire à la fin du même tick : il ne fait pas son dernier déplacement ; invisible pour un objet posé).
+- Non porté (restent à `ItemEntity`) : dalle de slime, miel, toile d'araignée, neige poudreuse, colonne de bulles, escape hors d'un bloc posé sur l'objet (`no_physics`), friandises de mod, `native_item_expire/despawn`.
+- Contrôle : `tests/item_vs_original.rs` (`ItemEntity.tick` de Horizon tourné sur chaque objet à chaque tick, dans le même monde, `item_reference.rs`). Coût : `prof_bench items|itemfall|itemsref N TICKS 0`.
