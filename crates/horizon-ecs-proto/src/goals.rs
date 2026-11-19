@@ -159,6 +159,28 @@ pub const SHEARS: u32 = 10;
 pub const BONE: u32 = 11;
 pub const LEAD: u32 = 12;
 pub const WARPED_FUNGUS_ON_A_STICK: u32 = 13;
+/// A set of item ids (any number, any value: Horizon's registry has thousands), shared between the entities that have the same one:
+/// a sorted list searched by bisection. Nothing is copied per entity.
+#[derive(Clone, Copy, Debug)]
+pub struct ItemSet(&'static [u32]);
+static ITEM_SETS: std::sync::Mutex<Vec<&'static [u32]>> = std::sync::Mutex::new(Vec::new());
+impl ItemSet {
+    pub fn of(ids: impl IntoIterator<Item = u32>) -> Self {
+        let mut v: Vec<u32> = ids.into_iter().collect();
+        v.sort_unstable();
+        v.dedup();
+        let mut sets = ITEM_SETS.lock().unwrap();
+        if let Some(s) = sets.iter().find(|s| **s == v.as_slice()) {
+            return Self(s);
+        }
+        let s: &'static [u32] = Box::leak(v.into_boxed_slice());
+        sets.push(s);
+        Self(s)
+    }
+    pub fn contains(self, id: u32) -> bool {
+        self.0.binary_search(&id).is_ok()
+    }
+}
 /// The id of an item the players of the bench hold, from its name.
 pub fn item_id(name: &str) -> u32 {
     match name {
@@ -432,8 +454,8 @@ impl Player {
         item != 0 && (self.main == item || self.off == item)
     }
     /// Whether a hand holds one of the items of the mask (a bit per item id).
-    pub fn holds_any(&self, items: u32) -> bool {
-        let has = |i: u32| i != 0 && i < 32 && items >> i & 1 == 1;
+    pub fn holds_any(&self, items: ItemSet) -> bool {
+        let has = |i: u32| i != 0 && items.contains(i);
         has(self.main) || has(self.off)
     }
     pub fn eye(&self) -> f64 {
@@ -797,18 +819,18 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 /// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
 /// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
 /// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
-/// changes or the player moves; the radius is at most 64 blocks; players with id < 64.
-#[derive(Component, Clone, Copy, Debug)]
+/// changes or the player moves; the radius is at most 64 blocks. The players inside are a sorted list (any number of players).
+#[derive(Component, Clone, Debug)]
 pub struct PlayerWatch {
     pub radius: f32,
-    inside: u64,
+    inside: Vec<u32>,
 }
 impl PlayerWatch {
     pub const fn new(radius: f32) -> Self {
-        Self { radius, inside: 0 }
+        Self { radius, inside: Vec::new() }
     }
     pub fn is_inside(&self, player: u32) -> bool {
-        player < 64 && self.inside >> player & 1 == 1
+        self.inside.binary_search(&player).is_ok()
     }
 }
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
@@ -819,16 +841,14 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
         return;
     }
     let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
-        if id >= 64 {
-            return;
-        }
         let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
-        let was = w.inside >> id & 1 == 1;
+        let at = w.inside.binary_search(&id);
+        let was = at.is_ok();
         if now && !was {
-            w.inside |= 1 << id;
+            w.inside.insert(at.unwrap_err(), id);
             ev.player_entered.push((e, id));
         } else if !now && was {
-            w.inside &= !(1 << id);
+            w.inside.remove(at.unwrap());
             ev.player_left.push((e, id));
         }
     };
@@ -1358,7 +1378,7 @@ mod tests {
 
     /// The item that tempts the species of the process (`HORIZON_SPECIES`).
     fn item() -> u32 {
-        (1..32).find(|i| last_tempt().items.iter().fold(0u32, |m, n| m | 1 << item_id(n)) >> i & 1 == 1).unwrap()
+        last_tempt().items.iter().map(|n| item_id(n)).min().unwrap()
     }
     fn last_tempt() -> &'static tempt::Params {
         let n = species().goals.entries.iter().filter(|e| std::ptr::eq(e.module, &tempt::MODULE)).count();

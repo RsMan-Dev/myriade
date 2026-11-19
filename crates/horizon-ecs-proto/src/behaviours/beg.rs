@@ -26,7 +26,7 @@ const REACH: f64 = 8.0;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Begger {
     pub slot: u8,
-    pub items: u32,
+    pub items: crate::goals::ItemSet,
     pub range_sqr: f64,
     pub asks: i32,
     pick: u32,
@@ -54,7 +54,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    let items = std::iter::once("minecraft:bone").chain(p.foods.iter().copied()).fold(0u32, |m, n| m | 1 << item_id(n));
+    let items = crate::goals::ItemSet::of(std::iter::once("minecraft:bone").chain(p.foods.iter().copied()).map(item_id));
     w.entity_mut(e).insert(Begger { slot: inst.slot, items, range_sqr: p.range_sqr, asks: p.asks, pick: 0 });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {

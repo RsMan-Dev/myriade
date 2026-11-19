@@ -60,11 +60,46 @@ fn main() {
     let spacing = f64::from(2 * half - 6) / f64::from(side);
     let at: Vec<(f64, f64)> = (0..n as i32).map(|i| (-f64::from(half) + 3.0 + f64::from(i % side) * spacing + 0.5, -f64::from(half) + 3.0 + f64::from(i / side) * spacing + 0.5)).collect();
     herd.populate(&at, 7);
-    for _ in 0..ticks {
+    // `ACTIVE=1`: the scene of `goal_bench` (N/40 players, 30 % holding the species' food, a tenth of them walking, every 50 ticks N/100 hits and N/100
+    // couples fed): what makes the entities toggle their states.
+    let active = std::env::var_os("ACTIVE").is_some();
+    let ents: Vec<Entity> = herd.world.query::<Entity>().iter(&herd.world).collect();
+    let np = if active { (n / 40).max(1) } else { 0 };
+    let k = (np as f64).sqrt().ceil() as usize;
+    let span = f64::from(2 * half - 8);
+    let spot = |i: usize| (-f64::from(half) + 4.0 + span * ((i % k.max(1)) as f64 + 0.5) / k.max(1) as f64, -f64::from(half) + 4.0 + span * ((i / k.max(1)) as f64 + 0.5) / k.max(1) as f64);
+    let item = horizon_ecs_proto::goals::item_id(&std::env::var("ITEM").unwrap_or_else(|_| "minecraft:wheat".into()));
+    for i in 0..np {
+        let (x, z) = spot(i);
+        herd.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(horizon_ecs_proto::goals::Player { id: i as u32, x, y: 1.0, z, main: if i < np * 3 / 10 { item } else { 0 }, off: 0 });
+    }
+    if active {
+        herd.set_players((0..np).map(spot).collect());
+    }
+    let mut sd = 0x9e37_79b9_u64;
+    let mut next = |m: usize| {
+        sd ^= sd << 13;
+        sd ^= sd >> 7;
+        sd ^= sd << 17;
+        (sd >> 11) as usize % m.max(1)
+    };
+    for t in 0..ticks {
+        if active && t % 50 == 10 && t >= 50 {
+            for _ in 0..(n / 100).max(1) {
+                let e = ents[next(ents.len())];
+                herd.world.resource_mut::<horizon_ecs_proto::cow::DamageQueue>().add(e, 1.0, horizon_ecs_proto::cow::Cause::Entity);
+            }
+            for _ in 0..(n / 100).max(1) {
+                let i = next(ents.len() - 1);
+                horizon_ecs_proto::goals::feed(&mut herd.world, ents[i]);
+                horizon_ecs_proto::goals::feed(&mut herd.world, ents[i + 1]);
+            }
+        }
         herd.tick();
     }
     let live = LIVE.load(Relaxed);
     println!("RSS_SLOPE n={n} rss +{:.2} MB = {:.0} bytes per entity", mb((rss() - base_rss) as usize), (rss() - base_rss) as f64 / n as f64);
+    println!("RAW n={n} bytes={}", live - base_live);
     println!("N={n} spacing {spacing:.2}: allocator +{:.2} MB over the empty world = {:.0} bytes per entity (ticks run: {ticks})", mb(live - base_live), (live - base_live) as f64 / n as f64);
     // The components of the tables.
     let world = &herd.world;
@@ -100,6 +135,23 @@ fn main() {
     }
     let zero = rows.iter().filter(|r| r.1.0 == 0).count();
     println!("components of size 0 (markers): {zero}; components with a size: {}; the tail below the 45 shown: {:.1} bytes per entity", rows.len() - zero, rows.iter().skip(45).map(|r| r.1.0 * r.1.1).sum::<usize>() as f64 / entities as f64);
+    {
+        let (mut tabs, mut alive, mut dead, mut dead_rows, mut rows) = (0, 0, 0, 0usize, 0usize);
+        for t in world.storages().tables.iter() {
+            if t.entity_capacity() == 0 {
+                continue;
+            }
+            tabs += 1;
+            rows += t.entity_capacity();
+            if t.entity_count() == 0 {
+                dead += 1;
+                dead_rows += t.entity_capacity();
+            } else {
+                alive += 1;
+            }
+        }
+        println!("TABLES allocated {tabs}: alive {alive}, DEAD (no entity, capacity kept) {dead} with {dead_rows} rows of {rows}");
+    }
     let (mut live, mut cap_total) = (0usize, 0usize);
     for (i, t) in world.storages().tables.iter().enumerate() {
         if t.entity_capacity() >= 100 {
@@ -109,5 +161,17 @@ fn main() {
         }
     }
     println!("tables with capacity >= 100: entities {live}, capacity {cap_total} rows ({:.2} x the entities: the rest is retained by tables that entities left)", cap_total as f64 / live.max(1) as f64);
+    {
+        // The removals of each component over the run (the toggles of the states), by name.
+        let mut rem: Vec<(String, usize, &'static str)> = comps
+            .iter_registered()
+            .map(|(id, info)| (info.name().to_string(), world.removed_with_id(id).count(), if matches!(info.storage_type(), bevy_ecs::component::StorageType::Table) { "table" } else { "sparse" }))
+            .filter(|r| r.1 > 0)
+            .collect();
+        rem.sort_by_key(|r| std::cmp::Reverse(r.1));
+        for (name, c, st) in rem.iter().take(30) {
+            println!("REMOVALS {:<56} {st:>6} {c:>9} over {ticks} ticks ({:.4} per entity-tick)", name.rsplit("::").take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("::"), *c as f64 / (n * ticks.max(1)) as f64);
+        }
+    }
     println!("wheel entries: {}", herd.world.resource::<horizon_ecs_proto::cow::Wheel>().len());
 }

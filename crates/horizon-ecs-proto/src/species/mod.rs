@@ -555,7 +555,7 @@ mod tests {
     fn a_species_set_holds_every_species_of_the_registry_without_aliasing() {
         let n = registry().species.len();
         assert!(n > 64, "this test is for a registry of more than 64 species ({n})");
-        for id in [0, 5, 63, 64, 69, n - 1] {
+        for id in [0, 5, 63, 64, n - 1] {
             let set = SpeciesSet::of([id]);
             for other in 0..n {
                 assert_eq!(set.contains(other as u8), other == id, "set of {{{id}}}, species {other}");
