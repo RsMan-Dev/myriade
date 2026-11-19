@@ -579,7 +579,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
         std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into()).into_boxed_str(),
     );
     // Every species the prototype knows, by id: the same table for the whole process.
-    let names: [&'static str; 5] = ["minecraft:cow", "minecraft:pig", "minecraft:zombie", "minecraft:sheep", "minecraft:chicken"];
+    let names: Vec<&'static str> = crate::species::names();
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {

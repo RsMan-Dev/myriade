@@ -2,7 +2,7 @@
 //! the list of its goals (module, priority, flags), the locks, what runs and what waits. It knows NO goal: a goal is a
 //! `behaviours::Module` (one file) that a species lists with its parameters (`species.rs`). A goal is woken by a
 //! deadline of the timer wheel or by an event and never scans; only a goal that runs ticks, through its own marker.
-use crate::behaviours::{Change, Entry, Inst, Module, TABLE};
+use crate::behaviours::{Change, Entry, Inst, Module};
 use crate::cow::*;
 use bevy_ecs::{prelude::*, schedule::Schedule};
 use horizon_core::geometry::{Vec3, trig};
@@ -428,7 +428,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
     world.insert_resource(CellMoves::default());
-    for m in TABLE {
+    for m in &crate::species::registry().modules {
         (m.resources)(world);
     }
 }
@@ -436,13 +436,14 @@ pub fn insert_resources(world: &mut World) {
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
-    for i in 0..TABLE.len() {
+    let modules = &crate::species::registry().modules;
+    for i in 0..modules.len() {
         let slot = GoalSlot(i as u8);
         s.configure_sets(slot.after(online_events).after(entered_events).before(arbitrate).before(pathfind));
         if i > 0 {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
-        (TABLE[i].systems)(s, slot);
+        (modules[i].systems)(s, slot);
     }
 }
 
