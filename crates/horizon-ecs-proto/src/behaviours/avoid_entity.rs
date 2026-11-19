@@ -192,7 +192,7 @@ fn cell_moves(
             }
             for a in &avs.0 {
                 if !matches!(a.what, Avoid::Player)
-                    && a.mask >> sid.0 & 1 == 1
+                    && sid.0 < 64 && a.mask >> sid.0 & 1 == 1
                     && in_reach(a, pos.0, at)
                 {
                     reqs.0.push(Req::Start(c, a.slot));
@@ -240,7 +240,7 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option
                     && (tp.x - pos.x).abs() <= a.max_dist
                     && (tp.z - pos.z).abs() <= a.max_dist
                     && (tp.y - pos.y).abs() <= 3.0 + a.max_dist
-                    && a.mask >> sid.0 & 1 == 1
+                    && sid.0 < 64 && a.mask >> sid.0 & 1 == 1
                     && a.target_when.is_none_or(|f| f(w, t));
                 if boxed {
                     c.push((d2(pos, tp), t, tp));

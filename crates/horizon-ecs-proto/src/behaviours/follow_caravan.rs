@@ -57,15 +57,16 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Caravan { p: *params::<Params>(p), slot: inst.slot, pick: None });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(caravan_run.in_set(slot));
+/// A module tick: called only while a creature of the kind lives (no registered system: no cost without one).
+fn tick(w: &mut World) {
+    tick_state(w, caravan_run);
 }
 /// One system for the three things that wake or run the module (one registered system, not three): a lead put on a creature of the kind wakes the
 /// free ones around it; a free creature that changes column while some lead is on may have come near a line (the lines are few: no lead, no
@@ -78,6 +79,7 @@ fn caravan_run(
     leashes: Option<Res<Leashes>>,
     pos: Query<&Pos>,
     own: Query<&Caravan>,
+    uids: Query<&Uid>,
     free: Query<&Caravan, Without<Lined>>,
     loose: Query<&Caravan, (Without<Lined>, Without<crate::leash::Leash>)>,
     lined: Query<Entity, With<Lined>>,
@@ -85,11 +87,16 @@ fn caravan_run(
 ) {
     for e in ev.leashed.iter() {
         let (Ok(p), Ok(c)) = (pos.get(e), own.get(e)) else { continue };
+        // The free creatures ask in the order of their numbers (the `Mob` asks them in the order of its list: the lowest id joins first, the next
+        // one joins behind it).
+        let mut woken = Vec::new();
         idx.for_radius(p.0.x, p.0.z, c.p.area[0] + 1.0, |o| {
             if o != e && let Ok(f) = free.get(o) {
-                reqs.0.push(Req::Start(o, f.slot));
+                woken.push((uids.get(o).map_or(0, |u| u.0), o, f.slot));
             }
         });
+        woken.sort_unstable_by_key(|w| w.0);
+        reqs.0.extend(woken.into_iter().map(|(_, o, slot)| Req::Start(o, slot)));
     }
     if leashes.is_some_and(|l| !l.is_empty()) {
         for &e in &cells.0 {
