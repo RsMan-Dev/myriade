@@ -46,7 +46,7 @@ fn adult_species(w: &World, who: Who) -> Option<u8> {
 }
 
 /// `#tag` contains the name of the species `sp` (the data of the process, `MobData::entity_has`).
-fn species_has(w: &World, tag: &str, sp: u8) -> bool {
+pub(crate) fn species_has(w: &World, tag: &str, sp: u8) -> bool {
     let Some(name) = w.resource::<SpeciesTable>().0.iter().find(|s| s.id == sp).map(|s| s.name) else { return false };
     w.resource::<Level>().mw.0.data.entity_has(tag, name)
 }

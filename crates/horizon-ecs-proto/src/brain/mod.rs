@@ -183,7 +183,10 @@ pub struct Behaviour {
     /// Every tick while it runs, after the timeout check; false = stop.
     pub tick: fn(&mut World, Entity, &Ctx) -> bool,
     pub stop: fn(&mut World, Entity, &Ctx),
+    /// The entity took damage (running or not): a reaction of the behaviour (`Animal.actuallyHurt` ends love), like a goal's `damaged`.
+    pub damaged: fn(&mut World, Entity, &Ctx, &crate::behaviours::Damaged),
 }
+fn no_damage(_: &mut World, _: Entity, _: &Ctx, _: &crate::behaviours::Damaged) {}
 fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
     true
 }
@@ -201,6 +204,7 @@ impl Behaviour {
         start: nothing,
         tick: yes,
         stop: nothing,
+        damaged: no_damage,
     };
 }
 #[derive(Clone, Copy)]
@@ -485,6 +489,19 @@ pub fn forget_due(w: &mut World, e: Entity, local: u16, token: u32) {
         drop(b);
         wake(w, e);
     }
+}
+/// The entity took damage: each behaviour of its plan reacts through its `damaged` entry point (a default that does nothing).
+/// Only on a damage, never per tick.
+pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    let Some(plan) = w.get::<Brain>(e).map(|b| b.plan) else { return };
+    for (id, inst) in plan.insts.iter().enumerate() {
+        (inst.b.damaged)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params }, d);
+    }
+}
+/// Whether the timed behaviour of this `Ctx` is past its time (`Timed.timed_out`): read in its `stop` to tell the end of its time from an
+/// interruption.
+pub fn timed_out(w: &World, e: Entity, c: &Ctx) -> bool {
+    w.get::<Brain>(e).is_some_and(|b| b.run[c.id as usize].end < now_of(w, e))
 }
 /// The brain has something to do at the next step.
 pub fn wake(w: &mut World, e: Entity) {

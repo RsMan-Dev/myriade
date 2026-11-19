@@ -1033,6 +1033,7 @@ pub fn force_start(w: &mut World, e: Entity, slot: u8) {
 }
 /// The entity took damage: every module of its selector reacts through its `damaged` entry point (a default that does nothing).
 pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    crate::brain::dispatch_damaged(w, e, d);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     for slot in 0..g.len() as u8 {
         let Some((m, inst)) = of(w, e, slot) else { return };

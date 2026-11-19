@@ -81,6 +81,7 @@ pub mod camel_husk;
 pub mod polar_bear;
 pub mod creaking;
 pub mod breeze;
+pub mod sniffer;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -117,6 +118,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &bee::DEF,
     &dolphin::DEF,
     &axolotl::DEF,
+    &sniffer::DEF,
     &drowned::DEF,
     &spider::DEF,
     &cave_spider::DEF,
@@ -606,6 +608,7 @@ mod tests {
         ("minecraft:dolphin", &[("breath_air", 0), ("try_find_water", 0), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
+        ("minecraft:sniffer", &[("float", 0)]),
         ("minecraft:drowned", &[("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
         ("minecraft:frog", &[("long_jump", 3)]),

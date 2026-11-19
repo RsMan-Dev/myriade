@@ -16,9 +16,11 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
 /// The walk's speed (`WalkTarget` speed 1.0 in the `Mob`).
 pub struct Params {
     pub speed: f32,
+    /// The speed when the entity is out of water (the axolotl's chase: 0.15, 0.6 in water); none: `speed` always.
+    pub dry_speed: Option<f32>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { speed: 1.0 };
+    pub const DEFAULT: Params = Params { speed: 1.0, dry_speed: None };
 }
 
 fn start(w: &mut World, e: Entity, c: &Ctx) {
@@ -31,7 +33,9 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
         erase(w, e, &WALK_TARGET);
     } else {
         set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(target, true)), None);
-        let walk = WalkTarget { target: Tracker::Entity(target, false), speed: c.get::<Params>().speed, close: 0 };
+        let p = c.get::<Params>();
+        let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
+        let walk = WalkTarget { target: Tracker::Entity(target, false), speed: if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) }, close: 0 };
         set(w, e, &WALK_TARGET, MemValue::Walk(walk), None);
     }
 }
@@ -45,7 +49,7 @@ mod tests {
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[(&ATTACK_TARGET, Need::Present)];
-    static PARAMS: Params = Params { speed: 1.0 };
+    static PARAMS: Params = Params { speed: 1.0, dry_speed: None };
 
     fn brained(h: &mut Herd) -> Entity {
         let entries: &'static [BEntry] = Box::leak(Box::new([BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 1, params: &PARAMS, needs: NEEDS, duration: None, kids: &[] }]));

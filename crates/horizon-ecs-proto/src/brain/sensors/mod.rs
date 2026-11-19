@@ -1,6 +1,7 @@
 //! The sensors: `NearestLivingEntitySensor` and `HurtBySensor` (shared by the animal, monster and villager brains).
 pub mod adult;
 pub mod attackable;
+pub mod attackables;
 pub mod hurt_by;
 pub mod living;
 pub mod nearest_players;
