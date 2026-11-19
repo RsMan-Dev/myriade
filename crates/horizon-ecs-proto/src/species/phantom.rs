@@ -1,12 +1,18 @@
-//! `Phantom`: a free flier (`travelFlying`) banking toward a wanted point (`PhantomMoveControl`), no path. Its goals (circle around the anchor,
-//! swoop, target the player) are `behaviours/phantom_*`.
+//! `Phantom`: a free flier (`travelFlying`) banking toward a wanted point (`PhantomMoveControl`), no path. Goals: the strategy (1), the dive
+//! (2), the circle round the anchor (3); target: the player in the box (1).
 use super::Def;
-use crate::behaviours::{Cap, Entry};
+use crate::behaviours::{flier_goals as g, Cap, Entry};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:phantom",
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),
+    targets: &[Entry::new(&g::PHANTOM_ATTACK_PLAYER_TARGET, 1, &g::Params::DEFAULT)],
+    goals: &[
+        Entry::new(&g::PHANTOM_ATTACK_STRATEGY, 1, &g::Params::DEFAULT),
+        Entry::new(&g::PHANTOM_SWEEP_ATTACK, 2, &g::Params::DEFAULT),
+        Entry::new(&g::PHANTOM_CIRCLE_AROUND_ANCHOR, 3, &g::Params::DEFAULT),
+    ],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Bank, free: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

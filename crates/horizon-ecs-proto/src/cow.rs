@@ -46,6 +46,9 @@ pub struct Body {
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Bounds(pub Aabb);
+/// The spot an animal is bound to (`Mob.extra.home`: a phantom's anchor, a vex's origin).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Anchor(pub [i32; 3]);
 /// The column of the spatial index the cow is listed in (`u32::MAX`: not yet).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Cell(pub u32);

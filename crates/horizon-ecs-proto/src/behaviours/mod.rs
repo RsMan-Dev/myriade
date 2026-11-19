@@ -202,6 +202,7 @@ pub mod flee_sun;
 pub mod fish_swim;
 pub mod float_around;
 pub mod bat_flutter;
+pub mod flier_goals;
 pub mod fly_stroll;
 pub mod float;
 pub mod follow_parent;
@@ -315,6 +316,13 @@ pub static TABLE: &[&Module] = &[
     &fly_stroll::MODULE,
     &float_around::MODULE,
     &bat_flutter::MODULE,
+    &flier_goals::VEX_CHARGE,
+    &flier_goals::VEX_RANDOM_MOVE,
+    &flier_goals::VEX_COPY_OWNER_TARGET,
+    &flier_goals::PHANTOM_ATTACK_PLAYER_TARGET,
+    &flier_goals::PHANTOM_ATTACK_STRATEGY,
+    &flier_goals::PHANTOM_SWEEP_ATTACK,
+    &flier_goals::PHANTOM_CIRCLE_AROUND_ANCHOR,
     &follow_owner::MODULE,
     &run_around_like_crazy::MODULE,
     &owner_target::MODULE,
