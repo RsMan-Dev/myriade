@@ -49,7 +49,7 @@ fn blocked(w: &mut World, e: Entity, _: Inst) {
     arm_now(w, e);
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     let Some(mut s) = w.get_mut::<Stroll>(e) else { return false };
     s.scheduled = false;

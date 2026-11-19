@@ -33,6 +33,7 @@ pub struct Bow {
     strafe_time: i32,
     using: i32,
     aim: (i32, i32),
+    walkable: Option<((i32, i32, i32), bool, u64)>,
 }
 /// The goal runs.
 #[derive(Component, Clone, Copy, Debug)]
@@ -60,7 +61,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Bow { p: *params::<Params>(p), slot: inst.slot, attack_time: -1, see_time: 0, strafe_clockwise: false, strafe_back: false, strafe_time: -1, using: 0, aim: (i32::MIN, 0) });
+    w.entity_mut(e).insert(Bow { p: *params::<Params>(p), slot: inst.slot, attack_time: -1, see_time: 0, strafe_clockwise: false, strafe_back: false, strafe_time: -1, using: 0, aim: (i32::MIN, 0), walkable: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(bow_run.in_set(slot));
@@ -94,6 +95,7 @@ fn bow_power(ticks: i32) -> f32 {
 fn bow_run(
     tg: targeting::Targets,
     level: Res<Level>,
+    clock: Res<Clock>,
     mut q: Query<(Aim, &mut Bow, &mut Drive, &mut Yaw, &Body, Option<&Target>, &mut Rng), With<Bowing>>,
     mut reqs: ResMut<Requests>,
     mut forced: ResMut<Forced>,
@@ -147,7 +149,9 @@ fn bow_run(
             } else if d < f64::from(radius_sqr * 0.25) {
                 b.strafe_back = true;
             }
-            strafe_drive(&level, &Pos(pos.0), &yaw, body, &mut drive, if b.strafe_back { -0.5 } else { 0.5 }, if b.strafe_clockwise { 0.5 } else { -0.5 });
+            let (mut walkable, now) = (b.walkable, clock.of(e));
+            strafe_drive(&level, &Pos(pos.0), &yaw, body, &mut drive, if b.strafe_back { -0.5 } else { 0.5 }, if b.strafe_clockwise { 0.5 } else { -0.5 }, &mut walkable, now);
+            b.walkable = walkable;
             // `Mob.turn_to`: the body turns to the target at 30 degrees per tick.
             let y_rot = horizon_core::geometry::trig::atan2_degrees(at[2] - pos.0.z, at[0] - pos.0.x) - 90.0;
             yaw.0 += wrap_degrees(y_rot - yaw.0).clamp(-30.0, 30.0);

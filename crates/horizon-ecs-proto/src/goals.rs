@@ -173,7 +173,7 @@ thread_local! {
 pub fn reset_uids() {
     NEXT_UID.with(|c| c.set(0));
 }
-fn next_uid() -> u64 {
+pub(crate) fn next_uid() -> u64 {
     NEXT_UID.with(|c| {
         let n = c.get();
         c.set(n + 1);
@@ -234,7 +234,7 @@ pub struct Requests(pub Vec<Req>);
 /// The option of the lazy look: when on, the look goals (`LookAtPlayer`, `RandomLookAround`) and the look control run
 /// only for an animal that a player can see, i.e. within `range` blocks, the client tracking range of an animal
 /// (10 chunks = 160 blocks; the client renders an entity at most 64 x 2.5 = 160 blocks away), rounded out to 16-block
-/// bins. Off by default: the owner decides.
+/// bins. ON by default (owner decision 2026-11-19: "useless for inactive and invisible mobs"); `set_lazy_look(world, false)` turns it off.
 #[derive(Resource)]
 pub struct LazyLook {
     pub enabled: bool,
@@ -246,7 +246,7 @@ pub struct LazyLook {
 }
 impl Default for LazyLook {
     fn default() -> Self {
-        Self { enabled: false, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
+        Self { enabled: true, range: 160.0, counts: HashMap::new(), at: HashMap::new() }
     }
 }
 fn bin16(x: f64, z: f64) -> (i32, i32) {
@@ -393,16 +393,12 @@ impl Online {
 
 /// The animal's number, by order of creation (see `Uid`) and the components of the selector. The modules' state
 /// components are created by their `equip`, once, when the selector is added.
-pub fn goals_bundle(sp: &Species) -> impl Bundle {
-    let uid = next_uid();
+pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
-        crate::targeting::FollowRange(f64::from(sp.follow_range)),
-        crate::targeting::Eye(sp.eye_height),
-        Uid(uid),
         Phase(uid),
     )
 }
@@ -429,6 +425,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Requests::default());
     world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
+    world.insert_resource(Events::default());
     world.insert_resource(crate::farm::Grown::default());
     world.insert_resource(crate::farm::LaidEggs::default());
     world.insert_resource(Online::default());
@@ -455,14 +452,69 @@ pub fn register(s: &mut Schedule) {
     }
 }
 
+// ---- the events of the framework (a module never polls a component) ------------------------------------------
+/// The entities one event happened to. THE GUARANTEE: `iter` yields the events of the PREVIOUS tick, all of them, and only
+/// those: a system that runs every tick sees each event exactly once, whatever its place in the schedule (`due`, the first
+/// system of the tick, swaps the two lists). The events of the current tick are not visible before the next one. Nobody
+/// clears or takes them; a system that does not run every tick may miss events.
+#[derive(Default)]
+pub struct Ev {
+    cur: Vec<Entity>,
+    prev: Vec<Entity>,
+}
+impl Ev {
+    pub fn push(&mut self, e: Entity) {
+        self.cur.push(e);
+    }
+    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.prev.iter().copied()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.prev.is_empty()
+    }
+    fn swap(&mut self) {
+        std::mem::swap(&mut self.prev, &mut self.cur);
+        self.cur.clear();
+    }
+}
+/// The state changes other modules wait for (an entity list per kind, read the tick AFTER it happened, once; `Hurts` and
+/// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
+#[derive(Resource, Default)]
+pub struct Events {
+    /// `Burning` was set (from not burning).
+    pub ignited: Ev,
+    /// `Burning` ended (water, or the fire burnt out).
+    pub extinguished: Ev,
+    pub entered_fluid: Ev,
+    pub left_fluid: Ev,
+    /// The feet reached the ground after being in the air.
+    pub landed: Ev,
+    /// A baby grew up (same as `farm::Grown`, readable by several).
+    pub grew: Ev,
+    /// A grazing animal ate its block (`eat_block`).
+    pub ate: Ev,
+    /// An attacker got a target / lost it (`targeting::set_target`, `clear_target`).
+    pub target_acquired: Ev,
+    pub target_lost: Ev,
+    /// A projectile hurt this creature or player-less target (`projectile.rs`): the victim.
+    pub projectile_hit: Ev,
+}
+impl Events {
+    pub fn swap(&mut self) {
+        for ev in [&mut self.ignited, &mut self.extinguished, &mut self.entered_fluid, &mut self.left_fluid, &mut self.landed, &mut self.grew, &mut self.ate, &mut self.target_acquired, &mut self.target_lost, &mut self.projectile_hit] {
+            ev.swap();
+        }
+    }
+}
+
 // ---- the wheel and the helpers the modules use --------------------------------------------------------------
 pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> T) -> T {
     f(&mut w.get_mut::<Rng>(e).unwrap())
 }
 /// Arms a deadline of the goal of this slot, `wait` ticks from now.
 pub(crate) fn arm(w: &mut World, e: Entity, slot: u8, wait: i32) {
-    let now = w.resource::<Clock>().0;
-    w.resource_mut::<Wheel>().push((now + wait.max(1) as u64).min(now + WHEEL_MAX), e, Due::Goal(slot));
+    let now = crate::cow::now_of(w, e);
+    crate::cow::arm_at(w, e, (now + wait.max(1) as u64).min(now + WHEEL_MAX), Due::Goal(slot));
 }
 /// The rank of the module's (first) entry in the animal's selector.
 pub fn slot_of(w: &World, e: Entity, m: &'static Module) -> Option<u8> {
@@ -510,6 +562,9 @@ pub(crate) fn arm_timers(w: &mut World, e: Entity) {
     for (i, en) in entries.iter().enumerate().take(n) {
         (en.module.arm)(w, e, insts[i]);
     }
+    // A creature created in a chunk that does not tick is born asleep (a `Mob` there is not ticked either): this is the last
+    // step of every creation, once its deadlines exist.
+    crate::zone::admit(w, &[e]);
 }
 /// Arms the timers of every animal (the herd starts active).
 pub fn arm_all(world: &mut World) {
@@ -593,7 +648,7 @@ pub(crate) fn arbitrate(world: &mut World) {
             // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
             // heard at the next such tick (the same as the next one at most).
             Req::Start(e, k) => {
-                let now = world.resource::<Clock>().0;
+                let now = crate::cow::now_of(world, e);
                 if now > 1 && (now + phase_of(world, e)) % 2 == 1 {
                     arm(world, e, k, 1);
                 } else {
@@ -1157,6 +1212,8 @@ mod tests {
         if crate::cow::skip_if(&crate::behaviours::ranged_bow::MODULE, "cows_glance_at_a_near_player_and_look_around") {
             return;
         }
+        // The control compares the rates of the look goals of every animal: the lazy look is off here.
+        set_lazy_look(&mut h.world, false);
         let mut cows = Vec::new();
         for i in 0..15 {
             for j in 0..13 {

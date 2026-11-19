@@ -80,6 +80,7 @@ impl Config {
 pub struct Resolved {
     pub name: &'static str,
     pub config: Config,
+    pub caps: &'static [Cap],
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -162,7 +163,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] } });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, caps: d.capabilities() });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {

@@ -412,6 +412,8 @@ fn looking_goals_start_as_often_as_a_mob_s() {
         return;
     }
     let (mut r, mut h) = flat_pair();
+    // The control compares the rates of the look goals of every animal: the lazy look is off here.
+    set_lazy_look(&mut h.world, false);
     let mut cows = Vec::new();
     for i in 0..12 {
         for j in 0..8 {

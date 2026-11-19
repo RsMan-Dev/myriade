@@ -71,7 +71,7 @@ fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
     true
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let (a, n) = with_rng(w, e, |r| (std::f64::consts::TAU * r.next_f64(), r.next_int(20)));
     w.entity_mut(e).insert(Scanning { dx: a.cos(), dz: a.sin(), until: now + 20 + n as u64 + 1 });
 }
@@ -82,7 +82,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 /// `RandomLookAroundGoal.tick`.
 fn scan_run(clock: Res<Clock>, mut q: Query<(Aim, &Scanning, &Scan)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
     for ((e, pos, mut look, looking, _, _), s, data) in &mut q {
-        if clock.0 >= s.until {
+        if clock.of(e) >= s.until {
             reqs.0.push(Req::End(e, data.slot));
         } else {
             let at = [pos.0.x + s.dx, pos.0.y + look.eye, pos.0.z + s.dz];

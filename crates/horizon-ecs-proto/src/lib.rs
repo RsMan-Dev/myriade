@@ -13,3 +13,4 @@ pub mod profile;
 pub mod projectile;
 pub mod species;
 pub mod targeting;
+pub mod zone;

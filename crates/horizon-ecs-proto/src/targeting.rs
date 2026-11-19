@@ -110,6 +110,7 @@ pub fn sight_range(range: f64, visibility: f64) -> f64 {
 pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
     t.seen = false;
     w.entity_mut(e).insert(t);
+    w.resource_mut::<Events>().target_acquired.push(e);
     let watchers = w.resource::<TargetWatchers>().0.clone();
     for f in watchers {
         f(w, e);
@@ -117,7 +118,9 @@ pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
 }
 /// The attacker has no target any more.
 pub fn clear_target(w: &mut World, e: Entity) {
-    w.entity_mut(e).remove::<Target>();
+    if w.entity_mut(e).take::<Target>().is_some() {
+        w.resource_mut::<Events>().target_lost.push(e);
+    }
 }
 /// `Mob.sees` for the attackers that have a target: the line of sight is read again only when the attacker's eyes or the
 /// target's change block, or a block changes on the box of the segment between them (inflated by a block); an attacker
@@ -156,7 +159,7 @@ pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Po
         }
         if !ok || (g.must_see && g.unseen > g.memory) {
             if g.slot == u8::MAX {
-                cmd.entity(e).remove::<Target>();
+                cmd.queue(move |w: &mut World| clear_target(w, e));
             } else {
                 reqs.0.push(Req::End(e, g.slot));
             }

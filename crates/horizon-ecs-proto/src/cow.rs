@@ -3,7 +3,9 @@
 //! ground with Horizon's real block collision sweep (`SceneCollisions::resolve_in_border_with`), and sleeping.
 //! Species data (size, step, speed, stroll range) are component values, not branches.
 use bevy_ecs::{
+    entity_disabling::Disabled,
     prelude::*,
+    query::Allow,
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 use horizon_client_lib::mobs::{
@@ -31,6 +33,8 @@ pub struct Body {
     pub gravity: f64,
     /// The movement speed attribute.
     pub speed: f64,
+    /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
+    pub fall_factor: f64,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -361,10 +365,55 @@ impl Rng {
 }
 
 // ---- resources -------------------------------------------------------------------------------------------
-/// The tick counter (advanced by `due`).
+/// The tick counter of the world (advanced by `due`) and the time each entity has not lived: `.0` is the WORLD's time (the
+/// timer wheel, the day, the log of the hits); an entity's own time is `of(e)`: the world's minus what it spent
+/// asleep (`zone.rs`), as a `Mob`'s `tickCount` does not count the ticks it is not ticked. Every deadline and every date a
+/// module or the frame keeps on an entity is in its OWN time; the wheel is in the world's (`at`, `arm`).
 #[derive(Resource, Default)]
-pub struct Clock(pub u64);
-#[derive(Clone, Copy, Debug)]
+pub struct Clock(pub u64, Vec<u64>);
+impl Clock {
+    /// The time of entity `e`: ticks it has been awake for since the world began (its `age`, with the world's start).
+    #[inline]
+    pub fn of(&self, e: Entity) -> u64 {
+        self.0 - self.1.get(e.index().index() as usize).copied().unwrap_or(0)
+    }
+    /// The world's tick at which the entity's own time is `local`.
+    #[inline]
+    pub fn at(&self, e: Entity, local: u64) -> u64 {
+        local + self.1.get(e.index().index() as usize).copied().unwrap_or(0)
+    }
+    /// The entity slept for `d` ticks of the world: its time stood still.
+    pub(crate) fn sleep_for(&mut self, e: Entity, d: u64) {
+        let i = e.index().index() as usize;
+        if self.1.len() <= i {
+            self.1.resize(i + 1, 0);
+        }
+        self.1[i] += d;
+    }
+    /// A new entity starts with its own time equal to the world's (its slot may have been an older entity's).
+    fn start(&mut self, e: Entity) {
+        if let Some(x) = self.1.get_mut(e.index().index() as usize) {
+            *x = 0;
+        }
+    }
+}
+/// On every animal: its own time starts with its creation (see `Clock`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_add = start_own_time)]
+pub struct OwnTime;
+fn start_own_time(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    world.resource_mut::<Clock>().start(ctx.entity);
+}
+/// Arms a wheel entry for an entity at its own time `local`.
+pub fn arm_at(w: &mut World, e: Entity, local: u64, d: Due) {
+    let at = w.resource::<Clock>().at(e, local);
+    w.resource_mut::<Wheel>().push(at, e, d);
+}
+/// The entity's own time.
+pub fn now_of(w: &World, e: Entity) -> u64 {
+    w.resource::<Clock>().of(e)
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Due {
     Stroll,
     Grow,
@@ -382,15 +431,78 @@ const WHEEL: usize = 4096;
 #[derive(Resource)]
 pub struct Wheel {
     slots: Vec<Vec<(Entity, Due)>>,
+    /// With the simulation zone on (`zone.rs`): what each entity has in the wheel (by entity index), so that a creature
+    /// that leaves the zone takes its entries out without a scan of the wheel.
+    track: bool,
+    owned: Vec<Vec<(Entity, u64, Due)>>,
 }
 impl Default for Wheel {
     fn default() -> Self {
-        Self { slots: vec![Vec::new(); WHEEL] }
+        Self { slots: vec![Vec::new(); WHEEL], track: false, owned: Vec::new() }
     }
 }
 impl Wheel {
     pub fn push(&mut self, at: u64, e: Entity, d: Due) {
         self.slots[(at % WHEEL as u64) as usize].push((e, d));
+        if self.track {
+            self.own(e, at, d);
+        }
+    }
+    fn own(&mut self, e: Entity, at: u64, d: Due) {
+        let i = e.index().index() as usize;
+        if self.owned.len() <= i {
+            self.owned.resize_with(i + 1, Vec::new);
+        }
+        self.owned[i].push((e, at, d));
+    }
+    pub fn enable_tracking_pub(&mut self) {
+        self.enable_tracking();
+    }
+    /// Starts to keep the entries of each entity (reads the ones already there).
+    pub(crate) fn enable_tracking(&mut self) {
+        self.track = true;
+        self.owned.clear();
+        for at in 0..WHEEL {
+            for k in 0..self.slots[at].len() {
+                let (e, d) = self.slots[at][k];
+                // The slot of tick `at` holds the entries of that tick (an entry is at most WHEEL - 1 ticks ahead).
+                self.own(e, at as u64, d);
+            }
+        }
+    }
+    /// An entry fired at tick `at`: it is no longer the entity's.
+    fn fired(&mut self, e: Entity, at: u64, d: Due) {
+        if let Some(list) = self.owned.get_mut(e.index().index() as usize)
+            && let Some(i) = list.iter().position(|o| o.0 == e && o.2 == d && o.1 % WHEEL as u64 == at % WHEEL as u64)
+        {
+            list.swap_remove(i);
+        }
+    }
+    /// Takes the entries of `e` out of the wheel: `(tick, what)`.
+    pub(crate) fn take_entries(&mut self, e: Entity) -> Vec<(u64, Due)> {
+        let Some(list) = self.owned.get_mut(e.index().index() as usize) else { return Vec::new() };
+        let mine: Vec<(Entity, u64, Due)> = list.iter().copied().filter(|o| o.0 == e).collect();
+        list.retain(|o| o.0 != e);
+        let mut out = Vec::with_capacity(mine.len());
+        for (_, at, d) in mine {
+            let slot = &mut self.slots[(at % WHEEL as u64) as usize];
+            if let Some(i) = slot.iter().position(|o| o.0 == e && o.1 == d) {
+                slot.swap_remove(i);
+                out.push((at, d));
+            }
+        }
+        out
+    }
+    /// How many entries `e` has in the wheel (tracking on).
+    pub fn owned_by(&self, e: Entity) -> usize {
+        self.owned.get(e.index().index() as usize).map_or(0, |l| l.iter().filter(|o| o.0 == e).count())
+    }
+    /// How many entries the wheel holds in all.
+    pub fn len(&self) -> usize {
+        self.slots.iter().map(Vec::len).sum()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
     /// How many entries the slot of tick `at` holds.
     pub fn due_len(&self, at: u64) -> usize {
@@ -403,18 +515,20 @@ const CELL: f64 = 1.0;
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
 pub struct Index {
-    origin: f64,
-    width: usize,
-    cells: Vec<Vec<Entity>>,
+    pub(crate) origin: f64,
+    pub(crate) width: usize,
+    pub(crate) cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
-    crossed: Vec<Entity>,
+    pub(crate) crossed: Vec<Entity>,
+    /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
+    pub zone: crate::zone::Zone,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default() }
     }
-    fn column(&self, x: f64) -> i64 {
+    pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
     }
     pub fn cell_of(&self, x: f64, z: f64) -> u32 {
@@ -528,7 +642,51 @@ pub struct Species {
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
     pub burns_in_day: bool,
+    /// The capabilities of the configuration (its sections): the entity is made of these only.
+    pub caps: &'static [crate::behaviours::Cap],
 }
+/// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FluidParams {
+    pub eye_height: f64,
+    pub can_float: bool,
+    pub water_slowdown: f32,
+    pub water_efficiency: f32,
+}
+impl FluidParams {
+    pub const DEFAULT: FluidParams = FluidParams { eye_height: 0.0, can_float: false, water_slowdown: 0.8, water_efficiency: 0.0 };
+}
+/// What the path search reads of an entity that walks.
+#[derive(Component, Clone, Copy)]
+pub struct NavParams {
+    pub malus: [Option<f32>; PATH_TYPES],
+    pub can_float: bool,
+    pub can_open_doors: bool,
+    pub can_pass_doors: bool,
+    pub can_walk_over_fences: bool,
+    pub follow_range: f32,
+}
+/// `Attributes.ATTACK_DAMAGE` (0: the entity does not attack).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AttackDamage(pub f32);
+/// `Attributes.KNOCKBACK_RESISTANCE` (a living entity).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Resist(pub f64);
+/// What the entity does not suffer, as bits (a living entity).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Immune(pub u32);
+/// No fall damage.
+pub const IMMUNE_FALL: u32 = 1;
+/// Does not drown under water.
+pub const BREATHES_WATER: u32 = 2;
+impl Immune {
+    pub fn has(self, bit: u32) -> bool {
+        self.0 & bit != 0
+    }
+}
+/// The type of the entity (`minecraft:cow`...), for the data keyed by type of the host (breathing).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct TypeName(pub &'static str);
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;
 
@@ -618,6 +776,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
+            caps: crate::species::registry().by_name(name).unwrap().caps,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -672,33 +831,95 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     let (hw, h) = (f64::from(width) / 2.0, f64::from(height));
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
-/// An animal of the world's species at (x, z): every number is the species' data.
-pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
-    let mut rng = Rng(seed | 1);
+/// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
+/// `Body`: where it is, its box, its physics, its fluids; its identity (`SpeciesId`, `Uid`) and its eye.
+pub fn body_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
     (
         Pos(Vec3::new(x, 1.0, z)),
         SpeciesId(sp.id),
+        crate::goals::Uid(uid),
         Vel(Vec3::ZERO),
-        Yaw((rng.next_u32() % 360) as f32),
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
         Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
         Cell(u32::MAX),
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        Drive::default(),
         (
-            Sizes { adult: (sp.width, sp.height), baby: sp.baby },
-            MoveTo::default(),
-            Nav::default(),
-            ActiveUntil(100),
-            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
-            (Moving, crate::goals::goals_bundle(sp)),
-            Health(sp.max_health),
-            HurtAt { at: 0, last: 0.0 },
-            Frozen(0),
-            (FluidState::default(), Air(300), Recheck),
-            rng,
+            FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+            crate::targeting::Eye(sp.eye_height),
+            FluidState::default(),
+            Recheck,
+            Moving,
+            OwnTime,
         ),
     )
+}
+/// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
+pub fn living_bundle(sp: &Species) -> impl Bundle {
+    (
+        Sizes { adult: (sp.width, sp.height), baby: sp.baby },
+        Health(sp.max_health),
+        HurtAt { at: 0, last: 0.0 },
+        Frozen(0),
+        Air(300),
+        Resist(sp.knockback_resistance),
+        Immune(if sp.farm.fall_immune { IMMUNE_FALL } else { 0 } | if sp.breathes_water { BREATHES_WATER } else { 0 }),
+        TypeName(sp.name),
+    )
+}
+/// `Locomotion`: walking and paths (the heading, the walking input, the path and its target, the walking data).
+pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
+    (
+        Yaw(yaw),
+        Drive::default(),
+        MoveTo::default(),
+        Nav::default(),
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        NavParams {
+            malus: sp.malus,
+            can_float: sp.can_float,
+            can_open_doors: sp.can_open_doors,
+            can_pass_doors: sp.can_pass_doors,
+            can_walk_over_fences: sp.can_walk_over_fences,
+            follow_range: sp.follow_range,
+        },
+    )
+}
+/// `Targets`: what the target selectors and the attacks read.
+pub fn targets_bundle(sp: &Species) -> impl Bundle {
+    (crate::targeting::FollowRange(f64::from(sp.follow_range)), AttackDamage(sp.attack_damage))
+}
+/// `Goals`: the selector, its head, and the activity zone and random stream the goals use.
+fn goals_part(sp: &Species, uid: u64, rng: Rng) -> impl Bundle {
+    (ActiveUntil(100), rng, crate::goals::goals_bundle(sp, uid))
+}
+/// An entity with EVERY capability at (x, z), for the tests and the benches: the species' data are the numbers.
+/// `spawn_species` gives only the capabilities a configuration declares.
+pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
+    let mut rng = Rng(seed | 1);
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    (body_bundle(sp, x, z, uid), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+}
+/// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
+fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let mut rng = Rng(seed | 1);
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
+    let mut e = world.spawn(body_bundle(sp, x, z, uid));
+    if has(crate::behaviours::Cap::Living) {
+        e.insert(living_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Locomotion) {
+        e.insert(locomotion_bundle(sp, yaw));
+    }
+    if has(crate::behaviours::Cap::Targets) {
+        e.insert(targets_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Goals) {
+        e.insert(goals_part(sp, uid, rng));
+    }
+    e.id()
 }
 /// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
 /// tick see it).
@@ -710,9 +931,17 @@ pub fn enter_index(world: &mut World, e: Entity) {
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);
 }
+/// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
+pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) -> Entity {
+    let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];
+    let e = spawn_declared(world, &sp, x, z, seed);
+    enter_index(world, e);
+    crate::farm::equip(world, e, &sp);
+    e
+}
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
-    let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
+    let e = spawn_declared(world, sp, x, z, seed);
     enter_index(world, e);
     crate::hostile::equip(world, e, sp);
     crate::farm::equip(world, e, sp);
@@ -741,7 +970,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     crate::farm::register(&mut s);
@@ -754,9 +983,10 @@ pub fn schedule() -> Schedule {
 /// `RandomStrollGoal.canUse` and `LandRandomPos`: after the wait, 10 tries of a spot within 10 x 7 (the first valid
 /// one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Arms the stroll attempt `idle_wait` ticks from now (the goal selector asks every other tick, 1 chance in 60).
-fn arm_stroll(wheel: &mut Wheel, now: u64, e: Entity, s: &mut Stroll, r: &mut Rng) {
+fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut Stroll, r: &mut Rng) {
+    let now = clock.of(e);
     let at = now + idle_wait(r, s.interval).max(1) as u64;
-    wheel.push(at.min(now + WHEEL as u64 - 1), e, Due::Stroll);
+    wheel.push(clock.at(e, at.min(now + WHEEL as u64 - 1)), e, Due::Stroll);
     s.scheduled = true;
 }
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
@@ -907,10 +1137,10 @@ pub(crate) fn player_near(
             a.0 = u64::MAX;
             entered.0.push(e);
             if !s.scheduled && !s.walking {
-                arm_stroll(wheel, clock.0, e, &mut s, &mut r);
+                arm_stroll(wheel, &clock, e, &mut s, &mut r);
             }
         } else if !now_in && a.0 == u64::MAX {
-            a.0 = clock.0 + 100;
+            a.0 = clock.of(e) + 100;
         }
     };
     for &c in &pl.candidates {
@@ -937,14 +1167,12 @@ pub(crate) fn pathfind(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &SpeciesId), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), With<NeedsPath>>,
 ) {
-    let now = clock.0;
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sid: &SpeciesId| {
-        let sp = &table.0[sid.0 as usize];
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
+        let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
             position: pos.0,
@@ -1005,9 +1233,9 @@ fn follow(
     par: ParallelCommands,
     mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
 ) {
-    let now = clock.0;
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
+        let now = clock.of(e);
         let mw = level.mw.0;
         let mut end = false;
         match nav.path.as_mut() {
@@ -1127,7 +1355,7 @@ fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
 /// `MoveControl.Operation.STRAFE` (`MoveControl.strafe(forwards, right)`): the speed is a quarter of the movement speed; a side
 /// step whose target block is not walkable turns into a step forward. The caller (a goal) does it every tick it strafes;
 /// the walk of the path (`move_control`) sets the sideways input back to nothing.
-pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: &mut Drive, forwards: f32, right: f32) {
+pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: &mut Drive, forwards: f32, right: f32, walkable: &mut Option<((i32, i32, i32), bool, u64)>, now: u64) {
     let speed = (0.25 * body.speed) as f32;
     let (mut xa, mut za) = (forwards, right);
     let dist = (xa * xa + za * za).sqrt().max(1.0);
@@ -1137,7 +1365,16 @@ pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: 
     let (s, co) = (trig::sin(angle), trig::cos(angle));
     let (dx, dz) = (xa * co - za * s, za * co + xa * s);
     let (x, y, z) = ((pos.0.x + f64::from(dx)).floor() as i32, pos.0.y.floor() as i32, (pos.0.z + f64::from(dz)).floor() as i32);
-    let (forwards, right) = if level.mw.0.path_type_static(x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable { (forwards, right) } else { (1.0, 0.0) };
+    // The kind of the block is read once per block and kept for 10 ticks (a strafe step is 0.1 block: the same block for many ticks).
+    let ok = match *walkable {
+        Some((b, ok, at)) if b == (x, y, z) && now < at + 10 => ok,
+        _ => {
+            let ok = level.mw.0.path_type_static(x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
+            *walkable = Some(((x, y, z), ok, now));
+            ok
+        }
+    };
+    let (forwards, right) = if ok { (forwards, right) } else { (1.0, 0.0) };
     d.speed = speed;
     d.zza = forwards;
     d.xxa = right;
@@ -1261,7 +1498,7 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
 #[allow(clippy::too_many_arguments)]
 fn travel_one(
     level: &Level,
-    sp: &Species,
+    sp: &FluidParams,
     pos: &mut Pos,
     vel: &mut Vel,
     yaw: &Yaw,
@@ -1282,7 +1519,7 @@ fn travel_one(
     }
     // `Chicken.aiStep`: a hen in the air has its downward speed cut (the species' `slow_fall`, 1 for the others).
     if !c.on_ground && vel.0.y < 0.0 {
-        vel.0.y *= sp.farm.slow_fall;
+        vel.0.y *= body.fall_factor;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
     let v = vel.0;
@@ -1372,19 +1609,30 @@ fn travel_one(
 pub(crate) fn travel(
     cfg: Res<Config>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, &SpeciesId),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
         (With<Moving>, Without<Overlapping>),
     >,
 ) {
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: &Yaw, mut c: Mut<Contact>, mut d: Mut<Drive>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, sid: &SpeciesId| {
-        let sp = &table.0[sid.0 as usize];
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0);
-        let rest = travel_one(&level, sp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, jumping, &mut fall);
-        if fall > 0.0 && !sp.farm.fall_immune {
+        // A body without walking (an object) has no yaw and no input.
+        let mut none = Drive::default();
+        let mut d = d;
+        let dr: &mut Drive = match d.as_mut() {
+            Some(d) => d,
+            None => &mut none,
+        };
+        let was_in_air = !c.on_ground;
+        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        if was_in_air && c.on_ground {
+            par.command_scope(|mut cmd| {
+                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
+            });
+        }
+        if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(|mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
@@ -1397,10 +1645,10 @@ pub(crate) fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i)| one(e, p, v, y, c, d, b, bb, fs, f, j, i));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j, i) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j, i);
+        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
         }
     }
 }
@@ -1410,13 +1658,12 @@ pub(crate) fn travel(
 fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, &SpeciesId), With<InFluid>>,
+    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
 ) {
     let level = &*level;
-    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, sid: &SpeciesId| {
+    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, fp: Option<&FluidParams>| {
         let mw = level.mw.0;
-        let f = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
+        let f = mw.fluids(b.0, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height);
         *fs = FluidState {
             water: f.water,
             lava: f.lava,
@@ -1446,27 +1693,25 @@ fn fluid_update(
 #[allow(clippy::type_complexity)]
 fn breathing(
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &SpeciesId, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, sid, uid) in &mut q {
-        let sp = &table.0[sid.0 as usize];
+    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid) in &mut q {
         let submerged = fs.eye_in_water && {
-            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + sp.eye_height).floor() as i32, pos.0.z.floor() as i32);
+            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + fp.eye_height).floor() as i32, pos.0.z.floor() as i32);
             mw.block_name(x, y, z) != "minecraft:bubble_column"
         };
-        let drowns = submerged && !sp.breathes_water;
+        let drowns = submerged && !imm.has(BREATHES_WATER);
         let vanilla = horizon_client_lib::breathing::Breath {
             can_breathe: !drowns,
             consume: 1,
             refill: if drowns { 0 } else { 4 },
         };
         let id = uid.0 as u32;
-        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, sp.name, vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, sp.name, &mut air.0, 300, breath, true)
+        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, 300, breath, true)
             && let Some(damage) = d.damage
         {
             queue.add(e, damage, Cause::Drown);
@@ -1483,14 +1728,12 @@ fn breathing(
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
 fn wall_check(
     level: Res<Level>,
-    table: Res<SpeciesTable>,
-    q: Query<(Entity, &Pos, &Body, Has<InWall>, &SpeciesId), With<Recheck>>,
+    q: Query<(Entity, &Pos, &Body, Has<InWall>, &FluidParams), With<Recheck>>,
     mut commands: Commands,
 ) {
     use horizon_core::geometry::{ShapeOp, VoxelShape};
     let mw = level.mw.0;
-    for (e, pos, body, was, sid) in &q {
-        let sp = &table.0[sid.0 as usize];
+    for (e, pos, body, was, sp) in &q {
         let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
         let inside = horizon_client_lib::mobs::ai::in_wall(
             body.width,
@@ -1538,6 +1781,7 @@ pub(crate) fn reindex(
     mut idx: ResMut<Index>,
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
+    mut events: ResMut<crate::goals::Events>,
     mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
     mut commands: Commands,
 ) {
@@ -1558,8 +1802,10 @@ pub(crate) fn reindex(
         if fluid && !in_fluid {
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
+            events.entered_fluid.push(e);
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
+            events.left_fluid.push(e);
             *fs = FluidState::default();
         }
         match (bits, hz) {
@@ -1585,11 +1831,10 @@ pub(crate) fn reindex(
 #[allow(clippy::type_complexity)]
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
-    table: Res<SpeciesTable>,
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, &mut Rng, &mut ActiveUntil, &mut Stroll, Has<Following>, &SpeciesId, &crate::goals::Uid)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&mut ActiveUntil>, Option<&mut Stroll>, Option<&Resist>, Option<&crate::goals::Uid>)>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -1599,10 +1844,11 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, mut rng, mut active, mut stroll, following, sid, uid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, active, stroll, resist, uid)) = q.get_mut(e) else {
             continue;
         };
-        let cooldown = clock.0 < hurt.at + 10 && hurt.at != 0;
+        let now = clock.of(e);
+        let cooldown = now < hurt.at + 10 && hurt.at != 0;
         let applied = if cooldown {
             if hit.amount <= hurt.last {
                 continue;
@@ -1611,7 +1857,7 @@ pub(crate) fn apply_damage(
         } else {
             hit.amount
         };
-        *hurt = HurtAt { at: clock.0, last: hit.amount };
+        *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;
         if h.0 <= 0.0 {
             if cell.0 != u32::MAX {
@@ -1628,23 +1874,31 @@ pub(crate) fn apply_damage(
         // `Animal.actuallyHurt`: damage taken ends love.
         commands.entity(e).remove::<crate::goals::Love>();
         // `ai::after_hurt`: `noActionTime = 0`.
-        if active.0 != u64::MAX {
-            active.0 = active.0.max(clock.0 + 100);
+        if let (Some(mut active), Some(mut stroll), Some(uid)) = (active, stroll, uid)
+            && active.0 != u64::MAX
+        {
+            active.0 = active.0.max(now + 100);
             if !stroll.scheduled && !stroll.walking {
                 // The wait is drawn from a stream of its own: the cow's random belongs to its goals (the target
                 // of a panic), which the hit must not shift.
-                let mut own = Rng(((uid.0) << 32 ^ clock.0 ^ 0x9e37_79b9_7f4a_7c15) | 1);
-                arm_stroll(&mut wheel, clock.0, e, &mut stroll, &mut own);
+                let mut own = Rng(((uid.0) << 32 ^ now ^ 0x9e37_79b9_7f4a_7c15) | 1);
+                arm_stroll(&mut wheel, &clock, e, &mut stroll, &mut own);
             }
         }
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
         if hit.cause == Cause::Entity && !cooldown {
-            let power = 0.4_f64 * (1.0 - table.0[sid.0 as usize].knockback_resistance);
+            let power = 0.4_f64 * (1.0 - resist.map_or(0.0, |r| r.0));
             if power > 0.0 {
                 let (mut dx, mut dz) = hit.from.map_or((0.0, 0.0), |f| (f.0 - pos.0.x, f.1 - pos.0.z));
+                let mut spare = Rng(clock.0 | 1);
+                let mut rng = rng;
                 while dx * dx + dz * dz < f64::from(1.0e-5_f32) {
-                    dx = (rng.next_f64() - rng.next_f64()) * 0.01;
-                    dz = (rng.next_f64() - rng.next_f64()) * 0.01;
+                    let r: &mut Rng = match rng.as_mut() {
+                        Some(r) => r,
+                        None => &mut spare,
+                    };
+                    dx = (r.next_f64() - r.next_f64()) * 0.01;
+                    dz = (r.next_f64() - r.next_f64()) * 0.01;
                 }
                 let l = (dx * dx + dz * dz).sqrt();
                 let (kx, kz) = (dx / l * power, dz / l * power);
@@ -1653,7 +1907,6 @@ pub(crate) fn apply_damage(
                 commands.entity(e).insert(Moving);
             }
         }
-        let _ = following;
     }
 }
 /// The module of the cows that overlap a hazard (only they are visited): lava ignites 15 s and hurts 4, fire ignites
@@ -1666,16 +1919,17 @@ fn hazard_tick(
     table: Res<SpeciesTable>,
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
-    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &SpeciesId)>,
+    mut events: ResMut<crate::goals::Events>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams)>,
     mut commands: Commands,
 ) {
-    let now = clock.0;
     let mw = level.mw.0;
     for (e, h, mut frozen, burning, pos, b, sid) in &mut q {
+        let now = clock.of(e);
         let f = h.0;
         // Water and lava as the `Mob` reads them: the fluid height at the cow's box, not the column.
         let (in_water, in_lava) = if f & (HAZ_WATER | HAZ_LAVA) != 0 {
-            let r = mw.fluids(b.0, pos.0.y + table.0[sid.0 as usize].eye_height);
+            let r = mw.fluids(b.0, pos.0.y + sid.eye_height);
             (r.in_water, r.in_lava)
         } else {
             (false, false)
@@ -1684,6 +1938,7 @@ fn hazard_tick(
         if in_water {
             if burning.is_some() {
                 commands.entity(e).remove::<Burning>();
+                events.extinguished.push(e);
             }
         } else {
             let seconds = if in_lava { 300 } else if lit { 160 } else { 0 };
@@ -1692,8 +1947,9 @@ fn hazard_tick(
                 match burning {
                     None => {
                         // `Entity.baseTick` hurts when the time left is a multiple of 20, the first tick included.
-                        wheel.push(now + if seconds % 20 == 0 { 1 } else { 20 }, e, Due::Burn);
+                        wheel.push(clock.at(e, now + if seconds % 20 == 0 { 1 } else { 20 }), e, Due::Burn);
                         commands.entity(e).insert(Burning { until });
+                        events.ignited.push(e);
                     }
                     Some(b) if b.until < until => {
                         commands.entity(e).insert(Burning { until });
@@ -1735,10 +1991,10 @@ fn recompute(
         if nav.path.as_ref().is_none_or(|p| p.is_done()) {
             nav.delayed = false;
             commands.entity(e).remove::<Recompute>();
-        } else if clock.0.saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
+        } else if clock.of(e).saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
             nav.delayed = true;
         } else {
-            nav.last_recompute = clock.0;
+            nav.last_recompute = clock.of(e);
             nav.path = None;
             nav.delayed = false;
             commands.entity(e).remove::<(Following, Recompute)>().insert(NeedsPath);
@@ -1773,6 +2029,8 @@ pub(crate) fn block_changes(
             let world = &mut *level.blocks.0;
             let _ = world.set(x, y, z, state);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+            // The real light engine: the sky above a column changed with the block.
+            horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);
         }
         hazards.set(x, y, z, hazard_bit(name));
         seen.0.push((x, y, z));
@@ -1822,7 +2080,9 @@ fn push(
     cfg: Res<Config>,
     idx: Res<Index>,
     par: ParallelCommands,
-    boxes: Query<Ref<Bounds>>,
+    // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
+    // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
+    boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
@@ -1836,7 +2096,7 @@ fn push(
             if o == e {
                 return;
             }
-            let Ok(ob) = boxes.get(o) else { return };
+            let Ok((ob, asleep)) = boxes.get(o) else { return };
             if !b.0.intersects(ob.0) {
                 return;
             }
@@ -1878,7 +2138,12 @@ fn push(
             }
             if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
                 par.command_scope(|mut cmd| {
-                    cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                    // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
+                    if asleep {
+                        cmd.entity(o).insert(PushIn(Vec3::new(xa, 0.0, za)));
+                    } else {
+                        cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                    }
                 });
             }
         });
@@ -1899,7 +2164,7 @@ fn push(
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
-                if o != e && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                if o != e && boxes.get(o).is_ok_and(|(ob, _)| b.0.intersects(ob.0)) {
                     par.command_scope(|mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
@@ -1978,8 +2243,9 @@ type OrderedItems = (
     &'static FluidState,
     Has<Following>,
     Option<&'static crate::goals::Jump>,
-    &'static SpeciesId,
+    &'static FluidParams,
     Has<Moving>,
+    Option<&'static Immune>,
 );
 /// One island of the ordered pass, its animals in the order of creation: each travels, then pushes every animal that
 /// overlaps its box now (see `ordered_pass`). Touches only the components of the animals of its island and of the
@@ -2001,12 +2267,11 @@ fn run_island(
     for &e in ids {
         {
             // SAFETY: the islands are disjoint: no other thread touches the components of this animal.
-            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sid, _)) = (unsafe { q.get_unchecked(e) }) else { continue };
-            let sp = &table.0[sid.0 as usize];
+            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sp, _, imm)) = (unsafe { q.get_unchecked(e) }) else { continue };
             let mut fall = 0.0_f32;
             let jumping = jump.is_some_and(|j| j.0);
             travel_one(level, sp, &mut p, &mut v, y, &mut c, &mut d, body, &mut b, fs, jumping, &mut fall);
-            if fall > 0.0 {
+            if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
                 out.push(Effect::Fall(e, fall));
             }
         }
@@ -2233,7 +2498,7 @@ pub struct Crowded;
 fn cramming(
     clock: Res<Clock>,
     idx: Res<Index>,
-    boxes: Query<&Bounds>,
+    boxes: Query<&Bounds, Allow<Disabled>>,
     mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
@@ -2252,7 +2517,7 @@ fn cramming(
         } else if rng.next_int(4) == 0 {
             queue.add(e, 6.0, Cause::Cramming);
             // The hit is applied at the start of the next tick.
-            let in_window = clock.0 + 1 < hurt.at + 10 && hurt.at != 0;
+            let in_window = clock.of(e) + 1 < hurt.at + 10 && hurt.at != 0;
             let applied = if in_window { (6.0 - hurt.last).max(0.0) } else { 6.0 };
             if health.0 - applied <= 0.0 {
                 dying.push(e);
@@ -2276,6 +2541,7 @@ pub(crate) fn due(
     mut wheel: ResMut<Wheel>,
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
+    mut events: ResMut<crate::goals::Events>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
     burners: Query<(Entity, &Burning)>,
@@ -2283,8 +2549,14 @@ pub(crate) fn due(
     mut commands: Commands,
 ) {
     clock.0 += 1;
+    events.swap();
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
+    if wheel.track {
+        for &(e, d) in &list {
+            wheel.fired(e, clock.0, d);
+        }
+    }
     for (e, d) in list {
         match d {
             // The goal selector (`goals.rs`) owns the stroll attempt, like every other goal's deadline.
@@ -2295,25 +2567,29 @@ pub(crate) fn due(
             Due::Sun => sun.0.push(e),
             Due::Burn => {
                 if let Ok((e2, burning)) = burners.get(e) {
-                    if clock.0 < burning.until {
+                    let now = clock.of(e);
+                    if now < burning.until {
                         queue.add(e2, 1.0, Cause::OnFire);
-                        wheel.push((clock.0 + 20).min(clock.0 + WHEEL as u64 - 1), e, Due::Burn);
+                        wheel.push(clock.at(e, (now + 20).min(now + WHEEL as u64 - 1)), e, Due::Burn);
                     } else {
                         commands.entity(e).remove::<Burning>();
+                        events.extinguished.push(e);
                     }
                 }
             }
             Due::Grow => {
                 if let Ok((mut b, sizes, g, p, mut bb)) = babies.get_mut(e) {
-                    if g.0 > clock.0 {
+                    let now = clock.of(e);
+                    if g.0 > now {
                         // A wait longer than the wheel is put back (a calf grows in 24 000 ticks).
-                        wheel.push(g.0.min(clock.0 + WHEEL as u64 - 1), e, Due::Grow);
-                    } else if g.0 == clock.0 {
+                        wheel.push(clock.at(e, g.0.min(now + WHEEL as u64 - 1)), e, Due::Grow);
+                    } else if g.0 == now {
                         b.width = sizes.adult.0;
                         b.height = sizes.adult.1;
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                         commands.entity(e).remove::<GrowAt>().insert(Recheck);
                         grown.0.push(e);
+                        events.grew.push(e);
                     }
                 }
             }
@@ -2388,6 +2664,36 @@ impl Herd {
         world.run_system_cached(reindex).unwrap();
         Self { world, schedule: schedule() }
     }
+    /// Adds animals of the process's species at `at` (x, z), their timers armed as `build` arms them (call it once, on a herd
+    /// that has none: `arm_all` arms every animal).
+    pub fn populate(&mut self, at: &[(f64, f64)], seed: u64) -> Vec<Entity> {
+        let sp = *species();
+        let mut rng = Rng(seed | 1);
+        let mut out = Vec::with_capacity(at.len());
+        for &(x, z) in at {
+            let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
+            out.push(spawn_species(&mut self.world, &sp, x, z, s));
+        }
+        let mut arm = Rng(seed ^ 0x9e37_79b9_7f4a_7c15 | 1);
+        for &e in &out {
+            let now = now_of(&self.world, e);
+            let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
+            arm_at(&mut self.world, e, at.min(now + WHEEL as u64 - 1), Due::Stroll);
+            self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+        }
+        crate::goals::arm_all(&mut self.world);
+        self.world.run_system_cached(reindex).unwrap();
+        out
+    }
+    /// Turns the simulated chunks on (`zone.rs`): only the chunks within `radius` chunks of a player tick, the creatures of the
+    /// others sleep (at the next tick for the players set later).
+    pub fn set_simulation(&mut self, radius: i32) {
+        crate::zone::enable(&mut self.world, radius);
+    }
+    /// Whether chunk `(cx, cz)` ticks (always, with the zone off).
+    pub fn chunk_simulated(&self, cx: i32, cz: i32) -> bool {
+        self.world.resource::<Index>().zone.chunk_simulated(cx, cz)
+    }
     /// The players of the herd's world (their positions; cows within 32 blocks stay active).
     pub fn set_players(&mut self, players: Vec<(f64, f64)>) {
         let mut p = self.world.resource_mut::<Players>();
@@ -2447,7 +2753,7 @@ impl Herd {
     }
     /// The cow grows up in `ticks` ticks (it is a baby until then: the baby's size, one wheel entry).
     pub fn make_baby(&mut self, e: Entity, ticks: u64) {
-        let now = self.world.resource::<Clock>().0;
+        let now = now_of(&self.world, e);
         let sizes = *self.world.get::<Sizes>(e).unwrap();
         let p = self.world.get::<Pos>(e).unwrap().0;
         let mut b = self.world.get_mut::<Body>(e).unwrap();
@@ -2455,7 +2761,7 @@ impl Herd {
         b.height = sizes.baby.1;
         self.world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
         self.world.entity_mut(e).insert(GrowAt(now + ticks));
-        self.world.resource_mut::<Wheel>().push(now + ticks, e, Due::Grow);
+        arm_at(&mut self.world, e, now + ticks, Due::Grow);
     }
     /// One tick with the wall time of each system added to `acc` (seconds), in the schedule's order.
     pub fn tick_timed(&mut self, acc: &mut [f64; 12]) {

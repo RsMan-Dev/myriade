@@ -60,14 +60,14 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 fn hurt_events(clock: Res<Clock>, mut by: ResMut<HurtBy>, mut q: Query<&mut HurtByGoal>, mut reqs: ResMut<Requests>) {
     for (e, who) in std::mem::take(&mut by.0) {
         if let Ok(mut g) = q.get_mut(e) {
-            g.last = Some((who, clock.0));
+            g.last = Some((who, clock.of(e)));
             reqs.0.push(Req::Start(e, g.slot));
         }
     }
 }
 /// `HurtByTargetGoal.canUse`: a hit it has not answered yet, by someone alive that can be targeted.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let Some(g) = w.get::<HurtByGoal>(e).copied() else { return false };
     let Some((who, at)) = g.last else { return false };
     // `getLastHurtByMob` is forgotten after 100 ticks.

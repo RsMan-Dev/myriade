@@ -128,7 +128,7 @@ fn blocked(w: &mut World, e: Entity, inst: Inst) {
 }
 /// The draw came up: ask, unless the animal is out of the active zone (the next entry arms it again).
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     edit(w, e, inst, |n| n.armed = false);
     now < active

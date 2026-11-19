@@ -10,8 +10,8 @@ for sp in cow pig sheep chicken zombie; do
   S=""; [ $sp = zombie ] && S=1
   e() { "$D/goal_bench" "$@" 2>/dev/null | g; }
   m() { if [ -n "$S" ]; then SCOPE=1 "$D/mob_goal_bench" "$@" 2>/dev/null | g; else "$D/mob_goal_bench" "$@" 2>/dev/null | g; fi; }
-  echo "$sp idle: ecs $(e 2000 300 0 0 0 0) ecs-lazy $(LAZY=1 e 2000 300 0 0 0 0) mob $(m 2000 300 0 0 0 0)"
-  echo "$sp active(1000 players, no solicitation): ecs $(e 2000 300 1000 0 0 0) ecs-lazy $(LAZY=1 e 2000 300 1000 0 0 0) mob $(m 2000 300 1000 0 0 0)"
+  echo "$sp idle: ecs $(e 2000 300 0 0 0 0) ecs-eager $(EAGER=1 e 2000 300 0 0 0 0) mob $(m 2000 300 0 0 0 0)"
+  echo "$sp active(1000 players, no solicitation): ecs $(e 2000 300 1000 0 0 0) ecs-eager $(EAGER=1 e 2000 300 1000 0 0 0) mob $(m 2000 300 1000 0 0 0)"
   if [ $sp != zombie ]; then echo "$sp solicited(50 players, 30% hold, 20 hurt, 20 love): ecs $(e 2000 300 50 30 20 20) mob $(m 2000 300 50 30 20 20)"; fi
 done
 export HORIZON_SPECIES=minecraft:zombie HUNT=1

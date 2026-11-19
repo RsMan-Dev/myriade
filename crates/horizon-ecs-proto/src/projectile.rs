@@ -5,7 +5,7 @@
 //! its `Flight` data. Only a projectile in flight (`Flying`) is visited each tick; a stuck one sleeps until its
 //! expiry (a deadline of the wheel) or a block change on the block it is in.
 use crate::cow::*;
-use crate::goals::Online;
+use crate::goals::{Events, Online};
 use crate::hostile::{ChangedBlocks, PlayerState};
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
@@ -84,7 +84,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 }
 /// Launches a projectile at `at` with `velocity`, owned by `owner`.
 pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner: Option<Who>) -> Entity {
-    world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying)).id()
+    world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id()
 }
 fn bounds(at: Vec3, size: f64) -> Aabb {
     let w = size / 2.0;
@@ -115,6 +115,7 @@ pub fn fly(
     mut ps: ResMut<PlayerState>,
     mut dq: ResMut<DamageQueue>,
     mut wheel: ResMut<Wheel>,
+    mut events: ResMut<Events>,
     mut stuck: ResMut<StuckIndex>,
     creatures: Query<&Bounds, With<Health>>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
@@ -182,6 +183,9 @@ pub fn fly(
                 (Who::Entity(t), None) => dq.add_from(t, amount, Cause::Entity, from),
                 (Who::Player(id), _) => ps.hurt(clock.0, id, amount, from),
             }
+            if let Who::Entity(t) = who {
+                events.projectile_hit.push(t);
+            }
             commands.entity(e).despawn();
             continue;
         }
@@ -192,8 +196,9 @@ pub fn fly(
                 vel.0 = Vec3::ZERO;
                 if f.sticks {
                     let at = [bpos.x, bpos.y, bpos.z];
-                    p.expires = clock.0 + LIFE;
-                    wheel.push(p.expires.min(clock.0 + 4095), e, Due::Expire);
+                    // Its life is counted in its own time (a projectile in a chunk nobody simulates does not age).
+                    p.expires = clock.of(e) + LIFE;
+                    wheel.push(clock.at(e, p.expires).min(clock.0 + 4095), e, Due::Expire);
                     stuck.at.entry(at).or_default().push(e);
                     commands.entity(e).remove::<Flying>().insert(Stuck { block: at });
                 } else {
@@ -216,11 +221,12 @@ pub fn fly(
 /// A deadline of the wheel for a stuck projectile: it is gone once its life is over (the deadline is the wheel's reach,
 /// the projectile's may be later).
 pub fn expire(w: &mut World, e: Entity) {
-    let now = w.resource::<Clock>().0;
+    let (now, world_now) = (now_of(w, e), w.resource::<Clock>().0);
     let Some(p) = w.get::<Projectile>(e).copied() else { return };
     let Some(s) = w.get::<Stuck>(e).copied() else { return };
     if now < p.expires {
-        w.resource_mut::<Wheel>().push(p.expires.min(now + 4095), e, Due::Expire);
+        let at = w.resource::<Clock>().at(e, p.expires).min(world_now + 4095);
+        w.resource_mut::<Wheel>().push(at, e, Due::Expire);
         return;
     }
     if let Some(v) = w.resource_mut::<StuckIndex>().at.get_mut(&s.block) {

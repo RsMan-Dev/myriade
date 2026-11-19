@@ -38,7 +38,9 @@ struct World2 {
 type Species2 = horizon_ecs_proto::cow::Species;
 fn world() -> World2 {
     let r = MobRef::new(60, false);
-    let h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab(60, true, false);
+    // The controls compare with the `Mob`, which looks around for every animal: the lazy look (on by default) is off.
+    horizon_ecs_proto::goals::set_lazy_look(&mut h.world, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let mut zombie = *table.iter().find(|s| s.name == "minecraft:zombie").unwrap();
     zombie.goals = zombie_config();
@@ -89,7 +91,7 @@ mod mobs_view {
     pub use horizon_client_lib::mobs::PlayerView;
 }
 fn skip() -> bool {
-    !have_data() || species().name != "minecraft:zombie" || horizon_ecs_proto::cow::skip_unless(&nearest_target::MODULE, "creature targets")
+    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:zombie") || horizon_ecs_proto::cow::skip_unless(&nearest_target::MODULE, "creature targets")
 }
 fn mean_tick(v: &[Option<i64>]) -> (f64, usize) {
     let n = v.iter().flatten().count();

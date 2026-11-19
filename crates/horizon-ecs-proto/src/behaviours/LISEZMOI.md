@@ -32,6 +32,9 @@ pour être prévenu d'une acquisition, ajouter une fonction à `TargetWatchers` 
 `DamageQueue::add_by_entity(cible, dégâts, (x, z), attaquant)` (la victime peut en faire sa cible : module `hurt_by`). Les modules qui
 CHOISISSENT la cible sont `nearest_target` (joueur, types, tag, prédicat nommé ; plusieurs instances) et `hurt_by` (frappeur, alerte).
 
+Projectile (`projectile.rs`, capacité, pas un but) : une entité `Pos`+`Vel`+`Flight`+`Projectile` (+`OwnTime`), sans vie ni buts ni boîte dans l'index ;
+`projectile::launch(w, Flight::ARROW | SNOWBALL, pos, vitesse, propriétaire)` ; le tir d'un but : `behaviours/ranged_bow.rs`.
+
 Règles : pas de système qui parcourt tous les animaux (une requête filtrée par le marqueur du module) ; une échéance
 plutôt qu'une scrutation ; le module n'écrit pas dans l'état des autres (il leur demande par `Req`).
 Points d'entrée = `&mut World` (système exclusif, comme `arbitrate`) ; une forme à requêtes reste possible plus tard.
@@ -41,3 +44,47 @@ Autres composants lourds (déplacement/navigation, dangers, règles propres d'es
 indépendants (dangers : oui ; règles d'espèce : oui, `farm::FarmDef` est déjà ce cas à la main). Elle ne s'y prête pas telle
 quelle pour le déplacement/navigation : un seul mode par animal (choix d'un module, pas une liste) et un chemin chaud
 (`travel`, `pathfind`) qui ne passe pas par un sélecteur.
+
+## Événements du cadre (un module ne scrute jamais un composant)
+
+`goals::Events` (ressource) : une liste d'entités par événement, lue avec `ev.<nom>.iter()`. GARANTIE : `iter` rend les événements du tick
+PRÉCÉDENT, tous et seulement ceux-là ; un système qui tourne à chaque tick voit donc chaque événement EXACTEMENT UNE FOIS, où que
+soit sa place dans le schedule (`due` permute au début du tick) ; les événements du tick en cours ne sont visibles qu'au tick
+suivant ; personne ne vide ; un système qui ne tourne pas à chaque tick peut en manquer (il lit l'événement dans le tick suivant
+celui où il s'est produit, ou jamais) : `ignited` (le feu vient de prendre),
+`extinguished`, `entered_fluid`, `left_fluid`, `landed` (les pieds touchent le sol après l'air), `grew` (un bébé a grandi),
+`ate` (le broutage a mangé son bloc). Existants dans la même forme : `Hurts` (blessé), `Grown`, `LaidEggs`. Un événement
+nouveau = un champ de `Events`, une ligne dans `swap`, un `push` au point où l'état change. À venir (agent du ciblage) : cible
+acquise / perdue. Pour réveiller un module : un système `.in_set(slot)` qui lit l'événement et appelle `wake(w, e, &MODULE)`.
+
+## But refusé en l'air
+
+Le `Mob` fait comme le cadre : `GroundPathNavigation.canUpdatePath` est faux hors du sol (ni liquide, ni monture), `nav_move_to`
+rend faux, `is_done()` est vrai sans chemin, donc `canContinueToUse` (`!nav.is_done()`) met fin au but au tick suivant ; le
+sélecteur redemande `canUse` à chaque tick de sélecteur (un sur deux) tant que le but ne tourne pas. Le but se termine donc
+bien en l'air, et c'est son `canUse` redemandé qui le relance à l'atterrissage. Dans le cadre, un but dont le `canUse`
+vanilla n'a pas de minuterie (FleeSun, AvoidEntity) doit se faire redemander : `retry_on_end: true` (nouvel essai à la fin du but)
+ou `arm(w, e, slot, 2)` dans `stop` tant que la condition de départ tient. Un but avec minuterie (stroll) n'y touche pas.
+
+## Lumière du monde de test
+
+Le monde fuité du prototype est éclairé par le vrai moteur de Horizon (`light_chunk` à la construction, `relight` après chaque
+changement de bloc de `block_changes`) : `can_see_sky`, `brightness` et `precipitation_at` voient un toit posé ou retiré
+(test : `a_roof_over_a_zombie_stops_the_sun_and_removing_it_lets_it_burn`).
+
+## Le temps (horloge propre à l'entité)
+
+Un module lit le temps par `cow::now_of(w, e)` (dans un système : `clock.of(e)`) et arme par `cow::arm_at(w, e, local, due)` ou
+`goals::arm`, JAMAIS par la ressource d'horloge du monde (`Clock.0`) : le temps d'une créature s'arrête pendant son gel
+(chunk non simulé). Restent en temps du monde : la roue elle-même, la grille de 20 ticks de `MeleeAttackGoal.canUse`, la phase du
+sélecteur (un tick sur deux), le journal des coups, `Daylight`.
+
+## Capacités à la création
+
+Une espèce déclare ses capacités (`Def.caps`, héritées du gabarit, toutes par défaut) : `Body`, `Living`, `Locomotion`, `Targets`,
+`Goals`. `spawn_species` / `spawn_like` ne posent que les composants de ces capacités, le corps d'abord (`body_bundle`) :
+`Body` : Pos, Vel, Body, Bounds, Cell, Contact, FluidState, FluidParams, Eye, SpeciesId, Uid, Moving, OwnTime ; `Living` :
+Sizes, Health, HurtAt, Frozen, Air, Resist, Immune, TypeName ; `Locomotion` : Yaw, Drive, MoveTo, Nav, Stroll, NavParams ;
+`Targets` : FollowRange, AttackDamage ; `Goals` : GoalSet, Look, Head, Jump, Phase, ActiveUntil, Rng. Un module déclare dans
+`requires` ce qu'il suppose ; le registre refuse l'espèce qui a le module sans la capacité. `spawn_bundle` (tests, bancs) pose tout.
+Ne jamais supposer un composant d'une capacité que `requires` ne cite pas : `world.get::<X>(e)` rend `None` pour un objet.
