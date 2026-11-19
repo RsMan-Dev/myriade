@@ -14,7 +14,7 @@ fn main() {
     let (n, ticks) = (arg(2, 3000), arg(3, 300));
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing = 2.0;
-    let mix = if scene == "active" { 4 } else { 0 };
+    let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
     let mut herd = Herd::with_mix(if scene == "arrows" { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
@@ -22,6 +22,10 @@ fn main() {
             let (x, z) = (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
             horizon_ecs_proto::projectile::launch(&mut herd.world, horizon_ecs_proto::projectile::Flight::ARROW, horizon_core::geometry::Vec3::new(x, 3.0, z), horizon_core::geometry::Vec3::new(0.05, -0.5, 0.0), None);
         }
+    }
+    if std::env::var_os("POOL").is_some() {
+        herd.fill_water(4);
+        herd.tick();
     }
     let shared = profile::instrument(&mut herd);
     let cows: Vec<_> = herd.world.query::<bevy_ecs::entity::Entity>().iter(&herd.world).collect();

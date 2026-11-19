@@ -26,4 +26,5 @@ pub static DEF: Def = Def {
     rules: &[],
     caps: None,
     brain: crate::brain::BrainDef::EMPTY,
+    locomotion: &[],
 };

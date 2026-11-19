@@ -516,6 +516,8 @@ impl Wheel {
 }
 /// The width of an index column: a box (at most 1.4 blocks wide here) overlaps only entities within the 3 x 3 columns around it.
 const CELL: f64 = 1.0;
+/// The side of a block of columns of the index, in columns.
+const BLOCK: usize = 8;
 /// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
 /// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
 #[derive(Resource, Default)]
@@ -525,13 +527,17 @@ pub struct Index {
     pub(crate) cells: Vec<Vec<Entity>>,
     stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
-    pub(crate) crossed: Vec<Entity>,
+    pub(crate) crossed: Vec<(Entity, u32)>,
     /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
     pub zone: crate::zone::Zone,
+    /// How many animals each block of 8 x 8 columns holds (`player_near` looks only at the blocks that hold some).
+    /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
+    blocks: Vec<u64>,
+    bw: usize,
 }
 impl Index {
     pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default() }
+        Self { origin, width, cells: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK) }
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
         ((x - self.origin) / CELL).floor() as i64
@@ -543,11 +549,23 @@ impl Index {
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
         self.cells[cell as usize].push(e);
+        let (b, bit) = self.block_of(cell);
+        self.blocks[b] |= bit;
+    }
+    #[inline]
+    fn block_of(&self, cell: u32) -> (usize, u64) {
+        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
+        ((cz / BLOCK) * self.bw + cx / BLOCK, 1 << ((cz % BLOCK) * BLOCK + cx % BLOCK))
     }
     pub fn remove(&mut self, e: Entity, cell: u32) {
         let list = &mut self.cells[cell as usize];
         if let Some(i) = list.iter().position(|&o| o == e) {
             list.swap_remove(i);
+            let emptied = list.is_empty();
+            if emptied {
+                let (b, bit) = self.block_of(cell);
+                self.blocks[b] &= !bit;
+            }
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
@@ -666,6 +684,8 @@ pub struct Species {
     pub caps: &'static [crate::behaviours::Cap],
     /// The brain of the species, resolved (None: it has none).
     pub brain: Option<&'static crate::brain::Plan>,
+    /// The modes of locomotion (`locomotion.rs`).
+    pub modes: &'static [crate::locomotion::ModeEntry],
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -800,6 +820,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
             brain: crate::species::registry().by_name(name).unwrap().brain,
+            modes: crate::species::registry().by_name(name).unwrap().modes,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -892,6 +913,8 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
 pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
     (
         Yaw(yaw),
+        crate::locomotion::WalkMode,
+        crate::locomotion::Modes(sp.modes),
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
@@ -1053,42 +1076,6 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, n
 /// The cells of row `zz` (columns, inclusive; a run is empty when its start is past its end) that may lie in one of
 /// two circles of 32 blocks (a player's place before and after, `None`: absent) and not in the other: the cells either
 /// circle touches except those both surely contain, as two runs. A superset, with a margin of a cell or two.
-fn ring_runs(origin: f64, zz: i64, n: Option<(f64, f64)>, o: Option<(f64, f64)>) -> [(i64, i64); 2] {
-    const R: f64 = 32.0;
-    const NONE: [(i64, i64); 2] = [(1, 0), (1, 0)];
-    let (zlo, zhi) = (origin + zz as f64 * CELL, origin + (zz + 1) as f64 * CELL);
-    let col = |x: f64| ((x - origin) / CELL).floor() as i64;
-    // (the cells that may touch the circle, the cells surely inside it) in this row.
-    let one = |q: Option<(f64, f64)>| -> Option<((i64, i64), Option<(i64, i64)>)> {
-        let (px, pz) = q?;
-        let dzn = if pz < zlo { zlo - pz } else if pz > zhi { pz - zhi } else { 0.0 };
-        if dzn >= R {
-            return None;
-        }
-        let half_out = (R * R - dzn * dzn).sqrt();
-        let touch = (col(px - half_out) - 1, col(px + half_out) + 1);
-        let dzf = (pz - zlo).abs().max((pz - zhi).abs());
-        let inside = (dzf < R).then(|| {
-            let half_in = (R * R - dzf * dzf).sqrt();
-            (col(px - half_in) + 2, col(px + half_in) - 2)
-        });
-        Some((touch, inside))
-    };
-    let (a, b) = (one(n), one(o));
-    let touch = match (a, b) {
-        (None, None) => return NONE,
-        (Some((t, _)), None) | (None, Some((t, _))) => t,
-        (Some((t, _)), Some((u, _))) => (t.0.min(u.0), t.1.max(u.1)),
-    };
-    let both = match (a, b) {
-        (Some((_, Some(i))), Some((_, Some(j)))) => Some((i.0.max(j.0), i.1.min(j.1))).filter(|r| r.0 <= r.1),
-        _ => None,
-    };
-    match both {
-        Some((l, r)) => [(touch.0, l - 1), (r + 1, touch.1)],
-        None => [touch, (1, 0)],
-    }
-}
 
 /// `Mob.checkDespawn`'s reset of `noActionTime`, by event: nothing is read while the players stay where they are
 /// and the cows stay in their cells. When a player moves (`Players.dirty`), only the cows of the cells its old and
@@ -1142,11 +1129,40 @@ pub(crate) fn player_near(
             }
             let (x0, x1) = (idx.column(x0).max(0), idx.column(x1).min(idx.width as i64 - 1));
             let (z0, z1) = (idx.column(z0).max(0), idx.column(z1).min(idx.width as i64 - 1));
-            for zz in z0..=z1 {
-                for (lo, hi) in ring_runs(origin, zz, n, o) {
-                    for xx in lo.max(x0)..=hi.min(x1) {
+            // A rectangle of columns the two circles agree on (inside both, or outside both) holds no animal whose state
+            // changes: only the blocks and the columns that hold an animal and are not so are looked at.
+            let agree = |cx0: f64, cx1: f64, cz0: f64, cz1: f64| -> bool {
+                let (mut inside, mut outside) = (true, true);
+                for q in [n, o] {
+                    let Some((px, pz)) = q else { inside = false; continue };
+                    let (nx, nz) = (px.clamp(cx0, cx1) - px, pz.clamp(cz0, cz1) - pz);
+                    let (fx, fz) = ((px - cx0).abs().max((px - cx1).abs()), (pz - cz0).abs().max((pz - cz1).abs()));
+                    inside &= fx * fx + fz * fz < R2;
+                    outside &= nx * nx + nz * nz >= R2;
+                }
+                inside || outside
+            };
+            let b = BLOCK as i64;
+            for bz in z0 / b..=z1 / b {
+                for bx in x0 / b..=x1 / b {
+                    if idx.blocks[(bz * idx.bw as i64 + bx) as usize] == 0 {
+                        continue;
+                    }
+                    let (bx0, bz0) = (origin + (bx * b) as f64 * CELL, origin + (bz * b) as f64 * CELL);
+                    if agree(bx0, bx0 + b as f64 * CELL, bz0, bz0 + b as f64 * CELL) {
+                        continue;
+                    }
+                    let mut bits = idx.blocks[(bz * idx.bw as i64 + bx) as usize];
+                    while bits != 0 {
+                        let k = bits.trailing_zeros() as i64;
+                        bits &= bits - 1;
+                        let (xx, zz) = (bx * b + k % b, bz * b + k / b);
                         let c = zz as usize * idx.width + xx as usize;
-                        if idx.stamp[c] != tick {
+                        if idx.stamp[c] == tick {
+                            continue;
+                        }
+                        let (cx0, cz0) = (origin + xx as f64 * CELL, origin + zz as f64 * CELL);
+                        if !agree(cx0, cx0 + CELL, cz0, cz0 + CELL) {
                             idx.stamp[c] = tick;
                             pl.candidates.push(c);
                         }
@@ -1191,14 +1207,20 @@ pub(crate) fn player_near(
         }
     }
     if !list_empty {
-        for &e in &idx.crossed {
-            test(e, &mut active, &mut wheel);
+        for &(e, cell) in &idx.crossed {
+            // A column more or less changes nothing for an animal with no player within a bin of it.
+            let (cx, cz) = ((cell as usize % idx.width) as f64 + 0.5 + origin / CELL, (cell as usize / idx.width) as f64 + 0.5 + origin / CELL);
+            let (bx, bz) = (bin(cx * CELL), bin(cz * CELL));
+            let near = (bz - 1..=bz + 1).any(|zz| (bx - 1..=bx + 1).any(|xx| (0..bins_n).contains(&xx) && (0..bins_n).contains(&zz) && !nbins[(zz * bins_n + xx) as usize].is_empty()));
+            if near {
+                test(e, &mut active, &mut wheel);
+            }
         }
     }
     idx.crossed.clear();
 }
 
-fn comfortable_fall_distance(f: f32) -> i32 {
+pub(crate) fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).floor() as i32
 }
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
@@ -1210,7 +1232,7 @@ pub(crate) fn pathfind(
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), With<NeedsPath>>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams), (With<NeedsPath>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams| {
@@ -1270,12 +1292,12 @@ pub(crate) fn pathfind(
 /// `PathNavigation.tick` -> `followThePath` (ground): reach the waypoint, or cut the corner, then steer the move
 /// control at the next node. (The recompute on a block change is not here.) Visits only the cows that follow a path.
 #[allow(clippy::type_complexity)]
-fn follow(
+pub(crate) fn follow(
     cfg: Res<Config>,
     clock: Res<Clock>,
     level: Res<Level>,
     par: ParallelCommands,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), With<Following>>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<crate::locomotion::SwimMode>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -1344,7 +1366,7 @@ fn follow(
     }
 }
 /// The walks that are over end the goal that asked for them (`goals.rs`), which arms what comes next.
-fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
+pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet), With<PathEnded>>, mut reqs: ResMut<crate::goals::Requests>, mut commands: Commands) {
     for (e, g) in &q {
         crate::goals::path_ended(e, g, &mut reqs);
         commands.entity(e).remove::<PathEnded>();
@@ -1387,7 +1409,7 @@ fn wrap(a: f32) -> f32 {
     }
     a
 }
-fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
+pub(crate) fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     let mut r = a + wrap(b - a).clamp(-max, max);
     if r < 0.0 {
         r += 360.0;
@@ -1471,7 +1493,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), With<Following>>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (With<Following>, Without<crate::locomotion::SwimMode>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -1485,7 +1507,7 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
+pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
     let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
@@ -1501,7 +1523,7 @@ fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
 }
 /// `Entity.move`: the sweep over the blocks (Horizon's real kernel), then the collision flags, the landing and the
 /// restitution (the vertical velocity is lost after a landing).
-fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
+pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
     let wanted = vel.0;
     let p = pos.0;
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
@@ -1540,7 +1562,7 @@ fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-fn travel_one(
+pub(crate) fn travel_one(
     level: &Level,
     sp: &FluidParams,
     pos: &mut Pos,
@@ -1656,7 +1678,7 @@ pub(crate) fn travel(
     par: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
-        (With<Moving>, Without<Overlapping>),
+        (With<Moving>, Without<Overlapping>, Without<crate::locomotion::SwimMode>),
     >,
 ) {
     let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
@@ -1699,7 +1721,7 @@ pub(crate) fn travel(
 
 /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
 /// a column with a fluid.
-fn fluid_update(
+pub(crate) fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
     mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
@@ -1770,7 +1792,7 @@ fn breathing(
 
 /// `Mob.baseTick`'s `isInWall` for the cows an event asked about (a spawn, a teleport, a growth): the head in a
 /// suffocating block puts the cow in the `InWall` module (1 damage a tick) or takes it out.
-fn wall_check(
+pub(crate) fn wall_check(
     level: Res<Level>,
     q: Query<(Entity, &Pos, &Body, Has<InWall>, &FluidParams), With<Recheck>>,
     mut commands: Commands,
@@ -1826,10 +1848,10 @@ pub(crate) fn reindex(
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState, Option<&crate::locomotion::Modes>), Changed<Bounds>>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
+    for (e, b, mut c, hz, in_fluid, mut fs, modes) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -1839,7 +1861,7 @@ pub(crate) fn reindex(
             idx.insert(e, cell);
             c.0 = cell;
             moves.0.push(e);
-            idx.crossed.push(e);
+            idx.crossed.push((e, cell));
         }
         let bits = hazards.of_box(&b.0);
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
@@ -1847,9 +1869,16 @@ pub(crate) fn reindex(
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
             events.entered_fluid.push(e);
+            // The mode of the water, if the entity has one, becomes the active one: an event, not a test each tick.
+            if let Some(m) = modes {
+                crate::locomotion::fluid_changed(&mut commands, e, m, bits & HAZ_WATER != 0);
+            }
         } else if !fluid && in_fluid {
             commands.entity(e).remove::<InFluid>();
             events.left_fluid.push(e);
+            if let Some(m) = modes {
+                crate::locomotion::fluid_changed(&mut commands, e, m, false);
+            }
             *fs = FluidState::default();
         }
         let was = hz.is_some_and(|h| h.0 & HAZ_SNOW != 0);
@@ -2407,7 +2436,7 @@ fn find(parent: &mut [u32], mut i: u32) -> u32 {
 /// travel of this tick, from one that comes after it by the next tick's. The islands do not touch each other, so they run
 /// one after the other or in parallel (`Config.parallel`) with the same result. Every other animal stays in the batch.
 #[allow(clippy::type_complexity)]
-fn ordered_pass(
+pub(crate) fn ordered_pass(
     cfg: Res<Config>,
     level: Res<Level>,
     table: Res<SpeciesTable>,
@@ -2777,6 +2806,17 @@ impl Herd {
             let all: Vec<Entity> = self.world.query_filtered::<Entity, With<Bounds>>().iter(&self.world).collect();
             for e in all {
                 self.world.entity_mut(e).insert(Overlapping);
+            }
+        }
+    }
+    /// Fills the slab with water from y = 1 to y = `top` (a lake for the fish), taken at the next tick.
+    pub fn fill_water(&mut self, top: i32) {
+        let half = self.world.resource::<Level>().half;
+        for x in -half + 1..half {
+            for z in -half + 1..half {
+                for y in 1..=top {
+                    self.set_block(x, y, z, "minecraft:water");
+                }
             }
         }
     }
@@ -3323,38 +3363,6 @@ mod tests {
         eprintln!("travelled {travelled}, asleep between {min_asleep} and {max_asleep} of 300");
     }
 
-    /// The runs of `ring_runs` hold every cell where a player's two circles may disagree (checked cell by cell, by
-    /// the corners of the cells that could hold a point of one circle and not of the other).
-    #[test]
-    fn the_ring_runs_cover_every_cell_the_circles_disagree_on() {
-        let mut r = Rng(0x5eed | 1);
-        let origin = -50.0;
-        let rnd = |r: &mut Rng, a: f64, b: f64| a + (b - a) * (f64::from(r.next_u32()) / f64::from(u32::MAX));
-        for _ in 0..3000 {
-            let n = (r.next_u32() % 8 != 0).then(|| (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)));
-            let step = [0.1, 1.0, 5.0, 70.0][(r.next_u32() % 4) as usize];
-            let o = (r.next_u32() % 8 != 0).then(|| match n {
-                Some((x, z)) => (x + rnd(&mut r, -step, step), z + rnd(&mut r, -step, step)),
-                None => (rnd(&mut r, -60.0, 60.0), rnd(&mut r, -60.0, 60.0)),
-            });
-            for zz in 0..50i64 {
-                let runs = ring_runs(origin, zz, n, o);
-                for xx in 0..50i64 {
-                    // Points of the cell, a fine grid with its corners.
-                    let mut differs = false;
-                    for a in 0..=8 {
-                        for b in 0..=8 {
-                            let (x, z) = (origin + (xx as f64 + f64::from(a) / 8.0) * CELL, origin + (zz as f64 + f64::from(b) / 8.0) * CELL);
-                            let inside = |q: Option<(f64, f64)>| q.is_some_and(|(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < 32.0 * 32.0);
-                            differs |= inside(n) != inside(o);
-                        }
-                    }
-                    let covered = runs.iter().any(|&(lo, hi)| lo <= xx && xx <= hi);
-                    assert!(!differs || covered, "cell ({xx}, {zz}) of {n:?} -> {o:?} is not covered by {runs:?}");
-                }
-            }
-        }
-    }
 
     /// A cow that walks out of the 32 blocks of a player that stays where it is stops being active when it changes
     /// cell (the player moved nowhere: only the cell change tells).

@@ -24,4 +24,5 @@ pub static DEF: Def = Def {
     rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &())],
     caps: None,
     brain: crate::brain::BrainDef::EMPTY,
+    locomotion: &[],
 };

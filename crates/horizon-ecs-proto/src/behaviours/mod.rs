@@ -193,6 +193,7 @@ pub mod silverfish_wake_up_friends;
 pub mod example;
 pub mod eat_block;
 pub mod flee_sun;
+pub mod fish_swim;
 pub mod float;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -248,4 +249,5 @@ pub static TABLE: &[&Module] = &[
     &climb_on_powder_snow::MODULE,
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
+    &fish_swim::MODULE,
 ];
