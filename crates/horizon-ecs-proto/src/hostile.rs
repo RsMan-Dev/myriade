@@ -373,6 +373,18 @@ pub fn melee_run(
     }
 }
 
+/// One blow of `e` on `who` for `amount`, with its knock-back: the damage queue for a creature, the player's state for a player.
+pub fn strike(w: &mut World, e: Entity, who: Who, amount: f32) {
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    match who {
+        Who::Player(id) => {
+            let tick = w.resource::<Clock>().0;
+            w.resource_mut::<PlayerState>().hurt(tick, id, amount, (p.x, p.z), Some(Who::Entity(e)));
+        }
+        Who::Entity(t) => w.resource_mut::<DamageQueue>().add_by_entity(t, amount, (p.x, p.z), e),
+    }
+}
+
 // ---- burning in daylight ----------------------------------------------------------------------------------------
 /// `monsters_burn`: the sun is up (the level's day, set by the game).
 #[derive(Resource, Default)]

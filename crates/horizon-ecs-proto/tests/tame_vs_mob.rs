@@ -95,11 +95,13 @@ fn a_standing_wolf_follows_its_owner_and_a_sitting_one_stays() {
         return;
     }
     let mut p = pair(Vec3::new(15.5, 1.0, 0.5));
-    for _ in 0..200 {
+    // 60 ticks: the walk is over (it takes about 20) and the `Mob`'s own stroll (no_action_time 100) has not begun: the complete wolf strolls
+    // away from its owner and comes back, on both sides, so a later reading measures the stroll, not the following.
+    for _ in 0..60 {
         p.step();
     }
     let (m, e) = p.dist();
-    eprintln!("distance to the owner after 200 ticks: mob {m:.2}, ecs {e:.2}");
+    eprintln!("distance to the owner after 60 ticks: mob {m:.2}, ecs {e:.2}");
     assert!(m < 3.5 && e < 3.5 && (m - e).abs() < 1.5, "mob {m}, ecs {e}");
     // Sitting: the owner goes away, the wolf stays where it is.
     let mut q = pair(Vec3::new(0.5, 1.0, 4.5));
@@ -192,7 +194,9 @@ fn a_wolf_does_not_attack_its_owner() {
     eprintln!("the owner hit its wolf: the wolf took a target: mob {mob_hunts}, ecs {ecs_hunts}");
     assert!(!ecs_hunts, "the ECS wolf attacks its owner");
     // A stranger (player 2, not its owner) does hit it: the wolf takes it.
-    let mut q = pair(Vec3::new(30.5, 1.0, 0.5));
+    // The owner is near: a far owner makes the wolf (hurt, not panicking: its panic is environmental only, as the `Mob`'s) teleport to it before
+    // its melee goal starts (a 20-tick grid), which takes it out of the stranger's range and drops the target.
+    let mut q = pair(Vec3::new(4.5, 1.0, 0.5));
     q.h.world.resource_mut::<Online>().set(Player { id: 2, x: 2.5, y: 1.0, z: 0.5, main: 0, off: 0 });
     q.h.hit_by(q.ecs, 1.0, 2);
     for _ in 0..10 {

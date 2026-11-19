@@ -13,7 +13,7 @@ pub struct Params {
 impl Params {
     pub const DEFAULT: Params = Params { climber: false };
 }
-pub static MODULE: Module = Module { name: "walk", requires: &[Cap::Locomotion], equip, ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "walk", requires: &[Cap::Locomotion], equip, tick: Some(super::climb::tick), ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: crate::behaviours::Inst, p: &(dyn std::any::Any + Sync)) {
     // The walk is the ground physics every body has: its marker is put by `Modes` when it is the active mode.
     if crate::behaviours::params::<Params>(p).climber {

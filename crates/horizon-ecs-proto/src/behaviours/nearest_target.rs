@@ -17,7 +17,7 @@ pub struct Params {
     /// The creatures that are candidates: types by name, and/or an entity-type tag.
     pub types: &'static [&'static str],
     pub tag: Option<&'static str>,
-    /// A condition on the creature: `"baby"` or `"adult"` (named, resolved at creation).
+    /// A condition on the creature: `"baby"`, `"baby_on_land"` or `"adult"` (named, resolved at creation).
     pub predicate: Option<&'static str>,
     /// `TargetGoal.mustSee`, `unseenMemoryTicks`, and the follow distance as a fraction of the follow range.
     pub must_see: bool,
@@ -49,6 +49,8 @@ pub struct Nearest {
     pub slot: u8,
     mask: u64,
     baby: Option<bool>,
+    /// `baby_on_land`: the candidate must also be out of the water (`baby_turtle_on_land`).
+    land: bool,
     /// Its deadline is in the wheel.
     armed: bool,
     pick: Option<Who>,
@@ -91,10 +93,11 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let baby = match p.predicate {
         Some("baby") => Some(true),
         Some("adult") => Some(false),
+        Some("baby_on_land") => Some(true),
         Some(other) => panic!("unknown target predicate {other}"),
         None => None,
     };
-    let n = Nearest { p, slot: inst.slot, mask, baby, armed: false, pick: None };
+    let n = Nearest { p, slot: inst.slot, mask, baby, land: p.predicate == Some("baby_on_land"), armed: false, pick: None };
     match w.get_mut::<NearestTargets>(e) {
         Some(mut ts) => {
             debug_assert_eq!(ts.0.len(), inst.nth as usize);
@@ -179,7 +182,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) {
+            if n.mask >> cs.0 & 1 == 0 || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());

@@ -23,6 +23,9 @@ pub mod magma_cube;
 pub mod rabbit;
 pub mod slime;
 pub mod wolf;
+pub mod cat;
+pub mod ocelot;
+pub mod llama;
 pub mod zombie;
 pub mod cod;
 pub mod parrot;
@@ -66,6 +69,8 @@ pub mod snow_golem;
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
 pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF,
+    &cat::DEF,
+    &ocelot::DEF, &llama::DEF,
     &armadillo::DEF,
     &creeper::DEF,
     &endermite::DEF,
@@ -504,9 +509,12 @@ mod tests {
         ("minecraft:bat", &[("bat_flutter", 0)]),
         ("minecraft:strider", &[]),
         ("minecraft:turtle", &[("turtle_go_to_water", 3), ("turtle_travel", 7), ("turtle_stroll", 9)]),
-        ("minecraft:wolf", &[("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 5), ("panic", 1), ("sit_when_ordered", 2), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("stroll", 8), ("look_at_player", 10), ("random_look", 10)]),
+        ("minecraft:llama", &[("float", 0), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:cat", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("cat_relax_on_owner", 3), ("tempt", 4), ("cat_lie_on_block", 5), ("follow_owner", 6), ("cat_sit_on_block", 7), ("leap_at_target", 8), ("ocelot_attack", 9), ("breed", 10), ("stroll", 11), ("look_at_player", 12), ("avoid_entity", 4)]),
+        ("minecraft:ocelot", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("tempt", 3), ("leap_at_target", 7), ("ocelot_attack", 8), ("breed", 9), ("stroll", 10), ("look_at_player", 11), ("avoid_entity", 4)]),
+        ("minecraft:wolf", &[("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 4), ("nearest_target", 5), ("nearest_target", 6), ("nearest_target", 7), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("avoid_entity", 3), ("forget_target", 3), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("breed", 7), ("stroll", 8), ("beg", 9), ("look_at_player", 10), ("random_look", 10)]),
         ("minecraft:armadillo", &[("float", 0), ("panic", 1), ("rolled", 2), ("breed", 3), ("tempt", 4), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
-        ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("avoid_entity", 3), ("avoid_entity", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:endermite", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("melee", 2), ("stroll", 3), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:enderman", &[("look_for_player", 1), ("hurt_by", 2), ("float", 0), ("freeze_when_looked_at", 1), ("melee", 2), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("leave_block", 10), ("take_block", 11)]),
         ("minecraft:silverfish", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("silverfish_wake_up_friends", 3), ("melee", 4), ("silverfish_merge", 5)]),
@@ -520,16 +528,19 @@ mod tests {
         ("minecraft:horse", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:donkey", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:mule", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:skeleton_horse", &[("breed", 2), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:skeleton_horse", &[("run_around_like_crazy", 1), ("breed", 2), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:slime", &[("float", 1)]),
         ("minecraft:magma_cube", &[("float", 1)]),
-        ("minecraft:zombie_horse", &[("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
+        ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
     ];
     #[test]
     fn the_resolved_species_equal_their_expected_configuration() {
         let mut diffs: Vec<String> = Vec::new();
         for name in names() {
             let got: Vec<(&str, u8)> = config(name).entries.iter().map(|e| (e.module.name, e.priority)).collect();
+            if got.len() > crate::goals::MAX_ENTRIES {
+                diffs.push(format!("{name}: {} entries, the selector holds {}", got.len(), crate::goals::MAX_ENTRIES));
+            }
             match RESOLVED.iter().find(|r| r.0 == name) {
                 None => diffs.push(format!("{name}: not in the expected table (resolves to {got:?})")),
                 Some((_, want)) if got != *want => diffs.push(format!("{name}: expected {want:?}, resolved {got:?}")),

@@ -27,7 +27,7 @@ fn reduced(n: i32) -> i32 {
 
 /// `SquidRandomMovementGoal`: every tick of the goal, one chance in `reduced(50)`, or out of the water, or with no vector: a new horizontal
 /// direction at 0.2 and a vertical push of -0.1 to 0.1.
-pub static SQUID_RANDOM_MOVEMENT: Module = Module { name: "squid_random_movement", flags: 0, arm: wander_arm, start: wander_start, stop: wander_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static SQUID_RANDOM_MOVEMENT: Module = Module { name: "squid_random_movement", tick: Some(wander_tick), flags: 0, arm: wander_arm, start: wander_start, stop: wander_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn wander_arm(w: &mut World, e: Entity, i: Inst) {
     arm(w, e, i.slot, 1);
 }
@@ -62,7 +62,7 @@ fn wander_tick(w: &mut World) {
 }
 
 /// `SquidFleeGoal`: hurt by an entity within 10 blocks (the memory of the blow is 100 ticks), in the water: swim away from it. By EVENT (the blow).
-pub static SQUID_FLEE: Module = Module { name: "squid_flee", flags: 0, can_use: flee_can_use, start: flee_start, stop: flee_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static SQUID_FLEE: Module = Module { name: "squid_flee", tick: Some(flee_tick), flags: 0, can_use: flee_can_use, start: flee_start, stop: flee_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn flee_ok(w: &World, e: Entity) -> bool {
     let (Some(h), Some(p)) = (w.get::<LastHurtBy>(e), w.get::<Pos>(e)) else { return false };
     let now = now_of_ref(w, e);
@@ -122,21 +122,5 @@ fn flee_tick(w: &mut World) {
                 st.vector = [f[0] / 20.0, f[1] / 20.0, f[2] / 20.0];
             }
         }
-    }
-}
-
-/// The ticks above, run by `arbitrate` while a creature carries the goal.
-pub fn tick_all(w: &mut World) {
-    static IDS: std::sync::OnceLock<[Option<usize>; 2]> = std::sync::OnceLock::new();
-    let ids = IDS.get_or_init(|| {
-        let r = crate::species::registry();
-        [&SQUID_RANDOM_MOVEMENT, &SQUID_FLEE].map(|m| r.module_id(m))
-    });
-    let alive = |w: &World, k: usize| ids[k].is_some_and(|i| w.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0));
-    if alive(w, 0) {
-        wander_tick(w);
-    }
-    if alive(w, 1) {
-        flee_tick(w);
     }
 }

@@ -48,7 +48,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Targets, Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
@@ -63,8 +63,9 @@ fn resources(w: &mut World) {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Bow { p: *params::<Params>(p), slot: inst.slot, attack_time: -1, see_time: 0, strafe_clockwise: false, strafe_back: false, strafe_time: -1, using: 0, aim: (i32::MIN, 0), walkable: None });
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(bow_run.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, bow_run);
 }
 /// `canUse`: a target (and the bow in hand, supposed).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

@@ -1,7 +1,7 @@
 //! The bee (`Bee`, 1534 lines of `Mob`): its state, the hive service (a bee in a hive is out of the world for its time inside), and the goals of
 //! its cycle: pollinate a flower, go home with the nectar, enter the hive, come out, locate another, grow crops, validate what it remembers.
 //! No scan and no system: the asks of the `Mob` (every other tick) are deadlines (a goal that cannot run re-arms itself at the next time its
-//! condition can change), the goals that tick are visited by `tick_all` (called by `arbitrate`) through markers, the hive is a resource whose
+//! condition can change), the goals that tick are visited by their module's `tick` (`arbitrate` calls it while a bee lives) through markers, the hive is a resource whose
 //! next release time is the only thing looked at each tick.
 //! What it asks of the frame (and has here): `Hives` (the occupants of each hive: entity, tick it went in, minimum stay), `InHive` (the bee is
 //! out of every query: `zone::sleep`; the zone does not wake it), the release (position in front of the hive, nectar delivered, honey).
@@ -296,6 +296,12 @@ fn release(w: &mut World, e: Entity, h: [i32; 3]) {
     if let Some(mut b) = w.get_mut::<Bee>(e) {
         b.no_nectar_since = own;
     }
+    schedule_hive(w, e);
+    schedule_flower(w, e);
+    arm_validate_hive(w, e);
+    if delivered {
+        ask_pollinate(w, e);
+    }
 }
 
 // ---- the goals -----------------------------------------------------------------------------------------------------
@@ -312,21 +318,22 @@ fn cooldown_left(w: &World, e: Entity, until: u64) -> u64 {
 
 /// `BeePollinateGoal`: no nectar, no cooldown, dry: the nearest flower within 5 blocks that a path reaches; fly to it, hover over it for 400 ticks
 /// or more (then one chance in five per ask to stop), nectar at the end.
-pub static POLLINATE: Module = Module { name: "bee_pollinate", flags: MOVE, equip, arm: pollinate_arm, fired: pollinate_fired, can_use: pollinate_can_use, start: pollinate_start, stop: pollinate_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static POLLINATE: Module = Module { name: "bee_pollinate", tick: Some(pollinate_tick), flags: MOVE, equip, arm: pollinate_arm, fired: pollinate_fired, can_use: pollinate_can_use, start: pollinate_start, stop: pollinate_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn pollinate_arm(w: &mut World, e: Entity, _: Inst) {
     ensure(w, e);
     let left = cooldown_left(w, e, bee(w, e).map_or(0, |b| b.flower_cd_until));
     arm_in(w, e, &POLLINATE, left);
 }
+/// The cooldown is a deadline of the wheel; with nectar or in the rain nothing is asked until an EVENT says otherwise (the nectar delivered, the
+/// weather changed: `ask_pollinate`).
 fn pollinate_fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let b = bee(w, e).cloned();
-    let Some(b) = b else { return false };
-    if cooldown_left(w, e, b.flower_cd_until) > 0 || b.nectar || w.resource::<Level>().mw.0.raining {
-        // The conditions are a state, not a chance: asked again in two seconds.
-        arm_in(w, e, &POLLINATE, 40);
+    let Some(b) = bee(w, e).cloned() else { return false };
+    let left = cooldown_left(w, e, b.flower_cd_until);
+    if left > 0 {
+        arm_in(w, e, &POLLINATE, left);
         return false;
     }
-    true
+    !(b.nectar || w.resource::<Level>().mw.0.raining || bees_stay_in_hive(w) && false)
 }
 fn find_flower(w: &mut World, e: Entity) -> Option<[i32; 3]> {
     let here = block_of(w, e);
@@ -392,6 +399,8 @@ fn pollinate_can_use(w: &mut World, e: Entity, i: Inst) -> bool {
                 b.flower = Some(p);
             }
             let _ = now;
+            arm_validate_flower(w, e);
+            schedule_flower(w, e);
             // The `Mob` also asks a path here (speed 1.2), but the goal's own wanted point (0.35) comes after the navigation's in its tick and
             // wins every tick: the flight is the direct one.
             true
@@ -430,6 +439,11 @@ fn pollinate_stop(w: &mut World, e: Entity, i: Inst) {
     crate::goals::stop_nav(w, e);
     arm_in(w, e, &POLLINATE, 200);
     let _ = i;
+    if long {
+        // The nectar changes what the bee wants: the hive goals are asked at once.
+        ask_hive(w, e);
+    }
+    schedule_flower(w, e);
 }
 fn drop_flower(w: &mut World, e: Entity) {
     let cd = with_rng(w, e, |r| 20 + r.next_int(41)) as u64;
@@ -504,11 +518,13 @@ fn now_of_ref(w: &World, e: Entity) -> u64 {
 pub static LOCATE_HIVE: Module = Module { name: "bee_locate_hive", flags: 0, equip, arm: locate_arm, fired: locate_fired, can_use: locate_can_use, start: locate_start, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn locate_arm(w: &mut World, e: Entity, _: Inst) {
     ensure(w, e);
-    arm_in(w, e, &LOCATE_HIVE, 40);
+    schedule_hive(w, e);
 }
+/// The time a condition of the hive goals changes by itself has come (the stay-out countdown, the cooldown, the tiredness): the three goals are asked.
 fn locate_fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    arm_in(w, e, &LOCATE_HIVE, 40);
-    true
+    ask_hive(w, e);
+    schedule_hive(w, e);
+    false
 }
 fn locate_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     bee(w, e).is_some_and(|b| now_of(w, e) >= b.hive_cd_until && b.hive.is_none()) && wants_to_enter_hive(w, e)
@@ -529,18 +545,14 @@ fn locate_start(w: &mut World, e: Entity, _: Inst) {
     }
     b.hive = pick.or_else(|| hives.first().copied()).or(b.hive);
     end(w, e, &LOCATE_HIVE);
+    arm_validate_hive(w, e);
+    ask(w, e, &GO_TO_HIVE);
+    ask(w, e, &ENTER_HIVE);
+    schedule_hive(w, e);
 }
 
 /// `BeeGoToHiveGoal`: a hive it knows, it wants to go in, not there yet: fly to it; gives up after 2400 ticks or when stuck.
-pub static GO_TO_HIVE: Module = Module { name: "bee_go_to_hive", flags: MOVE, equip, arm: go_arm, fired: go_fired, can_use: go_can_use, start: go_start, stop: go_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn go_arm(w: &mut World, e: Entity, _: Inst) {
-    ensure(w, e);
-    arm_in(w, e, &GO_TO_HIVE, 40);
-}
-fn go_fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    arm_in(w, e, &GO_TO_HIVE, 40);
-    true
-}
+pub static GO_TO_HIVE: Module = Module { name: "bee_go_to_hive", tick: Some(go_tick), flags: MOVE, equip, can_use: go_can_use, start: go_start, stop: go_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn reached_hive(w: &World, e: Entity, h: [i32; 3]) -> bool {
     closer_than(w, e, h, 2)
 }
@@ -620,15 +632,7 @@ fn go_tick(w: &mut World) {
 }
 
 /// `BeeEnterHiveGoal`: within 2 blocks of its hive, it wants to go in and the hive has room: in; a full hive is forgotten.
-pub static ENTER_HIVE: Module = Module { name: "bee_enter_hive", flags: 0, equip, arm: enter_arm, fired: enter_fired, can_use: enter_can_use, start: enter_start, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn enter_arm(w: &mut World, e: Entity, _: Inst) {
-    ensure(w, e);
-    arm_in(w, e, &ENTER_HIVE, 40);
-}
-fn enter_fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    arm_in(w, e, &ENTER_HIVE, 40);
-    true
-}
+pub static ENTER_HIVE: Module = Module { name: "bee_enter_hive", tick: Some(hive_tick), flags: 0, equip, can_use: enter_can_use, start: enter_start, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn enter_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(h) = bee(w, e).and_then(|b| b.hive) else { return false };
     let p = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
@@ -656,40 +660,51 @@ fn enter_start(w: &mut World, e: Entity, _: Inst) {
 
 /// `ValidateHiveGoal` and `ValidateFlowerGoal`: every 20 to 40 ticks, forget a hive or a flower that is gone.
 pub static VALIDATE_HIVE: Module = Module { name: "bee_validate_hive", flags: 0, equip, arm: vh_arm, fired: vh_fired, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+/// Armed only while a hive is remembered (and by the event of a hive gone): a bee that knows none costs nothing.
 fn vh_arm(w: &mut World, e: Entity, _: Inst) {
     ensure(w, e);
-    let cd = with_rng(w, e, |r| 20 + r.next_int(21)) as u64;
-    arm_in(w, e, &VALIDATE_HIVE, cd);
+    arm_validate_hive(w, e);
 }
-fn vh_fired(w: &mut World, e: Entity, i: Inst) -> bool {
+fn arm_validate_hive(w: &mut World, e: Entity) {
+    if bee(w, e).is_some_and(|b| b.hive.is_some()) {
+        let cd = with_rng(w, e, |r| 20 + r.next_int(21)) as u64;
+        arm_in(w, e, &VALIDATE_HIVE, cd);
+    }
+}
+fn vh_fired(w: &mut World, e: Entity, _: Inst) -> bool {
     if bee(w, e).and_then(|b| b.hive).is_some_and(|h| !is_hive(w, h)) {
         drop_hive(w, e);
     }
-    vh_arm(w, e, i);
+    arm_validate_hive(w, e);
     false
 }
 pub static VALIDATE_FLOWER: Module = Module { name: "bee_validate_flower", flags: 0, equip, arm: vf_arm, fired: vf_fired, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn vf_arm(w: &mut World, e: Entity, _: Inst) {
     ensure(w, e);
-    let cd = with_rng(w, e, |r| 20 + r.next_int(21)) as u64;
-    arm_in(w, e, &VALIDATE_FLOWER, cd);
+    arm_validate_flower(w, e);
 }
-fn vf_fired(w: &mut World, e: Entity, i: Inst) -> bool {
+fn arm_validate_flower(w: &mut World, e: Entity) {
+    if bee(w, e).is_some_and(|b| b.flower.is_some()) {
+        let cd = with_rng(w, e, |r| 20 + r.next_int(21)) as u64;
+        arm_in(w, e, &VALIDATE_FLOWER, cd);
+    }
+}
+fn vf_fired(w: &mut World, e: Entity, _: Inst) -> bool {
     if bee(w, e).and_then(|b| b.flower).is_some_and(|f| !attracts_bees(w, f)) {
         drop_flower(w, e);
     }
-    vf_arm(w, e, i);
+    arm_validate_flower(w, e);
     false
 }
 
 /// `BeeGoToKnownFlowerGoal`: after 600 ticks without nectar, back to the remembered flower; gives up after 2400 ticks.
-pub static GO_TO_KNOWN_FLOWER: Module = Module { name: "bee_go_to_known_flower", flags: MOVE, equip, arm: kf_arm, fired: kf_fired, can_use: kf_can_use, start: kf_start, stop: kf_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static GO_TO_KNOWN_FLOWER: Module = Module { name: "bee_go_to_known_flower", tick: Some(kf_tick), flags: MOVE, equip, arm: kf_arm, fired: kf_fired, can_use: kf_can_use, start: kf_start, stop: kf_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn kf_arm(w: &mut World, e: Entity, _: Inst) {
     ensure(w, e);
-    arm_in(w, e, &GO_TO_KNOWN_FLOWER, 40);
+    schedule_flower(w, e);
 }
 fn kf_fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    arm_in(w, e, &GO_TO_KNOWN_FLOWER, 40);
+    schedule_flower(w, e);
     true
 }
 fn kf_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -733,25 +748,62 @@ fn kf_tick(w: &mut World) {
 /// Not ported here: the block change (the frame has no `SetBlock` service for a bee): the goal counts the crops it would grow.
 pub static GROW_CROP: Module = Module { name: "bee_grow_crop", flags: 0, equip, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 
-/// The ticks of the goals above and the hive's release, run by `arbitrate` while a bee lives.
-pub fn tick_all(w: &mut World) {
-    static IDS: std::sync::OnceLock<[Option<usize>; 3]> = std::sync::OnceLock::new();
-    let ids = IDS.get_or_init(|| {
-        let r = crate::species::registry();
-        [&POLLINATE, &GO_TO_HIVE, &GO_TO_KNOWN_FLOWER].map(|m| r.module_id(m))
-    });
-    let alive = |w: &World, k: usize| ids[k].is_some_and(|i| w.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0));
-    if alive(w, 0) {
-        pollinate_tick(w);
+
+// ---- events instead of probes ---------------------------------------------------------------------------------------
+fn ask(w: &mut World, e: Entity, m: &'static Module) {
+    if let Some(slot) = w.get::<GoalSet>(e).and_then(|g| g.slot_of(m)) {
+        w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
     }
-    if alive(w, 1) {
-        go_tick(w);
+}
+/// The hive goals are asked (a hive was set or dropped, the nectar changed hands, the weather changed, a countdown ended).
+pub fn ask_hive(w: &mut World, e: Entity) {
+    ask(w, e, &LOCATE_HIVE);
+    ask(w, e, &GO_TO_HIVE);
+    ask(w, e, &ENTER_HIVE);
+}
+fn ask_pollinate(w: &mut World, e: Entity) {
+    ask(w, e, &POLLINATE);
+}
+/// The next time a condition of the hive goals changes by itself: the end of the stay-out countdown, of the locating cooldown, or the 3600 ticks
+/// without nectar: one deadline of the wheel (the events cover the rest).
+fn schedule_hive(w: &mut World, e: Entity) {
+    let now = now_of(w, e);
+    let Some(b) = bee(w, e) else { return };
+    let next = [b.stay_out_until, b.hive_cd_until, b.no_nectar_since + 3601].into_iter().filter(|&t| t > now).min();
+    if let Some(t) = next {
+        arm_in(w, e, &LOCATE_HIVE, t - now);
     }
-    if alive(w, 2) {
-        kf_tick(w);
+}
+/// The remembered flower is asked for again 600 ticks after the last nectar.
+fn schedule_flower(w: &mut World, e: Entity) {
+    let now = now_of(w, e);
+    let Some(b) = bee(w, e) else { return };
+    if b.flower.is_some() && !b.nectar {
+        let t = b.no_nectar_since + 601;
+        arm_in(w, e, &GO_TO_KNOWN_FLOWER, t.saturating_sub(now));
     }
-    if alive(w, 0) || alive(w, 1) || alive(w, 2) {
-        stung_tick(w);
-    }
+}
+/// The tick of every bee that lives (the module that all carry): the hive's release, the hive that went (the event of the points of interest),
+/// the weather that changed (`StayInHive`: the host writes it when the day turns to night or the rain starts or stops), the stings.
+pub fn hive_tick(w: &mut World) {
     release_tick(w);
+    stung_tick(w);
+    if w.is_resource_changed::<StayInHive>() {
+        let es: Vec<Entity> = w.query_filtered::<Entity, With<Bee>>().iter(w).collect();
+        for e in es {
+            ask_hive(w, e);
+            ask_pollinate(w, e);
+        }
+    }
+    if w.resource::<crate::poi::PoiRegistry>().removed().is_empty() {
+        return;
+    }
+    let gone: Vec<[i32; 3]> = w.resource::<crate::poi::PoiRegistry>().removed().to_vec();
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Bee>>().iter(w).collect();
+    for e in es {
+        if bee(w, e).and_then(|b| b.hive).is_some_and(|h| gone.contains(&h)) {
+            drop_hive(w, e);
+            ask_hive(w, e);
+        }
+    }
 }

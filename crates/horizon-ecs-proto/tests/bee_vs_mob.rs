@@ -105,6 +105,8 @@ fn a_bee_with_nectar_goes_into_its_hive_and_comes_out() {
         b.hive = Some([4, 1, 0]);
         b.no_nectar_since = now;
     }
+    // The nectar is the event that wakes the hive goals (a bee that takes it by pollinating asks them itself).
+    horizon_ecs_proto::behaviours::bee::ask_hive(&mut h.world, e);
     let (mut inside, mut out_again) = (None, None);
     for t in 1..=3500_i64 {
         h.tick();

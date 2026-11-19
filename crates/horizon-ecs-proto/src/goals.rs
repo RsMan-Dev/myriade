@@ -588,7 +588,7 @@ pub fn register(s: &mut Schedule) {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
         // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
-        if crate::species::registry().carried(i) {
+        if crate::species::registry().carried(i) && modules[i].tick.is_none() {
             (modules[i].systems)(s, slot);
             // Registered but nobody alive carries it: the whole set is skipped (one test per tick).
             s.configure_sets(slot.run_if(move |c: Res<Carriers>| c.0.get(i).is_some_and(|n| *n > 0)));
@@ -871,13 +871,44 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 }
 
 
+/// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one
+/// test per module and tick, no system and no run condition in the schedule.
+fn tick_modules(world: &mut World) {
+    static TICKS: std::sync::OnceLock<Vec<(usize, fn(&mut World))>> = std::sync::OnceLock::new();
+    let ticks = TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect());
+    for &(i, t) in ticks {
+        if world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) {
+            t(world);
+        }
+    }
+}
+/// The parameters of a system function kept as a tick (`SystemState`, one per function).
+#[derive(Resource)]
+struct TickState<F: 'static, P: bevy_ecs::system::SystemParam + 'static>(bevy_ecs::system::SystemState<P>, std::marker::PhantomData<fn() -> F>);
+/// A bevy system function run as the tick of a module: the function as it was in the schedule (same queries, resources and commands,
+/// applied at once), its parameters fetched through a `SystemState` kept in the world: some 220 instructions an empty call, against 800
+/// by `World::run_system` (measured, `profile::tick_forms`).
+pub fn tick_state<M, F>(world: &mut World, mut f: F)
+where
+    F: bevy_ecs::system::SystemParamFunction<M, In = (), Out = ()> + Copy,
+    F::Param: 'static,
+{
+    if !world.contains_resource::<TickState<F, F::Param>>() {
+        let state = bevy_ecs::system::SystemState::<F::Param>::new(world);
+        world.insert_resource(TickState::<F, F::Param>(state, std::marker::PhantomData));
+    }
+    world.resource_scope(|world, mut ts: Mut<TickState<F, F::Param>>| {
+        if let Ok(item) = ts.0.get_mut(world) {
+            f.run((), item);
+        }
+        ts.0.apply(world);
+    });
+}
+
 // ---- the selector: start and stop, with the locks -------------------------------------------------------------
 pub(crate) fn arbitrate(world: &mut World) {
     crate::farm::on_grown(world);
-    crate::behaviours::flier_goals::tick_all(world);
-    crate::behaviours::squid_goals::tick_all(world);
-    crate::locomotion::climb::tick_all(world);
-    crate::behaviours::bee::tick_all(world);
+    tick_modules(world);
     world.resource_mut::<CellMoves>().0.clear();
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);

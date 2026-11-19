@@ -196,5 +196,17 @@ Un but ou une règle dont le tick tourne à chaque tick (`flier_goals`, `squid_g
 - `walk::Params { climber: true }` (araignée) : `Drive.climber`/`climbing`, le contact horizontal du tick précédent fait grimper (vitesse bornée à 0,15, puis y = 0,2) ; `WallClimberNavigation.pathToPosition` : toute demande de chemin laisse un souhait (`Climbers`) que `climb::tick_all` poursuit en ligne droite quand le chemin est fini ou n'existe pas.
 - `swim` amphibie (tortue) : `amphibious`, `turtle_control`, `push` ; `squid: true` (calamar). Les mouvements minuscules (< 0,003) sont coupés AVANT le contrôle, puis le contrôle pousse (ordre de `aiStep`).
 
+## Règle pour les modules nouveaux : pas de système de plus
+
+Chaque module dont `systems` ajoute un système au planning coûte ~1 000 instructions par tick **même sans porteur** (sa condition d'exécution,
+et sa place dans la chaîne des `GoalSlot`) : mesuré le 2026-11-19, le planning à vide (0 créature) coûte 124 266 instr/tick, et 46 608
+sans aucun système de module (77 658 pour les modules, soit ~62 %). Un module nouveau n'ajoute donc PAS de système : ses ticks sont
+appelés depuis un point existant (le champ `Module::tick`, appelé par `arbitrate` pour les modules que porte un animal vivant ; `goals::tick_state` reprend une fonction système telle quelle), sur les entités qui portent le marqueur de son
+but en marche (`With<Diving>`...), et ne coûtent rien quand aucune ne le porte. Les événements réveillent le but (`Req::Start`), les
+délais sont des échéances de la roue. Un module qui a vraiment besoin d'un ordre propre (avant `pathfind`, après `apply_damage`) le dit et
+le justifie dans son en-tête ; la barrière (`bilan_check.sh`, ligne « schedule at rest ») refuse la dérive.
+
+Le champ `tick` est LA façon : un `fn tick_all` libre que personne n'appelle rend le module inerte (`tests/no_tick_all.rs` le refuse). Les modules toujours actifs (mêlée, marche, regard, reproduction) restent au planning : coût mesuré en `tick`, +21 instr par créature dans la scène du mouton éveillé.
+
 ## Comment une espèce choisit son contrôle de déplacement (lot 5)
 Par la CONFIGURATION de son entrée de locomotion (`Def.locomotion`), jamais par son nom. Nage (`swim::Params`) : `control` = `Fish` (`FishMoveControl`), `Turtle`, `Drowned` (marqueur `swim::WantsToSwim` posé par ses buts : sinon le contrôle de marche), `Smooth { max_turn_x, max_turn_y, in_water, outside, gravity }` (`SmoothSwimmingMoveControl` : dauphin, axolotl, têtard, grenouille) ; `push` = `Fixed(0,01)` (poisson), `Fixed(0,1)` (tortue) ou `Speed` (la vitesse du mob, avec l'entrée verticale : dauphin, axolotl) ; `sinks` : le `-0,005` d'une bête sans cible ; `amphibious: Some(prefers_shallow)` : chemin amphibie ; `breach` : navigation qui peut sortir de l'eau (dauphin) ; `squid: true`. Vol (`fly::Params`) : `control` = `Path`, `Float`, `Direct`, `Bank`, `None`. Marche (`walk::Params`) : `climber`. Les buts d'une espèce n'ont qu'à poser les marqueurs et les points voulus (`go_to`, `fly::steer_to`, `WantsToSwim`) : le contrôle est celui de l'entrée. Exemples complets : `species/{dolphin,axolotl,drowned,turtle,cod,squid,spider,vex,phantom}.rs`. `Drive.discard_friction` (`shouldDiscardFriction` : le saut long de la grenouille ou de la chèvre) : un but le pose pendant le bond et le retire à l'atterrissage.

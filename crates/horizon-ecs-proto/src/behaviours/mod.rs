@@ -43,6 +43,10 @@ pub struct Module {
     pub stop: fn(&mut World, Entity, Inst),
     /// Its bevy systems (each filtered by the module's own marker) and the events that wake it, `.in_set(slot)`.
     pub systems: fn(&mut Schedule, GoalSlot),
+    /// The tick of a module that needs no place of its own in the schedule: called by `arbitrate`, in the order of the registry, only while
+    /// some live animal carries the module (`Carriers`): a module that does not run costs one test, not a system and its run condition.
+    /// A module has `systems` OR `tick` (`goals::tick_state` runs a bevy system function as that tick, its parameters kept in a `SystemState` of the world).
+    pub tick: Option<fn(&mut World)>,
     /// The capabilities the module supposes of the entity it is on (what its state components and its systems read).
     /// A species whose configuration has the module without one of them is a startup error (`species::registry`).
     pub requires: &'static [Cap],
@@ -73,6 +77,7 @@ impl Module {
         start: no_inst,
         stop: no_inst,
         systems: no_systems,
+        tick: None,
         requires: &[],
         interruptable: true,
         damaged: no_damaged,
@@ -264,6 +269,13 @@ pub mod turtle_stroll;
 pub mod turtle_lay_egg;
 pub mod turtle_go_home;
 pub mod snow_trail;
+pub mod beg;
+pub mod forget_target;
+pub mod cat_state;
+pub mod cat_relax_on_owner;
+pub mod cat_lie_on_block;
+pub mod cat_sit_on_block;
+pub mod ocelot_attack;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
@@ -349,4 +361,10 @@ pub static TABLE: &[&Module] = &[
     &turtle_lay_egg::MODULE,
     &turtle_go_home::MODULE,
     &snow_trail::MODULE,
+    &beg::MODULE,
+    &forget_target::MODULE,
+    &cat_relax_on_owner::MODULE,
+    &cat_lie_on_block::MODULE,
+    &cat_sit_on_block::MODULE,
+    &ocelot_attack::MODULE,
 ];

@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -127,8 +127,9 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Digging>();
     chain(w, e, 2);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(dig_run.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, dig_run);
 }
 /// The walk and the digging, each tick of the goal (`MoveToBlockGoal.tick` then `LayEgg.tick`): the goal ends when its block is
 /// lost or the turtle no longer qualifies; the path is asked again every 40 ticks of walking.

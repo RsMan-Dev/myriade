@@ -24,7 +24,7 @@ pub fn wish(w: &mut World, e: Entity, to: [i32; 3], speed: f64) {
 }
 /// `WallClimberNavigation.tick` when the path is over: a wanted point at the target (the block's corner, as the `Mob` writes it) until the
 /// animal is at its centre (within its width) or at its height.
-pub fn tick_all(w: &mut World) {
+pub fn tick(w: &mut World) {
     let Some(c) = w.get_resource::<Climbers>() else { return };
     if c.0.is_empty() {
         return;

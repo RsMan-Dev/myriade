@@ -336,3 +336,9 @@ fn orb_moved(world: &mut World) {
         }
     }
 }
+
+/// Present in a bench world: births give no experience. A bench player never collects, and an orb that nobody collects orbits its
+/// nearest player for its 6 000 ticks (some 40 000 instructions per orb and tick in a dense herd; the `Mob`'s orb costs 14 000 at rest),
+/// which a game does not show: the orb is collected within seconds. The benches set it (`NO_XP=1`).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct NoXp;

@@ -32,7 +32,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -53,8 +53,9 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<GhastLooking>();
     crate::goals::arm(w, e, inst.slot, 1);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(look_run.in_set(slot));
+/// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, look_run);
 }
 fn deg() -> f32 {
     180.0_f32 / std::f32::consts::PI
