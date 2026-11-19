@@ -24,9 +24,13 @@ pub struct Params {
     /// The breeze's `Sensor.wasEntityAttackableLastNTicks(window)`: the target is dropped when it was last attackable (`sensors::attackable`'s
     /// `LastAttackable`) more than `window` ticks ago or never; the sensor's wake at the deadline brings the brain here.
     pub attackable: Option<i64>,
+    /// A target that plays dead is not a target (the axolotl).
+    pub not_playing_dead: bool,
+    /// Losing the target starts the hunting cooldown for this many ticks (the axolotl's fight ends: 2400).
+    pub hunting_cooldown: Option<u64>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None };
+    pub const DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None, not_playing_dead: false, hunting_cooldown: None };
 }
 
 fn invalid(w: &mut World, e: Entity, p: &Params) -> bool {
@@ -51,17 +55,21 @@ fn invalid(w: &mut World, e: Entity, p: &Params) -> bool {
         }
         None => false,
     };
-    !super::start_attacking::can_attack(w, target) || tired || !alive || !still || stale
+    let feigning = p.not_playing_dead && matches!(target, Who::Entity(t) if super::play_dead::is_playing_dead(w, t));
+    !super::start_attacking::can_attack(w, target) || tired || !alive || !still || stale || feigning
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     invalid(w, e, c.get::<Params>())
 }
 
-fn start(w: &mut World, e: Entity, _: &Ctx) {
+fn start(w: &mut World, e: Entity, c: &Ctx) {
     w.entity_mut(e).remove::<crate::brain::sensors::attackable::LastAttackable>();
     erase(w, e, &ATTACK_TARGET);
     targeting::clear_target(w, e);
+    if let Some(t) = c.get::<Params>().hunting_cooldown {
+        set(w, e, &crate::brain::sensors::attackables::HAS_HUNTING_COOLDOWN, MemValue::Bool(true), Some(t));
+    }
 }
 
 #[cfg(test)]
@@ -75,8 +83,8 @@ mod tests {
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[(&ATTACK_TARGET, Need::Present)];
-    static DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None };
-    static CREAK: Params = Params { tired_ticks: 200, still_visible: true, attackable: None };
+    static DEFAULT: Params = Params { tired_ticks: 200, still_visible: false, attackable: None, not_playing_dead: false, hunting_cooldown: None };
+    static CREAK: Params = Params { tired_ticks: 200, still_visible: true, attackable: None, not_playing_dead: false, hunting_cooldown: None };
 
     fn brained(h: &mut Herd, params: &'static Params) -> Entity {
         let entries: &'static [BEntry] = Box::leak(Box::new([BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 1, params, needs: NEEDS, duration: None, kids: &[] }]));

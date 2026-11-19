@@ -69,14 +69,14 @@ pub static DEF: Def = Def {
                 duration: None,
                 kids: &[
                     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 1, params: &(), needs: &[], duration: Some((20, 100)) },
-                    Kid { behaviour: &stroll::BEHAVIOUR, weight: 2, params: &stroll::Params { speed: 0.6, h: 10, v: 7 }, needs: &[], duration: None },
+                    Kid { behaviour: &stroll::BEHAVIOUR, weight: 2, params: &stroll::Params { speed: 0.6, h: 10, v: 7, dry_only: false }, needs: &[], duration: None },
                 ],
             },
             BEntry {
                 behaviour: &stop_attacking_if_target_invalid::BEHAVIOUR,
                 activity: "fight",
                 priority: 0,
-                params: &stop_attacking_if_target_invalid::Params { tired_ticks: 200, still_visible: false, attackable: Some(100) },
+                params: &stop_attacking_if_target_invalid::Params { tired_ticks: 200, still_visible: false, attackable: Some(100), not_playing_dead: false, hunting_cooldown: None },
                 needs: &[(&ATTACK_TARGET, Need::Present)],
                 duration: None,
                 kids: &[],

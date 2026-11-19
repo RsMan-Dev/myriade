@@ -1,7 +1,7 @@
 //! The seed hunt of the sniffer against the real one (`HORIZON_TEST_RESOURCES` set, process species `minecraft:sniffer`): 20 sniffers on
 //! dirt, alone, for 2400 ticks: the ticks they spend in each state (idling, happy, scenting, sniffing, searching, digging, rising), the
 //! digs they begin, the seeds that drop (`GiftLoot` of the `Mob`, an item on the ground here) and the places they remember as explored.
-mod common;
+use crate::common;
 use common::*;
 use horizon_client_lib::mobs::{sniffer, MobEvent};
 use horizon_core::geometry::Vec3;

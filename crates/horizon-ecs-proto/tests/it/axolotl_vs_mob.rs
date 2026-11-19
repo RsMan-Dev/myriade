@@ -2,7 +2,7 @@
 //! of two animals in love (`make_love`: the tick of the baby is `60 + nextInt(50)` ticks after the start, which waits for the
 //! first scan of the sensors), and what the walk toward the partner does. The hazard draws are the entities' own, so the
 //! controls compare means over many pairs.
-mod common;
+use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
 use horizon_client_lib::mobs::{animal_brain, MobEvent};

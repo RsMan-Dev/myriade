@@ -15,7 +15,7 @@ use crate::locomotion::{swim, walk, Medium};
 use crate::rules::RuleEntry;
 
 const FOOD: &[&str] = &["minecraft:tropical_fish_bucket"];
-const START_ATTACK: start_attacking::Params = start_attacking::Params { finder: start_attacking::Finder::Attackable, ..start_attacking::Params::DEFAULT };
+const START_ATTACK: start_attacking::Params = start_attacking::Params { finder: start_attacking::Finder::NearestAttackable, ..start_attacking::Params::DEFAULT };
 const STOP_ATTACK: stop_attacking_if_target_invalid::Params = stop_attacking_if_target_invalid::Params { not_playing_dead: true, hunting_cooldown: Some(2400), ..stop_attacking_if_target_invalid::Params::DEFAULT };
 const CHASE: set_walk_target_from_attack_target::Params = set_walk_target_from_attack_target::Params { speed: 0.6, dry_speed: Some(0.15) };
 const BITE: melee_attack::Params = melee_attack::Params { cooldown: 20, ..melee_attack::Params::DEFAULT };
@@ -24,7 +24,7 @@ const FORGET_DEAD: forget_memory::Params = forget_memory::Params { forget: &play
 const MAKE_LOVE: make_love::Params = make_love::Params { speed: 0.2, ..make_love::Params::DEFAULT };
 const TEMPT: follow_temptation::Params = follow_temptation::Params { speed: 1.25, close: 2.5, look_in_the_eyes: false, dry_speed: Some(0.15) };
 const FOLLOW: follow_adult::Params = follow_adult::Params { speed: 0.6, min: 5.0, max: 17.0, close: 4, eyes: false, player: false, dry_speed: Some(0.15) };
-const LOOK_SOMETIMES: look_at_player_sometimes::Params = look_at_player_sometimes::Params { base: 30, extra: 31 };
+const LOOK_SOMETIMES: look_at_player_sometimes::Params = look_at_player_sometimes::Params { range_sqr: 36.0, min: 30, spread: 31, players_only: true };
 const SWIM_STROLL: swim_stroll::Params = swim_stroll::Params::DEFAULT;
 const LAND_STROLL: stroll::Params = stroll::Params { speed: 0.15, h: 10, v: 7, dry_only: true };
 const WALK_LOOK: walk_to_look_target::Params = walk_to_look_target::Params { speed: 0.5, close: 3, needs_same_fluid: true, dry_speed: Some(0.15) };
