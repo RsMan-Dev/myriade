@@ -1,0 +1,8 @@
+ghast ## flies and floats every tick (travel 20 000 instr per ghast and tick: a mover, not a rest cost)
+turtle ## swims every tick (amphibious mode: travel and move control per tick)
+slime ## bounds: every creature is in the air or on a bound most ticks
+magma_cube ## same as the slime
+rabbit ## bounds along its path (hop mode)
+silverfish ## wanders and searches paths (pathfind 100 000 instr per search, 3 per tick at 2 000)
+enderman ## goals asked at the vanilla cadence (1/10 per tick): arbitrate visits 10 % of the herd per tick
+zoglin ## walks all the time (18 visits of travel per tick at 2 000)

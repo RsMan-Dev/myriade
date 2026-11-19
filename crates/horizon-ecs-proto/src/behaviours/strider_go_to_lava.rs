@@ -74,7 +74,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let base = block_of(w.get::<Pos>(e).unwrap().0);
     let mw = w.resource::<Level>().mw.0;
     let mut block = w.get::<Lava>(e).unwrap().block.clone();
-    let found = block.find_nearest(base, mw, lava_target);
+    let found = block.may_find(base, mw, |s| &*mw.facts.get(s).name == "minecraft:lava") && block.find_nearest(base, mw, lava_target);
     w.get_mut::<Lava>(e).unwrap().block = block;
     if found {
         return true;

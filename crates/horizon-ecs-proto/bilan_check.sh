@@ -33,4 +33,8 @@ while IFS= read -r line; do
   echo "${verdict%% *} $key ref $ref now $new (${verdict##* } %, limit $limit %)"
   case $verdict in FAIL*) fail=1;; esac
 done < "$now"
+if [ -z "${BILAN_LOG:-}" ]; then
+  sc=$(mktemp); ./species_cost.sh > "$sc" 2>&1 || fail=1
+  grep -v '^ok [a-z_]* [0-9]*$' "$sc" | sed 's/^/species cost: /'; rm -f "$sc"
+fi
 rm -f "$now"; exit $fail

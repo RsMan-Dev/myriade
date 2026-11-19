@@ -133,7 +133,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let mut block = w.get::<Raid>(e).unwrap().block.clone();
     let found = {
         let mw = w.resource::<Level>().mw.0;
-        block.find_nearest(base, mw, |mw, p| raid_target(mw, p, wants, false))
+        // The palette sweep of the `Mob` (`may_find`): no carrot plant in the zone, no walk of its cells.
+        block.may_find(base, mw, |s| &*mw.facts.get(s).name == "minecraft:carrots") && block.find_nearest(base, mw, |mw, p| raid_target(mw, p, wants, false))
     };
     {
         let mut r = w.get_mut::<Raid>(e).unwrap();

@@ -310,6 +310,9 @@ impl Builder {
             if let Some((a, b)) = NEEDS.iter().find(|(a, b)| caps.contains(a) && !caps.contains(b)) {
                 return Err(Error(format!("species `{}`: the capability {a:?} needs {b:?}, which it does not declare", d.name)));
             }
+            if list.len() > crate::goals::MAX_ENTRIES {
+                return Err(Error(format!("species `{}`: {} entries (goals and targets), the selector holds {} at most", d.name, list.len(), crate::goals::MAX_ENTRIES)));
+            }
             for e in list {
                 if let Some(c) = e.module.requires.iter().find(|c| !caps.contains(c)) {
                     return Err(Error(format!("species `{}`: module `{}` requires the capability {c:?}, which the species does not have", d.name, e.module.name)));
@@ -547,5 +550,16 @@ mod tests {
         b.source("a-mod").species(&BAD);
         let e = b.freeze().err().expect("an error").to_string();
         assert!(e.contains("a-mod") && e.contains("mod:bad") && e.contains("change 0"), "{e}");
+    }
+    /// A species with more entries than the selector holds is an error of the registry at the freeze, not a crash at the first tick.
+    #[test]
+    fn a_species_with_too_many_entries_is_an_error_at_the_freeze() {
+        use crate::behaviours::{float, Entry};
+        static MANY: [Entry; 33] = [Entry::new(&float::MODULE, 1, &float::Params::DEFAULT); 33];
+        static BIG: Def = Def { name: "mod:big", goals: &MANY, ..Def::EMPTY };
+        let mut b = Builder::new();
+        b.source("a-mod").species(&BIG);
+        let e = b.freeze().err().expect("an error").to_string();
+        assert!(e.contains("mod:big") && e.contains("33") && e.contains("32"), "{e}");
     }
 }

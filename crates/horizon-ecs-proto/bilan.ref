@@ -1,25 +1,25 @@
-cow idle|ecs 2140
-cow idle|ecs-eager 2445
+cow idle|ecs 2125
+cow idle|ecs-eager 2479
 cow active(1000 players, no solicitation)|ecs 9911
 cow active(1000 players, no solicitation)|ecs-eager 9770
 cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 20219
-pig idle|ecs 328
-pig idle|ecs-eager 515
+pig idle|ecs 319
+pig idle|ecs-eager 497
 pig active(1000 players, no solicitation)|ecs 8344
 pig active(1000 players, no solicitation)|ecs-eager 8152
 pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 18155
-sheep idle|ecs 937
-sheep idle|ecs-eager 1122
+sheep idle|ecs 986
+sheep idle|ecs-eager 1162
 sheep active(1000 players, no solicitation)|ecs 9486
 sheep active(1000 players, no solicitation)|ecs-eager 9324
 sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 20327
-chicken idle|ecs 66
-chicken idle|ecs-eager 234
+chicken idle|ecs 42
+chicken idle|ecs-eager 210
 chicken active(1000 players, no solicitation)|ecs 5365
 chicken active(1000 players, no solicitation)|ecs-eager 5239
 chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 12260
-zombie idle|ecs 181
-zombie idle|ecs-eager 390
+zombie idle|ecs 184
+zombie idle|ecs-eager 395
 zombie active(1000 players, no solicitation)|ecs 13872
 zombie active(1000 players, no solicitation)|ecs-eager 13766
 zombie chase clear (1024, spacing 6, 1024 players)|ecs 6231
@@ -31,5 +31,5 @@ crowd 0.8 (cow, 2000, 0 player)|ordered 19711
 zone near ring (cow, 6, 10)|ecs 4959.5
 zone mid ring (cow, 6, 10)|ecs 31.2
 zone far ring (cow, 6, 10)|ecs 0.1
-items at rest (2000 stacks)|ecs 68
 schedule at rest (empty world, per tick)|ecs 125123
+items at rest (slope per stack, 500 to 2000)|ecs 28
