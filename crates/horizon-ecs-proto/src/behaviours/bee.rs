@@ -95,12 +95,69 @@ fn too_far(w: &World, e: Entity, p: [i32; 3]) -> bool {
     !closer_than(w, e, p, 48)
 }
 fn ensure(w: &mut World, e: Entity) {
+    // The sting: a strike that lands costs the bee its life (`Bee.doHurtTarget`).
+    if w.get::<crate::hostile::Attack>(e).is_some_and(|a| a.on_hit.is_none()) {
+        w.get_mut::<crate::hostile::Attack>(e).unwrap().on_hit = Some(sting);
+    }
     if w.get::<Bee>(e).is_none() {
         let now = now_of(w, e);
         w.entity_mut(e).insert(Bee { nectar: false, stung: false, hive: None, flower: None, stay_out_until: 0, hive_cd_until: 0, flower_cd_until: 0, no_nectar_since: now, crops: 0, blacklist: Vec::new(), unreachable: HashMap::new(), pollinating: false });
         // The constructor's draws: the cooldown before locating a flower.
         let cd = with_rng(w, e, |r| 20 + r.next_int(41)) as u64;
         w.get_mut::<Bee>(e).unwrap().flower_cd_until = now + cd;
+    }
+}
+/// `Bee.pathfindRandomlyTowards`: a hop of a few blocks towards `p` (a flying spot nearer to it), then the path to that spot.
+fn hop_towards(w: &mut World, e: Entity, p: [i32; 3]) {
+    let target = [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5];
+    let here = block_of(w, e);
+    let y_delta = target[1] as i32 - here[1];
+    let y_adjust = if y_delta > 2 { 4 } else if y_delta < -2 { -4 } else { 0 };
+    let dist = (p[0] - here[0]).abs() + (p[1] - here[1]).abs() + (p[2] - here[2]).abs();
+    let (h, v) = if dist < 15 { (dist / 2, dist / 2) } else { (6, 8) };
+    let max_rad = f64::from((std::f64::consts::PI / 10.0) as f32);
+    if let Some(at) = crate::spots::pick_for(w, e, crate::spots::Pick::AirTowards { h, v, fly: y_adjust, to: target, max_rad }) {
+        crate::goals::go_to_at(w, e, at, 1.0, 1);
+    }
+}
+/// `BeeWanderGoal.start`'s direction: towards a valid hive farther than 24 blocks (the normalised vector), else the view.
+pub fn toward_far_hive(w: &World, e: Entity) -> Option<(f64, f64)> {
+    let h = bee(w, e)?.hive.filter(|_| hive_valid(w, e) && !closer_than(w, e, bee(w, e).and_then(|b| b.hive).unwrap_or([0; 3]), 24))?;
+    let p = w.get::<Pos>(e)?.0;
+    let v = [f64::from(h[0]) + 0.5 - p.x, f64::from(h[1]) + 0.5 - p.y, f64::from(h[2]) + 0.5 - p.z];
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len < 1.0e-5 { Some((0.0, 0.0)) } else { Some((v[0] / len, v[2] / len)) }
+}
+/// The bee has stung: it will die, one chance in `1200 - t` every 5 ticks (`Bee.customServerAiStep`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Stung(pub i32);
+/// `Bee.doHurtTarget`: the sting lands: the bee has stung, forgets its anger, and its sting is spent (the poison of the victim is not ported).
+fn sting(w: &mut World, e: Entity) {
+    if let Some(mut b) = w.get_mut::<Bee>(e) {
+        b.stung = true;
+        b.nectar = false;
+    }
+    w.entity_mut(e).insert(Stung(0));
+    crate::targeting::clear_target(w, e);
+    if let Some(mut a) = w.get_mut::<crate::behaviours::neutral_anger::Anger>(e) {
+        a.holding = false;
+        a.at = None;
+    }
+    w.entity_mut(e).remove::<crate::behaviours::neutral_anger::Angry>();
+}
+fn stung_tick(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Stung>>().iter(w).collect();
+    for e in es {
+        let t = {
+            let mut s = w.get_mut::<Stung>(e).unwrap();
+            s.0 += 1;
+            s.0
+        };
+        if t % 5 == 0 && with_rng(w, e, |r| r.next_int((1200 - t).clamp(1, 1200))) == 0 {
+            let hp = w.get::<Health>(e).map_or(1.0, |h| h.0);
+            w.resource_mut::<DamageQueue>().add(e, hp, Cause::Cramming);
+        }
     }
 }
 /// `Bee.attractsBees`.
@@ -164,6 +221,17 @@ pub fn enter_hive(w: &mut World, e: Entity, hive: [i32; 3]) {
 }
 /// The release of the occupants whose stay is over (`BeehiveBlockEntity.tickOccupants`), unless it is night or raining or the front is blocked.
 pub fn release_tick(w: &mut World) {
+    // A hive block that went (`PoiRegistry.removed`, readable the tick after): everyone inside comes out at once (the emergency release).
+    if w.get_resource::<Hives>().is_some_and(|h| !h.bees.is_empty()) {
+        let gone: Vec<[i32; 3]> = w.resource::<crate::poi::PoiRegistry>().removed().to_vec();
+        for p in gone {
+            if let Some(list) = w.resource_mut::<Hives>().bees.remove(&p) {
+                for s in list {
+                    release(w, s.e, p);
+                }
+            }
+        }
+    }
     let Some(hv) = w.get_resource::<Hives>() else { return };
     let now = w.resource::<Clock>().0;
     if hv.bees.is_empty() || now < hv.next {
@@ -262,6 +330,16 @@ fn pollinate_fired(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn find_flower(w: &mut World, e: Entity) -> Option<[i32; 3]> {
     let here = block_of(w, e);
+    {
+        // The palette sweep (`may_hold`): no flower in any section of the box, no walk of its cells.
+        let mw = w.resource::<Level>().mw.0;
+        if !mw.world.may_hold([here[0] - 5, here[1] - 5, here[2] - 5], [here[0] + 5, here[1] + 5, here[2] + 5], |s| mw.has_tag("minecraft:bee_attractive", &mw.facts.get(s).name)) {
+            if let Some(mut b) = w.get_mut::<Bee>(e) {
+                b.unreachable.clear();
+            }
+            return None;
+        }
+    }
     let world_now = w.resource::<Clock>().0;
     let mut cache: HashMap<[i32; 3], u64> = HashMap::new();
     let old = bee(w, e).map(|b| b.unreachable.clone()).unwrap_or_default();
@@ -314,7 +392,8 @@ fn pollinate_can_use(w: &mut World, e: Entity, i: Inst) -> bool {
                 b.flower = Some(p);
             }
             let _ = now;
-            crate::goals::go_to_at(w, e, [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5], f64::from(1.2_f32), 1);
+            // The `Mob` also asks a path here (speed 1.2), but the goal's own wanted point (0.35) comes after the navigation's in its tick and
+            // wins every tick: the flight is the direct one.
             true
         }
         None => {
@@ -384,7 +463,9 @@ fn pollinate_tick(w: &mut World) {
         let flower = [f64::from(f[0]) + 0.5, f64::from(f[1]) + f64::from(0.6_f32), f64::from(f[2]) + 0.5];
         let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
         let dist = |a: [f64; 3]| ((pos.x - a[0]).powi(2) + (pos.y - a[1]).powi(2) + (pos.z - a[2]).powi(2)).sqrt();
-        let steer = |w: &mut World, h: [f64; 3]| crate::goals::go_to_at(w, e, h, f64::from(0.35_f32), 0);
+        // `BeePollinateGoal.setWantedPos`: a direct wanted point at 0.35 (the path of the start, at 1.2, goes on while it lasts: the navigation's
+        // wanted point comes last in the `Mob`'s tick).
+        let steer = |w: &mut World, h: [f64; 3]| crate::locomotion::fly::steer_to(w, e, h, f64::from(0.35_f32));
         if dist(flower) > 1.0 {
             p.hover = Some(flower);
             steer(w, flower);
@@ -468,10 +549,8 @@ fn go_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     !too_far(w, e, h) && wants_to_enter_hive(w, e) && !reached_hive(w, e, h) && is_hive(w, h)
 }
 fn go_start(w: &mut World, e: Entity, _: Inst) {
+    // Nothing is asked here (`BeeGoToHiveGoal.start` only resets its counters): the first tick asks.
     w.entity_mut(e).insert(GoingHome { travelling: 0 });
-    if let Some(h) = bee(w, e).and_then(|b| b.hive) {
-        crate::goals::go_to_at(w, e, [f64::from(h[0]) + 0.5, f64::from(h[1]) + 0.5, f64::from(h[2]) + 0.5], 1.0, 2);
-    }
 }
 fn go_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<GoingHome>();
@@ -512,11 +591,29 @@ fn go_tick(w: &mut World) {
             }
         } else if w.get::<Following>(e).is_none() && w.get::<NeedsPath>(e).is_none() {
             // No path in progress: ask again, or give the hive up when it is too far.
-            if too_far(w, e, h) {
-                drop_hive(w, e);
-                end(w, e, &GO_TO_HIVE);
+            if !closer_than(w, e, h, 16) {
+                if too_far(w, e, h) {
+                    drop_hive(w, e);
+                    end(w, e, &GO_TO_HIVE);
+                } else {
+                    hop_towards(w, e, h);
+                }
             } else {
-                crate::goals::go_to_at(w, e, [f64::from(h[0]) + 0.5, f64::from(h[1]) + 0.5, f64::from(h[2]) + 0.5], 1.0, 2);
+                // `pathfindDirectly`: within 3 blocks the path may end at 1, else at 2; no path that reaches: the hive is given up (and kept
+                // from the next choices).
+                let reach = if closer_than(w, e, h, 3) { 1 } else { 2 };
+                if crate::locomotion::fly::reaches(w, e, h, reach) {
+                    crate::goals::go_to_at(w, e, [f64::from(h[0]) + 0.5, f64::from(h[1]) + 0.5, f64::from(h[2]) + 0.5], 1.0, reach);
+                } else {
+                    if let Some(mut b) = w.get_mut::<Bee>(e) {
+                        b.blacklist.push(h);
+                        while b.blacklist.len() > 3 {
+                            b.blacklist.remove(0);
+                        }
+                    }
+                    drop_hive(w, e);
+                    end(w, e, &GO_TO_HIVE);
+                }
             }
         }
     }
@@ -601,9 +698,6 @@ fn kf_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn kf_start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(GoingToFlower { travelling: 0 });
-    if let Some(f) = bee(w, e).and_then(|b| b.flower) {
-        crate::goals::go_to_at(w, e, [f64::from(f[0]) + 0.5, f64::from(f[1]), f64::from(f[2]) + 0.5], 1.0, 1);
-    }
 }
 fn kf_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<GoingToFlower>();
@@ -629,7 +723,7 @@ fn kf_tick(w: &mut World) {
                 drop_flower(w, e);
                 end(w, e, &GO_TO_KNOWN_FLOWER);
             } else {
-                crate::goals::go_to_at(w, e, [f64::from(f[0]) + 0.5, f64::from(f[1]), f64::from(f[2]) + 0.5], 1.0, 1);
+                hop_towards(w, e, f);
             }
         }
     }
@@ -655,6 +749,9 @@ pub fn tick_all(w: &mut World) {
     }
     if alive(w, 2) {
         kf_tick(w);
+    }
+    if alive(w, 0) || alive(w, 1) || alive(w, 2) {
+        stung_tick(w);
     }
     release_tick(w);
 }

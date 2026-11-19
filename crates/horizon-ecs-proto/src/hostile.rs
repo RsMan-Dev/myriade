@@ -35,6 +35,8 @@ pub struct Attack {
     pub armed: bool,
     /// The rank of the melee goal in the animal's selector (`u8::MAX`: none).
     pub melee_slot: u8,
+    /// Called (in the next flush) when a strike lands: the bee's sting, which costs it its life.
+    pub on_hit: Option<fn(&mut World, Entity)>,
 }
 /// The blocks that changed this tick (`block_changes` writes, `sight_eval` reads and clears).
 #[derive(Resource, Default)]
@@ -235,6 +237,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         path_target: Vec3::ZERO,
         armed: false,
         melee_slot: u8::MAX,
+        on_hit: None,
     });
 }
 // ---- the melee goal ---------------------------------------------------------------------------------------------
@@ -355,6 +358,9 @@ pub fn melee_run(
             let interval = if baby { a.interval_baby.unwrap_or(a.interval) } else { a.interval };
             a.until = interval;
             a.next_strike = clock.0 + interval as u64;
+            if let Some(f) = a.on_hit {
+                cmd.queue(move |w: &mut World| f(w, e));
+            }
             match g.who {
                 Who::Player(id) => {
                     let (tick, amount, from) = (clock.0, a.damage, (pos.0.x, pos.0.z));

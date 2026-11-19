@@ -47,7 +47,7 @@ fn the_pickers_have_the_laws_of_the_mob() {
     };
     let from = [4.5, 1.0, 0.5];
     let to = [-4.5, 1.0, 4.5];
-    let cases: [(&str, Pick); 6] = [
+    let cases: [(&str, Pick); 7] = [
         ("default 10,7", Pick::Default { h: 10, v: 7 }),
         ("land 10,7", Pick::Land { h: 10, v: 7 }),
         ("default away 16,7", Pick::DefaultAway { h: 16, v: 7, from }),
@@ -55,6 +55,8 @@ fn the_pickers_have_the_laws_of_the_mob() {
         ("land towards 10,7", Pick::LandTowards { h: 10, v: 7, to }),
         // The view of a `Mob` that has not turned: toward +z.
         ("flying (hover 8,7 else air 8,4)", Pick::Flying { xd: 0.0, zd: 1.0 }),
+        // The bee's hop towards a hive or a flower (`pathfindRandomlyTowards`).
+        ("air towards 6,8", Pick::AirTowards { h: 6, v: 8, fly: 0, to: [4.5, 1.0, 12.5], max_rad: f64::from((std::f64::consts::PI / 10.0) as f32) }),
     ];
     let mut rng = Rng(0x1234_5678_9ABC_DEF1);
     for (name, pick) in cases {
@@ -68,6 +70,7 @@ fn the_pickers_have_the_laws_of_the_mob() {
                 Pick::LandAway { min_h, max_h, v, from } => m.land_random_pos_away_between(r.w, min_h, max_h, v, from),
                 Pick::LandTowards { h, v, to } => m.land_random_pos_towards(r.w, h, v, to),
                 Pick::Flying { .. } => m.flying_stroll_pos(r.w),
+                Pick::AirTowards { h, v, fly, to, max_rad } => m.air_random_pos_towards(r.w, h, v, fly, to, max_rad),
                 Pick::DefaultTowards { h, v, to, max_rad } => m.default_random_pos_towards(r.w, h, v, to, max_rad),
             };
             match p {
