@@ -173,7 +173,7 @@ thread_local! {
 pub fn reset_uids() {
     NEXT_UID.with(|c| c.set(0));
 }
-fn next_uid() -> u64 {
+pub(crate) fn next_uid() -> u64 {
     NEXT_UID.with(|c| {
         let n = c.get();
         c.set(n + 1);
@@ -391,16 +391,12 @@ impl Online {
 
 /// The animal's number, by order of creation (see `Uid`) and the components of the selector. The modules' state
 /// components are created by their `equip`, once, when the selector is added.
-pub fn goals_bundle(sp: &Species) -> impl Bundle {
-    let uid = next_uid();
+pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
     (
         GoalSet::new(sp.goals.entries),
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, max_head_y: 75.0, eye: sp.eye_height },
         Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
         Jump(false),
-        crate::targeting::FollowRange(f64::from(sp.follow_range)),
-        crate::targeting::Eye(sp.eye_height),
-        Uid(uid),
         Phase(uid),
     )
 }

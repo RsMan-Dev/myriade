@@ -123,3 +123,35 @@ fn the_framework_events_report_landing_and_fire() {
     assert!(lit, "no `ignited` event for the zombie in the sun");
     assert!(out || h.world.get_entity(z).is_err(), "the fire neither went out nor killed");
 }
+
+/// A configuration declares its capabilities and `spawn_species` creates those components and no others.
+#[test]
+fn spawn_makes_only_the_declared_capabilities() {
+    if !have_data() {
+        return;
+    }
+    use horizon_ecs_proto::{behaviours::Cap, goals::GoalSet};
+    let mut h = Herd::with_slab(8, true, false);
+    let mut sp = h.world.resource::<SpeciesTable>().0[0];
+    let mut spawn = |h: &mut Herd, caps: &'static [Cap], x: f64| {
+        sp.caps = caps;
+        spawn_species(&mut h.world, &sp, x, 0.5, 11)
+    };
+    let object = spawn(&mut h, &[Cap::Body], 0.5);
+    let stand = spawn(&mut h, &[Cap::Body, Cap::Living], 2.5);
+    let full = spawn(&mut h, &[Cap::Body, Cap::Living, Cap::Locomotion, Cap::Goals], 4.5);
+    let has = |h: &Herd, e: Entity| {
+        (
+            h.world.get::<Health>(e).is_some(),
+            h.world.get::<Yaw>(e).is_some() || h.world.get::<Stroll>(e).is_some() || h.world.get::<Nav>(e).is_some(),
+            h.world.get::<GoalSet>(e).is_some() || h.world.get::<Rng>(e).is_some() || h.world.get::<ActiveUntil>(e).is_some(),
+        )
+    };
+    assert_eq!(has(&h, object), (false, false, false), "the object has a body only");
+    assert_eq!(has(&h, stand), (true, false, false), "the stand lives and has no goals nor walking");
+    assert_eq!(has(&h, full), (true, true, true));
+    for _ in 0..60 {
+        h.tick();
+    }
+    assert!(h.world.get::<Contact>(object).unwrap().on_ground && h.world.get::<Contact>(stand).unwrap().on_ground);
+}

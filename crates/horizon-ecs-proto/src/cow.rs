@@ -638,6 +638,8 @@ pub struct Species {
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
     pub burns_in_day: bool,
+    /// The capabilities of the configuration (its sections): the entity is made of these only.
+    pub caps: &'static [crate::behaviours::Cap],
 }
 /// What the fluid physics reads of an entity (a capability of the body: an object without it uses `DEFAULT`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -660,6 +662,9 @@ pub struct NavParams {
     pub can_walk_over_fences: bool,
     pub follow_range: f32,
 }
+/// `Attributes.ATTACK_DAMAGE` (0: the entity does not attack).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AttackDamage(pub f32);
 /// `Attributes.KNOCKBACK_RESISTANCE` (a living entity).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resist(pub f64);
@@ -767,6 +772,7 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
             knockback_resistance: mob.attrs.knockback_resistance,
             attack_damage: mob.attrs.attack_damage,
             burns_in_day: kind.flags.burns_in_day,
+            caps: crate::species::registry().by_name(name).unwrap().caps,
         });
         if name == chosen {
             chosen_kind = Some(kind);
@@ -821,48 +827,95 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
     let (hw, h) = (f64::from(width) / 2.0, f64::from(height));
     Aabb::new(Vec3::new(p.x - hw, p.y, p.z - hw), Vec3::new(p.x + hw, p.y + h, p.z + hw))
 }
-/// An animal of the world's species at (x, z): every number is the species' data.
-pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
-    let mut rng = Rng(seed | 1);
+/// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
+/// `Body`: where it is, its box, its physics, its fluids; its identity (`SpeciesId`, `Uid`) and its eye.
+pub fn body_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
     (
         Pos(Vec3::new(x, 1.0, z)),
         SpeciesId(sp.id),
+        crate::goals::Uid(uid),
         Vel(Vec3::ZERO),
-        Yaw((rng.next_u32() % 360) as f32),
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: sp.farm.slow_fall },
         Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)),
         Cell(u32::MAX),
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        Drive::default(),
         (
-            Sizes { adult: (sp.width, sp.height), baby: sp.baby },
-            MoveTo::default(),
-            Nav::default(),
-            ActiveUntil(100),
+            FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+            crate::targeting::Eye(sp.eye_height),
+            FluidState::default(),
+            Recheck,
+            Moving,
             OwnTime,
-            Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
-            (Moving, crate::goals::goals_bundle(sp)),
-            Health(sp.max_health),
-            (
-                FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
-                NavParams {
-                    malus: sp.malus,
-                    can_float: sp.can_float,
-                    can_open_doors: sp.can_open_doors,
-                    can_pass_doors: sp.can_pass_doors,
-                    can_walk_over_fences: sp.can_walk_over_fences,
-                    follow_range: sp.follow_range,
-                },
-                Resist(sp.knockback_resistance),
-                Immune(if sp.farm.fall_immune { IMMUNE_FALL } else { 0 } | if sp.breathes_water { BREATHES_WATER } else { 0 }),
-                TypeName(sp.name),
-            ),
-            HurtAt { at: 0, last: 0.0 },
-            Frozen(0),
-            (FluidState::default(), Air(300), Recheck),
-            rng,
         ),
     )
+}
+/// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
+pub fn living_bundle(sp: &Species) -> impl Bundle {
+    (
+        Sizes { adult: (sp.width, sp.height), baby: sp.baby },
+        Health(sp.max_health),
+        HurtAt { at: 0, last: 0.0 },
+        Frozen(0),
+        Air(300),
+        Resist(sp.knockback_resistance),
+        Immune(if sp.farm.fall_immune { IMMUNE_FALL } else { 0 } | if sp.breathes_water { BREATHES_WATER } else { 0 }),
+        TypeName(sp.name),
+    )
+}
+/// `Locomotion`: walking and paths (the heading, the walking input, the path and its target, the walking data).
+pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
+    (
+        Yaw(yaw),
+        Drive::default(),
+        MoveTo::default(),
+        Nav::default(),
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60 },
+        NavParams {
+            malus: sp.malus,
+            can_float: sp.can_float,
+            can_open_doors: sp.can_open_doors,
+            can_pass_doors: sp.can_pass_doors,
+            can_walk_over_fences: sp.can_walk_over_fences,
+            follow_range: sp.follow_range,
+        },
+    )
+}
+/// `Targets`: what the target selectors and the attacks read.
+pub fn targets_bundle(sp: &Species) -> impl Bundle {
+    (crate::targeting::FollowRange(f64::from(sp.follow_range)), AttackDamage(sp.attack_damage))
+}
+/// `Goals`: the selector, its head, and the activity zone and random stream the goals use.
+fn goals_part(sp: &Species, uid: u64, rng: Rng) -> impl Bundle {
+    (ActiveUntil(100), rng, crate::goals::goals_bundle(sp, uid))
+}
+/// An entity with EVERY capability at (x, z), for the tests and the benches: the species' data are the numbers.
+/// `spawn_species` gives only the capabilities a configuration declares.
+pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
+    let mut rng = Rng(seed | 1);
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    (body_bundle(sp, x, z, uid), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), goals_part(sp, uid, rng))
+}
+/// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
+fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+    let mut rng = Rng(seed | 1);
+    let yaw = (rng.next_u32() % 360) as f32;
+    let uid = crate::goals::next_uid();
+    let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
+    let mut e = world.spawn(body_bundle(sp, x, z, uid));
+    if has(crate::behaviours::Cap::Living) {
+        e.insert(living_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Locomotion) {
+        e.insert(locomotion_bundle(sp, yaw));
+    }
+    if has(crate::behaviours::Cap::Targets) {
+        e.insert(targets_bundle(sp));
+    }
+    if has(crate::behaviours::Cap::Goals) {
+        e.insert(goals_part(sp, uid, rng));
+    }
+    e.id()
 }
 /// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
 /// tick see it).
@@ -877,14 +930,14 @@ pub fn enter_index(world: &mut World, e: Entity) {
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
 pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) -> Entity {
     let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];
-    let e = world.spawn(spawn_bundle(&sp, x, z, seed)).id();
+    let e = spawn_declared(world, &sp, x, z, seed);
     enter_index(world, e);
     crate::farm::equip(world, e, &sp);
     e
 }
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
-    let e = world.spawn(spawn_bundle(sp, x, z, seed)).id();
+    let e = spawn_declared(world, sp, x, z, seed);
     enter_index(world, e);
     crate::hostile::equip(world, e, sp);
     crate::farm::equip(world, e, sp);

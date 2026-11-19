@@ -128,11 +128,11 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
     if w.get::<Attack>(e).is_some() {
         return;
     }
-    let sp = w.resource::<SpeciesTable>().0[w.get::<SpeciesId>(e).unwrap().0 as usize];
+    let damage = w.get::<AttackDamage>(e).map_or(0.0, |d| d.0);
     // The melee check's grid is in the WORLD's time (`MeleeAttackGoal.lastCanUseCheck` against `getGameTime`).
     let now = w.resource::<Clock>().0;
     w.entity_mut(e).insert(Attack {
-        damage: if sp.attack_damage <= 0.0 { 1.0 } else { sp.attack_damage },
+        damage: if damage <= 0.0 { 1.0 } else { damage },
         interval: 20,
         speed: 1.0,
         reach: 2.04_f32.sqrt() as f64 - 0.6,
