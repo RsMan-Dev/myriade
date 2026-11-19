@@ -124,6 +124,8 @@ fn set_cooldown(w: &mut World, e: Entity, ticks: i32) {
         c.0 = date;
     }
     schedule(w, e, date);
+    // The goat's long jump activity holds while the ram cools down: it is asked now (no polling for the end of the ram).
+    crate::goals::wake(w, e, &crate::behaviours::long_jump::MODULE);
 }
 
 /// Premier compte à rebours : `finalize` tire `[600, 6000]`.
