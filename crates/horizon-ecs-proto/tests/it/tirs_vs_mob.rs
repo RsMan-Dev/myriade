@@ -152,7 +152,7 @@ fn the_pillager_shoots_its_crossbow_as_a_mob_does() {
 
 /// The guardian in water with the player within 15 blocks: the beam of 2 seconds ends in the same tick on both sides, with the same damage (1 magic + 2 on hard).
 #[test]
-#[ignore = "open gap, to be decided by the owner (suivi/ecs-ecarts.md): in the Mob the selectors decide only on even ticks (ai.rs:2883-2887); after the hit (guardian.rs:134-161) the target goal re-takes the target (goals.rs:1770,1884, 1 in 5) before can_continue (goals.rs:161) stops the goal, so attack_time stays over the duration and it hits again at once (90, 91, 93); the ECS ends the goal at the first hit"]
+#[ignore = "defect of the Mob: re-targeting before the goal stops (ai.rs:2883-2887, goals.rs:1770/1884 then can_continue goals.rs:161, attack_time guardian.rs:122/134): it hits at 90, 91 and 93 where the game hits once per beam (wiki: 6 HP plus 2 HP magic, then about 3 s before the next); the ECS is the game; see suivi/ecs-ecarts.md"]
 fn the_guardian_beam_hurts_as_a_mob_does() {
     if !is("minecraft:guardian") && !is("minecraft:elder_guardian") {
         return;
@@ -175,8 +175,8 @@ fn the_guardian_beam_hurts_as_a_mob_does() {
     assert_eq!(first(|t| t.mob_dmg), first(|t| t.ecs_dmg));
 }
 
-/// The beam of the guardian: the first hit at the same tick, and each beam is its magic damage then the blow of 6 at the same tick. The count of
-/// beams in 200 ticks is the ignored test above (an open gap).
+/// The beam of the guardian, as the game has it: once per beam, its magic damage then the blow of 6 at the same tick, at least 3 s between two beams; the
+/// first hit at the tick of the `Mob`. The strict count against the `Mob` is the ignored test above (a defect of the `Mob`).
 #[test]
 fn the_guardian_beam_is_its_magic_then_its_blow() {
     if !is("minecraft:guardian") && !is("minecraft:elder_guardian") {
@@ -184,9 +184,10 @@ fn the_guardian_beam_is_its_magic_then_its_blow() {
     }
     let mut s = scene(Vec3::new(0.5, 2.0, 0.5), Vec3::new(6.5, 2.0, 0.5), None, true);
     let view = player_view(Vec3::new(6.5, 2.0, 0.5), None);
-    let v = run(&mut s, &view, 200);
+    let v = run(&mut s, &view, 400);
     let (m, e) = (at(&v, |t| t.mob_dmg > 0.0), at(&v, |t| t.ecs_dmg > 0.0));
     close(&m, &e, 6, "beam hits");
+    assert!(e.windows(2).all(|w| w[1] - w[0] >= 60), "at least 3 s between two beams: {e:?}");
     let hits = s.h.world.resource::<PlayerState>().hits.iter().map(|h| (h.tick, h.amount)).collect::<Vec<_>>();
     let blow = hits.iter().filter(|h| (h.1 - s.magic).abs() > 1e-3).count();
     assert_eq!(blow, e.len(), "one blow with each beam: {hits:?}");
