@@ -25,17 +25,13 @@ pub static MODULE: Module = Module {
     name: "flee_sun",
     flags: MOVE,
     ends_with_path: true,
-    blocked: None,
-    retry_on_end: false,
-    after_change: None,
-    resources: no_resources,
     equip,
-    arm: no_arm,
-    fired: always,
     can_use,
     start,
     stop,
     systems,
+    requires: &[Cap::Body, Cap::Living, Cap::Locomotion],
+    ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
@@ -68,12 +64,16 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let now = w.resource::<Clock>().0;
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
-    if w.get::<Aggro>(e).is_some() || !w.resource::<Daylight>().0 || !burning {
+    // Not burning, or at night: the ignition and the change of day wake the goal; no ask until then.
+    if !burning || !w.resource::<Daylight>().0 {
         return false;
     }
+    // The `Mob` asks every other tick: while it burns by day, a target (`Aggro`) that goes, a roof that is removed or
+    // a spot that appears are seen by asking again in 2 ticks (a deadline, only for the animals that burn).
     let mw = w.resource::<Level>().mw.0;
     let (bx, by, bz) = (pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32);
-    if !mw.can_see_sky(bx, by, bz) {
+    if w.get::<Aggro>(e).is_some() || !mw.can_see_sky(bx, by, bz) {
+        arm(w, e, inst.slot, 2);
         return false;
     }
     if let Some((x, z)) = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot)) {
