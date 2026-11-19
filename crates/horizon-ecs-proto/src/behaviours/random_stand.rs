@@ -95,7 +95,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 /// `RandomStandGoal.canUse` after the draw: no rear while the animal stands (`immobile`), else the one-in-ten draw.
 /// A refusal starts the next cycle.
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     let standing = w.get::<Standing>(e).is_some_and(|s| now < s.until);
     let ok = !standing && with_rng(w, e, |r| r.next_int(ONE_IN) == 0);
     if !ok {
@@ -106,7 +106,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 /// `RandomStandGoal.start` (`stand_if_possible`): the rear for 20 ticks. The goal has no second tick (`can_continue`
 /// is false), so it ends at once.
 fn start(w: &mut World, e: Entity, inst: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = crate::cow::now_of(w, e);
     w.entity_mut(e).insert(Standing { until: now + STAND_TICKS });
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }

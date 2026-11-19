@@ -2,7 +2,7 @@
 //! blocks. A spot is taken when the sky does not see it and its walk value is below zero (a brightness above 0.5, the
 //! monster's `getWalkTargetValue`). The try is drawn when the goal is asked, 10 tries at most.
 use super::*;
-use crate::{cow::*, goals::*, hostile::{Aggro, Daylight}};
+use crate::{cow::*, goals::*, hostile::Daylight, targeting::Target};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -41,10 +41,12 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((wake_on_fire, wake_on_day).in_set(slot));
 }
 /// A monster that catches fire asks for the goal (`canUse` is asked at the selector's ticks). Any ignition is seen here:
-/// `sun_burn` inserts `Burning` itself, without going through this module.
-fn wake_on_fire(q: Query<(Entity, &FleeSunGoal), Changed<Burning>>, mut reqs: ResMut<Requests>) {
-    for (e, g) in &q {
-        reqs.0.push(Req::Start(e, g.slot));
+/// The framework's `Events.ignited` says it (read once, the tick after).
+fn wake_on_fire(ev: Res<Events>, q: Query<&FleeSunGoal>, mut reqs: ResMut<Requests>) {
+    for e in ev.ignited.iter() {
+        if let Ok(g) = q.get(e) {
+            reqs.0.push(Req::Start(e, g.slot));
+        }
     }
 }
 /// The day came or went: the monsters that burn now look at the sun again (the burning ones only).
@@ -61,18 +63,18 @@ fn pick(w: &mut World, e: Entity, v: (f64, i32, f64)) {
 /// `FleeSunGoal.canUse`: no target, daylight, burning, no helmet (not modelled: DOUBT, see the notes), the own block sees
 /// the sky, then a hiding spot. `Forced` spots are taken as they are, at the block row of the animal.
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = w.resource::<Clock>().0;
+    let now = now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
     // Not burning, or at night: the ignition and the change of day wake the goal; no ask until then.
     if !burning || !w.resource::<Daylight>().0 {
         return false;
     }
-    // The `Mob` asks every other tick: while it burns by day, a target (`Aggro`) that goes, a roof that is removed or
+    // The `Mob` asks every other tick: while it burns by day, a target (`Target`) that goes, a roof that is removed or
     // a spot that appears are seen by asking again in 2 ticks (a deadline, only for the animals that burn).
     let mw = w.resource::<Level>().mw.0;
     let (bx, by, bz) = (pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32);
-    if w.get::<Aggro>(e).is_some() || !mw.can_see_sky(bx, by, bz) {
+    if w.get::<Target>(e).is_some() || !mw.can_see_sky(bx, by, bz) {
         arm(w, e, inst.slot, 2);
         return false;
     }
@@ -113,7 +115,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 /// The path ended (or another goal took the flags): while the animal still burns, it is asked again in 2 ticks, as the
 /// selector asks a goal that is not running.
 fn stop(w: &mut World, e: Entity, inst: Inst) {
-    let now = w.resource::<Clock>().0;
+    let now = now_of(w, e);
     if w.get::<Burning>(e).is_some_and(|b| b.until > now) {
         arm(w, e, inst.slot, 2);
     }
