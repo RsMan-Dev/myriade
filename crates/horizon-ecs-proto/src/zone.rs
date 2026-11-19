@@ -286,7 +286,7 @@ pub fn admit(world: &mut World, fresh: &[Entity]) {
     if !idx.zone.on {
         return;
     }
-    let asleep: Vec<Entity> = fresh.iter().copied().filter(|&e| world.get::<crate::cow::Cell>(e).is_some_and(|c| !idx.zone.simulated_cell(c.0))).collect();
+    let asleep: Vec<Entity> = fresh.iter().copied().filter(|&e| world.get::<Dormant>(e).is_none() && world.get::<crate::cow::Cell>(e).is_some_and(|c| !idx.zone.simulated_cell(c.0))).collect();
     for e in asleep {
         sleep(world, e, now);
         world.resource_mut::<Index>().zone.stats.slept += 1;

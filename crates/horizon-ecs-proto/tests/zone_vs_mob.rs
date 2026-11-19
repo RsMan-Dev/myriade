@@ -401,3 +401,64 @@ fn a_zombie_that_sleeps_strikes_again_as_a_mob_does() {
     let (ma, ea) = (after(&mg), after(&eg));
     assert!((ea / ma - 1.0).abs() < 0.25, "strikes after the wake: mob {ma}, ecs {ea}");
 }
+
+/// At the border of the zone a creature asleep is still an obstacle: an awake one that overlaps it is pushed away, as the
+/// `Mob` beside a mob that is not ticked is (`Entity.push` moves both; the sleeper does not move, its velocity changes).
+#[test]
+fn a_sleeping_neighbour_still_pushes_an_awake_creature() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = pair();
+    // The player's chunk is 0: with a radius of 2, x < 48 ticks and x >= 48 does not.
+    h.set_players(vec![(8.0, 8.0)]);
+    h.set_simulation(2);
+    h.tick();
+    let (ax, bx, z) = (47.7, 48.3, 8.5);
+    let (ia, ib) = (r.add(Vec3::new(ax, 1.0, z)), r.add(Vec3::new(bx, 1.0, z)));
+    let (ea, eb) = (ecs_cow(&mut h, ax, 1.0, z, 3), ecs_cow(&mut h, bx, 1.0, z, 4));
+    let lv = oracle(&[(8.0, 8.0)], 2, 2);
+    h.tick();
+    let mut asleep = false;
+    for _ in 0..40 {
+        r.step_where(None, |m| lv.entity_ticking_at(m.position.x.floor() as i32, m.position.z.floor() as i32));
+        h.tick();
+        asleep |= h.world.get::<Dormant>(eb).is_some();
+    }
+    assert!(asleep, "the neighbour at x = 48.3 sleeps");
+    let (ma, mb) = (r.mobs[ia].position, r.mobs[ib].position);
+    let (ca, cb) = (h.world.get::<Pos>(ea).unwrap().0, h.world.get::<Pos>(eb).unwrap().0);
+    eprintln!("awake: mob x {:.3}, ecs x {:.3}; asleep: mob x {:.3}, ecs x {:.3}", ma.x, ca.x, mb.x, cb.x);
+    assert_eq!(mb.x, bx, "the mob that is not ticked does not move");
+    assert_eq!(cb.x, bx, "the creature asleep does not move");
+    assert!(ma.x < ax - 0.05 && ca.x < ax - 0.05, "both awake creatures are pushed away from the sleeper");
+    assert!((ma.x - ca.x).abs() < 0.1, "mob {:.3} ecs {:.3}", ma.x, ca.x);
+}
+
+/// A creature created in a chunk that does not tick is born asleep, with no entry in the wheel; one in a chunk that ticks is not.
+#[test]
+fn a_creature_created_where_nothing_ticks_is_born_asleep() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(HALF, true, false);
+    h.set_players(vec![(8.0, 8.0)]);
+    h.set_simulation(2);
+    h.tick();
+    let made = h.populate(&[(10.5, 10.5), (-90.5, 40.5), (70.5, 8.5)], 9);
+    let asleep: Vec<bool> = made.iter().map(|&e| h.world.get::<Dormant>(e).is_some()).collect();
+    assert_eq!(asleep, [false, true, true]);
+    let wheel = h.world.resource::<Wheel>().len();
+    // Only the first creature has entries.
+    let own = h.world.resource::<Wheel>().owned_by(made[0]);
+    assert!(own > 0 && wheel == own, "wheel {wheel}, the awake creature's {own}");
+    for _ in 0..300 {
+        h.tick();
+    }
+    assert_eq!(h.world.get::<Pos>(made[1]).unwrap().0.x, -90.5);
+    // The player comes: they wake and run.
+    h.set_players(vec![(-90.0, 40.0)]);
+    h.tick();
+    assert!(h.world.get::<Dormant>(made[1]).is_none());
+    assert!(h.world.resource::<Wheel>().owned_by(made[1]) > 0);
+}

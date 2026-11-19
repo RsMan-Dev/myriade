@@ -502,6 +502,9 @@ pub(crate) fn arm_timers(w: &mut World, e: Entity) {
     for (i, en) in entries.iter().enumerate().take(n) {
         (en.module.arm)(w, e, insts[i]);
     }
+    // A creature created in a chunk that does not tick is born asleep (a `Mob` there is not ticked either): this is the last
+    // step of every creation, once its deadlines exist.
+    crate::zone::admit(w, &[e]);
 }
 /// Arms the timers of every animal (the herd starts active).
 pub fn arm_all(world: &mut World) {

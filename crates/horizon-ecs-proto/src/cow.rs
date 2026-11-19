@@ -3,7 +3,9 @@
 //! ground with Horizon's real block collision sweep (`SceneCollisions::resolve_in_border_with`), and sleeping.
 //! Species data (size, step, speed, stroll range) are component values, not branches.
 use bevy_ecs::{
+    entity_disabling::Disabled,
     prelude::*,
+    query::Allow,
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 use horizon_client_lib::mobs::{
@@ -480,6 +482,10 @@ impl Wheel {
             }
         }
         out
+    }
+    /// How many entries `e` has in the wheel (tracking on).
+    pub fn owned_by(&self, e: Entity) -> usize {
+        self.owned.get(e.index().index() as usize).map_or(0, |l| l.iter().filter(|o| o.0 == e).count())
     }
     /// How many entries the wheel holds in all.
     pub fn len(&self) -> usize {
@@ -1903,7 +1909,9 @@ fn push(
     cfg: Res<Config>,
     idx: Res<Index>,
     par: ParallelCommands,
-    boxes: Query<Ref<Bounds>>,
+    // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
+    // overlap it and is pushed by them (`Entity.push` moves both), only it does not move until it is ticked again.
+    boxes: Query<(Ref<Bounds>, Has<Disabled>), Allow<Disabled>>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
@@ -1917,7 +1925,7 @@ fn push(
             if o == e {
                 return;
             }
-            let Ok(ob) = boxes.get(o) else { return };
+            let Ok((ob, asleep)) = boxes.get(o) else { return };
             if !b.0.intersects(ob.0) {
                 return;
             }
@@ -1959,7 +1967,12 @@ fn push(
             }
             if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
                 par.command_scope(|mut cmd| {
-                    cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                    // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
+                    if asleep {
+                        cmd.entity(o).insert(PushIn(Vec3::new(xa, 0.0, za)));
+                    } else {
+                        cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                    }
                 });
             }
         });
@@ -1980,7 +1993,7 @@ fn push(
                 cmd.entity(e).insert(Crowded);
             });
             idx.for_near(cx, cz, |o| {
-                if o != e && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+                if o != e && boxes.get(o).is_ok_and(|(ob, _)| b.0.intersects(ob.0)) {
                     par.command_scope(|mut cmd| {
                         cmd.entity(o).insert(Crowded);
                     });
@@ -2314,7 +2327,7 @@ pub struct Crowded;
 fn cramming(
     clock: Res<Clock>,
     idx: Res<Index>,
-    boxes: Query<&Bounds>,
+    boxes: Query<&Bounds, Allow<Disabled>>,
     mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
@@ -2494,7 +2507,6 @@ impl Herd {
         }
         crate::goals::arm_all(&mut self.world);
         self.world.run_system_cached(reindex).unwrap();
-        crate::zone::admit(&mut self.world, &out);
         out
     }
     /// Turns the simulated chunks on (`zone.rs`): only the chunks within `radius` chunks of a player tick, the creatures of the
