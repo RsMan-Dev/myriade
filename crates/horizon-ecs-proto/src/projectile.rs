@@ -55,6 +55,8 @@ pub enum OnHit {
     Splash(&'static [crate::effects::Brew]),
     /// A wind charge bursts where it ends: knockback only, no damage, on the creatures within `radius` (`explosion::wind_burst`).
     WindBurst { radius: f32 },
+    /// A dragon's fireball ends: the breath cloud (`dragon::fireball::burst`).
+    DragonBurst,
 }
 /// An explosion asked by a projectile.
 #[derive(Clone, Copy, Debug)]
@@ -273,6 +275,9 @@ pub fn fly(
                 events.exploded.push(blast);
                 commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
             }
+            if matches!(f.hit, OnHit::DragonBurst) {
+                commands.queue(move |w: &mut World| { crate::dragon::fireball::burst(w, at); });
+            }
             if let OnHit::WindBurst { radius } = f.hit {
                 let owner = p.owner;
                 commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
@@ -301,6 +306,10 @@ pub fn fly(
                         let blast = Blast { at: pos.0, radius: power as f32, fire, owner: p.owner, source: None };
                         events.exploded.push(blast);
                         commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                    }
+                    if matches!(f.hit, OnHit::DragonBurst) {
+                        let at = pos.0;
+                        commands.queue(move |w: &mut World| { crate::dragon::fireball::burst(w, at); });
                     }
                     if let OnHit::WindBurst { radius } = f.hit {
                         let (at, owner) = (pos.0, p.owner);

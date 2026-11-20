@@ -2,18 +2,25 @@
 //! phase's target, the velocity slide, and the 64-sample history the parts read. Constants are `Params`; the dragon's name is not here.
 //! The phase machine runs between the two systems (`pre`, then the phases, then `steer`), as in `tick_dragon`.
 use crate::behaviours::{params, Cap, Inst, Module};
-use crate::cow::{Pos, Vel, Yaw};
-use crate::dragon::parts;
+use crate::cow::{Health, Pos, Vel, Yaw};
+use crate::dragon::{crystals, data, death, fight::NearestCrystal, hurt, parts, phases};
+use crate::goals::Events;
 use crate::host_out::HostOut;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource};
-use horizon_core::trig;
+use horizon_core::geometry::{trig, Aabb};
 use std::f32::consts::TAU;
 
-/// The level's random (`self.world.random`), shared by every mob's sound pitch.
-#[derive(Resource)]
-pub struct LevelRandom(pub LegacyRandom);
+/// The dragon's two generators: `.0` is its own (`d.random`: the rolls, the growl delay, the deaths' rays), `.1` stands for the level's
+/// (`world.random`) in the flap and growl pitches and the orbs, so that `.0` draws in Horizon's order. Seeded by the spawner.
+#[derive(Component)]
+pub struct DragonRng(pub LegacyRandom, pub LegacyRandom);
+
+/// `Mob.isNoAi`: the dragon only flaps (to 0.5), nothing else moves. Rare, so a marker in sparse storage.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct NoAi;
 
 /// A sound and its volume.
 #[derive(Clone, Copy, Debug)]
@@ -53,11 +60,12 @@ pub struct FlyOrder {
     pub sitting: bool,
 }
 
-/// What the flight keeps between ticks. `rng` is the dragon's own `LegacyRandom`.
+/// What the flight keeps between ticks.
 #[derive(Component)]
 pub struct Flight {
     pub cfg: Params,
-    pub rng: LegacyRandom,
+    /// Ticks lived (`d.ticks`).
+    pub ticks: u32,
     pub flap: f32,
     pub old_flap: f32,
     pub growl: i32,
@@ -117,17 +125,17 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Before the phases: the ambient sound, the flap and its sound, the growl, the crystal-scan roll, the history.
-pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32, hist: &mut FlightHistory, level: &mut LevelRandom, host: &mut HostOut) {
+/// Before the phases: the ambient sound, the flap and its sound, the growl, the crystal-scan roll, the yaw wrap.
+pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32, rng: &mut DragonRng, host: &mut HostOut) {
     let p = f.cfg;
     f.old_flap = f.flap;
     let at = [pos.x, pos.y, pos.z];
-    let roll = f.rng.next_int_bound(1000).unwrap_or(999);
+    let roll = rng.0.next_int_bound(1000).unwrap_or(999);
     let waited = f.ambient;
     f.ambient += 1;
     if roll < waited {
         f.ambient = -p.ambient_interval;
-        let pitch = (f.rng.next_float() - f.rng.next_float()) * 0.2 + 1.0;
+        let pitch = (rng.0.next_float() - rng.0.next_float()) * 0.2 + 1.0;
         host.sound(p.ambient.name, at, p.ambient.volume, pitch);
     }
     let flap_was = trig::cos(f64::from(f.old_flap * TAU));
@@ -142,20 +150,19 @@ pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32
     };
     let flap_now = trig::cos(f64::from(f.flap * TAU));
     if flap_was <= -0.3 && flap_now >= -0.3 {
-        let pitch = 0.8 + level.0.next_float() * 0.3;
+        let pitch = 0.8 + rng.1.next_float() * 0.3;
         host.sound(p.flap.name, at, p.flap.volume, pitch);
     }
     if !order.sitting {
         f.growl -= 1;
         if f.growl < 0 {
-            f.growl = p.growl_base + f.rng.next_int_bound(p.growl_span).unwrap_or(0);
-            let pitch = 0.8 + level.0.next_float() * 0.3;
+            f.growl = p.growl_base + rng.0.next_int_bound(p.growl_span).unwrap_or(0);
+            let pitch = 0.8 + rng.1.next_float() * 0.3;
             host.sound(p.growl.name, at, p.growl.volume, pitch);
         }
     }
-    f.scan_due = f.rng.next_int_bound(10).unwrap_or(1) == 0;
+    f.scan_due = rng.0.next_int_bound(10).unwrap_or(1) == 0;
     *yaw = wrap(*yaw);
-    hist.record(pos.y, *yaw);
 }
 
 /// After the phases: the steering toward `order.target`, the move, and the slide. `in_wall` shortens the move (0.8).
@@ -199,20 +206,56 @@ pub fn steer(order: &FlyOrder, f: &Flight, pos: &mut Vec3, vel: &mut Vec3, yaw: 
     vel.z *= slide;
 }
 
-fn pre_sys(w: &mut World) {
-    let Some(e) = w.query_filtered::<Entity, With<Flight>>().iter(&*w).next() else { return };
+/// One tick of a dragon (`tick_dragon`, D:2677): the single wake of its flight. Its random stream is observable every tick (ambient
+/// roll, scan roll), so no tick can be skipped: one wake per tick per dragon is the floor, and everything else rides on it.
+pub fn tick(w: &mut World, e: Entity) {
+    let Some(mut f) = w.entity_mut(e).take::<Flight>() else { return };
+    f.ticks += 1;
+    w.entity_mut(e).insert(f);
+    if w.get::<Health>(e).is_some_and(|h| h.0 <= 0.0) {
+        death::tick(w, e);
+        return;
+    }
+    heal(w, e);
     let mut f = w.entity_mut(e).take::<Flight>().expect("flight");
-    let mut hist = w.entity_mut(e).take::<FlightHistory>().expect("history");
+    let mut rng = w.entity_mut(e).take::<DragonRng>().expect("rng");
     let order = w.get::<FlyOrder>(e).copied().unwrap_or_default();
     let (pos, vel, mut yaw) = (w.get::<Pos>(e).expect("pos").0, w.get::<Vel>(e).expect("vel").0, w.get::<Yaw>(e).expect("yaw").0);
-    w.resource_scope::<HostOut, _>(|w, mut host| {
-        w.resource_scope::<LevelRandom, _>(|_, mut level| pre(&mut f, &order, pos, vel, &mut yaw, &mut hist, &mut level, &mut host))
-    });
-    w.entity_mut(e).insert((f, hist, Yaw(yaw)));
+    w.resource_scope::<Events, _>(|_, mut ev| pre(&mut f, &order, pos, vel, &mut yaw, &mut rng, &mut ev.host));
+    let scan = f.scan_due;
+    let no_ai = w.get::<NoAi>(e).is_some();
+    if no_ai {
+        f.flap = 0.5;
+    }
+    w.entity_mut(e).insert((f, rng, Yaw(yaw)));
+    if scan {
+        let reach = Aabb::new(Vec3::new(pos.x - 8.0, pos.y, pos.z - 8.0), Vec3::new(pos.x + 8.0, pos.y + 8.0, pos.z + 8.0)).inflate(Vec3::new(32.0, 32.0, 32.0));
+        let near = crystals::nearest_to(w, pos, reach);
+        w.entity_mut(e).insert(NearestCrystal(near));
+    }
+    if no_ai {
+        return;
+    }
+    let mut hist = w.entity_mut(e).take::<FlightHistory>().expect("history");
+    hist.record(pos.y, yaw);
+    w.entity_mut(e).insert(hist);
+    phases::tick(w, e);
+    steer_sys(w, e);
+    parts::place(w, e);
+    hurt::contacts(w, e);
 }
 
-fn steer_sys(w: &mut World) {
-    let Some(e) = w.query_filtered::<Entity, With<Flight>>().iter(&*w).next() else { return };
+/// `checkCrystals`: one health every tenth tick while a crystal is the nearest one, up to the maximum.
+fn heal(w: &mut World, e: Entity) {
+    let ticks = w.get::<Flight>(e).map_or(0, |f| f.ticks);
+    if w.get::<NearestCrystal>(e).is_some_and(|n| n.0.is_some()) && ticks % 10 == 0 {
+        if let Some(mut h) = w.get_mut::<Health>(e) {
+            h.0 = (h.0 + 1.0).min(data::MAX_HEALTH);
+        }
+    }
+}
+
+fn steer_sys(w: &mut World, e: Entity) {
     let order = w.get::<FlyOrder>(e).copied().unwrap_or_default();
     let f = w.entity_mut(e).take::<Flight>().expect("flight");
     let mut pos = w.get::<Pos>(e).expect("pos").0;
@@ -221,25 +264,31 @@ fn steer_sys(w: &mut World) {
     let mut accel = w.get::<YawAccel>(e).map_or(0.0, |a| a.0);
     steer(&order, &f, &mut pos, &mut vel, &mut yaw, &mut accel);
     w.entity_mut(e).insert((f, Pos(pos), Vel(vel), Yaw(yaw), YawAccel(accel)));
-    parts::place(w, e);
 }
 
-/// `pre` runs before the phase machine and `steer` after it: the phases write `FlyOrder` in between.
-fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
-    use bevy_ecs::schedule::IntoScheduleConfigs;
-    s.add_systems((pre_sys, steer_sys.after(pre_sys)));
+/// The wake of the flight: it re-arms itself for the next tick, the only per-tick wake of a dragon.
+pub fn wake(w: &mut World, e: Entity) {
+    tick(w, e);
+    if w.get_entity(e).is_ok() {
+        crate::cow::after(w, e, 1, wake);
+    }
 }
 
-/// The flight's components, from the spawn position. The seed of `rng` is set by the spawner (see the notes).
+/// The flight starts on its first tick after the spawn (no system: a wake, so the schedule stays empty).
+fn systems(_: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {}
+
+/// The flight's components, from the spawn position; the spawner seeds `DragonRng` (see `respawn::spawn_new_dragon`).
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let cfg = *params::<Params>(p);
     let (y, yaw) = (w.get::<Pos>(e).map_or(0.0, |p| p.0.y), w.get::<Yaw>(e).map_or(0.0, |y| y.0));
     w.entity_mut(e).insert((
-        Flight { cfg, rng: LegacyRandom::new(0), flap: 0.0, old_flap: 0.0, growl: 0, ambient: 0, in_wall: false, scan_due: false },
+        Flight { cfg, ticks: 0, flap: 0.0, old_flap: 0.0, growl: 100, ambient: 0, in_wall: false, scan_due: false },
+        DragonRng(LegacyRandom::new(0), LegacyRandom::new(0)),
         FlightHistory::new(y, yaw),
         FlyOrder::default(),
         YawAccel(0.0),
     ));
+    crate::cow::after(w, e, 1, wake);
 }
 
 pub static MODULE: Module = Module { name: "dragon_flight", requires: &[Cap::Body], equip, systems, ..Module::DEFAULT };

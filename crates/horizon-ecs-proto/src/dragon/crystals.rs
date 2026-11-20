@@ -2,7 +2,9 @@
 //! 4650). A crystal is an entity with a 2x2 box from its feet up 2. The count is kept by the events (placed +1, destroyed -1), never by
 //! a scan. The beam and the shield are rare: their own components, only on respawn crystals.
 use crate::cow::*;
-use crate::dragon::fight::{CrystalDestroyed, EndFight, FightEvents};
+use crate::dragon::fight::{self, CrystalDestroyed, EndFight, FightEvents, NearestCrystal, StrafeRequest};
+use crate::dragon::hurt::{self, Blow};
+use crate::dragon::phases::PhaseId;
 use crate::explosion::explode;
 use crate::projectile::Blast;
 use crate::targeting::Who;
@@ -64,16 +66,24 @@ fn crystal_destroyed(w: &mut World, e: Entity, at: Vec3, by: Option<u32>) {
         let f = w.resource_mut::<EndFight>().into_inner();
         f.crystals_alive = f.crystals_alive.saturating_sub(1);
     }
-    let by = by.or_else(|| crate::dragon::nearest_enemy(w, at));
+    let by = by.or_else(|| fight::nearest_enemy(w, Vec3::new(at.x.floor(), at.y.floor(), at.z.floor()), None, None).map(|(id, _)| id));
     w.resource_mut::<FightEvents>().crystal_destroyed.push(CrystalDestroyed { crystal: e, by });
     let Some(d) = w.resource::<EndFight>().dragon else { return };
-    if w.get::<crate::dragon::NearestCrystal>(d).and_then(|n| n.0) == Some(e) {
-        w.resource_mut::<DamageQueue>().add(d, 10.0, Cause::Blast);
-        if let Some(mut n) = w.get_mut::<crate::dragon::NearestCrystal>(d) {
-            n.0 = None;
-        }
+    if w.get::<NearestCrystal>(d).and_then(|n| n.0) == Some(e) {
+        w.entity_mut(d).insert(NearestCrystal(None));
+        let blow = Blow { part: 0, damage: 10.0, cause: Cause::Blast, by: by.map(Who::Player), arrow: false, from: None };
+        hurt::hurt(w, d, blow);
     }
-    crate::dragon::strafe_after_crystal(w, d, by);
+    strafe_after_crystal(w, d, by);
+}
+
+/// `strafe_after_crystal` (D:1037): an enemy player behind the blast asks the holding dragon to strafe him, once.
+fn strafe_after_crystal(w: &mut World, d: Entity, by: Option<u32>) {
+    let Some(p) = by else { return };
+    let holding = w.get::<PhaseId>(d).is_some_and(|i| i.0 == 0);
+    if holding && w.get::<StrafeRequest>(d).is_none() && fight::is_enemy(w, p) {
+        w.entity_mut(d).insert(StrafeRequest(p));
+    }
 }
 
 /// A hit on crystal `e` (`hit_special`): fire is refused; a shielded crystal takes only a creative player's hit, which unshields it.

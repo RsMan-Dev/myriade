@@ -12,5 +12,6 @@ pub mod nodes;
 pub mod parts;
 pub mod perch;
 pub mod phases;
+pub mod portal;
 pub mod respawn;
 pub mod save;

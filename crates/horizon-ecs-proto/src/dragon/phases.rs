@@ -2,13 +2,12 @@
 //! (`enter`, `set_phase`, `wake`) et la table `PHASES`, indexée par l'identifiant (ordre de déclaration du jar). Les réveils sont
 //! des échéances sur le temps propre de l'entité (`cow::after`) ; une phase qui doit regarder chaque tick se réarme seule.
 use super::data;
-use super::death;
 use super::fight;
 use super::fireball;
-use super::flight::LevelRandom;
+use super::flight::DragonRng;
 use super::nodes::{self, FlightNodes, Path};
 use super::perch;
-use crate::cow::{after, now_of, Pos};
+use crate::cow::{now_of, Health, Pos};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -66,10 +65,6 @@ pub trait PhaseDef: Sync {
     fn restart(&self) -> bool {
         false
     }
-    /// Se réveille à chaque tick tant qu'elle tourne ; sinon, seulement par ses échéances.
-    fn per_tick(&self, _: &World, _: Entity) -> bool {
-        true
-    }
     fn begin(&self, _: &mut World, _: Entity) {}
     fn end(&self, _: &mut World, _: Entity) {}
     fn on_wake(&self, w: &mut World, e: Entity) -> Next;
@@ -110,9 +105,6 @@ pub fn enter(w: &mut World, e: Entity, to: u8, st: PhaseState) {
     }
     w.get_resource_or_insert_with(PhaseChanges::default).0.push(PhaseChanged { e, from: from.unwrap_or(to), to });
     def.begin(w, e);
-    if def.per_tick(w, e) {
-        after(w, e, 1, wake);
-    }
 }
 
 /// L'écrivain de `PhaseId` hors `enter` : entre dans `to` avec l'état par défaut.
@@ -120,14 +112,11 @@ pub fn set_phase(w: &mut World, e: Entity, to: u8) {
     enter(w, e, to, PhaseState::default());
 }
 
-/// Un réveil : la phase courante décide ; sans changement, elle se réarme si elle se réveille par tick.
-pub fn wake(w: &mut World, e: Entity) {
+/// Le tick de la phase (`tick_phase`), appelé par le vol à son point du tick : la phase courante décide, et son successeur entre.
+pub fn tick(w: &mut World, e: Entity) {
     let Some(id) = w.get::<PhaseId>(e).map(|p| p.0) else { return };
-    let def = PHASES[id as usize];
-    match def.on_wake(w, e) {
-        Some((to, st)) => enter(w, e, to, st),
-        None if def.per_tick(w, e) => after(w, e, 1, wake),
-        None => {}
+    if let Some((to, st)) = PHASES[id as usize].on_wake(w, e) {
+        enter(w, e, to, st);
     }
 }
 
@@ -167,12 +156,12 @@ fn target(w: &World, e: Entity) -> Option<Vec3> {
     w.get::<PhaseData>(e).and_then(|d| d.0.target)
 }
 
-/// Lance `f` avec le graphe de vol et l'aléa du niveau (`flight::LevelRandom`).
-fn fly<T>(w: &mut World, f: impl FnOnce(&FlightNodes, &mut LegacyRandom) -> T) -> T {
-    w.resource_scope(|w, mut r: Mut<LevelRandom>| {
-        let g = w.resource::<FlightNodes>();
-        f(g, &mut r.0)
-    })
+/// Lance `f` avec le graphe de vol et l'aléa propre du dragon (`flight::DragonRng`, `d.random` de Horizon).
+fn fly<T>(w: &mut World, e: Entity, f: impl FnOnce(&FlightNodes, &mut LegacyRandom) -> T) -> T {
+    let mut r = w.entity_mut(e).take::<DragonRng>().expect("dragon rng");
+    let out = f(w.resource::<FlightNodes>(), &mut r.0);
+    w.entity_mut(e).insert(r);
+    out
 }
 
 /// Le chemin de l'anneau d'attente, depuis le nœud le plus proche.
@@ -184,14 +173,14 @@ fn ring(w: &mut World, e: Entity, s: &mut PhaseState) {
     s.path = nodes::ring_path(&g, crystals, cur, false, &mut s.clockwise);
 }
 
-fn step(w: &mut World, s: &mut PhaseState) {
-    if let Some(t) = fly(w, |g, rng| nodes::next_target(&mut s.path, g, rng)) {
+fn step(w: &mut World, e: Entity, s: &mut PhaseState) {
+    if let Some(t) = fly(w, e, |g, rng| nodes::next_target(&mut s.path, g, rng)) {
         s.target = Some(t);
     }
 }
 
-fn roll(w: &mut World, bound: i32) -> i32 {
-    fly(w, |_, rng| rng.next_int_bound(bound).unwrap_or(1))
+fn roll(w: &mut World, e: Entity, bound: i32) -> i32 {
+    fly(w, e, |_, rng| rng.next_int_bound(bound).unwrap_or(1))
 }
 
 pub struct Holding;
@@ -210,29 +199,29 @@ fn holding(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
         return None;
     }
     if s.path.as_ref().is_some_and(Path::done) {
-        if let Some(n) = holding_pick(w) {
+        if let Some(n) = holding_pick(w, e) {
             return Some(n);
         }
     }
     if s.path.as_ref().is_none_or(Path::done) {
         ring(w, e, s);
     }
-    step(w, s);
+    step(w, e, s);
     None
 }
 
 /// Au bout d'un chemin : une approche d'atterrissage, ou un strafe sur l'ennemi le plus proche de l'œuf.
-fn holding_pick(w: &mut World) -> Next {
+fn holding_pick(w: &mut World, e: Entity) -> Next {
     let podium = w.resource::<FlightNodes>().podium();
     let centre = Vec3::new(0.5, podium.y + 0.5, 0.5);
     let egg = Vec3::new(0.0, podium.y, 0.0);
     let crystals = i32::from(fight::alive_crystals(w));
-    if roll(w, crystals + 3) == 0 {
+    if roll(w, e, crystals + 3) == 0 {
         return Some((LANDING_APPROACH, PhaseState::default()));
     }
     let (who, at) = fight::nearest_enemy(w, egg, None, None)?;
     let dist = d2(at, centre) / 512.0;
-    if roll(w, (dist + 2.0) as i32) == 0 || roll(w, crystals + 2) == 0 {
+    if roll(w, e, (dist + 2.0) as i32) == 0 || roll(w, e, crystals + 2) == 0 {
         return Some((STRAFE, PhaseState { player: Some(who), ..Default::default() }));
     }
     None
@@ -248,7 +237,7 @@ impl PhaseDef for Strafe {
         if let Some(pp) = s.player.and_then(|q| fight::player_pos(w, q)) {
             let here = pos(w, e);
             let crystals = fight::alive_crystals(w);
-            let (p, t) = fly(w, |g, rng| nodes::strafe_begin(g, crystals, pp, here, rng));
+            let (p, t) = fly(w, e, |g, rng| nodes::strafe_begin(g, crystals, pp, here, rng));
             s.path = p;
             s.target = t;
         }
@@ -274,7 +263,7 @@ fn strafe(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
         if s.path.as_ref().is_none_or(Path::done) {
             ring(w, e, s);
         }
-        step(w, s);
+        step(w, e, s);
     }
     let sees = d2(pp, here) < 4096.0 && {
         let eye = Vec3::new(here.x, here.y + 6.8, here.z);
@@ -335,7 +324,7 @@ fn approach(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
         }
         s.path = p;
     }
-    step(w, s);
+    step(w, e, s);
     s.path.as_ref().is_some_and(Path::done).then(|| (LANDING, PhaseState::default()))
 }
 
@@ -389,17 +378,13 @@ fn take_off(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
     if let Some(p) = p.as_mut() {
         p.advance();
     }
-    s.path = Some(p.unwrap_or_default());
-    step(w, s);
+    s.path = Some(p.unwrap_or(nodes::Path { nodes: vec![], last: None, next: 0 }));
+    step(w, e, s);
     None
 }
 
 pub struct Charging;
 impl PhaseDef for Charging {
-    /// Tant que la charge n'a pas commencé, elle se réveille par tick ; ensuite, par une échéance.
-    fn per_tick(&self, w: &World, e: Entity) -> bool {
-        w.get::<PhaseData>(e).is_some_and(|d| d.0.since.is_none())
-    }
     fn on_wake(&self, w: &mut World, e: Entity) -> Next {
         let mut s = take(w, e);
         let here = pos(w, e);
@@ -409,7 +394,6 @@ impl PhaseDef for Charging {
             (Some(_), Some(since)) if now.saturating_sub(since) >= 9 => hold(),
             (Some(t), None) if out_of_reach(d2(t, here)) => {
                 s.since = Some(now);
-                after(w, e, 9, wake);
                 None
             }
             _ => None,
@@ -419,33 +403,26 @@ impl PhaseDef for Charging {
     }
 }
 
-/// `Dying` : la vie et le temps de mort sont au lot L5 (`death.rs`) ; la phase ne fait ici que son début.
+/// `Dying` : le dragon vole vers le podium ; arrivé (ou perdu), sa vie tombe à 0 et la mort (`death.rs`) commence au tick suivant.
 pub struct Dying;
 impl PhaseDef for Dying {
-    fn begin(&self, w: &mut World, e: Entity) {
-        death::begin(w, e);
-    }
-    fn per_tick(&self, _: &World, _: Entity) -> bool {
-        false
-    }
-    fn on_wake(&self, _: &mut World, _: Entity) -> Next {
+    fn on_wake(&self, w: &mut World, e: Entity) -> Next {
+        let podium = w.resource::<FlightNodes>().podium();
+        let here = pos(w, e);
+        let t = *w.get_mut::<PhaseData>(e)?.0.target.get_or_insert(podium);
+        if let Some(mut h) = w.get_mut::<Health>(e) {
+            h.0 = if out_of_reach(d2(t, here)) { 0.0 } else { 1.0 };
+        }
         None
     }
 }
 
-/// `Hover` : la cible est le point où la phase commence, une seule fois.
+/// `Hover` : la cible est le point où se trouve le dragon au premier tick de la phase, une seule fois.
 pub struct Hover;
 impl PhaseDef for Hover {
-    fn begin(&self, w: &mut World, e: Entity) {
+    fn on_wake(&self, w: &mut World, e: Entity) -> Next {
         let here = pos(w, e);
-        if let Some(mut d) = w.get_mut::<PhaseData>(e) {
-            d.0.target.get_or_insert(here);
-        }
-    }
-    fn per_tick(&self, _: &World, _: Entity) -> bool {
-        false
-    }
-    fn on_wake(&self, _: &mut World, _: Entity) -> Next {
+        w.get_mut::<PhaseData>(e)?.0.target.get_or_insert(here);
         None
     }
 }

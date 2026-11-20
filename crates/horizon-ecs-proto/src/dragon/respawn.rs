@@ -61,7 +61,7 @@ fn set_beams(w: &mut World, target: Option<[i32; 3]>) {
 }
 
 fn growl(w: &mut World) {
-    w.resource_mut::<Events>().host.level_event(3001, [0.5, 128.5, 0.5], 0);
+    w.resource_mut::<Events>().host.level_event(3001, [0, 128, 0], 0);
 }
 
 /// One tick of the respawn: the stage's act at the stage's tick, the next stage at its end.
@@ -92,7 +92,7 @@ fn tick(w: &mut World, c: Entity) {
             if !(start || end) {
                 return;
             }
-            let seed = w.resource::<WorldSeed>().0;
+            let seed = crate::blocks::world_of(w).world_seed;
             let spikes = spikes_for_seed(seed);
             match spikes.get((time / 40) as usize) {
                 Some(spike) if start => set_beams(w, Some([spike.center_x, spike.height + 1, spike.center_z])),
@@ -173,5 +173,21 @@ fn finish(w: &mut World) {
         w.despawn(c);
         explode(w, Blast { at, radius: 6.0, fire: false, owner: None, source: None });
     }
-    crate::dragon::spawn_new_dragon(w);
+    spawn_new_dragon(w);
+}
+
+/// `createNewDragon`: over the podium, in the holding pattern, a random yaw; it becomes the fight's dragon. Its generators are seeded
+/// from the world's seed and its own uid (Horizon uses a process-unique seed: the stream is the dragon's, not the level's).
+pub fn spawn_new_dragon(w: &mut World) -> Entity {
+    use crate::dragon::{flight::{DragonRng, FlightHistory}, parts::Parts, phases};
+    use horizon_core::random::{LegacyRandom, RandomSource};
+    let sp = *w.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the dragon's species");
+    let uid = crate::goals::next_uid();
+    let seed = world_of(w).world_seed ^ uid as i64;
+    let yaw = LegacyRandom::new(seed).next_float() * 360.0;
+    let e = spawn_species(w, &sp, 0.0, 0.0, seed as u64);
+    w.entity_mut(e).insert((Pos(Vec3::new(0.0, 128.0, 0.0)), Yaw(yaw), FlightHistory::new(128.0, yaw), Parts::default(), DragonRng(LegacyRandom::new(seed.wrapping_add(1)), LegacyRandom::new(seed.wrapping_add(2)))));
+    phases::set_phase(w, e, phases::HOLDING);
+    w.resource_mut::<EndFight>().dragon = Some(e);
+    e
 }

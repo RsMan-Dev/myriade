@@ -1,10 +1,10 @@
 //! The dragon's fireball (`DragonFireball`; Horizon `spawn_dragon_fireball` D:3086-3112, `dragon_fireball_on_hit` D:3116-3154,
 //! `fireball_cloud_origin` D:99-114). Shot at the target, it flies as an `AbstractHurtingProjectile` (the projectile socle's
-//! `Order::Hurting`, `Flight::dragon_fireball()`), and where it ends it leaves a breath cloud at the first creature near it.
+//! `Order::Hurting`, `crate::projectile_more::DRAGON_FIREBALL`), and where it ends it leaves a breath cloud at the first creature near it.
 use crate::area;
 use crate::dragon::breath::{self, Cloud, CloudSpec};
 use crate::goals::Events;
-use crate::projectile::{launch, Flight};
+use crate::projectile::launch;
 use crate::targeting::{self, Who};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -34,7 +34,7 @@ pub fn velocity(dir: Vec3) -> Vec3 {
 /// Shoots a fireball from `at` toward `dir`, owned by `owner`, and writes its sound.
 pub fn shoot(w: &mut World, owner: Who, at: Vec3, dir: Vec3) -> Entity {
     w.resource_mut::<Events>().host.sound(SHOT_SOUND, [at.x, at.y, at.z], 10.0, 1.0);
-    launch(w, Flight::dragon_fireball(), at, velocity(dir), Some(owner))
+    launch(w, crate::projectile_more::DRAGON_FIREBALL, at, velocity(dir), Some(owner))
 }
 
 /// `fireball_cloud_origin` (D:102-114; jar `DragonFireball.onHit`): the first target whose box meets the fireball's box inflated

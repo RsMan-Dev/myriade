@@ -1,9 +1,9 @@
 //! `EnderDragon` (`boss/enderdragon/EnderDragon`: constructor, `createAttributes`; Horizon `game/mobs/dragon.rs`, `Dragon::new` D:611-664).
-//! Configuration only: the phase machine (`dragon::phases`) and the flight (`dragon::flight`) are the species' two goals. Not here: the
+//! Configuration only: the flight (`dragon::flight`, which runs the phase machine inline) is the species' one module; the spawner (`respawn::spawn_new_dragon`) sets the phase. Not here: the
 //! boss bar (the fight's, L5: Horizon shows it for the fight's dragon only, `bossbars.rs:622`), the ambient sound (`Mob.baseTick` rolls
 //! `nextInt(1000)` each tick against `ambientTime`, not a delay drawn once: `ambient_sound` does not reproduce it), the hurt filter (`dragon::hurt`).
 use crate::behaviours::{Cap, Entry};
-use crate::dragon::{flight, parts::PartDef, phases};
+use crate::dragon::{flight, parts::PartDef};
 use crate::locomotion::Medium;
 use crate::species::Def;
 
@@ -24,9 +24,8 @@ pub const START_PHASE: u8 = 10;
 
 pub static DEF: Def = Def {
     name: "minecraft:ender_dragon",
-    goals: &[Entry::new(&phases::MODULE, 0, &phases::Params { start: START_PHASE, ..phases::Params::DEFAULT })],
     locomotion: &[(Medium::Air, Entry::new(&flight::MODULE, 0, &flight::Params::DEFAULT))],
     // Health is not here: `SpeciesTable` takes it from the type's data (200, `createAttributes`); the camera distance (16) is client-side.
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion]),
     ..Def::EMPTY
 };

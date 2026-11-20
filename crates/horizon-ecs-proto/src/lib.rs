@@ -64,8 +64,9 @@ pub mod pocket;
 pub mod block_events;
 pub mod fangs;
 pub mod eye;
-// pub mod breath_cloud; // dragon
-// pub mod dragon; // en cours
+pub mod breath_cloud;
+pub mod end_crystal;
+pub mod dragon;
 pub mod lightning;
 pub mod ominous_spawner;
 pub mod passive;

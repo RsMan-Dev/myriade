@@ -4,7 +4,7 @@ use super::breath;
 use super::data;
 use super::fight;
 use super::phases::{self, Next, PhaseDef, PhaseId, PhaseState};
-use crate::cow::{after, Pos};
+use crate::cow::Pos;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
@@ -58,30 +58,27 @@ impl PhaseDef for Flaming {
     fn rare(&self) -> bool {
         false
     }
-    fn per_tick(&self, _: &World, _: Entity) -> bool {
-        false
-    }
     fn begin(&self, w: &mut World, e: Entity) {
         set_time(w, e, 0);
         let n = w.get::<FlameCount>(e).map_or(0, |c| c.0) + 1;
         w.entity_mut(e).insert(FlameCount(n));
-        after(w, e, 10, phases::wake);
     }
     fn end(&self, w: &mut World, _: Entity) {
         breath::end_flames(w);
     }
     /// Au dixième tick, la flamme part ; au deux-centième, le dragon reprend le perchoir ou décolle après quatre flammes.
     fn on_wake(&self, w: &mut World, e: Entity) -> Next {
-        if time(w, e) == 0 {
-            set_time(w, e, 1);
+        let t = time(w, e) + 1;
+        set_time(w, e, t);
+        if t >= 200 {
+            let to = if w.get::<FlameCount>(e).map_or(0, |c| c.0) >= 4 { data::TAKEOFF } else { data::SITTING_SCANNING };
+            return Some((to, PhaseState::default()));
+        }
+        if t == 10 {
             let at = flame_origin(w, e);
             breath::spawn_flame(w, at);
-            after(w, e, 190, phases::wake);
-            return None;
         }
-        let count = w.get::<FlameCount>(e).map_or(0, |c| c.0);
-        let to = if count >= 4 { data::TAKEOFF } else { data::SITTING_SCANNING };
-        Some((to, PhaseState::default()))
+        None
     }
 }
 
@@ -121,14 +118,13 @@ impl PhaseDef for Attacking {
     fn rare(&self) -> bool {
         false
     }
-    fn per_tick(&self, _: &World, _: Entity) -> bool {
-        false
-    }
     /// Quarante et un ticks d'attaque (`ticks > 40`), puis les flammes.
     fn begin(&self, w: &mut World, e: Entity) {
-        after(w, e, 41, phases::wake);
+        set_time(w, e, 0);
     }
-    fn on_wake(&self, _: &mut World, _: Entity) -> Next {
-        Some((data::SITTING_FLAMING, PhaseState::default()))
+    fn on_wake(&self, w: &mut World, e: Entity) -> Next {
+        let t = time(w, e) + 1;
+        set_time(w, e, t);
+        (t > 40).then(|| (data::SITTING_FLAMING, PhaseState::default()))
     }
 }

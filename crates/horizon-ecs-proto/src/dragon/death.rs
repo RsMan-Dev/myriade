@@ -1,82 +1,73 @@
-//! The dragon's death (`D/death.rs`, `tick_dragon_death`; `dragon_killed` D:3035). Two hundred ticks of the dragon's own time, one
-//! re-arm per tick while `Dying` is on it: rays at 180..=200, orbs from tick 150 every 5 ticks, the rise, the level event 1028 at tick 1,
+//! The dragon's death (`D/death.rs`, `tick_dragon_death`; `dragon_killed` D:3035). Two hundred ticks driven by the flight tick (health 0): rays at 180..=200, orbs from tick 150 every 5 ticks, the rise, the level event 1028 at tick 1,
 //! and at tick 200 the last orbs, the removal and, for the fight's dragon, `dragon_killed`.
 use crate::cow::*;
 use crate::dragon::fight::{DragonKilled, EndFight, FightEvents};
 use crate::goals::Events;
-use crate::orb::spawn_orb;
+use crate::dragon::flight::DragonRng;
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::Vec3;
 
-const DEATH_TICKS: u32 = 200;
+const DEATH_TICKS: i32 = 200;
 
+/// `death_time` of Horizon: the ticks the dragon has been dying (saved as `DragonDeathTime`); rare state, so a sparse component.
 #[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Dying {
-    pub t: u32,
-}
+#[component(storage = "SparseSet")]
+pub struct DeathTime(pub i32);
 
 /// The experience of the death: the fight's first kill gives 12 000, any other 500 (`tick_dragon_death`).
-fn xp_of(w: &World, e: Entity) -> i32 {
+fn xp_of(w: &World, e: Entity) -> u32 {
     let f = w.resource::<EndFight>();
     if f.dragon == Some(e) && !f.previously_killed { 12_000 } else { 500 }
 }
 
-/// The death starts (the dragon stops flying elsewhere; L2/L3 check `Dying`).
-pub fn begin(w: &mut World, e: Entity) {
-    w.entity_mut(e).insert(Dying::default());
-    after(w, e, 1, tick);
+/// A draw in -0.5..0.5 times `k` of the dragon's own generator (`(next_float() - 0.5) * k`).
+fn jitter(rng: &mut DragonRng, k: [f32; 3]) -> [f64; 3] {
+    k.map(|k| f64::from((rng.0.next_float() - 0.5) * k))
 }
 
-/// `at` moved by a draw in -1..1 times `half` on each axis (the dragon's own random).
-fn jitter(w: &mut World, e: Entity, at: Vec3, half: [f64; 3]) -> [f64; 3] {
-    let mut d = [0.0; 3];
-    for (i, v) in d.iter_mut().enumerate() {
-        let r = w.get_mut::<Rng>(e).map_or(0.5, |mut r| r.next_f64());
-        *v = (r * 2.0 - 1.0) * half[i];
-    }
-    [at.x + d[0], at.y + d[1], at.z + d[2]]
-}
-
-fn tick(w: &mut World, e: Entity) {
-    let Some(t) = w.get::<Dying>(e).map(|d| d.t + 1) else { return };
-    w.get_mut::<Dying>(e).unwrap().t = t;
+/// `tick_dragon_death`, called by the flight in place of the flight while the health is 0: one tick of the 200, the rise included.
+pub fn tick(w: &mut World, e: Entity) {
+    let t = w.get::<DeathTime>(e).map_or(0, |d| d.0) + 1;
+    w.entity_mut(e).insert(DeathTime(t));
     let at = w.get::<Pos>(e).unwrap().0;
-    if t == 1 {
-        w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z], 0);
-    }
+    let mut rng = w.entity_mut(e).take::<DragonRng>().expect("dragon rng");
     if (180..=DEATH_TICKS).contains(&t) {
-        let p = jitter(w, e, at, [4.0, 2.0, 4.0]);
-        w.resource_mut::<Events>().host.particles("explosion_emitter", p, [0.0; 3], 0.0, 1);
+        let o = jitter(&mut rng, [8.0, 4.0, 8.0]);
+        w.resource_mut::<Events>().host.particles("explosion_emitter", [at.x + o[0], at.y + 2.0 + o[1], at.z + o[2]], [0.0; 3], 0.0, 1);
     }
-    w.get_mut::<Pos>(e).unwrap().0.y += 0.1;
     let xp = xp_of(w, e);
-    let drops = w.resource::<Rules>().mob_drops;
-    if drops && t > 150 && t % 5 == 0 {
-        spawn_orb(w, (xp as f32 * 0.08) as i32, 1, at, Vec3::ZERO);
+    let drops = crate::blocks::world_of(w).mob_drops;
+    if t > 150 && t % 5 == 0 && drops {
+        crate::orb::award(w, at, (xp as f32 * 0.08) as u32, &mut rng.1);
     }
+    if t == 1 {
+        w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z].map(|v| v.floor() as i32), 0);
+    }
+    w.entity_mut(e).insert(rng);
+    w.get_mut::<Pos>(e).unwrap().0.y += f64::from(0.1_f32);
     if t < DEATH_TICKS {
-        after(w, e, 1, tick);
         return;
     }
     if drops {
-        spawn_orb(w, (xp as f32 * 0.2) as i32, 1, at, Vec3::ZERO);
+        let mut rng = w.entity_mut(e).take::<DragonRng>().unwrap();
+        crate::orb::award(w, at, (xp as f32 * 0.2) as u32, &mut rng.1);
     }
+    let fight = w.resource::<EndFight>().dragon == Some(e);
     w.despawn(e);
-    if w.resource::<EndFight>().dragon == Some(e) {
-        dragon_killed(w, at);
+    if fight {
+        dragon_killed(w);
     }
 }
 
 /// The fight's dragon is dead (`dragon_killed`): the exit portal opens, a gateway is popped and placed, the egg appears on the first
 /// kill, and the fight is told.
-fn dragon_killed(w: &mut World, at: Vec3) {
+fn dragon_killed(w: &mut World) {
     crate::dragon::portal::activate_exit_portal(w);
     if let Some(g) = w.resource_mut::<EndFight>().gateways.pop() {
         let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * f64::from(g));
         let p = [(96.0 * a.cos()).floor() as i32, 75, (96.0 * a.sin()).floor() as i32];
+        w.resource_mut::<Events>().host.level_event(3000, p, 0);
         crate::dragon::portal::place_gateway(w, p);
     }
-    w.resource_mut::<Events>().host.level_event(3000, [at.x, at.y, at.z], 0);
     let first = !w.resource::<EndFight>().previously_killed;
     if first {
         crate::dragon::portal::place_egg(w);

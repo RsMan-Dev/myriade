@@ -51,41 +51,38 @@ pub fn wrap(d: f32) -> f32 {
 }
 
 /// Places the parts of dragon `e` from its position, yaw, yaw acceleration and flight history (`EnderDragon.aiStep`, through
-/// `tickPart`). Called by the flight wake only (`flight::wake`), never each tick. Computed in `f64`; Horizon's `f32` steps are
-/// a noted écart (see the notes file).
+/// `tickPart`), step for step in the `f32`/`f64` mix of Horizon's `place_dragon_parts` (D:2856). Called by the flight wake only.
 pub fn place(w: &mut World, e: Entity) {
     let Some(hist) = w.get::<FlightHistory>(e) else { return };
-    let s = [hist.sample(0), hist.sample(5), hist.sample(10), hist.sample(12), hist.sample(14), hist.sample(16)];
-    let (s0, s5, s10) = (s[0], s[1], s[2]);
+    let (s0, s5, s10) = (hist.sample(0), hist.sample(5), hist.sample(10));
+    let tail = [hist.sample(12), hist.sample(14), hist.sample(16)];
     let sitting = w.get::<PhaseId>(e).is_some_and(|p| is_sitting(p.0));
     let (Some(p), Some(yaw)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Yaw>(e).map(|y| y.0)) else { return };
     let accel = w.get::<YawAccel>(e).map_or(0.0, |a| a.0);
-    let deg = trig::DEG_TO_RAD;
-    let yaw = f64::from(yaw);
+    let (msin, mcos) = (|a: f32| trig::sin(f64::from(a)), |a: f32| trig::cos(f64::from(a)));
     let mut out = [[0.0_f64; 3]; 8];
-    let mut set = |i: usize, x: f64, y: f64, z: f64| out[i] = [p.x + x, p.y + y, p.z + z];
+    let mut set = |i: usize, x: f32, y: f64, z: f32| out[i] = [p.x + f64::from(x), p.y + y, p.z + f64::from(z)];
 
-    let tilt = (s5.0 - s10.0) * 10.0 * deg;
-    let (ct, st) = (trig::cos(tilt), trig::sin(tilt));
-    let r1 = yaw * deg;
-    let (s1, c1) = (trig::sin(r1), trig::cos(r1));
+    let tilt = (s5.0 - s10.0) as f32 * 10.0 * trig::DEG_TO_RAD;
+    let (ct, st) = (mcos(tilt), msin(tilt));
+    let r1 = yaw * trig::DEG_TO_RAD;
+    let (s1, c1) = (msin(r1), mcos(r1));
     set(2, s1 * 0.5, 0.0, -c1 * 0.5);
     set(6, c1 * 4.5, 2.0, s1 * 4.5);
     set(7, c1 * -4.5, 2.0, s1 * -4.5);
 
-    let r2 = yaw * deg - accel * 0.01;
-    let (s2, c2) = (trig::sin(r2), trig::cos(r2));
-    let y_off = if sitting { -1.0 } else { s5.0 - s0.0 };
-    set(0, s2 * 6.5 * ct, y_off + st * 6.5, -c2 * 6.5 * ct);
-    set(1, s2 * 5.5 * ct, y_off + st * 5.5, -c2 * 5.5 * ct);
+    let r2 = yaw * trig::DEG_TO_RAD - accel * 0.01;
+    let (s2, c2) = (msin(r2), mcos(r2));
+    let y_off = if sitting { -1.0 } else { s5.0 - s0.0 } as f32;
+    set(0, s2 * 6.5 * ct, f64::from(y_off + st * 6.5), -c2 * 6.5 * ct);
+    set(1, s2 * 5.5 * ct, f64::from(y_off + st * 5.5), -c2 * 5.5 * ct);
 
-    for i in 0..3 {
-        let p0 = s[3 + i];
-        let rot = yaw * deg + f64::from(wrap((p0.1 - s5.1) as f32)) * deg;
-        let (ss, cc) = (trig::sin(rot), trig::cos(rot));
-        let dd = (i as f64 + 1.0) * 2.0;
+    for (i, p0) in tail.iter().enumerate() {
+        let rot = yaw * trig::DEG_TO_RAD + wrap(p0.1 - s5.1) * trig::DEG_TO_RAD;
+        let (ss, cc) = (msin(rot), mcos(rot));
+        let dd = (i as f32 + 1.0) * 2.0;
         let x = -(s1 * 1.5 + ss * dd) * ct;
-        let y = p0.0 - s5.0 - (dd + 1.5) * st + 1.5;
+        let y = p0.0 - s5.0 - f64::from((dd + 1.5) * st) + 1.5;
         let z = (c1 * 1.5 + cc * dd) * ct;
         set(3 + i, x, y, z);
     }

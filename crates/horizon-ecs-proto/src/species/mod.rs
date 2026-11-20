@@ -65,6 +65,9 @@ pub mod phantom;
 pub mod armadillo;
 pub mod creeper;
 pub mod endermite;
+pub mod ender_dragon;
+pub mod end_crystal;
+pub mod dragon_fireball;
 pub mod enderman;
 pub mod giant;
 pub mod mannequin;
@@ -105,7 +108,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &ocelot::DEF, &llama::DEF,
     &armadillo::DEF,
     &creeper::DEF,
-    &endermite::DEF,
+    &endermite::DEF, &ender_dragon::DEF, &end_crystal::DEF, &dragon_fireball::DEF,
     &enderman::DEF,
     &silverfish::DEF,
     &piglin_brute::DEF,
