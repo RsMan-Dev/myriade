@@ -110,6 +110,7 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         let (x, z) = (6.5, -9.5 + 5.0 * k as f64);
         let i = r.add_id(Vec3::new(x, 1.0, z), (((k as u32 + 1) * 13).wrapping_mul(0x9E37_79B1) >> 4) | 1);
         let e = ecs_cow(&mut h, x, 1.0, z, 700 + k as u64);
+        h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
         let (sx, sz) = (x + 5.0, z);
         let j = r.add_kind(Vec3::new(sx, 1.0, sz), mob_kind("minecraft:slime"));
         horizon_client_lib::mobs::cube::set_size(&mut r.mobs[j], 1);
@@ -117,6 +118,7 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         r.mobs[j].ai.targets = Default::default();
         let se = horizon_ecs_proto::size::spawn_sized(&mut h.world, &slime, sx, sz, 40 + k as u64, 1);
         h.world.entity_mut(se).remove::<horizon_ecs_proto::goals::GoalSet>();
+        assert!(horizon_ecs_proto::targeting::info(&h.world, horizon_ecs_proto::targeting::Who::Entity(se)).is_some(), "a slime must be readable by `targeting::info` (it needs `Eye`)");
         pairs.push((i, e, j, se));
     }
     let mut eaten = [[None; 4], [None; 4]];

@@ -85,17 +85,15 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     let every = w.get::<Tongue>(e).map_or(20, |t| t.p.scan_every);
     crate::goals::arm(w, e, inst.slot, every);
 }
-/// What of a creature the tongue needs: its place, eye height and species. A creature with no `Eye` (the slime) has one at 85 % of its height.
+/// What of a creature the tongue needs: its place, eye and species (`targeting::info`, which every creature with a body has).
 struct View {
     pos: Vec3,
     eye: f64,
     species: u8,
 }
 fn view(w: &World, o: Entity) -> Option<View> {
-    let pos = w.get::<Pos>(o)?.0;
-    let b = w.get::<Bounds>(o)?.0;
-    let eye = w.get::<crate::targeting::Eye>(o).map_or(pos.y + 0.85 * (b.max_position().y - b.min_position().y), |e| pos.y + e.0);
-    Some(View { pos, eye, species: w.get::<SpeciesId>(o)?.0 })
+    let i = crate::targeting::info(w, crate::targeting::Who::Entity(o))?;
+    Some(View { pos: i.pos, eye: i.eye, species: i.species })
 }
 /// `can_eat`: a slime or magma cube of size 1 that lives.
 fn edible(w: &World, who: Entity, p: &Params) -> bool {
