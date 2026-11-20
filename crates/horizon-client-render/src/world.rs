@@ -1,7 +1,7 @@
 //! Resident client world: streamed chunk columns plus the bookkeeping the game
 //! loop needs to relight and remesh after edits.
 use crate::{
-    chunk::{Chunk, ColumnLayout, LevelShape},
+    chunk::{index, Chunk, ColumnLayout, LevelShape, Section},
     fast_hash::{FxHashMap, FxHashSet},
     section_mask::SectionMask,
 };
@@ -1034,6 +1034,163 @@ mod tests {
 pub struct BlockEntityExtras {
     pub source: Option<horizon_core::nbt::Tag>,
     pub pending_loot: Option<crate::chunk::PendingContainerLoot>,
+}
+
+/// What a [`BlockCursor`] holds for the last 16-block cube it read.
+#[derive(Clone, Copy)]
+enum Held<'a> {
+    /// No chunk at the column: air.
+    Absent,
+    /// The chunk holds no section at this y: state 0, as [`Chunk::block`].
+    NoSection,
+    Section(&'a Section),
+}
+
+/// Reads [`World::block`] while reusing the section of the last 16-block cube read.
+pub struct BlockCursor<'a> {
+    world: &'a World,
+    key: (i32, i32, i32),
+    held: Held<'a>,
+    known: bool,
+}
+
+impl<'a> BlockCursor<'a> {
+    pub fn new(world: &'a World) -> Self {
+        Self {
+            world,
+            key: (0, 0, 0),
+            held: Held::Absent,
+            known: false,
+        }
+    }
+
+    /// Equal to `world.block(x, y, z)`.
+    #[inline]
+    pub fn block(&mut self, x: i32, y: i32, z: i32) -> BlockStateId {
+        let key = (x >> 4, y >> 4, z >> 4);
+        if !self.known || key != self.key {
+            let world = self.world;
+            self.key = key;
+            self.known = true;
+            self.held = match world.chunks.get(&(key.0, key.2)) {
+                None => Held::Absent,
+                Some(chunk) => chunk.section_holding(y).map_or(Held::NoSection, Held::Section),
+            };
+        }
+        match self.held {
+            Held::Absent => self.world.air,
+            Held::NoSection => BlockStateId(0),
+            Held::Section(section) => BlockStateId(section.get(index(x, y, z))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::*;
+    use crate::chunk::ColumnLayout;
+
+    /// A xorshift64 generator, the test's only source of positions.
+    struct XorShift(u64);
+
+    impl XorShift {
+        fn draw(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    #[inline(never)]
+    fn bench_block_world(w: &World, pts: &[[i32; 3]]) -> u64 {
+        pts.iter().map(|p| u64::from(w.block(p[0], p[1], p[2]).0)).sum()
+    }
+    #[inline(never)]
+    fn bench_block_cursor(w: &World, pts: &[[i32; 3]]) -> u64 {
+        let mut c = BlockCursor::new(w);
+        pts.iter().map(|p| u64::from(c.block(p[0], p[1], p[2]).0)).sum()
+    }
+    /// Rays of 0.3-block steps (what an explosion or a line of sight reads): `--toggle-collect=*bench_block_*`.
+    #[test]
+    #[ignore = "bench"]
+    fn cursor_bench() {
+        let mut w = World::new(BlockStateId(0), 0);
+        for x in -2..2 {
+            for z in -2..2 {
+                w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        for i in 0..4000 {
+            w.set(i % 60 - 30, i / 60 % 40, i * 7 % 60 - 30, BlockStateId(3)).unwrap();
+        }
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        let mut pts = Vec::new();
+        for _ in 0..1000 {
+            let mut p = [(rng.draw() % 40) as f64 - 20.0, (rng.draw() % 30) as f64, (rng.draw() % 40) as f64 - 20.0];
+            let d = [(rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0];
+            for _ in 0..20 {
+                pts.push([p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32]);
+                for k in 0..3 {
+                    p[k] += d[k] * 0.3;
+                }
+            }
+        }
+        assert_eq!(bench_block_world(&w, &pts), bench_block_cursor(&w, &pts));
+    }
+
+    #[test]
+    fn cursor_equals_world_block() {
+        let mut w = World::new(BlockStateId(0), 0);
+        for (x, z) in [(0, 0), (1, 0), (-1, -1), (0, 1)] {
+            w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        let written = [
+            (0, 0, 0),
+            (15, 16, 15),
+            (-1, -64, -1),
+            (-16, 100, -16),
+            (5, 319, 9),
+            (-3, -1, -3),
+        ];
+        for (x, y, z) in written {
+            w.set(x, y, z, BlockStateId(7)).unwrap();
+        }
+        let (lo, hi) = (ColumnLayout::VANILLA.min_y(), ColumnLayout::VANILLA.max_y());
+        let bounds = [(-40, 40), (lo - 40, hi + 40), (-40, 40)];
+        let mut cursor = BlockCursor::new(&w);
+        let mut hits = 0;
+        let mut check = |x: i32, y: i32, z: i32| {
+            let got = cursor.block(x, y, z);
+            assert_eq!(got, w.block(x, y, z), "at {x} {y} {z}");
+            hits += usize::from(got != BlockStateId(0));
+        };
+        let edges = [
+            (-1, 0, -1),
+            (0, lo - 1, 0),
+            (0, hi, 0),
+            (-1, hi - 1, 0),
+            (0, 0, -1),
+            (33, 5, -30),
+        ];
+        for (x, y, z) in edges.into_iter().chain(written) {
+            check(x, y, z);
+        }
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        let mut p = [0i32; 3];
+        for _ in 0..20_000 {
+            for (c, &(a, b)) in p.iter_mut().zip(bounds.iter()) {
+                let near = *c + if rng.draw() & 1 == 0 { -1 } else { 1 };
+                *c = if rng.draw() % 10 < 8 && (a..b).contains(&near) {
+                    near
+                } else {
+                    a + (rng.draw() % (b - a) as u64) as i32
+                };
+            }
+            check(p[0], p[1], p[2]);
+        }
+        assert!(hits > 0, "the walk never reached a written block");
+    }
 }
 
 #[cfg(test)]

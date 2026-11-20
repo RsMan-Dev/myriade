@@ -375,10 +375,11 @@ fn no_block_collision(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb)
     use horizon_client_render::collisions::SceneCollisions;
     let (lo, hi) = (b.min_position(), b.max_position());
     let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
     for x in (lo.x.floor() as i32 - 1)..=(hi.x.floor() as i32 + 1) {
         for y in (lo.y.floor() as i32 - 1)..=(hi.y.floor() as i32 + 1) {
             for z in (lo.z.floor() as i32 - 1)..=(hi.z.floor() as i32 + 1) {
-                let state = mw.world.block(x, y, z);
+                let state = cursor.block(x, y, z);
                 if mw.facts.is_air(state) {
                     continue;
                 }

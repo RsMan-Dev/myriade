@@ -760,6 +760,10 @@ impl Chunk {
             .filter(|&s| s < self.sections.len())
     }
     #[inline]
+    pub fn section_holding(&self, y: i32) -> Option<&Section> {
+        self.section_index(y).map(|s| &*self.sections[s])
+    }
+    #[inline]
     pub fn get(&self, x: i32, y: i32, z: i32) -> u32 {
         match self.section_index(y) {
             Some(s) => self.sections[s].get(index(x, y, z)),
