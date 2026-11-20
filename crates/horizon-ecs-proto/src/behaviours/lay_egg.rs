@@ -57,13 +57,9 @@ pub static MODULE: Module = Module {
     start,
     stop,
     tick: Some(tick),
-    systems,
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(carried.in_set(slot));
-}
 /// The `carrying` event (`breed` gave a load): the search comes at once, with no tick waiting for it.
 fn carried(ev: Res<Events>, lays: Query<(), With<Lay>>, mut reqs: ResMut<Requests>) {
     for e in ev.carrying.iter() {
@@ -178,6 +174,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// The tick of the module, run while some animal digs.
 fn tick(w: &mut World) {
+    tick_state(w, carried);
     tick_state(w, dig_run);
 }
 /// The walk and the digging of each tick of the goal: the goal ends when its block is lost or the animal no longer qualifies;

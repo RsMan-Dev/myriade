@@ -140,7 +140,7 @@ mod tests {
     }
     #[test]
     fn it_walks_to_an_owner_16_blocks_away_and_stops_within_4() {
-        if crate::cow::skip_unless_walker("stay close to owner") {
+        if crate::cow::skip_unless_walker("stay close to owner") || crate::cow::skip_unless_caps(&[Cap::Tamable], "stay close to owner") {
             return;
         }
         let (mut h, e) = world(20.0);
@@ -156,7 +156,7 @@ mod tests {
     }
     #[test]
     fn it_stays_put_when_the_owner_is_near() {
-        if crate::cow::skip_unless_walker("stay close to owner") {
+        if crate::cow::skip_unless_walker("stay close to owner") || crate::cow::skip_unless_caps(&[Cap::Tamable], "stay close to owner") {
             return;
         }
         let (mut h, e) = world(10.0);

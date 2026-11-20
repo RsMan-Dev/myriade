@@ -19,6 +19,6 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
-    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, ..fly::Params::DEFAULT }))],
+    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, free: true, drive_air: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

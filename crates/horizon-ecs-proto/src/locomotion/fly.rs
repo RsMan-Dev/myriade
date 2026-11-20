@@ -49,9 +49,11 @@ pub struct Params {
     pub hovers: bool,
     /// The factor of a falling flier's vertical speed after its travel (`Parrot.calculateFlapping`: 0.6; 1: none).
     pub glide: f64,
+    /// `Allay.travel`: the airborne speed of `travelFlying` is the one the move control set this tick (`Drive.speed`), not the type's.
+    pub drive_air: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { control: Control::Path, free: false, noclip: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0 };
+    pub const DEFAULT: Params = Params { control: Control::Path, free: false, noclip: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0, drive_air: false };
 }
 /// What the flight reads of the animal (from its species, once).
 #[derive(Component, Clone, Copy, Debug)]
@@ -63,6 +65,7 @@ pub struct FlyParams {
     pub max_turn: f32,
     pub hovers: bool,
     pub glide: f64,
+    pub drive_air: bool,
     /// `Attributes.FLYING_SPEED`, the speed of a flier that is not on the ground.
     pub flying_speed: f64,
     /// `LivingEntity.getFlyingSpeed` of the type: the `moveRelative` speed in the air.
@@ -91,7 +94,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         }
         w.entity_mut(e).insert(Moving);
     }
-    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, noclip: p.noclip, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
+    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, noclip: p.noclip, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, drive_air: p.drive_air, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
 }
 
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
@@ -465,7 +468,7 @@ pub(crate) fn travel(
         if fp.free {
             // `LivingEntity.travelFlying`: no gravity, the drag of the medium (0.91 in the air, 0.8 in water, 0.5 in lava).
             drop_tiny(&mut v, fp);
-            let (speed, drag) = if fs.in_water { (0.02_f32, f64::from(0.8_f32)) } else if fs.in_lava { (0.02_f32, 0.5) } else { (fp.air_speed, f64::from(0.91_f32)) };
+            let (speed, drag) = if fs.in_water { (0.02_f32, f64::from(0.8_f32)) } else if fs.in_lava { (0.02_f32, 0.5) } else { (if fp.drive_air { d.speed } else { fp.air_speed }, f64::from(0.91_f32)) };
             move_relative_3d(&mut v, y.0, speed, d.xxa, d.yya, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;

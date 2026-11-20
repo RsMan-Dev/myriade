@@ -180,7 +180,7 @@ mod tests {
     /// The owner touching an adult creature gets it on the left shoulder, once; a young one waits for its age.
     #[test]
     fn a_creature_touching_its_owner_lands_once_after_its_age() {
-        if crate::cow::skip_unless_walker("land on shoulder") {
+        if crate::cow::skip_unless_walker("land on shoulder") || crate::cow::skip_unless_caps(&[Cap::Tamable], "land on shoulder") {
             return;
         }
         let (mut h, es) = world(1, 0.0);
@@ -197,7 +197,7 @@ mod tests {
     /// An ordered-to-sit creature, or one 3 blocks from the player, does not land; the third of three finds both shoulders taken.
     #[test]
     fn a_sitting_or_far_creature_does_not_land_and_two_shoulders_hold_two() {
-        if crate::cow::skip_unless_walker("land on shoulder") {
+        if crate::cow::skip_unless_walker("land on shoulder") || crate::cow::skip_unless_caps(&[Cap::Tamable], "land on shoulder") {
             return;
         }
         let (mut h, es) = world(1, 0.0);

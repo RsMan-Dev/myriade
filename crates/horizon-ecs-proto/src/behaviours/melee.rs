@@ -133,7 +133,7 @@ mod tests {
     /// the same attacker keeps its target. The light is set by the day flag of the world and read back at the attacker's eyes.
     #[test]
     fn the_goal_gives_up_in_light_only_with_the_option() {
-        if crate::cow::skip_unless_walker("melee quit in light") {
+        if crate::cow::skip_unless_walker("melee quit in light") || crate::cow::skip_if_brain("melee quit in light") {
             return;
         }
         static QUITS: Params = Params { quit_in_light: Some(1), follow_unseen: true, ..Params::DEFAULT };

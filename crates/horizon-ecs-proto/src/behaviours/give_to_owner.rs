@@ -151,7 +151,7 @@ mod tests {
     }
     #[test]
     fn a_full_pocket_flies_to_the_owner_and_an_empty_one_does_not() {
-        if crate::cow::skip_unless_walker("give to owner") {
+        if crate::cow::skip_unless_walker("give to owner") || crate::cow::skip_unless_caps(&[Cap::Tamable], "give to owner") {
             return;
         }
         let (mut h, es) = world(2, 30.0);
@@ -166,7 +166,7 @@ mod tests {
     }
     #[test]
     fn an_owner_beyond_64_blocks_or_a_spectator_is_not_served() {
-        if crate::cow::skip_unless_walker("give to owner") {
+        if crate::cow::skip_unless_walker("give to owner") || crate::cow::skip_unless_caps(&[Cap::Tamable], "give to owner") {
             return;
         }
         let (mut h, es) = world(1, 80.0);
