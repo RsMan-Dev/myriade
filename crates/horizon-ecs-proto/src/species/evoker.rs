@@ -5,11 +5,13 @@
 use super::Def;
 use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, spell_casting, spell_use, stroll, Entry};
 
+/// `HurtByTargetGoal(this, Raider.class)`-style list of the illagers (jar and Mob): the attackers they never answer.
+pub const RAIDERS: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:witch", "minecraft:evoker", "minecraft:illusioner", "minecraft:vex", "minecraft:ravager"];
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
 pub const VEXES: spell_use::Params = spell_use::Params { spell: spell_use::Spell::Vexes { species: "minecraft:vex" }, id: 1, warmup: 20, casting: 100, interval: 340 };
 pub const FANGS: spell_use::Params = spell_use::Params { spell: spell_use::Spell::Fangs { allies: &["minecraft:evoker", "minecraft:vex", "minecraft:pillager", "minecraft:vindicator", "minecraft:illusioner", "minecraft:ravager", "minecraft:witch"] }, id: 2, warmup: 20, casting: 40, interval: 100 };
 pub const TARGETS: &[Entry] = &[
-    Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),
+    Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ignoring: RAIDERS, ..hurt_by::Params::DEFAULT }),
     Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { unseen_memory: 300, ..nearest_target::Params::PLAYER }),
     Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: TRADERS, must_see: false, unseen_memory: 300, ..nearest_target::Params::DEFAULT }),
     Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], must_see: false, ..nearest_target::Params::DEFAULT }),

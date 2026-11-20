@@ -77,3 +77,34 @@ fn a_hit_llama_takes_the_player_as_the_mob_does() {
     assert!(matches!(m, Some(MWho::Player)), "witness: the Mob llama targets the player, got {m:?}");
     assert_eq!(x, Some(horizon_ecs_proto::targeting::Who::Player(1)), "the ecs llama targets the player");
 }
+
+/// A polar bear hit once by a player: both take the player as target, within 10 ticks (`PolarBearHurtByTargetGoal`; the baby/adult alert is not covered here).
+#[test]
+fn a_hit_polar_bear_takes_the_player_as_the_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(40, false);
+    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), horizon_ecs_proto::cow::mob_kind("minecraft:polar_bear"));
+    let mut h = Herd::with_slab(40, true, false);
+    let sp = species_of(&h, "minecraft:polar_bear");
+    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
+    let at = Vec3::new(3.5, 1.0, 0.5);
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
+    let pv = player_view(at, None);
+    for _ in 0..3 {
+        r.step(Some(&pv));
+        h.tick();
+    }
+    r.hit(i, 1.0, [at.x, at.y, at.z]);
+    h.hit_by(e, 1.0, 1);
+    for _ in 0..10 {
+        r.step(Some(&pv));
+        h.tick();
+    }
+    let (m, x) = (r.mobs[i].ai.target, h.world.get::<Target>(e).map(|t| t.who));
+    eprintln!("polar bear target after a hit: mob {m:?}, ecs {x:?}");
+    assert_eq!(m.is_some(), x.is_some(), "the two sides agree on having a target (mob {m:?}, ecs {x:?})");
+}

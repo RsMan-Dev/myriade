@@ -4,10 +4,11 @@
 use super::Def;
 use crate::behaviours::{avoid_entity, celebration, float, hurt_by, long_distance_patrol, look_at_player, nearest_target, obtain_banner, pathfind_to_raid, raid_move_through_village, ranged_bow, spell_casting, spell_use, stroll, Entry};
 
+use super::evoker::RAIDERS;
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
 /// All three nearest-target entries keep 300 ticks of memory; the villagers and the golem are taken unseen (jar).
 pub const TARGETS: &[Entry] = &[
-    Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),
+    Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ignoring: RAIDERS, ..hurt_by::Params::DEFAULT }),
     Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { unseen_memory: 300, ..nearest_target::Params::PLAYER }),
     Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: TRADERS, must_see: false, unseen_memory: 300, ..nearest_target::Params::DEFAULT }),
     Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], must_see: false, unseen_memory: 300, ..nearest_target::Params::DEFAULT }),

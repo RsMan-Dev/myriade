@@ -24,3 +24,6 @@ Copie de travail de la table d'alias : scratchpad de la session (`tirs/av.py`, `
 - Tests rouges hors lot : hoglin_vs_mob (connu), parallel_equals_sequential x4 (binaire scale_bench absent).
 ## Non fait
 Rien de plus de l'inventaire : blaze, ghast, guardian, shulker, llama, spider, polar_bear, skeleton, wither, etc. étaient déjà complets aux instances comparées ; PiglinSpear = module `spear_use` (déjà générique), non branché sur piglin.
+
+## Clôture (non compilé)
+Alias copiés dans `alias.md`, écarts dans `suivi/ecs-ecarts.md`, `RAIDERS` porté (evoker, illusioner, pillager), un test ours polaire ajouté. À compiler et lancer après fusion : `variants_vs_mob`, `spells_vs_mob`, `no_species_names`.

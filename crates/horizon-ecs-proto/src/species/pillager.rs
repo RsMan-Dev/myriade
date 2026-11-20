@@ -5,12 +5,13 @@
 use super::Def;
 use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, hold_ground_attack, pathfind_to_raid};
 
+use super::evoker::RAIDERS;
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
 
 pub static DEF: Def = Def {
     name: "minecraft:pillager",
     targets: &[
-        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ignoring: RAIDERS, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: TRADERS, must_see: false, ..nearest_target::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT }),
