@@ -1,7 +1,7 @@
 //! `Ravager` (`mobs/ravager.rs`, `register`): float, the bite on the melee at speed 1.0, a stroll that avoids water, the glances at
 //! players (6) and at mobs (8), and the targets: the hurt one (the raiders ignored), the nearest player, the adult villagers and
 //! traders, the iron golems. The bite, the stun and the roar are the behaviours `strike_pause`, `shield_stun` and `roar`.
-use crate::behaviours::{float, hunt_speed, hurt_by, look_at_player, melee, nearest_target, ravager_roar, shield_stun, strike_pause, stroll, Entry};
+use crate::behaviours::{ambient_sound, float, hunt_speed, hurt_by, look_at_player, melee, nearest_target, ravager_roar, shield_stun, strike_pause, stroll, Entry};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 use crate::species::Def;
@@ -29,6 +29,9 @@ pub static DEF: Def = Def {
         Entry::new(&melee::MODULE, 4, &melee::Params { speed: 1.0, follow_unseen: true, ..melee::Params::DEFAULT }),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.4, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
+        // `Ravager.getAmbientSound` = `RAVAGER_AMBIENT`, interval 80 (`Mob.getAmbientSoundInterval`); the game draws `nextInt(1000) < time`
+        // each tick from -80 (median about 117 ticks, nearly all before 200): approximated by a uniform draw in 80..=200.
+        Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.ravager.ambient"], min: 80, max: 200 }),
     ],
     caps: Some(&[crate::behaviours::Cap::Transform, crate::behaviours::Cap::Solid, crate::behaviours::Cap::Body, crate::behaviours::Cap::Living, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head, crate::behaviours::Cap::Targets, crate::behaviours::Cap::Locomotion]),
     // The raider's seat (`Ravager.getPassengers`): a carrier that only takes creatures, one seat at the centre.
