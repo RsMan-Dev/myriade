@@ -1182,6 +1182,7 @@ unsafe impl Sync for Mw {}
 /// chain: no other system holds a reference then).
 #[derive(Clone, Copy)]
 pub struct Blocks(pub *mut horizon_client_render::world::World);
+// SAFETY: one system at a time dereferences it (`block_changes`, alone in the chain), and the pointer comes from the host, which outlives the Level.
 unsafe impl Send for Blocks {}
 unsafe impl Sync for Blocks {}
 #[derive(Resource, Clone, Copy)]

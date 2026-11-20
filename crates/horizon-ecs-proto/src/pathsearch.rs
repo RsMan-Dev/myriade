@@ -764,6 +764,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
             let c = *cell;
             if let Some(p) = slot {
+                // SAFETY: `p` comes from `slot()`, a cell of the Finder's grid (index checked there); no reference to it is alive.
                 unsafe { *p = (*p & !(0xFFu64 << 56)) | (u64::from(c) << 56) };
             }
             if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) }
@@ -1027,6 +1028,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             let v = unsafe { (*sect)[idx] };
             if v != 0 {
                 if let Some(p) = slot {
+                    // SAFETY: `p` comes from `slot()`, a cell of the Finder's grid; only the type byte is written.
                     unsafe { *p = (*p & !(0xFFu64 << 48)) | (u64::from(v) << 48) };
                 }
                 return PathType::ALL[usize::from(v - 1)];
@@ -1038,6 +1040,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 // SAFETY: as above.
                 unsafe { (*sect)[idx] = t as u8 + 1 };
                 if let Some(p) = slot {
+                    // SAFETY: as above (`p` from `slot()`, type byte only).
                     unsafe { *p = (*p & !(0xFFu64 << 48)) | (u64::from(t as u8 + 1) << 48) };
                 }
             }
@@ -1070,6 +1073,10 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
     }
     /// Resets a grid cell from an older search.
+    ///
+    /// # Safety
+    ///
+    /// `p` must be a cell of `self.grid` (as given by `slot` or `centre`), and no reference to that cell may be alive.
     #[inline(always)]
     unsafe fn fresh(&self, p: *mut u64) {
         // SAFETY: the caller gives a cell of the grid.
@@ -1103,6 +1110,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             let i = self.nodes.len() as u32;
             bump(6);
             self.nodes.push(Node::new(x, y, z));
+            // SAFETY: as above, `p` from `slot()`; the grid is not reallocated by the push (it is a different Vec).
             unsafe { *p = (e & !0xFFFF_FFFF) | u64::from(i) };
             return i;
         }
@@ -1311,10 +1319,12 @@ impl<'a, 'w> Finder<'a, 'w> {
         let mut e = unsafe { *p };
         if (e >> 48) as u8 == 0 {
             self.cached_at(Some(p), x, y, z);
+            // SAFETY: `p` is still a grid cell; the calls above only fill its fields.
             e = unsafe { *p };
         }
         if (e >> 56) as u8 == 0xFF {
             self.static_floor_at(Some(p), x, y, z);
+            // SAFETY: as above.
             e = unsafe { *p };
         }
         let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
@@ -1617,10 +1627,12 @@ impl<'a, 'w> Finder<'a, 'w> {
             Some(cp) => {
                 // SAFETY: `centre` keeps the cell above and the 3x3 cells inside the grid.
                 let up = unsafe { cp.add(GW * GW) };
+                // SAFETY: `cp` and `up` are grid cells, as above.
                 unsafe {
                     self.fresh(cp);
                     self.fresh(up);
                 }
+                // SAFETY: `up` and `cp` are grid cells, as above.
                 let (eu, ec) = unsafe { (*up, *cp) };
                 let above = match (eu >> 48) as u8 {
                     0 => self.cached(px, py + 1, pz),
@@ -1630,6 +1642,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     0 => self.cached(px, py, pz),
                     v => PathType::ALL[usize::from(v - 1)],
                 };
+                // SAFETY: `cp` is a grid cell, as above.
                 let c = (unsafe { *cp } >> 56) as u8;
                 let height = if c < 0xFE && !self.mob.can_float {
                     f64::from(py - 1) + f64::from(c) / 16.0
@@ -1653,6 +1666,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 Some(cp) => {
                     // SAFETY: `centre` keeps the 3x3 cells inside the grid.
                     let q = unsafe { cp.offset(dx as isize + dz as isize * GW as isize) };
+                    // SAFETY: `q` is one of those cells, as above.
                     unsafe { self.fresh(q) };
                     self.find_accepted_p(q, px + dx, py, pz + dz, jump, height, (dx, dz), current)
                 }
@@ -1679,6 +1693,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     Some(cp) => {
                         // SAFETY: as above.
                         let q = unsafe { cp.offset(qx as isize + qz as isize * GW as isize) };
+                        // SAFETY: as above.
                         unsafe { self.fresh(q) };
                         self.find_accepted_p(q, px + qx, py, pz + qz, jump, height, (dx, dz), current)
                     }
