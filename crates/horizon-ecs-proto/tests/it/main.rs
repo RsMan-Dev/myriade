@@ -65,3 +65,4 @@ mod lot7_vs_mob;
 mod leash_vs_mob;
 mod mount2_vs_mob;
 mod vehicle_vs_mob;
+mod tirs_vs_mob;

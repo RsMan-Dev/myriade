@@ -35,6 +35,8 @@ pub struct Params {
     pub aim_fraction: f64,
     /// The shooter is marked `DidShot` at each shot (what `LlamaHurtBy` reads: the llama's `flag2`).
     pub marks: bool,
+    /// The item the goal needs in the main hand (`DrownedTridentAttackGoal.canUse`: a trident); 0: none.
+    pub held: u32,
 }
 impl Params {
     /// Le golem de neige (`golem.rs:554-557`, `golem.rs:580`).
@@ -53,11 +55,14 @@ impl Params {
         front: 0.0,
         aim_fraction: 0.0,
         marks: false,
+        held: 0,
     };
     /// The llama's spit (`llama.rs:67`, `llama.rs:159-189`): 40 ticks, 20 blocks, speed 1.5, spread 10, from in front of the body, aimed at a third of the box.
-    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true };
+    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true, held: 0 };
     /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
-    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false };
+    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false, held: 0 };
+    /// The drowned's trident (`DrownedTridentAttackGoal`: `RangedAttackGoal(1.0, 40, 10.0)` while a trident is held): speed 1.6, spread `14 - 4 * difficulty` (normal), aimed at a third of the box.
+    pub const TRIDENT: Self = Self { speed: 1.0, min: 40, max: 40, radius: 10.0, flight: Flight::TRIDENT, shot_speed: 1.6, uncertainty: 6.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.0, aim_fraction: 1.0 / 3.0, marks: false, held: crate::goals::TRIDENT };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -118,7 +123,8 @@ fn alive(hp: &Query<&Health>, who: Who) -> bool {
 }
 /// `canUse` : une cible vivante.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some())
+    let held = w.get::<Shooter>(e).map_or(0, |s| s.p.held);
+    (held == 0 || equipped(w, e, Slot::Main) == held) && w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some())
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Shooting);
@@ -181,6 +187,9 @@ fn shoot_run(
 /// `snowball_attack` : le départ sous les yeux, la visée à la hauteur des yeux de la cible moins 1,1 et 0,2 par bloc
 /// horizontal, puis l'écart triangulaire de `Projectile.shoot`.
 fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
+    if w.get::<super::drink_potion::Drinking>(e).is_some() {
+        return;
+    }
     let Some(i) = targeting::info(w, who) else { return };
     let (Some(pos), Some(eye)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Eye>(e).map(|x| x.0)) else { return };
     let start = if p.front > 0.0 {

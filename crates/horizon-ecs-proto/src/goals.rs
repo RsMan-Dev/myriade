@@ -159,6 +159,8 @@ pub const SHEARS: u32 = 10;
 pub const BONE: u32 = 11;
 pub const LEAD: u32 = 12;
 pub const WARPED_FUNGUS_ON_A_STICK: u32 = 13;
+pub const TRIDENT: u32 = 14;
+pub const CROSSBOW: u32 = 15;
 /// A set of item ids (any number, any value: Horizon's registry has thousands), shared between the entities that have the same one:
 /// a sorted list searched by bisection. Nothing is copied per entity.
 #[derive(Clone, Copy, Debug)]
@@ -197,6 +199,8 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:bone" => BONE,
         "minecraft:lead" => LEAD,
         "minecraft:warped_fungus_on_a_stick" => WARPED_FUNGUS_ON_A_STICK,
+        "minecraft:trident" => TRIDENT,
+        "minecraft:crossbow" => CROSSBOW,
         _ => 0,
     }
 }
