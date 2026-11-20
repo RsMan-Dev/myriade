@@ -384,9 +384,6 @@ pub static TABLE: &[&Module] = &[
     &flier_goals::PHANTOM_SWEEP_ATTACK,
     &flier_goals::PHANTOM_CIRCLE_AROUND_ANCHOR,
     &follow_owner::MODULE,
-    &land_on_shoulder::MODULE,
-    &stay_close_to_owner::MODULE,
-    &give_to_owner::MODULE,
     &village_walk::MODULE,
     &restrict_sun::MODULE,
     &burst_shot::MODULE,
@@ -426,4 +423,7 @@ pub static TABLE: &[&Module] = &[
     &try_find_water::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_swim_up::MODULE,
+    &land_on_shoulder::MODULE,
+    &stay_close_to_owner::MODULE,
+    &give_to_owner::MODULE,
 ];

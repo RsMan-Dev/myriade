@@ -69,21 +69,19 @@ pub struct Landing;
 pub static MODULE: Module = Module {
     name: "land_on_shoulder",
     flags: 0,
-    resources,
     equip,
     arm,
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Tamable, Cap::Body],
     ..Module::DEFAULT
 };
-fn resources(w: &mut World) {
-    w.init_resource::<Shoulders>();
-}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
+    // Only a world that has such a creature has the resource: registering one for every world moves the ids of the others' components.
+    w.init_resource::<Shoulders>();
     w.entity_mut(e).insert(Shoulder { p, slot: inst.slot });
     if w.get::<PlayerWatch>(e).is_none() {
         w.entity_mut(e).insert(PlayerWatch::new(p.near));
@@ -98,8 +96,9 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         crate::goals::arm(w, e, inst.slot, (s.age + 1 - age) as i32);
     }
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((owner_events, land_run).chain().in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, owner_events);
+    tick_state(w, land_run);
 }
 fn owner_events(ev: Res<Events>, q: Query<(&tame::Owner, &Shoulder)>, mut reqs: ResMut<Requests>) {
     for (e, id) in ev.player_entered.iter() {

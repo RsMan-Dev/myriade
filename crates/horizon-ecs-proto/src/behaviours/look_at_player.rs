@@ -16,7 +16,7 @@ impl Params {
     pub const DEFAULT: Self = Self { range: 6.0, period: 50, species: &[] };
 }
 /// `LookAtPlayerGoal`'s range and ask period; `armed`: its deadline is in the wheel; `pick`: the player `can_use` chose.
-#[derive(Clone, Copy, Debug)]
+#[derive(Component, Clone, Copy, Debug)]
 pub struct Glance {
     pub range: f64,
     pub period: i32,
@@ -25,9 +25,10 @@ pub struct Glance {
     pick: Who,
     species: SpeciesSet,
 }
-/// The instances of the animal, by `Inst::nth` (the strider has two: players at 8, striders at 9).
-#[derive(Component, Clone, Debug)]
-pub struct Glances(pub Vec<Glance>);
+/// The second instance of the animal (`Inst::nth` 1: the strider looks at players at 8 and at striders at 9); the first is `Glance`, so an
+/// animal with one look carries nothing more than before.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Glance2(pub Glance);
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Glancing {
@@ -36,10 +37,10 @@ pub struct Glancing {
     pub nth: u8,
 }
 fn get(w: &World, e: Entity, inst: Inst) -> Option<Glance> {
-    w.get::<Glances>(e)?.0.get(inst.nth as usize).copied()
+    if inst.nth == 0 { w.get::<Glance>(e).copied() } else { w.get::<Glance2>(e).map(|g| g.0) }
 }
 fn with<R>(w: &mut World, e: Entity, inst: Inst, f: impl FnOnce(&mut Glance) -> R) -> Option<R> {
-    w.get_mut::<Glances>(e)?.0.get_mut(inst.nth as usize).map(f)
+    if inst.nth == 0 { w.get_mut::<Glance>(e).map(|mut g| f(&mut g)) } else { w.get_mut::<Glance2>(e).map(|mut g| f(&mut g.0)) }
 }
 
 pub static MODULE: Module = Module {
@@ -60,11 +61,10 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let species = SpeciesSet::of(p.species.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize));
     let g = Glance { range: p.range, period: p.period, armed: false, slot: inst.slot, pick: Who::Player(0), species };
-    match w.get_mut::<Glances>(e) {
-        Some(mut gs) => gs.0.push(g),
-        None => {
-            w.entity_mut(e).insert(Glances(vec![g]));
-        }
+    if inst.nth == 0 {
+        w.entity_mut(e).insert(g);
+    } else {
+        w.entity_mut(e).insert(Glance2(g));
     }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
@@ -170,13 +170,13 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     rearm(w, e, inst);
 }
 /// An animal that walks into a watched bin (the lazy look) takes its look timers again.
-fn lazy_wake(moves: Res<CellMoves>, lazy: Res<LazyLook>, q: Query<(&Pos, &Glances, Option<&Scan>)>, mut reqs: ResMut<Requests>) {
+fn lazy_wake(moves: Res<CellMoves>, lazy: Res<LazyLook>, q: Query<(&Pos, &Glance, Option<&Glance2>, Option<&Scan>)>, mut reqs: ResMut<Requests>) {
     if !lazy.enabled {
         return;
     }
     for &m in &moves.0 {
-        if let Ok((p, g, s)) = q.get(m)
-            && (g.0.iter().any(|g| !g.armed) || s.is_some_and(|s| !s.armed))
+        if let Ok((p, g, g2, s)) = q.get(m)
+            && (!g.armed || g2.is_some_and(|g| !g.0.armed) || s.is_some_and(|s| !s.armed))
             && lazy.watched(p.0.x, p.0.z)
         {
             reqs.0.push(Req::Arm(m));
@@ -188,12 +188,12 @@ fn glance_run(
     clock: Res<Clock>,
     on: Res<Online>,
     others: Query<(&Pos, &Eye)>,
-    mut q: Query<(Aim, &Glancing, &Glances)>,
+    mut q: Query<(Aim, &Glancing, &Glance, Option<&Glance2>)>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _, _), g, gs) in &mut q {
-        let data = &gs.0[g.nth as usize];
+    for ((e, pos, mut look, looking, _, _), g, g1, g2) in &mut q {
+        let data = if g.nth == 0 { g1 } else { &g2.unwrap().0 };
         // The feet (the range test) and the point looked at.
         let t = match g.who {
             Who::Player(id) => on.get(id).map(|p| (Vec3::new(p.x, p.y, p.z), [p.x, p.eye(), p.z])),
@@ -220,6 +220,8 @@ mod tests {
         if crate::cow::skip_unless_walker("look at species") {
             return;
         }
+        // The process species is set by the first world built.
+        drop(Herd::with_slab(60, true, false));
         let own: &'static [&'static str] = Box::leak(vec![species().name].into_boxed_slice());
         let others: &'static Params = Box::leak(Box::new(Params { species: own, period: 1, ..Params::DEFAULT }));
         static PLAYERS: Params = Params { period: 1, ..Params::DEFAULT };

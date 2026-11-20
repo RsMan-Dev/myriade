@@ -34,7 +34,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Tamable, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -55,9 +55,9 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 pub fn pocket_changed(w: &mut World, e: Entity) {
     crate::goals::wake(w, e, &MODULE);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(owner_moved.in_set(slot));
-    s.add_systems(give_run.in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, owner_moved);
+    tick_state(w, give_run);
 }
 /// The owner came within the radius or left it: the goal is asked at the next tick of the selector.
 fn owner_moved(ev: Res<Events>, q: Query<(&tame::Owner, &Giving)>, mut reqs: ResMut<Requests>) {

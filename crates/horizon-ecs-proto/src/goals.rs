@@ -1395,8 +1395,11 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut gs) = h.world.get_mut::<look_at_player::Glances>(e) {
-            gs.0.iter_mut().for_each(|g| g.armed = armed);
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance>(e) {
+            g.armed = armed;
+        }
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance2>(e) {
+            g.0.armed = armed;
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;

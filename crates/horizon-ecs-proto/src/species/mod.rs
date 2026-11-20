@@ -86,7 +86,7 @@ pub mod polar_bear;
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
 pub const PROCESS_DEFAULT: &str = "minecraft:cow";
-pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &allay::DEF, &ghast::DEF, &wolf::DEF,
+pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF, &chicken::DEF, &skeleton::DEF, &copper_golem::DEF, &cod::DEF, &parrot::DEF, &ghast::DEF, &wolf::DEF,
     &cat::DEF,
     &ocelot::DEF, &llama::DEF,
     &armadillo::DEF,
@@ -141,6 +141,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &wandering_trader::DEF,
     &giant::DEF,
     &mannequin::DEF,
+    &allay::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

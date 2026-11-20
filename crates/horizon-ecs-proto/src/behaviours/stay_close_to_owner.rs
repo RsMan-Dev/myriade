@@ -34,7 +34,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Tamable, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -49,9 +49,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     w.resource_mut::<Requests>().0.push(Req::Start(e, inst.slot));
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(owner_left.in_set(slot));
-    s.add_systems(stay_run.in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, owner_left);
+    tick_state(w, stay_run);
 }
 /// The owner went beyond the radius of the goal: it is asked at the next tick of the selector.
 fn owner_left(ev: Res<Events>, q: Query<(&tame::Owner, &StayClose)>, mut reqs: ResMut<Requests>) {
