@@ -1,4 +1,5 @@
 //! `CamelHusk` (`equine.rs:204-205`, `camel_husk_tests.rs:10-12`): the camel without breeding; any rider holds its panic back.
+// jar : canMate/canFallInLove false, so breed is removed below.
 use super::{camel, Change, Def};
 use crate::behaviours::{animal_panic, breed};
 

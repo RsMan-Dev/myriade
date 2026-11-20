@@ -16,9 +16,11 @@ pub struct Params {
     pub look_y: f32,
     /// `calmDown`: ticks without temptation after the goal ended.
     pub calm: u64,
+    /// A flier drifts straight toward the player (no path): the wish is set to the player's place.
+    pub drift: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, items: &[], stop: 2.5, range: 10.0, look_y: 95.0, calm: 100 };
+    pub const DEFAULT: Self = Self { speed: 1.0, items: &[], stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, drift: false };
 }
 /// One `TemptGoal`: its parameters and its state.
 #[derive(Clone, Copy, Debug)]
@@ -30,6 +32,7 @@ pub struct Tempt {
     pub range: f64,
     pub look_y: f32,
     pub calm: u64,
+    pub drift: bool,
     pub calm_until: u64,
     /// The tick since which the calm-down stands still because the goal cannot be asked (0: it counts).
     pub paused_at: u64,
@@ -61,7 +64,7 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let items = crate::items::ItemSet::of(p.items);
-    let t = Tempt { items, speed: p.speed, stop: p.stop, range: p.range, look_y: p.look_y, calm: p.calm, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };
+    let t = Tempt { items, speed: p.speed, stop: p.stop, range: p.range, look_y: p.look_y, calm: p.calm, drift: p.drift, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };
     match w.get_mut::<Tempts>(e) {
         Some(mut ts) => {
             debug_assert_eq!(ts.0.len(), inst.nth as usize);
@@ -187,6 +190,11 @@ fn tempt_run(
                 t.aim = (i32::MIN, 0);
                 cmd.queue(move |w: &mut World| stop_nav(w, e));
             }
+        } else if t.drift {
+            // `FlyingMoveControl` drift: no path, the wish is the player's place, read each tick by the flier's control.
+            let at = [p.x, p.y, p.z];
+            let speed = t.speed;
+            cmd.queue(move |w: &mut World| crate::locomotion::fly::steer_to(w, e, at, speed));
         } else {
             let a = (p.x.floor() as i32, p.z.floor() as i32);
             if a != t.aim || (!following && !asked) {
