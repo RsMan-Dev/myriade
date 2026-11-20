@@ -7,7 +7,7 @@ pub mod blocks;
 pub mod brain;
 pub mod conversion;
 pub mod cow;
-pub mod cow_helpers;
+pub use cow::helpers as cow_helpers;
 pub mod despawn;
 pub mod effects;
 pub mod equipment;
@@ -61,7 +61,7 @@ pub mod equipment_items;
 pub mod equipment_wear;
 pub mod equipment_drop;
 pub mod equipment_break;
-pub mod goals_more;
+pub mod goals_near;
 pub mod pocket;
 
 /// `f64::floor` as an `i32` without the libm call (the baseline target has no `roundsd`): the truncation, one less when it rounded up.

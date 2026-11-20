@@ -1900,4 +1900,4 @@ pub fn online_events_for_bench(world: &mut World) {
     world.run_system_cached(online_events).unwrap();
 }
 
-pub use crate::goals_more::*;
+pub use crate::goals_near::*;
