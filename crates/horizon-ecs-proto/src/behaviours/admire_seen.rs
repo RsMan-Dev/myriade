@@ -52,7 +52,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let p = params::<Params>(p);
     w.entity_mut(e).insert(SeenParams(p));
     if p.disabled > 0 {
-        w.entity_mut(e).insert(WalkOff { until: now_of(w, e) + p.disabled as u64 });
+        let until = now_of(w, e) + p.disabled as u64;
+        w.entity_mut(e).insert(WalkOff { until });
     }
 }
 /// Asked when the off hand changes: a running goal ends with a filled hand, an idle one is asked a tick later.
@@ -89,7 +90,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let p = w.get::<SeenParams>(e).unwrap().0;
-    w.entity_mut(e).insert(SeenAdmire { until: now_of(w, e) + p.duration as u64, reach: None });
+    let until = now_of(w, e) + p.duration as u64;
+    w.entity_mut(e).insert(SeenAdmire { until, reach: None });
     if let Some((it, _)) = nearest_wanted(w, e, p) {
         let at = w.get::<Pos>(it).unwrap().0;
         go_to_at(w, e, [at.x, at.y, at.z], SPEED, 1);

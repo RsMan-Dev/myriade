@@ -4,6 +4,7 @@
 use crate::common;
 use common::*;
 use horizon_client_lib::mobs::{self, Who as MWho};
+use bevy_ecs::entity::Entity;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     cow::*,
