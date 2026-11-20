@@ -61,9 +61,11 @@ pub struct Params {
     /// `Squid.travel` and `Squid.aiStep`: no control, no path; the motion is the impulse of the tentacle cycle (`SquidState`), the move only
     /// applies the velocity.
     pub squid: bool,
+    /// The look control puts the pitch back to 0 at the end of every tick (`LookControl.resetXRotOnTick`: the frog's, with no tongue target).
+    pub reset_pitch: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false };
+    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false, reset_pitch: false };
 }
 /// The swim's parameters of the entity, as the systems read them.
 #[derive(Component, Clone, Copy, Debug)]
@@ -74,6 +76,7 @@ pub struct SwimParams {
     pub push: Push,
     pub sinks: bool,
     pub squid: bool,
+    pub reset_pitch: bool,
 }
 /// The tentacle cycle of a squid (`Squid.tentacleMovement`, `tentacleSpeed`) and the vector its goals set (`Mob.extra.vector`): what moves it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -93,7 +96,7 @@ pub struct Dry;
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let sp = *crate::behaviours::params::<Params>(p);
-    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid });
+    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid, reset_pitch: sp.reset_pitch });
     if sp.squid {
         // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
         // A creature made by `spawn_declared` gets its stream after its locomotion: the entity's own number seeds a stream until then.
@@ -307,6 +310,9 @@ fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(
                 continue;
             }
             Control::Smooth { max_turn_x, max_turn_y, in_water, outside, gravity } => {
+                if swp.reset_pitch {
+                    d.pitch = 0.0;
+                }
                 smooth_control(pos, &mut vel, &mut yaw, &mut m, &mut d, fs, body, following, max_turn_x, max_turn_y, in_water, outside, gravity);
                 continue;
             }
