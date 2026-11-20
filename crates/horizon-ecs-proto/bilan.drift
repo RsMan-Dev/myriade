@@ -539,3 +539,32 @@ merge port-eau + villages-tests 92909447e9|zombie chase clear (1024, spacing 6, 
 merge port-eau + villages-tests 92909447e9|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6810|6813
 merge port-eau + villages-tests 92909447e9|zone far ring (cow, 6, 10)|ecs|2.0|0.0
 merge port-eau + villages-tests 92909447e9|schedule at rest (empty world, per tick)|ecs|124972|125114
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|cow idle|ecs|768|765
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|cow idle|ecs-eager|977|974
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|cow active(1000 players, no solicitation)|ecs|4355|4345
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|cow active(1000 players, no solicitation)|ecs-eager|4204|4194
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8066|8056
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|pig idle|ecs|141|140
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|pig idle|ecs-eager|347|346
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|pig active(1000 players, no solicitation)|ecs|4059|4051
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|pig active(1000 players, no solicitation)|ecs-eager|3870|3861
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8227|8214
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|sheep idle|ecs|329|328
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|sheep idle|ecs-eager|526|525
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|sheep active(1000 players, no solicitation)|ecs|4307|4297
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|sheep active(1000 players, no solicitation)|ecs-eager|4135|4125
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8389|8378
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|chicken idle|ecs-eager|214|215
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|chicken active(1000 players, no solicitation)|ecs|3240|3235
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|chicken active(1000 players, no solicitation)|ecs-eager|3093|3088
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|5410|5405
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|zombie active(1000 players, no solicitation)|ecs|9471|9467
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|zombie active(1000 players, no solicitation)|ecs-eager|9355|9349
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5551|5549
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6813|6804
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|crowd 0.5 (cow, 2000, 0 player)|batch|4402|4385
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|crowd 0.5 (cow, 2000, 0 player)|ordered|17888|17889
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|crowd 0.8 (cow, 2000, 0 player)|batch|3839|3822
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|zone near ring (cow, 6, 10)|ecs|2326.1|2322.0
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|items at rest (slope per stack, 500 to 2000)|ecs|8|7
+merge port-eau + villages-tests + cerveaux 3aed4dbca8|schedule at rest (empty world, per tick)|ecs|125114|125271
