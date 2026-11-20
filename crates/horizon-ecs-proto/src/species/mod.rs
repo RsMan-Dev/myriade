@@ -48,6 +48,9 @@ pub mod frog;
 pub mod bee;
 pub mod dolphin;
 pub mod nautilus;
+pub mod guardian;
+pub mod elder_guardian;
+pub mod zombie_nautilus;
 pub mod axolotl;
 pub mod drowned;
 pub mod spider;
@@ -134,6 +137,9 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &camel::DEF,
     &camel_husk::DEF,
     &nautilus::DEF,
+    &zombie_nautilus::DEF,
+    &guardian::DEF,
+    &elder_guardian::DEF,
     &trader_llama::DEF,
     &wandering_trader::DEF,
 ];
@@ -599,10 +605,12 @@ mod tests {
         ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
         ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
-        ("minecraft:dolphin", &[("breath_air", 0), ("try_find_water", 0), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
+        ("minecraft:dolphin", &[("hurt_by", 1), ("breath_air", 0), ("try_find_water", 0), ("swim_to_treasure", 1), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("melee", 6), ("move_to_item", 7), ("item_pickup", 7), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
-        ("minecraft:drowned", &[("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:drowned", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 5), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("try_find_water", 1), ("drowned_go_to_water", 1), ("melee", 2), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6)]),
+        ("minecraft:guardian", &[("move_towards_restriction_look", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:elder_guardian", &[("move_towards_restriction_look", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
         ("minecraft:frog", &[("long_jump", 3)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
@@ -648,7 +656,8 @@ mod tests {
         ("minecraft:iron_golem", &[("hurt_by", 2), ("melee", 1), ("move_towards_target", 2), ("village_walk", 2), ("village_walk", 4), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
-        ("minecraft:nautilus", &[("charge_attack", 3)]),
+        ("minecraft:nautilus", &[("animal_panic", 0), ("breed", 1), ("tempt", 2), ("charge_attack", 3), ("fish_swim", 4)]),
+        ("minecraft:zombie_nautilus", &[("tempt", 1), ("charge_attack", 2), ("fish_swim", 3)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
     ];
     #[test]

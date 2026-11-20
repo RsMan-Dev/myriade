@@ -709,6 +709,8 @@ pub struct Events {
     pub unleashed: Ev,
     /// The vehicle of a player moved, stopped or went (`vehicle.rs`): the player's id.
     pub vehicle_moved: Ev<u32>,
+    /// An item appeared on the ground (`item::drop_item`): the item (read by `move_to_item`).
+    pub item_dropped: Ev,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -716,6 +718,7 @@ impl Events {
         self.extinguished.swap();
         self.entered_fluid.swap();
         self.left_fluid.swap();
+        self.item_dropped.swap();
         self.landed.swap();
         self.mode_changed.swap();
         self.grew.swap();

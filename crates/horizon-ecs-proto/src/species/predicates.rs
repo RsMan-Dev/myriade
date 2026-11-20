@@ -99,6 +99,30 @@ fn rabbit_killer(_: &World, _: Entity) -> bool {
 }
 use bevy_ecs::prelude::*;
 
+/// The feet of a point stand in water (`Entity.isInWater` read from the fluid of the block).
+fn water_at(w: &World, p: horizon_core::geometry::Vec3) -> bool {
+    let mw = w.resource::<crate::cow::Level>().mw.0;
+    mw.facts.get(mw.world.block(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32)).fluid == horizon_client_lib::blocks::Fluid::Water
+}
+/// `drowned:ok_target` (`Drowned.okTarget`): at night, or when the target is in water.
+fn drowned_ok_target(w: &World, e: Entity) -> bool {
+    if !is_day(w, e) {
+        return true;
+    }
+    w.get::<crate::targeting::Target>(e).and_then(|t| crate::targeting::info(w, t.who)).is_some_and(|i| water_at(w, i.pos))
+}
+/// `drowned:player_ok`: the same rule for the nearest player (the `Mob` reads `selected_player`): night, or that player in water.
+fn drowned_player_ok(w: &World, e: Entity) -> bool {
+    if !is_day(w, e) {
+        return true;
+    }
+    let Some(me) = w.get::<Pos>(e).map(|p| p.0) else { return false };
+    w.resource::<crate::goals::Online>()
+        .players()
+        .map(|p| (((p.x - me.x).powi(2) + (p.y - me.y).powi(2) + (p.z - me.z).powi(2)), p))
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .is_some_and(|(_, p)| water_at(w, horizon_core::geometry::Vec3::new(p.x, p.y, p.z)))
+}
 pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:is_baby", is_baby),
     ("horizon:is_adult", is_adult),
@@ -122,4 +146,6 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("bee:can_target", bee_can_target),
     ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
+    ("drowned:ok_target", drowned_ok_target),
+    ("drowned:player_ok", drowned_player_ok),
 ];

@@ -26,6 +26,10 @@ pub enum Control {
     /// `SmoothSwimmingMoveControl(maxTurnX, maxTurnY, inWater, outsideWater, applyGravity)` (dolphin, axolotl, tadpole, frog): the pitch follows
     /// the wanted point, the forward and the vertical inputs follow the pitch.
     Smooth { max_turn_x: f32, max_turn_y: f32, in_water: f32, outside: f32, gravity: bool },
+    /// `Guardian.GuardianMoveControl`: no lift; while a path is followed the speed goes an eighth toward the wanted one, the guardian faces the
+    /// point, and its velocity gets a wobble (a sine of the own age plus its id) and the climb toward the point. Not following: stopped; the
+    /// travel then lets it sink while it has no target (`Guardian.travelInWater`).
+    Guardian,
 }
 /// What `moveRelative` pushes by in the water.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -278,8 +282,8 @@ pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob:
 /// `FishMoveControl.tick`, every tick of a fish in the water: the water lifts it a little, and while a path is followed the speed
 /// goes toward the wanted one by an eighth of the gap, it climbs or dives toward the wanted height and turns toward the node.
 #[allow(clippy::type_complexity)]
-fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>, Has<WantsToSwim>), With<SwimMode>>) {
-    for (pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following, wants) in &mut q {
+fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(Entity, &crate::goals::Uid, &Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>, Has<WantsToSwim>), With<SwimMode>>) {
+    for (e, uid, pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following, wants) in &mut q {
         // `LivingEntity.aiStep` drops the tiny motions BEFORE the control (the lift of the water comes after).
         crate::locomotion::fly::drop_tiny_motion(&mut vel);
         if swp.squid {
@@ -293,6 +297,10 @@ fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut 
             }
             Control::Drowned => {
                 drowned_control(&level, pos, &mut vel, &mut yaw, &mut m, &mut d, body, fs, c, following, wants);
+                continue;
+            }
+            Control::Guardian => {
+                guardian_control(pos, &mut vel, &mut yaw, &mut m, &mut d, body, following, clock.of(e), uid.0);
                 continue;
             }
             Control::Smooth { max_turn_x, max_turn_y, in_water, outside, gravity } => {
@@ -325,6 +333,32 @@ fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut 
     }
 }
 
+/// `GuardianMoveControl.tick`: stopped without a path; else the speed an eighth toward the wanted one, the body faces the point, and the
+/// velocity gets the wobble `sin(0.5 t) * 0.05` along the heading, `sin(0.75 t) * 0.05 * (sin + cos) * 0.25` up, and the climb
+/// `speed * yd * 0.1`, with `t = age + id`. The head's look toward the point (cosmetic) is not written.
+#[allow(clippy::too_many_arguments)]
+fn guardian_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, following: bool, age: u64, id: u64) {
+    if !(m.active && following) {
+        d.speed = 0.0;
+        d.zza = 0.0;
+        m.active = false;
+        return;
+    }
+    let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+    let length = (xd * xd + yd * yd + zd * zd).sqrt();
+    yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);
+    let target = (m.speed_modifier * body.speed) as f32;
+    let speed = d.speed + (target - d.speed) * 0.125;
+    d.speed = speed;
+    d.zza = speed;
+    let t = (age as i32 + id as i32) as f64;
+    let push = (t * 0.5).sin() * 0.05;
+    let a = f64::from(yaw.0 * trig::DEG_TO_RAD);
+    let (cos, sin) = (f64::from(trig::cos(a)), f64::from(trig::sin(a)));
+    let y_push = (t * 0.75).sin() * 0.05;
+    vel.0 = Vec3::new(vel.0.x + push * cos, vel.0.y + y_push * (sin + cos) * 0.25 + f64::from(speed) * (yd / length) * 0.1, vel.0.z + push * sin);
+    m.active = false;
+}
 /// `SmoothSwimmingMoveControl.tick`: in the water the pitch goes toward the wanted point (at most `max_turn_x`, 5 degrees a tick) and the
 /// inputs follow it; out of the water the speed falls with the turn.
 #[allow(clippy::too_many_arguments)]
@@ -490,11 +524,11 @@ fn travel(
     level: Res<Level>,
     par: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, (Has<WantsToSwim>, Has<crate::targeting::Target>)),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
     >,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
+    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp, squid, mut rng, (wants, targeted)) in &mut q {
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
         if swp.squid {
@@ -527,7 +561,8 @@ fn travel(
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
             // `Vec3.add(0.0, -0.005, 0.0)`: an animal with no target sinks a little.
-            let sink = if swp.sinks { 0.005 } else { 0.0 };
+            // The guardian sinks only while it is not moving and has no target (`Guardian.travelInWater`).
+            let sink = if swp.sinks && !(swp.control == Control::Guardian && (d.speed > 0.0 || targeted)) { 0.005 } else { 0.0 };
             v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
         } else {
             travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
