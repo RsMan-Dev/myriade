@@ -61,9 +61,16 @@ fn tick(w: &mut World) {
         arm_module(w, e, &MODULE, 1);
     }
 }
-/// The sensor of the repellents runs every 20 ticks (`PiglinSpecificSensor`): the goal is asked at that cadence.
+/// The sensor of the repellents runs every 20 ticks (`PiglinSpecificSensor`): the goal is asked at that cadence, from a phase
+/// drawn at creation as the jar does (`Sensor.<init>`: `timeToTick = random.nextInt(scanRate)`, then `--timeToTick <= 0`).
 fn arm(w: &mut World, e: Entity, _: Inst) {
-    ask_later(w, e);
+    let f = w.get::<Flee>(e).unwrap().0;
+    if nothing_to_flee(w, &f) {
+        w.entity_mut(e).insert(Parked);
+    } else {
+        let phase = with_rng(w, e, |r| r.next_int(20)).max(1);
+        arm_module(w, e, &MODULE, phase);
+    }
 }
 /// The next look is 20 ticks later; none at all while nothing that repels exists.
 fn ask_later(w: &mut World, e: Entity) {

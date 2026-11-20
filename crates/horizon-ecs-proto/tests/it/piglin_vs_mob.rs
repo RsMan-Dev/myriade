@@ -94,7 +94,6 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
 /// Piglins two blocks from a lit soul campfire walk away from it: over 20 seeds the ECS mean distance after 60 ticks lies within two
 /// standard deviations of the Mob's (a single seed compares two noisy draws, the ECS one is 0.9 wide, the Mob's 0.5).
 #[test]
-#[ignore = "gap left after the 10-tries and 16-block fixes: Mob 14.57 (sd 0.47), ECS 13.42 over 20 seeds; cause of the last 1.15 not found, see suivi/ecs-ecarts.md"]
 fn piglins_flee_a_soul_campfire_as_a_mob_does() {
     if skip() {
         return;
@@ -125,4 +124,54 @@ fn piglins_flee_a_soul_campfire_as_a_mob_does() {
     let sd = (md.iter().map(|x| (x - m).powi(2)).sum::<f64>() / md.len() as f64).sqrt();
     assert!(m > 6.0 && e > 6.0, "both walk away: Mob {m:.2}, ECS {e:.2}");
     assert!((m - e).abs() <= 2.0 * sd, "the means match within 2 sd of the Mob: Mob {m:.2} (sd {sd:.2}), ECS {e:.2}");
+}
+
+/// `SetWalkTargetAwayFrom` tries ten spots and takes the first found: a piglin two blocks from a soul campfire leaves it on
+/// every seed (one try gave up on 5 seeds of 39). The ECS alone, 60 seeds, one piglin each.
+#[test]
+fn walk_away_takes_the_first_spot_of_ten_tries() {
+    if skip() {
+        return;
+    }
+    let c = Vec3::new(0.5, 1.0, 0.5);
+    let stayed: Vec<u32> = (0..60u32)
+        .filter(|&s| {
+            let mut h = Herd::with_slab(60, true, false);
+            h.set_block(0, 1, 0, "minecraft:soul_campfire");
+            let e = ecs_piglin(&mut h, -1.5, 0.5, u64::from(s * 1001 + 1));
+            for _ in 0..120 {
+                h.tick();
+            }
+            xz(h.world.get::<Pos>(e).unwrap().0, c) < 8.0
+        })
+        .collect();
+    assert!(stayed.is_empty(), "every piglin walks clear of the campfire; stayed within 8 blocks: seeds {stayed:?}");
+}
+
+/// The start condition of `SetWalkTargetAwayFrom.pos(.., 8, ..)`: a piglin whose sensor sees the campfire (box of 8 by 4) but
+/// stands 10.6 blocks from it (a corner of the box) does not flee, in the Mob or in the ECS.
+#[test]
+fn walk_away_starts_only_within_eight_blocks_of_the_point() {
+    if skip() {
+        return;
+    }
+    let c = Vec3::new(0.5, 1.0, 0.5);
+    let (mut md, mut ed) = (Vec::new(), Vec::new());
+    for s in 0..20u32 {
+        let mut r = MobRef::new(60, false);
+        let mut h = Herd::with_slab(60, true, false);
+        r.set_block(0, 1, 0, "minecraft:soul_campfire");
+        h.set_block(0, 1, 0, "minecraft:soul_campfire");
+        let id = s * 1001 + 1;
+        let i = mob_piglin(&mut r, 7.5, 7.5, id);
+        let e = ecs_piglin(&mut h, 7.5, 7.5, u64::from(id));
+        for _ in 0..100 {
+            r.step(None);
+            h.tick();
+        }
+        md.push(xz(r.mobs[i].position, c) - 9.9);
+        ed.push(xz(h.world.get::<Pos>(e).unwrap().0, c) - 9.9);
+    }
+    // A flight would take it 8 blocks further out; a stroll wanders a few.
+    assert!(mean(&md) < 4.0 && mean(&ed) < 4.0, "neither flees: Mob {:.2}, ECS {:.2} blocks further out", mean(&md), mean(&ed));
 }

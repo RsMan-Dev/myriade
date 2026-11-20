@@ -40,6 +40,15 @@ Le vouloir-grimper vient donc de la derniere marche (la promenade, but 5 de l'ar
 Trace sur une graine, 1 piglin : meme depart (tick 22), `walk_away::start` tirait UN seul `land_random_pos_away` ; le jar boucle
 `for (i < 10) getPosAway(mob, 16, 7, pos)` et prend le premier non nul, avec `WalkTarget(pos, vitesse, 0)`. Sur 5 graines sur 39 l'ECS
 ne partait pas du tout (distance 6,8 = depart). Corriges d'apres le jar : dix essais, portee 16 (l'ECS avait 12), arret a 0 bloc
-(l'ECS 1). Moyenne sur 39 graines, 20 piglins : Mob 14,63 ; ECS 11,26 -> 13,3. Reste ~1,15 bloc (1 piglin : Mob 14,65 / ECS 14,0) :
-cause non trouvee ; candidats ecartes par le jar : vitesse (1.0), seuil de depart (8), rayon vertical (7). Non testes : poussee entre
-piglins serres (l'ECS perd 0,7 de 1 a 20 piglins, pas le Mob), relance de la fuite quand le Mob est a moins de 8 du repoussoir.
+(l'ECS 1). Moyenne sur 39 graines, 20 piglins : Mob 14,63 ; ECS 11,26 -> 13,3. Les 1,15 bloc restants, deux causes (mesures sur 80 graines) :
+1. Phase du capteur : le jar tire `timeToTick = random.nextInt(scanRate)` a la creation du capteur (`Sensor.<init>`), puis `--timeToTick <= 0`
+   (premier balayage entre 1 et 19 ticks, moyenne ~10) ; l'ECS balayait a 20 ticks fixes (10 ticks de retard moyens = 1,6 bloc a 0,16 bloc/tick).
+   Corrige : phase tiree a la creation. L'ecart « 1 piglin 14,65 / 14,0 » n'etait que cela : le Mob du banc avait la meme phase sur toutes
+   les graines (`id % 20 = 1`) ; avec des ids de phases variees, 1 piglin : Mob 15,25 / ECS 15,37.
+2. Relance : le Mob (`PiglinAvoidRepellent`, `SetWalkTargetAwayFrom.pos(.., 8, ..)`) ne part que si le repoussoir est a moins de 8 blocs
+   (`distanceSqr >= 64` refuse) ; l'ECS relancait jusqu'a la fin de la memoire (120 ticks) meme loin. Corrige : `walk_away::Params.within`.
+   Phase seule : ECS 15,25 / Mob 14,76 ; avec `within` : Mob 14,76, ECS 14,70 (20 piglins, 80 graines).
+Ecartes par un test : poussee entre piglins (mode `ordered_push` : 13,53 contre 13,42 avant les corrections ; et espaces de 1,5 bloc l'ecart
+n'etait deja plus que 0,29) ; vitesse (1.0), seuil de depart (8), rayon vertical (7), portee 16 : conformes au jar. Reste non porte :
+l'ECS ne relance qu'au rythme du capteur (20 ticks) alors que le Mob relance des l'arret ; le point fui est le centre du bloc, le Mob
+`atBottomCenterOf` (0,5 en Y, sans effet sur la direction).

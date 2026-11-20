@@ -9,11 +9,13 @@ use horizon_core::geometry::Vec3;
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub speed: f64,
-    /// Blocks from the point the animal walks to.
+    /// The range of the pick (`SetWalkTargetAwayFrom`: `getPosAway(mob, 16, 7, pos)`, the jar's 16).
     pub distance: f64,
+    /// Starts only closer than this to the point (`SetWalkTargetAwayFrom.pos(.., 8, ..)`: `distanceToSqr(pos) >= 8^2` refuses).
+    pub within: f64,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, distance: 12.0 };
+    pub const DEFAULT: Self = Self { speed: 1.0, distance: 16.0, within: 8.0 };
 }
 /// The point to keep away from, and the time its memory expires (its ttl).
 #[derive(Component, Clone, Copy, Debug)]
@@ -43,9 +45,11 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Away(*params::<Params>(p)));
 }
-/// `canUse`: a remembered point that has not expired.
+/// `canUse`: a remembered point that has not expired, and closer than `within` (the animal that has walked clear stays).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Avoid>(e).is_some_and(|a| now_of(w, e) < a.until)
+    let (Some(a), Some(p), Some(away)) = (w.get::<Avoid>(e), w.get::<Pos>(e), w.get::<Away>(e)) else { return false };
+    let d2 = (p.0.x - a.at[0]).powi(2) + (p.0.y - a.at[1]).powi(2) + (p.0.z - a.at[2]).powi(2);
+    now_of(w, e) < a.until && d2 < away.0.within * away.0.within
 }
 /// The spot `distance` blocks away from the point (`land_random_pos_away`, five blocks down and seven up at most); none
 /// found: the goal ends at once.

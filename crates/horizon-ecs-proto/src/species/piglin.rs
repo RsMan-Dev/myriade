@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zombified_piglin", after: 300 }),
         Entry::new(&admire::MODULE, 1, &admire::Params::DEFAULT),
-        Entry::new(&walk_away::MODULE, 2, &walk_away::Params { speed: 1.0, distance: 16.0 }),
+        Entry::new(&walk_away::MODULE, 2, &walk_away::Params::DEFAULT),
         Entry::new(&flee_repellent::MODULE, 2, &flee_repellent::Params {
             blocks: &["minecraft:soul_campfire", "minecraft:soul_torch", "minecraft:soul_wall_torch", "minecraft:soul_lantern"],
             species: &[],
