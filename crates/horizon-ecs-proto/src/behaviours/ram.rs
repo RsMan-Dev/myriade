@@ -435,7 +435,7 @@ fn finish_ram(w: &mut World, e: Entity) {
 }
 
 /// `Look` : `LookControl.setLookAt` (même effet que `goals::aim`, sans `Commands`).
-fn look(w: &mut World, e: Entity, at: [f64; 3]) {
+pub(super) fn look(w: &mut World, e: Entity, at: [f64; 3]) {
     let looking = w.get::<Looking>(e).is_some();
     if let Some(mut l) = w.get_mut::<Look>(e) {
         l.target = at;

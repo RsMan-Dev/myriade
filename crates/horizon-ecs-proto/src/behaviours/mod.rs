@@ -199,6 +199,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 
 pub mod avoid_entity;
 pub mod breath_air;
+pub mod stare_freeze;
 pub mod breed;
 pub mod swim_with_player;
 pub mod climb_on_powder_snow;
@@ -257,6 +258,9 @@ pub mod fox_sleep;
 pub mod fox_eat_berries;
 pub mod long_jump;
 pub mod ram;
+pub mod croak;
+pub mod lay_spawn;
+pub mod shoot_tongue;
 pub mod fox_search_for_items;
 pub mod fox_pick_up_loot;
 pub mod armadillo_state;
@@ -381,6 +385,7 @@ pub static TABLE: &[&Module] = &[
     &trample::MODULE,
     &walk_away::MODULE,
     &tempt::MODULE,
+    &stare_freeze::MODULE,
     &breed::MODULE,
     &breath_air::MODULE,
     &swim_with_player::MODULE,
@@ -490,6 +495,9 @@ pub static TABLE: &[&Module] = &[
     &ocelot_attack::MODULE,
     &long_jump::MODULE,
     &ram::MODULE,
+    &croak::MODULE,
+    &lay_spawn::MODULE,
+    &shoot_tongue::MODULE,
     &posture::MODULE,
     &random_sitting::MODULE,
     &animal_panic::MODULE,

@@ -19,9 +19,12 @@ pub struct Params {
     /// `finalizeSpawnChildFromBreeding`: with the `mob_drops` rule on, a draw of `1 + nextInt(7)` orbs at the parents'
     /// place. False for a species whose birth gives no experience.
     pub xp: bool,
+    /// The birth is a pregnancy, not a baby (`Frog.spawnChildFromBreeding`): the parent that breeds takes `Carrying`, both rest, and the
+    /// species' behaviour (`lay_spawn`) does the rest.
+    pub carries: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[], xp: true };
+    pub const DEFAULT: Self = Self { speed: 1.0, range: 8.0, delay: 60, love: 600, rest: 6000, baby_age: 24000, foods: &[], xp: true, carries: false };
 }
 /// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -34,14 +37,21 @@ pub struct BreedData {
     pub baby_age: u64,
     pub foods: &'static [&'static str],
     pub xp: bool,
+    pub carries: bool,
     pub slot: u8,
     partner: Option<Entity>,
 }
+/// `BreedData.slot` of an animal that breeds by its brain (`make_love`), not by a goal.
+pub const NO_SLOT: u8 = u8::MAX;
 /// In love until this tick; resting (age 6000) until this tick.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Love(pub u64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resting(pub u64);
+/// The parent carries what it will lay (`Params.carries`): erased by the behaviour that lays it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Carrying;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Breeding {
@@ -78,7 +88,7 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, slot: inst.slot, partner: None });
+    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: inst.slot, partner: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(breed_run.in_set(slot));
@@ -99,16 +109,28 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
     let p = world.get::<Pos>(e).unwrap().0;
     let mut near = Vec::new();
     world.resource::<Index>().for_radius(p.x, p.z, b.range, |c| near.push(c));
-    let mut reqs = vec![Req::Start(e, b.slot)];
+    let mut reqs = Vec::new();
+    let mut wake_brain = vec![e];
+    if b.slot != NO_SLOT {
+        reqs.push(Req::Start(e, b.slot));
+    }
     for c in near {
         if c != e
             && world.get::<Love>(c).is_some_and(|l| l.0 > crate::cow::now_of(world, c))
             && let Some(d) = world.get::<BreedData>(c)
         {
-            reqs.push(Req::Start(c, d.slot));
+            // A goal animal's selector is asked; a brain animal's brain is woken (its `make_love` looks for a partner).
+            if d.slot == NO_SLOT {
+                wake_brain.push(c);
+            } else {
+                reqs.push(Req::Start(c, d.slot));
+            }
         }
     }
     world.resource_mut::<Requests>().0.extend(reqs);
+    for c in wake_brain {
+        crate::brain::wake(world, c);
+    }
     true
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -198,18 +220,35 @@ fn breed_run(
         }
     }
 }
-/// `Animal.spawnChildFromBreeding`: a baby of age -`baby_age`, both parents rest, love ends.
+/// `BreedGoal.tick`'s end: the goal checks that it still runs and that love lasts, makes the birth and ends both goals.
 fn birth(w: &mut World, a: Entity, b: Entity) {
     let now = crate::cow::now_of(w, a);
     if w.get::<Breeding>(a).is_none() || w.get::<Love>(a).is_none_or(|l| l.0 <= now) {
         return;
     }
-    let data = *w.get::<BreedData>(a).unwrap();
-    let (pos, active) = (w.get::<Pos>(a).unwrap().0, w.get::<ActiveUntil>(a).unwrap().0);
-    for e in [a, b] {
-        let own = crate::cow::now_of(w, e);
-        w.entity_mut(e).insert(Resting(own + data.rest)).remove::<Love>();
+    if w.get::<BreedData>(a).is_some_and(|d| d.carries) {
+        finish_birth(w, a, b);
+        w.entity_mut(a).insert(Carrying);
+        w.resource_mut::<Events>().carrying.push(a);
+    } else {
+        give_birth(w, a, b);
     }
+    let reqs: Vec<Req> = [a, b].iter().filter_map(|&p| w.get::<BreedData>(p).filter(|d| d.slot != NO_SLOT).map(|d| Req::End(p, d.slot))).collect();
+    w.resource_mut::<Requests>().0.extend(reqs);
+}
+/// Whether `b` is a partner for `a` (`BreedGoal`'s lovers, `AnimalMakeLove.canMateWith`): the same species, both in love, `b` not a baby.
+pub fn can_mate(w: &World, a: Entity, b: Entity) -> bool {
+    let in_love = |x: Entity| w.get::<Love>(x).is_some_and(|l| l.0 > crate::cow::now_of(w, x));
+    a != b && w.get::<SpeciesId>(a) == w.get::<SpeciesId>(b) && in_love(a) && in_love(b) && w.get::<GrowAt>(b).is_none()
+}
+/// `Animal.spawnChildFromBreeding`, public and shared by the goal and by the brain's `make_love`: a baby of age -`baby_age` of
+/// the parents' species at the parent's place, both parents rest and love ends, the experience of the birth, the baby takes
+/// its mother and its first deadlines (and its brain). The caller checked that the two are in love and ends its own behaviour.
+pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
+    let now = crate::cow::now_of(w, a);
+    let data = *w.get::<BreedData>(a)?;
+    let (pos, active) = (w.get::<Pos>(a)?.0, w.get::<ActiveUntil>(a)?.0);
+    rest_parents(w, a, b);
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
     // The baby is of its parents' species (the mate was checked to be the same).
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
@@ -217,20 +256,54 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
     let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;
     make_baby(w, baby, data.baby_age);
-    // `finalizeSpawnChildFromBreeding`: the draw only inside the `mob_drops` check, then the orbs at the parents' place.
-    if data.xp && w.get_resource::<crate::orb::NoXp>().is_none() && w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_drops) {
-        let amount = (1 + with_rng(w, a, |r| r.next_int(7))) as u32;
-        let orb_seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
-        crate::orb::award(w, pos, amount, &mut horizon_core::random::LegacyRandom::new(orb_seed as i64));
-    }
+    birth_experience(w, a, pos);
     adopt(w, a, baby);
     if active > now {
         stroll::arm_now(w, baby);
     }
     arm_timers(w, baby);
-    let reqs: Vec<Req> = [a, b].iter().filter_map(|&p| w.get::<BreedData>(p).map(|d| Req::End(p, d.slot))).collect();
-    w.resource_mut::<Requests>().0.extend(reqs);
+    crate::brain::start(w, baby);
+    Some(baby)
 }
+/// The two parents rest (`Resting`, age 6000 in the `Mob`) and love ends.
+pub fn rest_parents(w: &mut World, a: Entity, b: Entity) {
+    let Some(data) = w.get::<BreedData>(a).copied() else { return };
+    for e in [a, b] {
+        let own = crate::cow::now_of(w, e);
+        w.entity_mut(e).insert(Resting(own + data.rest)).remove::<Love>();
+    }
+}
+/// A birth that is not a baby (the egg of a species that lays one): the parents rest and the experience of the birth, which the
+/// species' behaviour follows with what it lays.
+pub fn finish_birth(w: &mut World, a: Entity, b: Entity) {
+    let Some(pos) = w.get::<Pos>(a).map(|p| p.0) else { return };
+    rest_parents(w, a, b);
+    birth_experience(w, a, pos);
+}
+/// `finalizeSpawnChildFromBreeding`: the draw only inside the `mob_drops` check, then the orbs at the parents' place.
+fn birth_experience(w: &mut World, a: Entity, pos: horizon_core::geometry::Vec3) {
+    let Some(data) = w.get::<BreedData>(a).copied() else { return };
+    if data.xp && w.get_resource::<crate::orb::NoXp>().is_none() && w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_drops) {
+        let amount = (1 + with_rng(w, a, |r| r.next_int(7))) as u32;
+        let orb_seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
+        crate::orb::award(w, pos, amount, &mut horizon_core::random::LegacyRandom::new(orb_seed as i64));
+    }
+}
+
+/// The love of an animal that breeds by its brain: `BreedData` without a goal's slot, and the food that puts it in love
+/// (`Animal.mobInteract`), both from the parameters; `make_love` is the brain's behaviour.
+pub static LOVE: crate::rules::Rule = crate::rules::Rule {
+    name: "love",
+    equip: |w, e, p| {
+        let p = crate::rules::params::<Params>(p);
+        w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: NO_SLOT, partner: None });
+    },
+    attrs: crate::rules::no_attrs,
+    interact: |w, e, p, i| {
+        let p = crate::rules::params::<Params>(p);
+        i.item != 0 && p.foods.iter().any(|f| crate::goals::item_id(f) == i.item) && feed(w, e)
+    },
+};
 
 #[cfg(test)]
 mod tests {

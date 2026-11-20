@@ -20,7 +20,7 @@ pub static SENSOR: Sensor = Sensor {
 };
 
 /// The nearest player within the follow range (`distance_sqr < range²`), alive and not a spectator.
-fn near_player(w: &World, e: Entity) -> Option<u32> {
+pub(crate) fn near_player(w: &World, e: Entity) -> Option<u32> {
     let (p, r) = (w.get::<Pos>(e)?.0, w.get::<FollowRange>(e)?.0);
     let ps = w.resource::<PlayerState>();
     let mut best: Option<(u32, f64)> = None;

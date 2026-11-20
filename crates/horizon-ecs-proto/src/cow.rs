@@ -83,6 +83,8 @@ pub struct Drive {
     /// the last tick (`locomotion/climb.rs`).
     pub climber: bool,
     pub climbing: bool,
+    /// `SmoothSwimmingMoveControl` on the ground (`walk::Params.smooth_land`: the frog): the largest turn per tick and the speed out of the water.
+    pub smooth_land: Option<(f32, f32)>,
     /// `LivingEntity.shouldDiscardFriction`: the velocity keeps its horizontal part and takes the vertical one without drag while it is set (a
     /// long jump of a frog or a goat: the goal sets and clears it).
     pub discard_friction: bool,
@@ -161,6 +163,10 @@ pub struct PathEnded;
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 #[component(on_add = crate::locomotion::hop::following_started)]
 pub struct Following;
+/// The entity stands still (`stare_freeze`): `follow` and `move_control` skip it, its path is kept.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Stilled;
 /// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
 /// the marker off when the cow is back at rest.
 #[derive(Component, Clone, Copy, Debug)]
@@ -1305,6 +1311,16 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
 /// For the tests written for a land animal that walks, strolls and has goals: they declare what they need (the capabilities
 /// `Locomotion`, `Goals` and `Head`, a goal list, a walk and no other medium) and skip, printed, in a process whose species lacks
 /// it: the rule of the code (nothing knows a species) applies to the tests.
+/// For the controls against the `Mob` of a goal-only walker (avoid, flee the sun...): skips (printed) for a species with a brain, whose
+/// `Mob` and creature both wander with it (proved on the avoid goal: with the brain removed the ECS test passes), so the scene is not the goal's.
+pub fn skip_if_brain(test: &str) -> bool {
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let brained = crate::species::registry().by_name(&name).is_ok_and(|r| r.brain.is_some());
+    if brained {
+        eprintln!("SKIP {test}: the species of the process ({name}) has a brain that walks it: the scene is a goal-only walker's");
+    }
+    brained
+}
 pub fn skip_unless_walker(test: &str) -> bool {
     skip_unless_caps(&[crate::behaviours::Cap::Locomotion, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head], test)
         || skip_unless_ground_only(test)
@@ -1918,7 +1934,7 @@ pub(crate) fn follow(
     clock: Res<Clock>,
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &mut Drive, &mut Stroll, &mut Nav, &mut MoveTo), (With<Following>, Without<Stilled>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
     let one = |e: Entity, pos: &Pos, body: &Body, drive: &mut Drive, s: &mut Stroll, nav: &mut Nav, m: &mut MoveTo| {
@@ -2100,6 +2116,17 @@ pub(crate) fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut 
         d.zza = 0.0;
         return;
     }
+    if let Some((turn, outside)) = d.smooth_land {
+        // The land branch of `SmoothSwimmingMoveControl`: the speed is scaled by `outside` and by how far the body still has to turn; no jump.
+        let y_rot = trig::atan2_degrees(zd, xd) - 90.0;
+        yaw.0 = rotlerp(yaw.0, y_rot, turn);
+        let factor = 1.0 - ((wrap(yaw.0 - y_rot).abs() - 10.0) / 50.0).clamp(0.0, 1.0);
+        d.speed = (m.speed_modifier * body.speed) as f32 * outside * factor;
+        d.zza = d.speed;
+        d.jump = false;
+        d.jumping_op = false;
+        return;
+    }
     yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);
     let speed = (m.speed_modifier * body.speed) as f32;
     d.speed = speed;
@@ -2121,7 +2148,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let name = &mw.facts.get(state).name;
     pos.0.y < f64::from(top) + f64::from(by) && !(name.ends_with("_door") || name.ends_with("fence"))
 }
-pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
+pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Without<Stilled>, Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
     if cfg.parallel {
         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
@@ -2405,14 +2432,14 @@ pub(crate) fn travel(
     mut par: crate::cow::OrdCmds,
     plain: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
         (With<Moving>, Without<Overlapping>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let void_y = f64::from(level.mw.0.world.bottom_y() - 64);
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
         let mut fall = 0.0_f32;
-        let jumping = jump.is_some_and(|j| j.0);
+        let jumping = jump.is_some_and(|j| j.0) && !still;
         // A body without walking (an object) has no yaw and no input.
         let mut none = Drive::default();
         let mut d = d;
@@ -2470,10 +2497,10 @@ pub(crate) fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
+        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m, st) in &mut q {
+            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st);
         }
     }
     par.flush();

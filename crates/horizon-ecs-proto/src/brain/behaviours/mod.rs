@@ -1,5 +1,4 @@
 //! The generic behaviours (shared by the animal, monster and villager brains): each a static `Behaviour`.
-pub mod countdown;
 pub mod do_nothing;
 pub mod look_at_player_sometimes;
 pub mod look_at_target_sink;
@@ -18,5 +17,12 @@ pub mod start_attacking;
 pub mod stop_attacking_if_target_invalid;
 pub mod melee_attack;
 pub mod set_walk_target_from_attack_target;
+pub mod breeze;
+pub mod make_love;
+pub mod play_dead;
+pub mod forget_memory;
+pub mod find_liquid;
+pub mod sniff;
+pub mod look_at_player;
 pub mod walk_away;
 pub mod pacify;
