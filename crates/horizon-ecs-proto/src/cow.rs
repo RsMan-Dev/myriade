@@ -1826,10 +1826,10 @@ pub(crate) fn pathfind(
     level: Res<Level>,
     day: Res<crate::hostile::Daylight>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>, Option<&crate::locomotion::swim::SwimParams>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1852,14 +1852,20 @@ pub(crate) fn pathfind(
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid)
+        // The amphibious navigation (`AmphibiousPathNavigation`) serves both media: its evaluator, in the water and out of it.
+        let amph = swp.and_then(|p| p.amphibious);
+        let eval = || match amph {
+            Some(prefers_shallow) => Evaluator::Amphibious { prefers_shallow },
+            None => Evaluator::Walk,
+        };
+        let path = (c.on_ground || fluid || amph.is_some())
             .then(|| {
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if crate::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) {
-                    crate::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                    crate::pathsearch::Finder::new(mw, &pm, eval()).find(&[target], max_len, nav.reach, max_visited)
                 } else {
-                    Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                    Finder::new(mw, &pm, eval()).find(&[target], max_len, nav.reach, max_visited)
                 }
             })
             .flatten();
@@ -1912,18 +1918,18 @@ pub(crate) fn pathfind(
         let mut chosen: Vec<Entity> = if cfg.path_budget > 0 { q.iter().map(|x| x.0).take(left).collect() } else { Vec::new() };
         chosen.sort_unstable();
         let (limited, chosen) = (cfg.path_budget > 0, &chosen);
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| {
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w)| {
             if !limited || chosen.binary_search(&e).is_ok() {
-                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
             }
         });
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w) in &mut q {
             if left == 0 {
                 break;
             }
             left -= 1;
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
         }
     }
     par.flush();
