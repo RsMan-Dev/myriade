@@ -171,7 +171,7 @@ mod tests {
         for &e in &es {
             tame::set_owner(&mut h.world, e, Who::Player(1));
         }
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         (h, es)
     }
     fn landings(h: &mut Herd) -> usize {

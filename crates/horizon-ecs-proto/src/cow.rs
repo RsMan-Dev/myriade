@@ -135,10 +135,12 @@ pub struct Nav {
     pub delayed: bool,
     /// `createPath`'s accuracy: how close to the target block the path may end (1 for a spot, 0 for an entity).
     pub reach: i32,
+    /// `Brain.CANT_REACH_WALK_TARGET_SINCE`: the own tick of the first path since the last one that reached its target which did not (0: none).
+    pub cant_reach_since: u64,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1 }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1, cant_reach_since: 0 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -211,6 +213,10 @@ pub struct InWall;
 /// `LivingEntity.health`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Health(pub f32);
+/// `LivingEntity.getMaxHealth`, for the bars and the regeneration that read it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct MaxHealth(pub f32);
 /// The last hurt: the tick and the amount (`invulnerableTime`: for 10 ticks after, only a larger hit counts, by the
 /// difference).
 #[derive(Component, Clone, Copy, Debug)]
@@ -267,20 +273,26 @@ pub struct Hit {
     pub from: Option<(f64, f64)>,
     /// Who did it (a player of the bench's `Online` list, or a creature), for the target of a `HurtByTarget`.
     pub by: Option<crate::targeting::Who>,
+    /// The blow is the attacker's own (not a projectile it shot).
+    pub direct: bool,
 }
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, from: None, by: None });
+        self.0.push(Hit { target, amount, cause, from: None, by: None, direct: false });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true });
+    }
+    /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
+    pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(who), direct: false });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, from: Some(from), by: None });
+        self.0.push(Hit { target, amount, cause, from: Some(from), by: None, direct: false });
     }
 }
 /// What hurt (`DamageType`): `Panic` reads it (`#panic_environmental_causes`: cactus, freeze, hot_floor, in_fire, lava,
@@ -490,6 +502,19 @@ pub fn arm_at(w: &mut World, e: Entity, local: u64, d: Due) {
     let at = w.resource::<Clock>().at(e, local);
     w.resource_mut::<Wheel>().push(at, e, d);
 }
+/// The functions `after` can call, each registered once.
+#[derive(Resource, Default)]
+pub struct Callbacks(Vec<fn(&mut World, Entity)>);
+/// Calls `f(w, e)` once, `ticks` ticks of the entity's own time from now: a deadline on the wheel, no tick in between.
+pub fn after(w: &mut World, e: Entity, ticks: i32, f: fn(&mut World, Entity)) {
+    let cb = &mut w.get_resource_or_insert_with(Callbacks::default).0;
+    let i = cb.iter().position(|&g| g as usize == f as usize).unwrap_or_else(|| {
+        cb.push(f);
+        cb.len() - 1
+    });
+    let at = now_of(w, e) + ticks.max(0) as u64;
+    arm_at(w, e, at, Due::Call(i as u16));
+}
 /// The entity's own time.
 pub fn now_of(w: &World, e: Entity) -> u64 {
     w.resource::<Clock>().of(e)
@@ -506,6 +531,8 @@ pub enum Due {
     /// A sensor of the brain is due (its rank in the plan), and a memory's time is up (its slot and the token it had).
     Sensor(u8),
     Forget(u16, u32),
+    /// A module's function runs for the entity (`after`): the index in `Callbacks`.
+    Call(u16),
     /// The brain has something to do (a timed behaviour's end).
     BrainWake,
     /// A resting item's deadline (its last tick, its merge check), with the token it was armed with (`item.rs`).
@@ -1020,6 +1047,8 @@ pub struct Species {
     pub rules: &'static [crate::rules::RuleEntry],
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
+    /// The base armor and toughness of the type (`Attributes.ARMOR`, `ARMOR_TOUGHNESS`): worn pieces add to it.
+    pub armor: (f32, f32),
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
     pub attack_damage: f32,
     /// `EntityType` flag: the undead that burn in daylight.
@@ -1178,6 +1207,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             goals: crate::species::config(name),
             rules: crate::species::registry().by_name(name).unwrap().rules,
             knockback_resistance: mob.attrs.knockback_resistance,
+            armor: (kind.armor as f32, kind.armor_toughness as f32),
             attack_damage: mob.attrs.attack_damage,
             walk: walk_value_of(&mob, &kind),
             caps: crate::species::registry().by_name(name).unwrap().caps,
@@ -1187,6 +1217,10 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
         if name == chosen {
             chosen_kind = Some(kind);
         }
+    }
+    if let Some(items) = mw.items {
+        crate::items::install(items);
+        crate::equipment_items::install(items);
     }
     let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());
@@ -1205,6 +1239,10 @@ pub fn species_table() -> SpeciesTable {
     SpeciesTable(TABLE.get().expect("a level was built").clone())
 }
 
+/// The name of the species of the process (`HORIZON_SPECIES`), readable before any level is built (`species()` is not).
+pub fn process_species_name() -> String {
+    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into())
+}
 /// For the tests of a behaviour only some species have: whether to skip the test of the process's species, which has no
 /// such goal (the skip is printed, so it is never silent).
 pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bool {
@@ -1777,6 +1815,12 @@ pub(crate) fn pathfind(
             }
             p
         });
+        // `MoveToTargetSink`: a path that does not reach its target starts the clock of the unreachable, one that does clears it.
+        if path.as_ref().is_some_and(|p| p.reached && !p.nodes.is_empty()) {
+            nav.cant_reach_since = 0;
+        } else if nav.cant_reach_since == 0 {
+            nav.cant_reach_since = now.max(1);
+        }
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -2361,10 +2405,19 @@ pub(crate) fn travel(
         }
         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
         if rest && !following {
-            // Removing a component from the entity itself commutes across entities: no need of the ordered buffer.
-            plain.command_scope(|mut cmd| {
-                cmd.entity(e).remove::<Moving>();
-            });
+            // Not commutative across threads: the entity takes the last row of the table it lands in (or the swap of a sparse set), and the
+            // systems that walk it see that order. A parallel visit therefore sorts by emitter; the sequential visit is already in order, and
+            // the ordered buffer costs a queue per entity (measured: zombie chase clear +10k instr per tick).
+            // The path budget takes "the first of the queue in the table order": it needs the same order as the parallel run, so it is ordered too.
+            if cfg.parallel || cfg.path_budget > 0 {
+                par.command_scope(e, |mut cmd| {
+                    cmd.entity(e).remove::<Moving>();
+                });
+            } else {
+                plain.command_scope(|mut cmd| {
+                    cmd.entity(e).remove::<Moving>();
+                });
+            }
         }
     };
     if cfg.parallel {
@@ -2580,7 +2633,8 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>)>,
+    species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
@@ -2592,12 +2646,12 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid)) = q.get_mut(e) else {
             continue;
         };
         let now = clock.of(e);
         let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
-        let applied = if cooldown {
+        let mut applied = if cooldown {
             if hit.amount <= hurt.last {
                 continue;
             }
@@ -2605,6 +2659,11 @@ pub(crate) fn apply_damage(
         } else {
             hit.amount
         };
+        // `LivingEntity.getDamageAfterArmorAbsorb`: what the worn armor stops, unless the hurt is in `#bypasses_armor`.
+        if crate::equipment::armor_applies(hit.cause) {
+            let (a, t) = armor.map_or_else(|| sid.map_or((0.0, 0.0), |s| crate::equipment::base_armor(&species.0[s.0 as usize])), |a| (a.armor, a.toughness));
+            applied = crate::equipment::absorb(applied, a, t);
+        }
         *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;
         if h.0 <= 0.0 {
@@ -2614,6 +2673,7 @@ pub(crate) fn apply_damage(
             // What it leaves on the ground (`LivingEntity.die`), then it goes.
             commands.queue(move |w: &mut World| {
                 crate::loot::on_death(w, e);
+                crate::spawn_trial::forget(w, e);
                 if let Ok(mut m) = w.get_entity_mut(e) {
                     m.despawn();
                 }
@@ -2622,6 +2682,7 @@ pub(crate) fn apply_damage(
         }
         hurts.0.push(e);
         events.hurt.push(e);
+        events.vibration.push(crate::behaviours::vibration_listen::Vibration { pos: [pos.0.x, pos.0.y, pos.0.z], source: hit.by, owner: None, projectile: false });
         if hit.by.is_some() {
             events.hurt_by_entity.push(e);
         }
@@ -2640,12 +2701,9 @@ pub(crate) fn apply_damage(
         if let Some(who) = hit.by {
             commands.entity(e).insert(LastHurtBy { who, at: clock.of(e) });
         }
-        let attacker = match hit.by {
-            Some(crate::targeting::Who::Entity(a)) => Some(a),
-            _ => None,
-        };
+        let (who, direct) = (hit.by, hit.direct);
         commands.queue(move |w: &mut World| {
-            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, attacker });
+            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct });
             crate::despawn::touch(w, e);
         });
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
@@ -3437,6 +3495,10 @@ pub(crate) fn due(
             Due::OrbCheck(t) => commands.queue(move |w: &mut World| crate::orb::check_due(w, e, t)),
             Due::ItemCheck(t) => commands.queue(move |w: &mut World| crate::item::check_due(w, e, t)),
             Due::BrainWake => commands.queue(move |w: &mut World| crate::brain::wake(w, e)),
+            Due::Call(i) => commands.queue(move |w: &mut World| {
+                let f = w.resource::<Callbacks>().0[usize::from(i)];
+                f(w, e);
+            }),
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
@@ -3663,7 +3725,7 @@ impl Herd {
     pub fn set_online(&mut self, players: &[(f64, f64)]) {
         self.world.resource_mut::<crate::hostile::PlayerState>().immortal = true;
         for (i, p) in players.iter().enumerate() {
-            self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0 });
+            self.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: i as u32 + 1, x: p.0, y: 1.0, z: p.1, main: 0, off: 0, ..Default::default() });
         }
     }
     /// Day or night for the monsters that burn in daylight (`monsters_burn`): every one of them looks at the sun again.
@@ -3977,7 +4039,7 @@ mod tests {
     /// two kinds push each other, and they do not breed with each other.
     #[test]
     fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
-        use crate::goals::{CARROT, Online, Panic, Player, Tempting, WHEAT, feed};
+        use crate::goals::{carrot, Online, Panic, Player, Tempting, wheat, feed};
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
@@ -3998,12 +4060,12 @@ mod tests {
         let tempted = |herd: &mut Herd, id: u8| {
             all.iter().filter(|a| a.1 == id && herd.world.get::<Tempting>(a.0).is_some()).count()
         };
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: CARROT, off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: carrot(), off: 0, ..Default::default() });
         for _ in 0..8 {
             herd.tick();
         }
         let (cows_c, pigs_c) = (tempted(&mut herd, 0), tempted(&mut herd, 1));
-        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: WHEAT, off: 0 });
+        herd.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: wheat(), off: 0, ..Default::default() });
         for _ in 0..8 {
             herd.tick();
         }
@@ -4425,3 +4487,5 @@ pub(crate) fn watch_out<const K: usize>(mut world: bevy_ecs::world::DeferredWorl
         idx.watch_remove(ctx.entity, K, cell);
     }
 }
+
+pub use crate::cow_helpers::*;

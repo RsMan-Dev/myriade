@@ -128,9 +128,9 @@ fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 fn tempt_item() -> (u32, &'static str) {
     match species().name {
-        "minecraft:pig" => (CARROT, "minecraft:carrot"),
-        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
-        _ => (WHEAT, "minecraft:wheat"),
+        "minecraft:pig" => (carrot(), "minecraft:carrot"),
+        "minecraft:chicken" => (wheat_seeds(), "minecraft:wheat_seeds"),
+        _ => (wheat(), "minecraft:wheat"),
     }
 }
 fn have_data() -> bool {
@@ -314,7 +314,7 @@ fn wheat_tempts_as_it_does_a_mob() {
     // Player 9.5 blocks from the first cow, 10.5 blocks from the second.
     let at = Vec3::new(-1.0, 1.0, 0.5);
     let mut p = player_view(at, Some(tempt_item().1));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     for _ in 0..6 {
         r.step(Some(&p));
         h.tick();
@@ -342,13 +342,13 @@ fn wheat_tempts_as_it_does_a_mob() {
     assert!((md - cd).abs() < 0.8, "stop distance");
     // Wheat away for 4 ticks, then back: the ticks until the goal runs again.
     p.main_hand = None;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..4 {
         r.step(Some(&p));
         h.tick();
     }
     p.main_hand = Some(tempt_item().1.into());
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     let (mut mc, mut cc) = (None, None);
     for t in 1..=200 {
         r.step(Some(&p));
@@ -473,7 +473,7 @@ fn looking_goals_start_as_often_as_a_mob_s() {
             cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 700 + cows.len() as u64)));
         }
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0, ..Default::default() });
     arm_all(&mut h.world);
     let p = player_view(Vec3::new(0.0, 1.0, 0.0), None);
     let mut seen = vec![[false; 4]; cows.len()];
@@ -906,6 +906,11 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
             h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
             horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
         }
+        if r.mobs[mobs[0]].extra.warden.is_some() {
+            // The Mob decides by a brain (activities), with no goal selector: there is no RandomLookAround to compare with.
+            eprintln!("SKIP: {name}: the Mob is brain-driven, it has no RandomLookAround goal");
+            return;
+        }
         let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
         let (mut seen_m, mut seen_e) = (vec![Vec::new(); 40], vec![Vec::new(); 40]);
         for _ in 0..1200 {
@@ -1029,7 +1034,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         return;
     }
     let (mut r, mut h) = flat_pair();
-    if species().name != "minecraft:pig" {
+    if process_species_name() != "minecraft:pig" {
         return;
     }
     let mi = r.add(Vec3::new(-6.5, 1.0, 0.5));
@@ -1040,7 +1045,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
     let mut t = 0;
     let mut set = |r: &mut Ref, h: &mut Herd, p: &mut PlayerView, held: Option<(&str, u32)>, ticks: usize, t: &mut i64, log: &mut Vec<(i64, bool, Option<u8>)>| {
         p.main_hand = held.map(|x| x.0.into());
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0, ..Default::default() });
         for _ in 0..ticks {
             r.step(Some(p));
             h.tick();
@@ -1049,8 +1054,8 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         }
     };
     let mut log = Vec::new();
-    let stick = Some(("minecraft:carrot_on_a_stick", CARROT_ON_A_STICK));
-    let carrot = Some(("minecraft:carrot", CARROT));
+    let stick = Some(("minecraft:carrot_on_a_stick", carrot_on_a_stick()));
+    let carrot = Some(("minecraft:carrot", carrot()));
     set(&mut r, &mut h, &mut p, stick, 10, &mut t, &mut log);
     let stopped_at = t;
     set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);

@@ -18,3 +18,12 @@ parrot ## flies (fly_stroll) most of the time: a flier moves each tick; ECS 233 
 frog ## the long jump's search, as the Mob does it: a start with no wish for a preferred block tries every one of the 404 candidates of the box and each acceptable one runs a path search of 8 blocks (frog.rs:860-866); the same search is not repeated from a block that found nothing for 600 ticks (long_jump FUTILE_FOR), amortised ~29 000 instr per creature and tick on bare ground; the Mob pays the same searches at each start
 goat ## the same search over a box of 11 x 11 x 11 (1 330 candidates) at each start of its long jump while the ram cools down, cached 600 ticks per block when nothing is found; the ram's wake is an event (no polling) but the navigation check still asks again at +2
 nautilus ## swims every tick (reindex and push of a mover, 1 000 instr each per creature and tick, as the dolphin and the axolotl); the charge itself is rare
+wither ## a flier that moves all the time: apply_deferred 66 % of the rest cost (the commands of its fly moves), fly 18 %, arbitrate 8.5 % (prof_bench idle 2000, 2026-11-20); not fixed
+piglin ## arbitrate carries 99.6 % of the rest cost (the goal set is large and every goal is asked at its cadence); not fixed (prof_bench idle, 2026-11-20)
+villager ## brain_step carries 99.1 % of the rest cost (the brain steps: 10 557 instr per villager and tick, 2 000 villagers); not fixed (prof_bench idle, 2026-11-20)
+fox ## arbitrate carries 79 % of the rest cost (481 per creature and tick); not fixed (prof_bench idle, 2026-11-20)
+witch ## arbitrate carries 94 % of the rest cost (1 535 per creature and tick); not fixed (prof_bench idle, 2026-11-20)
+guardian ## swims every tick (travel 27 %, reindex 16 %, arbitrate 14 % of 1 209 per creature and tick): a mover, as the dolphin
+elder_guardian ## swims every tick (travel 40 %, reindex 21 %, push 15 % of 3 327 per creature and tick): a mover, as the guardian
+happy_ghast ## flies all the time (arbitrate 26 %, travel 26 %, reindex 23 % of 4 978 per creature and tick): a mover, as the ghast
+sulfur_cube ## moves all the time (travel 41 %, reindex 17 %, push 16 % of 2 115 per creature and tick): a mover

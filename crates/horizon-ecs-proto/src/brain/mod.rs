@@ -423,6 +423,14 @@ pub fn start(w: &mut World, e: Entity) {
     arm(w, e);
     wake(w, e);
 }
+/// Starts the instances of behaviour `b` again on `e` (the host changed what they read) and wakes the brain.
+pub fn restart(w: &mut World, e: Entity, b: &'static Behaviour) {
+    let Some(plan) = w.get::<Brain>(e).map(|x| x.plan) else { return };
+    for (id, inst) in plan.insts.iter().enumerate().filter(|(_, i)| std::ptr::eq(i.b, b)) {
+        (b.start)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params });
+    }
+    wake(w, e);
+}
 /// What a sensor is given: its place in the plan (`nth` among the entries of the same sensor) and its parameters.
 fn sensor_ctx(plan: &Plan, i: usize) -> Ctx {
     let nth = plan.sensors[..i].iter().filter(|s| std::ptr::eq(s.sensor, plan.sensors[i].sensor)).count() as u8;
@@ -584,6 +592,14 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     update_activity(w, e, plan);
+    // The activity changed: what runs for the previous one stops (`Brain.setActiveActivity` stops the behaviours that are not in
+    // the new activity's list).
+    for &id in &plan.order {
+        let inst = &plan.insts[id as usize];
+        if running(w, e, id) && !active(w, e, inst.act) {
+            do_stop(w, e, plan, id);
+        }
+    }
     any = plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && running(w, e, i as u16));
     if any {
         wake(w, e);

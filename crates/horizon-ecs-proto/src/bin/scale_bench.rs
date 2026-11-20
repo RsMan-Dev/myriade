@@ -137,7 +137,7 @@ fn main() {
             } else {
                 for i in 0..npl {
                     let (x, z) = spot(i);
-                    herd.world.resource_mut::<Online>().set(Player { id: i as u32, x, y: 1.0, z, main: if i < holders { hold_item } else { 0 }, off: 0 });
+                    herd.world.resource_mut::<Online>().set(Player { id: i as u32, x, y: 1.0, z, main: if i < holders { hold_item } else { 0 }, off: 0, ..Default::default() });
                 }
             }
         }
@@ -190,7 +190,7 @@ fn main() {
                 let (x, z) = spot(i);
                 let phase = ((t / 100 + i) % 2) as f64 * 2.0 - 1.0;
                 let dx = ((t % 100) as f64 * 0.1 - 5.0) * phase;
-                herd.world.resource_mut::<Online>().set(Player { id: i as u32, x: x + dx, y: 1.0, z, main: hold_item, off: 0 });
+                herd.world.resource_mut::<Online>().set(Player { id: i as u32, x: x + dx, y: 1.0, z, main: hold_item, off: 0, ..Default::default() });
             }
             if t % 50 == 10 && t >= 50 {
                 for _ in 0..hurt {

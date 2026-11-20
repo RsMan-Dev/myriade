@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -118,7 +118,7 @@ fn has_shelter(w: &World, e: Entity, mw: &MobWorld) -> bool {
 /// `Fox.alertable`: a creature that is not a fox within 12 blocks (|dy| <= 6), or a player alive, not creative, not
 /// spectator, not sneaking, within `max(12 x visibility, 2)` blocks. A creature of the fox's own species is no alarm (the
 /// `Mob` says `Species::Fox`); every other one counts as untamed (no tame state here).
-fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
+pub(super) fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
     let mut near = Vec::new();
     w.resource::<Index>().for_radius(p.x, p.z, 12.0, |c| near.push(c));
     let creature = near.into_iter().any(|c| {
@@ -160,8 +160,10 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     let next = with_rng(w, e, |r| r.next_int(asks));
     countdown(w, e, inst.slot, next);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_on_day, sleep_run).in_set(slot));
+/// The tick of the module, run only while a fox that sleeps lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, wake_on_day);
+    sleep_run(w);
 }
 /// The day came or went: the foxes waiting for their countdown look at the conditions again.
 fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleeping>>, mut reqs: ResMut<Requests>) {
@@ -172,8 +174,8 @@ fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleepin
     }
 }
 /// A sleeping fox, on its selector ticks: it ends when it can no longer sleep (day gone, shelter gone, someone near).
-fn sleep_run(w: &mut World, q: &mut QueryState<Entity, With<Sleeping>>) {
-    let list: Vec<Entity> = q.iter(w).collect();
+fn sleep_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Sleeping>>(w);
     for e in list {
         let Some(slot) = w.get::<SleepDef>(e).map(|d| d.slot) else { continue };
         if fs::selector_tick(w, e) && !can_sleep(w, e) {

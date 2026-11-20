@@ -50,7 +50,7 @@ fn scene(at: Vec3, player: Vec3, main: Option<(&str, u32)>, water: bool) -> Scen
     if let Some((_, id)) = main {
         h.world.entity_mut(ecs).insert(Equipment { main: id, ..Default::default() });
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<PlayerState>().immortal = true;
     set_target(&mut h.world, ecs, Target::player(1, 30));
     Scene { r, h, mob, ecs, seen: Default::default(), hits_seen: 0, magic: if is("minecraft:elder_guardian") { 3.0 } else { 1.0 }, trace: Vec::new() }
@@ -123,7 +123,7 @@ fn the_pillager_shoots_its_crossbow_as_a_mob_does() {
     if !is("minecraft:pillager") {
         return;
     }
-    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:crossbow", CROSSBOW)), false);
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:crossbow", crossbow())), false);
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
     let mut v = Vec::new();
     let mut last_phase = String::new();
@@ -248,7 +248,7 @@ fn the_drowned_throws_its_trident_as_a_mob_does() {
     if !is("minecraft:drowned") {
         return;
     }
-    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:trident", TRIDENT)), false);
+    let mut s = scene(Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5), Some(("minecraft:trident", trident())), false);
     let view = player_view(Vec3::new(10.5, 1.0, 0.5), None);
     let v = run(&mut s, &view, 200);
     let (m, e) = (at(&v, |t| t.mob_shot > 0), at(&v, |t| t.ecs_shot > 0));
@@ -363,7 +363,7 @@ fn the_pillager_with_the_same_delays_shoots_to_the_tick() {
     }
     let (at_, to) = (Vec3::new(0.5, 1.0, 0.5), Vec3::new(10.5, 1.0, 0.5));
     let view = player_view(to, None);
-    let mut s = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+    let mut s = scene(at_, to, Some(("minecraft:crossbow", crossbow())), false);
     let v = run(&mut s, &view, 200);
     let m = at(&v, |t| t.mob_shot > 0);
     let tick_of = |s: &Scene, f: &dyn Fn(&str) -> bool| -> Vec<i64> { s.trace.iter().filter(|(_, d)| f(d)).map(|(t, _)| *t).collect() };
@@ -374,7 +374,7 @@ fn the_pillager_with_the_same_delays_shoots_to_the_tick() {
     let field = |st: &str, name: &str| -> i64 { st.split(name).nth(1).and_then(|x| x.trim_start_matches(": ").split(',').next()).and_then(|x| x.trim().parse().ok()).unwrap_or(-1) };
     let mut found = None;
     'seeds: for seed in 1..=60_000u64 {
-        let mut e = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+        let mut e = scene(at_, to, Some(("minecraft:crossbow", crossbow())), false);
         e.h.world.get_mut::<Rng>(e.ecs).unwrap().0 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
         let (mut last, mut delays, mut start, mut shots) = (String::new(), Vec::new(), 0, Vec::new());
         for t in 1..=200i64 {
@@ -414,7 +414,7 @@ fn the_pillager_with_the_same_delays_shoots_to_the_tick() {
     assert_eq!(m[1] - m[0], e[1] - e[0], "period: mob {m:?}, ecs {e:?}");
     // The start of the charge moves with the seed (walk-in, `path_delay`): some ECS seed starts it on the Mob's tick.
     let starts_at = (1..=3000u64).find_map(|seed| {
-        let mut e = scene(at_, to, Some(("minecraft:crossbow", CROSSBOW)), false);
+        let mut e = scene(at_, to, Some(("minecraft:crossbow", crossbow())), false);
         e.h.world.get_mut::<Rng>(e.ecs).unwrap().0 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
         (1..=60i64).find(|_| {
             e.h.tick();

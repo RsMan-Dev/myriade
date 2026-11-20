@@ -43,9 +43,9 @@ fn cost_of_a_turtle_with_an_egg_and_no_sand() {
     let all: Vec<_> = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).collect();
     let es: Vec<_> = all.into_iter().filter(|e| h.world.get::<ActiveUntil>(*e).is_some()).collect();
     for e in &es {
-        turtle_state::update(&mut h.world, *e, |t| t.has_egg = true);
+        h.world.entity_mut(*e).insert(horizon_ecs_proto::behaviours::lay_egg::Carrying);
         h.world.get_mut::<ActiveUntil>(*e).unwrap().0 = u64::MAX;
-        wake(&mut h.world, *e, &turtle_lay_egg::MODULE);
+        horizon_ecs_proto::behaviours::lay_egg::load(&mut h.world, *e);
     }
     for _ in 0..200 {
         h.tick();
@@ -100,7 +100,7 @@ fn a_wolf_hit_by_a_player_takes_him_again_while_it_is_angry() {
     h.world.get_mut::<ActiveUntil>(wolf).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
     let p = h.world.get::<Pos>(wolf).unwrap().0;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x + 6.0, y: p.y, z: p.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x + 6.0, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..5 {
         h.tick();
     }
@@ -112,7 +112,7 @@ fn a_wolf_hit_by_a_player_takes_him_again_while_it_is_angry() {
     assert!(h.world.get::<horizon_ecs_proto::targeting::Target>(wolf).is_some(), "witness: the hit gives the wolf its target");
     // The player runs away: the target ends by its range (a real loss: the goal that held it ends too).
     let q = h.world.get::<Pos>(wolf).unwrap().0;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: q.x + 100.0, y: q.y, z: q.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: q.x + 100.0, y: q.y, z: q.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..40 {
         h.tick();
     }
@@ -122,7 +122,7 @@ fn a_wolf_hit_by_a_player_takes_him_again_while_it_is_angry() {
         h.tick();
         again |= h.world.get::<horizon_ecs_proto::targeting::Target>(wolf).is_some();
         let q = h.world.get::<Pos>(wolf).unwrap().0;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: q.x + 6.0, y: q.y, z: q.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: q.x + 6.0, y: q.y, z: q.z, main: 0, off: 0, ..Default::default() });
     }
     assert!(again, "the angry wolf takes the player again");
 }

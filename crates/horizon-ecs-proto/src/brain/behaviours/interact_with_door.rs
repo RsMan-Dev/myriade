@@ -111,8 +111,15 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
         s.doors = doors;
     }
     for (door, open) in changes {
-        if let Some(id) = door_with_open(mw, door, open) {
-            blocks::set_state_id(w, door, id);
+        // The other half takes the `open` of this one (`DoorBlock.updateShape` copies it from the neighbour half).
+        let other = if blocks::property(mw, door, "half").as_deref() == Some("upper") { -1 } else { 1 };
+        for p in [door, [door[0], door[1] + other, door[2]]] {
+            if door_open(mw, p).is_none() {
+                continue;
+            }
+            if let Some(id) = door_with_open(mw, p, open) {
+                blocks::set_state_id(w, p, id);
+            }
         }
     }
 }

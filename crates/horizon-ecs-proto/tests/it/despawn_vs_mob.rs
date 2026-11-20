@@ -11,7 +11,7 @@ fn have() -> bool {
     std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
 }
 fn player(h: &mut Herd, x: f64, z: f64) {
-    h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z, main: 0, off: 0, ..Default::default() });
 }
 fn zombie() -> Species {
     species_table().0.iter().find(|s| s.name == "minecraft:zombie").copied().unwrap()

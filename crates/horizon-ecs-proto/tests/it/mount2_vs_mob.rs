@@ -29,7 +29,7 @@ fn run(ticks: u32, preroll: u32, boost: Option<(u32, u32)>, f: impl Fn(u32) -> (
     let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 31_337);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let view = player_view(Vec3::new(0.5, 1.0, 0.5), None);
     for _ in 0..preroll {
         r.step(Some(&view));
@@ -39,7 +39,9 @@ fn run(ticks: u32, preroll: u32, boost: Option<(u32, u32)>, f: impl Fn(u32) -> (
     let at = r.mobs[i].position;
     h.world.get_mut::<Pos>(e).unwrap().0 = at;
     r.mobs[i].extra.set_saddled(true);
-    h.world.get_mut::<Mount>(e).unwrap().saddled = true;
+    // The saddle goes in its slot; `Mount.saddled` follows.
+    horizon_ecs_proto::equipment::set_slot(&mut h.world, e, horizon_ecs_proto::goals::Slot::Saddle, saddle());
+    assert!(h.world.get::<Mount>(e).unwrap().saddled);
     assert!(ride(&mut h.world, e, Who::Player(1)));
     let mut worst = 0.0_f64;
     for t in 1..=ticks {
@@ -86,7 +88,7 @@ fn a_pig_without_the_stick_is_not_steered() {
     let mut h = Herd::with_slab(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     h.world.get_mut::<Mount>(e).unwrap().saddled = true;
     assert!(ride(&mut h.world, e, Who::Player(1)));
     for _ in 0..40 {
@@ -126,7 +128,7 @@ fn a_camel_carries_two_and_the_second_does_not_steer() {
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
     for id in 1..=3 {
-        h.world.resource_mut::<Online>().set(Player { id, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     }
     assert!(ride(&mut h.world, e, Who::Player(1)));
     assert!(ride(&mut h.world, e, Who::Player(2)), "the second seat");
@@ -156,7 +158,7 @@ fn a_skeleton_steers_its_spider_to_its_target() {
     let spider = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     let skel = spawn_species(&mut h.world, &sk, 0.5, 0.5, 6);
     h.world.resource_mut::<Entered>().0.extend([spider, skel]);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 14.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 14.5, main: 0, off: 0, ..Default::default() });
     for _ in 0..5 {
         h.tick();
     }
@@ -164,7 +166,7 @@ fn a_skeleton_steers_its_spider_to_its_target() {
     assert!(is_occupied(&h.world, spider, OCC_MOUNTED));
     assert_eq!(nav_owner(&h.world, skel), spider, "the walks of the rider are the mount's");
     assert_eq!(nav_owner(&h.world, spider), spider);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 14.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 14.5, main: 0, off: 0, ..Default::default() });
     horizon_ecs_proto::targeting::set_target(&mut h.world, skel, Target::new(Who::Player(1), 20, u8::MAX));
     let start = h.world.get::<Pos>(spider).unwrap().0;
     let mut worst_seat = 0.0_f64;

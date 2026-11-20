@@ -110,7 +110,7 @@ mod tests {
     fn a_creaking_stops_when_its_player_leaves_the_visible_list() {
         let mut h = Herd::with_slab(40, true, false);
         let e = brained(&mut h, &CREAK);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         aim(&mut h, e, Who::Player(1));
         set(&mut h.world, e, &NEAREST_VISIBLE_TARGETABLE_PLAYERS, MemValue::Whos(vec![Who::Player(1)]), None);
         step(&mut h, e);
@@ -142,7 +142,7 @@ mod tests {
     fn it_stops_on_a_creative_player() {
         let mut h = Herd::with_slab(40, true, false);
         let e = brained(&mut h, &DEFAULT);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         aim(&mut h, e, Who::Player(1));
         step(&mut h, e);
         assert!(has_target(&h, e), "témoin : un joueur en survie reste cible");

@@ -17,7 +17,7 @@ fn a_bee_pollinates_a_flower_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let n = 16;
@@ -90,7 +90,7 @@ fn a_bee_with_nectar_goes_into_its_hive_and_comes_out() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let (_r, mut h) = flat_pair();
@@ -130,7 +130,7 @@ fn the_mobs_first_search_of_a_flower() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     for z in -2..=1 {
@@ -158,7 +158,7 @@ fn a_removed_hive_lets_its_bees_out() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let (_r, mut h) = flat_pair();
@@ -189,7 +189,7 @@ fn an_angry_bee_stings_once_and_is_spent() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let (_r, mut h) = flat_pair();
@@ -247,7 +247,7 @@ fn the_poison_of_a_sting_follows_the_difficulty() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     for (id, seconds) in [(1_u8, 0_u64), (2, 10), (3, 18)] {
@@ -284,7 +284,7 @@ fn a_refused_sting_is_given_back() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let (mut h, e, foe) = angry_pair(3700);
@@ -319,7 +319,7 @@ fn the_time_in_a_hive_ages_and_calms_a_bee() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:bee" {
+    if process_species_name() != "minecraft:bee" {
         return;
     }
     let (_r, mut h) = flat_pair();

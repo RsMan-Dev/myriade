@@ -12,6 +12,7 @@ pub static DEF: Def = Def {
     changes: &[
         Change::Add(Section::Goals, Entry::new(&restrict_sun::MODULE, 2, &restrict_sun::Params)),
         Change::Add(Section::Goals, Entry::new(&ranged_bow::MODULE, 4, &ranged_bow::Params { interval: 40, ..ranged_bow::Params::DEFAULT })),
+        Change::Add(Section::Goals, Entry::new(&crate::behaviours::pick_up_gear::MODULE, 255, &crate::behaviours::pick_up_gear::Params { refuses: &["#minecraft:spears"], preferred_weapons: Some("minecraft:skeleton_preferred_weapons"), ..crate::behaviours::pick_up_gear::Params::DEFAULT })),
         Change::Add(Section::Goals, Entry::new(&flee_sun::MODULE, 3, &flee_sun::Params { speed: 1.0 })),
         Change::Add(
             Section::Goals,

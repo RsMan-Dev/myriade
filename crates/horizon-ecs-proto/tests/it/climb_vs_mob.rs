@@ -12,7 +12,7 @@ fn a_spider_climbs_a_wall_to_a_target_above_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:spider" {
+    if process_species_name() != "minecraft:spider" {
         return;
     }
     let starts = [(0.5, 1.0, 0.5), (-3.5, 1.0, 2.5), (1.5, 1.0, -3.5), (-1.5, 1.0, 4.5)];

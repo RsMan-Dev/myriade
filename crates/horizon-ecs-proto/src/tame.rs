@@ -61,7 +61,7 @@ fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Intera
         }
         Some(_) => false,
         None => {
-            if !p.items.iter().any(|n| item_id(n) == i.item) {
+            if !p.items.iter().any(|n| crate::items::is(n, i.item)) {
                 return false;
             }
             if with_rng(w, e, |r| r.next_int(p.chance)) == 0 {

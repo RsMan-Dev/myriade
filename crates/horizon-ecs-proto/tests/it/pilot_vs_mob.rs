@@ -207,7 +207,7 @@ fn avoid_run(o: &AvOpt) -> AvOut {
             ecs_with(&mut h, none, 0.5 + o.dist, 0.5, 8);
         }
         if t == APPEAR && !o.species {
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + o.dist, y: 1.0, z: 0.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + o.dist, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         }
         h.tick();
         if t >= rec0 {
@@ -382,7 +382,7 @@ fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
         let mut ran = false;
         for k in 0..80 {
             if k == 30 {
-                h.world.resource_mut::<Online>().set(Player { id: 1, x: -15.0, y: 1.0, z: 15.0, main: 0, off: 0 });
+                h.world.resource_mut::<Online>().set(Player { id: 1, x: -15.0, y: 1.0, z: 15.0, main: 0, off: 0, ..Default::default() });
             }
             h.tick();
             ran |= h.world.get::<GoalSet>(e).unwrap().is_running(&avoid_entity::MODULE) && h.world.get::<Nav>(e).unwrap().path.is_some();
@@ -421,7 +421,7 @@ fn spot_law(grass: bool) {
     for _ in 0..20 {
         h.tick();
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: -3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: -3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     h.tick();
     let inst = Inst { slot: 0, nth: 0 };
     let mut ecs: Vec<(i32, i32)> = Vec::new();

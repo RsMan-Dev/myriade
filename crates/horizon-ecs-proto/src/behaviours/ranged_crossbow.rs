@@ -71,7 +71,7 @@ fn tick(w: &mut World) {
 /// `holding_crossbow` (`illager.rs:491`): the main hand holds a crossbow. An entity with no equipment at all is supposed to hold one (no species
 /// is given its spawn gear yet: `finalize.rs:1506` gives the pillager's crossbow), see `suivi/ecs-ecarts.md`.
 fn holds(eq: Option<&Equipment>) -> bool {
-    eq.is_none_or(|q| q.main == CROSSBOW)
+    eq.is_none_or(|q| q.main == crate::goals::crossbow())
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     holds(w.get::<Equipment>(e)) && w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some_and(|i| !i.exempt))

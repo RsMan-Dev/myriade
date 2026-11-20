@@ -250,7 +250,7 @@ mod tests {
         let mut ps = h.world.resource_mut::<crate::hostile::PlayerState>();
         ps.set_gaze(0, gaze);
         drop(ps);
-        h.world.resource_mut::<Online>().set(Player { id: 0, x: px, y: py, z: pz, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 0, x: px, y: py, z: pz, main: 0, off: 0, ..Default::default() });
     }
     fn running(h: &Herd, e: Entity) -> bool {
         h.world.get::<GoalSet>(e).unwrap().is_running(&MODULE)

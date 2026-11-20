@@ -10,6 +10,14 @@ pub enum HostEvent {
     SetBlock { pos: [i32; 3], state: BlockStateId },
     Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32 },
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
+    /// A velocity added to a player (`MobEvent::Push`).
+    /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
+    EntityEvent { entity: bevy_ecs::entity::Entity, code: u8 },
+    /// `Warden.applyDarknessAround`: darkness for the survival players within `radius` of `at`.
+    Darkness { at: [f64; 3], radius: f64 },
+    /// A boss bar of entity `id`: its progress (0..1) and colour; `remove` closes it.
+    BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
+    PushPlayer { player: u32, velocity: [f64; 3] },
     ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
 }
 
@@ -23,6 +31,15 @@ impl HostOut {
     pub fn set_block(&mut self, pos: [i32; 3], state: BlockStateId) {
         self.out.push(HostEvent::SetBlock { pos, state });
     }
+    pub fn darkness(&mut self, at: [f64; 3], radius: f64) {
+        self.out.push(HostEvent::Darkness { at, radius });
+    }
+    pub fn boss_bar(&mut self, id: u32, name: &'static str, progress: f32, color: u8) {
+        self.out.push(HostEvent::BossBar { id, name, progress, color, remove: false });
+    }
+    pub fn boss_bar_remove(&mut self, id: u32) {
+        self.out.push(HostEvent::BossBar { id, name: "", progress: 0.0, color: 0, remove: true });
+    }
     /// `MobEvent::Sound(name, at, volume, pitch)`.
     pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
         self.out.push(HostEvent::Sound { name, at, volume, pitch });
@@ -30,6 +47,12 @@ impl HostOut {
     /// `MobEvent::LevelParticles`.
     pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {
         self.out.push(HostEvent::Particles { kind, at, spread, speed, count });
+    }
+    pub fn entity_event(&mut self, entity: bevy_ecs::entity::Entity, code: u8) {
+        self.out.push(HostEvent::EntityEvent { entity, code });
+    }
+    pub fn push_player(&mut self, player: u32, velocity: [f64; 3]) {
+        self.out.push(HostEvent::PushPlayer { player, velocity });
     }
     /// `MobEvent::ParrotToShoulder`: the host puts the creature on the player's shoulder and removes it.
     pub fn shoulder(&mut self, parrot: bevy_ecs::entity::Entity, player: u32) {

@@ -3,6 +3,8 @@
 use crate::behaviours::Pred;
 use crate::cow::{Bounds, Burning, Contact, FluidState, GrowAt, Index, Pos, SpeciesId};
 use crate::hostile::Daylight;
+pub use crate::behaviours::Cond;
+use crate::goals::{Online, Slot};
 
 /// `horizon:is_baby`: it has not grown up yet.
 fn is_baby(w: &World, e: Entity) -> bool {
@@ -98,13 +100,52 @@ fn polar_bear_cub_nearby(w: &World, e: Entity) -> bool {
     });
     found
 }
+/// `horizon:holds_crossbow` (`hasCrossbow`): a crossbow in the main hand.
+fn holds_crossbow(w: &World, e: Entity) -> bool {
+    crate::items::item_name(crate::goals::equipped(w, e, Slot::Main)) == Some("minecraft:crossbow")
+}
+/// `horizon:hostile_to_player` (`piglin.rs` `hostile_to_player`): not a baby, and either angry, or a player within 16 blocks
+/// (the follow range) wears no gold armor. The armor is read on the player (`equipment::worn_by_player`).
+fn hostile_to_player(w: &World, e: Entity) -> bool {
+    if w.get::<GrowAt>(e).is_some() {
+        return false;
+    }
+    if crate::behaviours::neutral_anger::is_angry(w, e) {
+        return true;
+    }
+    let (Some(p), Some(online)) = (w.get::<Pos>(e), w.get_resource::<Online>()) else { return false };
+    let mut found = false;
+    online.for_near(p.0.x, p.0.z, 16.0, |pl| {
+        found |= !([Slot::Head, Slot::Chest, Slot::Legs, Slot::Feet].into_iter().any(|s| is_gold_armor(crate::equipment::worn_by_player(w, pl.id, s))));
+    });
+    found
+}
+fn is_gold_armor(id: u32) -> bool {
+    matches!(crate::items::item_name(id), Some("minecraft:golden_helmet" | "minecraft:golden_chestplate" | "minecraft:golden_leggings" | "minecraft:golden_boots"))
+}
 /// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`. The ECS has no coats yet: no animal is one (DOUTE: a coat component).
 fn rabbit_killer(_: &World, _: Entity) -> bool {
     false
 }
 use bevy_ecs::prelude::*;
 
+/// `pose:can_bite`: not sitting, sleeping, crouching nor faceplanted (the fox's melee). DOUTE: read from the notes, not from the Mob.
+fn pose_can_bite(w: &World, e: Entity) -> bool {
+    use crate::behaviours::fox_state as f;
+    !f::has(w, e, f::SITTING | f::SLEEPING | f::CROUCHING | f::FACEPLANTED)
+}
+/// `pose:look_free`: neither faceplanted nor interested (the fox's look and stalk). DOUTE: same.
+fn pose_look_free(w: &World, e: Entity) -> bool {
+    use crate::behaviours::fox_state as f;
+    !f::has(w, e, f::FACEPLANTED | f::INTERESTED)
+}
+
 pub static BUILTIN: &[(&str, Pred)] = &[
+    ("minecraft:hoglin_retreating", crate::species::hoglin::retreating),
+    ("minecraft:hoglin_pacified", crate::species::hoglin::pacified),
+    ("variant:snow", crate::behaviours::variant::is_snow),
+    ("pose:can_bite", pose_can_bite),
+    ("pose:look_free", pose_look_free),
     ("horizon:is_baby", is_baby),
     ("horizon:is_adult", is_adult),
     ("horizon:is_day", is_day),
@@ -128,6 +169,8 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("bee:can_target", bee_can_target),
     ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
+    ("horizon:holds_crossbow", holds_crossbow),
+    ("horizon:hostile_to_player", hostile_to_player),
 ];
 
 #[cfg(test)]
