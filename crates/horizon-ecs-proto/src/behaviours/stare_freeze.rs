@@ -36,7 +36,7 @@ impl Params {
     pub const DEFAULT: Self = Self { wake_range_sqr: 144.0, dot_min: 0.5, reach: 128.0, near: 32.0, disguise: &[] };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct StareFreeze(pub Params);
+pub struct StareFreeze(pub &'static Params);
 /// `Creaking.isActive`: roused by a stare, it hunts the player.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -56,7 +56,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(StareFreeze(*params::<Params>(p)));
+    w.entity_mut(e).insert(StareFreeze(params::<Params>(p)));
 }
 /// Creation, entry into the active zone: the rule is asked once.
 fn arm(w: &mut World, e: Entity, _: Inst) {

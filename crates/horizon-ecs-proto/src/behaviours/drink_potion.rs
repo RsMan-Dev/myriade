@@ -16,7 +16,7 @@ pub enum Potion {
     Swiftness,
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Drinker(Params);
+pub struct Drinker(&'static Params);
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Drinking {
@@ -70,12 +70,12 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Drinker(*params::<Params>(p)));
+    w.entity_mut(e).insert(Drinker(params::<Params>(p)));
 }
 /// How many drinkers `tick` visited (the tests of the rest cost read it; before `Thirsty` every drinker was visited every tick).
 pub static VISITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn tick(w: &mut World) {
-    let es: Vec<(Entity, Params)> = w.query_filtered::<(Entity, &Drinker), With<Thirsty>>().iter(w).map(|(e, d)| (e, d.0)).collect();
+    let es: Vec<(Entity, &'static Params)> = w.query_filtered::<(Entity, &Drinker), With<Thirsty>>().iter(w).map(|(e, d)| (e, d.0)).collect();
     VISITS.fetch_add(es.len() as u64, std::sync::atomic::Ordering::Relaxed);
     for (e, p) in es {
         if w.get::<Health>(e).is_none_or(|h| h.0 <= 0.0) {
@@ -105,7 +105,7 @@ fn tick(w: &mut World) {
         }
     }
 }
-fn finish(w: &mut World, e: Entity, d: Drinking, p: Params) {
+fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
     match d.potion {
         Potion::WaterBreathing => {
             effects::add(w, e, Kind::WaterBreathing, 0, p.effect_ticks);

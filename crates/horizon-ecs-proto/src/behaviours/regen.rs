@@ -27,7 +27,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Regen {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     due: u64,
     asleep: bool,
@@ -44,7 +44,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     let due = now_of(w, e) + p.period;
     w.entity_mut(e).insert(Regen { p, slot: inst.slot, due, asleep: false });
     arm_at(w, e, due, Due::Goal(inst.slot));

@@ -52,7 +52,7 @@ pub enum Phase {
 /// The goal's state. `engage` counts down the use (`-1`: not engaged yet), `fleeing` the retreat (`-1`: not fleeing).
 #[derive(Component, Clone, Debug)]
 pub struct Spear {
-    pub def: Params,
+    pub def: &'static Params,
     pub slot: u8,
     pub phase: Phase,
     pub engage: i32,
@@ -93,7 +93,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     w.entity_mut(e).insert(Spear { def, slot: inst.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new(), last: Vec3::ZERO, moved: Vec3::ZERO });
 }
 /// `ableToAttack`: a target and a kinetic weapon in the main hand.

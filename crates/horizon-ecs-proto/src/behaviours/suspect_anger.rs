@@ -38,11 +38,11 @@ pub struct Suspect {
 #[derive(Component, Clone, Debug)]
 pub struct Suspects {
     pub list: Vec<Suspect>,
-    pub p: Params,
+    pub p: &'static Params,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Cfg(pub Params);
+pub struct Cfg(pub &'static Params);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
@@ -63,7 +63,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert((Suspects { list: Vec::new(), p }, Cfg(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
     w.entity_mut(e).insert_if_new(RareState::default());

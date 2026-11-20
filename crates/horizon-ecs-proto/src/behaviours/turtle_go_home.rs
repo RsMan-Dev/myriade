@@ -29,7 +29,7 @@ impl Params {
 /// The state of the goal: stuck, the ticks counted near home, whether a deadline is armed.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct GoHome {
-    pub def: Params,
+    pub def: &'static Params,
     pub stuck: bool,
     pub close_ticks: i32,
     pub armed: bool,
@@ -54,7 +54,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(GoHome { def: *params::<Params>(p), stuck: false, close_ticks: 0, armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(GoHome { def: params::<Params>(p), stuck: false, close_ticks: 0, armed: false, slot: inst.slot });
     ts::ensure(w, e);
 }
 fn is_baby(w: &World, e: Entity) -> bool {

@@ -20,7 +20,7 @@ impl Params {
     pub const DEFAULT: Self = Self { blocks: &[], species: &[], horizontal: 8.0, vertical: 4, ttl: 120 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Flee(pub Params);
+pub struct Flee(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "flee_repellent",
@@ -34,7 +34,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let f = *params::<Params>(p);
+    let f = params::<Params>(p);
     if !f.blocks.is_empty() {
         w.init_resource::<crate::block_watch::BlockWatch>();
         w.resource_scope(|w, mut bw: Mut<crate::block_watch::BlockWatch>| bw.watch(w.resource::<Level>(), f.blocks));

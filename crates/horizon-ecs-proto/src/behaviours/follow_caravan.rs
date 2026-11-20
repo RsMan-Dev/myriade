@@ -32,7 +32,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Caravan {
-    pub p: Params,
+    pub p: &'static Params,
     slot: u8,
     pick: Option<Entity>,
 }
@@ -62,7 +62,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Caravan { p: *params::<Params>(p), slot: inst.slot, pick: None });
+    w.entity_mut(e).insert(Caravan { p: params::<Params>(p), slot: inst.slot, pick: None });
 }
 /// A module tick: called only while a creature of the kind lives (no registered system: no cost without one).
 fn tick(w: &mut World) {

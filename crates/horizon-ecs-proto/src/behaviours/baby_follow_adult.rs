@@ -26,7 +26,7 @@ impl Params {
 /// et « départ fait, le chemin reste à demander » (le chemin est demandé par le système, qui a `Commands`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Follow {
-    pub params: Params,
+    pub params: &'static Params,
     pub slot: u8,
     pub adult: Option<Entity>,
     pub armed: bool,
@@ -52,7 +52,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let params = *params::<Params>(p);
+    let params = params::<Params>(p);
     w.entity_mut(e).insert(Follow { params, slot: inst.slot, adult: None, armed: false, fresh: false });
     st::ensure(w, e);
 }
@@ -134,7 +134,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         return false;
     }
     let Some(f) = w.get::<Follow>(e).copied() else { return false };
-    let p = f.params;
+    let p = *f.params;
     match nearest_adult(w, e, p).filter(|(_, d)| *d >= p.min * p.min && *d < (p.max + 1.0) * (p.max + 1.0)) {
         Some((a, _)) => {
             if let Some(mut g) = w.get_mut::<Follow>(e) {

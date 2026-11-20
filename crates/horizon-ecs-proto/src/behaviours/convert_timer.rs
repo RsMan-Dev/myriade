@@ -16,7 +16,7 @@ impl Params {
     pub const DEFAULT: Self = Self { into: "", after: 300 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Convert(pub Params);
+pub struct Convert(pub &'static Params);
 /// The count runs: the conversion is due at `until`.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Convert(*params::<Params>(p)));
+    w.entity_mut(e).insert(Convert(params::<Params>(p)));
 }
 /// One check at creation: the place a creature lives in does not change while it lives (the host's `UnsafePlace` names a dimension), so no
 /// later poll exists; `stop` (place turned safe) is the only exit.

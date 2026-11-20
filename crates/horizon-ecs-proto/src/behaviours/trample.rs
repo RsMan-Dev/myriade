@@ -15,7 +15,7 @@ impl Params {
     pub const DEFAULT: Self = Self { bumped: &["LeavesBlock"], walked: &["CropBlock", "PitcherCropBlock"] };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Trample(pub Params);
+pub struct Trample(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "trample",
@@ -25,7 +25,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Trample(*params::<Params>(p)));
+    w.entity_mut(e).insert(Trample(params::<Params>(p)));
 }
 /// The bump of the walk on a wall (`horizontalCollision`), with the bounds inflated by 0.2 as vanilla.
 pub fn on_bump(w: &mut World, e: Entity) {

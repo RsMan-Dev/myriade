@@ -23,7 +23,7 @@ impl Params {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Relax {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     goal: Option<[i32; 3]>,
     on_bed: i32,
@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     cs::ensure(w, e);
     w.entity_mut(e).insert(Relax { p, slot: inst.slot, goal: None, on_bed: 0, refresh: 0 });
     if w.get::<PlayerWatch>(e).is_none() {

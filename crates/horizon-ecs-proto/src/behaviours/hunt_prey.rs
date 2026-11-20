@@ -23,7 +23,7 @@ impl Params {
 /// The hunter's cooldown: the hunt is allowed at `until`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Hunt {
-    pub p: Params,
+    pub p: &'static Params,
     pub until: u64,
 }
 
@@ -41,7 +41,7 @@ fn draw(w: &mut World, e: Entity, (lo, hi): (u32, u32)) -> u64 {
     now_of(w, e) + u64::from(lo + r % (hi - lo + 1))
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     let until = draw(w, e, p.cooldown);
     w.entity_mut(e).insert(Hunt { p, until });
 }

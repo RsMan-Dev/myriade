@@ -35,7 +35,7 @@ enum Phase {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Tongue {
     pub slot: u8,
-    p: Params,
+    p: &'static Params,
     /// The prey the last scan chose.
     nearest: Option<Entity>,
     target: Option<Entity>,
@@ -71,7 +71,7 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Tongue {
         slot: inst.slot,
-        p: *params::<Params>(p),
+        p: params::<Params>(p),
         nearest: None,
         target: None,
         skip: None,

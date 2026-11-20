@@ -23,7 +23,7 @@ pub struct Params {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Cfg(pub Params);
+pub struct Cfg(pub &'static Params);
 
 /// The vibration as the sculk layer hands it over: where it came from and who made it (its owner, a projectile's shooter).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,7 +50,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Cfg(p));
     w.entity_mut(e).insert_if_new(ActPhase::default());
     w.entity_mut(e).insert_if_new(RareState::default());

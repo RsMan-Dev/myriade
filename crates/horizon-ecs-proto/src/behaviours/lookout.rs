@@ -16,7 +16,7 @@ pub struct Params {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Lookout {
-    pub p: Params,
+    pub p: &'static Params,
     pub slot: u8,
 }
 
@@ -43,7 +43,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Lookout { p, slot: inst.slot });
 }
 

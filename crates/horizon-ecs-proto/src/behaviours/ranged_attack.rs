@@ -70,7 +70,7 @@ impl Params {
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Shooter {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     attack_time: i32,
     see_time: i32,
@@ -111,7 +111,7 @@ fn on_target(w: &mut World, e: Entity) {
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Shooter { p, slot: inst.slot, attack_time: -1, see_time: 0, cell: (i32::MIN, 0) });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
@@ -178,7 +178,7 @@ fn shoot_run(
             if t.seen {
                 let dist = (d.sqrt() as f32) / r;
                 let who = t.who;
-                let p = s.p;
+                let p = *s.p;
                 cmd.queue(move |w: &mut World| shoot(w, e, who, p));
                 s.attack_time = (dist * (s.p.max - s.p.min) as f32 + s.p.min as f32).floor() as i32;
             }

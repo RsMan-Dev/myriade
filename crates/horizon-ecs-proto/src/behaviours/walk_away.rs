@@ -24,7 +24,7 @@ pub struct Avoid {
     pub until: u64,
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Away(pub Params);
+pub struct Away(pub &'static Params);
 /// The goal runs: the walk away is under way.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -43,7 +43,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Away(*params::<Params>(p)));
+    w.entity_mut(e).insert(Away(params::<Params>(p)));
 }
 /// `canUse`: a remembered point that has not expired, and closer than `within` (the animal that has walked clear stays).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

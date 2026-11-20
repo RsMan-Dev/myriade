@@ -23,7 +23,7 @@ impl Params {
     pub const ENDERMAN: Self = Self { avoid: Some("minecraft:enderman_does_not_teleport_to"), dry_ground: true, dodges: true, water: true };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Teleporter(pub Params);
+pub struct Teleporter(pub &'static Params);
 /// Projectiles do it no harm (`Enderman.hurtServer`: a projectile is dodged unless it rides).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Dodges;
@@ -33,7 +33,7 @@ pub struct WaterSensitive;
 
 pub static MODULE: Module = Module { name: "ender_teleport", flags: 0, equip, can_use: never, damaged, requires: &[Cap::Body, Cap::Living], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Teleporter(p));
     if p.dodges {
         w.entity_mut(e).insert(Dodges);

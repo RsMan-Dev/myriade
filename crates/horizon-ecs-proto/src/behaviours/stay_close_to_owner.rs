@@ -15,7 +15,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct StayClose {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     recalc: i32,
     /// The tick the goal started in: its `tick` runs before any `canContinueToUse`.
@@ -39,7 +39,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(StayClose { p, slot: inst.slot, recalc: 0, fresh: false });
     if w.get::<PlayerWatch>(e).is_none() {
         w.entity_mut(e).insert(PlayerWatch::new(p.start as f32));

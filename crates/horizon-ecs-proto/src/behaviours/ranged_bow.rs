@@ -32,7 +32,7 @@ impl Params {
 /// The goal's state (`RangedBowAttackGoal`'s fields) and the bow in use (`using`: ticks the bow has been drawn).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Bow {
-    p: Params,
+    p: &'static Params,
     pub slot: u8,
     attack_time: i32,
     see_time: i32,
@@ -69,7 +69,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Bow { p: *params::<Params>(p), slot: inst.slot, attack_time: -1, see_time: 0, strafe_clockwise: false, strafe_back: false, strafe_time: -1, using: 0, aim: (i32::MIN, 0), walkable: None });
+    w.entity_mut(e).insert(Bow { p: params::<Params>(p), slot: inst.slot, attack_time: -1, see_time: 0, strafe_clockwise: false, strafe_back: false, strafe_time: -1, using: 0, aim: (i32::MIN, 0), walkable: None });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
 fn tick(w: &mut World) {

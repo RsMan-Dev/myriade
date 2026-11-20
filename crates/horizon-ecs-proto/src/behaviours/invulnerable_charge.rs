@@ -21,7 +21,7 @@ impl Params {
 pub struct Charge {
     until: u64,
     slot: u8,
-    p: Params,
+    p: &'static Params,
     done: bool,
 }
 pub static MODULE: Module = Module {
@@ -43,7 +43,7 @@ pub fn ends_at(w: &World, e: Entity) -> Option<u64> {
     w.get::<Charge>(e).filter(|c| !c.done).map(|c| c.until)
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     let until = now_of(w, e) + p.ticks.max(0) as u64;
     w.entity_mut(e).insert(Charge { until, slot: inst.slot, p, done: false });
     arm_at(w, e, until, Due::Goal(inst.slot));

@@ -16,7 +16,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct RunAround {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     pick: Option<[f64; 3]>,
 }
@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(RunAround { p: *params::<Params>(p), slot: inst.slot, pick: None });
+    w.entity_mut(e).insert(RunAround { p: params::<Params>(p), slot: inst.slot, pick: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(mounted_events.in_set(slot));

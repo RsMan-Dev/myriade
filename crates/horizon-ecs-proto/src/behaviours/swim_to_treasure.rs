@@ -47,7 +47,7 @@ pub struct Swimming {
 }
 #[derive(Component, Clone, Copy)]
 pub struct Trip {
-    p: Params,
+    p: &'static Params,
     slot: u8,
 }
 
@@ -65,7 +65,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Trip { p, slot: inst.slot });
 }
 /// `canUse`: the fish eaten, a treasure, and the air.

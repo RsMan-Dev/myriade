@@ -22,7 +22,7 @@ impl Params {
 /// for, `at_player`: the Mob's `flag2` (angry at a player).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Anger {
-    pub def: Params,
+    pub def: &'static Params,
     pub slot: u8,
     pub holding: bool,
     pub until: u64,
@@ -48,7 +48,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     w.entity_mut(e).insert(Anger { def, slot: inst.slot, holding: false, until: 0, at: None, at_player: false, boosted: false });
 }
 /// A state module: nothing starts it.

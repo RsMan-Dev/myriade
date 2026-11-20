@@ -33,7 +33,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Gear {
-    p: Params,
+    p: &'static Params,
 }
 /// The slots whose item the creature picked up (a bit per `Slot` ordinal of `slot_bit`): they drop at its death whatever the roll.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -44,7 +44,7 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert((Gear { p: *params::<Params>(p) }, Looted::default()));
+    w.entity_mut(e).insert((Gear { p: params::<Params>(p) }, Looted::default()));
 }
 /// A module tick: called only while a creature that loots lives (no registered system).
 fn tick(w: &mut World) {

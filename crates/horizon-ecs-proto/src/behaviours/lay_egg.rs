@@ -37,7 +37,7 @@ pub struct Anchor(pub [i32; 3]);
 /// The goal's state: its parameters, its walk, the countdown to the next search, whether a `canUse` deadline is armed, the ticks dug.
 #[derive(Component, Clone, Debug)]
 pub struct Lay {
-    pub def: Params,
+    pub def: &'static Params,
     pub walk: MoveToBlock,
     pub next_start: i32,
     pub armed: bool,
@@ -73,7 +73,7 @@ pub fn set_anchor(w: &mut World, e: Entity, at: [i32; 3]) {
     w.entity_mut(e).insert(Anchor(at));
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     let walk = MoveToBlock::new(def.speed, def.range, def.vertical);
     w.entity_mut(e).insert(Lay { def, walk, next_start: 0, armed: false, slot: inst.slot, dug: 0 });
     if w.get::<Anchor>(e).is_none() {

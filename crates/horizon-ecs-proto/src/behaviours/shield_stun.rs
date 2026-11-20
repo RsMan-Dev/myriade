@@ -16,7 +16,7 @@ impl Params {
     pub const DEFAULT: Self = Self { chance: 0.5, ticks: 40 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Stun(pub Params);
+pub struct Stun(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "shield_stun",
@@ -26,7 +26,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Stun(*params::<Params>(p)));
+    w.entity_mut(e).insert(Stun(params::<Params>(p)));
 }
 /// `blockedByItem`: not while roaring (no draw then), else one draw; true when the blow stuns.
 pub fn on_blocked(w: &mut World, e: Entity) -> bool {

@@ -30,7 +30,7 @@ enum Phase {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Crossbow {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     phase: Phase,
     using: i32,
@@ -63,7 +63,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Crossbow { p: *params::<Params>(p), slot: inst.slot, phase: Phase::Uncharged, using: 0, see_time: 0, attack_delay: 0, path_delay: 0 });
+    w.entity_mut(e).insert(Crossbow { p: params::<Params>(p), slot: inst.slot, phase: Phase::Uncharged, using: 0, see_time: 0, attack_delay: 0, path_delay: 0 });
 }
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, crossbow_run);

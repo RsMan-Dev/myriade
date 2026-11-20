@@ -25,7 +25,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Charge {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     charge: i32,
 }
@@ -44,7 +44,7 @@ fn on_target(w: &mut World, e: Entity) {
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Charge { p: *params::<Params>(p), slot: inst.slot, charge: 0 });
+    w.entity_mut(e).insert(Charge { p: params::<Params>(p), slot: inst.slot, charge: 0 });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
 fn tick(w: &mut World) {
@@ -68,7 +68,7 @@ fn charge_run(tg: targeting::Targets, mut cmd: Commands, mut q: Query<(Entity, &
             c.charge += 1;
             if c.charge == c.p.at {
                 let (who, p) = (t.who, c.p);
-                cmd.queue(move |w: &mut World| shoot(w, e, who, p));
+                cmd.queue(move |w: &mut World| shoot(w, e, who, *p));
                 c.charge = p.after;
             }
         } else if c.charge > 0 {

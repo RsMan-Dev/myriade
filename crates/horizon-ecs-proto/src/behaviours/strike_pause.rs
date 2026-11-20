@@ -16,7 +16,7 @@ impl Params {
     pub const DEFAULT: Self = Self { ticks: 10, event: 4, sound: "entity.ravager.attack" };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Bite(pub Params);
+pub struct Bite(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "strike_pause",
@@ -26,7 +26,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Bite(*params::<Params>(p)));
+    w.entity_mut(e).insert(Bite(params::<Params>(p)));
     crate::hostile::ensure_attack(w, e);
     w.get_mut::<crate::hostile::Attack>(e).unwrap().on_hit = Some(on_strike);
 }

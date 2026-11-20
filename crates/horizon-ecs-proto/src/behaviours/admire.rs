@@ -19,7 +19,7 @@ impl Params {
     pub const DEFAULT: Self = Self { item: "minecraft:gold_ingot", loot: "minecraft:gameplay/piglin_bartering", duration: 119 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Admire(pub Params);
+pub struct Admire(pub &'static Params);
 /// The goal runs: the item is admired until `until` (`Clock` ticks).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -40,7 +40,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Admire(*params::<Params>(p)));
+    w.entity_mut(e).insert(Admire(params::<Params>(p)));
 }
 /// Asked again (the equipment changed, the animal entered the zone): the goal is tried one tick later.
 fn arm(w: &mut World, e: Entity, inst: Inst) {

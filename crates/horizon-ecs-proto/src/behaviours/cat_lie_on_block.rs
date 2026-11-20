@@ -23,7 +23,7 @@ impl Params {
 
 #[derive(Component, Clone, Debug)]
 pub struct Lie {
-    p: Params,
+    p: &'static Params,
     walk: MoveToBlock,
     slot: u8,
     armed: bool,
@@ -48,7 +48,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     cs::ensure(w, e);
     let mut walk = MoveToBlock::new(p.speed, p.range, p.vertical);
     walk.vertical_start = p.vertical_start;

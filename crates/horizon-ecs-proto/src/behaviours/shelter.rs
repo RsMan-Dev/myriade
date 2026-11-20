@@ -32,7 +32,7 @@ pub struct Stormy;
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct SeekShelter {
-    pub p: Params,
+    pub p: &'static Params,
     pub slot: u8,
     /// `interval`: the countdown of the village checks, `reduced` at creation.
     pub interval: i32,
@@ -53,7 +53,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(SeekShelter { p, slot: inst.slot, interval: (p.interval + 1) / 2, wanted: [0.0; 3] });
 }
 

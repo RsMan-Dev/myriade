@@ -19,7 +19,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Trail {
-    pub def: Params,
+    pub def: &'static Params,
     pub slot: u8,
 }
 /// The trail runs for this golem (SparseSet: only the running ones are visited).
@@ -36,7 +36,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Trail { def: *params::<Params>(p), slot: inst.slot });
+    w.entity_mut(e).insert(Trail { def: params::<Params>(p), slot: inst.slot });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((wake, run).chain().in_set(slot));

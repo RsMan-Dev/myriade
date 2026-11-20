@@ -13,7 +13,7 @@ impl Params {
     pub const DEFAULT: Self = Self { items: &[], range: 14.0 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Held(pub Params);
+pub struct Held(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "look_at_held",
@@ -25,7 +25,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Held(*params::<Params>(p)));
+    w.entity_mut(e).insert(Held(params::<Params>(p)));
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let p = w.get::<Held>(e).unwrap().0;

@@ -17,7 +17,7 @@ pub struct Params {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Cfg(pub Params);
+pub struct Cfg(pub &'static Params);
 
 /// The entity is out of the world: the frame keeps it out of the queries until something takes the marker away.
 #[derive(Component, Clone, Copy, Debug)]
@@ -36,7 +36,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
+    w.entity_mut(e).insert(Cfg(params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
 }
 

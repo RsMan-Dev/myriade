@@ -30,7 +30,7 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Thrower {
     pub slot: u8,
-    pub p: Params,
+    pub p: &'static Params,
 }
 
 pub static MODULE: Module = Module {
@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Thrower { slot: inst.slot, p });
 }
 /// `canUse` : la main principale n'est pas vide.

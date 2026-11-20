@@ -50,7 +50,7 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct LongJumpState {
     slot: u8,
-    p: Params,
+    p: &'static Params,
     ready_at: u64,
     armed: Option<u64>,
     /// A start from this block found no spot to leap to (every candidate is walkable or has no arc): the search is not repeated from it before the
@@ -110,7 +110,7 @@ const MID_JUMP_DURATION: u64 = 100;
 const JUMP_VELOCITY_MULTIPLIER: f32 = 3.571_428_8;
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(LongJumpState { slot: inst.slot, p, ready_at: 0, armed: None, futile: None });
 }
 

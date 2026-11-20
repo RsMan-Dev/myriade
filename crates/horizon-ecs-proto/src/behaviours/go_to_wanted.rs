@@ -17,7 +17,7 @@ impl Params {
 /// The item walked to.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Wanted {
-    pub p: Params,
+    pub p: &'static Params,
     pub item: Option<Entity>,
 }
 
@@ -33,7 +33,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Wanted { p: *params::<Params>(p), item: None });
+    w.entity_mut(e).insert(Wanted { p: params::<Params>(p), item: None });
 }
 /// The nearest pickable item of a wanted kind within `range`.
 fn wanted_near(w: &World, e: Entity, p: &Params) -> Option<Entity> {

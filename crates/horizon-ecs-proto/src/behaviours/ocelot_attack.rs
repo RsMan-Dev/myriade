@@ -36,7 +36,7 @@ impl Params {
 /// L'état : les paramètres, le temps avant le prochain coup, et la redemande armée (une seule chaîne par animal).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Pounce {
-    p: Params,
+    p: &'static Params,
     attack_time: i32,
     armed: bool,
 }
@@ -62,7 +62,7 @@ fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Pounce { p, attack_time: 0, armed: false });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {

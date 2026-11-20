@@ -41,7 +41,7 @@ impl Params {
 /// The parameters and the state of the running panic: its rank and its end (the own time after which it stops).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Fleeing {
-    pub p: Params,
+    pub p: &'static Params,
     pub slot: u8,
     pub end: u64,
 }
@@ -63,7 +63,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Fleeing { p: *params::<Params>(p), slot: inst.slot, end: 0 });
+    w.entity_mut(e).insert(Fleeing { p: params::<Params>(p), slot: inst.slot, end: 0 });
 }
 fn tick(w: &mut World) {
     tick_state(w, hurt_run);

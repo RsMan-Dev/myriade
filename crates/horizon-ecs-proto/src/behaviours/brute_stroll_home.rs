@@ -24,7 +24,7 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Home {
     pub block: [i32; 3],
-    pub def: Params,
+    pub def: &'static Params,
     pub next_ok: u64,
 }
 /// The goal runs: the walk home is under way.
@@ -46,7 +46,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     let p = w.get::<Pos>(e).unwrap().0;
     let block = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
     w.entity_mut(e).insert(Home { block, def, next_ok: 0 });

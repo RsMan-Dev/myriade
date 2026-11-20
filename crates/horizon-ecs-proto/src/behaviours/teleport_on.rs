@@ -32,7 +32,7 @@ pub struct Params {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Spot {
-    pub cfg: Params,
+    pub cfg: &'static Params,
 }
 
 pub static MODULE: Module = Module {
@@ -44,7 +44,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Spot { cfg: *params::<Params>(p) });
+    w.entity_mut(e).insert(Spot { cfg: params::<Params>(p) });
 }
 /// Below `hurt_below` of the max health, one chance in `hurt_one_in` to teleport (the body's own random).
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {

@@ -29,7 +29,7 @@ const WATER: usize = PathType::Water as usize;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(on_insert = crate::cow::watch_in::<{ crate::cow::WATCH_FOLLOW_MOB }>, on_discard = crate::cow::watch_out::<{ crate::cow::WATCH_FOLLOW_MOB }>)]
 pub struct Follower {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     recalc: i32,
     /// The tick the goal started in: its first step runs before any `canContinueToUse`, as the `Mob`'s `tick` does.
@@ -57,7 +57,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     debug_assert!(p.area <= SCAN_AREA, "the index scan does not reach {} blocks", p.area);
     w.entity_mut(e).insert(Follower { p, slot: inst.slot, recalc: 0, fresh: false, target: None, old_water: None });
 }

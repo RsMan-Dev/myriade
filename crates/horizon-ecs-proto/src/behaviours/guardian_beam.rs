@@ -31,7 +31,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct GuardianBeam {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     attack_time: i32,
 }
@@ -64,7 +64,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(GuardianBeam { p: *params::<Params>(p), slot: inst.slot, attack_time: 0 });
+    w.entity_mut(e).insert(GuardianBeam { p: params::<Params>(p), slot: inst.slot, attack_time: 0 });
 }
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, beam_run);
@@ -112,7 +112,7 @@ fn beam_run(tg: targeting::Targets, mut q: Query<(Aim, &mut GuardianBeam, Option
                 cmd.queue(move |w: &mut World| w.resource_mut::<Events>().host.entity_event(e, 21));
             }
         } else if b.attack_time >= b.p.duration {
-            let p = b.p;
+            let p = *b.p;
             let who = t.who;
             cmd.queue(move |w: &mut World| strike(w, e, who, p));
             reqs.0.push(Req::End(e, b.slot));

@@ -26,7 +26,7 @@ pub struct Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Volley {
     pub wait: i32,
-    pub cfg: Params,
+    pub cfg: &'static Params,
     pub slot: u8,
 }
 #[derive(Component, Clone, Copy, Debug)]
@@ -54,7 +54,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Volley { wait: 0, cfg: *params::<Params>(p), slot: inst.slot });
+    w.entity_mut(e).insert(Volley { wait: 0, cfg: params::<Params>(p), slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     crate::effects::difficulty(w) != 0 && w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some_and(|i| !i.exempt))

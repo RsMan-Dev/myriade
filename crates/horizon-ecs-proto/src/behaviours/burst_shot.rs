@@ -32,7 +32,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Burst {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     step: i32,
     time: i32,
@@ -68,7 +68,7 @@ fn on_target(w: &mut World, e: Entity) {
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Burst { p: *params::<Params>(p), slot: inst.slot, step: 0, time: 0, last_seen: 0 });
+    w.entity_mut(e).insert(Burst { p: params::<Params>(p), slot: inst.slot, step: 0, time: 0, last_seen: 0 });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
 fn tick(w: &mut World) {
@@ -123,7 +123,7 @@ fn burst_run(tg: targeting::Targets, mut cmd: Commands, mut reqs: ResMut<Request
                     cmd.entity(e).remove::<Charged>();
                 }
                 if b.step > 1 {
-                    cmd.queue(move |w: &mut World| shoot(w, e, who, p));
+                    cmd.queue(move |w: &mut World| shoot(w, e, who, *p));
                 }
             }
             aim_clamped(&mut cmd, e, &mut look, looking, [i.pos.x, i.eye, i.pos.z], Some(10.0), Some(10.0));

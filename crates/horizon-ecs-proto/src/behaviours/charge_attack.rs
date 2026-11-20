@@ -30,7 +30,7 @@ impl Params {
 /// The state of the goal: its parameters, its slot, the start of the charge, the fixed velocity, and the end of the rest.
 #[derive(Component, Clone, Copy)]
 pub struct Charger {
-    p: Params,
+    p: &'static Params,
     slot: u8,
     start: Vec3,
     velocity: Vec3,
@@ -58,7 +58,7 @@ fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Charger { p, slot: inst.slot, start: Vec3::new(0.0, 0.0, 0.0), velocity: Vec3::new(0.0, 0.0, 0.0), rest_until: 0 });
 }
 /// A target acquired by an animal that has the goal: the goal is asked (the selector waits for its phase).

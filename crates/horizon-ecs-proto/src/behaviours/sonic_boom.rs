@@ -26,7 +26,7 @@ pub struct Params {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Cfg(pub Params);
+pub struct Cfg(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "sonic_boom",
@@ -51,7 +51,7 @@ fn resources(w: &mut World) {
     });
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
+    w.entity_mut(e).insert(Cfg(params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
 }
 

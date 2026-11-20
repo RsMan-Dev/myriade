@@ -14,7 +14,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Party {
-    pub p: Params,
+    pub p: &'static Params,
     pub slot: u8,
 }
 /// The celebration runs until `until`.
@@ -36,7 +36,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Party { p: *params::<Params>(p), slot: inst.slot });
+    w.entity_mut(e).insert(Party { p: params::<Params>(p), slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Celebrating>(e).is_some()

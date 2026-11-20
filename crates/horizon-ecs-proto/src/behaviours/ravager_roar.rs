@@ -20,7 +20,7 @@ pub struct Params {
     pub spared: &'static [&'static str],
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Roar(pub Params);
+pub struct Roar(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "ravager_roar",
@@ -30,7 +30,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Roar(*params::<Params>(p)));
+    w.entity_mut(e).insert(Roar(params::<Params>(p)));
 }
 /// The roar starts: busy, the sound, and the two deadlines.
 pub fn start(w: &mut World, e: Entity) {

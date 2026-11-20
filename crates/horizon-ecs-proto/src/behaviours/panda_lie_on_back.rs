@@ -21,7 +21,7 @@ impl Params {
 /// `asks_left`: the rest's asks still to come (running); `armed`: a wheel entry of this goal is pending.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct LieOnBack {
-    pub def: Params,
+    pub def: &'static Params,
     pub slot: u8,
     pub armed: bool,
     pub at: u64,
@@ -48,7 +48,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     ps::ensure(w, e);
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     w.entity_mut(e).insert(LieOnBack { def, slot: inst.slot, armed: false, at: 0, until: 0, asks_left: 0 });
 }
 fn arm(w: &mut World, e: Entity, _: Inst) {

@@ -22,7 +22,7 @@ impl Params {
 /// The search of the goal: its walk, the countdown drawn at the last search, whether a deadline is armed.
 #[derive(Component, Clone, Debug)]
 pub struct Seek {
-    pub def: Params,
+    pub def: &'static Params,
     pub walk: MoveToBlock,
     pub countdown: i32,
     pub armed: bool,
@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     let mut walk = MoveToBlock::new(def.speed, def.range, def.vertical);
     walk.vertical_start = def.vertical_start;
     w.entity_mut(e).insert(Seek { def, walk, countdown: 0, armed: false, slot: inst.slot });

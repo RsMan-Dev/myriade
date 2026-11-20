@@ -14,7 +14,7 @@ impl Params {
     pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400 };
 }
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Ambient(pub Params);
+pub struct Ambient(pub &'static Params);
 
 pub static MODULE: Module = Module {
     name: "ambient_sound",
@@ -28,7 +28,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Ambient(*params::<Params>(p)));
+    w.entity_mut(e).insert(Ambient(params::<Params>(p)));
 }
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;

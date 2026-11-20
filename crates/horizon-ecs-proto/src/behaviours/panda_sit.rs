@@ -22,7 +22,7 @@ impl Params {
 /// `cooldown`: the entity time before which it does not sit again.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Sit {
-    pub def: Params,
+    pub def: &'static Params,
     pub slot: u8,
     pub cooldown: u64,
 }
@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     ps::ensure(w, e);
-    let def = *params::<Params>(p);
+    let def = params::<Params>(p);
     w.entity_mut(e).insert(Sit { def, slot: inst.slot, cooldown: 0 });
 }
 fn held(w: &World, e: Entity) -> bool {

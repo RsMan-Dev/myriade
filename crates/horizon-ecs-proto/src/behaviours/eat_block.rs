@@ -20,7 +20,7 @@ impl Params {
 /// The data of the grazing, on the animal; `armed`: its ask is in the wheel.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Graze {
-    pub def: Params,
+    pub def: &'static Params,
     pub armed: bool,
     pub slot: u8,
 }
@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Graze { def: *params::<Params>(p), armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(Graze { def: params::<Params>(p), armed: false, slot: inst.slot });
 }
 fn arm_graze_inst(w: &mut World, e: Entity, _: Inst) {
     arm_graze(w, e);

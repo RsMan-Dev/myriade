@@ -24,7 +24,7 @@ pub struct Params {
 /// The one instance of the goal: its slot, the attacker it started on and the hurt timestamp it last answered.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DefendTrusted {
-    pub p: Params,
+    pub p: &'static Params,
     pub slot: u8,
     pub attacker: Option<Who>,
     /// Sentinel `u64::MAX` until the first start, so the first hurt is new.
@@ -35,7 +35,7 @@ pub struct DefendTrusted {
 pub static MODULE: Module = Module { name: "defend_trusted", flags: TARGET, equip, can_use, start, stop, requires: &[Cap::Targets], ..Module::DEFAULT };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(DefendTrusted { p, slot: inst.slot, attacker: None, timestamp: u64::MAX, hurt_at: 0 });
 }
 

@@ -19,7 +19,7 @@ impl Params {
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Wander {
-    pub def: Params,
+    pub def: &'static Params,
     pub armed: bool,
     pub slot: u8,
 }
@@ -44,7 +44,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Wander { def: *params::<Params>(p), armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(Wander { def: params::<Params>(p), armed: false, slot: inst.slot });
     ts::ensure(w, e);
 }
 fn arm_first(w: &mut World, e: Entity, _: Inst) {

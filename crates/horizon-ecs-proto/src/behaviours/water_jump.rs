@@ -40,7 +40,7 @@ impl Params {
 /// L'état : les paramètres et le rang de l'entrée.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Leaper {
-    p: Params,
+    p: &'static Params,
     slot: u8,
 }
 /// Le but tourne.
@@ -65,7 +65,7 @@ pub static MODULE: Module = Module {
 };
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    let p = *params::<Params>(p);
+    let p = params::<Params>(p);
     w.entity_mut(e).insert(Leaper { p, slot: inst.slot });
 }
 /// La première demande : une attente géométrique (le tirage `nextInt(5)` de chaque demande, rendu par la loi de l'attente).

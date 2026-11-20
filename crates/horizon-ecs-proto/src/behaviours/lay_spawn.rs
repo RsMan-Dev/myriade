@@ -23,7 +23,7 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Layer {
     pub slot: u8,
-    pub p: Params,
+    pub p: &'static Params,
     pub next_ok: u64,
     pub target: Option<[i32; 3]>,
 }
@@ -41,7 +41,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Layer { slot: inst.slot, p: *params::<Params>(p), next_ok: 0, target: None });
+    w.entity_mut(e).insert(Layer { slot: inst.slot, p: params::<Params>(p), next_ok: 0, target: None });
 }
 /// A frog that is already pregnant when the goals are armed is asked for at once.
 fn arm(w: &mut World, e: Entity, inst: Inst) {

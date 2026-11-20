@@ -21,7 +21,7 @@ pub struct Params {
 pub struct Peek {
     pub slot: u8,
     pub time: i32,
-    pub cfg: Params,
+    pub cfg: &'static Params,
 }
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -40,7 +40,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Peek { slot: inst.slot, time: 0, cfg: *params::<Params>(p) });
+    w.entity_mut(e).insert(Peek { slot: inst.slot, time: 0, cfg: params::<Params>(p) });
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     crate::goals::arm(w, e, inst.slot, 1);
