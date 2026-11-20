@@ -178,7 +178,7 @@ fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
     match w.get_mut::<PlayerWatch>(e) {
         Some(mut pw) => pw.radius = pw.radius.max(radius),
         None => {
-            w.entity_mut(e).insert(PlayerWatch::new(radius));
+            w.entity_mut(e).insert((PlayerWatch::new(radius), ParkWatch));
         }
     }
     false
@@ -197,6 +197,16 @@ fn tick(w: &mut World) {
             edit(w, e, inst, |n| n.parked = false);
             arm(w, e, inst);
         }
+        release(w, e);
+    }
+}
+/// The watch laid for the parked goals (and by them alone) goes once none is parked: an awake crowd keeps no list of the players around it.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct ParkWatch;
+fn release(w: &mut World, e: Entity) {
+    if w.get::<ParkWatch>(e).is_some() && !w.get::<NearestTargets>(e).is_some_and(|ts| ts.0.iter().any(|n| n.parked && n.p.players)) {
+        w.entity_mut(e).remove::<(PlayerWatch, ParkWatch)>();
     }
 }
 /// A creature of species `sp` was born where none lived: the instances parked for it are armed again.
