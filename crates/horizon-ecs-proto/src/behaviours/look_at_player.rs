@@ -9,7 +9,7 @@ use horizon_core::geometry::Vec3;
 pub struct Params {
     pub range: f64,
     pub period: i32,
-    /// Empty: players. Else: the nearest creature of these species (not itself) in the box inflated by (range, 3, range).
+    /// Empty: players. `["*"]`: every creature that thinks. Else: the nearest creature of these species (not itself) in the box inflated by (range, 3, range).
     pub species: &'static [&'static str],
 }
 impl Params {
@@ -59,7 +59,13 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    let species = SpeciesSet::of(p.species.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize));
+    let reg = crate::species::registry();
+    // `"*"`: the `Mob` class, every species that thinks (goals or a brain), as `LookAtPlayerGoal(this, Mob.class, ..)`.
+    let species = if p.species == ["*"] {
+        SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| s.caps.contains(&crate::behaviours::Cap::Goals) || s.brain.is_some()).map(|(i, _)| i))
+    } else {
+        SpeciesSet::of(p.species.iter().filter_map(|n| reg.id(n)))
+    };
     let g = Glance { range: p.range, period: p.period, armed: false, slot: inst.slot, pick: Who::Player(0), species };
     if inst.nth == 0 {
         w.entity_mut(e).insert(g);
