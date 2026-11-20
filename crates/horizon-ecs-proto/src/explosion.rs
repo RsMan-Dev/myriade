@@ -7,7 +7,6 @@
 //! A creeper's fuse (`Fuse`) is a deadline of the wheel (`Due::Fuse`), armed when its direction turns to +1: no tick per creeper.
 use crate::cow::*;
 use crate::goals::mob_griefing;
-use std::collections::{HashMap, HashSet};
 use crate::projectile::Blast;
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
@@ -23,8 +22,7 @@ pub fn insert_resources(w: &mut World) {
 /// `ServerExplosion.getSeenPercent` for a box: the share of the grid's rays to the centre that no block collider stops.
 pub fn seen_percent(level: &Level, center: Vec3, b: Aabb) -> f32 {
     let (lo, hi) = (b.min_position(), b.max_position());
-    let (dx, dy, dz) = (hi.x - lo.x, hi.y - lo.y, hi.z - lo.z);
-    let (xs, ys, zs) = (1.0 / (dx * 2.0 + 1.0), 1.0 / (dy * 2.0 + 1.0), 1.0 / (dz * 2.0 + 1.0));
+    let (xs, ys, zs) = (1.0 / ((hi.x - lo.x) * 2.0 + 1.0), 1.0 / ((hi.y - lo.y) * 2.0 + 1.0), 1.0 / ((hi.z - lo.z) * 2.0 + 1.0));
     let (xo, zo) = ((1.0 - (1.0 / xs).floor() * xs) / 2.0, (1.0 - (1.0 / zs).floor() * zs) / 2.0);
     let mw = level.mw.0;
     let (mut hits, mut count) = (0, 0);
@@ -34,7 +32,7 @@ pub fn seen_percent(level: &Level, center: Vec3, b: Aabb) -> f32 {
         while yy <= 1.0 {
             let mut zz = 0.0;
             while zz <= 1.0 {
-                let from = Vec3::new(lo.x + dx * xx + xo, lo.y + dy * yy, lo.z + dz * zz + zo);
+                let from = Vec3::new(lo.x + (hi.x - lo.x) * xx + xo, lo.y + (hi.y - lo.y) * yy, lo.z + (hi.z - lo.z) * zz + zo);
                 let to = Vec3::new(center.x - from.x, center.y - from.y, center.z - from.z);
                 if clip_block_hit(mw.world, mw.facts, mw.collision, from, to).is_none() {
                     hits += 1;
@@ -55,9 +53,6 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
     let (min_y, max_y) = (mw.world.bottom_y(), mw.world.top_y());
     let mut rng = w.resource::<ExplosionRng>().0;
     let mut set: Vec<[i32; 3]> = Vec::new();
-    let mut seen: HashSet<[i32; 3]> = HashSet::new();
-    // Each cell is read once per call: (occupied, resistance kept). The world does not change until the next step.
-    let mut cells: HashMap<[i32; 3], (bool, f32)> = HashMap::new();
     for xx in 0..16 {
         for yy in 0..16 {
             for zz in 0..16 {
@@ -74,16 +69,13 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
                     if pos[1] < min_y || pos[1] >= max_y {
                         break;
                     }
-                    let (solid, resistance) = *cells.entry(pos).or_insert_with(|| {
-                        let state = mw.world.block(pos[0], pos[1], pos[2]);
-                        let f = mw.facts.get(state);
-                        let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
-                        (!mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None, f.explosion_resistance.max(fluid))
-                    });
-                    if solid {
-                        power -= (resistance + 0.3) * 0.3;
+                    let state = mw.world.block(pos[0], pos[1], pos[2]);
+                    let f = mw.facts.get(state);
+                    let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
+                    if !mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None {
+                        power -= (f.explosion_resistance.max(fluid) + 0.3) * 0.3;
                     }
-                    if power > 0.0 && solid && seen.insert(pos) {
+                    if power > 0.0 && (!mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None) && !set.contains(&pos) {
                         set.push(pos);
                     }
                     xp += xd * f64::from(0.3_f32);
@@ -266,133 +258,4 @@ pub fn fuse_due(w: &mut World, e: Entity) {
         w.resource_mut::<Index>().remove(e, cell);
     }
     w.entity_mut(e).despawn();
-}
-
-#[cfg(test)]
-mod equality {
-    use super::*;
-
-    /// The former `exploded_positions`, kept as the reference: a linear `contains` and a block read at every visit.
-    fn exploded_positions_reference(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
-        let level = *w.resource::<Level>();
-        let mw = level.mw.0;
-        let (min_y, max_y) = (mw.world.bottom_y(), mw.world.top_y());
-        let mut rng = w.resource::<ExplosionRng>().0;
-        let mut set: Vec<[i32; 3]> = Vec::new();
-        for xx in 0..16 {
-            for yy in 0..16 {
-                for zz in 0..16 {
-                    if !(xx == 0 || xx == 15 || yy == 0 || yy == 15 || zz == 0 || zz == 15) {
-                        continue;
-                    }
-                    let (mut xd, mut yd, mut zd) = (f64::from(xx as f32 / 15.0 * 2.0 - 1.0), f64::from(yy as f32 / 15.0 * 2.0 - 1.0), f64::from(zz as f32 / 15.0 * 2.0 - 1.0));
-                    let d = (xd * xd + yd * yd + zd * zd).sqrt();
-                    (xd, yd, zd) = (xd / d, yd / d, zd / d);
-                    let mut power = radius * (0.7 + rng.next_float() * 0.6);
-                    let (mut xp, mut yp, mut zp) = (c.x, c.y, c.z);
-                    while power > 0.0 {
-                        let pos = [xp.floor() as i32, yp.floor() as i32, zp.floor() as i32];
-                        if pos[1] < min_y || pos[1] >= max_y {
-                            break;
-                        }
-                        let state = mw.world.block(pos[0], pos[1], pos[2]);
-                        let f = mw.facts.get(state);
-                        let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
-                        if !mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None {
-                            power -= (f.explosion_resistance.max(fluid) + 0.3) * 0.3;
-                        }
-                        if power > 0.0 && (!mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None) && !set.contains(&pos) {
-                            set.push(pos);
-                        }
-                        xp += xd * f64::from(0.3_f32);
-                        yp += yd * f64::from(0.3_f32);
-                        zp += zd * f64::from(0.3_f32);
-                        power -= 0.225_000_01;
-                    }
-                }
-            }
-        }
-        w.resource_mut::<ExplosionRng>().0 = rng;
-        set
-    }
-
-    #[inline(never)]
-    fn bench_blast_new(w: &mut World, c: Vec3, n: usize) -> usize {
-        (0..n).map(|_| exploded_positions(w, c, 4.0).len()).sum()
-    }
-    #[inline(never)]
-    fn bench_blast_ref(w: &mut World, c: Vec3, n: usize) -> usize {
-        (0..n).map(|_| exploded_positions_reference(w, c, 4.0).len()).sum()
-    }
-    /// A TNT (radius 4) on a stone slab, ten times: `--toggle-collect=*bench_blast_*`.
-    #[test]
-    #[ignore = "bench"]
-    fn blast_bench() {
-        let (level, _, _) = crate::cow::build_level(20, false);
-        let mut w = World::new();
-        w.insert_resource(level);
-        w.insert_resource(ExplosionRng(Rng(7)));
-        let c = Vec3::new(0.5, 1.0, 0.5);
-        let a = bench_blast_new(&mut w, c, 10);
-        w.insert_resource(ExplosionRng(Rng(7)));
-        assert_eq!(a, bench_blast_ref(&mut w, c, 10));
-    }
-
-    /// The cached version gives the same blocks in the same order, and leaves the random stream where the reference leaves it.
-    #[test]
-    fn exploded_positions_equals_reference() {
-        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
-            return;
-        }
-        let half = 24;
-        let (level, _, _) = crate::cow::build_level_with(half, |blocks, registry| {
-            let chunks = (half + 15) / 16 + 1;
-            for cx in -chunks..chunks {
-                for cz in -chunks..chunks {
-                    blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
-                }
-            }
-            let names = ["minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:stone", "minecraft:stone", "minecraft:water", "minecraft:lava", "minecraft:obsidian"];
-            let mut s = 0x9E37_79B9_7F4A_7C15_u64;
-            for x in -half..half {
-                for z in -half..half {
-                    for y in -4..12 {
-                        s ^= s << 13;
-                        s ^= s >> 7;
-                        s ^= s << 17;
-                        let name = names[(s % names.len() as u64) as usize];
-                        blocks.set(x, y, z, registry.default_state(name).unwrap()).unwrap();
-                    }
-                }
-            }
-        });
-        let lo_y = level.mw.0.world.bottom_y();
-        let mut s = 0xD1B5_4A32_D192_ED03_u64;
-        let mut next = move || {
-            s ^= s << 13;
-            s ^= s >> 7;
-            s ^= s << 17;
-            (s >> 11) as f64 / (1_u64 << 53) as f64
-        };
-        let radii = [0.5_f32, 1.0, 3.0, 4.0, 5.0, 8.0];
-        let mut total = 0;
-        for i in 0..2000 {
-            let seed = (next() * u64::MAX as f64) as u64 | 1;
-            let (cx, cy, cz) = (-f64::from(half) + next() * f64::from(2 * half), -4.0 + next() * 16.0, -f64::from(half) + next() * f64::from(2 * half));
-            let c = Vec3::new(cx, if i % 4 == 0 { f64::from(lo_y) + next() * 4.0 } else { cy }, cz);
-            let radius = radii[i % radii.len()];
-            let mut a = World::new();
-            a.insert_resource(level);
-            a.insert_resource(ExplosionRng(Rng(seed)));
-            let mut b = World::new();
-            b.insert_resource(level);
-            b.insert_resource(ExplosionRng(Rng(seed)));
-            let got = exploded_positions(&mut a, c, radius);
-            let want = exploded_positions_reference(&mut b, c, radius);
-            assert_eq!(got, want, "centre {c:?}, radius {radius}, seed {seed}");
-            total += got.len();
-            assert_eq!(a.resource::<ExplosionRng>().0 .0, b.resource::<ExplosionRng>().0 .0);
-        }
-        assert!(total > 10_000, "the explosions broke only {total} blocks: nothing compared");
-    }
 }
