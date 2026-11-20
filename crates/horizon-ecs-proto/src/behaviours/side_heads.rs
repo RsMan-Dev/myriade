@@ -9,7 +9,6 @@ use crate::goals::*;
 use crate::projectile::{launch, Flight};
 use crate::targeting::{self, Who};
 use horizon_core::geometry::Vec3;
-use crate::small::Nth;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -54,7 +53,7 @@ pub struct Head {
 }
 /// The side heads of an animal, by `nth`.
 #[derive(Component, Clone, Debug)]
-pub struct Heads(pub Nth<Head, 2>);
+pub struct Heads(pub Vec<Head>);
 pub static MODULE: Module = Module {
     name: "side_heads",
     flags: 0,
@@ -73,7 +72,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     match w.get_mut::<Heads>(e) {
         Some(mut hs) => hs.0.push(head),
         None => {
-            w.entity_mut(e).insert(Heads(Nth::one(head)));
+            w.entity_mut(e).insert(Heads(vec![head]));
         }
     }
     arm_at(w, e, due, Due::Goal(inst.slot));

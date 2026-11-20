@@ -2,7 +2,6 @@
 //! spot away from it, walking, or sprinting while the target is within 7 blocks. Woken by events only: a player that comes
 //! within range, an animal of a listed species that changes column of the index, and the animal's own column change.
 use super::*;
-use crate::small::Nth;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::{Vec3, trig};
 use horizon_core::jmath;
@@ -60,7 +59,7 @@ pub struct Avoider {
 }
 /// The avoid goals of the animal, by `Inst::nth`.
 #[derive(Component, Clone)]
-pub struct Avoiders(pub Nth<Avoider, 3>);
+pub struct Avoiders(pub Vec<Avoider>);
 /// The animal has an avoid goal whose target is a listed species: the moves of the other animals matter to it (the
 /// systems do nothing, not even scan the index, in a world with none).
 #[derive(Component, Clone, Copy)]
@@ -132,7 +131,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
             v.0.push(a);
         }
         None => {
-            w.entity_mut(e).insert(Avoiders(Nth::one(a)));
+            w.entity_mut(e).insert(Avoiders(vec![a]));
         }
     }
 }
@@ -201,7 +200,7 @@ fn cell_moves(
             if c == m {
                 return;
             }
-            for a in avs.0.iter() {
+            for a in &avs.0 {
                 if !matches!(a.what, Avoid::Player)
                     && a.mask.contains(sid.0)
                     && in_reach(a, pos.0, at)

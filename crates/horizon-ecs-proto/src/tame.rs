@@ -140,7 +140,7 @@ fn owner_events(mut ps: ResMut<crate::hostile::PlayerState>, pets: Res<Pets>, go
     for id in std::mem::take(&mut ps.combat_dirty) {
         for &pet in pets.0.get(&id).into_iter().flatten() {
             if let Ok(t) = goals.get(pet) {
-                for s in t.0.iter() {
+                for s in &t.0 {
                     reqs.0.push(Req::Start(pet, s.slot));
                 }
             }

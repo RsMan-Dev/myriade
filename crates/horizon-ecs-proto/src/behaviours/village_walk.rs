@@ -4,7 +4,6 @@
 //! speed; the path ends the goal. Missing: the villager who wants a golem (the villager's brain).
 use super::*;
 use crate::poi::PoiRegistry;
-use crate::small::Nth;
 use crate::spots::{pick_for, Pick};
 use crate::{cow::*, goals::*};
 
@@ -35,7 +34,7 @@ pub struct Walk {
 }
 /// The walks of the entity, by `Inst::nth`.
 #[derive(Component, Clone, Debug)]
-pub struct VillageWalks(pub Nth<Walk, 2>);
+pub struct VillageWalks(pub Vec<Walk>);
 
 pub static MODULE: Module = Module {
     name: "village_walk",
@@ -56,7 +55,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     match w.get_mut::<VillageWalks>(e) {
         Some(mut v) => v.0.push(walk),
         None => {
-            w.entity_mut(e).insert(VillageWalks(Nth::one(walk)));
+            w.entity_mut(e).insert(VillageWalks(vec![walk]));
         }
     }
 }

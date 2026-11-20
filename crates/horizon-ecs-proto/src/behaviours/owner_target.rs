@@ -3,7 +3,6 @@
 //! What wakes them: the owner's combat record changing (`tame::owner_events`), nothing else.
 use super::*;
 use crate::targeting::{self, Target, Who};
-use crate::small::Nth;
 use crate::{cow::*, goals::*, hostile::PlayerState, tame};
 
 #[derive(Clone, Copy, Debug)]
@@ -29,7 +28,7 @@ pub struct OwnerTarget {
 }
 /// The instances of the pet, found by their rank in the selector.
 #[derive(Component, Clone, Debug)]
-pub struct OwnerTargets(pub Nth<OwnerTarget, 2>);
+pub struct OwnerTargets(pub Vec<OwnerTarget>);
 
 pub static MODULE: Module = Module { name: "owner_target", flags: TARGET, equip, can_use, start, stop, requires: &[Cap::Tamable, Cap::Targets], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
@@ -37,7 +36,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     match w.get_mut::<OwnerTargets>(e) {
         Some(mut v) => v.0.push(t),
         None => {
-            w.entity_mut(e).insert(OwnerTargets(Nth::one(t)));
+            w.entity_mut(e).insert(OwnerTargets(vec![t]));
         }
     }
 }
