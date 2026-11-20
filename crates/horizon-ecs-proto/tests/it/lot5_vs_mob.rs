@@ -363,3 +363,77 @@ fn debug_drowned_night() {
         }
     }
 }
+
+/// The drowned's targets and the continuation of its attack against its `Mob`: a villager is a target as a wandering trader is (`AbstractVillager`, not seen
+/// needed), and `DrownedAttackGoal.canContinueToUse` asks `okTarget` again on every tick of the pursuit: by day, with the prey in the water the goal runs;
+/// with the prey brought out of it the goal ends at once, on both sides, on the same tick.
+#[test]
+fn a_drowned_hunts_a_villager_and_drops_the_attack_when_it_leaves_the_water() {
+    if !on() {
+        return;
+    }
+    for night in [true, false] {
+        let mut r = MobRef::new(24, false);
+        let mut h = Herd::with_slab(24, false, false);
+        platform(&r, &mut h);
+        set_day(&r, &mut h, !night);
+        let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(-6.5, 60.0, 0.5), 3);
+        let v = mob_add(&mut r, mob_kind("minecraft:villager"), Vec3::new(-3.5, 60.0, 0.5), 9);
+        r.mobs[v].ai.goals = Default::default();
+        r.mobs[v].ai.no_action_time = 0;
+        r.mobs[i].ai.no_action_time = 0;
+        let e = ecs_named(&mut h, "minecraft:drowned", None, 0.5, 0.5, 11_000, 3);
+        h.teleport(e, Vec3::new(-6.5, 60.0, 0.5));
+        let ev = ecs_named(&mut h, "minecraft:villager", Some(&[]), 0.5, 0.5, 12_000, 9);
+        h.teleport(ev, Vec3::new(-3.5, 60.0, 0.5));
+        for en in [e, ev] {
+            let mut f = h.world.get_mut::<FluidState>(en).unwrap();
+            f.in_water = true;
+            f.water = 1.0;
+        }
+        let melee_names = |r: &MobRef| r.mobs[i].ai.goals.running_names().iter().filter(|n| n.contains("Attack")).count() > 0;
+        let ecs_melee = |h: &Herd| {
+            let g = h.world.get::<GoalSet>(e).unwrap();
+            g.entries().iter().any(|en| en.module.name == "melee" && g.is_running(en.module))
+        };
+        let (mut tm, mut te) = (None, None);
+        for t in 0..400 {
+            r.mobs[i].ai.no_action_time = 0;
+            r.step(None);
+            h.tick();
+            if tm.is_none() && r.mobs[i].ai.target.is_some() {
+                tm = Some(t);
+            }
+            if te.is_none() && h.world.get::<Target>(e).is_some() {
+                te = Some(t);
+            }
+            // By day the leaving test starts as soon as both pursue (the prey would not live through 400 ticks of blows).
+            if !night && melee_names(&r) && ecs_melee(&h) {
+                break;
+            }
+            if night && tm.is_some() && te.is_some() {
+                break;
+            }
+        }
+        eprintln!("villager target (night {night}): first tick mob {tm:?} ecs {te:?}");
+        assert!(tm.is_some() && te.is_some(), "night {night}: both hunt the villager (mob {tm:?}, ecs {te:?})");
+        if night {
+            continue;
+        }
+        // The prey is brought to the beach: the goal ends where it stands, on the same tick on both sides.
+        assert!(melee_names(&r) && ecs_melee(&h), "by day, prey in the water: both pursue (mob {:?})", r.mobs[i].ai.goals.running_names());
+        let (mp, ep) = (Vec3::new(5.5, 60.0, 0.5), Vec3::new(5.5, 60.0, 0.5));
+        r.mobs[v].position = mp;
+        h.teleport(ev, ep);
+        let mut rows = Vec::new();
+        for t in 0..6 {
+            r.mobs[i].ai.no_action_time = 0;
+            r.step(None);
+            h.tick();
+            rows.push((t, melee_names(&r), ecs_melee(&h)));
+        }
+        eprintln!("goal running per tick after the prey leaves the water (mob, ecs): {rows:?}");
+        assert!(rows.iter().all(|&(_, a, b)| a == b), "{rows:?}");
+        assert!(!rows[0].1 || !rows[0].2 || rows.iter().any(|r| !r.1), "{rows:?}");
+    }
+}

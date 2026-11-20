@@ -17,15 +17,21 @@ pub struct Params {
     pub quit_in_light: Option<i32>,
     /// `StopAttackingIfTargetInvalid` (the hoglin's brain): the target is forgotten once no path has reached it for this many ticks (200).
     pub forget_unreachable: Option<i32>,
+    /// A condition `canContinueToUse` asks again on every tick of the pursuit (the drowned's `okTarget`): once false the goal ends. Nothing is
+    /// asked while the goal does not run (its `canUse` condition is the entry's `when`).
+    pub keep_while: Option<&'static Cond>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false, quit_in_light: None, forget_unreachable: None };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false, quit_in_light: None, forget_unreachable: None, keep_while: None };
 }
 /// The light at which a goal that fears light stops (`brightness >= 0.5`: the same threshold as `horizon:dark_enough`, which is its opposite).
 pub const BRIGHT: f32 = 0.5;
 /// The melee goal gives up in light: one chance in `.0` per tick (carried only by the creatures whose `Params.quit_in_light` is set).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct QuitsInLight(pub i32);
+/// The condition the goal keeps asking while it runs (carried only by the creatures whose `Params.keep_while` is set).
+#[derive(Component, Clone, Copy)]
+pub struct KeepsWhile(&'static Cond);
 
 pub static MODULE: Module = Module {
     name: "melee",
@@ -62,9 +68,21 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     if let Some(n) = p.quit_in_light {
         w.entity_mut(e).insert(QuitsInLight(n));
     }
+    if let Some(c) = p.keep_while {
+        w.entity_mut(e).insert(KeepsWhile(c));
+    }
+}
+/// `canContinueToUse`, asked before each tick of the goal (`GoalSelector` order), only for the entities that carry a condition and run the goal.
+fn keep(w: &mut World) {
+    let running: Vec<(Entity, &'static Cond, u8)> = w.query_filtered::<(Entity, &KeepsWhile, &hostile::Attack), With<hostile::Meleeing>>().iter(w).map(|(e, k, a)| (e, k.0, a.melee_slot)).collect();
+    for (e, c, slot) in running {
+        if !c.eval(w, e) {
+            crate::goals::end_goal(w, e, slot);
+        }
+    }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(hostile::melee_run.in_set(slot));
+    s.add_systems((keep.run_if(any_with_component::<KeepsWhile>).before(hostile::melee_run), hostile::melee_run).in_set(slot));
 }
 /// `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
