@@ -228,9 +228,32 @@ impl MobRef {
                 _ => None,
             })
             .collect();
+        // The doors the mobs opened or closed (`MobEvent::SetDoorOpen`, which the game's world applies): both halves take the `open` property.
+        let doors: Vec<([i32; 3], bool)> = self.events[self.applied..]
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::SetDoorOpen { pos, open } => Some((*pos, *open)),
+                _ => None,
+            })
+            .collect();
         self.applied = self.events.len();
         for (x, y, z, n) in fresh {
             self.set_block(x, y, z, n);
+        }
+        for (p, open) in doors {
+            for y in [p[1] - 1, p[1], p[1] + 1] {
+                let name = self.w.block_name(p[0], y, p[2]).to_string();
+                if !name.ends_with("_door") {
+                    continue;
+                }
+                let Some(state) = self.w.registry.state(self.w.world.block(p[0], y, p[2])) else { continue };
+                let mut props: Vec<(String, String)> = state.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                for kv in props.iter_mut().filter(|kv| kv.0 == "open") {
+                    kv.1 = open.to_string();
+                }
+                let refs: Vec<(&str, &str)> = props.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                self.set_block_props(p[0], y, p[2], &name, &refs);
+            }
         }
     }
 }

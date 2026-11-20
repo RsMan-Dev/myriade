@@ -9,7 +9,9 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::ranged_bow, cow::*, goals::*, hostile::PlayerState, projectile::*, targeting::*};
 
 fn skip() -> bool {
-    !have_data() || horizon_ecs_proto::cow::skip_unless(&ranged_bow::MODULE, "the bow goal")
+    // A piglin carries `ranged_bow` for its crossbow only (`Piglin` has `CrossbowAttack`, no bow goal): given a bow, the `Mob` and the ECS both shoot
+    // nothing, which is vanilla; its crossbow is compared in `tirs_vs_mob`. This scene is the bow's, run under the skeletons.
+    !have_data() || horizon_ecs_proto::cow::process_species_name() == "minecraft:piglin" || horizon_ecs_proto::cow::skip_unless(&ranged_bow::MODULE, "the bow goal")
 }
 struct Scene {
     r: MobRef,
