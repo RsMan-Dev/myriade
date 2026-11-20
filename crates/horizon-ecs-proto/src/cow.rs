@@ -83,6 +83,8 @@ pub struct Drive {
     /// the last tick (`locomotion/climb.rs`).
     pub climber: bool,
     pub climbing: bool,
+    /// `SmoothSwimmingMoveControl` on the ground (`walk::Params.smooth_land`: the frog): the largest turn per tick and the speed out of the water.
+    pub smooth_land: Option<(f32, f32)>,
     /// `LivingEntity.shouldDiscardFriction`: the velocity keeps its horizontal part and takes the vertical one without drag while it is set (a
     /// long jump of a frog or a goat: the goal sets and clears it).
     pub discard_friction: bool,
@@ -1808,6 +1810,17 @@ pub(crate) fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut 
     let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
     if xd * xd + yd * yd + zd * zd < ARRIVED {
         d.zza = 0.0;
+        return;
+    }
+    if let Some((turn, outside)) = d.smooth_land {
+        // The land branch of `SmoothSwimmingMoveControl`: the speed is scaled by `outside` and by how far the body still has to turn; no jump.
+        let y_rot = trig::atan2_degrees(zd, xd) - 90.0;
+        yaw.0 = rotlerp(yaw.0, y_rot, turn);
+        let factor = 1.0 - ((wrap(yaw.0 - y_rot).abs() - 10.0) / 50.0).clamp(0.0, 1.0);
+        d.speed = (m.speed_modifier * body.speed) as f32 * outside * factor;
+        d.zza = d.speed;
+        d.jump = false;
+        d.jumping_op = false;
         return;
     }
     yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);

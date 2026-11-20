@@ -116,6 +116,28 @@ fn a_standing_wolf_follows_its_owner_and_a_sitting_one_stays() {
     assert!(m.x < 2.0 && e.x < 2.0, "a sitting wolf follows: mob {m:?}, ecs {e:?}");
 }
 
+/// An owner 15 blocks away is past the teleport distance (12): the wolf is next to it at tick 1 on the `Mob` side, at tick 2 in the ECS (the same
+/// one-tick selector offset as the frog's tongue, `suivi/ecs-ecarts.md`); the later 200-tick gap (2.23 / 3.78) is the stroll's own draws.
+#[test]
+fn the_teleport_to_the_owner_comes_one_tick_apart() {
+    if skip() {
+        return;
+    }
+    let mut p = pair(Vec3::new(15.5, 1.0, 0.5));
+    let (mut when_m, mut when_e) = (None, None);
+    for t in 1..=60 {
+        p.step();
+        let (m, e) = p.dist();
+        if when_m.is_none() && m < 3.5 {
+            when_m = Some(t);
+        }
+        if when_e.is_none() && e < 3.5 {
+            when_e = Some(t);
+        }
+    }
+    assert_eq!((when_m, when_e), (Some(1), Some(2)), "tick under 3.5 blocks: Mob, ECS");
+}
+
 /// An owner 40 blocks away: the wolf teleports to it (12 blocks and more), within a few ticks, and ends within 4 blocks of it.
 #[test]
 fn a_wolf_teleports_to_a_far_owner() {

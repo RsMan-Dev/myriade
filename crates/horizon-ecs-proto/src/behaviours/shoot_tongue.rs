@@ -18,12 +18,12 @@ pub struct Params {
     pub eating_distance: f64,
     pub time_out: i32,
     pub unreachable_for: u64,
-    /// The names of the prey (size 1).
+    /// The names of the prey (size 1), given by the species (the framework names none).
     pub prey: [&'static str; 2],
 }
 impl Params {
     pub const DEFAULT: Self =
-        Self { detection: 10.0, scan_every: 20, eating_distance: 1.75, time_out: 100, unreachable_for: 100, prey: ["minecraft:slime", "minecraft:magma_cube"] };
+        Self { detection: 10.0, scan_every: 20, eating_distance: 1.75, time_out: 100, unreachable_for: 100, prey: ["", ""] };
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -81,7 +81,15 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         eat_timer: 0,
     });
 }
+/// The first scan: `Brain` gives every sensor a random start (`Sensor.randomlyDelayStart`: `nextInt(scanRate)`), the sensor then scans when its
+/// counter reaches 1 or less, so the first scan is at own tick `max(1, draw)`.
 fn arm(w: &mut World, e: Entity, inst: Inst) {
+    let every = w.get::<Tongue>(e).map_or(20, |t| t.p.scan_every);
+    let first = crate::goals::with_rng(w, e, |r| r.next_int(every)).max(1);
+    crate::goals::arm(w, e, inst.slot, first);
+}
+/// The next scans, one period later.
+fn rearm(w: &mut World, e: Entity, inst: Inst) {
     let every = w.get::<Tongue>(e).map_or(20, |t| t.p.scan_every);
     crate::goals::arm(w, e, inst.slot, every);
 }
@@ -129,7 +137,7 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
         t.nearest = found;
     }
     if found.is_none() {
-        arm(w, e, inst);
+        rearm(w, e, inst);
     }
     found.is_some()
 }
@@ -143,11 +151,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     if !free {
         // The ask came while the frog was busy: the next period tries again.
-        arm(w, e, inst);
+        rearm(w, e, inst);
         return false;
     }
     w.get_mut::<Tongue>(e).unwrap().nearest = None;
-    arm(w, e, inst);
+    rearm(w, e, inst);
     false
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
@@ -175,7 +183,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
         t.phase = Phase::Done;
     }
     w.entity_mut(e).remove::<(TongueOut, Shooting)>();
-    arm(w, e, inst);
+    rearm(w, e, inst);
 }
 fn tick(w: &mut World) {
     tick_state(w, tongue_run);

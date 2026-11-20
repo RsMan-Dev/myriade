@@ -110,6 +110,9 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         let (x, z) = (6.5, -9.5 + 5.0 * k as f64);
         let i = r.add_id(Vec3::new(x, 1.0, z), (((k as u32 + 1) * 13).wrapping_mul(0x9E37_79B1) >> 4) | 1);
         let e = ecs_cow(&mut h, x, 1.0, z, 700 + k as u64);
+        // Imposed draw: the sensor's random start (`nextInt(20)`) is 0, the first scan is at tick 1 as the `Mob`'s (its counter starts at 0).
+        let seed = (1u64..).find(|&s| horizon_ecs_proto::cow::Rng(s).next_int(20) == 0).unwrap();
+        *h.world.get_mut::<horizon_ecs_proto::cow::Rng>(e).unwrap() = horizon_ecs_proto::cow::Rng(seed);
         h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
         let (sx, sz) = (x + 5.0, z);
         let j = r.add_kind(Vec3::new(sx, 1.0, sz), mob_kind("minecraft:slime"));
@@ -117,7 +120,8 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         r.mobs[j].ai.goals = Default::default();
         r.mobs[j].ai.targets = Default::default();
         let se = horizon_ecs_proto::size::spawn_sized(&mut h.world, &slime, sx, sz, 40 + k as u64, 1);
-        h.world.entity_mut(se).remove::<horizon_ecs_proto::goals::GoalSet>();
+        // The `Mob` slime stands still (its goals are empty): the ECS one does not hop either.
+        h.world.entity_mut(se).remove::<(horizon_ecs_proto::goals::GoalSet, horizon_ecs_proto::locomotion::hop::Hop, horizon_ecs_proto::locomotion::hop::Hopping)>();
         assert!(horizon_ecs_proto::targeting::info(&h.world, horizon_ecs_proto::targeting::Who::Entity(se)).is_some(), "a slime must be readable by `targeting::info` (it needs `Eye`)");
         pairs.push((i, e, j, se));
     }
@@ -135,7 +139,11 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         }
     }
     eprintln!("eaten at Mob {:?} ECS {:?}", eaten[0], eaten[1]);
-    let n = |s: usize| eaten[s].iter().flatten().count();
-    assert!(n(0) >= 2, "witness: the Mob frogs eat ({})", n(0));
-    assert!(n(1) >= 2 && n(1) + 1 >= n(0), "ECS frogs eat as many: {} vs {}", n(1), n(0));
+    assert!(eaten[0].iter().all(Option::is_some), "witness: the Mob frogs eat: {:?}", eaten[0]);
+    // The scene is the same and the draws are imposed (the sensor's first scan at tick 1, still prey): the bite comes at the same tick on both
+    // sides, except for one tick the `Mob` is late by: vanilla's `StartAttacking` (idle activity) sets the target in the tick of the scan and
+    // `ShootTongue` (tongue activity, chosen by `FrogAi.updateActivity` after the brain tick) starts at the next one; the `Mob` starts it one
+    // tick after that (`suivi/ecs-ecarts.md`). Every frog: ECS + 1 == Mob.
+    let late: Vec<_> = eaten[1].iter().map(|x| x.map(|t| t + 1)).collect();
+    assert_eq!(eaten[0].to_vec(), late, "tick of the first bite: Mob, ECS + 1");
 }
