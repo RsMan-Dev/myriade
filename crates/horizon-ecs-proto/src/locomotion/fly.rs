@@ -99,8 +99,8 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
     s.add_systems((
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
-        move_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
-        fly_controls.after(crate::cow::move_control).before(crate::cow::fluid_update),
+        move_control.after(crate::cow::move_control),
+        fly_controls.after(crate::cow::move_control),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
 }
@@ -140,7 +140,8 @@ fn pathfind(
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
-                nav.last_check = now;
+                // `PathNavigation.moveTo` sets `lastStuckCheck` before the tick of the navigation counts (the first tick of a path is `+1`).
+                nav.last_check = now.saturating_sub(1);
                 nav.last_pos = pos.0;
                 cmd.entity(e).remove::<NeedsPath>().insert((Following, Moving));
             }

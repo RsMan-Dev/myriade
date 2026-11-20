@@ -10,6 +10,10 @@ use crate::goals::{Online, Slot};
 fn is_baby(w: &World, e: Entity) -> bool {
     w.get::<GrowAt>(e).is_some()
 }
+/// `frog:pregnant`: the frog carries its spawn (`Frog.is_pregnant`, the memory `IS_PREGNANT`).
+fn frog_pregnant(w: &World, e: Entity) -> bool {
+    w.get::<crate::behaviours::breed::Carrying>(e).is_some()
+}
 fn is_adult(w: &World, e: Entity) -> bool {
     w.get::<GrowAt>(e).is_none()
 }
@@ -193,6 +197,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("bee:can_target", bee_can_target),
     ("polar_bear:cub_nearby", polar_bear_cub_nearby),
     ("rabbit:killer", rabbit_killer),
+    ("frog:pregnant", frog_pregnant),
     ("drowned:ok_target", drowned_ok_target),
     ("drowned:player_ok", drowned_player_ok),
     ("horizon:holds_crossbow", holds_crossbow),

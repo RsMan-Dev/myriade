@@ -125,6 +125,8 @@ pub struct Damaged {
     /// Who hurt it (a player or a creature); `direct`: by its own blow, not a projectile.
     pub who: Option<crate::targeting::Who>,
     pub direct: bool,
+    /// The damage type (`Hit.cause`): what `#avoids_guardian_thorns` and the like read.
+    pub cause: crate::cow::Cause,
 }
 /// A player's use of an item on an entity (the interactions step fills and sends it).
 pub struct Interaction {
@@ -237,7 +239,9 @@ pub mod melee;
 pub mod panic;
 pub mod random_look;
 pub mod random_stand;
+pub mod elder_curse;
 pub mod guardian_beam;
+pub mod guardian_thorns;
 pub mod limited_life;
 pub mod drink_potion;
 pub mod ranged_bow;
@@ -412,7 +416,9 @@ pub static TABLE: &[&Module] = &[
     &hurt_by::MODULE,
     &nearest_target::MODULE,
     &melee::MODULE,
+    &elder_curse::MODULE,
     &guardian_beam::MODULE,
+    &guardian_thorns::MODULE,
     &limited_life::MODULE,
     &drink_potion::MODULE,
     &ranged_bow::MODULE,

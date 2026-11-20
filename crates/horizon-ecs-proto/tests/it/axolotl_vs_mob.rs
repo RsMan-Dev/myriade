@@ -192,6 +192,18 @@ fn pool(r: &MobRef, h: &mut Herd) {
             }
         }
     }
+    // A wall round the pool, on both sides: a swimmer pushed past the edge (the knock-back of a blow) would walk on the beach, where the
+    // brain does other things; the comparison is about the water.
+    for y in 1..=4 {
+        for x in -31..=0 {
+            for z in -31..=31 {
+                if x == -31 || x == 0 || z == -31 || z == 31 {
+                    r.set_block(x, y, z, "minecraft:stone");
+                    h.set_block(x, y, z, "minecraft:stone");
+                }
+            }
+        }
+    }
     h.tick();
 }
 
@@ -213,7 +225,7 @@ fn the_axolotl_swims_about_as_the_mob_does() {
         let (x, z) = (-27.5 + 5.0 * (k % 5) as f64, -14.5 + 8.0 * (k / 5) as f64);
         let i = r.add_id(Vec3::new(x, 2.0, z), ((k as u32 + 1).wrapping_mul(0x9E37_79B1) >> 4) | 1);
         let e = spawn_species(&mut h.world, &sp, x, z, (k as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        h.world.get_mut::<Pos>(e).unwrap().0.y = 2.0;
+        h.teleport(e, Vec3::new(x, 2.0, z)); // Pos AND Bounds: the box of the water test must be at the spot
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.resource_mut::<Entered>().0.push(e);
         ids.push((i, e));
@@ -284,7 +296,7 @@ fn dead_scene(seed: u64, n: usize, damage: f32) -> ([usize; 2], [usize; 2], [Vec
         let (x, z) = (-28.5 + 5.0 * (k % 6) as f64, -28.5 + 8.0 * (k / 6) as f64);
         let i = r.add_id(Vec3::new(x, 2.0, z), (((k as u32 + 1) * 7 + seed as u32 * 100_003).wrapping_mul(0x9E37_79B1) >> 4) | 1);
         let e = spawn_species(&mut h.world, &sp, x, z, (k as u64 + 1 + seed * 1000).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        h.world.get_mut::<Pos>(e).unwrap().0.y = 2.0;
+        h.teleport(e, Vec3::new(x, 2.0, z)); // Pos AND Bounds: the box of the water test must be at the spot
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.resource_mut::<Entered>().0.push(e);
         ids.push((i, e));

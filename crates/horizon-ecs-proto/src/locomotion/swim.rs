@@ -61,9 +61,11 @@ pub struct Params {
     /// `Squid.travel` and `Squid.aiStep`: no control, no path; the motion is the impulse of the tentacle cycle (`SquidState`), the move only
     /// applies the velocity.
     pub squid: bool,
+    /// The look control puts the pitch back to 0 at the end of every tick (`LookControl.resetXRotOnTick`: the frog's, with no tongue target).
+    pub reset_pitch: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false };
+    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false, reset_pitch: false };
 }
 /// The swim's parameters of the entity, as the systems read them.
 #[derive(Component, Clone, Copy, Debug)]
@@ -74,6 +76,7 @@ pub struct SwimParams {
     pub push: Push,
     pub sinks: bool,
     pub squid: bool,
+    pub reset_pitch: bool,
 }
 /// The tentacle cycle of a squid (`Squid.tentacleMovement`, `tentacleSpeed`) and the vector its goals set (`Mob.extra.vector`): what moves it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -93,7 +96,7 @@ pub struct Dry;
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let sp = *crate::behaviours::params::<Params>(p);
-    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid });
+    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid, reset_pitch: sp.reset_pitch });
     if sp.squid {
         // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
         // A creature made by `spawn_declared` gets its stream after its locomotion: the entity's own number seeds a stream until then.
@@ -129,7 +132,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
     s.add_systems((
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
-        move_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
+        move_control.after(crate::cow::move_control),
         dry.after(crate::cow::wall_check).before(crate::cow::travel),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
@@ -179,7 +182,8 @@ fn pathfind(
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
-                nav.last_check = now;
+                // `PathNavigation.moveTo` sets `lastStuckCheck` before the tick of the navigation counts (the first tick of a path is `+1`).
+                nav.last_check = now.saturating_sub(1);
                 nav.last_pos = pos.0;
                 cmd.entity(e).remove::<NeedsPath>().insert((Following, Moving));
             }
@@ -306,6 +310,9 @@ fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(
                 continue;
             }
             Control::Smooth { max_turn_x, max_turn_y, in_water, outside, gravity } => {
+                if swp.reset_pitch {
+                    d.pitch = 0.0;
+                }
                 smooth_control(pos, &mut vel, &mut yaw, &mut m, &mut d, fs, body, following, max_turn_x, max_turn_y, in_water, outside, gravity);
                 continue;
             }
@@ -339,12 +346,14 @@ fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(
 #[allow(clippy::too_many_arguments)]
 fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, following: bool) {
     d.xxa = 0.0;
-    d.zza = 0.0;
     if !(m.active && following) {
         d.speed = 0.0;
+        d.zza = 0.0;
+        d.moving = false;
         m.active = false;
         return;
     }
+    d.moving = true;
     let (dx, dy, dz) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
     let len = (dx * dx + dy * dy + dz * dz).sqrt();
     let yd = dy / len;
@@ -352,11 +361,12 @@ fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut V
     let target = (m.speed_modifier * body.speed) as f32;
     let speed = d.speed + (target - d.speed) * 0.125;
     d.speed = speed;
+    d.zza = speed;
     let t = (clock.of(e) as i64 + i64::from(e.index().index())) as f64;
-    let push = f64::from(trig::sin(t * 0.5)) * 0.05;
+    let push = (t * 0.5).sin() * 0.05;
     let rad = f64::from(yaw.0 * trig::DEG_TO_RAD);
     let (cos, sin) = (f64::from(trig::cos(rad)), f64::from(trig::sin(rad)));
-    let y_push = f64::from(trig::sin(t * 0.75)) * 0.05;
+    let y_push = (t * 0.75).sin() * 0.05;
     vel.0 = Vec3::new(vel.0.x + push * cos, vel.0.y + y_push * (sin + cos) * 0.25 + f64::from(speed) * yd * 0.1, vel.0.z + push * sin);
     m.active = false;
 }
@@ -539,17 +549,23 @@ fn travel(
         if swp.squid {
             // `Squid.travel`: the move by the velocity and nothing else; then `Squid.aiStep` (the species' step, after the travel).
             // `LivingEntity.aiStep` drops the tiny motions before the move. The fluid state is the one `baseTick` read at the start of the tick
-            // (the entity's own `FluidState` is behind by a tick when it enters the water from above: its marker comes with the move).
+            // (the entity's own `FluidState` is behind by a tick when it enters the water from above: its marker comes with the move), read again after
+            // the move when it was dry.
             crate::locomotion::fly::drop_tiny_motion(&mut v);
-            let in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
+            let mut in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
+            // `LivingEntity.checkFallDamage` (inside the move): out of the water the fluid state is read again at the new place, and `Squid.aiStep`
+            // (after the travel) sees the squid in the water that it has just entered from above.
+            if !in_water {
+                in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
+            }
             if let Some(mut st) = squid {
                 squid_step(&mut st, &mut v, &mut rng, in_water, b.gravity);
             }
             continue;
         }
         // A drowned swims only under water and when it wants to (`Drowned.travelInWater`); else the generic travel of the fluid.
-        let swims = fs.in_water && (swp.control != Control::Drowned || (fs.eye_in_water && wants));
+        let swims = fs.in_water && (swp.control != Control::Drowned || (fs.was_eye_in_water && wants));
         if swims {
             if !c.on_ground && v.0.y < 0.0 {
                 v.0.y *= b.fall_factor;
@@ -561,7 +577,7 @@ fn travel(
             if swp.push == Push::Speed {
                 crate::locomotion::fly::move_relative_3d(&mut v, y.0, push, d.xxa, d.yya, d.zza);
             } else {
-                move_relative(&mut v, y.0, push, d.xxa, d.zza);
+                move_relative(&mut v, y.0, push, d.xxa, d.yya, d.zza);
             }
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
@@ -569,7 +585,7 @@ fn travel(
             let sink = if swp.sinks && (swp.control != Control::Guardian || (d.speed == 0.0 && !has_target)) { 0.005 } else { 0.0 };
             v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
         } else {
-            let rest = travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
+            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall, false);
             // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.
             if rest && !following.contains(e) {
                 par.command_scope(e, |mut cmd| {

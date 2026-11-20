@@ -20,7 +20,7 @@ pub struct Params {
     pub refresh: u64,
 }
 impl Params {
-    pub const ELDER: Self = Self { period: 1200, range: 50.0, amp: 2, ticks: 6000, refresh: 1200 };
+    pub const ELDER: Self = Self { period: 1200, range: 50.0, amp: 2, ticks: 6000, refresh: 1199 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Curse {
@@ -52,8 +52,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 /// The next tick at which `(now + id) % period == 0` (at least one tick away).
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Curse>(e).unwrap().p;
-    let now = w.resource::<Clock>().0 as i64;
-    let phase = (now + i64::from(e.index())).rem_euclid(p.period);
+    let now = w.resource::<Clock>().of(e) as i64;
+    let phase = (now + i64::from(e.index().index())).rem_euclid(p.period);
     let wait = (p.period - phase) % p.period;
     crate::goals::arm(w, e, inst.slot, wait.max(1) as i32);
 }
@@ -63,10 +63,12 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let at = w.get::<Pos>(e).unwrap().0;
     let now = w.resource::<Clock>().0;
     let mut hit = Vec::new();
+    let ps = w.get_resource::<crate::hostile::PlayerState>();
+    let alive = |id: u32| ps.is_none_or(|p| !p.creative(id) && !p.spectator(id) && p.health.get(id as usize).is_none_or(|h| *h > 0.0));
     let r2 = c.p.range * c.p.range;
     w.resource::<Online>().for_near(at.x, at.z, c.p.range, |q| {
         let d2 = (q.x - at.x).powi(2) + (q.y - at.y).powi(2) + (q.z - at.z).powi(2);
-        if q.survival && d2 < r2 && takes(w, q.id, now, &c.p) {
+        if alive(q.id) && d2 < r2 && takes(w, q.id, now, &c.p) {
             hit.push(q.id);
         }
     });

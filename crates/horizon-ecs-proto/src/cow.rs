@@ -74,6 +74,8 @@ pub struct Drive {
     /// The level plus one of a levitation effect (0: none), read by the ground travel.
     pub levitation: i32,
     pub speed: f32,
+    /// `Guardian.isMoving` (DATA_ID_MOVING): its move control had a spot to swim to this tick.
+    pub moving: bool,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
     /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
@@ -121,6 +123,8 @@ pub struct Stroll {
     pub interval: i32,
     /// The chance of a plain spot instead of a land one (`WaterAvoidingRandomStrollGoal.probability`: 0.001; the snow golem's 1.0000001e-5).
     pub plain: f32,
+    /// `RandomStrollGoal.forceTrigger`: the next ask skips the wait and the chance, until a spot is picked.
+    pub force: bool,
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rng(pub u64);
@@ -202,6 +206,8 @@ pub struct FluidState {
     pub in_lava: bool,
     pub eye_in_water: bool,
     pub eye_in_lava: bool,
+    /// `Entity.wasEyeInWater`: the eyes' state of the tick before (`isUnderWater` reads it; one byte, for the drowned's swim only).
+    pub was_eye_in_water: bool,
 }
 /// The fluid module is active: the box overlaps a column with water or lava (`fluid_update` visits only these).
 #[derive(Component, Clone, Copy, Debug)]
@@ -1514,7 +1520,7 @@ pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
-        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60, plain: 0.001 },
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60, plain: 0.001, force: false },
         sp.walk,
         NavParams {
             malus: sp.malus,
@@ -1650,7 +1656,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
@@ -1872,10 +1878,10 @@ pub(crate) fn pathfind(
     level: Res<Level>,
     day: Res<crate::hostile::Daylight>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>, Option<&crate::locomotion::swim::SwimParams>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -1898,14 +1904,20 @@ pub(crate) fn pathfind(
         let max_visited = (max_len * 16.0).ifloor();
         let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
-        let path = (c.on_ground || fluid)
+        // The amphibious navigation (`AmphibiousPathNavigation`) serves both media: its evaluator, in the water and out of it.
+        let amph = swp.and_then(|p| p.amphibious);
+        let eval = || match amph {
+            Some(prefers_shallow) => Evaluator::Amphibious { prefers_shallow },
+            None => Evaluator::Walk,
+        };
+        let path = (c.on_ground || fluid || amph.is_some())
             .then(|| {
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if crate::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) {
-                    crate::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).with_occ(level.occ).find(&[target], max_len, nav.reach, max_visited)
+                    crate::pathsearch::Finder::new(mw, &pm, eval()).with_occ(level.occ).find(&[target], max_len, nav.reach, max_visited)
                 } else {
-                    Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                    Finder::new(mw, &pm, eval()).find(&[target], max_len, nav.reach, max_visited)
                 }
             })
             .flatten();
@@ -1939,7 +1951,8 @@ pub(crate) fn pathfind(
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
                 crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 nav.path = Some(p);
-                nav.last_check = now;
+                // `PathNavigation.moveTo` sets `lastStuckCheck` before the tick of the navigation counts (the first tick of a path is `+1`).
+                nav.last_check = now.saturating_sub(1);
                 nav.last_pos = pos.0;
                 cmd.entity(e).remove::<NeedsPath>().insert((Following, Moving));
             }
@@ -1957,18 +1970,18 @@ pub(crate) fn pathfind(
         let mut chosen: Vec<Entity> = if cfg.path_budget > 0 { q.iter().map(|x| x.0).take(left).collect() } else { Vec::new() };
         chosen.sort_unstable();
         let (limited, chosen) = (cfg.path_budget > 0, &chosen);
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| {
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w)| {
             if !limited || chosen.binary_search(&e).is_ok() {
-                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
             }
         });
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w) in &mut q {
             if left == 0 {
                 break;
             }
             left -= 1;
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u);
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
         }
     }
     par.flush();
@@ -2211,8 +2224,8 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
-    let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
+pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32, zza: f32) {
+    let input = Vec3::new(f64::from(xxa), f64::from(yya), f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
         return;
@@ -2233,9 +2246,13 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
     let moved = level.occ.resolve(scene, bounds.0, wanted, body.step_height, c.on_ground).unwrap_or(Vec3::ZERO);
-    pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
-    if moved != Vec3::ZERO {
-        bounds.0 = bounds.0.move_by(moved);
+    // `Entity.move`: a move shorter than 1.0E-7 (squared) that a collision cut is not applied (a creeping walker on the ground).
+    let sq = |v: Vec3| v.x * v.x + v.y * v.y + v.z * v.z;
+    if sq(moved) > 1.0e-7 || sq(wanted) - sq(moved) < 1.0e-7 {
+        pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
+        if moved != Vec3::ZERO {
+            bounds.0 = bounds.0.move_by(moved);
+        }
     }
     let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
     c.horizontal = differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
@@ -2286,7 +2303,7 @@ fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut
     }
     if d.zza != 0.0 || d.xxa != 0.0 {
         let speed = if c.on_ground { d.speed } else { 0.02 };
-        move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+        move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
     if c.on_ground && horizontal <= 1.0e-5 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
@@ -2340,7 +2357,12 @@ fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_one(
+pub(crate) fn travel_one(level: &Level, sp: &FluidParams, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, jumping: bool, fall_damage: &mut f32) -> bool {
+    travel_one_with(level, sp, pos, vel, yaw, c, d, body, bounds, fs, jumping, fall_damage, true)
+}
+/// `travel_one`, with the tiny motions dropped here (`drop_tiny`) or already dropped by the caller's control, before it changed the velocity.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn travel_one_with(
     level: &Level,
     sp: &FluidParams,
     pos: &mut Pos,
@@ -2353,6 +2375,7 @@ pub(crate) fn travel_one(
     fs: &FluidState,
     jumping: bool,
     fall_damage: &mut f32,
+    drop_tiny: bool,
 ) -> bool {
     if body.object {
         return travel_object(level, pos, vel, yaw, c, d, body, bounds, fs, fall_damage);
@@ -2369,12 +2392,9 @@ pub(crate) fn travel_one(
         vel.0.y *= body.fall_factor;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
-    let v = vel.0;
-    vel.0 = Vec3::new(
-        if v.x.abs() < 0.003 { 0.0 } else { v.x },
-        if v.y.abs() < 0.003 { 0.0 } else { v.y },
-        if v.z.abs() < 0.003 { 0.0 } else { v.z },
-    );
+    if drop_tiny {
+        crate::locomotion::fly::drop_tiny_motion(vel);
+    }
     // `LivingEntity.handleJumping`, in a fluid: the jump input lifts a cow whose feet are in water or lava.
     let threshold = if sp.eye_height < 0.4 { 0.0 } else { 0.4 };
     if jumping && in_fluid {
@@ -2408,14 +2428,14 @@ pub(crate) fn travel_one(
                 slow += (0.546_000_06 - slow) * efficiency;
                 speed += (d.speed - speed) * efficiency;
             }
-            move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+            move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let m = vel.0;
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
             vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
             c.fall_distance = 0.0;
         } else {
-            move_relative(vel, yaw.0, 0.02, d.xxa, d.zza);
+            move_relative(vel, yaw.0, 0.02, d.xxa, d.yya, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let v = vel.0;
             if fs.lava <= threshold {
@@ -2443,7 +2463,7 @@ pub(crate) fn travel_one(
     } else {
         d.air_speed.unwrap_or(0.02)
     };
-    move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+    move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     // `LivingEntity.handleOnClimbable`, the move, then the climb up a wall (a wall climber pressed against one).
     let climbing = d.climber && d.climbing;
     if climbing {
@@ -2577,6 +2597,7 @@ pub(crate) fn fluid_update(
             in_lava: f.in_lava,
             eye_in_water: f.eye_in_water,
             eye_in_lava: f.eye_in_lava,
+            was_eye_in_water: fs.eye_in_water,
         };
         if f.in_water || f.in_lava {
             v.0 = mw.pushed_by_currents(b.0, v.0);
@@ -2762,7 +2783,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
@@ -2775,9 +2796,13 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid, spiky)) = q.get_mut(e) else {
             continue;
         };
+        if spiky {
+            let (by, direct, cause) = (hit.by, hit.direct, hit.cause);
+            commands.queue(move |w: &mut World| crate::behaviours::guardian_thorns::blow(w, e, by, direct, cause));
+        }
         let now = clock.of(e);
         let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
         let mut applied = if cooldown {
@@ -2832,7 +2857,7 @@ pub(crate) fn apply_damage(
         }
         let (who, direct) = (hit.by, hit.direct);
         commands.queue(move |w: &mut World| {
-            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct });
+            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct, cause: hit.cause });
             crate::despawn::touch(w, e);
         });
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
