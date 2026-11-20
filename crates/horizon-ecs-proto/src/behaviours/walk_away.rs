@@ -67,9 +67,15 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         None => w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot)),
     }
 }
+/// The walk ends: while the point is still remembered the goal is asked again at once (the Mob's `canUse` runs every tick, with
+/// the animal still within 8 blocks it leaves again on arrival), not at the next scan of the sensor. A goal that found no spot
+/// (never `Walking`) is not asked again: nothing wakes it but the next scan.
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).remove::<Walking>();
+    let walked = w.entity_mut(e).take::<Walking>().is_some();
     stop_nav(w, e);
+    if walked && w.get::<Avoid>(e).is_some_and(|a| now_of(w, e) < a.until) {
+        arm_module(w, e, &MODULE, 1);
+    }
 }
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a running goal has none.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {

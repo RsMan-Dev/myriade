@@ -122,6 +122,7 @@ fn piglins_flee_a_soul_campfire_as_a_mob_does() {
     }
     let (m, e) = (mean(&md), mean(&ed));
     let sd = (md.iter().map(|x| (x - m).powi(2)).sum::<f64>() / md.len() as f64).sqrt();
+    println!("FLEE Mob {m:.2} (sd {sd:.2}), ECS {e:.2}");
     assert!(m > 6.0 && e > 6.0, "both walk away: Mob {m:.2}, ECS {e:.2}");
     assert!((m - e).abs() <= 2.0 * sd, "the means match within 2 sd of the Mob: Mob {m:.2} (sd {sd:.2}), ECS {e:.2}");
 }

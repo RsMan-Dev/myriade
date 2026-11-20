@@ -50,5 +50,9 @@ ne partait pas du tout (distance 6,8 = depart). Corriges d'apres le jar : dix es
    Phase seule : ECS 15,25 / Mob 14,76 ; avec `within` : Mob 14,76, ECS 14,70 (20 piglins, 80 graines).
 Ecartes par un test : poussee entre piglins (mode `ordered_push` : 13,53 contre 13,42 avant les corrections ; et espaces de 1,5 bloc l'ecart
 n'etait deja plus que 0,29) ; vitesse (1.0), seuil de depart (8), rayon vertical (7), portee 16 : conformes au jar. Reste non porte :
-l'ECS ne relance qu'au rythme du capteur (20 ticks) alors que le Mob relance des l'arret ; le point fui est le centre du bloc, le Mob
-`atBottomCenterOf` (0,5 en Y, sans effet sur la direction).
+les deux restes sont corriges : relance a l'arrivee (`walk_away::stop` redemande le but tout de suite tant que le point est memorise ; le
+capteur efface la memoire quand il ne trouve plus rien, comme `eraseMemory`) et point fui au bas-centre du bloc (`atBottomCenterOf`).
+Mesure finale (20 graines, 20 piglins) : Mob 14,57 (ecart-type 0,47), ECS 14,58.
+Recensement des capteurs a phase fixe : seul le repoussoir du piglin en avait une ; les capteurs de cerveau (`brain::arm`) et celui de la
+grenouille (`shoot_tongue::arm`) tirent deja `nextInt(periode)` a la creation. Ordre des tirages : le piglin fait un tirage de plus sur son
+flux a la creation (`next_int(20)`, au moment ou son module s'arme) ; les tirages suivants du piglin sont decales d'un rang (meme loi).

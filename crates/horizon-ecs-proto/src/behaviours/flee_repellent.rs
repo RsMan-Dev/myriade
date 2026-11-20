@@ -86,6 +86,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let f = w.get::<Flee>(e).unwrap().0;
     let found = repellent_near(w, e, &f).is_some();
     if !found {
+        // The scan finds none: the memory is erased (`brain.eraseMemory(NEAREST_REPELLENT)`).
+        w.entity_mut(e).remove::<super::walk_away::Avoid>();
         ask_later(w, e);
     }
     found
@@ -115,6 +117,8 @@ fn repellent_near(w: &World, e: Entity, f: &Params) -> Option<[f64; 3]> {
         bw.near(f.blocks, [at.x, at.y, at.z], f.horizontal, f.vertical, |p| {
             let c = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
             let d = (c[0] - at.x).powi(2) + (c[1] - at.y).powi(2) + (c[2] - at.z).powi(2);
+            // The spot kept is the bottom centre of the block (`Vec3.atBottomCenterOf`), the choice goes by the centre.
+            let c = [c[0], f64::from(p[1]), c[2]];
             let key = [p[0], p[2], p[1]];
             if d < d_best || (d == d_best && key < key_best) {
                 d_best = d;
