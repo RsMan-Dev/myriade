@@ -77,6 +77,7 @@ mod frog_vs_mob;
 mod lay_egg_vs_mob;
 mod spear_vs_mob;
 mod ravager_vs_mob;
+mod goat_ram_vs_mob;
 mod hoglin_vs_mob;
 mod fox_vs_mob;
 mod happy_ghast_vs_mob;
