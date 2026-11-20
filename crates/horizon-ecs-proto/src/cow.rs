@@ -199,6 +199,8 @@ pub struct FluidState {
     pub in_lava: bool,
     pub eye_in_water: bool,
     pub eye_in_lava: bool,
+    /// `Entity.wasEyeInWater`: the eyes' state of the tick before (`isUnderWater` reads it; one byte, for the drowned's swim only).
+    pub was_eye_in_water: bool,
 }
 /// The fluid module is active: the box overlaps a column with water or lava (`fluid_update` visits only these).
 #[derive(Component, Clone, Copy, Debug)]
@@ -1610,7 +1612,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, fluid_update, move_control, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
@@ -2524,6 +2526,7 @@ pub(crate) fn fluid_update(
             in_lava: f.in_lava,
             eye_in_water: f.eye_in_water,
             eye_in_lava: f.eye_in_lava,
+            was_eye_in_water: fs.eye_in_water,
         };
         if f.in_water || f.in_lava {
             v.0 = mw.pushed_by_currents(b.0, v.0);

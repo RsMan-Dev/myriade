@@ -129,7 +129,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
     s.add_systems((
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
-        move_control.after(crate::cow::move_control).before(crate::cow::fluid_update),
+        move_control.after(crate::cow::move_control),
         dry.after(crate::cow::wall_check).before(crate::cow::travel),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
@@ -550,7 +550,7 @@ fn travel(
             continue;
         }
         // A drowned swims only under water and when it wants to (`Drowned.travelInWater`); else the generic travel of the fluid.
-        let swims = fs.in_water && (swp.control != Control::Drowned || (fs.eye_in_water && wants));
+        let swims = fs.in_water && (swp.control != Control::Drowned || (fs.was_eye_in_water && wants));
         if swims {
             if !c.on_ground && v.0.y < 0.0 {
                 v.0.y *= b.fall_factor;

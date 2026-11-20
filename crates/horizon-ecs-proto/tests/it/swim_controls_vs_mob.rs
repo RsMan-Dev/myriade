@@ -35,6 +35,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
     ];
     let legs: Vec<([f64; 3], [f64; 3])> = if water_only { all[..3].to_vec() } else { all[3..].to_vec() };
     let mut worst = [0.0_f64; 3];
+    let mut fd = [false; 9];
     for (k, &(s, g)) in legs.iter().enumerate() {
         let (mut r, mut h) = pools();
         let (i, e) = (r.add(Vec3::new(s[0], s[1], s[2])), ecs_cow(&mut h, s[0], s[1], s[2], 2100 + k as u64));
@@ -46,11 +47,20 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
         h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
         if drowned {
             r.mobs[i].extra.flag2 = true;
+            r.mobs[i].extra.flag = true;
             h.world.entity_mut(e).insert(WantsToSwim);
         }
         // The ecs animal learns it is in water at its first tick: it starts again from its place at rest.
         h.tick();
         h.tick();
+        // The `Mob` learns the water the same way (its `wasEyeInWater`), then both start again from their place at rest.
+        for _ in 0..2 {
+            r.mobs[i].ai.no_action_time = 0;
+            r.step(None);
+        }
+        r.mobs[i].position = Vec3::new(s[0], s[1], s[2]);
+        r.mobs[i].previous = r.mobs[i].position;
+        r.mobs[i].velocity = Vec3::ZERO;
         h.teleport(e, Vec3::new(s[0], s[1], s[2]));
         h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
         for _ in 0..8 {
@@ -72,6 +82,10 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
             h.tick();
             let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
             let d = ((a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)).sqrt();
+            if std::env::var_os("TRACE4").is_some() && d > 1.0e-6 && !fd[k] {
+                fd[k] = true;
+                eprintln!("FIRST k={k} t={t} d={d:e} MOB {:?} v {:?} yaw {} | ECS {:?} v {:?} yaw {}", a, r.mobs[i].velocity, r.mobs[i].yaw, b, h.world.get::<Vel>(e).unwrap().0, h.world.get::<Yaw>(e).unwrap().0);
+            }
             if std::env::var_os("TRACE2").is_some() && d > 0.05 && t % 15 == 0 {
                 eprintln!("{name} {k} t={t} gap {d:.3} MOB ({:.3},{:.3},{:.3}) | ECS ({:.3},{:.3},{:.3})", a.x, a.y, a.z, b.x, b.y, b.z);
             }
