@@ -24,6 +24,7 @@ pub struct Config {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
 pub struct Homing {
     pub target: Who,
     pub dir: Option<u8>,

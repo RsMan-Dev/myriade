@@ -132,7 +132,7 @@ fn dist(a: Vec3, b: [f64; 3]) -> f64 {
     ((a.x - b[0]).powi(2) + (a.y - b[1]).powi(2) + (a.z - b[2]).powi(2)).sqrt()
 }
 fn tick(w: &mut World) {
-    let list: Vec<Entity> = w.query_filtered::<Entity, With<Spearing>>().iter(w).collect();
+    let list = crate::goals::entities::<With<Spearing>>(w);
     for e in list {
         step(w, e);
     }

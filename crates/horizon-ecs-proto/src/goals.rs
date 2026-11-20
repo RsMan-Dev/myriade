@@ -906,21 +906,35 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 }
 
 
+/// Whether some entity holds a component of SparseSet storage: two lookups, no query.
+fn sparse_any<C: Component>(world: &World) -> bool {
+    world.component_id::<C>().and_then(|id| world.storages().sparse_sets.get(id)).is_some_and(|s| !s.is_empty())
+}
 /// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one
 /// test per module and tick, no system and no run condition in the schedule.
 fn tick_modules(world: &mut World) {
     static TICKS: std::sync::OnceLock<Vec<(usize, fn(&mut World))>> = std::sync::OnceLock::new();
     let ticks = TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect());
-    for &(i, t) in ticks {
-        if world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) {
+    // One look at the counters for all the modules (a bit per tick of the list), not one resource lookup per module.
+    let live = {
+        let c = &world.resource::<Carriers>().0;
+        let mut m = 0u128;
+        for (j, &(i, _)) in ticks.iter().enumerate().take(128) {
+            m |= u128::from(c.get(i).is_some_and(|n| *n > 0)) << j;
+        }
+        m
+    };
+    for (j, &(i, t)) in ticks.iter().enumerate() {
+        let on = if j < 128 { live >> j & 1 == 1 } else { world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) };
+        if on {
             t(world);
         }
     }
-    if !entities::<With<crate::behaviours::homing_projectile::Homing>>(world).is_empty() {
+    if sparse_any::<crate::behaviours::homing_projectile::Homing>(world) {
         crate::behaviours::homing_projectile::tick(world);
     }
     // The touches: looked at only while some creature carries a `Toucher` (no system in the schedule).
-    if !entities::<With<crate::touch::Toucher>>(world).is_empty() {
+    if sparse_any::<crate::touch::Toucher>(world) {
         tick_state(world, crate::touch::touch_events);
     }
 }
