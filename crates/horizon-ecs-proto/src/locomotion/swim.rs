@@ -339,9 +339,9 @@ fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(
 #[allow(clippy::too_many_arguments)]
 fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, following: bool) {
     d.xxa = 0.0;
-    d.zza = 0.0;
     if !(m.active && following) {
         d.speed = 0.0;
+        d.zza = 0.0;
         m.active = false;
         return;
     }
@@ -352,11 +352,12 @@ fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut V
     let target = (m.speed_modifier * body.speed) as f32;
     let speed = d.speed + (target - d.speed) * 0.125;
     d.speed = speed;
+    d.zza = speed;
     let t = (clock.of(e) as i64 + i64::from(e.index().index())) as f64;
-    let push = f64::from(trig::sin(t * 0.5)) * 0.05;
+    let push = (t * 0.5).sin() * 0.05;
     let rad = f64::from(yaw.0 * trig::DEG_TO_RAD);
     let (cos, sin) = (f64::from(trig::cos(rad)), f64::from(trig::sin(rad)));
-    let y_push = f64::from(trig::sin(t * 0.75)) * 0.05;
+    let y_push = (t * 0.75).sin() * 0.05;
     vel.0 = Vec3::new(vel.0.x + push * cos, vel.0.y + y_push * (sin + cos) * 0.25 + f64::from(speed) * yd * 0.1, vel.0.z + push * sin);
     m.active = false;
 }

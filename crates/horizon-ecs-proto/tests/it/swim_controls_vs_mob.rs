@@ -21,7 +21,7 @@ fn pools() -> (MobRef, Herd) {
     (r, h)
 }
 
-fn legs(name: &str, drowned: bool, water_only: bool) {
+fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
     let all: [([f64; 3], [f64; 3]); 9] = [
         ([-8.5, 2.0, 5.5], [-3.5, 3.0, -6.5]),
         ([-10.5, 2.5, -9.5], [-2.5, 2.0, 8.5]),
@@ -58,6 +58,11 @@ fn legs(name: &str, drowned: bool, water_only: bool) {
             r.step(None);
             h.tick();
         }
+        if name.contains("guardian") {
+            // The wobble's phase is the age plus the id: the id is the world's to hand out, so the `Mob` is given the ecs entity's (same phase).
+            let want = h.world.resource::<Clock>().of(e) + u64::from(e.index().index());
+            r.mobs[i].id = (want as u32).wrapping_sub(r.mobs[i].age);
+        }
         let mw = r.w;
         r.mobs[i].nav_move_to(mw, g, 1.0);
         go_to_at(&mut h.world, e, g, 1.0, 1);
@@ -70,7 +75,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) {
             if std::env::var_os("TRACE2").is_some() && d > 0.05 && t % 15 == 0 {
                 eprintln!("{name} {k} t={t} gap {d:.3} MOB ({:.3},{:.3},{:.3}) | ECS ({:.3},{:.3},{:.3})", a.x, a.y, a.z, b.x, b.y, b.z);
             }
-            if std::env::var_os("TRACE3").is_some() && k == 3 && t <= 6 {
+            if std::env::var_os("TRACE3").is_some() && Some(k) == std::env::var("TRACE_K").ok().and_then(|v| v.parse::<usize>().ok()).or(Some(3)) && t <= 8 {
                 let dd = h.world.get::<Drive>(e).unwrap();
                 eprintln!("t={t} MOB pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2} | ECS pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2}", a.x, a.y, a.z, r.mobs[i].velocity.x, r.mobs[i].velocity.y, r.mobs[i].velocity.z, r.mobs[i].ai.speed, r.mobs[i].ai.zza, r.mobs[i].ai.yya, r.mobs[i].head_pitch, r.mobs[i].yaw, b.x, b.y, b.z, h.world.get::<Vel>(e).unwrap().0.x, h.world.get::<Vel>(e).unwrap().0.y, h.world.get::<Vel>(e).unwrap().0.z, dd.speed, dd.zza, dd.yya, dd.pitch, h.world.get::<Yaw>(e).unwrap().0);
             }
@@ -82,7 +87,25 @@ fn legs(name: &str, drowned: bool, water_only: bool) {
         }
     }
     eprintln!("{name}: worst gap to +20 {:.4}, +100 {:.4}, +300 {:.4}", worst[0], worst[1], worst[2]);
-    assert!(worst[0] < 0.15 && worst[2] < 0.5, "{worst:?}");
+    worst
+}
+
+fn within_old_bounds(w: [f64; 3]) {
+    assert!(w[0] < 0.15 && w[2] < 0.5, "{w:?}");
+}
+
+/// The guardian's yaw: the jar turns toward `Mth.atan2(zd, xd) * 57.2957763671875 - 90` (what the ecs does); the `Mob` guardian uses the platform's
+/// `atan2().to_degrees()` (`mobs/guardian.rs` move_control), a 1.5e-4 degree difference that grows to ~1e-4 blocks over 300 ticks. Strict equality is
+/// therefore refused until the `Mob` follows the jar (see suivi/ecs-ecarts.md); the live test below bounds it at a thousandth of a block.
+#[test]
+#[ignore = "strict: the Mob guardian turns with libm atan2, the jar with Mth.atan2 (ecart in suivi/ecs-ecarts.md)"]
+fn guardians_swim_to_the_bit_as_their_mobs_do() {
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    let w = legs("guardian", false, true);
+    assert!(w == [0.0; 3], "{w:?}");
 }
 
 #[test]
@@ -92,19 +115,18 @@ fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their
     }
     let _ = flat_pair();
     match species().name {
-        "minecraft:dolphin" => legs("dolphin", false, true),
+        "minecraft:dolphin" => within_old_bounds(legs("dolphin", false, true)),
         // The axolotl has the dolphin's control (verified); the `Mob` axolotl moves by something other than the imposed path (no goal, no brain left:
         // cause not found), so no comparison is made for it.
         "minecraft:axolotl" => eprintln!("axolotl: not compared (the Mob axolotl does not follow the imposed route)"),
-        "minecraft:drowned" => legs("drowned", true, false),
-        // MEASURED GAP (2026-11-20), not compared: on the imposed route the `Mob` guardian travels 17 blocks in 120 ticks, the ECS one 1 to 2 and
-        // not toward the goal (`guardian_control`: the drive is the wiggle and `speed * yd * 0.1`; the horizontal push of `Guardian.travel` is missing).
+        "minecraft:drowned" => within_old_bounds(legs("drowned", true, false)),
         "minecraft:guardian" | "minecraft:elder_guardian" => {
-            horizon_ecs_proto::cow::skip_note("swim_controls_vs_mob", "guardian swim route: ECS guardian does not follow the route (open gap, suivi/ecs-ecarts.md)");
+            let w = legs("guardian", false, true);
+            assert!(w[2] < 1.0e-3, "{w:?}");
         }
         // The nautiluses' control (the smooth swimming one, no sinking: `AbstractNautilus.travelInWater`): the legs inside the pool.
-        "minecraft:nautilus" => legs("nautilus", false, true),
-        "minecraft:zombie_nautilus" => legs("zombie_nautilus", false, true),
+        "minecraft:nautilus" => within_old_bounds(legs("nautilus", false, true)),
+        "minecraft:zombie_nautilus" => within_old_bounds(legs("zombie_nautilus", false, true)),
         _ => {}
     }
 }

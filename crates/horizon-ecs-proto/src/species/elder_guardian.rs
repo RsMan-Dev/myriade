@@ -14,6 +14,6 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
-    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: true, ..swim::Params::DEFAULT }))],
+    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: true, control: swim::Control::Guardian, push: swim::Push::Fixed(0.1), ..swim::Params::DEFAULT }))],
     ..Def::EMPTY
 };
