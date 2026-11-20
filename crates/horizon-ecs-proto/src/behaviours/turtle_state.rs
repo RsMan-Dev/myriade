@@ -6,7 +6,6 @@ use crate::cow::Pos;
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Turtle {
     pub home: [i32; 3],
-    pub has_egg: bool,
     pub laying: bool,
     pub laying_ticks: i32,
     pub going_home: bool,
@@ -23,6 +22,11 @@ pub fn ensure(w: &mut World, e: Entity) {
         let home = [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
         w.entity_mut(e).insert(Turtle { home, ..Default::default() });
     }
+}
+
+/// `hasEgg`: the turtle carries the egg of `lay_egg` (one fact, `Carrying`, not a copy).
+pub fn has_egg(w: &World, e: Entity) -> bool {
+    w.get::<super::lay_egg::Carrying>(e).is_some()
 }
 
 pub fn get(w: &World, e: Entity) -> Turtle {

@@ -146,6 +146,10 @@ fn tick(w: &mut World) {
             Some(it) => {
                 let speed = w.get::<Fetcher>(e).map_or(1.2, |f| f.p.speed);
                 go_to_entity(w, e, it, speed, 0);
+                // Another item is in reach: the goal goes on, and `PlayWithItemsGoal` (not woken by the pickup meanwhile) throws what is held.
+                if crate::goals::main_hand(w, e).is_some() {
+                    crate::goals::wake(w, e, &super::play_with_items::MODULE);
+                }
             }
         }
     }

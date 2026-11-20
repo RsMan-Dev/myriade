@@ -16,7 +16,7 @@ pub static DEF: Def = Def {
         pick: &["idle"],
         initial: &[Initial { key: &TRANSPORT_ITEMS_COOLDOWN_TICKS, base: 60, range: 40 }],
         behaviours: &[
-            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 0, params: &panic::Params { speed: 1.5 }, needs: &[], duration: Some((100, 120)), kids: &[] },
+            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 0, params: &panic::Params { speed: 1.5, threat: None }, needs: &[], duration: Some((100, 120)), kids: &[] },
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },

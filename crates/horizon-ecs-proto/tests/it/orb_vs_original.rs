@@ -21,7 +21,7 @@ fn scene(player: Option<Vec3>) -> Scene {
     let mw = h.world.resource::<Level>().mw.0;
     let mut players = Vec::new();
     if let Some(p) = player {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
         players.push((1, p));
     }
     Scene { h, o: OrbsOriginal { mw, orbs: Vec::new(), players }, ecs: Vec::new() }

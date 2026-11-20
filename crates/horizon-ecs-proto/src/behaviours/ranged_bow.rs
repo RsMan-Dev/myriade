@@ -19,9 +19,15 @@ pub struct Params {
     pub difficulty: i32,
     /// The effect its arrows put on the creature they hit (a stray's slowness, a bogged's poison, a parched's weakness): (kind, level, ticks).
     pub effect: Option<(crate::effects::Kind, i32, i32)>,
+    /// The ticks the bow is drawn before a shot (`20` for a bow; a crossbow's charge is longer).
+    pub charge: i32,
+    /// A power that replaces the bow's (a crossbow's 1.6), else the power of the draw.
+    pub fixed_power: Option<f32>,
+    /// `CrossbowAttackGoal`: seen for 5 ticks (not 20), no strafe, and after the charge a wait of `20 + random(20)` ticks before the shot.
+    pub crossbow: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2, effect: None };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, radius: 15.0, difficulty: 2, effect: None, charge: 20, fixed_power: None, crossbow: false };
 }
 /// The goal's state (`RangedBowAttackGoal`'s fields) and the bow in use (`using`: ticks the bow has been drawn).
 #[derive(Component, Clone, Copy, Debug)]
@@ -120,12 +126,13 @@ fn bow_run(
         }
         b.see_time += if sees { 1 } else { -1 };
         let radius_sqr = b.p.radius * b.p.radius;
-        if d <= f64::from(radius_sqr) && b.see_time >= 20 {
+        let (need, loaded) = (if b.p.crossbow { 5 } else { 20 }, b.p.crossbow && b.using < 0);
+        if (d <= f64::from(radius_sqr) && b.see_time >= need) || loaded {
             if following || asked || b.aim.0 != i32::MIN {
                 b.aim = (i32::MIN, 0);
                 cmd.queue(move |w: &mut World| stop_nav(w, e));
             }
-            b.strafe_time += 1;
+            b.strafe_time = if b.p.crossbow { -1 } else { b.strafe_time + 1 };
         } else {
             let a = (i.pos.x.floor() as i32, i.pos.z.floor() as i32);
             if a != b.aim || (!following && !asked) {
@@ -161,14 +168,35 @@ fn bow_run(
         } else {
             aim(&mut cmd, e, &mut look, looking, at, Some(30.0));
         }
+        if b.p.crossbow {
+            if b.using < 0 {
+                // Charged: the wait runs down, then the shot needs the target in sight.
+                b.attack_time -= 1;
+                if b.attack_time <= 0 && sees {
+                    let who = t.who;
+                    let power = b.p.fixed_power.unwrap_or(1.6);
+                    cmd.queue(move |w: &mut World| shoot(w, e, who, power));
+                    b.using = 0;
+                }
+            } else if b.using > 0 {
+                b.using += 1;
+                if b.using >= b.p.charge {
+                    b.attack_time = 20 + (rng.next_u32() % 20) as i32;
+                    b.using = -1;
+                }
+            } else if !(following || asked) {
+                b.using = 1;
+            }
+            continue;
+        }
         if b.using > 0 {
             if !sees && b.see_time < -60 {
                 b.using = 0;
             } else if sees {
                 let pull = b.using;
-                if pull >= 20 {
+                if pull >= b.p.charge {
                     b.using = 0;
-                    let power = bow_power(pull);
+                    let power = b.p.fixed_power.unwrap_or_else(|| bow_power(pull));
                     let who = t.who;
                     cmd.queue(move |w: &mut World| shoot(w, e, who, power));
                     b.attack_time = b.p.interval;

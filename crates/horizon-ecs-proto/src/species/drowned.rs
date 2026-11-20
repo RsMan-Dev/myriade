@@ -2,11 +2,11 @@
 //! (1), the attack of priority 2 only at night or with its target in water (`drowned:ok_target`; the `Mob` also tests it while the
 //! goal runs, here only at its start: `suivi/ecs-ecarts.md`), `DrownedGoToBeach` (5), `DrownedSwimUp` (6), the player as a target
 //! only at night or in water (`drowned:player_ok`), the iron golem, the wandering trader and the axolotl (3), a baby turtle (5).
-//! Pending, named (other porters): the trident attack (priority 2: `DrownedTridentAttack`), the villager target (3), `BreakDoor` (1).
+//! The trident attack (priority 2, `ranged_attack::TRIDENT`) and `BreakDoor` come from the base and the shots' port. Pending: the villager target (3) as a drowned's own.
 //! Its swim: amphibious navigation, `DrownedMoveControl` (the marker `WantsToSwim` makes it swim, else the ground's control), the push
 //! 0.01 only under water when it wants to.
 use super::{templates::zombie_base, Change, Def, Section};
-use crate::behaviours::{drowned_go_to_beach, drowned_go_to_water, drowned_swim_up, melee, nearest_target, try_find_water, Cap, Cond, Entry};
+use crate::behaviours::{drowned_go_to_beach, drowned_go_to_water, drowned_swim_up, melee, nearest_target, ranged_attack, spear_use, try_find_water, Cap, Cond, Entry};
 use crate::locomotion::{swim, Medium};
 
 static OK_TARGET: Cond = Cond::Is("drowned:ok_target");
@@ -17,10 +17,13 @@ pub static DEF: Def = Def {
     reference: Some(&zombie_base::DEF),
     changes: &[
         Change::Remove { module: &melee::MODULE, nth: 0 },
+        // Drowned.addBehaviourGoals does not call Zombie's: no SpearUseGoal (checked in the jar).
+        Change::Remove { module: &spear_use::MODULE, nth: 0 },
         Change::Remove { module: &nearest_target::MODULE, nth: 0 },
         Change::Add(Section::Goals, Entry::new(&try_find_water::MODULE, 1, &try_find_water::DROWNED)),
         Change::Add(Section::Goals, Entry::new(&drowned_go_to_water::MODULE, 1, &drowned_go_to_water::Params::DEFAULT)),
         Change::Add(Section::Goals, Entry::new(&melee::MODULE, 2, &melee::Params::DEFAULT).when(&OK_TARGET)),
+        Change::Add(Section::Goals, Entry::new(&ranged_attack::MODULE, 2, &ranged_attack::Params::TRIDENT)),
         Change::Add(Section::Goals, Entry::new(&drowned_go_to_beach::MODULE, 5, &drowned_go_to_beach::Params::DEFAULT)),
         Change::Add(Section::Goals, Entry::new(&drowned_swim_up::MODULE, 6, &drowned_swim_up::Params::DEFAULT)),
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&PLAYER_OK)),

@@ -39,7 +39,7 @@ fn the_lazy_look_changes_nothing_a_player_sees() {
         let mut h = herd(lazy, seed);
         let half = f64::from(h.world.resource::<Level>().half);
         let corner = -half + 6.0;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: corner, y: 1.0, z: corner, main: tempt_item().0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: corner, y: 1.0, z: corner, main: tempt_item().0, off: 0, ..Default::default() });
         let cows: Vec<Entity> = h.world.query_filtered::<Entity, With<Pos>>().iter(&h.world).collect();
         let pos = |h: &Herd, e: Entity| h.world.get::<Pos>(e).unwrap().0;
         // Pairs to feed: 10 near the player, 4 in the far corner (out of its sight).
@@ -105,7 +105,7 @@ fn the_lazy_look_wakes_when_a_player_comes() {
     let states = |h: &mut Herd| counts(&mut h.world).iter().filter(|c| matches!(c.0, "scanning" | "looking")).map(|c| c.1).sum::<usize>();
     assert_eq!(states(&mut h), 0, "nobody sees: nobody looks around");
     let half = f64::from(h.world.resource::<Level>().half);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: -half + 20.0, y: 1.0, z: -half + 20.0, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: -half + 20.0, y: 1.0, z: -half + 20.0, main: 0, off: 0, ..Default::default() });
     for _ in 0..300 {
         h.tick();
     }

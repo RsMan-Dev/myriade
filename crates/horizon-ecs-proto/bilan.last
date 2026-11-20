@@ -1,35 +1,35 @@
-cow idle|ecs 1063
-cow idle|ecs-eager 1291
-cow active(1000 players, no solicitation)|ecs 5631
-cow active(1000 players, no solicitation)|ecs-eager 5457
-cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 13854
-pig idle|ecs 193
-pig idle|ecs-eager 362
-pig active(1000 players, no solicitation)|ecs 5145
-pig active(1000 players, no solicitation)|ecs-eager 4881
-pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 14528
-sheep idle|ecs 488
-sheep idle|ecs-eager 673
-sheep active(1000 players, no solicitation)|ecs 5478
-sheep active(1000 players, no solicitation)|ecs-eager 5318
-sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 15034
+cow idle|ecs 768
+cow idle|ecs-eager 977
+cow active(1000 players, no solicitation)|ecs 4355
+cow active(1000 players, no solicitation)|ecs-eager 4204
+cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8067
+pig idle|ecs 140
+pig idle|ecs-eager 347
+pig active(1000 players, no solicitation)|ecs 4059
+pig active(1000 players, no solicitation)|ecs-eager 3870
+pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8225
+sheep idle|ecs 329
+sheep idle|ecs-eager 527
+sheep active(1000 players, no solicitation)|ecs 4307
+sheep active(1000 players, no solicitation)|ecs-eager 4135
+sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8389
 chicken idle|ecs 35
-chicken idle|ecs-eager 210
-chicken active(1000 players, no solicitation)|ecs 3767
-chicken active(1000 players, no solicitation)|ecs-eager 3649
-chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8331
-zombie idle|ecs 104
-zombie idle|ecs-eager 296
-zombie active(1000 players, no solicitation)|ecs 11376
-zombie active(1000 players, no solicitation)|ecs-eager 11293
-zombie chase clear (1024, spacing 6, 1024 players)|ecs 5629
-zombie chase crowded (2000, spacing 2, 1000 players)|ecs 7157
-crowd 0.5 (cow, 2000, 0 player)|batch 6633
-crowd 0.5 (cow, 2000, 0 player)|ordered 19423
-crowd 0.8 (cow, 2000, 0 player)|batch 5753
-crowd 0.8 (cow, 2000, 0 player)|ordered 13698
-zone near ring (cow, 6, 10)|ecs 2978.6
-zone mid ring (cow, 6, 10)|ecs 33.3
-zone far ring (cow, 6, 10)|ecs 0.3
-items at rest (slope per stack, 500 to 2000)|ecs 28
-schedule at rest (empty world, per tick)|ecs 127386
+chicken idle|ecs-eager 215
+chicken active(1000 players, no solicitation)|ecs 3241
+chicken active(1000 players, no solicitation)|ecs-eager 3093
+chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 5410
+zombie idle|ecs 87
+zombie idle|ecs-eager 274
+zombie active(1000 players, no solicitation)|ecs 9474
+zombie active(1000 players, no solicitation)|ecs-eager 9361
+zombie chase clear (1024, spacing 6, 1024 players)|ecs 5550
+zombie chase crowded (2000, spacing 2, 1000 players)|ecs 6810
+crowd 0.5 (cow, 2000, 0 player)|batch 4402
+crowd 0.5 (cow, 2000, 0 player)|ordered 17888
+crowd 0.8 (cow, 2000, 0 player)|batch 3839
+crowd 0.8 (cow, 2000, 0 player)|ordered 12066
+zone near ring (cow, 6, 10)|ecs 2326.1
+zone mid ring (cow, 6, 10)|ecs 33.9
+zone far ring (cow, 6, 10)|ecs 2.0
+items at rest (slope per stack, 500 to 2000)|ecs 8
+schedule at rest (empty world, per tick)|ecs 124972

@@ -56,7 +56,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -142,12 +142,13 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.get_mut::<BerrySearch>(e).unwrap().due = now + wait as u64;
     crate::goals::arm(w, e, inst.slot, wait);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(berries_run.in_set(slot));
+/// The tick of the module, run only while a berry-picking fox lives (no registered system).
+fn tick(w: &mut World) {
+    berries_run(w);
 }
 /// Every tick of a running picking: the block must still have berries, else the goal ends; else its tick.
-fn berries_run(w: &mut World, q: &mut QueryState<Entity, With<Picking>>) {
-    let list: Vec<Entity> = q.iter(w).collect();
+fn berries_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Picking>>(w);
     for e in list {
         let Some(slot) = w.get::<BerryDef>(e).map(|d| d.slot) else { continue };
         let go_on = {

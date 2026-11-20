@@ -42,7 +42,7 @@ fn on() -> bool {
     }
     let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
     if sp != "minecraft:cow" {
-        eprintln!("SKIP lot1_vs_mob: written for HORIZON_SPECIES=minecraft:cow, not {sp}");
+        horizon_ecs_proto::cow::skip_note("lot1_vs_mob", &format!("written for HORIZON_SPECIES=minecraft:cow, not {sp}"));
         return false;
     }
     true
@@ -250,7 +250,7 @@ fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize
     let (mut ecs, mut et) = (Vec::new(), None);
     for t in 0..220 {
         if let Some(d) = at(t) {
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         }
         if t == 20 {
             horizon_ecs_proto::targeting::set_target(&mut h.world, e, horizon_ecs_proto::targeting::Target::player(1, 60));

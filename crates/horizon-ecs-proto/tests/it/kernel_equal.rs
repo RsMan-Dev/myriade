@@ -1,6 +1,6 @@
 //! The optimised block-collision kernel against the reference one, bit for bit, over random calls in a varied
 //! random world (suivi/ecs-noyau-collisions.md). `HORIZON_TEST_RESOURCES` must be set.
-use horizon_ecs_proto::kernel_lab::{change_block, cube_world, occupancy_of, random_calls, run, run_kernel, run_lava_walker, run_reference, varied_world, Rng};
+use horizon_ecs_proto::kernel_lab::{change_block, cube_world, hard_world, hard_world_sized, occupancy_of, seam_world, random_calls, run, run_as, run_kernel, run_lava_walker, run_reference, subjects, varied_world, Call, Mode, Rng};
 
 fn same(a: &Result<horizon_core::geometry::Vec3, String>, b: &Result<horizon_core::geometry::Vec3, String>) -> bool {
     match (a, b) {
@@ -123,6 +123,83 @@ fn the_shape_table_keeps_only_contextual_dynamic_and_moving_states_with_the_kern
     for (c, names) in &by_class {
         eprintln!("{c}: {} names{}", names.len(), if *c == "hard" { format!(" {names:?}") } else { String::new() });
     }
+}
+
+/// Every state of the registry that is hard, by (large, piston): the enumeration shows that hard and large without being a piston exists (the
+/// shulker boxes, whose lid can reach out of the cell), so the section's large-column word cannot be set by pistons alone.
+#[test]
+fn the_hard_states_are_enumerated_by_large_and_piston() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let occ = occupancy_of(mw);
+    let mut kinds: std::collections::BTreeMap<(bool, bool), std::collections::BTreeSet<String>> = Default::default();
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        if let Some(k) = occ.hard_flags(mw.collision, id) {
+            kinds.entry(k).or_default().insert(mw.registry.state(id).unwrap().name.trim_start_matches("minecraft:").to_string());
+        }
+    }
+    assert!(kinds.get(&(true, false)).is_some_and(|n| n.contains("shulker_box")), "{kinds:?}");
+    assert!(kinds.get(&(true, true)).is_some_and(|n| n.contains("moving_piston")), "{kinds:?}");
+    assert!(kinds.keys().all(|k| k.0 || k.1), "a hard state that is neither large nor a piston: {kinds:?}");
+}
+
+/// A shulker box in the ring of the box (none inside it) makes the lock-free path decline (to the locked masks), as a large hard cell must: its lid may reach into the box.
+/// Equal to the reference, in a world of open shulker boxes at y = 1 and air above.
+#[test]
+fn a_large_hard_cell_in_the_ring_sends_the_call_to_the_kernel() {
+    use horizon_core::geometry::{Aabb, Vec3};
+    use std::sync::atomic::Ordering::Relaxed;
+    let (world, _) = horizon_ecs_proto::kernel_lab::shulker_floor_world();
+    let occ = occupancy_of(world);
+    let sub = subjects()[0];
+    let (mut declined, mut calls) = (0, 0);
+    for (x, z) in [(3.3, 4.4), (5.5, 6.1), (7.2, 2.9), (9.1, 9.9), (1.7, 8.3)] {
+        let bounds = Aabb::new(Vec3::new(x - 0.3, 2.5, z - 0.3), Vec3::new(x + 0.3, 4.3, z + 0.3));
+        let c = Call { bounds, movement: Vec3::new(0.1, 0.0, 0.05), step: 0.0, on_ground: false };
+        let before = occ.declined.load(Relaxed);
+        let (new, old) = (run_as(world, &c, sub, Mode::Masks), run_as(world, &c, sub, Mode::Reference));
+        assert!(same(&new, &old), "{:?}: masks {new:?} reference {old:?}", c.bounds);
+        declined += occ.declined.load(Relaxed) - before;
+        calls += 1;
+    }
+    assert_eq!(declined, calls, "the lock-free path answered a call with a large hard cell in the ring");
+}
+
+/// The public cell reader and the section version: a cell reads the class of its block (cube, shape, hard, liquid, air) in a world of every kind
+/// of block, and a write through `changed` moves the section's version and the cell's bits.
+#[test]
+fn the_cell_reader_tells_the_class_of_each_block_and_the_version_moves_on_a_write() {
+    use horizon_ecs_proto::occupancy::cell;
+    let (world, ptr) = hard_world(2, None);
+    let occ = occupancy_of(world);
+    let mut seen = [0u32; 5];
+    for x in -14..14 {
+        for z in -14..14 {
+            for y in 0..6 {
+                let s = world.world.block(x, y, z);
+                let (class, bits) = (occ.probe_class(world.collision, s), occ.cell_at(world.world, world.collision, x, y, z));
+                seen[class as usize] += 1;
+                match class {
+                    0 => assert_eq!(bits & (cell::FULL | cell::NEAR | cell::HARD | cell::LIQUID), 0, "{x} {y} {z}"),
+                    1 => assert_eq!(bits & (cell::FULL | cell::NEAR), cell::FULL | cell::NEAR, "{x} {y} {z}"),
+                    2 => assert!(bits & cell::SHAPED != 0 || bits & cell::NEAR != 0, "{x} {y} {z}: {bits}"),
+                    3 => assert_eq!(bits & (cell::FULL | cell::HARD), cell::HARD, "{x} {y} {z}"),
+                    _ => assert!(bits & cell::LIQUID != 0, "{x} {y} {z}"),
+                }
+            }
+        }
+    }
+    assert!(seen.iter().all(|n| *n > 0), "a class is missing from the world: {seen:?}");
+    // SAFETY: nothing else runs on this world.
+    let section = unsafe { occ.section_masks(world.world, world.collision, [0, 0, 0]) };
+    let (v, g) = (section.version(), occ.generation());
+    let stone = world.registry.default_state("minecraft:stone").unwrap();
+    unsafe { change_block(world, ptr, 3, 4, 5, stone) };
+    assert_eq!(section.version(), v + 1);
+    assert_eq!(occ.cell_at(world.world, world.collision, 3, 4, 5) & cell::FULL, cell::FULL);
+    occ.clear();
+    assert_eq!(occ.generation(), g + 1);
 }
 
 /// Water and lava are empty for a body with no subject and the kernel's business for one that stands on fluids (a strider): both
@@ -266,4 +343,239 @@ fn contextual_states_have_no_cached_shape() {
     }
     eprintln!("contextual states without a cached shape: {without:?}");
     assert!(with_shape.is_empty(), "contextual states with a cached shape: {with_shape:?}");
+}
+
+/// Calls built on the hard cells of a world: boxes whose feet are at the heights that tell the contextual shapes apart (on the
+/// top of the block, a hair above or below, inside it), standing on it, falling onto it, walking against it.
+fn feet_calls(world: &horizon_client_lib::mobs::MobWorld<'_>, r: &mut Rng, half: i32) -> Vec<Call> {
+    use horizon_core::geometry::{Aabb, Vec3};
+    let mut out = Vec::new();
+    for x in -half..half {
+        for z in -half..half {
+            for y in 0..6 {
+                let name = &world.registry.state(world.world.block(x, y, z)).unwrap().name;
+                if !HARD_NAMES.iter().any(|n| name.ends_with(n)) || r.below(3) != 0 {
+                    continue;
+                }
+                for feet in [0.0, 0.5, 0.875, 0.9, 0.99, 1.0, 1.0 + 1.0e-7, 1.0 - 1.0e-7, 1.0 + 3.0e-6, 1.125, 1.5, 2.0] {
+                    let (cx, cz) = (f64::from(x) + r.range(0.0, 1.0), f64::from(z) + r.range(0.0, 1.0));
+                    let (w, h) = [(0.6, 1.8), (0.9, 1.4), (0.3, 0.3), (0.6, 0.6)][r.below(4)];
+                    let bounds = Aabb::new(Vec3::new(cx - w / 2.0, f64::from(y) + feet, cz - w / 2.0), Vec3::new(cx + w / 2.0, f64::from(y) + feet + h, cz + w / 2.0));
+                    let movement = [Vec3::new(0.0, -0.0784, 0.0), Vec3::new(0.1, -0.08, 0.05), Vec3::new(0.0, -0.5, 0.0), Vec3::new(0.2, 0.0, -0.1), Vec3::new(0.0, 0.0, 0.0)][r.below(5)];
+                    out.push(Call { bounds, movement, step: [0.0_f32, 0.6, 1.0][r.below(3)], on_ground: r.below(2) == 0 });
+                }
+            }
+        }
+    }
+    out
+}
+const HARD_NAMES: &[&str] = &["scaffolding", "powder_snow", "moving_piston", "bamboo", "pointed_dripstone", "sulfur_spike", "water", "lava", "shulker_box"];
+
+/// Hard cells (scaffolding, powder snow, moving pistons, shulker boxes with their lids, bamboo, stalactites, fluids) among cubes and
+/// fixed shapes: the masks ask the kernel for the shape of the cells that need it and rebuild the rest, in the scan's order. Equal to
+/// the reference bit for bit for every kind of body (a position, a living entity, one that fell, in leather boots, a walkable type, a
+/// falling block, a lava walker), over random calls and calls with the feet at the heights that tell the shapes apart.
+#[test]
+fn hard_cells_asked_one_by_one_equal_the_reference_bit_for_bit() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let subs = subjects();
+    let (mut calls, mut stopped, mut fast, mut slow, mut errors) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    for (seed, only) in [(2u64, None), (4, None), (6, Some("scaffolding")), (8, Some("powder_snow")), (10, Some("moving_piston")), (12, Some("shulker_box")), (14, Some("bamboo")), (16, Some("pointed_dripstone")), (18, Some("water"))] {
+        let (world, _) = hard_world(seed, only);
+        let occ = occupancy_of(world);
+        let mut r = Rng(seed * 31 + 7);
+        let mut list = random_calls(seed, 2_500);
+        list.extend(feet_calls(world, &mut r, 14));
+        let (f0, k0) = (occ.fast.load(Relaxed), occ.fallback.load(Relaxed));
+        for c in &list {
+            for (i, sub) in subs.iter().enumerate() {
+                let (new, old) = (run_as(world, c, *sub, Mode::Masks), run_as(world, c, *sub, Mode::Reference));
+                assert!(same(&new, &old), "seed {seed} {only:?} subject {i}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+                calls += 1;
+                if let Err(e) = &old {
+                    errors += 1;
+                    if errors == 1 { eprintln!("first reference error: {e}"); }
+                }
+                stopped += u64::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
+            }
+        }
+        let (f, k) = (occ.fast.load(Relaxed) - f0, occ.fallback.load(Relaxed) - k0);
+        fast += f;
+        slow += k;
+        eprintln!("seed {seed} {only:?}: {} calls x {} subjects; masks {f}, whole kernel {k}", list.len(), subs.len());
+    }
+    eprintln!("{errors} calls ended in a kernel error (the same one on both sides)");
+    eprintln!("{calls} calls, {stopped} stopped by a block; the whole kernel took {slow} ({:.1} %)", slow as f64 * 100.0 / (fast + slow) as f64);
+    assert!(stopped * 5 > calls, "only {stopped} of {calls} calls were stopped by a block");
+    assert!(slow * 20 < fast + slow, "the whole kernel still took {slow} of {} calls", fast + slow);
+}
+
+/// The same for `no_collision` (a position context whatever the body).
+#[test]
+fn hard_cells_agree_for_no_collision() {
+    let subs = subjects();
+    for (seed, only) in [(2u64, None), (6, Some("scaffolding")), (10, Some("moving_piston")), (12, Some("shulker_box"))] {
+        let (world, _) = hard_world(seed, only);
+        let occ = occupancy_of(world);
+        for c in random_calls(seed, 6_000) {
+            for sub in subs.iter().take(3) {
+                let scene = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                let mut scene2 = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                assert_eq!(occ.no_collision(scene, c.bounds), scene2.unobstructed(c.bounds).unwrap_or(false), "no_collision {:?} seed {seed} {only:?}", c.bounds);
+            }
+        }
+    }
+}
+
+/// Bamboo, pointed dripstone and sulfur spikes in every column of a 64 x 64 field (every offset key met), mixed with cubes and fixed
+/// shapes, bodies standing on them, falling onto them, walking through them: the table's moved shape per (state, column offset) equals
+/// what the kernel gives for each column, bit for bit.
+#[test]
+fn column_offset_shapes_agree_with_the_kernel_in_every_column() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let subs = subjects();
+    for (seed, name) in [(20u64, "bamboo"), (22, "pointed_dripstone"), (24, "sulfur_spike")] {
+        let (world, _) = hard_world_sized(seed, Some(name), 32);
+        let occ = occupancy_of(world);
+        let mut r = Rng(seed * 17 + 3);
+        let mut list: Vec<Call> = Vec::new();
+        for _ in 0..6_000 {
+            let (w, h) = [(0.6, 1.8), (0.9, 1.4), (0.3, 0.3), (0.6, 0.6)][r.below(4)];
+            let (cx, cz) = (r.range(-31.0, 31.0), r.range(-31.0, 31.0));
+            let y = [1.0, 1.0, 2.0, 0.0, 3.5][r.below(5)] + [0.0, 1.0e-7, -1.0e-7, 0.5][r.below(4)];
+            let bounds = horizon_core::geometry::Aabb::new(horizon_core::geometry::Vec3::new(cx - w / 2.0, y, cz - w / 2.0), horizon_core::geometry::Vec3::new(cx + w / 2.0, y + h, cz + w / 2.0));
+            let movement = [horizon_core::geometry::Vec3::new(0.0, -0.0784, 0.0), horizon_core::geometry::Vec3::new(0.1, -0.08, 0.1), horizon_core::geometry::Vec3::new(-0.15, 0.0, 0.0), horizon_core::geometry::Vec3::new(0.0, -0.6, 0.12)][r.below(4)];
+            list.push(Call { bounds, movement, step: [0.0_f32, 0.6, 1.0][r.below(3)], on_ground: r.below(2) == 0 });
+        }
+        list.extend(feet_calls(world, &mut r, 32).into_iter().step_by(3));
+        let (f0, k0) = (occ.fast.load(Relaxed), occ.fallback.load(Relaxed));
+        let mut stopped = 0;
+        for c in &list {
+            for sub in subs.iter().take(2) {
+                let (new, old) = (run_as(world, c, *sub, Mode::Masks), run_as(world, c, *sub, Mode::Reference));
+                assert!(same(&new, &old), "{name}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+                stopped += usize::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
+            }
+        }
+        eprintln!("{name}: {} calls x 2 subjects, {stopped} stopped; masks {}, whole kernel {}", list.len(), occ.fast.load(Relaxed) - f0, occ.fallback.load(Relaxed) - k0);
+        assert!(stopped * 4 > list.len(), "{name}: only {stopped} stopped");
+    }
+}
+
+/// What the table relies on: the moved shape of these states depends on the column through two 4-bit values of its position seed and
+/// nothing else. Over 300 000 random columns (up to 30 million blocks out), two columns with the same two values give bit-identical
+/// shapes, and the 256 values all occur.
+#[test]
+fn a_column_offset_is_a_function_of_two_seed_nibbles() {
+    use horizon_core::{position::BlockPos, random::position_seed};
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let b = mw.collision;
+    let mut scene = horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut checked = 0;
+    for name in ["bamboo", "pointed_dripstone", "sulfur_spike"] {
+        let Some(state) = (0..mw.registry.len() as u32).map(BlockStateId).find(|&id| mw.registry.state(id).unwrap().name == format!("minecraft:{name}") && b.cached_shapes().cached_shape(id).unwrap().is_none()) else { continue };
+        let mut by_key: std::collections::HashMap<usize, Vec<u64>> = Default::default();
+        let mut r = Rng(0xC01_0FF5E7 ^ name.len() as u64);
+        for _ in 0..100_000 {
+            let (x, z) = ((r.next() % 60_000_000) as i32 - 30_000_000, (r.next() % 60_000_000) as i32 - 30_000_000);
+            let seed = position_seed(BlockPos::new(x, 0, z));
+            let key = ((seed & 15) | (seed >> 8 & 15) << 4) as usize;
+            let shape = b.collision_shape(&mut scene, state, [x, 64, z]).unwrap();
+            let bits: Vec<u64> = shape.boxes().iter().flat_map(|bx| [bx.min_position(), bx.max_position()]).flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()]).collect();
+            match by_key.get(&key) {
+                Some(first) => assert_eq!(*first, bits, "{name}: column ({x}, {z}) key {key}"),
+                None => {
+                    by_key.insert(key, bits);
+                }
+            }
+            // Inside its cell on every axis: the reason the ring is never read for these states.
+            for a in horizon_core::geometry::Axis::ALL {
+                assert!(shape.min(a) >= 0.0 && shape.max(a) <= 1.0, "{name}: column ({x}, {z}) reaches out of its cell on {a:?}");
+            }
+            checked += 1;
+        }
+        assert_eq!(by_key.len(), 256, "{name}: {} of 256 offset keys met", by_key.len());
+    }
+    eprintln!("{checked} columns checked");
+    assert!(checked > 0);
+}
+
+/// Every state of these three blocks that has no cached shape is a column-offset state in the table.
+#[test]
+fn bamboo_and_stalactites_are_column_states() {
+    use horizon_world::registry::BlockStateId;
+    let mw = varied_world(1);
+    let occ = occupancy_of(mw);
+    let mut n = 0;
+    for i in 0..mw.registry.len() {
+        let id = BlockStateId(i as u32);
+        let name = &mw.registry.state(id).unwrap().name;
+        if matches!(name.as_str(), "minecraft:bamboo" | "minecraft:pointed_dripstone" | "minecraft:sulfur_spike") && mw.collision.cached_shapes().cached_shape(id).unwrap().is_none() {
+            assert_eq!(occ.class_name(mw.collision, id), "column", "{name}");
+            n += 1;
+        }
+    }
+    assert!(n > 20, "{n} column states");
+}
+
+/// Features on the seams between sections (cubes, shapes that reach out of their cell, hard blocks), boxes beside them on both sides, standing and
+/// falling: the cells of the ring and of the box that lie in the neighbouring section are read from it.
+#[test]
+fn seams_between_sections_agree_with_the_reference() {
+    let mut stopped = 0;
+    for seed in [1u64, 2, 3, 4] {
+        let (world, calls) = seam_world(seed);
+        for c in &calls {
+            for sub in subjects().into_iter().take(2) {
+                let (new, old) = (run_as(world, c, sub, Mode::Masks), run_as(world, c, sub, Mode::Reference));
+                assert!(same(&new, &old), "seed {seed}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
+                stopped += usize::from(old.as_ref().is_ok_and(|v| v.x != c.movement.x || v.y != c.movement.y || v.z != c.movement.z));
+            }
+        }
+    }
+    assert!(stopped > 10_000, "only {stopped} calls stopped");
+}
+
+/// The masks dropped and the blocks changed behind their back (`clear`, as when a chunk is replaced): the threads' caches of sections must not
+/// answer for the old world; and calls from several threads at once, against answers computed before.
+#[test]
+fn clear_and_threads_agree_with_the_reference() {
+    let (world, ptr) = cube_world(14, true);
+    let occ = occupancy_of(world);
+    let calls = random_calls(14, 4_000);
+    let before: Vec<_> = calls.iter().map(|c| run(world, c)).collect();
+    for c in &calls {
+        assert!(same(&run_reference(world, c), &run(world, c)));
+    }
+    // Blocks change without `changed`, then `clear`.
+    let stone = world.registry.default_state("minecraft:stone").unwrap();
+    let air = world.registry.default_state("minecraft:air").unwrap();
+    let mut r = Rng(77);
+    for _ in 0..300 {
+        let (x, y, z) = (r.below(28) as i32 - 14, r.below(7) as i32, r.below(28) as i32 - 14);
+        let s = if r.below(2) == 0 { stone } else { air };
+        // SAFETY: no call runs at the same time.
+        unsafe {
+            let _ = (*ptr).set(x, y, z, s);
+        }
+    }
+    occ.clear();
+    let after: Vec<_> = calls.iter().map(|c| run_reference(world, c)).collect();
+    assert!(before.iter().zip(&after).any(|(a, b)| !same(a, b)), "the changes must matter");
+    std::thread::scope(|scope| {
+        // The world is read only here (the masks are what is under test); it is not `Sync` for what the mobs hold in it, which these calls never touch.
+        let addr = world as *const horizon_client_lib::mobs::MobWorld<'_> as usize;
+        for t in 0..4 {
+            let (calls, after) = (&calls, &after);
+            scope.spawn(move || {
+                // SAFETY: the world outlives the scope and nothing writes to it.
+                let world = unsafe { &*(addr as *const horizon_client_lib::mobs::MobWorld<'static>) };
+                for (i, c) in calls.iter().enumerate().skip(t).step_by(4) {
+                    let got = run(world, c);
+                    assert!(same(&got, &after[i]), "thread {t} call {i}: masks {got:?} reference {:?}", after[i]);
+                }
+            });
+        }
+    });
 }

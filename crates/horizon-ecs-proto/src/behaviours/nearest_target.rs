@@ -36,9 +36,20 @@ pub struct Params {
     pub hostile: bool,
     /// The distance of the search in blocks, instead of the follow range times `follow_scale`.
     pub range: Option<f64>,
+    /// `NearestHealableRaiderTargetGoal`: only while the raid is active, on a draw of one in two, and it starts the wait (`HealWait`) of 200 ticks.
+    pub heal: bool,
+    /// `NearestAttackableWitchTargetGoal`: not while the wait of the healing goal runs.
+    pub after_heal: bool,
+
+    /// A condition on the creature (`Prey::Filter`: the llama's untamed wolf), read for each candidate.
+    pub candidate_when: Option<fn(&World, Entity) -> bool>,
+    /// Candidates further than this in height from the attacker's feet are not picked (the slime's player target: `|dy| <= 4`).
+    pub max_dy: Option<f64>,
+    /// The player is a candidate only within this distance along the axis of the face the attacker is attached to (the shulker's `|d| <= 4.5`).
+    pub attach_reach: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None, attach_reach: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -53,6 +64,8 @@ pub struct Nearest {
     land: bool,
     /// Its deadline is in the wheel.
     armed: bool,
+    /// No creature of its species is alive: no deadline is in the wheel until one is born (`unpark`).
+    parked: bool,
     pick: Option<Who>,
 }
 impl Nearest {
@@ -100,7 +113,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         Some(other) => panic!("unknown target predicate {other}"),
         None => None,
     };
-    let n = Nearest { p, slot: inst.slot, mask, baby, land: p.predicate == Some("baby_on_land"), armed: false, pick: None };
+    let n = Nearest { p, slot: inst.slot, mask, baby, land: p.predicate == Some("baby_on_land"), armed: false, parked: false, pick: None };
     match w.get_mut::<NearestTargets>(e) {
         Some(mut ts) => {
             debug_assert_eq!(ts.0.len(), inst.nth as usize);
@@ -127,12 +140,28 @@ fn reduced(n: i32) -> i32 {
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let Some(n) = state(w, e, inst) else { return };
-    if n.armed || n.inert() {
+    if n.armed || n.inert() || n.parked {
+        return;
+    }
+    if !n.p.players && w.get_resource::<crate::goals::Carriers>().is_some_and(|c| !n.mask.any_alive(&c.1.0)) {
+        edit(w, e, inst, |n| n.parked = true);
         return;
     }
     let wait = with_rng(w, e, |r| 2 * geometric(r, reduced(n.p.interval)));
     crate::goals::arm(w, e, inst.slot, wait);
     edit(w, e, inst, |n| n.armed = true);
+}
+/// A creature of species `sp` was born where none lived: the instances parked for it are armed again.
+pub fn unpark(w: &mut World, sp: u8) {
+    let ids: Vec<Entity> = w.query_filtered::<Entity, With<NearestTargets>>().iter(w).collect();
+    for e in ids {
+        let hits: Vec<(u8, u8)> = w.get::<NearestTargets>(e).map_or(Vec::new(), |ts| ts.0.iter().enumerate().filter(|(_, n)| n.parked && n.mask.contains(sp)).map(|(i, n)| (n.slot, i as u8)).collect());
+        for (slot, nth) in hits {
+            let inst = Inst { slot, nth };
+            edit(w, e, inst, |n| n.parked = false);
+            arm(w, e, inst);
+        }
+    }
 }
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
     edit(w, e, inst, |n| n.armed = false);
@@ -152,6 +181,12 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(n) = state(w, e, inst) else { return false };
+    if (n.p.after_heal || n.p.heal) && super::heal_raiders::waiting(w, e) {
+        return false;
+    }
+    if n.p.heal && (!crate::raids::has_active_raid(w, e) || !with_rng(w, e, |r| r.next_int(2) == 0)) {
+        return false;
+    }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
     let range = n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale);
@@ -175,6 +210,12 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
+                && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
+                && n.p.attach_reach.is_none_or(|m| {
+                    let face = w.get::<crate::behaviours::attached_face::Attached>(e).map_or(0, |a| a.face);
+                    let d = [p.x - pos.x, p.y - pos.y, p.z - pos.z][crate::behaviours::homing_projectile::axis_of(face) as usize];
+                    d.abs() <= m
+                })
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
@@ -185,18 +226,18 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
         });
         found = best.map(|b| Who::Player(b.0));
-    } else if !n.mask.is_empty() {
+    } else if !n.mask.is_empty() && w.get_resource::<crate::goals::Carriers>().is_none_or(|c| n.mask.any_alive(&c.1.0)) {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
             if c == e {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) || n.p.candidate_when.is_some_and(|f| !f(w, c)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
-            if dx <= range && dy <= range && dz <= range {
+            if dx <= range && dy <= range && dz <= range && n.p.max_dy.is_none_or(|m| (cp.0.y - pos.y).abs() <= m) {
                 let d = dx * dx + dy * dy + dz * dz;
                 cands.push((d, c, cp.0, w.get::<targeting::Eye>(c).map_or(1.0, |l| l.0)));
             }
@@ -228,6 +269,9 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let Some(n) = state(w, e, inst) else { return };
     let Some(who) = n.pick else { return };
+    if n.p.heal {
+        super::heal_raiders::wait(w, e);
+    }
     let mut t = Target::new(who, reduced(n.p.unseen_memory) as u16, inst.slot);
     (t.must_see, t.follow_scale) = (n.p.must_see, n.p.follow_scale);
     targeting::set_target(w, e, t);
@@ -237,4 +281,41 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
         targeting::clear_target(w, e);
     }
     rearm(w, e, inst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::species::Config;
+
+    /// `max_dy` (the slime's `|dy| <= 4`): the nearer candidate, too far in height, is skipped for the farther one in range; without the
+    /// limit (the witness) the nearer one is the pick.
+    #[test]
+    fn max_dy_skips_a_candidate_too_far_in_height() {
+        if crate::cow::skip_unless_walker("nearest max_dy") {
+            return;
+        }
+        let name = species().name;
+        let types: &'static [&'static str] = Box::leak(vec![name].into_boxed_slice());
+        for (max_dy, expect_near) in [(None, true), (Some(2.0), false)] {
+            let p: &'static Params = Box::leak(Box::new(Params { types, must_see: false, max_dy, range: Some(16.0), ..Params::DEFAULT }));
+            let mut h = Herd::with_slab(30, false, false);
+            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+            let mut sp = *species();
+            sp.goals = Config { entries };
+            let hunter = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
+            let mut quiet = sp;
+            quiet.goals = Config { entries: &[] };
+            let (near, far) = (spawn_species(&mut h.world, &quiet, 3.5, 0.5, 2), spawn_species(&mut h.world, &quiet, 8.5, 0.5, 3));
+            for _ in 0..3 {
+                h.tick();
+            }
+            let y = h.world.get::<Pos>(hunter).unwrap().0.y;
+            h.world.get_mut::<Pos>(near).unwrap().0.y = y + 3.0;
+            h.world.get_mut::<Pos>(far).unwrap().0.y = y + 1.0;
+            assert!(can_use(&mut h.world, hunter, Inst { slot: 0, nth: 0 }), "a candidate is in range");
+            let pick = state(&h.world, hunter, Inst { slot: 0, nth: 0 }).unwrap().pick;
+            assert_eq!(pick, Some(Who::Entity(if expect_near { near } else { far })), "max_dy {max_dy:?}");
+        }
+    }
 }

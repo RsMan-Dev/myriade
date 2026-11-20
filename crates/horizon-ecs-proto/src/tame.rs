@@ -61,7 +61,7 @@ fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Intera
         }
         Some(_) => false,
         None => {
-            if !p.items.iter().any(|n| item_id(n) == i.item) {
+            if !p.items.iter().any(|n| crate::items::is(n, i.item)) {
                 return false;
             }
             if with_rng(w, e, |r| r.next_int(p.chance)) == 0 {
@@ -110,6 +110,7 @@ pub fn order_sit(w: &mut World, e: Entity, sit: bool) {
     } else {
         release(w, e, OCC_SITTING);
         wake(w, e, &crate::behaviours::follow_owner::MODULE);
+        wake(w, e, &crate::behaviours::land_on_shoulder::MODULE);
         wake_block_goals(w, e);
         if let Some(slot) = slot_of(w, e, &crate::behaviours::sit_when_ordered::MODULE) {
             w.resource_mut::<Requests>().0.push(Req::End(e, slot));

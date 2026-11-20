@@ -41,7 +41,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion, Cap::Living],
     // `FoxPounceGoal.isInterruptible` is false (`fox.rs:1247`): a goal of a higher priority cannot take MOVE | JUMP from the leap.
     interruptable: false,
@@ -126,14 +126,15 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     fs::set(w, e, CROUCHING | INTERESTED | POUNCING, false);
 }
 
-fn systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
-    s.add_systems(pounce_run.in_set(slot));
+/// The tick of the module, run only while a fox that pounces lives (no registered system).
+fn tick(w: &mut World) {
+    pounce_run(w);
 }
 
 /// The selector tick of the goal: it ends when it can no longer continue (and wakes the faceplant when the nose is in the
 /// snow), else its tick.
-fn pounce_run(w: &mut World, q: &mut QueryState<Entity, With<Pouncing>>) {
-    let list: Vec<Entity> = q.iter(w).collect();
+fn pounce_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Pouncing>>(w);
     for e in list {
         let Some(slot) = slot_of(w, e, &MODULE) else { continue };
         if !fs::selector_tick(w, e) {

@@ -18,3 +18,5 @@ pub mod start_attacking;
 pub mod stop_attacking_if_target_invalid;
 pub mod melee_attack;
 pub mod set_walk_target_from_attack_target;
+pub mod walk_away;
+pub mod pacify;

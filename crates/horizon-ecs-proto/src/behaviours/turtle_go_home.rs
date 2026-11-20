@@ -49,7 +49,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -89,7 +89,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if is_baby(w, e) {
         return false;
     }
-    if ts::get(w, e).has_egg {
+    if ts::has_egg(w, e) {
         return true;
     }
     let near = w.get::<GoHome>(e).map_or(64.0, |h| h.def.near);
@@ -111,14 +111,17 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<GoingHome>();
     ts::update(w, e, |t| t.going_home = false);
-    if ts::get(w, e).has_egg {
+    if ts::has_egg(w, e) {
         crate::goals::wake(w, e, &MODULE);
     } else {
         idle(w, e);
     }
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((grown, home_run).chain().in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, grown);
+    crate::goals::tick_state(w, loaded);
+    crate::goals::tick_state(w, home_run);
 }
 /// A baby that grew up starts drawing its chance.
 fn grown(ev: Res<Events>, babies: Query<(), With<GoHome>>, mut reqs: ResMut<Requests>) {
@@ -128,6 +131,15 @@ fn grown(ev: Res<Events>, babies: Query<(), With<GoHome>>, mut reqs: ResMut<Requ
         }
     }
 }
+/// A turtle that takes an egg heads home at once (`canUse` is true with an egg): the load wakes the goal, with no polling.
+fn loaded(new: Query<Entity, (Added<crate::behaviours::lay_egg::Carrying>, With<GoHome>)>, mut reqs: ResMut<Requests>) {
+    for e in &new {
+        reqs.0.push(Req::Call(e, wake_call));
+    }
+}
+fn wake_call(w: &mut World, e: Entity) {
+    crate::goals::wake(w, e, &MODULE);
+}
 fn idle_call(w: &mut World, e: Entity) {
     idle(w, e);
 }
@@ -135,6 +147,7 @@ fn idle_call(w: &mut World, e: Entity) {
 /// call, with the world).
 fn home_run(
     mut q: Query<(Entity, &mut GoHome, &Turtle, &Pos, &Nav, Option<&NeedsPath>), With<GoingHome>>,
+    carrying: Query<(), With<crate::behaviours::lay_egg::Carrying>>,
     mut reqs: ResMut<Requests>,
 ) {
     for (e, mut h, t, p, nav, need) in &mut q {
@@ -142,6 +155,11 @@ fn home_run(
         let far = !ts::is_near_home(t, pos, h.def.stop);
         if !(far && !h.stuck && h.close_ticks <= h.def.give_up) {
             reqs.0.push(Req::End(e, h.slot));
+            // The Mob stops this goal near home and restarts it at once (an egg: `canUse` is true), and the restart ticks:
+            // the same tick draws the next spot when the path is over. The turtle is led away from its target.
+            if carrying.contains(e) && need.is_none() && nav.path.as_ref().is_none_or(|p| p.is_done()) {
+                reqs.0.push(Req::Call(e, restart_spot));
+            }
             continue;
         }
         if ts::is_near_home(t, pos, 16.0) {
@@ -152,8 +170,28 @@ fn home_run(
         }
     }
 }
+/// The tick of the restart that follows a stop near home with an egg: the spot is drawn as in `next_spot`.
+fn restart_spot(w: &mut World, e: Entity) {
+    if ts::has_egg(w, e) {
+        next_spot_inner(w, e);
+    }
+}
 fn next_spot(w: &mut World, e: Entity) {
     if w.get::<GoingHome>(e).is_none() {
+        return;
+    }
+    next_spot_inner(w, e);
+}
+/// The spots the next draws return, in order, instead of the picker's (a test inserts it to give the ECS the Mob's draws; its
+/// absence is the normal state). An empty queue draws nothing.
+#[derive(Resource, Default)]
+pub struct ImposedSpots(pub std::collections::VecDeque<[f64; 3]>);
+fn next_spot_inner(w: &mut World, e: Entity) {
+    if let Some(mut q) = w.get_resource_mut::<ImposedSpots>() {
+        if let Some(at) = q.0.pop_front() {
+            let speed = w.get::<GoHome>(e).map_or(1.0, |h| h.def.speed);
+            go_to_at(w, e, at, speed, 1);
+        }
         return;
     }
     let t = ts::get(w, e);
@@ -223,7 +261,7 @@ mod tests {
             eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
             return;
         };
-        ts::update(&mut h.world, c, |t| t.has_egg = true);
+        h.world.entity_mut(c).insert(crate::behaviours::lay_egg::Carrying);
         crate::goals::wake(&mut h.world, c, &MODULE);
         ticks(&mut h, 20);
         assert!(running(&h, c), "témoin : un œuf fait partir la tortue");
@@ -259,11 +297,11 @@ mod tests {
             eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
             return;
         };
-        ts::update(&mut h.world, c, |t| t.has_egg = true);
+        h.world.entity_mut(c).insert(crate::behaviours::lay_egg::Carrying);
         crate::goals::wake(&mut h.world, c, &MODULE);
         ticks(&mut h, 20);
         assert!(running(&h, c), "témoin : le départ");
-        ts::update(&mut h.world, c, |t| t.has_egg = false);
+        h.world.entity_mut(c).remove::<crate::behaviours::lay_egg::Carrying>();
         ticks(&mut h, 2000);
         let p = h.world.get::<Pos>(c).unwrap().0;
         assert!(p.x > 13.0, "la tortue s'est approchée de sa maison (x = {})", p.x);

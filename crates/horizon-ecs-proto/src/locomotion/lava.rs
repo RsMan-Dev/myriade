@@ -37,7 +37,7 @@ fn standing(level: &Level, p: &Pos) -> bool {
 #[allow(clippy::type_complexity)]
 fn travel(
     level: Res<Level>,
-    par: ParallelCommands,
+    mut par: crate::cow::OrdCmds,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, Has<Following>),
         (With<Moving>, Without<Overlapping>, With<crate::locomotion::LavaMode>),
@@ -58,26 +58,27 @@ fn travel(
             fall = 0.0;
         }
         if was_on_ground && !c.on_ground {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
             });
         }
         if was_in_air && c.on_ground {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
             });
         }
         if fall > 0.0 && !imm.has(IMMUNE_FALL) {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
             });
         }
         if rest && !following && !fs.in_lava {
-            par.command_scope(|mut cmd| {
+            par.command_scope(e, |mut cmd| {
                 cmd.entity(e).remove::<Moving>();
             });
         }
     }
+    par.flush();
 }
 /// `Strider.floatStrider` (after the tick): in lava, on the surface it stands (on the ground), deeper it is lifted and slowed.
 fn float(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Contact, &FluidState), (With<crate::locomotion::LavaMode>, With<InFluid>)>) {

@@ -11,9 +11,11 @@ description = "Prototype: a cow as a bevy_ecs herd (data components, batch syste
 [dependencies]
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std", "multi_threaded", "debug"] }
 bevy_tasks = { version = "0.20.1", default-features = false, features = ["multi_threaded"] }
+bevy_utils = { version = "0.20.1", default-features = false, features = ["std", "parallel"] }
 horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
 horizon-client-render = { path = "../horizon-client-render" }
 horizon-core = { path = "../horizon-core" }
+horizon-items = { path = "../horizon-items" }
 horizon-world = { path = "../horizon-world" }
 libc = "0.2"
 

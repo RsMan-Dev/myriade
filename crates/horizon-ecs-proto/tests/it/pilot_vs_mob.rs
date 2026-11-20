@@ -207,7 +207,7 @@ fn avoid_run(o: &AvOpt) -> AvOut {
             ecs_with(&mut h, none, 0.5 + o.dist, 0.5, 8);
         }
         if t == APPEAR && !o.species {
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + o.dist, y: 1.0, z: 0.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + o.dist, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         }
         h.tick();
         if t >= rec0 {
@@ -382,7 +382,7 @@ fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
         let mut ran = false;
         for k in 0..80 {
             if k == 30 {
-                h.world.resource_mut::<Online>().set(Player { id: 1, x: -15.0, y: 1.0, z: 15.0, main: 0, off: 0 });
+                h.world.resource_mut::<Online>().set(Player { id: 1, x: -15.0, y: 1.0, z: 15.0, main: 0, off: 0, ..Default::default() });
             }
             h.tick();
             ran |= h.world.get::<GoalSet>(e).unwrap().is_running(&avoid_entity::MODULE) && h.world.get::<Nav>(e).unwrap().path.is_some();
@@ -421,7 +421,7 @@ fn spot_law(grass: bool) {
     for _ in 0..20 {
         h.tick();
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: -3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: -3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     h.tick();
     let inst = Inst { slot: 0, nth: 0 };
     let mut ecs: Vec<(i32, i32)> = Vec::new();
@@ -466,7 +466,7 @@ fn avoid_6_spot_law_with_grass_walk_value() {
 // FleeSun
 // ======================================================================================================================
 fn run_species() -> String {
-    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into())
+    horizon_ecs_proto::cow::process_species_name()
 }
 fn is_zombie() -> bool {
     run_species() == "minecraft:zombie"
@@ -551,13 +551,14 @@ fn flee_2_burning_animal_walks_to_the_spot_at_the_first_selector_tick() {
         return;
     }
     if run_species() != "minecraft:cow" {
-        eprintln!("SKIP flee_2: a zombie burns in the sun by itself on both sides");
+        horizon_ecs_proto::cow::skip_note("flee_2", "a zombie burns in the sun by itself on both sides");
         return;
     }
     let n = 12;
+    // 12 animals 3 blocks apart reach x 21.5: the slab is 24 wide each way (on one of 20 the last stood in the void, fell and was removed).
     let pos = |k: usize| (-12.0 + 3.0 * k as f64 + 0.5, 0.5);
-    let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut r = MobRef::new(24, false);
+    let mut h = Herd::with_slab(24, false, false);
     let open: Vec<(i32, i32)> = (0..n).map(|k| (pos(k).0.floor() as i32, 0)).collect();
     shade_both(&r, &h, &open);
     let entries: &'static [Entry] = leak([Entry::new(&flee_sun::MODULE, 3, &flee_sun::Params::DEFAULT)]);
@@ -665,7 +666,7 @@ fn flee_3_night_means_no_start() {
         return;
     }
     if run_species() != "minecraft:cow" {
-        eprintln!("SKIP flee_3 (cow only: no sun burn)");
+        horizon_ecs_proto::cow::skip_note("flee_3", "(cow only: no sun burn)");
         return;
     }
     let mut r = MobRef::new(20, false);
@@ -702,7 +703,7 @@ fn flee_4_the_roof_goes_and_a_burning_monster_flees() {
         return;
     }
     if !is_zombie() {
-        eprintln!("SKIP flee_4 (zombie only: the cow's walk value differs, see flee_1)");
+        horizon_ecs_proto::cow::skip_note("flee_4", "(zombie only: the cow's walk value differs, see flee_1)");
         return;
     }
     let mut r = MobRef::new(20, false);

@@ -43,7 +43,7 @@ fn on() -> bool {
     }
     let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
     if sp != "minecraft:cow" {
-        eprintln!("SKIP lot2_vs_mob: written for HORIZON_SPECIES=minecraft:cow, not {sp}");
+        horizon_ecs_proto::cow::skip_note("lot2_vs_mob", &format!("written for HORIZON_SPECIES=minecraft:cow, not {sp}"));
         return false;
     }
     true
@@ -134,7 +134,7 @@ fn zoglin_keeps_its_target_and_strikes_by_age() {
         let player = Vec3::new(2.0, 1.0, 0.5);
         let view = player_view(player, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         h.tick();
         let at = *h.world.get::<horizon_ecs_proto::hostile::Attack>(e).unwrap();
         eprintln!("zoglin ECS attack data: interval {} baby {:?} slot {}", at.interval, at.interval_baby, at.melee_slot);
@@ -190,7 +190,7 @@ fn panda_avoids_only_when_worried() {
         let player = Vec3::new(5.5, 1.0, 0.5);
         let view = player_view(player, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         let (mut a, mut b) = (None, None);
         for t in 0..200 {
             r.step(Some(&view));
@@ -222,7 +222,7 @@ fn rabbit_flees_the_player_and_the_monsters() {
         let view = if what == "player" { player_view(Vec3::new(5.5, 1.0, 0.5), None) } else { player_view(Vec3::new(40.5, 1.0, 40.5), None) };
         ps_immortal(&mut h);
         if what == "player" {
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         } else {
             let k = r.kind.clone();
             let _ = k;
@@ -318,7 +318,7 @@ fn a_hurt_panda_alerts_the_aggressive_ones_only() {
     }
     let mut h = Herd::with_slab(24, false, false);
     ps_immortal(&mut h);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let victim = ecs_named(&mut h, "minecraft:panda", None, 0.5, 0.5, 11500, 3);
     let aggressive = ecs_named(&mut h, "minecraft:panda", None, 2.5, 0.5, 11501, 5);
     let calm = ecs_named(&mut h, "minecraft:panda", None, -1.5, 0.5, 11502, 7);

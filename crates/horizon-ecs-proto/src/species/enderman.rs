@@ -1,7 +1,6 @@
-//! `Enderman` (`mobs/enderman.rs:19-45`): its targets and goals. Left out: the enderman neighbour's target (`nearest_target`
-//! option `reach`: not read by the framework). Not ported: the teleport (`randomTeleport`: service absent), the water damage and
+//! `Enderman` (`mobs/enderman.rs:19-45`): its targets and goals. Its endermite target has no `reach`: the `Mob` sets `must_reach` and never reads it. Not ported: the teleport (`randomTeleport`: service absent), the water damage and
 //! the day departure that call it, the persistent anger, the water malus of the paths (`NavParams`).
-use crate::behaviours::{ender_teleport, float, freeze_when_looked_at, hurt_by, leave_block, look_at_player, look_for_player, melee, random_look, stroll, take_block, Entry};
+use crate::behaviours::{ender_teleport, float, freeze_when_looked_at, hurt_by, leave_block, look_at_player, look_for_player, melee, nearest_target, random_look, stroll, take_block, Entry};
 use crate::species::Def;
 
 pub static DEF: Def = Def {
@@ -9,7 +8,7 @@ pub static DEF: Def = Def {
     targets: &[
         Entry::new(&look_for_player::MODULE, 1, &look_for_player::Params::DEFAULT),
         Entry::new(&hurt_by::MODULE, 2, &hurt_by::Params::DEFAULT),
-        // attend : reach (nearest_target Species [endermite], must_see, `.reach()` : aucun champ dans nearest_target::Params)
+        Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:endermite"], ..nearest_target::Params::DEFAULT }),
     ],
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),

@@ -1,13 +1,13 @@
 //! `Ghast` (`mobs/nether.rs:201-216`): a free flier (`GhastMoveControl`, no path): it floats toward spots it picks around itself
-//! (`RandomFloatAround`), looks at its target (`GhastLook`, priority 7) and shoots a large fireball at it (`charged_shot`, priority 7). Left out:
-//! the player target (priority 1, only when the player is within 4 blocks in height: `nearest_target` has no height filter), the explosion
-//! of the fireball (`Events.exploded` has no capability yet).
+//! (`RandomFloatAround`), looks at its target (`GhastLook`, priority 7) and shoots a large fireball at it (`charged_shot`, priority 7). Its player target (priority 1) is the one within 4 blocks in height (`max_dy`). Left out: the explosion
+//! Left out: the explosion of the fireball (`Events.exploded` has no capability yet).
 use super::Def;
-use crate::behaviours::{charged_shot, float_around, ghast_look, Cap, Entry};
+use crate::behaviours::{charged_shot, float_around, ghast_look, nearest_target, Cap, Entry};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:ghast",
+    targets: &[Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { max_dy: Some(4.0), ..nearest_target::Params::PLAYER })],
     goals: &[
         Entry::new(&float_around::MODULE, 5, &float_around::Params::DEFAULT),
         Entry::new(&ghast_look::MODULE, 7, &ghast_look::Params::DEFAULT),

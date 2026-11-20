@@ -43,7 +43,7 @@ fn on() -> bool {
     }
     let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
     if sp != "minecraft:cow" {
-        eprintln!("SKIP lot4_vs_mob: written for HORIZON_SPECIES=minecraft:cow, not {sp}");
+        horizon_ecs_proto::cow::skip_note("lot4_vs_mob", &format!("written for HORIZON_SPECIES=minecraft:cow, not {sp}"));
         return false;
     }
     true
@@ -192,7 +192,7 @@ fn drowned_goes_to_the_water_by_day_and_to_the_beach_by_night() {
 /// The cost of the day/night chains of the drowned: 300 drowned standing on a beach at night (they ask `try_find_water` and the beach goal
 /// again and again for want of a day/night event), instructions per drowned and tick against the same count of cows (`--ignored`).
 #[test]
-#[ignore]
+#[ignore = "bench: instructions per drowned and tick against cows, run by hand with --ignored"]
 fn cost_of_the_drowned_day_night_chain() {
     if !on() {
         return;
@@ -237,7 +237,7 @@ fn slime_hunts_the_player_at_contact_range() {
         let at = Vec3::new(8.5, 1.0, 0.5);
         let view = player_view(at, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
         for _ in 0..300 {
             r.step(Some(&view));
             h.tick();
@@ -272,7 +272,7 @@ fn polar_bear_defends_its_cub() {
             let at = Vec3::new(7.5, 1.0, 0.5);
             let view = player_view(at, None);
             ps_immortal(&mut h);
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
             let (mut tm, mut te) = (None, None);
             for t in 0..400 {
                 r.step(Some(&view));
@@ -318,7 +318,7 @@ fn the_species_of_the_configuration_wave_start_and_run() {
         let at = Vec3::new(6.5, 1.0, 0.5);
         let view = player_view(at, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
         let (mut mg, mut eg) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
         for _ in 0..600 {
             r.step(Some(&view));
@@ -338,7 +338,7 @@ fn the_species_of_the_configuration_wave_start_and_run() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "debug probe of the drowned at night, run by hand with --ignored"]
 fn debug_drowned_night() {
     if !on() {
         return;

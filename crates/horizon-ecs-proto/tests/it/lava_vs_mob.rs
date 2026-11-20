@@ -7,7 +7,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::*, goals::go_to_at, locomotion::LavaMode};
 
 fn strider() -> bool {
-    species().name == "minecraft:strider"
+    process_species_name() == "minecraft:strider"
 }
 /// A pool of lava 11 x 11 on the floor of the slab, in both worlds.
 fn pools() -> (MobRef, Herd) {

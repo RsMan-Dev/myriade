@@ -5,10 +5,10 @@
 //! next release time is the only thing looked at each tick.
 //! What it asks of the frame (and has here): `Hives` (the occupants of each hive: entity, tick it went in, minimum stay), `InHive` (the bee is
 //! out of every query: `zone::sleep`; the zone does not wake it), the release (position in front of the hive, nectar delivered, honey).
-//! Not ported: the sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `HurtByTarget` of the bee: the melee and the targets of the
-//! frame serve), the bee's growth and love while in the hive, the honey level of the block (no block entity: the hive is the resource), the
-//! random hop of `pathfindRandomlyTowards` (the bee goes straight to a hive or a flower by its flying path), `Wander`'s direction towards a far
-//! hive (`fly_stroll`), the sounds, the particles of the nectar.
+//! The sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `BeeHurtByOtherGoal`) are the frame's melee, nearest_target, hurt_by and
+//! neutral_anger, configured in `species/bee.rs`; `sting` is the melee's `on_hit` hook. The age and the love move by the time spent in the hive (`age_in_hive`). The poison follows the difficulty (`effects::Difficulty`) and is given when the
+//! blow lands (`StingPending`). Not ported (the frame has no block write nor sound output: the `Mob` hands them to the host): the honey level of the
+//! hive block, the crops grown, the sounds and the particles.
 use super::*;
 use crate::{cow::*, goals::*};
 use std::collections::HashMap;
@@ -132,8 +132,26 @@ pub fn toward_far_hive(w: &World, e: Entity) -> Option<(f64, f64)> {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Stung(pub i32);
-/// `Bee.doHurtTarget`: the sting lands: the bee has stung, forgets its anger, and its sting is spent (the poison of the victim is not ported).
+/// The seconds of poison of the sting by difficulty id (peaceful, easy, normal, hard): `Bee.doHurtTarget` (the `Mob`'s `mobs/bee.rs::sting`).
+pub const STING_POISON_SECONDS: [i32; 4] = [0, 0, 10, 18];
+/// A sting waiting to know whether the blow landed (`Bee.doHurtTarget` takes the stinger and the anger first, the game gives the poison only when
+/// the victim took the hit; a refused hit puts the stinger and the anger back). For a creature the damage queue answers (`LastHurtBy` of the
+/// victim); a player's hurt is the host's (`PlayerHit`): its sting counts as landed.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+struct StingPending {
+    victim: Entity,
+    /// The victim's own tick when the blow was struck, and the world's.
+    seen: u64,
+    since: u64,
+    nectar: bool,
+    target: crate::targeting::Target,
+}
+/// `Bee.doHurtTarget`: the sting lands: the bee has stung, forgets its anger, and its sting is spent; the poison follows the hit.
 fn sting(w: &mut World, e: Entity) {
+    use crate::targeting::Who;
+    let target = w.get::<crate::targeting::Target>(e).copied();
+    let nectar = bee(w, e).is_some_and(|b| b.nectar);
     if let Some(mut b) = w.get_mut::<Bee>(e) {
         b.stung = true;
         b.nectar = false;
@@ -145,6 +163,60 @@ fn sting(w: &mut World, e: Entity) {
         a.at = None;
     }
     w.entity_mut(e).remove::<crate::behaviours::neutral_anger::Angry>();
+    if let Some(t) = target {
+        match t.who {
+            Who::Entity(victim) => {
+                let (seen, since) = (now_of(w, victim), w.resource::<Clock>().0);
+                w.entity_mut(e).insert(StingPending { victim, seen, since, nectar, target: t });
+            }
+            Who::Player(id) => poison(w, Who::Player(id)),
+        }
+    }
+}
+/// The poison of the sting on `who`, by the level's difficulty.
+fn poison(w: &mut World, who: crate::targeting::Who) {
+    use crate::targeting::Who;
+    let ticks = STING_POISON_SECONDS[usize::from(crate::effects::difficulty(w)).min(3)] * 20;
+    if ticks == 0 {
+        return;
+    }
+    match who {
+        Who::Entity(v) => drop(crate::effects::add(w, v, crate::effects::Kind::Poison, 0, ticks)),
+        Who::Player(id) => crate::effects::add_player(w, id, crate::effects::Kind::Poison, 0, ticks),
+    }
+}
+/// The answer of the damage queue to the stings: the victim's `LastHurtBy` names the bee (landed: the poison), or three ticks pass without it
+/// (refused: the stinger, the nectar, the target and so the anger come back; a victim that is gone died of the blow).
+fn resolve_stings(w: &mut World) {
+    use crate::targeting::Who;
+    let es: Vec<Entity> = crate::goals::entities::<With<StingPending>>(w);
+    for e in es {
+        let s = *w.get::<StingPending>(e).unwrap();
+        let landed = if w.get_entity(s.victim).is_err() {
+            Some(false)
+        } else if w.get::<LastHurtBy>(s.victim).is_some_and(|l| matches!(l.who, Who::Entity(x) if x == e) && l.at >= s.seen) {
+            Some(true)
+        } else if w.resource::<Clock>().0 > s.since + 3 {
+            None
+        } else {
+            continue;
+        };
+        w.entity_mut(e).remove::<StingPending>();
+        match landed {
+            Some(true) => poison(w, Who::Entity(s.victim)),
+            Some(false) => {}
+            None => {
+                if let Some(mut b) = w.get_mut::<Bee>(e) {
+                    b.stung = false;
+                    b.nectar = s.nectar;
+                }
+                w.entity_mut(e).remove::<Stung>();
+                if w.get::<crate::targeting::Target>(e).is_none() {
+                    crate::targeting::set_target(w, e, s.target);
+                }
+            }
+        }
+    }
 }
 fn stung_tick(w: &mut World) {
     let es: Vec<Entity> = crate::goals::entities::<With<Stung>>(w);
@@ -227,7 +299,8 @@ pub fn release_tick(w: &mut World) {
         for p in gone {
             if let Some(list) = w.resource_mut::<Hives>().bees.remove(&p) {
                 for s in list {
-                    release(w, s.e, p);
+                    let stay = w.resource::<Clock>().0 - s.at;
+                    release(w, s.e, p, stay);
                 }
             }
         }
@@ -245,7 +318,7 @@ pub fn release_tick(w: &mut World) {
         let mut kept = Vec::new();
         for s in list {
             if now > s.at + s.min && !stay {
-                release(w, s.e, h);
+                release(w, s.e, h, now - s.at);
             } else {
                 next = next.min(s.at + s.min + 1);
                 kept.push(s);
@@ -261,10 +334,33 @@ pub fn release_tick(w: &mut World) {
     // Night or rain: asked again in a second.
     w.resource_mut::<Hives>().next = if stay { now + 20 } else if next == u64::MAX { 0 } else { next };
 }
-fn release(w: &mut World, e: Entity, h: [i32; 3]) {
+/// `BeehiveBlockEntity.setBeeReleaseData`: the time inside counts for the age and the love (its own time stood still): a baby grows by that much,
+/// the breeding rest of an adult shortens by that much, the love too.
+fn age_in_hive(w: &mut World, e: Entity, stay: u64) {
+    let now = now_of(w, e);
+    if let Some(g) = w.get::<GrowAt>(e).map(|g| g.0).filter(|&g| g != u64::MAX) {
+        let at = g.saturating_sub(stay).max(now + 1);
+        w.entity_mut(e).insert(GrowAt(at));
+        crate::cow::arm_at(w, e, at, crate::cow::Due::Grow);
+    }
+    if let Some(r) = w.get::<crate::behaviours::breed::Resting>(e).map(|r| r.0).filter(|&r| r > now) {
+        match r.saturating_sub(stay) {
+            left if left > now => drop(w.entity_mut(e).insert(crate::behaviours::breed::Resting(left))),
+            _ => drop(w.entity_mut(e).remove::<crate::behaviours::breed::Resting>()),
+        }
+    }
+    if let Some(l) = w.get::<crate::behaviours::breed::Love>(e).map(|l| l.0).filter(|&l| l > now) {
+        match l.saturating_sub(stay) {
+            left if left > now => drop(w.entity_mut(e).insert(crate::behaviours::breed::Love(left))),
+            _ => drop(w.entity_mut(e).remove::<crate::behaviours::breed::Love>()),
+        }
+    }
+}
+fn release(w: &mut World, e: Entity, h: [i32; 3], stay: u64) {
     let now = w.resource::<Clock>().0;
     w.entity_mut(e).remove::<InHive>();
     crate::zone::wake(w, e, now);
+    age_in_hive(w, e, stay);
     let delivered = bee(w, e).is_some_and(|b| b.nectar);
     if let Some(mut b) = w.get_mut::<Bee>(e) {
         b.hive = Some(h);
@@ -788,6 +884,7 @@ fn schedule_flower(w: &mut World, e: Entity) {
 pub fn hive_tick(w: &mut World) {
     release_tick(w);
     stung_tick(w);
+    resolve_stings(w);
     if w.is_resource_changed::<StayInHive>() {
         let es: Vec<Entity> = crate::goals::entities::<With<Bee>>(w);
         for e in es {

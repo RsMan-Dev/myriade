@@ -14,6 +14,11 @@ pub mod chicken;
 pub mod copper_golem;
 pub mod cow;
 pub mod pig;
+pub mod evoker;
+pub mod illusioner;
+pub mod guardian;
+pub mod elder_guardian;
+pub mod pillager;
 pub mod predicates;
 pub mod skeleton;
 pub mod stray;
@@ -24,6 +29,7 @@ pub mod sheep;
 pub mod templates;
 pub mod horse;
 pub mod blaze;
+pub mod vindicator;
 pub mod witch;
 pub mod iron_golem;
 pub mod magma_cube;
@@ -38,6 +44,7 @@ pub mod wandering_trader;
 pub mod zombie;
 pub mod cod;
 pub mod parrot;
+pub mod allay;
 pub mod ghast;
 pub mod bat;
 pub mod strider;
@@ -48,8 +55,6 @@ pub mod frog;
 pub mod bee;
 pub mod dolphin;
 pub mod nautilus;
-pub mod guardian;
-pub mod elder_guardian;
 pub mod zombie_nautilus;
 pub mod axolotl;
 pub mod drowned;
@@ -61,6 +66,8 @@ pub mod armadillo;
 pub mod creeper;
 pub mod endermite;
 pub mod enderman;
+pub mod giant;
+pub mod mannequin;
 pub mod silverfish;
 pub mod piglin_brute;
 pub mod panda;
@@ -82,6 +89,10 @@ pub mod goat;
 pub mod camel;
 pub mod camel_husk;
 pub mod polar_bear;
+pub mod ravager;
+pub mod hoglin;
+pub mod fox;
+pub mod happy_ghast;
 
 /// The inscription: the species of the base, in the order of their `SpeciesId`.
 /// The species a process builds its level for when `HORIZON_SPECIES` is not set.
@@ -132,16 +143,28 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &blaze::DEF,
     &polar_bear::DEF,
     &witch::DEF,
- &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
+ &pillager::DEF, &evoker::DEF, &illusioner::DEF, &guardian::DEF, &elder_guardian::DEF, &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
     &goat::DEF,
     &camel::DEF,
     &camel_husk::DEF,
     &nautilus::DEF,
     &zombie_nautilus::DEF,
-    &guardian::DEF,
-    &elder_guardian::DEF,
     &trader_llama::DEF,
     &wandering_trader::DEF,
+    &vindicator::DEF,
+    &giant::DEF,
+    &mannequin::DEF,
+    &ravager::DEF,
+    &hoglin::DEF,
+    &fox::DEF,
+    &happy_ghast::DEF,
+    &piglin::DEF,
+    &shulker::DEF,
+    &sulfur_cube::DEF,
+    &villager::DEF,
+    &warden::DEF,
+    &wither::DEF,
+    &allay::DEF,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -546,6 +569,10 @@ impl SpeciesSet {
     pub fn contains(self, id: u8) -> bool {
         self.0.0.get(id as usize / 64).is_some_and(|w| w >> (id % 64) & 1 == 1)
     }
+    /// Some species of the set has a live entity (`counts` is the `Census`).
+    pub fn any_alive(self, counts: &[u32]) -> bool {
+        counts.iter().enumerate().any(|(i, &n)| n > 0 && self.contains(i as u8))
+    }
     pub fn is_empty(self) -> bool {
         self.0.0.iter().all(|&w| w == 0)
     }
@@ -588,13 +615,17 @@ mod tests {
     const RESOLVED: &[(&str, &[(&str, u8)])] = &[
         ("minecraft:cow", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:pig", &[("float", 0), ("panic", 1), ("breed", 3), ("tempt", 4), ("tempt", 4), ("follow_parent", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
-        ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:ravager", &[("hurt_by", 2), ("nearest_target", 3), ("nearest_target", 4), ("nearest_target", 4), ("float", 0), ("hunt_speed", 0), ("strike_pause", 0), ("shield_stun", 0), ("ravager_roar", 0), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("ambient_sound", 7)]),
+        ("minecraft:hoglin", &[("hurt_by", 1), ("nearest_target", 2), ("float", 0), ("melee", 2), ("headbutt", 2), ("breed", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("ambient_sound", 7)]),
+        ("minecraft:fox", &[("defend_trusted", 3), ("nearest_target", 4), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 6), ("float", 0), ("climb_on_powder_snow", 0), ("fox_faceplant", 1), ("panic", 2), ("breed", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("fox_stalk_prey", 5), ("fox_pounce", 6), ("seek_shelter", 6), ("melee", 7), ("fox_sleep", 7), ("follow_parent", 8), ("fox_stroll_through_village", 9), ("fox_eat_berries", 10), ("leap_at_target", 10), ("stroll", 11), ("fox_search_for_items", 11), ("look_at_player", 12), ("lookout", 13), ("fox_pick_up_loot", 0)]),
+        ("minecraft:happy_ghast", &[("still_under_riders", 1), ("square_or_face", 0), ("heal_weather", 3), ("tempt", 4), ("float_around", 5)]),
+        ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
         ("minecraft:sheep", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("eat_block", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:chicken", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
-        ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("flee_sun", 3), ("avoid_entity", 3)]),
-        ("minecraft:stray", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("flee_sun", 3), ("avoid_entity", 3)]),
-        ("minecraft:bogged", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("flee_sun", 3), ("avoid_entity", 3)]),
-        ("minecraft:wither_skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("flee_sun", 3), ("avoid_entity", 3), ("melee", 4)]),
+        ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("pick_up_gear", 255), ("flee_sun", 3), ("avoid_entity", 3)]),
+        ("minecraft:stray", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("pick_up_gear", 255), ("flee_sun", 3), ("avoid_entity", 3)]),
+        ("minecraft:bogged", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("pick_up_gear", 255), ("flee_sun", 3), ("avoid_entity", 3)]),
+        ("minecraft:wither_skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("pick_up_gear", 255), ("flee_sun", 3), ("avoid_entity", 3), ("melee", 4)]),
         ("minecraft:copper_golem", &[]),
         ("minecraft:cod", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
         ("minecraft:salmon", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("follow_flock_leader", 5)]),
@@ -603,46 +634,47 @@ mod tests {
         ("minecraft:tadpole", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4)]),
         ("minecraft:snow_golem", &[("nearest_target", 1), ("ranged_attack", 1), ("stroll", 2), ("snow_trail", 255), ("look_at_player", 3), ("random_look", 4)]),
         ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
-        ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
-        ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 1), ("avoid_entity", 2), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
+        ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 1), ("avoid_entity", 2), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:dolphin", &[("hurt_by", 1), ("breath_air", 0), ("try_find_water", 0), ("swim_to_treasure", 1), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("melee", 6), ("move_to_item", 7), ("item_pickup", 7), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
-        ("minecraft:drowned", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 5), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("try_find_water", 1), ("drowned_go_to_water", 1), ("melee", 2), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6)]),
-        ("minecraft:guardian", &[("move_towards_restriction_look", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
-        ("minecraft:elder_guardian", &[("move_towards_restriction_look", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:drowned", &[("hurt_by", 1), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 3), ("nearest_target", 5), ("break_door", 1), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255), ("try_find_water", 1), ("drowned_go_to_water", 1), ("melee", 2), ("ranged_attack", 2), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
-        ("minecraft:frog", &[("long_jump", 3)]),
+        ("minecraft:frog", &[("long_jump", 3), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
-        ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8), ("look_at_player", 9)]),
+        ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8), ("look_at_player", 9), ("limited_life", 10)]),
         ("minecraft:phantom", &[("phantom_attack_player_target", 1), ("phantom_attack_strategy", 1), ("phantom_sweep_attack", 2), ("phantom_circle_around_anchor", 3)]),
-        ("minecraft:turtle", &[("panic", 0), ("turtle_lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
-        ("minecraft:parrot", &[("panic", 0), ("float", 0), ("look_at_player", 1), ("sit_when_ordered", 2), ("follow_owner", 2), ("fly_stroll", 2), ("follow_mob", 3)]),
-        ("minecraft:ghast", &[("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
+        ("minecraft:turtle", &[("panic", 0), ("lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
+        ("minecraft:parrot", &[("panic", 0), ("float", 0), ("look_at_player", 1), ("sit_when_ordered", 2), ("follow_owner", 2), ("fly_stroll", 2), ("land_on_shoulder", 3), ("follow_mob", 3)]),
+        ("minecraft:allay", &[("animal_panic", 0), ("stay_close_to_owner", 3), ("give_to_owner", 2), ("fly_stroll", 4), ("look_at_player", 5), ("random_look", 6)]),
+        ("minecraft:giant", &[]),
+        ("minecraft:mannequin", &[]),
+        ("minecraft:ghast", &[("nearest_target", 1), ("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
         ("minecraft:bat", &[("bat_flutter", 0)]),
-        ("minecraft:trader_llama", &[("defend_leash_holder", 1), ("nearest_target", 2), ("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:trader_llama", &[("hurt_by", 1), ("nearest_target", 2), ("defend_leash_holder", 1), ("nearest_target", 2), ("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
         ("minecraft:wandering_trader", &[("float", 0), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("panic", 1), ("stroll", 8), ("look_at_player", 9)]),
-        ("minecraft:strider", &[("panic", 1), ("breed", 2), ("tempt", 3), ("strider_go_to_lava", 4), ("follow_parent", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:strider", &[("panic", 1), ("breed", 2), ("tempt", 3), ("strider_go_to_lava", 4), ("follow_parent", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("look_at_player", 9)]),
         ("minecraft:turtle", &[("turtle_go_to_water", 3), ("turtle_travel", 7), ("turtle_stroll", 9)]),
         ("minecraft:goat", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ram", 2), ("long_jump", 2)]),
-        ("minecraft:llama", &[("float", 0), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
-        ("minecraft:llama", &[("float", 0), ("run_around_like_crazy", 1), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:llama", &[("hurt_by", 1), ("nearest_target", 2), ("float", 0), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:llama", &[("hurt_by", 1), ("nearest_target", 2), ("float", 0), ("run_around_like_crazy", 1), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
         ("minecraft:cat", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("cat_relax_on_owner", 3), ("tempt", 4), ("cat_lie_on_block", 5), ("follow_owner", 6), ("cat_sit_on_block", 7), ("leap_at_target", 8), ("ocelot_attack", 9), ("breed", 10), ("stroll", 11), ("look_at_player", 12), ("avoid_entity", 4)]),
         ("minecraft:ocelot", &[("nearest_target", 1), ("nearest_target", 1), ("float", 1), ("tempt", 3), ("leap_at_target", 7), ("ocelot_attack", 8), ("breed", 9), ("stroll", 10), ("look_at_player", 11), ("avoid_entity", 4)]),
         ("minecraft:wolf", &[("neutral_anger", 255), ("owner_target", 1), ("owner_target", 2), ("hurt_by", 3), ("nearest_target", 4), ("nearest_target", 5), ("nearest_target", 6), ("nearest_target", 7), ("float", 1), ("panic", 1), ("sit_when_ordered", 2), ("avoid_entity", 3), ("forget_target", 3), ("leap_at_target", 4), ("melee", 5), ("follow_owner", 6), ("breed", 7), ("stroll", 8), ("beg", 9), ("look_at_player", 10), ("random_look", 10)]),
         ("minecraft:armadillo", &[("float", 0), ("panic", 1), ("rolled", 2), ("breed", 3), ("tempt", 4), ("baby_follow_adult", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:creeper", &[("nearest_target", 1), ("hurt_by", 2), ("float", 1), ("swell", 2), ("avoid_entity", 3), ("avoid_entity", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:endermite", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("melee", 2), ("stroll", 3), ("look_at_player", 7), ("random_look", 8)]),
-        ("minecraft:enderman", &[("look_for_player", 1), ("hurt_by", 2), ("float", 0), ("freeze_when_looked_at", 1), ("melee", 2), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("leave_block", 10), ("take_block", 11), ("ender_teleport", 255)]),
+        ("minecraft:enderman", &[("look_for_player", 1), ("hurt_by", 2), ("nearest_target", 3), ("float", 0), ("freeze_when_looked_at", 1), ("melee", 2), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("leave_block", 10), ("take_block", 11), ("ender_teleport", 255)]),
         ("minecraft:silverfish", &[("hurt_by", 1), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("silverfish_wake_up_friends", 3), ("melee", 4), ("silverfish_merge", 5)]),
         ("minecraft:piglin_brute", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("brute_stroll_home", 5), ("stroll", 5), ("look_at_player", 6)]),
         ("minecraft:panda", &[("hurt_by", 1), ("float", 0), ("panic", 2), ("breed", 2), ("melee", 3), ("tempt", 4), ("avoid_entity", 6), ("avoid_entity", 6), ("panda_sit", 7), ("panda_lie_on_back", 8), ("panda_sneeze", 8), ("look_at_player", 9), ("random_look", 10), ("panda_roll", 12), ("follow_parent", 13), ("stroll", 14)]),
         ("minecraft:zoglin", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("stroll", 5), ("look_at_player", 6)]),
         ("minecraft:mooshroom", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
-        ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
-        ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
-        ("minecraft:zombified_piglin", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
+        ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
+        ("minecraft:zombified_piglin", &[("hurt_by", 1), ("nearest_target", 2), ("break_door", 1), ("neutral_anger", 255), ("spear_use", 1), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)] ),
         ("minecraft:horse", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:donkey", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:mule", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
@@ -650,14 +682,26 @@ mod tests {
         ("minecraft:slime", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
         ("minecraft:magma_cube", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
         ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:witch", &[("hurt_by", 1), ("nearest_target", 3), ("float", 1), ("ranged_attack", 2), ("stroll", 2), ("look_at_player", 3), ("random_look", 3)]),
+        ("minecraft:pillager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("raider_open_door", 1), ("hold_ground_attack", 2), ("float", 0), ("pathfind_to_raid", 4), ("ranged_crossbow", 3), ("stroll", 8), ("look_at_player", 9)]),
+        ("minecraft:vindicator", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("hold_ground_attack", 2), ("raid_break_door", 1), ("raider_open_door", 1), ("float", 0), ("pathfind_to_raid", 6), ("melee", 5), ("stroll", 8), ("look_at_player", 9)]),
+        ("minecraft:witch", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 1), ("drink_potion", 0), ("ranged_attack", 2), ("stroll", 2), ("look_at_player", 3), ("random_look", 3)]),
         ("minecraft:blaze", &[("hurt_by", 1), ("nearest_target", 2), ("burst_shot", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
+        ("minecraft:guardian", &[("nearest_target", 1), ("guardian_beam", 4), ("move_towards_restriction", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:elder_guardian", &[("nearest_target", 1), ("guardian_beam", 4), ("move_towards_restriction", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
+        ("minecraft:evoker", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("spell_casting", 1), ("avoid_entity", 2), ("avoid_entity", 3), ("spell_use", 4), ("spell_use", 5), ("stroll", 8), ("look_at_player", 9)]),
+        ("minecraft:illusioner", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("float", 0), ("spell_casting", 1), ("avoid_entity", 3), ("spell_use", 4), ("ranged_bow", 6), ("stroll", 8), ("look_at_player", 9)]),
         ("minecraft:parched", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4)]),
-        ("minecraft:iron_golem", &[("hurt_by", 2), ("melee", 1), ("move_towards_target", 2), ("village_walk", 2), ("village_walk", 4), ("look_at_player", 7), ("random_look", 8)]),
+        ("minecraft:iron_golem", &[("hurt_by", 2), ("nearest_target", 3), ("melee", 1), ("move_towards_target", 2), ("village_walk", 2), ("village_walk", 4), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("animal_panic", 0), ("breed", 1), ("tempt", 2), ("charge_attack", 3), ("fish_swim", 4)]),
         ("minecraft:zombie_nautilus", &[("tempt", 1), ("charge_attack", 2), ("fish_swim", 3)]),
+        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("admire", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_bow", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
+        ("minecraft:shulker", &[("hurt_by", 1), ("nearest_target", 2), ("look_at_player", 1), ("homing_shot", 4), ("peek", 7), ("random_look", 8), ("teleport_on", 0)]),
+        ("minecraft:sulfur_cube", &[("bounce_drag", 0), ("float", 1), ("swallow_item", 2), ("burn_on_touch", 2), ("push_on_touch", 2), ("tempt", 3), ("item_seek", 3)]),
+        ("minecraft:villager", &[]),
+        ("minecraft:warden", &[("hurt_by", 1), ("nearest_target", 2), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("emerge", 0), ("dig", 1), ("suspect_anger", 2), ("vibration_listen", 2), ("sonic_boom", 3), ("roar_at_target", 4), ("melee", 5), ("go_to_disturbance", 6), ("sniff", 7), ("darkness_pulse", 8), ("float", 9)]),
+        ("minecraft:wither", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("invulnerable_charge", 0), ("ranged_attack", 2), ("side_heads", 2), ("side_heads", 2), ("regen", 0), ("block_breaker", 0), ("boss_bar", 0), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
     ];
     #[test]
@@ -731,3 +775,9 @@ mod tests {
         assert!(e.contains("mod:big") && e.contains("33") && e.contains("32"), "{e}");
     }
 }
+pub mod piglin;
+pub mod shulker;
+pub mod sulfur_cube;
+pub mod villager;
+pub mod warden;
+pub mod wither;

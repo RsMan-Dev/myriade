@@ -22,6 +22,14 @@ case "${1:-}" in
     mapfile -t species < <(printf '%s\n' "${species[@]}" | sort -u) ;;
   *) species=("$@") ;;
 esac
+# 0. every name must be a registered species (the process panics on an unknown HORIZON_SPECIES, but say it before building), and for --all the
+# species launched must be the species of BUILTIN: a mismatch means species run unnamed or not at all.
+for s in "${species[@]}"; do all | grep -qx "$s" || { echo "unknown species '$s' (not in the table of species/mod.rs; give it without the minecraft: prefix)"; exit 2; }; done
+if [ "${1:-}" = --all ]; then
+  nb=$(awk '/^pub static BUILTIN/{f=1} f{n+=gsub(/&[a-z_0-9]+::DEF/,"&")} f&&/\];/{print n; exit}' src/species/mod.rs)
+  [ "$nb" = "${#species[@]}" ] || { echo "--all launches ${#species[@]} species but BUILTIN has $nb"; exit 2; }
+  echo "species launched: ${#species[@]} = BUILTIN"
+fi
 # 1. build once, list the test executables
 ${BUILD:-cargo} test -p horizon-ecs-proto --profile fast --no-run --message-format=json 2> "$out/build.err" | python3 -c '
 import sys,json
@@ -43,9 +51,19 @@ run() {
   HORIZON_SPECIES=minecraft:$s "$exe" --test-threads=$tt > "$f" 2>&1 || echo "$s $(basename "$exe")" >> "$out/failed"
   echo "$(( ($(date +%s%N) - t0) / 1000000 )) $(basename "$exe") $s" >> "$out/times"
 }
+export HORIZON_SKIP_LOG="$out/skips"; : > "$HORIZON_SKIP_LOG"
 export -f run; export out HORIZON_TEST_RESOURCES
 tr '\t' '\n' < "$out/jobs" | xargs -d '\n' -n 2 -P "$JOBS" bash -c 'run "$0" "$1" "$out"'
 # 3. the report
+# The tests that SKIPPED at run time count as passed by the harness but verified nothing: count them apart.
+passed=$(cat "$out"/*.log | grep -h '^test result' | awk '{p+=$4} END{print p+0}')
+sort -u "$out/skips" > "$out/skips.u"
+skipped=$(wc -l < "$out/skips.u")
+echo "tests passed $passed: really run $((passed - skipped)), skipped at run time $skipped (the #[ignore]d ones are not in the 'passed')"
+echo "skips by reason (species and numbers masked):"
+cut -f3 "$out/skips.u" | sed 's/minecraft:[a-z_]*/<sp>/g;s/[0-9][0-9.]*/N/g;s/^[a-z_]* \(has no\|lacks\|is\|walks\|moves\|has a\)/<sp> \1/' | sort | uniq -c | sort -rn | head -n 10 | sed 's/^/  /'
+echo "tests skipped under EVERY species launched (dead tests):"
+awk -F'\t' -v n="${#species[@]}" '{c[$2]++} END{for(t in c) if (c[t]>=n) print "  " t}' "$out/skips.u" | sort
 if [ -s "$out/failed" ]; then
   echo "FAILED (species, test binary):"
   sort -u "$out/failed" | head -n 60

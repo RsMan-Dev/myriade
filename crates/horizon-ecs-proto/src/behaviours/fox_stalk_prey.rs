@@ -42,7 +42,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -125,15 +125,15 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     }
 }
 
-fn systems(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
-    s.add_systems(stalk_run.in_set(slot));
+/// The tick of the module, run only while a stalking fox lives (no registered system).
+fn tick(w: &mut World) {
+    stalk_run(w);
 }
 
 /// `StalkPreyGoal.tick` on the selector ticks: the goal ends when `canUse` no longer holds; else it looks at the prey and
 /// either crouches (within 6 blocks) or asks the path to it.
-fn stalk_run(w: &mut World, q: &mut QueryState<Entity, With<Stalking>>) {
-    // The query is kept between ticks (`w.query()` rebuilt it every tick: about 4 000 instructions with nobody to visit).
-    let list: Vec<Entity> = q.iter(w).collect();
+fn stalk_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Stalking>>(w);
     for e in list {
         let Some(slot) = slot_of(w, e, &MODULE) else { continue };
         if !fs::selector_tick(w, e) {

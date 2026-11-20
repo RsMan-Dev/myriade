@@ -48,7 +48,7 @@ fn on() -> bool {
     }
     let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
     if sp != "minecraft:cow" {
-        eprintln!("SKIP lot2_vs_mob: written for HORIZON_SPECIES=minecraft:cow, not {sp}");
+        horizon_ecs_proto::cow::skip_note("lot2_vs_mob", &format!("written for HORIZON_SPECIES=minecraft:cow, not {sp}"));
         return false;
     }
     true
@@ -354,7 +354,7 @@ fn the_species_of_the_first_wave_against_their_mob() {
         let view = player_view(player, None);
         // The `Mob`'s test player is not hurt: the ECS one must not be either (a dead player drops every target).
         h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         let have_player = false;
         let _ = have_player;
         let (mut mt, mut et) = (0usize, 0usize);
@@ -372,7 +372,7 @@ fn the_species_of_the_first_wave_against_their_mob() {
                     if h.world.get_entity(e).is_ok() {
                         h.teleport(e, at);
                     }
-                    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+                    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
                 }
                 r.step(Some(&view));
             }
@@ -536,7 +536,7 @@ fn silverfish_target_distance() {
         let e = ecs_named(&mut h, "minecraft:silverfish", None, 0.5, 0.5, 8000, u64::from(far_id(3)));
         let player = Vec3::new(0.5 + d, 1.0, 0.5);
         let view = player_view(player, None);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         let (mut a, mut b) = (None, None);
         for t in 0..300 {
             r.step(Some(&view));
@@ -670,7 +670,7 @@ fn reset_universal_anger_without_a_held_target() {
         return;
     }
     let mut h = Herd::with_slab(24, false, false);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let entries: &'static [Entry] = leak([
         Entry::new(&reset_universal_anger::MODULE, 4, &reset_universal_anger::Params::DEFAULT),
         Entry::new(&neutral_anger::MODULE, 200, &neutral_anger::Params::DEFAULT),
@@ -698,8 +698,8 @@ fn pufferfish_puff_with_two_players() {
     let mut h = Herd::with_slab(24, false, false);
     {
         let mut on = h.world.resource_mut::<Online>();
-        on.set(Player { id: 1, x: 1.5, y: 1.0, z: 0.5, main: 0, off: 0 });
-        on.set(Player { id: 2, x: 2.0, y: 1.0, z: 0.5, main: 0, off: 0 });
+        on.set(Player { id: 1, x: 1.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
+        on.set(Player { id: 2, x: 2.0, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     }
     {
         let mut ps = h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>();

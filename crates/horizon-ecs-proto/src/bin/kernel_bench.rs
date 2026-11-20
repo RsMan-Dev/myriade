@@ -46,7 +46,7 @@ fn main() {
     }
     let dt = t.elapsed();
     let (fast, fall) = (occ.fast.load(std::sync::atomic::Ordering::Relaxed), occ.fallback.load(std::sync::atomic::Ordering::Relaxed));
-    println!("{case} churn={churn} masks={fast} kernel_fallback={fall} table={:?} iters={iters}", occ.table_size());
+    println!("{case} churn={churn} declined_by_lockfree={} masks={fast} kernel_fallback={fall} table={:?} iters={iters}", occ.declined.load(std::sync::atomic::Ordering::Relaxed), occ.table_size());
     // The first encounter of a state: a fresh table classifies every state of the registry once (shape cloned into the table).
     let fresh = horizon_ecs_proto::occupancy::Occupancy::default();
     let t1 = Instant::now();

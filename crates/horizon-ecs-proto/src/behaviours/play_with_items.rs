@@ -60,8 +60,9 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, pickup_run);
 }
-/// Un objet entré dans la main d'un dauphin qui porte le but le réveille (lu une fois, au tick suivant).
-fn pickup_run(ev: Res<Events>, q: Query<&Thrower>, mut reqs: ResMut<Requests>) {
+/// Un objet entré dans la main d'un dauphin qui porte le but le réveille (lu une fois, au tick suivant), sauf s'il va vers un objet :
+/// `MoveToItemGoal.stop` jette d'abord ce qu'il tient et lance le repos (le sélecteur arrête avant de démarrer), `move_to_item::tick` le réveille si le but continue.
+fn pickup_run(ev: Res<Events>, q: Query<&Thrower, Without<super::move_to_item::Fetching>>, mut reqs: ResMut<Requests>) {
     for e in ev.picked_up.iter() {
         if let Ok(t) = q.get(e) {
             reqs.0.push(Req::Start(e, t.slot));
