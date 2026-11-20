@@ -46,3 +46,25 @@ fn a_wither_at_rest_wakes_rarely() {
     }
     assert!(wakes("minecraft:wither", 100, 1000) <= 40);
 }
+#[test]
+fn an_enderman_at_rest_wakes_rarely() {
+    if !have_data() {
+        return;
+    }
+    // The law of `EndermanTakeBlockGoal.canUse`: one draw in 20 per ask, so about 50 wakes in 1000 ticks, which is the floor.
+    assert!(wakes("minecraft:enderman", 100, 1000) <= 60);
+}
+#[test]
+fn a_fox_at_rest_wakes_rarely() {
+    if !have_data() {
+        return;
+    }
+    assert!(wakes("minecraft:fox", 100, 1000) <= 40);
+}
+#[test]
+fn a_cave_spider_at_rest_wakes_rarely() {
+    if !have_data() {
+        return;
+    }
+    assert!(wakes("minecraft:cave_spider", 100, 1000) <= 40);
+}

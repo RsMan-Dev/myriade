@@ -166,9 +166,25 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     if point(w, e, s.scan).is_some() {
         true
+    } else if w.resource::<item::ItemIndex>().is_empty() {
+        // No item lies anywhere: no draw can start the search until one lands (`Item`'s `on_add` wakes it, `wake_parked`).
+        w.entity_mut(e).insert(Idle);
+        false
     } else {
         arm_draw(w, e);
         false
+    }
+}
+/// The search sleeps: no item exists.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+struct Idle;
+/// An item joined the ground: the sleeping searches draw again.
+pub fn wake_parked(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Idle>>().iter(w).collect();
+    for e in es {
+        w.entity_mut(e).remove::<Idle>();
+        arm_draw(w, e);
     }
 }
 /// `start`: the walk to the point, and the own time the goal stops at. Each ask that the Mob makes while the goal runs continues

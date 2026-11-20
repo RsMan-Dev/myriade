@@ -166,8 +166,8 @@ fn reach_of(w: &World, e: Entity, n: &Nearest) -> f64 {
 fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return true };
     let range = reach_of(w, e, n);
-    // The watch sees 128 blocks at most: a longer reach is polled.
-    if range + 1.0 > 128.0 {
+    // The watch sees 64 blocks at most: a longer reach is polled.
+    if range + 1.0 > 64.0 {
         return true;
     }
     let mut any = false;

@@ -19,7 +19,6 @@ frog ## the long jump's search, as the Mob does it: a start with no wish for a p
 goat ## the same search over a box of 11 x 11 x 11 (1 330 candidates) at each start of its long jump while the ram cools down, cached 600 ticks per block when nothing is found; the ram's wake is an event (no polling) but the navigation check still asks again at +2
 nautilus ## swims every tick (reindex and push of a mover, 1 000 instr each per creature and tick, as the dolphin and the axolotl); the charge itself is rare
 wither ## a flier that moves all the time: apply_deferred 66 % of the rest cost (the commands of its fly moves), fly 18 %, arbitrate 8.5 % (prof_bench idle 2000, 2026-11-20); not fixed
-fox ## arbitrate carries 79 % of the rest cost (481 per creature and tick); not fixed (prof_bench idle, 2026-11-20)
 guardian ## swims every tick (travel 27 %, reindex 16 %, arbitrate 14 % of 1 209 per creature and tick): a mover, as the dolphin
 elder_guardian ## swims every tick (travel 40 %, reindex 21 %, push 15 % of 3 327 per creature and tick): a mover, as the guardian
 happy_ghast ## flies all the time (arbitrate 26 %, travel 26 %, reindex 23 % of 4 978 per creature and tick): a mover, as the ghast

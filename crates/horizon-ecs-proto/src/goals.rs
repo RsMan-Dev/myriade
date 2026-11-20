@@ -817,7 +817,7 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 /// An entity that wants to know when players come within `radius` blocks and go: the framework keeps `inside` and writes
 /// `Events.player_entered` / `player_left` when a player moves, arrives or leaves, or when the entity changes cell (by the index
 /// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
-/// changes or the player moves; the radius is at most 127 blocks. The players inside are a sorted list (any number of players).
+/// changes or the player moves; the radius is at most 64 blocks. The players inside are a sorted list (any number of players).
 #[derive(Component, Clone, Debug)]
 pub struct PlayerWatch {
     pub radius: f32,
@@ -833,7 +833,7 @@ impl PlayerWatch {
 }
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
 fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
-    const R: f64 = 128.0;
+    const R: f64 = 64.0;
     // Nobody watches (the common case): not one index scan per moving player.
     if (on.seen.is_empty() && moves.0.is_empty()) || q.is_empty() {
         return;
