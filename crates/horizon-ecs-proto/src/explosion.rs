@@ -316,6 +316,28 @@ mod equality {
         set
     }
 
+    #[inline(never)]
+    fn bench_blast_new(w: &mut World, c: Vec3, n: usize) -> usize {
+        (0..n).map(|_| exploded_positions(w, c, 4.0).len()).sum()
+    }
+    #[inline(never)]
+    fn bench_blast_ref(w: &mut World, c: Vec3, n: usize) -> usize {
+        (0..n).map(|_| exploded_positions_reference(w, c, 4.0).len()).sum()
+    }
+    /// A TNT (radius 4) on a stone slab, ten times: `--toggle-collect=*bench_blast_*`.
+    #[test]
+    #[ignore = "bench"]
+    fn blast_bench() {
+        let (level, _, _) = crate::cow::build_level(20, false);
+        let mut w = World::new();
+        w.insert_resource(level);
+        w.insert_resource(ExplosionRng(Rng(7)));
+        let c = Vec3::new(0.5, 1.0, 0.5);
+        let a = bench_blast_new(&mut w, c, 10);
+        w.insert_resource(ExplosionRng(Rng(7)));
+        assert_eq!(a, bench_blast_ref(&mut w, c, 10));
+    }
+
     /// The cached version gives the same blocks in the same order, and leaves the random stream where the reference leaves it.
     #[test]
     fn exploded_positions_equals_reference() {
@@ -324,7 +346,13 @@ mod equality {
         }
         let half = 24;
         let (level, _, _) = crate::cow::build_level_with(half, |blocks, registry| {
-            let names = ["minecraft:air", "minecraft:stone", "minecraft:water", "minecraft:lava", "minecraft:obsidian"];
+            let chunks = (half + 15) / 16 + 1;
+            for cx in -chunks..chunks {
+                for cz in -chunks..chunks {
+                    blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                }
+            }
+            let names = ["minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:air", "minecraft:stone", "minecraft:stone", "minecraft:water", "minecraft:lava", "minecraft:obsidian"];
             let mut s = 0x9E37_79B9_7F4A_7C15_u64;
             for x in -half..half {
                 for z in -half..half {
@@ -338,7 +366,7 @@ mod equality {
                 }
             }
         });
-        let (lo_y, hi_y) = (level.mw.0.world.bottom_y(), level.mw.0.world.top_y());
+        let lo_y = level.mw.0.world.bottom_y();
         let mut s = 0xD1B5_4A32_D192_ED03_u64;
         let mut next = move || {
             s ^= s << 13;
@@ -347,9 +375,10 @@ mod equality {
             (s >> 11) as f64 / (1_u64 << 53) as f64
         };
         let radii = [0.5_f32, 1.0, 3.0, 4.0, 5.0, 8.0];
+        let mut total = 0;
         for i in 0..2000 {
             let seed = (next() * u64::MAX as f64) as u64 | 1;
-            let (cx, cy, cz) = (-f64::from(half) + next() * f64::from(2 * half), f64::from(lo_y) + next() * f64::from(hi_y - lo_y), -f64::from(half) + next() * f64::from(2 * half));
+            let (cx, cy, cz) = (-f64::from(half) + next() * f64::from(2 * half), -4.0 + next() * 16.0, -f64::from(half) + next() * f64::from(2 * half));
             let c = Vec3::new(cx, if i % 4 == 0 { f64::from(lo_y) + next() * 4.0 } else { cy }, cz);
             let radius = radii[i % radii.len()];
             let mut a = World::new();
@@ -361,7 +390,9 @@ mod equality {
             let got = exploded_positions(&mut a, c, radius);
             let want = exploded_positions_reference(&mut b, c, radius);
             assert_eq!(got, want, "centre {c:?}, radius {radius}, seed {seed}");
+            total += got.len();
             assert_eq!(a.resource::<ExplosionRng>().0 .0, b.resource::<ExplosionRng>().0 .0);
         }
+        assert!(total > 10_000, "the explosions broke only {total} blocks: nothing compared");
     }
 }

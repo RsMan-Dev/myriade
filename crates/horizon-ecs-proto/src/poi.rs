@@ -21,8 +21,8 @@ pub struct PoiRegistry {
     points: HashMap<[i32; 3], Poi>,
     /// The village points (homes, job sites, meeting points) in each section: what `sections_to_village` measures from.
     sections: HashMap<[i32; 3], u32>,
-    /// Every point of each section (village or not): what `in_range` searches.
-    by_section: HashMap<[i32; 3], Vec<[i32; 3]>>,
+    /// Every point of each section (village or not) with a copy of its `Poi`, kept equal to `points`: what `in_range` searches without a lookup per point.
+    by_section: horizon_core::fast_hash::FxHashMap<[i32; 3], Vec<([i32; 3], Poi)>>,
     scanned: bool,
     /// The points that appeared / went this tick, and the ones of the tick before (what the modules read).
     now: (Vec<[i32; 3]>, Vec<[i32; 3]>),
@@ -53,12 +53,23 @@ impl PoiRegistry {
         self.points.is_empty()
     }
     fn add(&mut self, p: [i32; 3], kind: PoiType) {
-        if self.points.insert(p, Poi { kind, taken: 0 }).is_none() {
+        let poi = Poi { kind, taken: 0 };
+        if self.points.insert(p, poi).is_none() {
             if is_village(kind) {
                 *self.sections.entry(section(p)).or_default() += 1;
             }
-            self.by_section.entry(section(p)).or_default().push(p);
+            self.by_section.entry(section(p)).or_default().push((p, poi));
             self.now.0.push(p);
+        } else {
+            self.sync(p);
+        }
+    }
+    /// Copies the `Poi` of `p` into its section list.
+    fn sync(&mut self, p: [i32; 3]) {
+        if let Some(poi) = self.points.get(&p).copied()
+            && let Some(e) = self.by_section.get_mut(&section(p)).and_then(|v| v.iter_mut().find(|e| e.0 == p))
+        {
+            e.1 = poi;
         }
     }
     fn remove(&mut self, p: [i32; 3]) {
@@ -72,7 +83,7 @@ impl PoiRegistry {
                 }
             }
             if let Some(v) = self.by_section.get_mut(&section(p))
-                && let Some(i) = v.iter().position(|q| *q == p)
+                && let Some(i) = v.iter().position(|q| q.0 == p)
             {
                 v.swap_remove(i);
             }
@@ -107,10 +118,9 @@ impl PoiRegistry {
     pub fn in_range(&self, center: [i32; 3], radius: i32, free: bool, accept: impl Fn(PoiType) -> bool) -> Vec<([i32; 3], PoiType)> {
         let mut v: Vec<(i64, i32, i32, [i32; 3], PoiType)> = Vec::new();
         for s in self.sections_near(center, radius) {
-            for p in &self.by_section[&s] {
-                let poi = self.points[p];
+            for &(p, poi) in &self.by_section[&s] {
                 if (0..3).all(|i| (p[i] - center[i]).abs() <= radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()) {
-                    v.push(((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, *p, poi.kind));
+                    v.push(((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, p, poi.kind));
                 }
             }
         }
@@ -134,6 +144,7 @@ impl PoiRegistry {
         match self.points.get_mut(&p) {
             Some(poi) if poi.taken < poi.kind.max_tickets() => {
                 poi.taken += 1;
+                self.sync(p);
                 true
             }
             _ => false,
@@ -144,6 +155,7 @@ impl PoiRegistry {
         match self.points.get_mut(&p) {
             Some(poi) if poi.taken > 0 => {
                 poi.taken -= 1;
+                self.sync(p);
                 true
             }
             _ => false,
@@ -294,6 +306,35 @@ mod index_tests {
     fn point(s: &mut u64, lo: i32, hi: i32) -> [i32; 3] {
         [coord(s, lo, hi), coord(s, lo, hi), coord(s, lo, hi)]
     }
+    #[inline(never)]
+    fn bench_poi_new(reg: &PoiRegistry, centers: &[[i32; 3]], accept: fn(PoiType) -> bool) -> usize {
+        centers.iter().map(|&c| reg.in_range(c, 48, true, accept).len()).sum()
+    }
+    #[inline(never)]
+    fn bench_poi_scan(reg: &PoiRegistry, centers: &[[i32; 3]], accept: fn(PoiType) -> bool) -> usize {
+        centers.iter().map(|&c| reg.in_range_scan(c, 48, true, accept).len()).sum()
+    }
+    /// A village-sized registry (700 points over 200 blocks) searched by 100 villagers: `--toggle-collect=*bench_poi_*`.
+    fn poi_bench(accept: fn(PoiType) -> bool) {
+        let mut s = 0x2545_F491_4F6C_DD1Du64;
+        let mut reg = PoiRegistry::default();
+        for _ in 0..700 {
+            reg.add([coord(&mut s, -100, 100), coord(&mut s, 60, 75), coord(&mut s, -100, 100)], KINDS[pick(&mut s, KINDS.len())]);
+        }
+        let centers: Vec<[i32; 3]> = (0..100).map(|_| [coord(&mut s, -100, 100), coord(&mut s, 60, 75), coord(&mut s, -100, 100)]).collect();
+        assert_eq!(bench_poi_new(&reg, &centers, accept), bench_poi_scan(&reg, &centers, accept));
+    }
+    #[test]
+    #[ignore = "bench"]
+    fn poi_bench_jobs() {
+        poi_bench(PoiType::is_job);
+    }
+    #[test]
+    #[ignore = "bench"]
+    fn poi_bench_homes() {
+        poi_bench(|k| k == PoiType::Home);
+    }
+
     #[test]
     fn in_range_equals_scan() {
         let mut s = 0x2545_F491_4F6C_DD1Du64;
