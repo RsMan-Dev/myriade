@@ -3034,10 +3034,14 @@ fn push(
         let mut dv = (0.0_f64, 0.0_f64);
         let mut overlapping = 0;
         // An object (an item on the ground) neither pushes nor is pushed: it scans nothing.
-        let e_object = is_object(e);
-        if !e_object {
+        // (read lazily: a creature alone in its cells never asks).
+        let mut e_object: Option<bool> = None;
+        {
         idx.for_near_touching(cx, cz, (mn.x, mn.z), (mx.x, mx.z), |o| {
             if o == e {
+                return;
+            }
+            if *e_object.get_or_insert_with(|| is_object(e)) {
                 return;
             }
             let Ok((ob, asleep)) = boxes.get(o) else { return };

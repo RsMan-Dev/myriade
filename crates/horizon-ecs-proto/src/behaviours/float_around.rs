@@ -81,13 +81,28 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 }
 /// The ghast is asked again when its wanted spot is gone (the tick of the module: only the animals with the float control, read through a kept query).
 fn watch(w: &mut World) {
-    let es = crate::goals::entities::<With<crate::locomotion::fly::FloatState>>(w);
-    for e in es {
-        let (Some(m), Some(p), Some(slot)) = (w.get::<MoveTo>(e).copied(), w.get::<Pos>(e).map(|p| p.0), w.get::<GoalSet>(e).and_then(|g| g.slot_of(&MODULE))) else { continue };
-        if wants_a_spot(&m, p) {
-            w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
-        }
+    type Q = bevy_ecs::query::QueryState<(Entity, &'static MoveTo, &'static Pos, &'static GoalSet), With<crate::locomotion::fly::FloatState>>;
+    #[derive(Resource)]
+    struct Kept(Q);
+    if !w.contains_resource::<Kept>() {
+        let q = w.query_filtered();
+        w.insert_resource(Kept(q));
     }
+    // One pass over the kept query, the request pushed in place (no list of entities, no lookup per component).
+    w.resource_scope(|w, mut k: Mut<Kept>| {
+        let mut asks: Vec<(Entity, u8)> = Vec::new();
+        for (e, m, p, g) in k.0.iter(w) {
+            if wants_a_spot(m, p.0)
+                && let Some(slot) = g.slot_of(&MODULE)
+            {
+                asks.push((e, slot));
+            }
+        }
+        if !asks.is_empty() {
+            let mut r = w.resource_mut::<Requests>();
+            r.0.extend(asks.into_iter().map(|(e, s)| Req::Start(e, s)));
+        }
+    });
 }
 
 #[cfg(test)]

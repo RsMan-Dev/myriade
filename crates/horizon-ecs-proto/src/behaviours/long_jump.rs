@@ -378,7 +378,7 @@ fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
     };
     crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let evaluator = if p.swim_rules { Evaluator::Amphibious { prefers_shallow: true } } else { Evaluator::Walk };
-    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).find(&[target], 8.0, 0, (sp.follow_range * 16.0).ifloor()).is_some_and(|path| path.reached)
+    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).with_occ(w.resource::<Level>().occ).find(&[target], 8.0, 0, (sp.follow_range * 16.0).ifloor()).is_some_and(|path| path.reached)
 }
 
 /// `LongJumpToPreferredBlock.getJumpCandidate` : tant qu'il en veut, la première case tirée sur un bloc préféré, sinon la
@@ -459,7 +459,7 @@ fn optimal_jump_vector(w: &mut World, e: Entity, p: &Params, mw: &MobWorld, targ
     let max = (p.jump_strength * f64::from(JUMP_VELOCITY_MULTIPLIER)) as f32;
     let (pos, body) = (w.get::<Pos>(e)?.0, *w.get::<Body>(e)?);
     // The arc is tested with the standing box (fallback: the pose's box is not read).
-    crate::jump_arc::first_reaching(&angles, pos, body.gravity, target, max, Some((mw, crate::jump_arc::Footprint { width: body.width, height: body.height })))
+    crate::jump_arc::first_reaching(&angles, pos, body.gravity, target, max, Some((mw, crate::jump_arc::Footprint { width: body.width, height: body.height, occ: Some(w.resource::<Level>().occ) })))
 }
 
 /// `LongJumpMidJump` : le bond (vitesse de l'arc, frottement coupé, le corps tourné vers son cap), puis le vol.

@@ -11,6 +11,8 @@ use horizon_core::jmath;
 pub struct Footprint {
     pub width: f32,
     pub height: f32,
+    /// The world's occupancy masks, when the caller has them (the same answer as the kernel's, for less).
+    pub occ: Option<&'static crate::occupancy::Occupancy>,
 }
 
 /// `LongJumpUtil.calculateJumpVectorForAngle`: from `pos` to `target` (stopping half a block short of it) at `angle` degrees, under `gravity`;
@@ -68,7 +70,11 @@ fn clear_transition(mw: &MobWorld, foot: Footprint, from: Vec3, to: Vec3) -> boo
     let mut p = from;
     (0..checks).all(|i| {
         p = if i == checks - 1 { to } else { p.add_vector(step) };
-        mw.no_collision(Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half)))
+        let b = Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half));
+        match foot.occ {
+            Some(o) => o.no_collision(horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b),
+            None => mw.no_collision(b),
+        }
     })
 }
 

@@ -377,6 +377,7 @@ pub struct Finder<'a, 'w> {
     statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     collisions: FxHashMap<[u64; 6], bool>,
     use_layer: bool,
+    occ: Option<&'static crate::occupancy::Occupancy>,
     saw_rail: std::cell::Cell<bool>,
     profile: u64,
     entity_width: i32,
@@ -427,6 +428,11 @@ fn swim_cell_type(
 }
 
 impl<'a, 'w> Finder<'a, 'w> {
+    /// Collision checks go through the occupancy masks (the same answers as `MobWorld::no_collision`).
+    pub fn with_occ(mut self, occ: &'static crate::occupancy::Occupancy) -> Self {
+        self.occ = Some(occ);
+        self
+    }
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
         let _g = sec(0);
         adjacent_reset();
@@ -522,6 +528,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             statics,
             collisions,
             use_layer,
+            occ: None,
             saw_rail: std::cell::Cell::new(false),
             profile,
             entity_width: (mob.width + 1.0).ifloor(),
@@ -645,7 +652,10 @@ impl<'a, 'w> Finder<'a, 'w> {
             return *v;
         }
         bump(21);
-        let v = !self.w.no_collision(b);
+        let v = match self.occ {
+            Some(o) => !o.no_collision(horizon_client_render::collisions::SceneCollisions { world: self.w.world, binding: self.w.collision, subject: None }, b),
+            None => !self.w.no_collision(b),
+        };
         self.collisions.insert(key, v);
         v
     }
