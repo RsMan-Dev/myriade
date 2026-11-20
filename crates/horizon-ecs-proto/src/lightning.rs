@@ -5,14 +5,15 @@
 //! burn and take 5. Random draws come from the bolt's own generator, in the order of the jar.
 //! Not here: the choice of the strike point (`ServerLevel.tickThunder`, lightning rods within 128 blocks, weather), the sky flash, the
 //! hits on players, items, boats, carts, orbs and cushions, and the advancement trigger (see the lot's notes).
-use crate::cow::{self, Body, Cause, DamageQueue, Health, Pos, Rng, SpeciesId, SpeciesTable};
+use crate::cow::{self, Body, Cause, DamageQueue, Health, Pos, SpeciesId, SpeciesTable};
 use crate::goals::Events;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_world::registry::BlockStateId;
 
 /// The bolt's script: `life` counts down from 2; the strike is at 2, the thunder is at `life >= 0`.
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct Bolt {
     pub life: i8,
     pub flashes: u8,
@@ -22,7 +23,7 @@ pub struct Bolt {
     pub fires: u16,
     /// The seed the client draws the branches from (`LightningBolt.seed`).
     pub seed: i64,
-    pub rng: Rng,
+    pub rng: LegacyRandom,
 }
 
 /// Once per bolt: the mooshrooms and copper golems it already changed (a flip is not repeated on the next tick).
@@ -46,34 +47,22 @@ pub struct Strikes(pub Option<Box<dyn BoltLevel>>);
 
 /// `new LightningBolt(level, ...)`: `seed` then `flashes` (`nextInt(3) + 1`) from the bolt's own generator; the first tick is the next one.
 pub fn strike(w: &mut World, at: Vec3, visual: bool, rng_seed: u64) -> Entity {
-    let mut rng = Rng(rng_seed | 1);
-    let seed = next_long(&mut rng);
-    let flashes = rng.next_int(3) as u8 + 1;
+    let mut rng = LegacyRandom::new(rng_seed as i64);
+    let seed = rng.next_long();
+    let flashes = rng.next_int_bound(3).unwrap_or(0) as u8 + 1;
     let e = w.spawn((Pos(at), Bolt { life: 2, flashes, visual, fires: 0, seed, rng })).id();
     cow::after(w, e, 1, step);
     e
 }
 
-/// `nextLong`: two draws of 32 bits, the first one high.
-fn next_long(r: &mut Rng) -> i64 {
-    let hi = i64::from(r.next_u32() as i32);
-    let lo = i64::from(r.next_u32() as i32);
-    (hi << 32).wrapping_add(lo)
-}
-
-/// The sounds draw their pitch from the bolt's generator (`nextFloat`).
-fn next_float(r: &mut Rng) -> f32 {
-    r.next_f64() as f32
-}
-
 /// `LightningBolt.tick` for one bolt.
 fn step(w: &mut World, e: Entity) {
-    let (Some(mut b), Some(pos)) = (w.get::<Bolt>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { return };
+    let (Some(mut b), Some(pos)) = (w.get::<Bolt>(e).cloned(), w.get::<Pos>(e).map(|p| p.0)) else { return };
     let at = [pos.x, pos.y, pos.z];
     if b.life == 2 {
-        let pitch = 0.8 + next_float(&mut b.rng) * 0.2;
+        let pitch = 0.8 + b.rng.next_float() * 0.2;
         w.resource_mut::<Events>().host.sound("entity.lightning_bolt.thunder", at, 10000.0, pitch);
-        let pitch = 0.5 + next_float(&mut b.rng) * 0.2;
+        let pitch = 0.5 + b.rng.next_float() * 0.2;
         w.resource_mut::<Events>().host.sound("entity.lightning_bolt.impact", at, 2.0, pitch);
         if !b.visual {
             // Normal and hard difficulties start fires with the strike itself (`spawnFire(4)`).
@@ -91,10 +80,10 @@ fn step(w: &mut World, e: Entity) {
             w.entity_mut(e).despawn();
             return;
         }
-        if i32::from(b.life) < -b.rng.next_int(10) {
+        if i32::from(b.life) < -b.rng.next_int_bound(10).unwrap_or(0) {
             b.flashes -= 1;
             b.life = 1;
-            b.seed = next_long(&mut b.rng);
+            b.seed = b.rng.next_long();
             if !b.visual {
                 b.fires += spawn_fire(w, at, 0, &mut b.rng);
             }
@@ -109,7 +98,7 @@ fn step(w: &mut World, e: Entity) {
 
 /// `spawnFire`: fire at the strike's block and `extra` neighbours drawn from the bolt's generator, where the host lets fire stand.
 /// Returns how many blocks it set.
-fn spawn_fire(w: &mut World, at: [f64; 3], extra: i32, rng: &mut Rng) -> u16 {
+fn spawn_fire(w: &mut World, at: [f64; 3], extra: i32, rng: &mut LegacyRandom) -> u16 {
     let base = [at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32];
     let Some(level) = w.resource::<Strikes>().0.as_deref() else { return 0 };
     if !level.may_spread_fire(base) {
@@ -117,7 +106,7 @@ fn spawn_fire(w: &mut World, at: [f64; 3], extra: i32, rng: &mut Rng) -> u16 {
     }
     let mut spots = vec![base];
     for _ in 0..extra {
-        let mut d = || rng.next_int(3) - 1;
+        let mut d = || rng.next_int_bound(3).unwrap_or(1) - 1;
         spots.push([base[0] + d(), base[1] + d(), base[2] + d()]);
     }
     let mut set = Vec::new();
