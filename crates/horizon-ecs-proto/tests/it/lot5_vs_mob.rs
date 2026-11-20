@@ -438,7 +438,7 @@ fn a_drowned_hunts_a_villager_and_drops_the_attack_when_it_leaves_the_water() {
     }
 }
 
-/// The tick of the first villager target (`NearestAttackableTargetGoal`, 1 draw in 10) by day and by night, N draws per side: the laws agree.
+/// The tick of the first villager target (`NearestAttackableTargetGoal`, 1 draw in 10) by day and by night, N draws per side: the laws agree (300 draws: at 40 the mean of a 1-in-10 draw varies by 25% with the seeds).
 #[test]
 fn a_drowned_picks_a_villager_target_at_the_pace_of_its_mob() {
     if !on() {
@@ -446,7 +446,7 @@ fn a_drowned_picks_a_villager_target_at_the_pace_of_its_mob() {
     }
     for night in [true, false] {
         let (mut m, mut x) = (Vec::new(), Vec::new());
-        for k in 0..40usize {
+        for k in 0..300usize {
             let mut r = MobRef::new(24, false);
             let mut h = Herd::with_slab(24, false, false);
             platform(&r, &mut h);
@@ -481,7 +481,7 @@ fn a_drowned_picks_a_villager_target_at_the_pace_of_its_mob() {
         }
         let (nm, am) = mean_of(&m);
         let (nx, ax) = mean_of(&x);
-        eprintln!("villager target night {night}: mob {nm}/40 mean {am:.1}, ecs {nx}/40 mean {ax:.1}");
-        assert!(nm == 40 && nx == 40 && (am - ax).abs() < 0.25 * am.max(ax), "night {night}: mob {nm} {am:.1} ecs {nx} {ax:.1}");
+        eprintln!("villager target night {night}: mob {nm}/300 mean {am:.1}, ecs {nx}/300 mean {ax:.1}");
+        assert!(nm == 300 && nx == 300 && (am - ax).abs() < 0.25 * am.max(ax), "night {night}: mob {nm} {am:.1} ecs {nx} {ax:.1}");
     }
 }
