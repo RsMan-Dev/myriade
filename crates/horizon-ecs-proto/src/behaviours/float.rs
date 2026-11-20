@@ -1,15 +1,23 @@
 //! `FloatGoal`: an animal in a fluid deeper than its threshold, or in lava, jumps with 80 % each tick.
 use super::*;
+use crate::behaviours::still_under_riders::{Above, Leaving, StillUntil};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Params {}
+pub struct Params {
+    /// `HappyGhastFloatGoal.canUse`: no float while the still timeout holds (a rider on it, or its countdown).
+    pub unless_still: bool,
+}
 impl Params {
-    pub const DEFAULT: Self = Self {};
+    pub const DEFAULT: Self = Self { unless_still: false };
 }
 /// `Mob.getFluidJumpThreshold`: the depth of fluid (in blocks) from which the animal floats.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Buoyancy(pub f64);
+/// The float waits for the still timeout (`Params::unless_still`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct UnlessStill;
 /// The goal runs (`float_run` visits it).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -26,16 +34,21 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let eye = w.get::<FluidParams>(e).map_or(0.0, |p| p.eye_height);
     w.entity_mut(e).insert(Buoyancy(if eye < 0.4 { 0.0 } else { 0.4 }));
+    if params::<Params>(p).unless_still {
+        w.entity_mut(e).insert(UnlessStill);
+    }
 }
 fn floats(w: &World, e: Entity) -> bool {
     let (f, b) = (w.get::<FluidState>(e).unwrap(), w.get::<Buoyancy>(e).unwrap());
     f.water > b.0 || f.in_lava
 }
+/// `canUse`: floats, unless the still timeout holds (`still_under_riders`: a rider, or the countdown after one left).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    floats(w, e)
+    let still = w.get::<Above>(e).is_some() || w.get::<Leaving>(e).is_some() || w.get::<StillUntil>(e).is_some_and(|u| now_of(w, e) < u.0);
+    floats(w, e) && !(w.get::<UnlessStill>(e).is_some() && still)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Floating);

@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&swallow_item::MODULE, 2, &swallow_item::Params { items: SWALLOWABLE }),
         Entry::new(&burn_on_touch::MODULE, 2, &burn_on_touch::Params::DEFAULT),
         Entry::new(&push_on_touch::MODULE, 2, &push_on_touch::Params::DEFAULT),
-        Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, items: SWALLOWABLE, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100 }),
+        Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, items: SWALLOWABLE, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, ..tempt::Params::DEFAULT }),
         Entry::new(&item_seek::MODULE, 3, &item_seek::Params::DEFAULT),
     ],
     rules: &[RuleEntry::new(&SIZE, &SizeParams { split: None, ..SizeParams::SLIME })],

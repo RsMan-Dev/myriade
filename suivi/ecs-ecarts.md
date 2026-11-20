@@ -115,3 +115,7 @@ fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus 
 - `trader_vs_mob::trade_vs_mob_the_trader_stands_for_a_player_within_four_blocks_only` : `#[ignore]`, le but ECS ne démarre pas (cause à trouver).
 ## Lot cerveaux (2026-11-20)
 - swim_controls_vs_mob::the_fluid_height_is_the_mobs_at_the_same_positions, espèces hoglin et piglin : le Mob garde `fluids.water` à 1,3889 de y=3,55 à 4,05 alors que la surface est à 4,889 ; l'ECS calcule 0,84 à 1,34. Mesuré, cause côté Mob non étudiée (Mob intouchable) : à trancher.
+## Divers, lot divers (2026-11-20)
+- mannequin : Avatar (LivingEntity) sans buts dans le jar ; le Mob lui en donne cinq (Float, Panic, Stroll, LookAtPlayer, RandomLookAround). L'ECS suit le jar : aucun but. Test strict ignoré dans `tests/it/divers_goals_vs_mob.rs`.
+- camel_husk : canMate / canFallInLove faux dans le jar ; le Mob lui met Breed. Écart : l'ECS suit le jar (pas de `breed`, `follow_parent` gardé).
+- happy_ghast : AnimalPanic(2.0) du jar absent du Mob ; ECS conforme au jar. Priorité 3 du float venue du Mob (le jar ne la donne pas). Nourriture supposée `minecraft:snowball` (tag `happy_ghast_food` non lisible hors ligne).

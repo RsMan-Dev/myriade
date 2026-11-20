@@ -1,10 +1,17 @@
 //! The amphibious mode (`HORIZON_SPECIES=minecraft:turtle`) against a real `Mob` turtle: the path finder with the amphibious evaluator on land and
 //! in water, `TurtleMoveControl` in both media, `travelInWater` at 0.1, the node reached within 1 vertically. The turtle is sent from the shore
 //! into a pool and back; both are followed.
+//! NON FAIT : le couple, la ponte et le type de la charge sont des tests ECS seuls (pas de scène Mob en face).
 use crate::common;
 use common::*;
 use horizon_core::geometry::Vec3;
-use horizon_ecs_proto::{cow::*, goals::{go_to_at, GoalSet}};
+use horizon_ecs_proto::{
+    behaviours::{breed, lay_egg},
+    cow::*,
+    goals::{go_to_at, Events, GoalSet},
+    host_out::HostEvent,
+};
+use std::any::TypeId;
 
 fn turtle() -> bool {
     process_species_name() == "minecraft:turtle"
@@ -109,4 +116,77 @@ fn a_turtle_goes_from_the_shore_into_the_water_and_back_as_a_mob_does() {
     eprintln!("turtle: worst gap to +20 {:.4}, +100 {:.4}, +300 {:.4}; {moved}/6 moved; water-start legs included ({water_start_worst:.2} not asserted separately)", worst[0], worst[1], worst[2]);
     assert!(moved >= 5, "the turtles hardly moved");
     assert!(worst[0] < 0.1 && worst[2] < 0.5, "{worst:?}");
+}
+
+fn turtle_of_table(h: &Herd) -> Species {
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    *table.iter().find(|s| s.name == "minecraft:turtle").unwrap()
+}
+
+/// Two turtles in love side by side mate: one carries an egg (the `breed` load), and no baby is born.
+#[test]
+fn turtles_in_love_mate_and_one_carries_an_egg_instead_of_a_baby() {
+    if !have_data() || !turtle() {
+        return;
+    }
+    let (_, mut h) = flat_pair();
+    let sp = turtle_of_table(&h);
+    let a = spawn_species(&mut h.world, &sp, 0.5, 0.5, 71);
+    let b = spawn_species(&mut h.world, &sp, 2.5, 0.5, 72);
+    for e in [a, b] {
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    }
+    h.tick();
+    assert!(breed::feed(&mut h.world, a) && breed::feed(&mut h.world, b));
+    let before = h.world.query::<&SpeciesId>().iter(&h.world).count();
+    for _ in 0..300 {
+        h.tick();
+    }
+    let carrying = h.world.query::<&breed::Carrying>().iter(&h.world).count();
+    let babies = h.world.query::<&GrowAt>().iter(&h.world).count();
+    let after = h.world.query::<&SpeciesId>().iter(&h.world).count();
+    assert_eq!(carrying, 1, "one turtle carries its egg");
+    assert_eq!(babies, 0, "no baby is born");
+    assert_eq!(before, after, "the turtles of the species are the same in number");
+}
+
+/// A turtle that carries its egg digs on the sand and sets `turtle_egg` above its spot; the load goes with the laying.
+#[test]
+fn a_turtle_that_carries_an_egg_lays_it_on_the_sand() {
+    if !have_data() || !turtle() {
+        return;
+    }
+    let (_, mut h) = flat_pair();
+    for x in -10..=10 {
+        for z in -10..=10 {
+            h.set_block(x, 0, z, "minecraft:sand");
+        }
+    }
+    h.tick();
+    let sp = turtle_of_table(&h);
+    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 92);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.entity_mut(e).insert(breed::Carrying);
+    h.world.resource_mut::<Events>().carrying.push(e);
+    let mut laid = Vec::new();
+    for _ in 0..900 {
+        h.tick();
+        for ev in h.drain_host_out() {
+            if let HostEvent::SetBlock { pos, .. } = ev {
+                laid.push(pos);
+            }
+        }
+        if !laid.is_empty() {
+            break;
+        }
+    }
+    assert!(!laid.is_empty(), "the turtle lays its egg");
+    assert_eq!(laid[0][1], 1, "the egg is one block above the sand: {:?}", laid[0]);
+    assert!(h.world.get::<breed::Carrying>(e).is_none(), "the load is dropped after the laying");
+}
+
+/// The egg of `lay_egg` is the load of `breed`: one type of load for both behaviours.
+#[test]
+fn the_egg_is_the_breeding_load() {
+    assert_eq!(TypeId::of::<lay_egg::Carrying>(), TypeId::of::<breed::Carrying>());
 }

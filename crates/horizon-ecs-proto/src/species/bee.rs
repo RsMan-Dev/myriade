@@ -4,7 +4,7 @@
 //! angry at 2; `neutral_anger` keeps the anger), breeding and following the parent, tempted by flowers. The calm goals run only while it is not
 //! angry (`bee:calm`: `BaseBeeGoal`). The flowers of the food are the common ones (`#flowers`).
 use super::Def;
-use crate::behaviours::{bee, breed, fly_stroll, follow_parent, hurt_by, melee, nearest_target, neutral_anger, tempt, Cap, Cond, Entry};
+use crate::behaviours::{bee, breed, float, fly_stroll, follow_parent, hurt_by, melee, nearest_target, neutral_anger, tempt, Cap, Cond, Entry};
 use crate::locomotion::{fly, Medium};
 
 static CALM: Cond = Cond::Is("bee:calm");
@@ -36,6 +36,7 @@ pub static DEF: Def = Def {
         Entry::new(&bee::GO_TO_KNOWN_FLOWER, 6, &bee::Params::DEFAULT).when(&CALM),
         Entry::new(&bee::GROW_CROP, 7, &bee::Params::DEFAULT).when(&CALM),
         Entry::new(&fly_stroll::MODULE, 8, &fly_stroll::Params { interval: 10, toward: Some(bee::toward_far_hive), ..fly_stroll::Params::DEFAULT }),
+        Entry::new(&float::MODULE, 9, &float::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Path, max_turn: 20.0, hovers: true, ..fly::Params::DEFAULT }))],

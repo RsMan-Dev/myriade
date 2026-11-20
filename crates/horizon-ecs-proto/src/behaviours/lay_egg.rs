@@ -28,9 +28,8 @@ pub struct Params {
 impl Params {
     pub const DEFAULT: Self = Self { speed: 1.0, range: 16, vertical: 1, radius: 9.0, dig_ticks: 200, floor: "", name: "", states: &[], sound: None };
 }
-/// The load the animal carries; `load` gives it one, the laying takes it away.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Carrying;
+/// The load the animal carries: the one of `breed` (`Params.carries`), the laying takes it away.
+pub use super::breed::Carrying;
 /// Where the animal goes back to: its position at creation (block), moved by a rule through `set_anchor`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Anchor(pub [i32; 3]);
@@ -58,9 +57,24 @@ pub static MODULE: Module = Module {
     start,
     stop,
     tick: Some(tick),
+    systems,
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems(carried.in_set(slot));
+}
+/// The `carrying` event (`breed` gave a load): the search comes at once, with no tick waiting for it.
+fn carried(ev: Res<Events>, lays: Query<(), With<Lay>>, mut reqs: ResMut<Requests>) {
+    for e in ev.carrying.iter() {
+        if lays.contains(e) {
+            reqs.0.push(Req::Call(e, ask));
+        }
+    }
+}
+fn ask(w: &mut World, e: Entity) {
+    chain(w, e, 2);
+}
 /// Gives the animal a load: the goal's first search comes at once.
 pub fn load(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Carrying);
@@ -162,7 +176,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Digging>();
     chain(w, e, 2);
 }
-/// The tick of the module, run while some animal carries it (no system in the schedule).
+/// The tick of the module, run while some animal digs.
 fn tick(w: &mut World) {
     tick_state(w, dig_run);
 }
