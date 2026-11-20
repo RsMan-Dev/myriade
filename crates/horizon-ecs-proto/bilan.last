@@ -2,34 +2,34 @@ cow idle|ecs 768
 cow idle|ecs-eager 977
 cow active(1000 players, no solicitation)|ecs 4355
 cow active(1000 players, no solicitation)|ecs-eager 4204
-cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8067
-pig idle|ecs 140
+cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8066
+pig idle|ecs 141
 pig idle|ecs-eager 347
 pig active(1000 players, no solicitation)|ecs 4059
 pig active(1000 players, no solicitation)|ecs-eager 3870
-pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8225
+pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8227
 sheep idle|ecs 329
-sheep idle|ecs-eager 527
+sheep idle|ecs-eager 526
 sheep active(1000 players, no solicitation)|ecs 4307
 sheep active(1000 players, no solicitation)|ecs-eager 4135
 sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 8389
 chicken idle|ecs 35
-chicken idle|ecs-eager 215
-chicken active(1000 players, no solicitation)|ecs 3241
+chicken idle|ecs-eager 214
+chicken active(1000 players, no solicitation)|ecs 3240
 chicken active(1000 players, no solicitation)|ecs-eager 3093
 chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs 5410
 zombie idle|ecs 87
 zombie idle|ecs-eager 274
-zombie active(1000 players, no solicitation)|ecs 9474
-zombie active(1000 players, no solicitation)|ecs-eager 9361
-zombie chase clear (1024, spacing 6, 1024 players)|ecs 5550
-zombie chase crowded (2000, spacing 2, 1000 players)|ecs 6810
+zombie active(1000 players, no solicitation)|ecs 9471
+zombie active(1000 players, no solicitation)|ecs-eager 9355
+zombie chase clear (1024, spacing 6, 1024 players)|ecs 5551
+zombie chase crowded (2000, spacing 2, 1000 players)|ecs 6813
 crowd 0.5 (cow, 2000, 0 player)|batch 4402
 crowd 0.5 (cow, 2000, 0 player)|ordered 17888
 crowd 0.8 (cow, 2000, 0 player)|batch 3839
 crowd 0.8 (cow, 2000, 0 player)|ordered 12066
 zone near ring (cow, 6, 10)|ecs 2326.1
 zone mid ring (cow, 6, 10)|ecs 33.9
-zone far ring (cow, 6, 10)|ecs 2.0
+zone far ring (cow, 6, 10)|ecs 0.0
 items at rest (slope per stack, 500 to 2000)|ecs 8
-schedule at rest (empty world, per tick)|ecs 124972
+schedule at rest (empty world, per tick)|ecs 125114

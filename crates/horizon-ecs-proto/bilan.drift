@@ -527,3 +527,15 @@ merge port-villages 3489deb8e4|crowd 0.8 (cow, 2000, 0 player)|ordered|12065|120
 merge port-villages 3489deb8e4|zone near ring (cow, 6, 10)|ecs|2326.0|2326.1
 merge port-villages 3489deb8e4|zone far ring (cow, 6, 10)|ecs|0.0|2.0
 merge port-villages 3489deb8e4|schedule at rest (empty world, per tick)|ecs|124739|124972
+merge port-eau + villages-tests 92909447e9|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8067|8066
+merge port-eau + villages-tests 92909447e9|pig idle|ecs|140|141
+merge port-eau + villages-tests 92909447e9|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8225|8227
+merge port-eau + villages-tests 92909447e9|sheep idle|ecs-eager|527|526
+merge port-eau + villages-tests 92909447e9|chicken idle|ecs-eager|215|214
+merge port-eau + villages-tests 92909447e9|chicken active(1000 players, no solicitation)|ecs|3241|3240
+merge port-eau + villages-tests 92909447e9|zombie active(1000 players, no solicitation)|ecs|9474|9471
+merge port-eau + villages-tests 92909447e9|zombie active(1000 players, no solicitation)|ecs-eager|9361|9355
+merge port-eau + villages-tests 92909447e9|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5550|5551
+merge port-eau + villages-tests 92909447e9|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6810|6813
+merge port-eau + villages-tests 92909447e9|zone far ring (cow, 6, 10)|ecs|2.0|0.0
+merge port-eau + villages-tests 92909447e9|schedule at rest (empty world, per tick)|ecs|124972|125114
