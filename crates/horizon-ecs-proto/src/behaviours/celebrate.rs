@@ -1,6 +1,5 @@
 //! Celebration after a hunt that ended with the prey killed (`celebrate`, `mobs/piglin.rs:1874-1905`): the animal stands and
-//! makes `sound` for `duration` ticks. `start_party` is called by the hunt's result; nothing is polled, the end is one tick
-//! check on the animals that celebrate.
+//! makes `sound` for `duration` ticks. `start_party` is called by the hunt's result; nothing is polled, the end is a deadline.
 use super::*;
 use crate::{cow::*, goals::*};
 
@@ -31,7 +30,6 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -54,14 +52,13 @@ pub fn start_party(w: &mut World, e: Entity) {
     let Some(p) = w.get::<Party>(e).copied() else { return };
     let until = now_of(w, e) + p.p.duration;
     w.entity_mut(e).insert(Celebrating { until });
+    after(w, e, p.p.duration as i32, time_up);
     w.resource_mut::<Requests>().0.push(Req::Start(e, p.slot));
 }
-fn tick(w: &mut World) {
-    let due: Vec<(Entity, u8)> = {
-        let mut q = w.query::<(Entity, &Celebrating, &Party)>();
-        q.iter(w).filter(|(e, c, _)| now_of(w, *e) >= c.until).map(|(e, _, p)| (e, p.slot)).collect()
-    };
-    for (e, slot) in due {
-        w.resource_mut::<Requests>().0.push(Req::End(e, slot));
+/// The deadline of a party: the end is asked at its tick, unless the party was restarted (a later deadline is armed) or is over.
+fn time_up(w: &mut World, e: Entity) {
+    let (Some(c), Some(p)) = (w.get::<Celebrating>(e).copied(), w.get::<Party>(e).copied()) else { return };
+    if now_of(w, e) >= c.until {
+        w.resource_mut::<Requests>().0.push(Req::End(e, p.slot));
     }
 }

@@ -35,7 +35,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    tick: Some(tick),
+    systems,
     after_change: Some(after_change),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
@@ -66,8 +66,8 @@ fn after_change(w: &mut World, e: Entity, c: Change) {
         arm_module(w, e, &MODULE, 2);
     }
 }
-fn tick(w: &mut World) {
-    tick_state(w, events_run);
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems(events_run.in_set(slot));
 }
 /// The pregnancy begins: the goal is asked for at the next selector tick; and each tick the running goal acts (search, lay).
 fn events_run(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Layer>, running: Query<(Entity, &Layer), With<Carrying>>) {

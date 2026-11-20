@@ -32,7 +32,6 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
@@ -52,19 +51,21 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     // The first check runs one tick after creation, the `Mob`'s count began with its first tick: one tick is already counted.
     let until = now_of(w, e) + after - 1;
     w.entity_mut(e).insert(Converting { until });
+    crate::cow::after(w, e, (after - 1) as i32, count_over);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Converting>();
 }
-/// The animals whose count is due become the other species; a count whose place turned safe is dropped in `stop`.
-fn tick(w: &mut World) {
-    let due: Vec<Entity> = {
-        let mut q = w.query::<(Entity, &Converting)>();
-        q.iter(w).filter(|(e, c)| now_of(w, *e) >= c.until).map(|(e, _)| e).collect()
-    };
-    for e in due {
-        let into = w.get::<Convert>(e).unwrap().0.into;
+/// The deadline of a count: the conversion is asked at the selector's end of this tick, unless `stop` dropped the count.
+fn count_over(w: &mut World, e: Entity) {
+    if w.get::<Converting>(e).is_some_and(|c| now_of(w, e) >= c.until) {
+        w.resource_mut::<Requests>().0.push(Req::Call(e, convert_now));
+    }
+}
+fn convert_now(w: &mut World, e: Entity) {
+    let (Some(c), Some(cv)) = (w.get::<Converting>(e).copied(), w.get::<Convert>(e).copied()) else { return };
+    if now_of(w, e) >= c.until {
         w.entity_mut(e).remove::<Converting>();
-        crate::conversion::convert(w, e, into, crate::conversion::ConvertKeep::ALL);
+        crate::conversion::convert(w, e, cv.0.into, crate::conversion::ConvertKeep::ALL);
     }
 }

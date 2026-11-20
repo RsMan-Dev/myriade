@@ -4,6 +4,7 @@ mod common;
 mod avoid_sun_vs_mob;
 mod bat_vs_mob;
 mod bee_vs_mob;
+mod n7_bench;
 mod bow_vs_mob;
 mod brain_vs_mob;
 mod capabilities;
