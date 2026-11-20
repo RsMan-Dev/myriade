@@ -166,11 +166,13 @@ fn fly<T>(w: &mut World, e: Entity, f: impl FnOnce(&FlightNodes, &mut LegacyRand
 
 /// Le chemin de l'anneau d'attente, depuis le nœud le plus proche.
 fn ring(w: &mut World, e: Entity, s: &mut PhaseState) {
+    // The flip is drawn first, then the closest node (D:2194).
+    let flip = roll(w, e, 8) == 0;
     let here = pos(w, e);
     let crystals = fight::alive_crystals(w);
     let g = w.resource::<FlightNodes>().clone();
     let cur = g.closest(crystals, here);
-    s.path = nodes::ring_path(&g, crystals, cur, false, &mut s.clockwise);
+    s.path = nodes::ring_path(&g, crystals, cur, flip, &mut s.clockwise);
 }
 
 fn step(w: &mut World, e: Entity, s: &mut PhaseState) {
@@ -330,15 +332,12 @@ fn approach(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
 
 pub struct Landing;
 impl PhaseDef for Landing {
-    fn begin(&self, w: &mut World, e: Entity) {
-        let podium = w.resource::<FlightNodes>().podium();
-        if let Some(mut d) = w.get_mut::<PhaseData>(e) {
-            d.0.target = Some(podium);
-        }
-    }
+    /// The target is the podium, taken on the phase's first tick (`get_or_insert`, D:2438), not on entry: the entry tick steers nowhere.
     fn on_wake(&self, w: &mut World, e: Entity) -> Next {
         let here = pos(w, e);
-        if target(w, e).is_some_and(|t| d2(t, here) < 1.0) {
+        let podium = w.resource::<FlightNodes>().podium();
+        let t = *w.get_mut::<PhaseData>(e).expect("phase data").0.target.get_or_insert(podium);
+        if d2(t, here) < 1.0 {
             perch::landed(w, e);
             return Some((data::SITTING_SCANNING, PhaseState::default()));
         }

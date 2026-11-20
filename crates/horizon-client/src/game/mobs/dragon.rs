@@ -6335,3 +6335,6 @@ mod dragon_fireball_spawn_tests {
 #[cfg(test)]
 #[path = "dragon/wing_push_tests.rs"]
 mod wing_push_tests;
+#[cfg(test)]
+#[path = "dragon/golden_tests.rs"]
+mod golden_tests;

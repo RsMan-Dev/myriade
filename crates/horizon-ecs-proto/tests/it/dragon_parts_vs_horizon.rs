@@ -20,7 +20,8 @@ fn part_boxes_match_horizon() {
         parts.0[i] = PartState { pos: [num(f[1]), num(f[2]), num(f[3])], prev: [0.0; 3] };
         let got = part_box(&parts, i);
         let want = [num(f[4]), num(f[5]), num(f[6]), num(f[7]), num(f[8]), num(f[9])];
-        let have = [got.min.x, got.min.y, got.min.z, got.max.x, got.max.y, got.max.z];
+        let (lo, hi) = (got.min_position(), got.max_position());
+        let have = [lo.x, lo.y, lo.z, hi.x, hi.y, hi.z];
         for (h, w) in have.iter().zip(want) {
             assert!((h - w).abs() < EPS, "part {i}: box {have:?} vs Horizon {want:?} in {line}");
         }

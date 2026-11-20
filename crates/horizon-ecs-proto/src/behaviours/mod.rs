@@ -359,6 +359,7 @@ pub mod equip_source;
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &admire::MODULE,
+    &crate::dragon::flight::MODULE,
     &vibration_listen::MODULE,
     &block_breaker::MODULE,
     &boss_bar::MODULE,

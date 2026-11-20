@@ -3,7 +3,7 @@
 //! The phase machine runs between the two systems (`pre`, then the phases, then `steer`), as in `tick_dragon`.
 use crate::behaviours::{params, Cap, Inst, Module};
 use crate::cow::{Health, Pos, Vel, Yaw};
-use crate::dragon::{crystals, data, death, fight::NearestCrystal, hurt, parts, phases};
+use crate::dragon::{crystals, data, death, fight::NearestCrystal, hurt, nodes, parts, phases};
 use crate::goals::Events;
 use crate::host_out::HostOut;
 use bevy_ecs::prelude::*;
@@ -58,6 +58,20 @@ pub struct FlyOrder {
     pub speed: f32,
     pub landing: bool,
     pub sitting: bool,
+}
+
+/// The order of the current phase (`Phase::target`, `fly_speed`, `sitting`, D:358-388), read where it is used: the phase's state is its
+/// only copy. The ids are `EnderDragonPhase`'s.
+pub fn order_of(w: &World, e: Entity) -> FlyOrder {
+    let id = w.get::<phases::PhaseId>(e).map_or(10, |p| p.0);
+    let target = w.get::<phases::PhaseData>(e).and_then(|d| d.0.target);
+    let speed = match id {
+        phases::LANDING => 1.5,
+        phases::CHARGING | 9 => 3.0,
+        10 => 1.0,
+        _ => 0.6,
+    };
+    FlyOrder { target, speed, landing: id == phases::LANDING, sitting: matches!(id, 5..=7 | 10) }
 }
 
 /// What the flight keeps between ticks.
@@ -219,7 +233,7 @@ pub fn tick(w: &mut World, e: Entity) {
     heal(w, e);
     let mut f = w.entity_mut(e).take::<Flight>().expect("flight");
     let mut rng = w.entity_mut(e).take::<DragonRng>().expect("rng");
-    let order = w.get::<FlyOrder>(e).copied().unwrap_or_default();
+    let order = order_of(w, e);
     let (pos, vel, mut yaw) = (w.get::<Pos>(e).expect("pos").0, w.get::<Vel>(e).expect("vel").0, w.get::<Yaw>(e).expect("yaw").0);
     w.resource_scope::<Events, _>(|_, mut ev| pre(&mut f, &order, pos, vel, &mut yaw, &mut rng, &mut ev.host));
     let scan = f.scan_due;
@@ -256,7 +270,7 @@ fn heal(w: &mut World, e: Entity) {
 }
 
 fn steer_sys(w: &mut World, e: Entity) {
-    let order = w.get::<FlyOrder>(e).copied().unwrap_or_default();
+    let order = order_of(w, e);
     let f = w.entity_mut(e).take::<Flight>().expect("flight");
     let mut pos = w.get::<Pos>(e).expect("pos").0;
     let mut vel = w.get::<Vel>(e).expect("vel").0;
@@ -280,6 +294,22 @@ fn systems(_: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {}
 /// The flight's components, from the spawn position; the spawner seeds `DragonRng` (see `respawn::spawn_new_dragon`).
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let cfg = *params::<Params>(p);
+    // The dragon is no `Mob` type: its health is its own (`Dragon::new`), not the table's.
+    w.entity_mut(e).insert((Health(data::MAX_HEALTH), crate::cow::MaxHealth(data::MAX_HEALTH)));
+    w.init_resource::<crate::dragon::fight::EndFight>();
+    w.init_resource::<crate::dragon::fight::FightEvents>();
+    w.entity_mut(e).insert((phases::PhaseId(crate::species::ender_dragon::START_PHASE), phases::PhaseData::default()));
+    if w.get_resource::<nodes::FlightNodes>().is_none() {
+        let mw = crate::blocks::world_of(w);
+        // `MOTION_BLOCKING_NO_LEAVES`: the highest solid or fluid block that is no leaves, plus one.
+        let ground = |x: i32, z: i32| {
+            (0..256).rev().find(|&y| {
+                let f = mw.facts.get(mw.world.block(x, y, z));
+                (f.full_collision || f.legacy_solid || f.fluid != horizon_client_lib::blocks::Fluid::None) && !f.name.ends_with("_leaves")
+            }).map_or(0, |y| y + 1)
+        };
+        w.insert_resource(nodes::FlightNodes::build(&nodes::LAYOUT, ground));
+    }
     let (y, yaw) = (w.get::<Pos>(e).map_or(0.0, |p| p.0.y), w.get::<Yaw>(e).map_or(0.0, |y| y.0));
     w.entity_mut(e).insert((
         Flight { cfg, ticks: 0, flap: 0.0, old_flap: 0.0, growl: 100, ambient: 0, in_wall: false, scan_due: false },
