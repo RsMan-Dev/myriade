@@ -214,7 +214,7 @@ fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[r
         let seed = u64::from(pos[0] as u32) << 32 ^ u64::from(pos[2] as u32) ^ (wave as u64) << 8 ^ 0x9E37_79B9_7F4A_7C15;
         let e = spawn_species(w, &species, at.0, at.1, seed);
         teleport(w, e, horizon_core::geometry::Vec3::new(at.0, f64::from(pos[1]) + 1.0, at.1));
-        enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, species.name == "minecraft:vindicator");
+        enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, w.get::<crate::behaviours::break_door::BreakDoor>(e).is_some_and(|b| b.p.raid));
         crate::goals::arm_module(w, e, &crate::behaviours::obtain_banner::MODULE, 40);
         w.resource_mut::<Entered>().0.push(e);
         let health = w.get::<Health>(e).map_or(24.0, |h| h.0);

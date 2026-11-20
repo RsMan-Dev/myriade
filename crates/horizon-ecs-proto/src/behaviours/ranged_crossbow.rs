@@ -1,7 +1,7 @@
 //! `RangedCrossbowAttackGoal` over the bow's shot: the target near enough and seen (a pillager: within 8 blocks, seen for 5 ticks), the
 //! crossbow is loaded for `charge` ticks (25), waits `20 + nextInt(20)` ticks charged, then shoots when it sees the target: the arrow of
 //! `ranged_bow` (a third of the target's height, a fifth of the distance up, speed 1.6, spread `14 - 4 * difficulty`) with the damage of a
-//! crossbow bolt (no draw). The walk is half speed while charged. The crossbow in hand is supposed. Not done: the item's `charged_projectiles`,
+//! crossbow bolt (no draw). The walk is half speed while charged. The crossbow in hand is read from the entity's equipment when it has one. Not done: the item's `charged_projectiles`,
 //! the multishot and piercing enchantments, the sounds. Held in a state of the goal: the four states of the `Mob`, `see_time`, `attack_delay`,
 //! `path_delay`.
 use super::*;
@@ -68,8 +68,13 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, crossbow_run);
 }
+/// `holding_crossbow` (`illager.rs:491`): the main hand holds a crossbow. An entity with no equipment at all is supposed to hold one (no species
+/// is given its spawn gear yet: `finalize.rs:1506` gives the pillager's crossbow), see `suivi/ecs-ecarts.md`.
+fn holds(eq: Option<&Equipment>) -> bool {
+    eq.is_none_or(|q| q.main == CROSSBOW)
+}
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Target>(e).is_some()
+    holds(w.get::<Equipment>(e)) && w.get::<Target>(e).is_some_and(|t| targeting::info(w, t.who).is_some_and(|i| !i.exempt))
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Crossbowing);
@@ -82,16 +87,21 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
         c.using = 0;
         c.phase = Phase::Uncharged;
     }
+    targeting::clear_target(w, e);
     stop_nav(w, e);
 }
 #[allow(clippy::type_complexity)]
 fn crossbow_run(
     tg: targeting::Targets,
-    mut q: Query<(Aim, &mut Crossbow, Option<&Target>, &mut Rng), With<Crossbowing>>,
+    mut q: Query<(Aim, &mut Crossbow, Option<&Target>, &mut Rng, Option<&Equipment>), With<Crossbowing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), mut c, target, mut rng) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), mut c, target, mut rng, eq) in &mut q {
+        if !holds(eq) {
+            reqs.0.push(Req::End(e, c.slot));
+            continue;
+        }
         let Some(t) = target else {
             reqs.0.push(Req::End(e, c.slot));
             continue;
@@ -126,7 +136,7 @@ fn crossbow_run(
                     c.phase = Phase::Charging;
                     c.using = 0;
                     // The sound's pitch draws two floats in the `Mob`.
-                    let _ = (rng.next_float(), rng.next_float());
+                    let _ = (nf(&mut rng), nf(&mut rng));
                 }
             }
             Phase::Charging => {
@@ -135,7 +145,7 @@ fn crossbow_run(
                     c.using = 0;
                     c.phase = Phase::Charged;
                     c.attack_delay = 20 + rng.next_int(20);
-                    let _ = rng.next_float();
+                    let _ = nf(&mut rng);
                 }
             }
             Phase::Charged => {
@@ -149,11 +159,14 @@ fn crossbow_run(
                     let (who, difficulty) = (t.who, c.p.difficulty);
                     cmd.queue(move |w: &mut World| shoot(w, e, who, difficulty));
                     c.phase = Phase::Uncharged;
-                    let _ = rng.next_float();
+                    let _ = nf(&mut rng);
                 }
             }
         }
     }
+}
+fn nf(r: &mut Rng) -> f32 {
+    (r.next_u32() >> 8) as f32 / (1u32 << 24) as f32
 }
 /// `CrossbowAttackMob.performCrossbowAttack` at power 1.6.
 fn shoot(w: &mut World, e: Entity, who: Who, difficulty: i32) {

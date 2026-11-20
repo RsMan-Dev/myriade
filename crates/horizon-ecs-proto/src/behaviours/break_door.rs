@@ -30,8 +30,8 @@ pub struct BreakDoor {
 #[component(storage = "SparseSet")]
 pub struct Breaking;
 
-pub static MODULE: Module = Module { name: "break_door", flags: 0, equip, can_use, start, stop, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-pub static RAID: Module = Module { name: "raid_break_door", flags: MOVE, equip: equip_raid, can_use: can_use_raid, start, stop, systems: systems_raid, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "break_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static RAID: Module = Module { name: "raid_break_door", flags: MOVE, equip: equip_raid, can_use: can_use_raid, start, stop, tick: Some(tick_raid), requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((BreakDoor { p: *params::<Params>(p), slot: inst.slot, time: 0 }, BreakSeeker { slot: inst.slot }));
 }
@@ -61,17 +61,21 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Breaking>();
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    door::systems::<BreakSeeker>(s, slot);
-    s.add_systems(run.in_set(slot));
+fn tick(w: &mut World) {
+    door::tick::<BreakSeeker>(w);
+    tick_state(w, run::<false>);
 }
-fn systems_raid(s: &mut Schedule, slot: GoalSlot) {
-    door::systems::<RaidBreakSeeker>(s, slot);
-    s.add_systems(run.in_set(slot));
+fn tick_raid(w: &mut World) {
+    door::tick::<RaidBreakSeeker>(w);
+    tick_state(w, run::<true>);
 }
 /// `canContinue` and `tick`.
-fn run(q: Query<(Entity, &BreakDoor), With<Breaking>>, mut cmd: Commands) {
+/// One instance per module (`RAID`: the raid's goal, the vindicator's): each runs the creatures of its own, so that two carried modules do not step a creature twice.
+fn run<const RAID: bool>(q: Query<(Entity, &BreakDoor), With<Breaking>>, mut cmd: Commands) {
     for (e, b) in &q {
+        if b.p.raid != RAID {
+            continue;
+        }
         let (slot, raid) = (b.slot, b.p.raid);
         cmd.queue(move |w: &mut World| {
             let at = w.get::<DoorAt>(e).copied().unwrap_or_default();

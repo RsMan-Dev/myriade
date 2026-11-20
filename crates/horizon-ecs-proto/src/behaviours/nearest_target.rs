@@ -40,9 +40,14 @@ pub struct Params {
     pub heal: bool,
     /// `NearestAttackableWitchTargetGoal`: not while the wait of the healing goal runs.
     pub after_heal: bool,
+
+    /// A condition on the creature (`Prey::Filter`: the llama's untamed wolf), read for each candidate.
+    pub candidate_when: Option<fn(&World, Entity) -> bool>,
+    /// Candidates further than this in height from the attacker's feet are not picked (the slime's player target: `|dy| <= 4`).
+    pub max_dy: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -185,6 +190,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             let d = d2(pos, Vec3::new(p.x, p.y, p.z));
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
+                && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
@@ -202,11 +208,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return;
             }
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) {
+            if !n.mask.contains(cs.0) || n.baby.is_some_and(|b| b != w.get::<GrowAt>(c).is_some()) || (n.land && w.get::<crate::cow::FluidState>(c).is_some_and(|f| f.in_water)) || n.p.candidate_when.is_some_and(|f| !f(w, c)) {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
-            if dx <= range && dy <= range && dz <= range {
+            if dx <= range && dy <= range && dz <= range && n.p.max_dy.is_none_or(|m| (cp.0.y - pos.y).abs() <= m) {
                 let d = dx * dx + dy * dy + dz * dz;
                 cands.push((d, c, cp.0, w.get::<targeting::Eye>(c).map_or(1.0, |l| l.0)));
             }
@@ -250,4 +256,41 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
         targeting::clear_target(w, e);
     }
     rearm(w, e, inst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::species::Config;
+
+    /// `max_dy` (the slime's `|dy| <= 4`): the nearer candidate, too far in height, is skipped for the farther one in range; without the
+    /// limit (the witness) the nearer one is the pick.
+    #[test]
+    fn max_dy_skips_a_candidate_too_far_in_height() {
+        if crate::cow::skip_unless_walker("nearest max_dy") {
+            return;
+        }
+        let name = species().name;
+        let types: &'static [&'static str] = Box::leak(vec![name].into_boxed_slice());
+        for (max_dy, expect_near) in [(None, true), (Some(2.0), false)] {
+            let p: &'static Params = Box::leak(Box::new(Params { types, must_see: false, max_dy, range: Some(16.0), ..Params::DEFAULT }));
+            let mut h = Herd::with_slab(30, false, false);
+            let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+            let mut sp = *species();
+            sp.goals = Config { entries };
+            let hunter = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
+            let mut quiet = sp;
+            quiet.goals = Config { entries: &[] };
+            let (near, far) = (spawn_species(&mut h.world, &quiet, 3.5, 0.5, 2), spawn_species(&mut h.world, &quiet, 8.5, 0.5, 3));
+            for _ in 0..3 {
+                h.tick();
+            }
+            let y = h.world.get::<Pos>(hunter).unwrap().0.y;
+            h.world.get_mut::<Pos>(near).unwrap().0.y = y + 3.0;
+            h.world.get_mut::<Pos>(far).unwrap().0.y = y + 1.0;
+            assert!(can_use(&mut h.world, hunter, Inst { slot: 0, nth: 0 }), "a candidate is in range");
+            let pick = state(&h.world, hunter, Inst { slot: 0, nth: 0 }).unwrap().pick;
+            assert_eq!(pick, Some(Who::Entity(if expect_near { near } else { far })), "max_dy {max_dy:?}");
+        }
+    }
 }

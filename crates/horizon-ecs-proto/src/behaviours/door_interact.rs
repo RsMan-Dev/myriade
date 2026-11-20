@@ -114,7 +114,7 @@ fn seek<S: Seeker>(q: Query<(Entity, &S, &Contact), With<Following>>, mut reqs: 
         }
     }
 }
-/// The module's `systems`: `seek` of its marker, in the slot.
-pub fn systems<S: Seeker>(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(seek::<S>.in_set(slot));
+/// The module's `tick`: `seek` of its marker (run by `arbitrate` while a creature carries the module, no system in the schedule).
+pub fn tick<S: Seeker>(w: &mut World) {
+    tick_state(w, seek::<S>);
 }

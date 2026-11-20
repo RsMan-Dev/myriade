@@ -3,7 +3,7 @@
 //! socle or for a module: `HoldGroundAttack` (priority 2: the raid), the avoidance of the creaking, `look_at_player` of the mobs (priority 10), the raiders
 //! the hurt-by ignores, the crossbow in hand (supposed).
 use super::Def;
-use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, pathfind_to_raid, ranged_crossbow, stroll, Entry, celebration, hold_ground_attack, interact_with_door, long_distance_patrol, obtain_banner, raid_move_through_village, raider_open_door};
+use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, celebration, hold_ground_attack, interact_with_door, obtain_banner, pathfind_to_raid, raid_move_through_village, raider_open_door};
 
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
 
@@ -22,7 +22,6 @@ pub static DEF: Def = Def {
         Entry::new(&obtain_banner::MODULE, 3, &obtain_banner::Params::DEFAULT),
         Entry::new(&celebration::MODULE, 4, &()),
         Entry::new(&raid_move_through_village::MODULE, 5, &raid_move_through_village::Params::DEFAULT),
-        Entry::new(&long_distance_patrol::MODULE, 4, &long_distance_patrol::Params::DEFAULT),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&pathfind_to_raid::MODULE, 4, &pathfind_to_raid::Params::DEFAULT),
         Entry::new(&ranged_crossbow::MODULE, 3, &ranged_crossbow::Params::PILLAGER),

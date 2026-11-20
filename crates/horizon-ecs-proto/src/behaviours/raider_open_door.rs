@@ -5,7 +5,7 @@ use super::*;
 use crate::raids::has_active_raid;
 use crate::goals::*;
 
-pub static MODULE: Module = Module { name: "raider_open_door", flags: 0, equip, can_use, start, stop, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "raider_open_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(OpenSeeker { slot: inst.slot });
 }
@@ -19,6 +19,6 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     door::set_open(w, e, false);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    door::systems::<OpenSeeker>(s, slot);
+fn tick(w: &mut World) {
+    door::tick::<OpenSeeker>(w);
 }

@@ -2,7 +2,8 @@
 //! looks at it, charges `charge` ticks, shoots `shots` times `gap` ticks apart, then rests `rest` ticks. The projectile is `flight`
 //! (parameters, no species name): it leaves the middle of the body raised `up`, along the line to the middle of the target with a
 //! triangular spread that grows with the distance, at the speed 0.1 of an `AbstractHurtingProjectile` (its own acceleration does the rest).
-//! Not done: the melee under 2 blocks (`doHurtTarget` every 20 ticks), the walk toward a target it cannot see, the sounds and the flag.
+//! Under 2 blocks (and seen) it strikes every `melee_gap` ticks and walks to the target; unseen, it walks to it for `lost` ticks. `Charged` is
+//! the flag of the charge (`Blaze.setCharged`). Not done: the sounds.
 use super::*;
 use crate::projectile::{launch, Flight};
 use crate::targeting::{self, Target, TargetWatchers, Who};
@@ -19,10 +20,15 @@ pub struct Params {
     /// The spread of the aim: `spread * sqrt(sqrt(d2)) * 0.5` on each horizontal axis.
     pub spread: f64,
     pub up: f64,
+    /// The squared distance under which it fights in melee, the ticks between two blows, the blow, and the ticks it still walks to a target it lost sight of.
+    pub melee_range2: f64,
+    pub melee_gap: i32,
+    pub melee_damage: f32,
+    pub lost: i32,
 }
 impl Params {
     /// The blaze (`nether.rs:44-120`): 3 small fireballs, charge 60, gap 6, rest 100.
-    pub const BLAZE: Self = Self { flight: Flight::SMALL_FIREBALL, charge: 60, shots: 3, gap: 6, rest: 100, spread: 2.297, up: 0.5 };
+    pub const BLAZE: Self = Self { flight: Flight::SMALL_FIREBALL, charge: 60, shots: 3, gap: 6, rest: 100, spread: 2.297, up: 0.5, melee_range2: 4.0, melee_gap: 20, melee_damage: 6.0, lost: 5 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Burst {
@@ -30,7 +36,12 @@ pub struct Burst {
     slot: u8,
     step: i32,
     time: i32,
+    last_seen: i32,
 }
+/// The charge is on (`Blaze.isCharged`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Charged;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Bursting;
@@ -57,7 +68,7 @@ fn on_target(w: &mut World, e: Entity) {
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Burst { p: *params::<Params>(p), slot: inst.slot, step: 0, time: 0 });
+    w.entity_mut(e).insert(Burst { p: *params::<Params>(p), slot: inst.slot, step: 0, time: 0, last_seen: 0 });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
 fn tick(w: &mut World) {
@@ -71,7 +82,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Bursting);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).remove::<Bursting>();
+    w.entity_mut(e).remove::<(Bursting, Charged)>();
 }
 #[allow(clippy::type_complexity)]
 fn burst_run(tg: targeting::Targets, mut cmd: Commands, mut reqs: ResMut<Requests>, mut q: Query<(crate::goals::Aim, &mut Burst, Option<&Target>, &NavParams), With<Bursting>>) {
@@ -87,25 +98,43 @@ fn burst_run(tg: targeting::Targets, mut cmd: Commands, mut reqs: ResMut<Request
         };
         let d = d2(pos.0, i.pos);
         let follow = f64::from(nav.follow_range);
-        if d >= 4.0 && d < follow * follow && t.seen {
+        b.last_seen = if t.seen { 0 } else { b.last_seen + 1 };
+        let (who, p, to) = (t.who, b.p, [i.pos.x, i.pos.y, i.pos.z]);
+        if d < p.melee_range2 {
+            if !t.seen {
+                continue;
+            }
+            if b.time <= 0 {
+                b.time = p.melee_gap;
+                cmd.queue(move |w: &mut World| crate::hostile::strike(w, e, who, p.melee_damage));
+            }
+            cmd.queue(move |w: &mut World| walk_to(w, e, to));
+        } else if d < follow * follow && t.seen {
             if b.time <= 0 {
                 b.step += 1;
                 if b.step == 1 {
-                    b.time = b.p.charge;
-                } else if b.step <= b.p.shots + 1 {
-                    b.time = b.p.gap;
+                    b.time = p.charge;
+                    cmd.entity(e).insert(Charged);
+                } else if b.step <= p.shots + 1 {
+                    b.time = p.gap;
                 } else {
-                    b.time = b.p.rest;
+                    b.time = p.rest;
                     b.step = 0;
+                    cmd.entity(e).remove::<Charged>();
                 }
                 if b.step > 1 {
-                    let p = b.p;
-                    let who = t.who;
                     cmd.queue(move |w: &mut World| shoot(w, e, who, p));
                 }
             }
             aim_clamped(&mut cmd, e, &mut look, looking, [i.pos.x, i.eye, i.pos.z], Some(10.0), Some(10.0));
+        } else if b.last_seen < p.lost {
+            cmd.queue(move |w: &mut World| walk_to(w, e, to));
         }
+    }
+}
+fn walk_to(w: &mut World, e: Entity, to: [f64; 3]) {
+    if let Some(mut m) = w.get_mut::<MoveTo>(e) {
+        *m = MoveTo { active: true, x: to[0], y: to[1], z: to[2], speed_modifier: 1.0 };
     }
 }
 /// `BlazeAttackGoal`'s shot: from the middle of the body raised by `up`, toward the middle of the target.

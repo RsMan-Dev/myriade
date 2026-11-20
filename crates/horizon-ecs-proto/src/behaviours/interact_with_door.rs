@@ -19,7 +19,7 @@ pub struct Interacting {
     doors: Vec<[i32; 3]>,
 }
 
-pub static MODULE: Module = Module { name: "interact_with_door", flags: 0, equip, can_use, start, stop, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "interact_with_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(InteractSeeker { slot: inst.slot });
 }
@@ -38,8 +38,9 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Interacting>();
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((seek, run).in_set(slot));
+fn tick(w: &mut World) {
+    tick_state(w, seek);
+    tick_state(w, run);
 }
 fn seek(q: Query<(Entity, &InteractSeeker, &Nav), (With<Following>, Without<Interacting>)>, mut reqs: ResMut<Requests>) {
     for (e, s, n) in &q {

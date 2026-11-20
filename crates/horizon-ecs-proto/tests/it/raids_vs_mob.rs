@@ -1,6 +1,6 @@
 //! The raids socle: the `Mob`'s own raid state machine (`horizon_client_lib::raid`) driven over the ECS world. A village put down in blocks (a
 //! bell, job blocks), a raid at its centre: the countdown, a wave that spawns far away and walks to the village (`PathfindToRaid`); and the walk
-//! itself against the `Mob`'s `PathfindToRaidGoal` (time to come within 30 blocks of the centre, over 12 raiders per side).
+//! itself against the `Mob`'s `PathfindToRaidGoal` (time to come within 40 blocks of the centre, over 12 raiders per side).
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
@@ -49,7 +49,10 @@ fn a_wave_walks_to_the_village() {
     assert!(last.2 < 40.0, "and come to the village: {dist_at:?}");
 }
 
-/// The time a raider placed `far` blocks away takes to come within 30 blocks of the centre: the Mob's goal and the module.
+/// The time a raider placed `far` blocks away takes to come within `NEAR` blocks of the centre: the Mob's goal and the module.
+/// "Near" is 40 blocks: the ECS side has a bell at the centre, and a raider within one section (16 blocks) of a village stops walking to the raid
+/// (`isVillage`, in vanilla too) near 32, so 30 was never reached; the Mob's test state has no village. The same distance on both sides.
+const NEAR: f64 = 40.0;
 fn mob_arrival(id: u32, far: f64) -> usize {
     let mut r = MobRef::new(100, false);
     let mut m = mobs::Mob::new(id, mob_kind("minecraft:vindicator"), Vec3::new(far, 1.0, 0.5), 0.0);
@@ -61,7 +64,7 @@ fn mob_arrival(id: u32, far: f64) -> usize {
     r.searches.push(0);
     for t in 0..2000 {
         let p = r.mobs[0].position;
-        let near = (p.x.powi(2) + p.z.powi(2)).sqrt() < 30.0;
+        let near = (p.x.powi(2) + p.z.powi(2)).sqrt() < NEAR;
         if near {
             return t;
         }
@@ -86,7 +89,7 @@ fn ecs_arrival(seed: u64, far: f64) -> usize {
     for t in 0..2000 {
         h.tick();
         let p = h.world.get::<Pos>(e).unwrap().0;
-        if (p.x.powi(2) + p.z.powi(2)).sqrt() < 30.0 {
+        if (p.x.powi(2) + p.z.powi(2)).sqrt() < NEAR {
             return t;
         }
     }
@@ -101,7 +104,7 @@ fn the_walk_to_the_raid_takes_the_time_of_the_mob_s() {
     let m: Vec<f64> = (0..12).map(|k| mob_arrival(6000 + 10 * k, 70.5) as f64).collect();
     let e: Vec<f64> = (0..12).map(|k| ecs_arrival(40 + k, 70.5) as f64).collect();
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
-    eprintln!("ticks to come within 30 blocks (mean): mob {:.0} ecs {:.0}; mob {m:?} ecs {e:?}", mean(&m), mean(&e));
+    eprintln!("ticks to come within 40 blocks (mean): mob {:.0} ecs {:.0}; mob {m:?} ecs {e:?}", mean(&m), mean(&e));
     assert!(m.iter().all(|&t| t < 2000.0), "the Mob's raiders come");
     assert!(e.iter().all(|&t| t < 2000.0), "the ECS raiders come");
     assert!((mean(&m) / mean(&e) - 1.0).abs() < 0.3, "{} {}", mean(&m), mean(&e));

@@ -1,14 +1,21 @@
 //! `Witch` (`mobs/witch.rs:15-35`): the potion throw (`ranged_attack` with `Params::WITCH`: the potion chosen by the target), the stroll, looking; the
-//! hurt-by and nearest-player targets. Left out: drinking its own potions (water breathing, fire resistance, healing, speed), healing the raiders,
-//! the raider friendly fire, the stroll that avoids water. Healing the raiders: `heal_raiders` (a mode of `nearest_target`, with the 200-tick wait that gates the nearest player).
+//! hurt-by and nearest-player targets. Drinking its own potions: `drink_potion`. Healing the raiders: `heal_raiders`. Left out:
+//! the raider friendly fire, the stroll that avoids water, the gate of the nearest-player goal.
 use super::Def;
-use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, random_look, ranged_attack, stroll, Entry};
+use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, random_look, ranged_attack, stroll, drink_potion, Entry};
+
+const RAIDERS: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:evoker", "minecraft:illusioner", "minecraft:ravager"];
 
 pub static DEF: Def = Def {
     name: "minecraft:witch",
-    targets: &[Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT), Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::HEAL_RAIDERS), Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::WITCH_PLAYER)],
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { types: RAIDERS, ..nearest_target::Params::HEAL_RAIDERS }),
+        Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::WITCH_PLAYER),
+    ],
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
+        Entry::new(&drink_potion::MODULE, 0, &drink_potion::Params::DEFAULT),
         Entry::new(&ranged_attack::MODULE, 2, &ranged_attack::Params::WITCH),
         Entry::new(&stroll::MODULE, 2, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 3, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),

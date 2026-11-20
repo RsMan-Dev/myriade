@@ -11,11 +11,12 @@ use crate::{cow::*, goals::*};
 pub struct Params {
     pub chance: i32,
     pub ticks: i32,
+    /// The species the flower is offered to (configuration: the species file names them).
+    pub candidates: &'static [&'static str],
 }
 impl Params {
-    pub const DEFAULT: Self = Self { chance: 8000, ticks: 400 };
+    pub const DEFAULT: Self = Self { chance: 8000, ticks: 400, candidates: &[] };
 }
-const CANDIDATES: &[&str] = &["minecraft:villager", "minecraft:copper_golem"];
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Offer {
     p: Params,
@@ -31,7 +32,7 @@ pub struct Offering {
 
 pub static MODULE: Module = Module { name: "offer_flower", flags: MOVE | LOOK, equip, arm, fired, can_use, start, stop, tick: Some(tick), ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
-    let ids = crate::species::registry().species.iter().enumerate().filter(|(_, s)| CANDIDATES.contains(&s.name)).map(|(i, _)| i);
+    let ids = crate::species::registry().species.iter().enumerate().filter(|(_, s)| params::<Params>(p).candidates.contains(&s.name)).map(|(i, _)| i);
     w.entity_mut(e).insert(Offer { p: *params::<Params>(p), slot: inst.slot, mask: SpeciesSet::of(ids), who: None });
 }
 fn next(w: &mut World, e: Entity) {

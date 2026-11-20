@@ -249,6 +249,12 @@ pub fn due(w: &mut World, e: Entity) {
     arm(w, e);
 }
 
+/// The level's difficulty id (0 peaceful, 1 easy, 2 normal, 3 hard), written by the host; absent: normal (what the poison of a sting reads).
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct Difficulty(pub u8);
+pub fn difficulty(w: &World) -> u8 {
+    w.get_resource::<Difficulty>().map_or(2, |d| d.0)
+}
 /// The effects a creature's blow puts on a creature it hits (`CaveSpider.doHurtTarget`, `WitherSkeleton`, `Husk`): (kind, level, ticks).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct OnHit(pub &'static [(Kind, i32, i32)]);

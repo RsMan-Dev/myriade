@@ -12,7 +12,7 @@ pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
     float::{Buoyancy, Floating},
     follow_parent::{Babies, FollowParent, Mother, Trailing, adopt, make_baby},
-    look_at_player::{Glance, Glancing},
+    look_at_player::Glancing,
     panic::{Hurts, Panic, Panicking, hurt, ignite},
     random_look::{Scan, Scanning},
     tempt::{Tempt, Tempting, Tempts},
@@ -159,6 +159,8 @@ pub const SHEARS: u32 = 10;
 pub const BONE: u32 = 11;
 pub const LEAD: u32 = 12;
 pub const WARPED_FUNGUS_ON_A_STICK: u32 = 13;
+pub const TRIDENT: u32 = 14;
+pub const CROSSBOW: u32 = 15;
 /// A set of item ids (any number, any value: Horizon's registry has thousands), shared between the entities that have the same one:
 /// a sorted list searched by bisection. Nothing is copied per entity.
 #[derive(Clone, Copy, Debug)]
@@ -197,6 +199,8 @@ pub fn item_id(name: &str) -> u32 {
         "minecraft:bone" => BONE,
         "minecraft:lead" => LEAD,
         "minecraft:warped_fungus_on_a_stick" => WARPED_FUNGUS_ON_A_STICK,
+        "minecraft:trident" => TRIDENT,
+        "minecraft:crossbow" => CROSSBOW,
         _ => 0,
     }
 }
@@ -668,6 +672,9 @@ impl<T: Copy> Ev<T> {
 /// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
 #[derive(Resource, Default)]
 pub struct Events {
+    /// Outputs toward the host (block writes, sounds, particles): a field here and not a resource of its own, because one more
+    /// resource moves the cost of the solicited scenes (+6,6 % measured at 14 448 against 13 544 on the cow).
+    pub host: crate::host_out::HostOut,
     /// `Burning` was set (from not burning).
     pub ignited: Ev,
     /// `Burning` ended (water, or the fire burnt out).
@@ -1395,8 +1402,11 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut g) = h.world.get_mut::<Glance>(e) {
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance>(e) {
             g.armed = armed;
+        }
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance2>(e) {
+            g.0.armed = armed;
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;

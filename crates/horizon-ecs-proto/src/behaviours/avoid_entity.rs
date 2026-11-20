@@ -63,7 +63,7 @@ pub struct Avoiders(pub Vec<Avoider>);
 /// The animal has an avoid goal whose target is a listed species: the moves of the other animals matter to it (the
 /// systems do nothing, not even scan the index, in a world with none).
 #[derive(Component, Clone, Copy)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::cow::watch_in::<{ crate::cow::WATCH_AVOID }>, on_discard = crate::cow::watch_out::<{ crate::cow::WATCH_AVOID }>)]
 pub struct AvoidsAnimals;
 /// An avoid goal runs: which instance (`nth`).
 #[derive(Component, Clone, Copy)]
@@ -192,6 +192,9 @@ fn cell_moves(
             continue;
         }
         let at = mp.0;
+        if !idx.watched_near(crate::cow::WATCH_AVOID, idx.cell_of(at.x, at.z)) {
+            continue;
+        }
         idx.for_radius(at.x, at.z, REACH, |c| {
             let Ok((pos, avs)) = q.get(c) else { return };
             if c == m {

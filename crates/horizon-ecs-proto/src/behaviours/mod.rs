@@ -223,6 +223,9 @@ pub mod melee;
 pub mod panic;
 pub mod random_look;
 pub mod random_stand;
+pub mod guardian_beam;
+pub mod limited_life;
+pub mod drink_potion;
 pub mod ranged_bow;
 pub mod pathfind_to_raid;
 pub mod door_interact;
@@ -231,12 +234,11 @@ pub mod raider_open_door;
 pub mod interact_with_door;
 pub mod celebration;
 pub mod hold_ground_attack;
-pub mod long_distance_patrol;
 pub mod raid_move_through_village;
 pub mod obtain_banner;
-pub mod move_through_village;
-pub mod offer_flower;
 pub mod heal_raiders;
+pub mod spell_casting;
+pub mod spell_use;
 pub mod ranged_crossbow;
 pub mod stroll;
 pub mod hurt_by;
@@ -273,6 +275,9 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod stay_close_to_owner;
+pub mod give_to_owner;
+pub mod land_on_shoulder;
 pub mod burst_shot;
 pub mod ender_teleport;
 pub mod charged_shot;
@@ -335,7 +340,12 @@ pub static TABLE: &[&Module] = &[
     &hurt_by::MODULE,
     &nearest_target::MODULE,
     &melee::MODULE,
+    &guardian_beam::MODULE,
+    &limited_life::MODULE,
+    &drink_potion::MODULE,
     &ranged_bow::MODULE,
+    &spell_casting::MODULE,
+    &spell_use::MODULE,
     &ranged_crossbow::MODULE,
     &pathfind_to_raid::MODULE,
     &break_door::MODULE,
@@ -344,11 +354,8 @@ pub static TABLE: &[&Module] = &[
     &interact_with_door::MODULE,
     &celebration::MODULE,
     &hold_ground_attack::MODULE,
-    &long_distance_patrol::MODULE,
     &raid_move_through_village::MODULE,
     &obtain_banner::MODULE,
-    &move_through_village::MODULE,
-    &offer_flower::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
     &avoid_entity::MODULE,
@@ -447,4 +454,7 @@ pub static TABLE: &[&Module] = &[
     &try_find_water::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_swim_up::MODULE,
+    &land_on_shoulder::MODULE,
+    &stay_close_to_owner::MODULE,
+    &give_to_owner::MODULE,
 ];
