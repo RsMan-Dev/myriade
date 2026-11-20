@@ -57,6 +57,18 @@ pub enum OnHit {
     WindBurst { radius: f32 },
     /// A dragon's fireball ends: the breath cloud (`dragon::fireball::burst`).
     DragonBurst,
+    /// `ThrownEgg`: a hatchling of species `into` with chance 1 in `one_in`, then `many` of them with chance 1 in `many_in`; babies that grow in `baby` ticks.
+    Hatch { into: &'static str, one_in: i32, many_in: i32, many: u32, baby: u64 },
+    /// `ThrownEnderpearl`: its owner goes to where the pearl started its last tick; a player takes `damage` and may bring an endermite (chance `endermite`).
+    Teleport { endermite: f32, damage: f32 },
+    /// `ThrownExperienceBottle`: `base + nextInt(bound) + nextInt(bound)` experience where it breaks.
+    Orbs { base: i32, bound: i32 },
+}
+impl OnHit {
+    /// The ends that `projectile_more::ends` applies.
+    fn thrown(self) -> bool {
+        matches!(self, Self::Hatch { .. } | Self::Teleport { .. } | Self::Orbs { .. })
+    }
 }
 /// An explosion asked by a projectile.
 #[derive(Clone, Copy, Debug)]
@@ -286,6 +298,10 @@ pub fn fly(
                 let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
                 commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
             }
+            if f.hit.thrown() {
+                let (h, o, prev) = (f.hit, p.owner, original);
+                commands.queue(move |w: &mut World| crate::projectile_more::ends(w, h, at, prev, o));
+            }
             commands.entity(e).despawn();
             continue;
         }
@@ -318,6 +334,10 @@ pub fn fly(
                     if let OnHit::Splash(brews) = f.hit {
                         let (at, owner) = (pos.0, p.owner);
                         commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, brews, owner));
+                    }
+                    if f.hit.thrown() {
+                        let (h, o, at, prev) = (f.hit, p.owner, pos.0, original);
+                        commands.queue(move |w: &mut World| crate::projectile_more::ends(w, h, at, prev, o));
                     }
                     commands.entity(e).despawn();
                 }

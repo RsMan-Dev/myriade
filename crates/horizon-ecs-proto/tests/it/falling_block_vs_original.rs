@@ -153,3 +153,49 @@ fn a_falling_block_follows_horizons_own_golden_tick_by_tick() {
         }
     }
 }
+
+/// `FallingBlockEntity.causeFallDamage` of an anvil (read with javap: `ceil(fall - 1)`, 2 a block, at most 40, the worn anvil with chance
+/// `0.05 + 0.05 * steps`): the creature under it takes the damage and the anvil is worn when the same draw says so.
+#[test]
+fn an_anvil_hurts_the_creature_under_it_and_wears_as_the_jar_says() {
+    if !have_data() {
+        return;
+    }
+    use horizon_core::random::{LegacyRandom, RandomSource};
+    for seed in 0..40i64 {
+        let mut h = Herd::with_slab(16, true, false);
+        let top = floor_under(&h, 0, 0, 40);
+        let sp = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").unwrap();
+        let cow = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
+        h.world.get_mut::<Pos>(cow).unwrap().0 = horizon_core::geometry::Vec3::new(0.5, f64::from(top), 0.5);
+        let hp = h.world.get::<Health>(cow).unwrap().0;
+        h.world.insert_resource(horizon_ecs_proto::projectile_more::ThrownRng(LegacyRandom::new(seed)));
+        let mw = h.world.resource::<Level>().mw.0;
+        let anvil = horizon_ecs_proto::blocks::resolve(mw, "minecraft:anvil", &[]).unwrap();
+        let e = fall(&mut h.world, [0, top + 6, 0], anvil, None);
+        // The naive recurrence: the fall is the sum of the drops of the ticks in the air (the landing tick's own move does not count).
+        let start = h.world.get::<Pos>(e).unwrap().0.y;
+        let (mut y, mut vy, mut fell) = (start, 0.0_f64, 0.0);
+        loop {
+            vy -= 0.04;
+            if y + vy <= f64::from(top) + 1.8 {
+                break;
+            }
+            fell += -vy;
+            y += vy;
+            vy *= f64::from(0.98_f32);
+        }
+        let steps = (fell - 1.0).ceil() as i32;
+        let damage = ((steps as f32 * 2.0).floor() as i32).min(40) as f32;
+        let worn = LegacyRandom::new(seed).next_float() < 0.05 + steps as f32 * 0.05;
+        for _ in 0..80 {
+            h.tick();
+        }
+        let got = hp - h.world.get::<Health>(cow).map_or(hp, |x| x.0);
+        assert_eq!(got, damage, "seed {seed}: damage (steps {steps})");
+        let placed = (top - 1..=top + 8).map(|y| mw.world.block(0, y, 0)).collect::<Vec<_>>();
+        let chipped = horizon_ecs_proto::blocks::resolve(mw, "minecraft:chipped_anvil", &[]).unwrap();
+        assert_eq!(placed.contains(&chipped), worn, "seed {seed}: worn");
+        assert_eq!(placed.contains(&anvil), !worn, "seed {seed}: anvil kept");
+    }
+}

@@ -18,6 +18,8 @@ use horizon_world::registry::BlockStateId;
 pub struct FallingBlock {
     pub state: BlockStateId,
     pub drop: Option<ItemStack>,
+    /// `Entity.fallDistance` as the last tick in the air left it (the move that lands resets the body's own before `lands` reads it).
+    pub fell: f64,
 }
 
 /// `FallingBlockEntity.fall`: the block at `cell` is replaced by air and a falling one starts at its centre, 0.01 above its floor (the body is
@@ -29,7 +31,7 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
     }
     let at = Vec3::new(f64::from(cell[0]) + 0.5, f64::from(cell[1]) + f64::from((1.0 - SIZE) / 2.0), f64::from(cell[2]) + 0.5);
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
-    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), FallingBlock { state, drop }, Moving)).id();
+    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), FallingBlock { state, drop, fell: 0.0 }, Moving)).id();
     after(w, e, LIMIT + 1, expire);
     e
 }
@@ -53,6 +55,11 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// The tick's end for the blocks in the air: the ones whose move ended on the ground land.
 fn lands(w: &mut World) {
+    for (c, mut b) in w.query::<(&Contact, &mut FallingBlock)>().iter_mut(w) {
+        if !c.on_ground {
+            b.fell = c.fall_distance;
+        }
+    }
     let landed: Vec<(Entity, Vec3)> = w.query_filtered::<(Entity, &Pos, &Contact), With<FallingBlock>>().iter(w).filter(|x| x.2.on_ground).map(|x| (x.0, x.1 .0)).collect();
     for (e, at) in landed {
         let Some(b) = w.get::<FallingBlock>(e).cloned() else { continue };
@@ -60,6 +67,8 @@ fn lands(w: &mut World) {
         let mw = crate::blocks::world_of(w);
         let (here, below) = (mw.world.block(cell[0], cell[1], cell[2]), mw.world.block(cell[0], cell[1] - 1, cell[2]));
         let free = |s| mw.facts.is_air(s) || mw.facts.get(s).replaceable;
+        let (state, drop) = anvil_hurts(w, e, &b, b.state);
+        let b = FallingBlock { state, drop, ..b };
         w.entity_mut(e).despawn();
         // `ConcretePowderBlock`: powder that lands in water sets as its concrete.
         let state = match &*mw.facts.get(b.state).name {
@@ -74,4 +83,41 @@ fn lands(w: &mut World) {
             drop_item(w, item, at, Vec3::ZERO, 10);
         }
     }
+}
+
+/// `FallingBlockEntity.causeFallDamage` of an anvil (`AnvilBlock.falling`: 2 a block, at most 40): the creatures in its box take
+/// `min(floor(ceil(fell - 1) * 2), 40)`, and the anvil is worn one step with chance `0.05 + 0.05 * ceil(fell - 1)` (an anvil, a chipped one,
+/// a damaged one, then it is destroyed: nothing is placed and nothing drops). Returns the state to place and the item to drop.
+fn anvil_hurts(w: &mut World, e: Entity, b: &FallingBlock, state: BlockStateId) -> (BlockStateId, Option<ItemStack>) {
+    let mw = crate::blocks::world_of(w);
+    let name = mw.facts.get(state).name.to_string();
+    let Some(kind) = name.strip_prefix("minecraft:").and_then(|n| n.strip_suffix("anvil")) else { return (state, b.drop.clone()) };
+    let steps = (b.fell - 1.0).ceil() as i32;
+    if steps < 0 {
+        return (state, b.drop.clone());
+    }
+    let amount = ((steps as f32 * 2.0).floor() as i32).min(40) as f32;
+    if amount > 0.0 {
+        let (area, at) = (w.get::<Bounds>(e).map(|x| x.0), w.get::<Pos>(e).map(|p| p.0));
+        if let (Some(area), Some(at)) = (area, at) {
+            let hit: Vec<Entity> = w.query_filtered::<(Entity, &Bounds), With<Health>>().iter(w).filter(|x| x.1 .0.intersects(area)).map(|x| x.0).collect();
+            for c in hit {
+                w.resource_mut::<DamageQueue>().add_from(c, amount, Cause::FallingBlock, (at.x, at.z));
+            }
+        }
+        crate::projectile_more::ensure_rng(w);
+        let worn = w.resource_mut::<crate::projectile_more::ThrownRng>().0.next_float() < 0.05 + steps as f32 * 0.05;
+        if worn {
+            let next = match kind {
+                "" => Some("minecraft:chipped_anvil"),
+                "chipped_" => Some("minecraft:damaged_anvil"),
+                _ => None,
+            };
+            return match next.and_then(|n| crate::blocks::resolve(mw, n, &[])) {
+                Some(s) => (s, b.drop.clone()),
+                None => (crate::blocks::resolve(mw, "minecraft:air", &[]).unwrap_or(state), None),
+            };
+        }
+    }
+    (state, b.drop.clone())
 }

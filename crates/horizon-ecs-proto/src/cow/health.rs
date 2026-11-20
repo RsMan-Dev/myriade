@@ -153,6 +153,8 @@ pub enum Cause {
     Blast,
     /// `DamageTypes.LIGHTNING_BOLT`.
     Lightning,
+    /// `DamageTypes.FALLING_ANVIL` and `FALLING_BLOCK`: a block that fell on the creature (`falling_block.rs`).
+    FallingBlock,
 }
 
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).

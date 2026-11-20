@@ -27,6 +27,8 @@ pub enum HostEvent {
     GameEvent { name: &'static str, at: [f64; 3] },
     /// Experience dropped as orbs.
     Xp { at: [f64; 3], amount: u32 },
+    /// A player's ender pearl landed: teleport the player to `to`, hurt it by `damage` (a fall), and spawn an endermite where it stood if `endermite`.
+    Pearl { player: u32, to: [f64; 3], damage: f32, endermite: bool },
 }
 
 #[derive(Default)]
@@ -74,6 +76,9 @@ impl HostOut {
     }
     pub fn game_event(&mut self, name: &'static str, at: [f64; 3]) {
         self.out.push(HostEvent::GameEvent { name, at });
+    }
+    pub fn pearl(&mut self, player: u32, to: [f64; 3], damage: f32, endermite: bool) {
+        self.out.push(HostEvent::Pearl { player, to, damage, endermite });
     }
     pub fn xp(&mut self, at: [f64; 3], amount: u32) {
         self.out.push(HostEvent::Xp { at, amount });

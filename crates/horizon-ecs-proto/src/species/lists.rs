@@ -56,7 +56,7 @@ pub fn shot(item: &str) -> Option<(Flight, f32, f32, Option<i32>)> {
         "minecraft:splash_potion" | "minecraft:lingering_potion" => (Flight::POTION, 1.375, 3.0, None),
         "minecraft:arrow" => (Flight::ARROW, 1.1, 6.0, None),
         "minecraft:snowball" => (Flight::SNOWBALL, 1.1, 6.0, None),
-        "minecraft:egg" => (projectile_more::EGG, 1.1, 6.0, None),
+        "minecraft:egg" => (crate::projectile::Flight { hit: projectile_more::egg_hit("minecraft:chicken"), ..projectile_more::EGG }, 1.1, 6.0, None),
         "minecraft:trident" => (Flight::TRIDENT, 1.1, 6.0, None),
         _ => return None,
     })
