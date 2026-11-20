@@ -9,7 +9,14 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::{Clock, Herd};
 use horizon_ecs_proto::ominous_spawner::{spawn, OminousSpawner};
 
+/// `OminousItemSpawner.ABOUT_TO_SPAWN_ITEM` (jar, `javap -constants`): the warning leads the drop by this many ticks.
+const WARNING: u64 = 36;
+
 /// The ticks of a spawner made at tick 0 with a drop after `after` ticks: the sound at `after - 36`, the drop at `after`.
+fn h_clock_of_birth() -> u64 {
+    Herd::with_slab(16, true, false).world.resource::<Clock>().0
+}
+
 fn run(after: u32, item: &str) -> (Option<u64>, Option<u64>, Vec<u64>) {
     let mut h = Herd::with_slab(16, true, false);
     let e = spawn(&mut h.world, ItemStack::new(item, 1), Vec3::new(0.5, 5.0, 0.5), after);
@@ -40,8 +47,8 @@ fn the_sound_and_the_drop_come_at_vanillas_ticks() {
         return;
     }
     let (sound, gone, _) = run(60, "minecraft:cobblestone");
-    assert_eq!(sound, Some(24), "sound at 60 - 36");
-    assert_eq!(gone, Some(60), "drop at 60");
+    assert_eq!(sound, Some(60 - WARNING), "the sound leads the drop by the warning");
+    assert_eq!(gone, Some(60), "the drop is at its own tick");
 }
 
 /// A spawner shorter than the warning gives no sound before its drop: the warning is 36 ticks before, which is before tick 0.
@@ -62,9 +69,9 @@ fn the_particles_come_on_every_fifth_game_tick_until_the_drop() {
         return;
     }
     let (_, gone, particles) = run(60, "minecraft:cobblestone");
-    assert!(!particles.is_empty());
-    assert!(particles.iter().all(|t| t % 5 == 0), "{particles:?}");
-    assert!(particles.iter().all(|&t| t < 60 + 1), "{particles:?}");
+    let first = h_clock_of_birth();
+    let expected: Vec<u64> = (first + 1..first + 60).filter(|t| t % 5 == 0).collect();
+    assert_eq!(particles, expected, "one burst on each fifth game tick of its life, none on the drop tick or after (Horizon returns before the particles)");
     assert_eq!(gone, Some(60));
 }
 

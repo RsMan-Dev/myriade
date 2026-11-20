@@ -68,6 +68,7 @@ pub mod eye;
 // pub mod dragon; // en cours
 pub mod lightning;
 pub mod end_crystal;
+pub mod falling_block;
 pub mod firework;
 pub mod minecart;
 pub mod trident;

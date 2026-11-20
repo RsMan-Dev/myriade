@@ -1634,6 +1634,7 @@ pub fn schedule() -> Schedule {
     crate::species::leash_knot::register(&mut s);
     crate::firework::register(&mut s);
     crate::trident::register(&mut s);
+    crate::falling_block::register(&mut s);
     crate::eye::register(&mut s);
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);

@@ -55,6 +55,9 @@ pub fn strike(w: &mut World, at: Vec3, visual: bool, rng_seed: u64) -> Entity {
     e
 }
 
+/// Half the widest body a bolt can strike (the index is by centre).
+const MAX_HALF_WIDTH: f64 = 4.0;
+
 /// `LightningBolt.tick` for one bolt.
 fn step(w: &mut World, e: Entity) {
     let (Some(mut b), Some(pos)) = (w.get::<Bolt>(e).cloned(), w.get::<Pos>(e).map(|p| p.0)) else { return };
@@ -145,8 +148,11 @@ fn under(at: [f64; 3]) -> [i32; 3] {
 fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
     let peaceful = crate::effects::difficulty(w) == 0;
     let mut struck: Vec<(Entity, Vec3)> = Vec::new();
-    let mut q = w.query::<(Entity, &Pos, &Body, &Health)>();
-    for (e, p, b, h) in q.iter(w) {
+    // The index gives the creatures near the strike (3 blocks plus half the widest body): no sweep of the world.
+    let mut near = Vec::new();
+    w.resource::<crate::cow::Index>().for_radius(at[0], at[2], 3.0 + MAX_HALF_WIDTH, |e| near.push(e));
+    for e in near {
+        let (Some(p), Some(b), Some(h)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Health>(e)) else { continue };
         let (hw, hh) = (f64::from(b.width) / 2.0, f64::from(b.height));
         let hit = p.0.x - hw < at[0] + 3.0
             && p.0.x + hw > at[0] - 3.0

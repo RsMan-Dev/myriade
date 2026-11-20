@@ -14,6 +14,10 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::WITCH_PLAYER),
     ],
     goals: &[
+        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
+        Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
+        Entry::new(&crate::behaviours::celebration::MODULE, 5, &()),
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
         Entry::new(&drink_potion::MODULE, 0, &drink_potion::Params::DEFAULT),
         Entry::new(&ranged_attack::MODULE, 2, &ranged_attack::Params::WITCH),

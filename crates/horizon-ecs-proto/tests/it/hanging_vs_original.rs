@@ -88,3 +88,29 @@ fn two_frames_in_one_cell_the_first_breaks_on_the_101st_tick_and_the_second_stay
     assert_eq!(broke_at.map(|t| t - born), Some(101));
     assert!(h.world.get_entity(b).is_ok(), "the second frame stays once the first is gone");
 }
+
+#[test]
+#[ignore = "écart connu : Horizon (frames.rs, check_interval >= 100) casse au 100e tick, le jar au 101e ; l'ECS suit le jar"]
+fn a_frame_breaks_on_the_100th_tick_as_horizon_does() {
+    if !have_data() {
+        return;
+    }
+    let mut h = scene();
+    let born = clock(&h);
+    let a = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None, None);
+    for _ in 0..4 {
+        h.tick();
+    }
+    h.world.insert_resource(Walls(wall_gone));
+    h.world.resource_mut::<BlockEvents>().changed.push([0, 60, -1]);
+    h.tick();
+    h.world.resource_mut::<BlockEvents>().changed.clear();
+    let mut broke_at = None;
+    while broke_at.is_none() && clock(&h) < born + 300 {
+        h.tick();
+        if h.world.get_entity(a).is_err() {
+            broke_at = Some(clock(&h));
+        }
+    }
+    assert_eq!(broke_at.map(|t| t - born), Some(100));
+}

@@ -1,7 +1,7 @@
 //! `IronGolem` `DefendVillageTargetGoal` (target flag): a golem takes as target the player whom a villager near it holds in bad
 //! reputation (`Gossips::reputation` at or below -100). The box is the golem's, inflated (10, 8, 10); the villagers in it, within 64
 //! blocks, that the golem sees count; the player must be in the box, within 64 blocks, not creative or spectator, and seen. The nearest
-//! such player (then the lowest id) is taken. The ask is re-armed every tick (a target goal with no interval, as the `Mob`).
+//! such player (then the lowest id) is taken. A golem asks only while a seen villager near it holds a player in bad reputation: it is woken by the gossip that makes one (`wake_golems`, from `gossip::add` and `meet`) and by its own creation, re-asks each tick (the `Mob`'s target goal has no interval) while such a villager stands in reach, and sleeps otherwise.
 use super::gossip::Gossips;
 use super::*;
 use crate::cow::*;
@@ -36,11 +36,47 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Defend { p: *params::<Params>(p), slot: inst.slot });
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
-    crate::goals::arm(w, e, inst.slot, 1);
+    if let Some(d) = w.get::<Defend>(e).copied() {
+        if grudge(w, e, d.p) {
+            crate::goals::arm(w, e, inst.slot, 1);
+        }
+    }
 }
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
+    let Some(d) = w.get::<Defend>(e).copied() else { return false };
+    if !grudge(w, e, d.p) {
+        return false;
+    }
     crate::goals::arm(w, e, inst.slot, 1);
     true
+}
+/// A gossip made `villager` hold a player at or below the golems' threshold: the golems that see it wake.
+pub fn wake_golems(w: &mut World, villager: Entity) {
+    let Some(at) = w.get::<Pos>(villager).map(|p| p.0) else { return };
+    let bad = w.get::<Gossips>(villager).is_some_and(|g| g.players().any(|pl| g.reputation(pl) <= Params::DEFAULT.reputation));
+    if !bad {
+        return;
+    }
+    let mut golems = Vec::new();
+    w.resource::<Index>().for_radius(at.x, at.z, 16.0, |c| golems.push(c));
+    for c in golems {
+        if w.get::<Defend>(c).is_some() {
+            arm_module(w, c, &MODULE, 1);
+        }
+    }
+}
+/// A villager in the golem's box, in reach and seen, holds a player in bad reputation.
+fn grudge(w: &World, e: Entity, p: Params) -> bool {
+    let (Some(pos), Some(b)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Bounds>(e)) else { return false };
+    let area = b.0.inflate(Vec3::new(p.across, p.up, p.across));
+    let mut found = false;
+    w.resource::<Index>().for_radius(pos.x, pos.z, 16.0, |c| {
+        found |= w.get::<Gossips>(c).is_some_and(|g| g.players().any(|pl| g.reputation(pl) <= p.reputation))
+            && w.get::<Pos>(c).is_some_and(|cp| area.contains(cp.0) && cp.0.distance_squared(pos) <= p.range * p.range)
+            && w.get::<Health>(c).is_some_and(|h| h.0 > 0.0)
+            && targeting::sees(w, e, Who::Entity(c));
+    });
+    found
 }
 /// The player this golem defends against now, if any.
 fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {

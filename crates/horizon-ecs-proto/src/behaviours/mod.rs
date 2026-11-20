@@ -539,6 +539,13 @@ pub static TABLE: &[&Module] = &[
     &give_to_owner::MODULE,
     // The modules of the raids, last: the slots of the modules before them stay where they were.
     &pathfind_to_raid::MODULE,
+    &celebration::MODULE,
+    &long_distance_patrol::MODULE,
+    &move_through_village::MODULE,
+    &obtain_banner::MODULE,
+    &offer_flower::MODULE,
+    &raid_move_through_village::MODULE,
+    &defend_village_target::MODULE,
     &break_door::MODULE,
     &break_door::RAID,
     &raider_open_door::MODULE,
@@ -571,6 +578,13 @@ pub mod food_inventory;
 pub mod food_stock;
 pub mod golem_recent;
 pub mod summon_defender;
+pub mod celebration;
+pub mod long_distance_patrol;
+pub mod move_through_village;
+pub mod obtain_banner;
+pub mod offer_flower;
+pub mod raid_move_through_village;
+pub mod defend_village_target;
 pub mod gossip;
 pub mod go_to_disturbance;
 pub mod go_to_wanted;
