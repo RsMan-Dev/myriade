@@ -3739,7 +3739,7 @@ impl Herd {
             let reach = self.world.get::<Nav>(e).unwrap().reach;
             let pm = PathMob { position: pos, width: body.width, height: body.height, on_ground: c.on_ground, in_water: false, max_up_step: body.step_height, max_fall_distance: comfortable_fall_distance(0.0), malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, stands_on_lava: false };
             let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
-            let max_len = sp.follow_range;
+            let max_len = sp.follow_range.max(16.0);
             std::hint::black_box(Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, reach, (max_len * 16.0).floor() as i32));
             n += 1;
         }

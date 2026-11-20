@@ -82,7 +82,7 @@ fn main() {
             can_walk_over_fences: sp.can_walk_over_fences,
             stands_on_lava: false,
         };
-        let max_len = sp.follow_range;
+        let max_len = sp.follow_range.max(16.0);
         let c0 = counter.read();
         let target = [[tx.floor() as i32, 1, tz.floor() as i32]];
         let visited = (max_len * 16.0).floor() as i32;
