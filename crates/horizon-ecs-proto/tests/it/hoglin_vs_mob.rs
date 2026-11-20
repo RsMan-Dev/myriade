@@ -44,10 +44,6 @@ fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
                 out.acquired[i] = Some(t);
             }
         }
-        if std::env::var_os("DBG_HOGLIN").is_some() && [100, 250, 290, 330, 400].contains(&t) {
-            let d: Vec<String> = rf.mobs.iter().map(|m| format!("{:.1}/{}", ((m.position.x - 0.5).powi(2) + (m.position.z - 0.5).powi(2)).sqrt(), m.ai.target.is_some())).collect();
-            eprintln!("t={t} dist/target: {}", d.join(" "));
-        }
         for e in &rf.events[from..] {
             if let MobEvent::AttackPlayer(_, f) = e {
                 let pos: Vec<(f64, f64)> = rf.mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
@@ -133,21 +129,57 @@ fn hoglins_hunt_a_still_player_as_a_mob_does() {
     assert!((mg - eg).abs() < 4.0, "gap between strikes: mob {mg}, ecs {eg}");
 }
 
-/// `StopAttackingIfTargetInvalid` (jar: `CANT_REACH_WALK_TARGET_SINCE` older than 200 ticks): in the `Mob` all twelve hoglins have stopped striking by t=290
-/// (the last strikes are at 158..285, four never struck) while they stand 0.9 to 3.2 blocks from the player with a target; the ECS keeps eight striking
-/// after t=300. OPEN divergence (suivi/ecs-ecarts.md, 2026-11-20 hoglin): `Nav.cant_reach_since` and `melee::Params.forget_unreachable` exist, but the ECS
-/// does not repath while adjacent, so its clock is rarely started; the `Mob`'s path attempts that fail next to the player are not reproduced.
+/// `Hoglin.aiStep` (jar: `timeInOverworld` over 300): outside the Nether the hoglins become zoglins. In the `Mob` the twelve strikers stop at t=300
+/// because they convert (`MobEvent::Convert` at t=301), not because they forget an unreachable target (the `Mob` has no such memory: its goal ends
+/// on the target alone). The tick of every conversion is compared, equal to the tick.
 #[test]
-#[ignore = "open divergence: the unreachable clock of the Mob hoglins starts where the ECS makes no path (see ecs-ecarts.md)"]
-fn hoglins_forget_an_unreachable_target_as_a_mob_does() {
+fn hoglins_convert_after_300_ticks_as_a_mob_does() {
     if !have_data() {
         return;
     }
-    let (m, e) = (mob_run(12, 12.0, 400), ecs_run(12, 12.0, 400));
-    // `StopAttackingIfTargetInvalid`: a target no path reaches for 200 ticks is forgotten, so the hoglins that cannot reach the player stop
-    // touching it. The count of those still striking after t=300, and the tick of the last strike of each, are compared.
-    let late = |r: &Run| r.hits.iter().filter(|h| h.iter().any(|&t| t > 300)).count();
-    let lasts = |r: &Run| -> Vec<i64> { let mut v: Vec<i64> = r.hits.iter().map(|h| h.last().copied().unwrap_or(0)).collect(); v.sort_unstable(); v };
-    eprintln!("still striking after t=300: mob {} ecs {}; last strikes mob {:?} ecs {:?}", late(&m), late(&e), lasts(&m), lasts(&e));
-    assert_eq!(late(&m), late(&e), "hoglins still striking after t=300 (the unreachable ones forget their target)");
+    let spots = ring(12, 12.0);
+    let mut rf = MobRef::new(60, false);
+    for s in &spots {
+        rf.add_kind(Vec3::new(s.0, 1.0, s.1), mob_kind("minecraft:hoglin"));
+    }
+    let mut mob_ticks = Vec::new();
+    for t in 1..=400 {
+        let p = player_view(STILL(t), None);
+        let from = rf.events.len();
+        rf.step(Some(&p));
+        for e in &rf.events[from..] {
+            if matches!(e, MobEvent::Convert { .. }) {
+                mob_ticks.push(t);
+            }
+        }
+    }
+    let mut h = Herd::with_slab(60, true, false);
+    h.world.insert_resource(UnsafePlace(|_, _| true));
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let hoglin = table.iter().position(|s| s.name == "minecraft:hoglin").expect("the hoglin species is registered");
+    let ids: Vec<Entity> = spots
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let e = spawn_species(&mut h.world, &table[hoglin], s.0, s.1, 1000 + i as u64);
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+            h.world.resource_mut::<Entered>().0.push(e);
+            e
+        })
+        .collect();
+    let mut ecs_ticks = Vec::new();
+    let mut gone = vec![false; ids.len()];
+    for t in 1..=400 {
+        let p = STILL(t);
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
+        h.tick();
+        for (i, &e) in ids.iter().enumerate() {
+            if !gone[i] && h.world.get_entity(e).is_err() {
+                gone[i] = true;
+                ecs_ticks.push(t);
+            }
+        }
+    }
+    eprintln!("conversion ticks: mob {mob_ticks:?} ecs {ecs_ticks:?}");
+    assert_eq!(mob_ticks, ecs_ticks, "the tick of every hoglin conversion");
 }

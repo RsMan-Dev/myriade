@@ -4,7 +4,7 @@
 //! when idle; an `AVOID_TARGET` makes it retreat at 1.3 to 15 blocks. The zoglin conversion and its ambient sound are goals.
 //! Left out (see `suivi/ecs-portage/reste/hoglin.md`): the retreat and fight sounds, the baby recoil, the walk value.
 use super::Def;
-use crate::behaviours::{ambient_sound, breed, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
+use crate::behaviours::{ambient_sound, breed, convert_timer, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
 use crate::brain::behaviours::{pacify, walk_away};
 use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, repellent_and_adult};
 use crate::brain::*;
@@ -37,6 +37,8 @@ pub static DEF: Def = Def {
     ],
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
+        // `Hoglin.aiStep`: more than 300 ticks where piglins cannot live (the host's `UnsafePlace`) and it becomes a zoglin.
+        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300 }),
         Entry::new(&melee::MODULE, 2, &melee::Params { interval: 41, interval_baby: Some(16), follow_unseen: true, forget_unreachable: Some(200), ..melee::Params::DEFAULT }).when(&NOT_RETREATING),
         Entry::new(&headbutt::MODULE, 2, &headbutt::Params { knockback: 0.6 }),
         Entry::new(&breed::MODULE, 3, &breed::Params { foods: &["minecraft:crimson_fungus"], ..breed::Params::DEFAULT }).when(&BREEDING),

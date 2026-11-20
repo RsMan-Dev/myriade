@@ -28,6 +28,7 @@ pub static MODULE: Module = Module {
     name: "convert_timer",
     flags: 0,
     equip,
+    arm,
     can_use,
     start,
     stop,
@@ -38,12 +39,18 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Convert(*params::<Params>(p)));
 }
+/// One check at creation: the place a creature lives in does not change while it lives (the host's `UnsafePlace` names a dimension), so no
+/// later poll exists; `stop` (place turned safe) is the only exit.
+fn arm(w: &mut World, e: Entity, i: Inst) {
+    goals::arm(w, e, i.slot, 1);
+}
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Converting>(e).is_none() && goals::in_unsafe_place(w, e)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let after = w.get::<Convert>(e).unwrap().0.after;
-    let until = now_of(w, e) + after;
+    // The first check runs one tick after creation, the `Mob`'s count began with its first tick: one tick is already counted.
+    let until = now_of(w, e) + after - 1;
     w.entity_mut(e).insert(Converting { until });
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
