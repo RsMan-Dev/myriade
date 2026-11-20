@@ -32,6 +32,10 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     }
 }
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
+    // `SleepInBed.canStillUse`: the REST activity must be the active one (the brain stops nothing at an activity change).
+    if !crate::brain::is_active(w, e, "rest") {
+        return false;
+    }
     if w.get::<Sleeping>(e).is_some() {
         // Frappé au lit : le villageois se réveille (`stop` retire `Sleeping`).
         return !hurt_recently(w, e);

@@ -185,8 +185,6 @@ pub struct Behaviour {
     pub stop: fn(&mut World, Entity, &Ctx),
     /// The entity took damage (running or not): a reaction of the behaviour (`Animal.actuallyHurt` ends love), like a goal's `damaged`.
     pub damaged: fn(&mut World, Entity, &Ctx, &crate::behaviours::Damaged),
-    /// Keeps running when the active activity changes (the jar's `Brain.setActiveActivity` stops nothing: a behaviour ends by its own `canStillUse`).
-    pub survives_activity: bool,
 }
 fn no_damage(_: &mut World, _: Entity, _: &Ctx, _: &crate::behaviours::Damaged) {}
 fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
@@ -207,7 +205,6 @@ impl Behaviour {
         tick: yes,
         stop: nothing,
         damaged: no_damage,
-        survives_activity: false,
     };
 }
 #[derive(Clone, Copy)]
@@ -594,6 +591,10 @@ pub fn brain_step(world: &mut World) {
 fn active(w: &World, e: Entity, act: u8) -> bool {
     act == 0 || w.get::<Brain>(e).is_some_and(|b| b.activity == act)
 }
+/// `Brain.isActive(activity)` by name: what a behaviour's `canStillUse` asks (the jar stops nothing when the activity changes).
+pub fn is_active(w: &World, e: Entity, name: &str) -> bool {
+    w.get::<Brain>(e).is_some_and(|b| b.plan.acts[b.activity as usize].name == name || b.plan.acts[0].name == name)
+}
 fn step(w: &mut World, e: Entity) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
     b.awake = false;
@@ -612,13 +613,6 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     update_activity(w, e, plan);
-    // The activity changed: what runs for the previous one stops, unless the behaviour says it survives it (`survives_activity`).
-    for &id in &plan.order {
-        let inst = &plan.insts[id as usize];
-        if running(w, e, id) && !active(w, e, inst.act) && !inst.b.survives_activity {
-            do_stop(w, e, plan, id);
-        }
-    }
     any = plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && running(w, e, i as u16));
     if any {
         wake(w, e);
