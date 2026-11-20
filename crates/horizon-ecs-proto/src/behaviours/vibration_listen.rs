@@ -45,12 +45,9 @@ pub static MODULE: Module = Module {
     name: "vibration_listen",
     flags: 0,
     equip,
+    tick: Some(vibration_dispatch),
     ..Module::DEFAULT
 };
-
-pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(vibration_dispatch);
-}
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);

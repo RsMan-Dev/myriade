@@ -49,7 +49,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -117,8 +117,11 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
         idle(w, e);
     }
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((grown, loaded, home_run).chain().in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, grown);
+    crate::goals::tick_state(w, loaded);
+    crate::goals::tick_state(w, home_run);
 }
 /// A baby that grew up starts drawing its chance.
 fn grown(ev: Res<Events>, babies: Query<(), With<GoHome>>, mut reqs: ResMut<Requests>) {

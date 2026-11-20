@@ -33,9 +33,11 @@ pub struct Homing {
     pub cfg: &'static Config,
 }
 
-pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(steer.before(crate::projectile::fly));
-    s.add_systems(follow.after(crate::projectile::fly));
+/// The homing step, called by the framework's tick only while a homing projectile lives (no registered system): `follow` finishes the
+/// previous tick's flight (it ran after `fly`), then `steer` turns the velocity for this tick's move.
+pub fn tick(w: &mut World) {
+    crate::goals::tick_state(w, follow);
+    crate::goals::tick_state(w, steer);
 }
 
 /// Launches a projectile from the middle of `owner`'s box, first leaving along an axis other than `axis` (0 x, 1 y, 2 z).

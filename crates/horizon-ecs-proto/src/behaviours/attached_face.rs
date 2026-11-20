@@ -70,6 +70,3 @@ pub fn physical_peek(eased: f32) -> f32 {
     0.5 - ((0.5 + eased) * std::f32::consts::PI).sin() * 0.5
 }
 
-pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(ease);
-}

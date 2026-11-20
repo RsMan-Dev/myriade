@@ -65,6 +65,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, run);
+    crate::goals::tick_state(w, crate::behaviours::attached_face::ease);
 }
 fn run(q: Query<(Entity, &Peek, Option<&Target>), With<Peeking>>, mut cmd: Commands) {
     for (e, p, target) in &q {

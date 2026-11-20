@@ -42,7 +42,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
@@ -51,8 +51,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert((PlayerWatch::new(p.reach as f32), p, Slot(inst.slot)));
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(watched.in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, watched);
 }
 /// A player enters the watch: the goal starts; a player leaves: the goal ends (its stop starts the countdown).
 fn watched(ev: Res<Events>, mut reqs: ResMut<Requests>, mut commands: Commands, q: Query<&Slot, With<PlayerWatch>>) {

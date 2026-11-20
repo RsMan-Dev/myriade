@@ -121,7 +121,7 @@ impl RideParams {
 pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((ridden_drive, crate::behaviours::fly_steer::drive).after(move_control).before(travel));
+    s.add_systems(ridden_drive.after(move_control).before(travel));
 }
 fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
@@ -292,6 +292,7 @@ fn creature_steer(w: &mut World, mount: Entity) {
 #[allow(clippy::type_complexity)]
 fn ridden_drive(
     clock: Res<Clock>,
+    mut fliers: Query<(&Mount, &Yaw, &mut Vel, &crate::behaviours::fly_steer::Params), (With<crate::behaviours::fly_steer::FlyingSteer>, With<Ridden>)>,
     mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), (With<Ridden>, Without<crate::behaviours::fly_steer::FlyingSteer>)>,
     targets: Query<(), With<crate::targeting::Target>>,
     level: Res<Level>,
@@ -302,6 +303,7 @@ fn ridden_drive(
 ) {
     // The lead (no system of its own: this one runs every tick anyway).
     crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
+    crate::behaviours::fly_steer::drive(&mut fliers);
     for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture) in &mut q {
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();

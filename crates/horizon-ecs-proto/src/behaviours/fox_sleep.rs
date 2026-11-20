@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -160,8 +160,10 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     let next = with_rng(w, e, |r| r.next_int(asks));
     countdown(w, e, inst.slot, next);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_on_day, sleep_run).in_set(slot));
+/// The tick of the module, run only while a fox that sleeps lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, wake_on_day);
+    sleep_run(w);
 }
 /// The day came or went: the foxes waiting for their countdown look at the conditions again.
 fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleeping>>, mut reqs: ResMut<Requests>) {
@@ -172,8 +174,8 @@ fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleepin
     }
 }
 /// A sleeping fox, on its selector ticks: it ends when it can no longer sleep (day gone, shelter gone, someone near).
-fn sleep_run(w: &mut World, q: &mut QueryState<Entity, With<Sleeping>>) {
-    let list: Vec<Entity> = q.iter(w).collect();
+fn sleep_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Sleeping>>(w);
     for e in list {
         let Some(slot) = w.get::<SleepDef>(e).map(|d| d.slot) else { continue };
         if fs::selector_tick(w, e) && !can_sleep(w, e) {

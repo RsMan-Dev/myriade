@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
     equip,
     fired: never,
     can_use: never,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
@@ -62,8 +62,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(moved.in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, moved);
 }
 /// The foxes that changed column this tick look at their items (the others cost nothing).
 fn moved(moves: Res<CellMoves>, q: Query<(), With<Loot>>, mut reqs: ResMut<Requests>) {

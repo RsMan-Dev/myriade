@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Head],
     ..Module::DEFAULT
 };
@@ -47,8 +47,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Lookout { p, slot: inst.slot });
 }
 
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(look_run.in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, look_run);
 }
 
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {

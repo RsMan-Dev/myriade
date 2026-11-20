@@ -31,7 +31,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
@@ -39,8 +39,9 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((Swallowable(params::<Params>(p).items), Toucher { reach: [1.0, 0.5, 1.0] }));
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(touched.in_set(slot));
+/// The module's tick, called only while a creature that carries it lives (no registered system).
+fn tick(w: &mut World) {
+    crate::goals::tick_state(w, touched);
 }
 /// An item touched a cube that may search: the cube takes it if the item is on its list.
 fn touched(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<&Swallowable>, items: Query<&Item>, mut commands: Commands) {

@@ -15,9 +15,6 @@ pub struct Toucher {
     pub reach: [f64; 3],
 }
 
-pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(touch_events.before(arbitrate));
-}
 
 /// The box of an animal, or of an item (its box on the ground).
 fn box_of(e: Entity, bounds: &Query<&Bounds>, poses: &Query<&Pos>) -> Option<Aabb> {
@@ -31,7 +28,7 @@ fn push_once(pairs: &mut Vec<(Entity, Entity)>, pair: (Entity, Entity)) {
         pairs.push(pair);
     }
 }
-fn touch_events(
+pub(crate) fn touch_events(
     moves: Res<CellMoves>,
     index: Res<Index>,
     items: Res<ItemIndex>,

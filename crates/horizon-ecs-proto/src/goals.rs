@@ -916,6 +916,13 @@ fn tick_modules(world: &mut World) {
             t(world);
         }
     }
+    if !entities::<With<crate::behaviours::homing_projectile::Homing>>(world).is_empty() {
+        crate::behaviours::homing_projectile::tick(world);
+    }
+    // The touches: looked at only while some creature carries a `Toucher` (no system in the schedule).
+    if !entities::<With<crate::touch::Toucher>>(world).is_empty() {
+        tick_state(world, crate::touch::touch_events);
+    }
 }
 /// The entities that match a filter, through a query state kept in the world (one per filter): building a `QueryState` each tick costs thousands of
 /// instructions, reading a kept one a few hundred.

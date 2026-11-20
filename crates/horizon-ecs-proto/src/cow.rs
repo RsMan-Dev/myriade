@@ -1547,7 +1547,6 @@ pub fn schedule() -> Schedule {
     s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
-    crate::touch::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
     s.add_systems(crate::spawning::step.after(crate::goals::online_events).before(player_near));
     crate::farm::register(&mut s);
@@ -1559,9 +1558,6 @@ pub fn schedule() -> Schedule {
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
-    crate::behaviours::attached_face::register(&mut s);
-    crate::behaviours::homing_projectile::register(&mut s);
-    crate::behaviours::vibration_listen::register(&mut s);
     s
 }
 

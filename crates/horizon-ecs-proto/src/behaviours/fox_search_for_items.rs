@@ -52,7 +52,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
-    systems,
+    tick: Some(tick),
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -189,8 +189,10 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Seeking>();
     arm_draw(w, e);
 }
-fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((seek_run, target_lost).in_set(slot));
+/// The tick of the module, run only while a fox that searches lives (no registered system).
+fn tick(w: &mut World) {
+    seek_run(w);
+    crate::goals::tick_state(w, target_lost);
 }
 /// A target was lost: the draws that the target stopped start again (a fresh one, unless a deadline is pending).
 fn target_lost(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<(), With<Seek>>) {
@@ -203,8 +205,8 @@ fn target_lost(ev: Res<Events>, mut reqs: ResMut<Requests>, q: Query<(), With<Se
 }
 /// Every running search, on the selector ticks: the gates and the own-time end, then the point, then the walk to it. The
 /// fox looks at its items too (the looting rule, in the same tick).
-fn seek_run(w: &mut World, q: &mut QueryState<Entity, With<Seeking>>) {
-    let list: Vec<Entity> = q.iter(w).collect();
+fn seek_run(w: &mut World) {
+    let list = crate::goals::entities::<With<Seeking>>(w);
     for e in list {
         if !fs::selector_tick(w, e) {
             continue;
