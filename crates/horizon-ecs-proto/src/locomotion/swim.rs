@@ -526,6 +526,7 @@ fn travel(
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
     targets: Query<(), With<crate::targeting::Target>>,
+    following: Query<(), With<Following>>,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
@@ -568,7 +569,13 @@ fn travel(
             let sink = if swp.sinks && (swp.control != Control::Guardian || (d.speed == 0.0 && !has_target)) { 0.005 } else { 0.0 };
             v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
         } else {
-            travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
+            let rest = travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
+            // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.
+            if rest && !following.contains(e) {
+                par.command_scope(e, |mut cmd| {
+                    cmd.entity(e).remove::<Moving>();
+                });
+            }
         }
         if was_in_air && c.on_ground {
             par.command_scope(e, |mut cmd| {
