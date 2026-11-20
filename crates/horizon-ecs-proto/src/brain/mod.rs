@@ -176,6 +176,9 @@ pub struct Behaviour {
     pub one_shot: bool,
     /// Nothing to do while it runs (no `tick` work): the brain is woken at its end, not every tick.
     pub passive: bool,
+    /// While it runs and this says true, the brain is not stepped every tick: it is woken by its deadline, a memory write, or whatever the
+    /// behaviour arranged itself (the end of the walk, a crossing).
+    pub sleeps: fn(&World, Entity, &Ctx) -> bool,
     pub gate: Option<Gate>,
     pub equip: fn(&mut World, Entity, &Ctx),
     pub can_start: fn(&mut World, Entity, &Ctx) -> bool,
@@ -190,6 +193,9 @@ fn no_damage(_: &mut World, _: Entity, _: &Ctx, _: &crate::behaviours::Damaged) 
 fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
     true
 }
+fn no(_: &World, _: Entity, _: &Ctx) -> bool {
+    false
+}
 fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
 impl Behaviour {
     pub const DEFAULT: Behaviour = Behaviour {
@@ -199,6 +205,7 @@ impl Behaviour {
         one_shot: false,
         passive: false,
         gate: None,
+        sleeps: no,
         equip: nothing,
         can_start: yes,
         start: nothing,
@@ -384,6 +391,8 @@ struct Slot {
 #[derive(Clone, Default)]
 struct Run {
     running: bool,
+    /// The deadline wake of a sleeping behaviour is armed.
+    armed: bool,
     end: u64,
     /// The kids of a composite, in the order they are tried.
     order: Vec<u16>,
@@ -413,6 +422,32 @@ impl Brain {
         !self.run[id as usize].running && self.holds(&self.plan.insts[id as usize].needs_l)
     }
 }
+/// A walk toward a fixed block, the brain asleep: it wakes when the walk ends or the entity comes within `close` (`MoveToTargetSink`).
+#[derive(Component)]
+pub struct SinkWatch {
+    pub target: [i32; 3],
+    pub close: i32,
+}
+fn wake_walks(
+    mut ended: (RemovedComponents<Following>, RemovedComponents<NeedsPath>),
+    mut q: Query<&mut Brain>,
+    moved: Query<(Entity, &Pos, &SinkWatch), Changed<Pos>>,
+    mut awake: ResMut<BrainAwake>,
+) {
+    for e in ended.0.read().chain(ended.1.read()) {
+        if let Ok(mut b) = q.get_mut(e) && !b.awake {
+            b.awake = true;
+            awake.0.push(e);
+        }
+    }
+    for (e, p, s) in &moved {
+        let d = (p.0.x.floor() as i32 - s.target[0]).abs() + (p.0.y.floor() as i32 - s.target[1]).abs() + (p.0.z.floor() as i32 - s.target[2]).abs();
+        if d <= s.close && let Ok(mut b) = q.get_mut(e) && !b.awake {
+            b.awake = true;
+            awake.0.push(e);
+        }
+    }
+}
 /// The entities to step this tick.
 #[derive(Resource, Default)]
 pub struct BrainAwake(pub Vec<Entity>);
@@ -428,7 +463,7 @@ pub fn insert_resources(w: &mut World) {
     w.insert_resource(BrainAwake::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(brain_step.after(arbitrate).before(pathfind));
+    s.add_systems((wake_walks, brain_step).chain().after(arbitrate).before(pathfind));
 }
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {
@@ -636,7 +671,22 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     update_activity(w, e, plan);
-    any = w.get::<Brain>(e).is_some_and(|b| plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && b.run[i].running));
+    any = false;
+    for (i, x) in plan.insts.iter().enumerate() {
+        if x.b.gate.is_some() || x.b.passive || !running(w, e, i as u16) {
+            continue;
+        }
+        if !(x.b.sleeps)(w, e, &ctx(plan, i as u16)) {
+            any = true;
+            break;
+        }
+        let b = w.get::<Brain>(e).unwrap();
+        if x.duration.is_some() && !b.run[i].armed {
+            let end = b.run[i].end;
+            w.get_mut::<Brain>(e).unwrap().run[i].armed = true;
+            arm_at(w, e, end + 1, Due::BrainWake);
+        }
+    }
     if any {
         wake(w, e);
     }
@@ -667,6 +717,7 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
         }
     }
     set_running(w, e, id, true);
+    w.get_mut::<Brain>(e).unwrap().run[id as usize].armed = false;
     if let Some(g) = inst.b.gate {
         let mut order = inst.kids.clone();
         if g.shuffle {
