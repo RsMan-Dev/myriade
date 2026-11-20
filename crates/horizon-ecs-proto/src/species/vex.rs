@@ -17,7 +17,7 @@ pub static DEF: Def = Def {
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&g::VEX_CHARGE, 4, &g::Params::DEFAULT),
         Entry::new(&g::VEX_RANDOM_MOVE, 8, &g::Params::DEFAULT),
-        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1 }),
+        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&limited_life::MODULE, 10, &()),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),

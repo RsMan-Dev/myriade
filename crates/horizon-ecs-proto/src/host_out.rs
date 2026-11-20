@@ -10,6 +10,7 @@ pub enum HostEvent {
     SetBlock { pos: [i32; 3], state: BlockStateId },
     Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32 },
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
+    ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
 }
 
 #[derive(Default)]
@@ -29,6 +30,10 @@ impl HostOut {
     /// `MobEvent::LevelParticles`.
     pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {
         self.out.push(HostEvent::Particles { kind, at, spread, speed, count });
+    }
+    /// `MobEvent::ParrotToShoulder`: the host puts the creature on the player's shoulder and removes it.
+    pub fn shoulder(&mut self, parrot: bevy_ecs::entity::Entity, player: u32) {
+        self.out.push(HostEvent::ParrotToShoulder { parrot, player });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

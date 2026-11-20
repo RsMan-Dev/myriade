@@ -25,7 +25,7 @@ pub static DEF: Def = Def {
         Entry::new(&spell_use::MODULE, 4, &VEXES),
         Entry::new(&spell_use::MODULE, 5, &FANGS),
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
-        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1 }),
+        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
     ],
     ..Def::EMPTY
 };

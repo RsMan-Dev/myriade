@@ -265,6 +265,9 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod stay_close_to_owner;
+pub mod give_to_owner;
+pub mod land_on_shoulder;
 pub mod burst_shot;
 pub mod ender_teleport;
 pub mod charged_shot;
@@ -432,4 +435,7 @@ pub static TABLE: &[&Module] = &[
     &try_find_water::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_swim_up::MODULE,
+    &land_on_shoulder::MODULE,
+    &stay_close_to_owner::MODULE,
+    &give_to_owner::MODULE,
 ];

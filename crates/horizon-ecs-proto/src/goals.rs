@@ -12,7 +12,7 @@ pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
     float::{Buoyancy, Floating},
     follow_parent::{Babies, FollowParent, Mother, Trailing, adopt, make_baby},
-    look_at_player::{Glance, Glancing},
+    look_at_player::Glancing,
     panic::{Hurts, Panic, Panicking, hurt, ignite},
     random_look::{Scan, Scanning},
     tempt::{Tempt, Tempting, Tempts},
@@ -1399,8 +1399,11 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut g) = h.world.get_mut::<Glance>(e) {
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance>(e) {
             g.armed = armed;
+        }
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance2>(e) {
+            g.0.armed = armed;
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;

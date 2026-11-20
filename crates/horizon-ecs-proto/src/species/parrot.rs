@@ -1,9 +1,9 @@
 //! `Parrot` (`mobs/tame.rs:109-119`, `register_parrot`): a flier (`FlyingMoveControl(10, false)`, `FlyingPathNavigation`) that wanders in
 //! the air, follows its owner once tame, sits when ordered, panics when hurt, looks at players, and follows a mob (`FollowMobGoal`).
-//! Left out: the landing on the owner's shoulder (fiche 67: a host, not here), the taming by seeds (the `TAME` rule: the Mob does it
+//! The landing on the owner's shoulder: `land_on_shoulder` (host output `HostOut::shoulder`). Left out: the taming by seeds (the `TAME` rule: the Mob does it
 //! elsewhere, not read here). DOUBT: `TamePanic` does not panic while the tame parrot sits: the `panic` module has no such option.
 use super::Def;
-use crate::behaviours::{fly_stroll, float, follow_mob, follow_owner, look_at_player, panic, sit_when_ordered, Cap, Entry};
+use crate::behaviours::{fly_stroll, float, follow_mob, follow_owner, look_at_player, panic, sit_when_ordered, land_on_shoulder, Cap, Entry};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
@@ -16,6 +16,7 @@ pub static DEF: Def = Def {
         Entry::new(&sit_when_ordered::MODULE, 2, &()),
         Entry::new(&follow_owner::MODULE, 2, &follow_owner::Params { speed: 1.0, start: 5.0, stop: 1.0 }),
         Entry::new(&fly_stroll::MODULE, 2, &fly_stroll::Params::DEFAULT),
+        Entry::new(&land_on_shoulder::MODULE, 3, &land_on_shoulder::Params::DEFAULT),
         Entry::new(&follow_mob::MODULE, 3, &follow_mob::Params { speed: 1.0, stop: 3.0, area: 7.0, ..follow_mob::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
