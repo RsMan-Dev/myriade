@@ -1,6 +1,7 @@
 //! `TemptGoal`: a player within range holds a tempting item; the animal looks at the player and walks to it, stopping
 //! 2.5 blocks away. An animal can have several (the pig: the carrot on a stick, then its foods), one entry each.
 use super::*;
+use crate::small::Nth;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -40,7 +41,7 @@ pub struct Tempt {
 }
 /// The tempt goals of the animal, by `Inst::nth` (one instance each: its own items, speed, calm-down and player).
 #[derive(Component, Clone, Debug)]
-pub struct Tempts(pub Vec<Tempt>);
+pub struct Tempts(pub Nth<Tempt, 2>);
 /// A tempt goal runs: which instance (`nth`).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -68,7 +69,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
             ts.0.push(t);
         }
         None => {
-            w.entity_mut(e).insert(Tempts(vec![t]));
+            w.entity_mut(e).insert(Tempts(Nth::one(t)));
         }
     }
 }
@@ -83,7 +84,7 @@ fn wake_on_player(clock: Res<Clock>, on: Res<Online>, idx: Res<Index>, cows: Que
         let Some(n) = new else { continue };
         idx.for_radius(n.x, n.z, SCAN, |c| {
             let Ok((pos, ts)) = cows.get(c) else { return };
-            for t in &ts.0 {
+            for t in ts.0.iter() {
                 let reach = t.range.max(2.0).powi(2);
                 let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
                 if clock.of(c) >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {

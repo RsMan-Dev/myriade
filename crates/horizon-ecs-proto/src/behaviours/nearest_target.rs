@@ -8,6 +8,7 @@
 use super::*;
 use crate::targeting::{self, FollowRange, Target, Who};
 use horizon_core::geometry::Vec3;
+use crate::small::Nth;
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -76,7 +77,7 @@ impl Nearest {
 }
 /// The instances of the animal, by `Inst::nth`.
 #[derive(Component, Clone, Debug)]
-pub struct NearestTargets(pub Vec<Nearest>);
+pub struct NearestTargets(pub Nth<Nearest, 6>);
 
 pub static MODULE: Module = Module {
     name: "nearest_target",
@@ -121,7 +122,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
             ts.0.push(n);
         }
         None => {
-            w.entity_mut(e).insert(NearestTargets(vec![n]));
+            w.entity_mut(e).insert(NearestTargets(Nth::one(n)));
         }
     }
 }

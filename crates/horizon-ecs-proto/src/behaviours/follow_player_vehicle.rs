@@ -6,6 +6,7 @@
 //! Écart: the `Mob` moves the creature twice in the tick of the goal (`move_relative` then `do_move`); here the push is added to the velocity and the
 //! move is the frame's one.
 use super::*;
+use crate::small::Nth;
 use crate::vehicle::Vehicles;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -39,7 +40,7 @@ pub struct Escort {
 }
 /// The instances of the creature (a boat's, a nautilus's), by rank in the selector.
 #[derive(Component, Clone, Debug)]
-pub struct Escorts(pub Vec<Escort>);
+pub struct Escorts(pub Nth<Escort, 2>);
 /// The goal of this rank runs.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -51,7 +52,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     match w.get_mut::<Escorts>(e) {
         Some(mut v) => v.0.push(s),
         None => {
-            w.entity_mut(e).insert(Escorts(vec![s]));
+            w.entity_mut(e).insert(Escorts(Nth::one(s)));
         }
     }
 }
@@ -67,7 +68,7 @@ fn escort_events(ev: Res<Events>, idx: Res<Index>, vehicles: Option<Res<Vehicles
             let c = (v.bounds.min_position(), v.bounds.max_position());
             idx.for_radius((c.0.x + c.1.x) / 2.0, (c.0.z + c.1.z) / 2.0, 9.0, |o| {
                 if let Ok(es) = q.get(o) {
-                    for s in &es.0 {
+                    for s in es.0.iter() {
                         if s.p.nautilus == v.nautilus {
                             reqs.0.push(Req::Start(o, s.slot));
                         }

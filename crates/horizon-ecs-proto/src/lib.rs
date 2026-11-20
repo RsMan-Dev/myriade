@@ -42,6 +42,7 @@ pub mod projectile;
 pub mod raids;
 pub mod rules;
 pub mod size;
+pub mod small;
 pub mod spawn_reference;
 pub mod spawning;
 pub mod spots;

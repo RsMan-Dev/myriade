@@ -43,6 +43,7 @@ mod lot4_vs_mob;
 mod mount_vs_mob;
 mod no_species_names;
 mod no_tick_all;
+mod inline_bounds;
 mod occupancy_contract;
 mod orb_vs_original;
 mod parallel_equals_sequential;
