@@ -35,15 +35,48 @@ impl Params {
     pub const DEFAULT: Self = Self { duration: 32, speed_penalty: 0.25, effect_ticks: 3600, heal: 4.0 };
 }
 
-pub static MODULE: Module = Module { name: "drink_potion", flags: 0, equip, can_use: never, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
+/// The drinker has a reason to roll (a target, a fire, a fluid, a wound): only these are visited by `tick`; the others sleep and
+/// draw nothing. Laid by the hooks of `Target`, `Burning` and `InFluid`, by a damage and at the first arming; taken off by the
+/// tick when no reason is left. (The `Mob` draws its four rolls every tick whatever the state: a roll whose condition is false
+/// has no effect, so only the order of the draws on the creature's own stream differs, not what a player can see.)
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Thirsty;
+/// `on_add` hook of the components that make a drinker thirsty.
+pub fn thirst_hook(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
+    if w.get::<Drinker>(e).is_some() && w.get::<Thirsty>(e).is_none() {
+        w.commands().entity(e).insert(Thirsty);
+    }
+}
+/// A reason to roll: the target (the swiftness), the fire, a fluid column (the water breathing), a wound.
+fn has_reason(w: &World, e: Entity) -> bool {
+    w.get::<targeting::Target>(e).is_some()
+        || w.get::<Burning>(e).is_some()
+        || w.get::<InFluid>(e).is_some()
+        || w.get::<SpeciesId>(e).zip(w.get::<Health>(e)).is_some_and(|(s, h)| h.0 < w.resource::<SpeciesTable>().0[s.0 as usize].max_health)
+}
+fn arm(w: &mut World, e: Entity, _: Inst) {
+    if has_reason(w, e) {
+        w.entity_mut(e).insert(Thirsty);
+    }
+}
+fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
+    w.entity_mut(e).insert(Thirsty);
+}
+
+pub static MODULE: Module = Module { name: "drink_potion", flags: 0, equip, arm, damaged, can_use: never, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Drinker(*params::<Params>(p)));
 }
+/// How many drinkers `tick` visited (the tests of the rest cost read it; before `Thirsty` every drinker was visited every tick).
+pub static VISITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn tick(w: &mut World) {
-    let es: Vec<(Entity, Params)> = w.query::<(Entity, &Drinker)>().iter(w).map(|(e, d)| (e, d.0)).collect();
+    let es: Vec<(Entity, Params)> = w.query_filtered::<(Entity, &Drinker), With<Thirsty>>().iter(w).map(|(e, d)| (e, d.0)).collect();
+    VISITS.fetch_add(es.len() as u64, std::sync::atomic::Ordering::Relaxed);
     for (e, p) in es {
         if w.get::<Health>(e).is_none_or(|h| h.0 <= 0.0) {
             continue;
@@ -58,6 +91,10 @@ fn tick(w: &mut World) {
                 }
             }
             None => {
+                if !has_reason(w, e) {
+                    w.entity_mut(e).remove::<Thirsty>();
+                    continue;
+                }
                 if let Some(potion) = choose(w, e) {
                     let Some(mut b) = w.get_mut::<Body>(e) else { continue };
                     let saved_speed = b.speed;

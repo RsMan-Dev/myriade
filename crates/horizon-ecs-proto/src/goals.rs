@@ -594,6 +594,7 @@ pub fn insert_resources(world: &mut World) {
     crate::trident::insert_resources(world);
     world.insert_resource(crate::block_events::BlockEvents::default());
     crate::poi::insert_resources(world);
+    crate::block_watch::insert_resources(world);
     crate::explosion::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());

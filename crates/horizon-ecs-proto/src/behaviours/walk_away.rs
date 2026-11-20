@@ -9,11 +9,13 @@ use horizon_core::geometry::Vec3;
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub speed: f64,
-    /// Blocks from the point the animal walks to.
+    /// The range of the pick (`SetWalkTargetAwayFrom`: `getPosAway(mob, 16, 7, pos)`, the jar's 16).
     pub distance: f64,
+    /// Starts only closer than this to the point (`SetWalkTargetAwayFrom.pos(.., 8, ..)`: `distanceToSqr(pos) >= 8^2` refuses).
+    pub within: f64,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, distance: 12.0 };
+    pub const DEFAULT: Self = Self { speed: 1.0, distance: 16.0, within: 8.0 };
 }
 /// The point to keep away from, and the time its memory expires (its ttl).
 #[derive(Component, Clone, Copy, Debug)]
@@ -43,9 +45,11 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Away(*params::<Params>(p)));
 }
-/// `canUse`: a remembered point that has not expired.
+/// `canUse`: a remembered point that has not expired, and closer than `within` (the animal that has walked clear stays).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Avoid>(e).is_some_and(|a| now_of(w, e) < a.until)
+    let (Some(a), Some(p), Some(away)) = (w.get::<Avoid>(e), w.get::<Pos>(e), w.get::<Away>(e)) else { return false };
+    let d2 = (p.0.x - a.at[0]).powi(2) + (p.0.y - a.at[1]).powi(2) + (p.0.z - a.at[2]).powi(2);
+    now_of(w, e) < a.until && d2 < away.0.within * away.0.within
 }
 /// The spot `distance` blocks away from the point (`land_random_pos_away`, five blocks down and seven up at most); none
 /// found: the goal ends at once.
@@ -53,17 +57,25 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Away>(e).unwrap().0;
     let a = w.get::<Avoid>(e).copied().unwrap();
     let from = Vec3::new(a.at[0], a.at[1], a.at[2]);
-    match goals::land_random_pos_away(w, e, from, p.distance, 7) {
+    // Ten tries, the first spot found is taken (`SetWalkTargetAwayFrom`: `for (i < 10) getPosAway(mob, 16, 7, pos)`).
+    let r = (0..10).find_map(|_| goals::land_random_pos_away(w, e, from, p.distance, 7));
+    match r {
         Some(at) => {
-            go_to_at(w, e, at, p.speed, 1);
+            go_to_at(w, e, at, p.speed, 0);
             w.entity_mut(e).insert(Walking);
         }
         None => w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot)),
     }
 }
+/// The walk ends: while the point is still remembered the goal is asked again at once (the Mob's `canUse` runs every tick, with
+/// the animal still within 8 blocks it leaves again on arrival), not at the next scan of the sensor. A goal that found no spot
+/// (never `Walking`) is not asked again: nothing wakes it but the next scan.
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).remove::<Walking>();
+    let walked = w.entity_mut(e).take::<Walking>().is_some();
     stop_nav(w, e);
+    if walked && w.get::<Avoid>(e).is_some_and(|a| now_of(w, e) < a.until) {
+        arm_module(w, e, &MODULE, 1);
+    }
 }
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a running goal has none.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {

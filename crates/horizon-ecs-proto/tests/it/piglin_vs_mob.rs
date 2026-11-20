@@ -59,33 +59,6 @@ fn a_piglin_admires_gold_for_as_long_as_a_mob_does() {
     assert!((m - 119).abs() <= 2, "the admiration lasts 119 ticks: {m}");
 }
 
-/// Piglins two blocks from a lit soul campfire walk away from it: their mean distance after 60 ticks matches the Mob's.
-#[test]
-fn piglins_flee_a_soul_campfire_as_a_mob_does() {
-    if skip() {
-        return;
-    }
-    let n = 20;
-    let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
-    r.set_block(0, 1, 0, "minecraft:soul_campfire");
-    h.set_block(0, 1, 0, "minecraft:soul_campfire");
-    let ids: Vec<(usize, Entity)> = (0..n)
-        .map(|k| {
-            let (x, z) = (-6.0 + 0.5 * (k % 5) as f64, 2.5 + 0.5 * (k / 5) as f64);
-            (mob_piglin(&mut r, x, z, k as u32 + 1), ecs_piglin(&mut h, x, z, k as u64 + 1))
-        })
-        .collect();
-    for _ in 0..60 {
-        r.step(None);
-        h.tick();
-    }
-    let mob_d = mean(&ids.iter().map(|&(i, _)| xz(r.mobs[i].position, Vec3::new(0.5, 1.0, 0.5))).collect::<Vec<_>>());
-    let ecs_d = mean(&ids.iter().map(|&(_, e)| xz(h.world.get::<Pos>(e).unwrap().0, Vec3::new(0.5, 1.0, 0.5))).collect::<Vec<_>>());
-    assert!(mob_d > 6.0 && ecs_d > 6.0, "both walk away: Mob {mob_d:.1}, ECS {ecs_d:.1}");
-    assert!((mob_d - ecs_d).abs() <= 3.0, "the mean distances match: Mob {mob_d:.1}, ECS {ecs_d:.1}");
-}
-
 /// A piglin with a crossbow and a player six blocks away shoots: the first arrow flies on the same tick window on both sides
 /// (the charge of 25 ticks, then the wait of the goal).
 #[test]
@@ -116,4 +89,90 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
     }
     let (m, c) = (mob_first.expect("the Mob shoots"), ecs_first.expect("the ECS shoots"));
     assert!((m - c).abs() <= 10, "the first arrow flies at about the same tick: Mob {m}, ECS {c}");
+}
+
+/// Piglins two blocks from a lit soul campfire walk away from it: over 20 seeds the ECS mean distance after 60 ticks lies within two
+/// standard deviations of the Mob's (a single seed compares two noisy draws, the ECS one is 0.9 wide, the Mob's 0.5).
+#[test]
+fn piglins_flee_a_soul_campfire_as_a_mob_does() {
+    if skip() {
+        return;
+    }
+    let (mut md, mut ed) = (Vec::new(), Vec::new());
+    for s in 0..20u32 {
+        let n = 20;
+        let mut r = MobRef::new(60, false);
+        let mut h = Herd::with_slab(60, true, false);
+        r.set_block(0, 1, 0, "minecraft:soul_campfire");
+        h.set_block(0, 1, 0, "minecraft:soul_campfire");
+        let ids: Vec<(usize, Entity)> = (0..n)
+            .map(|k| {
+                let (x, z) = (-6.0 + 0.5 * (k % 5) as f64, 2.5 + 0.5 * (k / 5) as f64);
+                let id = s * 1000 + k as u32 + 1;
+                (mob_piglin(&mut r, x, z, id), ecs_piglin(&mut h, x, z, u64::from(id)))
+            })
+            .collect();
+        for _ in 0..60 {
+            r.step(None);
+            h.tick();
+        }
+        let c = Vec3::new(0.5, 1.0, 0.5);
+        md.push(mean(&ids.iter().map(|&(i, _)| xz(r.mobs[i].position, c)).collect::<Vec<_>>()));
+        ed.push(mean(&ids.iter().map(|&(_, e)| xz(h.world.get::<Pos>(e).unwrap().0, c)).collect::<Vec<_>>()));
+    }
+    let (m, e) = (mean(&md), mean(&ed));
+    let sd = (md.iter().map(|x| (x - m).powi(2)).sum::<f64>() / md.len() as f64).sqrt();
+    println!("FLEE Mob {m:.2} (sd {sd:.2}), ECS {e:.2}");
+    assert!(m > 6.0 && e > 6.0, "both walk away: Mob {m:.2}, ECS {e:.2}");
+    assert!((m - e).abs() <= 2.0 * sd, "the means match within 2 sd of the Mob: Mob {m:.2} (sd {sd:.2}), ECS {e:.2}");
+}
+
+/// `SetWalkTargetAwayFrom` tries ten spots and takes the first found: a piglin two blocks from a soul campfire leaves it on
+/// every seed (one try gave up on 5 seeds of 39). The ECS alone, 60 seeds, one piglin each.
+#[test]
+fn walk_away_takes_the_first_spot_of_ten_tries() {
+    if skip() {
+        return;
+    }
+    let c = Vec3::new(0.5, 1.0, 0.5);
+    let stayed: Vec<u32> = (0..60u32)
+        .filter(|&s| {
+            let mut h = Herd::with_slab(60, true, false);
+            h.set_block(0, 1, 0, "minecraft:soul_campfire");
+            let e = ecs_piglin(&mut h, -1.5, 0.5, u64::from(s * 1001 + 1));
+            for _ in 0..120 {
+                h.tick();
+            }
+            xz(h.world.get::<Pos>(e).unwrap().0, c) < 8.0
+        })
+        .collect();
+    assert!(stayed.is_empty(), "every piglin walks clear of the campfire; stayed within 8 blocks: seeds {stayed:?}");
+}
+
+/// The start condition of `SetWalkTargetAwayFrom.pos(.., 8, ..)`: a piglin whose sensor sees the campfire (box of 8 by 4) but
+/// stands 10.6 blocks from it (a corner of the box) does not flee, in the Mob or in the ECS.
+#[test]
+fn walk_away_starts_only_within_eight_blocks_of_the_point() {
+    if skip() {
+        return;
+    }
+    let c = Vec3::new(0.5, 1.0, 0.5);
+    let (mut md, mut ed) = (Vec::new(), Vec::new());
+    for s in 0..20u32 {
+        let mut r = MobRef::new(60, false);
+        let mut h = Herd::with_slab(60, true, false);
+        r.set_block(0, 1, 0, "minecraft:soul_campfire");
+        h.set_block(0, 1, 0, "minecraft:soul_campfire");
+        let id = s * 1001 + 1;
+        let i = mob_piglin(&mut r, 7.5, 7.5, id);
+        let e = ecs_piglin(&mut h, 7.5, 7.5, u64::from(id));
+        for _ in 0..100 {
+            r.step(None);
+            h.tick();
+        }
+        md.push(xz(r.mobs[i].position, c) - 9.9);
+        ed.push(xz(h.world.get::<Pos>(e).unwrap().0, c) - 9.9);
+    }
+    // A flight would take it 8 blocks further out; a stroll wanders a few.
+    assert!(mean(&md) < 4.0 && mean(&ed) < 4.0, "neither flees: Mob {:.2}, ECS {:.2} blocks further out", mean(&md), mean(&ed));
 }

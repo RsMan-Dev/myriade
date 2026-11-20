@@ -88,6 +88,7 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
+    tick: Some(tick),
     requires: &[Cap::Targets],
     ..Module::DEFAULT
 };
@@ -147,9 +148,59 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         edit(w, e, inst, |n| n.parked = true);
         return;
     }
+    // A player goal with no player in reach has nothing to find: it sleeps until a player comes within reach (`PlayerWatch`, `tick`).
+    // (The `Mob` draws its wait and asks anyway; the ask fails with no player in reach, so only the draws of the stream differ.)
+    if n.p.players && !player_in_reach(w, e, &n) {
+        edit(w, e, inst, |n| n.parked = true);
+        return;
+    }
     let wait = with_rng(w, e, |r| 2 * geometric(r, reduced(n.p.interval)));
     crate::goals::arm(w, e, inst.slot, wait);
     edit(w, e, inst, |n| n.armed = true);
+}
+/// The reach of a player goal: the follow range scaled, as `can_use` reads it.
+fn reach_of(w: &World, e: Entity, n: &Nearest) -> f64 {
+    n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale)
+}
+/// Some player is within reach (the watch is laid or widened to cover it, so that one coming in wakes the goal).
+fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
+    let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return true };
+    let range = reach_of(w, e, n);
+    // The watch sees 64 blocks at most: a longer reach is polled.
+    if range + 1.0 > 64.0 {
+        return true;
+    }
+    let mut any = false;
+    w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
+        any |= (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= range * range;
+    });
+    if any {
+        return true;
+    }
+    let radius = (range + 1.0) as f32;
+    match w.get_mut::<PlayerWatch>(e) {
+        Some(mut pw) => pw.radius = pw.radius.max(radius),
+        None => {
+            w.entity_mut(e).insert(PlayerWatch::new(radius));
+        }
+    }
+    false
+}
+/// A player came within the watch of an animal whose player goal sleeps: the goal is armed again.
+fn tick(w: &mut World) {
+    if w.resource::<Events>().player_entered.is_empty() {
+        return;
+    }
+    let es: Vec<Entity> = w.resource::<Events>().player_entered.iter().map(|(e, _)| e).collect();
+    for e in es {
+        let Some(ts) = w.get::<NearestTargets>(e) else { continue };
+        let hits: Vec<u8> = ts.0.iter().enumerate().filter(|(_, n)| n.parked && n.p.players).map(|(i, _)| i as u8).collect();
+        for nth in hits {
+            let inst = Inst { slot: w.get::<NearestTargets>(e).unwrap().0[nth as usize].slot, nth };
+            edit(w, e, inst, |n| n.parked = false);
+            arm(w, e, inst);
+        }
+    }
 }
 /// A creature of species `sp` was born where none lived: the instances parked for it are armed again.
 pub fn unpark(w: &mut World, sp: u8) {
@@ -189,7 +240,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
-    let range = n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale);
+    let range = reach_of(w, e, &n);
     let mw = w.resource::<Level>().mw.0;
     let from = Vec3::new(pos.x, pos.y + eye, pos.z);
     let owner = w.get::<crate::tame::Owner>(e).and_then(|o| o.0);

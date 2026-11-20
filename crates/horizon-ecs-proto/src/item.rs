@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 /// A stack on the ground.
 #[derive(Component, Clone)]
-#[component(on_remove = leave_index)]
+#[component(on_add = item_added, on_remove = leave_index)]
 pub struct Item {
     pub stack: ItemStack,
     /// `Entity.tickCount = now - born`.
@@ -35,6 +35,10 @@ pub struct Item {
     check: u32,
     /// `ItemEntity.id`, the order the stacks joined (a merge visits them in it).
     pub id: u32,
+}
+/// A stack joined the ground: the searches that slept for lack of any item draw again (`fox_search_for_items`).
+fn item_added(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    world.commands().queue(crate::behaviours::fox_search_for_items::wake_parked);
 }
 /// The size of the box of an item (`EntityType.ITEM`).
 pub const SIZE: f64 = 0.25;
