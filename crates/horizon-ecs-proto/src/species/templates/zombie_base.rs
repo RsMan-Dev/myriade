@@ -17,6 +17,7 @@ pub static DEF: Def = Def {
         Entry::new(&spear_use::MODULE, 2, &spear_use::Params::DEFAULT),
         Entry::new(&melee::MODULE, 3, &melee::Params::DEFAULT),
         Entry::new(&attack_turtle_egg::MODULE, 4, &attack_turtle_egg::Params::DEFAULT),
+        Entry::new(&crate::behaviours::move_through_village::MODULE, 6, &crate::behaviours::move_through_village::Params::ZOMBIE),
         Entry::new(&stroll::MODULE, 7, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),

@@ -9,7 +9,7 @@ use horizon_ecs_proto::{behaviours::{restrict_sun, Entry}, cow::*, goals::*};
 
 const ROOF: i32 = 6;
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:skeleton")
+    !have_data() || wrong_species(&["minecraft:skeleton"])
 }
 fn roof_cells() -> impl Iterator<Item = (i32, i32)> {
     (-6..=6).flat_map(|x| (-3..=3).map(move |z| (x, z)))

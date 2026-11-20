@@ -11,7 +11,7 @@ use horizon_ecs_proto::{
 };
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:villager")
+    !have_data() || wrong_species(&["minecraft:villager"])
 }
 fn villager_at(h: &mut Herd, at: (f64, f64), seed: u64) -> Entity {
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == species().name).unwrap();

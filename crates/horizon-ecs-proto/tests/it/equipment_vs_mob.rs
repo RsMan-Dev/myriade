@@ -13,7 +13,7 @@ use horizon_ecs_proto::items::{self, ItemSet};
 use horizon_ecs_proto::mount::Mount;
 
 fn skip(name: &str) -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok(name)
+    !have_data() || wrong_species(&[name])
 }
 #[allow(dead_code)]
 const SETS: &[(&str, &[(Slot, &str)])] = &[

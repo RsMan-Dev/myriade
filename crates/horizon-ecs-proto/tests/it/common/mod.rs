@@ -173,7 +173,19 @@ pub fn tempt_item() -> (u32, &'static str) {
 pub fn have_data() -> bool {
     // The tests inject their own configuration of the modules: every module is inscribed (the frame inscribes carried ones only).
     horizon_ecs_proto::species::inscribe_every_module();
-    std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
+    // A test without its data must fail, never pass empty.
+    assert!(std::env::var_os("HORIZON_TEST_RESOURCES").is_some(), "données de test absentes : exporte HORIZON_TEST_RESOURCES");
+    true
+}
+/// Whether the run's species (`HORIZON_SPECIES`, required) is none of `names`: the test is then skipped, and the skip is noted (printed and logged), never silent.
+pub fn wrong_species(names: &[&str]) -> bool {
+    let sp = std::env::var("HORIZON_SPECIES").expect("HORIZON_SPECIES absent : une espèce par passe, ex. HORIZON_SPECIES=minecraft:cow");
+    let wrong = !names.contains(&sp.as_str());
+    if wrong {
+        let t = std::thread::current();
+        horizon_ecs_proto::cow::skip_note(t.name().unwrap_or("?"), &format!("written for {names:?}, run is {sp}"));
+    }
+    wrong
 }
 pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();

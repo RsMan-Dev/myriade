@@ -15,7 +15,7 @@ pub struct Params {
     pub leader_speed: f64,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 0.7, leader_speed: 0.8 };
+    pub const DEFAULT: Self = Self { speed: 0.7, leader_speed: 0.595 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Walker {

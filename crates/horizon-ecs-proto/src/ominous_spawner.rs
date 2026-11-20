@@ -29,6 +29,7 @@ pub struct OminousSpawner {
 
 /// `OminousItemSpawner.create` at `at`, dropping `item` after `after_ticks` (the trial draws 60 to 120).
 pub fn spawn(w: &mut World, item: ItemStack, at: Vec3, after_ticks: u32) -> Entity {
+    crate::spawn_spawner::ensure(w, 0);
     let e = w.spawn((Pos(at), OwnTime, Uid(next_uid()), OminousSpawner { item, after: after_ticks })).id();
     if after_ticks > ABOUT_TO_SPAWN {
         after(w, e, (after_ticks - ABOUT_TO_SPAWN) as i32, about_to_spawn);
@@ -65,7 +66,7 @@ fn drop_now(w: &mut World, e: Entity) {
         return;
     }
     let at = block(p);
-    match shot(&item.item) {
+    match crate::species::lists::shot(&item.item) {
         Some((flight, power, uncertainty, event)) => {
             if let Some(event) = event {
                 w.resource_mut::<Events>().host.level_event(event, at, 0);
@@ -87,19 +88,6 @@ fn drop_now(w: &mut World, e: Entity) {
 /// The projectile items of vanilla (`ProjectileItem` implementers): flight, power, uncertainty and the dispense event they set.
 /// Eggs and the trident take the default (power 1.1, uncertainty 6.0); the bottles and the potions take the default with
 /// power x1.25 and uncertainty x0.5. Any other item falls as an item.
-fn shot(item: &str) -> Option<(Flight, f32, f32, Option<i32>)> {
-    Some(match item {
-        "minecraft:fire_charge" => (Flight::SMALL_FIREBALL, 1.0, 6.666_666_5, Some(1018)),
-        "minecraft:wind_charge" => (projectile_more::WIND_CHARGE, 1.0, 6.666_666_5, Some(1051)),
-        "minecraft:experience_bottle" => (projectile_more::EXPERIENCE_BOTTLE, 1.375, 3.0, None),
-        "minecraft:splash_potion" | "minecraft:lingering_potion" => (Flight::POTION, 1.375, 3.0, None),
-        "minecraft:arrow" => (Flight::ARROW, 1.1, 6.0, None),
-        "minecraft:snowball" => (Flight::SNOWBALL, 1.1, 6.0, None),
-        "minecraft:egg" => (projectile_more::EGG, 1.1, 6.0, None),
-        "minecraft:trident" => (Flight::TRIDENT, 1.1, 6.0, None),
-        _ => return None,
-    })
-}
 
 /// `Projectile.shoot` towards `Direction.DOWN`: the unit vector, plus a triangle spread per axis (`0.0172275 * uncertainty`), all
 /// times the power. Draws in the order x, y, z, two per axis, each triangle being the difference of two draws.

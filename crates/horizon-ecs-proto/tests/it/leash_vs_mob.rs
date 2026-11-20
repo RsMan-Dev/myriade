@@ -14,7 +14,7 @@ use horizon_ecs_proto::leash::{self, Holder, Leash};
 use horizon_ecs_proto::targeting::{Target, Who};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:llama") || std::env::var_os("REGISTER_ALL").is_none()
+    !have_data() || wrong_species(&["minecraft:llama"]) || std::env::var_os("REGISTER_ALL").is_none()
 }
 fn species_named(name: &str) -> Species {
     *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))

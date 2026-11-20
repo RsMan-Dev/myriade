@@ -84,7 +84,7 @@ pub fn roll_table(world: &mut World, table: &str, seed: i64) -> Vec<ItemStack> {
         return Vec::new();
     }
     // No entity rolls this table: a placeholder type that is no species.
-    let params = EntityLootParams { this: LootEntity::new("minecraft:marker"), damage: None, player: None, luck: 0.0 };
+    let params = EntityLootParams { this: LootEntity::new(crate::species::lists::MARKER), damage: None, player: None, luck: 0.0 };
     let stacks = world.resource_scope(|_, t: Mut<LootTables>| t.0.roll_entity(table, &mut LegacyRandom::new(seed), &params));
     stacks.into_iter().filter(|s| !s.is_empty()).map(|s| ItemStack::from_loot(&s)).collect()
 }

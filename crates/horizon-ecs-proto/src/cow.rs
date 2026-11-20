@@ -1249,7 +1249,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
         // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
-        let kind = Arc::new(types.types.get(name).unwrap_or(&types.types["minecraft:cow"]).clone());
+        let kind = Arc::new(types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
         table.push(Species {
             id: i as u8,
@@ -1303,7 +1303,11 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
 /// The prepared vanilla types of the process, for the species the tests compare with a `Mob`.
 static TYPES: std::sync::OnceLock<&'static horizon_client_lib::mobs::MobTypes> = std::sync::OnceLock::new();
 pub fn mob_kind(name: &str) -> Arc<horizon_client_lib::mobs::MobType> {
-    Arc::new(TYPES.get().expect("a level was built").types[name].clone())
+    Arc::new(TYPES.get().expect("a level was built").types.get(name).unwrap_or_else(|| panic!("no MobType {name}")).clone())
+}
+/// Whether the species is a monster (`MobType.category`); an entity that is not a `Mob` has no type and is not one.
+pub fn is_monster(name: &str) -> bool {
+    TYPES.get().expect("a level was built").types.get(name).is_some_and(|k| k.category == "monster")
 }
 /// Every species of the process (see `build_level`).
 static TABLE: std::sync::OnceLock<Vec<Species>> = std::sync::OnceLock::new();
@@ -1658,6 +1662,12 @@ pub fn schedule() -> Schedule {
     crate::item::register(&mut s);
     crate::orb::register(&mut s);
     crate::hanging::register(&mut s);
+    crate::species::cushion::register(&mut s);
+    crate::species::leash_knot::register(&mut s);
+    crate::firework::register(&mut s);
+    crate::trident::register(&mut s);
+    crate::falling_block::register(&mut s);
+    crate::eye::register(&mut s);
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
@@ -2510,10 +2520,11 @@ pub(crate) fn travel(
         }
         // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).
         if p.0.y < void_y {
+            let object = b.object;
             par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| {
-                    // An experience orb is not alive: it is discarded (`Entity.checkBelowWorld`), a creature is hurt.
-                    if w.get::<crate::orb::Orb>(e).is_some() {
+                    // An object (orb, item, tnt) is not alive: `Entity.onBelowWorld` discards it; a creature is hurt.
+                    if object {
                         w.despawn(e);
                     } else {
                         w.resource_mut::<DamageQueue>().add(e, 4.0, Cause::OutOfWorld);

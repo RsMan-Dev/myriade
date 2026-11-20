@@ -10,7 +10,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::stare_freeze, cow::*, goals::*, hostile::PlayerState};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:creaking")
+    !have_data() || wrong_species(&["minecraft:creaking"])
 }
 const N: usize = 8;
 fn far_id(j: usize) -> u32 {

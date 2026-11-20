@@ -18,6 +18,10 @@ pub static DEF: Def = Def {
     name: "minecraft:evoker",
     targets: TARGETS,
     goals: &[
+        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
+        Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
+        Entry::new(&crate::behaviours::celebration::MODULE, 5, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&spell_casting::MODULE, 1, &()),
         Entry::new(&avoid_entity::MODULE, 2, &avoid_entity::Params { what: avoid_entity::Avoid::Player, max_dist: 8.0, walk: 0.6, sprint: 1.0, ..avoid_entity::Params::DEFAULT }),

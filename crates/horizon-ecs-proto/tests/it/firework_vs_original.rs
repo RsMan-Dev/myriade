@@ -56,7 +56,6 @@ fn creature_at(h: &mut Herd, feet: Vec3) -> Entity {
             Cell(u32::MAX),
             Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
             FluidState::default(),
-            Moving,
             Health(6.0),
         ))
         .id();
@@ -103,14 +102,18 @@ fn the_blast_hurts_a_creature_as_the_jar_s_does() {
     }
     let boom = probe.pos;
     let (_r, mut h) = flat_pair();
-    let feet = Vec3::new(boom.x + 2.5, boom.y, boom.z);
-    let c = creature_at(&mut h, feet);
     launch(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
-    for _ in 0..life + 2 {
+    for _ in 0..life {
         h.tick();
     }
-    let hits = &h.world.resource::<DamageQueue>().0;
+    // The creature is set at the last moment (one that waits for the flight falls out of reach), 2.5 blocks from the blast; the rocket
+    // goes off in the tick `life + 1` and the queued blow is applied by the next.
+    let c = creature_at(&mut h, Vec3::new(boom.x + 2.5, boom.y, boom.z));
+    let mut got = None;
+    for _ in 0..3 {
+        h.tick();
+        got = got.or(h.world.resource::<DamageQueue>().0.iter().find(|x| x.target == c).map(|x| x.amount));
+    }
     let want = (5.0 + 2.0 * f32::from(EXPLOSIONS)) * ((5.0 - 2.5_f32) / 5.0).sqrt();
-    let got = hits.iter().find(|x| x.target == c).map(|x| x.amount);
     assert!(got.is_some_and(|a| (a - want).abs() < 1e-3), "creature hit {got:?}, jar {want}");
 }

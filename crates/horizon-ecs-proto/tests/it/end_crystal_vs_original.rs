@@ -4,6 +4,7 @@
 //! it goes back to air. `HORIZON_TEST_RESOURCES` set.
 use crate::common;
 use common::*;
+use horizon_ecs_proto::cow::Herd;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::blocks::world_of;
 use horizon_ecs_proto::end_crystal::{block_changed, hurt, spawn, Blow, CrystalEvents, EndFire, Shielded};

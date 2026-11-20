@@ -15,6 +15,10 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 4, &nearest_target::Params { players: false, types: &["minecraft:iron_golem"], must_see: true, ..nearest_target::Params::DEFAULT }),
     ],
     goals: &[
+        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
+        Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
+        Entry::new(&crate::behaviours::celebration::MODULE, 5, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&hunt_speed::MODULE, 0, &hunt_speed::Params::DEFAULT),
         Entry::new(&strike_pause::MODULE, 0, &strike_pause::Params::DEFAULT),

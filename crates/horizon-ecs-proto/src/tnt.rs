@@ -3,7 +3,7 @@
 //! the ground it has no `Moving`. At its deadline it is removed and explodes with its power from 0.0625 of its height.
 //! Not ported: the fluid push and the fall in water, the soul sand's slowdown, the owner's credit, `tnt_explodes`, the portal's flag.
 use crate::cow::*;
-use crate::explosion::explode;
+use crate::explosion::explode_tnt;
 use crate::projectile::Blast;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -24,7 +24,7 @@ pub struct Primed {
 pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -> Entity {
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
     let e = w
-        .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, Moving))
+        .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), Moving))
         .id();
     let fuse_at = now_of(w, e) + fuse.max(0) as u64;
     w.entity_mut(e).insert(Primed { fuse_at, power });
@@ -38,7 +38,7 @@ fn primed_due(w: &mut World, e: Entity) {
     let blast = Blast { at: Vec3::new(at.x, at.y + f64::from(SIZE) * 0.0625, at.z), radius: p.power, fire: false, owner: None, source: Some(e) };
     w.entity_mut(e).despawn();
     w.resource_mut::<crate::goals::Events>().exploded.push(blast);
-    explode(w, blast);
+    explode_tnt(w, blast);
 }
 
 /// The motion of a primed TNT (`travel_one` for `Body.tnt`): the gravity, the move, then the drag and the ground's friction. True when it

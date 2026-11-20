@@ -3,8 +3,8 @@
 //! mobs it made are kept as a list of its own (vanilla's `currentMobs`), dropped when they leave its 47-block reach or die (`forget`).
 //! The players come from `Online`; the reach box and the sight line are written here (`visual_hit` walks the cells of the segment,
 //! `Env.solid` says which block stops it). The detection runs at the ticks where `(pack(pos) + time) % 20 == 0`, so the spawner
-//! wakes at those ticks and at the instants its state changes. Called every tick by the caller (`run_wakes`), which also drops the
-//! ominous items when their delay ends.
+//! wakes at those ticks and at the instants its state changes. Called every tick by the caller (`run_wakes`).
+//! The ominous items are `ominous_spawner` entities.
 use crate::cow::{species_table, Body, Clock, Pos};
 use crate::despawn;
 use crate::goals::{Events, Online};
@@ -152,13 +152,12 @@ impl Trial {
     }
 }
 
-/// The trial spawners of the world, their wake-ups, the mobs' owners and the ominous items on their way down.
+/// The trial spawners of the world, their wake-ups, the mobs' owners.
 #[derive(Resource, Default)]
 pub struct Trials {
     at: HashMap<Block3, Trial>,
     wakes: BTreeMap<u64, Vec<Block3>>,
     owner: HashMap<Entity, Block3>,
-    drops: BTreeMap<u64, Vec<(ItemStack, Vec3)>>,
 }
 
 /// What a test or a tool reads of one spawner.
@@ -208,11 +207,6 @@ pub fn info(w: &World, pos: Block3) -> Option<Info> {
     })
 }
 
-/// The ominous items on their way down (not yet dropped).
-pub fn pending_drops(w: &World) -> usize {
-    w.get_resource::<Trials>().map_or(0, |s| s.drops.values().map(Vec::len).sum())
-}
-
 /// The death of a mob the spawner made: it leaves the spawner's list at this event, not at its next wake-up.
 pub fn forget(w: &mut World, e: Entity) {
     let Some(mut s) = w.get_resource_mut::<Trials>() else { return };
@@ -223,11 +217,10 @@ pub fn forget(w: &mut World, e: Entity) {
     }
 }
 
-/// Runs, at this tick, the ominous items whose delay ended and the wake-ups due. Each spawner is taken out of the schedule while
+/// Runs, at this tick, the wake-ups due. Each spawner is taken out of the schedule while
 /// it runs. Called every tick.
 pub fn run_wakes(w: &mut World, env: &Env) {
     let now = w.resource::<Clock>().0;
-    drop_due(w, now);
     let ready: Vec<Block3> = {
         let mut s = w.resource_mut::<Trials>();
         let later = s.wakes.split_off(&(now + 1));
@@ -250,22 +243,6 @@ pub fn run_wakes(w: &mut World, env: &Env) {
         }
         s.at.insert(pos, t);
     }
-}
-
-fn drop_due(w: &mut World, now: u64) {
-    let due: Vec<(ItemStack, Vec3)> = {
-        let mut s = w.resource_mut::<Trials>();
-        let later = s.drops.split_off(&(now + 1));
-        std::mem::replace(&mut s.drops, later).into_values().flatten().collect()
-    };
-    if due.is_empty() {
-        return;
-    }
-    w.resource_scope(|w, mut rng: Mut<SpawnerRng>| {
-        for (stack, at) in due {
-            spawn_at_location(w, stack, at, &mut rng.0);
-        }
-    });
 }
 
 fn reschedule(s: &mut Trials, pos: Block3, due: Option<u64>) {
@@ -448,7 +425,7 @@ fn spawn_ominous_item(w: &mut World, env: &Env, pos: Block3, now: u64, rng: &mut
     let Some(at) = item_spawner_position(w, env, pos, t, rng) else { return };
     let delay = rng.next_int_between_inclusive(60, 120).unwrap_or(60) as u64;
     let pitch = (rng.next_float() - rng.next_float()) * 0.2 + 1.0;
-    w.resource_mut::<Trials>().drops.entry(now + delay).or_default().push((item, Vec3::new(at[0], at[1], at[2])));
+    crate::ominous_spawner::spawn(w, item, Vec3::new(at[0], at[1], at[2]), delay as u32);
     w.resource_mut::<Events>().host.sound("block.trial_spawner.spawn_item_begin", at.map(f64::floor), 1.0, pitch);
     t.cooldown_ends = now + ITEM_GAP;
 }

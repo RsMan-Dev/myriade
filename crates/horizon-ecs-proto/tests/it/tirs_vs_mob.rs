@@ -10,7 +10,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::*, cow::*, goals::*, hostile::PlayerState, projectile::*, targeting::*};
 
 fn is(name: &str) -> bool {
-    have_data() && std::env::var("HORIZON_SPECIES").as_deref() == Ok(name)
+    have_data() && !wrong_species(&[name])
 }
 struct Scene {
     r: MobRef,
@@ -93,7 +93,7 @@ impl Scene {
         let ps = self.h.world.resource::<PlayerState>();
         t.ecs_dmg = ps.hits[self.hits_seen..].iter().filter(|h| (h.amount - self.magic).abs() < 1e-3).map(|h| h.amount).sum();
         self.hits_seen = ps.hits.len();
-        let mut f = self.h.world.query::<(Entity, &spell_use::Fang)>();
+        let mut f = self.h.world.query::<(Entity, &horizon_ecs_proto::fangs::Fang)>();
         let nf: Vec<Entity> = f.iter(&self.h.world).map(|x| x.0).filter(|e| !self.seen.contains(e)).collect();
         self.seen.extend(nf.iter().copied());
         t.ecs_fangs = nf.len() as u32;

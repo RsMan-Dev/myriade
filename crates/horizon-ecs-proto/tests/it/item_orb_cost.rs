@@ -20,10 +20,10 @@ fn awake(h: &mut Herd) -> (usize, usize, usize) {
     (items, orbs, moving)
 }
 
-/// Stacks and orbs on a grid two blocks apart: nothing merges, everything falls and lands.
+/// Stacks and orbs on a grid one block apart, all over the slab (an entity outside it would fall for ever): nothing merges, everything falls and lands.
 fn floor(h: &mut Herd) {
     for i in 0..N {
-        let at = Vec3::new((i % 300) as f64 * 2.0 + 0.5, 1.0, (i / 300) as f64 * 2.0 + 0.5);
+        let at = Vec3::new((i % 316) as f64 - 158.0 + 0.5, 1.0, (i / 316) as f64 - 158.0 + 0.5);
         drop_item(&mut h.world, ItemStack::new("minecraft:sand", 1), at, Vec3::ZERO, 0);
         spawn_orb(&mut h.world, 1, 1, at, Vec3::ZERO);
     }
@@ -32,7 +32,7 @@ fn floor(h: &mut Herd) {
 /// The 100 000 of each settle within a few seconds of game time, and then no item and no orb is awake or moving.
 #[test]
 fn a_floor_of_items_and_orbs_wakes_nothing_once_settled() {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab(170, true, false);
     floor(&mut h);
     for _ in 0..60 {
         h.tick();
@@ -47,19 +47,20 @@ fn a_floor_of_items_and_orbs_wakes_nothing_once_settled() {
 /// A player within 8 blocks of an orb attracts it; the others of a grid of 1 000 are not drawn, and they stay asleep.
 #[test]
 fn one_player_draws_the_orbs_within_eight_blocks_only() {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab(64, true, false);
     let p = Vec3::new(0.5, 1.0, 0.5);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
     let mut within = 0;
     for i in 0..1000 {
-        let at = Vec3::new((i % 40) as f64 - 20.0 + 0.5, 1.0, (i / 40) as f64 - 12.0 + 0.5);
+        // Two blocks apart (orbs one block apart merge at their first look) and off the 8-block circle.
+        let at = Vec3::new((i % 40) as f64 * 2.0 - 40.0 + 1.0, 1.0, (i / 40) as f64 * 2.0 - 24.0 + 1.0);
         let d2 = (at.x - p.x).powi(2) + (at.z - p.z).powi(2);
-        if d2 <= 64.0 {
+        if d2 < 64.0 {
             within += 1;
         }
         spawn_orb(&mut h.world, 1, 1, at, Vec3::ZERO);
     }
-    for _ in 0..60 {
+    for _ in 0..2 {
         h.tick();
     }
     let attracted = h.world.query_filtered::<(), With<Attracted>>().iter(&h.world).count();

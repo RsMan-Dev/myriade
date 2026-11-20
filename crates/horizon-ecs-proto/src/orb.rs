@@ -367,7 +367,8 @@ fn orb_moved(world: &mut World, mut cached: Local<Option<QueryState<(Entity, &Or
         if !pending && world.get::<Orb>(e).is_some() {
             arm_check(world, e);
         }
-        if !moving && world.get::<Orb>(e).is_some() {
+        // A drawn orb stays awake: its pull is applied each tick, even when it is too weak to move it (the edge of the 8 blocks).
+        if !moving && world.get::<Orb>(e).is_some() && world.get::<Attracted>(e).is_none() {
             world.entity_mut(e).remove::<OrbAwake>();
         }
     }

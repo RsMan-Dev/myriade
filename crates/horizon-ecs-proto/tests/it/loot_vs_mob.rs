@@ -25,7 +25,7 @@ fn sorted(mut v: Vec<(String, i32)>) -> Vec<(String, i32)> {
 /// The cow killed with a table seed drops what the `Mob` drops with the same seed: the same items, the same counts, on fire (cooked) or not.
 #[test]
 fn a_killed_cow_leaves_the_loot_of_the_original_with_the_same_seed() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:cow") {
+    if !have_data() || wrong_species(&["minecraft:cow"]) {
         return;
     }
     let data = loot();

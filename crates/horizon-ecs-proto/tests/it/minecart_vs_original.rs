@@ -184,6 +184,6 @@ fn container_signal_and_hopper_box() {
 
 #[test]
 fn seven_genres_each_with_its_kind() {
-    assert_eq!(GENRES.len(), 7);
-    assert_eq!(GENRES[4].1, Kind::Tnt);
+    assert_eq!(horizon_ecs_proto::species::minecart::GENRES.len(), 7);
+    assert_eq!(horizon_ecs_proto::species::minecart::GENRES[4].1, Kind::Tnt);
 }

@@ -160,7 +160,7 @@ pub fn wake_raiders(w: &mut World, id: i32) {
     let mut q = w.query::<(Entity, &Raider)>();
     let ids: Vec<Entity> = q.iter(w).filter(|(_, r)| r.raid == Some(id)).map(|(e, _)| e).collect();
     for e in ids {
-        for m in [&b::pathfind_to_raid::MODULE, &b::raider_open_door::MODULE, &b::break_door::MODULE] {
+        for m in [&b::pathfind_to_raid::MODULE, &b::raider_open_door::MODULE, &b::break_door::MODULE, &b::celebration::MODULE, &b::obtain_banner::MODULE, &b::raid_move_through_village::MODULE] {
             if let Some(slot) = crate::goals::slot_of(w, e, m) {
                 w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
             }

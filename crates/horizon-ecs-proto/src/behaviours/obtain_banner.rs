@@ -1,6 +1,6 @@
 //! `Raider.ObtainRaidLeaderBannerGoal`: in an active raid that is not over, a raider that can lead (the species says it) and whose wave has no
 //! living leader walks to the ominous banner lying within reach (an item entity of the banner, 16 blocks horizontally and 8 vertically) at 1.15 and picks
-//! it up on arrival (`item::pick_up`).  Move flag. Asked each 40 ticks while its raid runs (armed at the wave's spawn, `raids::spawn_wave`) and when the raid changes phase. Not done: the 600-tick memory of a banner with no path to it, the banner put on the head (`wear_banner`), the leader of the wave is not set again.
+//! it up on arrival (`item::pick_up`).  Move flag. Woken by the event of a dropped item near it (`Events.item_dropped`) and when the raid changes phase: no poll. Not done: the 600-tick memory of a banner with no path to it, the banner put on the head (`wear_banner`), the leader of the wave is not set again.
 use super::*;
 use crate::raids::{has_active_raid, raid_of, Raider};
 use crate::{cow::*, goals::*, item};
@@ -24,7 +24,7 @@ pub struct Fetcher {
 #[component(storage = "SparseSet")]
 pub struct Fetching;
 
-pub static MODULE: Module = Module { name: "obtain_banner", flags: MOVE, equip, fired, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "obtain_banner", flags: MOVE, equip, fired, systems, can_use, start, stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Fetcher { p: *params::<Params>(p), slot: inst.slot, item: None });
 }
@@ -34,12 +34,22 @@ fn banner_near(w: &World, e: Entity) -> Option<Entity> {
     let area = Aabb::new(Vec3::new(p.x - 16.0, p.y - 8.0, p.z - 16.0), Vec3::new(p.x + 16.0, p.y + 8.0, p.z + 16.0));
     item::items_in(w, area).into_iter().find(|&i| item::pickable(w, i) && is_ominous(w, i))
 }
-/// The poll of the goal while its raid runs (a banner falls when a leader dies): one ask each 40 ticks.
-fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    if has_active_raid(w, e) {
-        arm(w, e, inst.slot, 40);
-    }
+/// No poll: a banner that falls (an item dropped, `Events.item_dropped`) wakes the raiders of a running raid around it, and the raid's phase change wakes them all.
+fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
     true
+}
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems((wake_on_banner, run).in_set(slot));
+}
+fn wake_on_banner(ev: Res<Events>, items: Query<&Pos, With<item::Item>>, idx: Res<Index>, q: Query<&Fetcher>, mut reqs: ResMut<Requests>) {
+    for i in ev.item_dropped.iter() {
+        let Ok(p) = items.get(i) else { continue };
+        idx.for_radius(p.0.x, p.0.z, 16.0, |c| {
+            if let Ok(f) = q.get(c) {
+                reqs.0.push(Req::Start(c, f.slot));
+            }
+        });
+    }
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !has_active_raid(w, e) || raid_of(w, e).is_some_and(|r| r.is_over()) {
@@ -64,9 +74,6 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Fetching>();
-}
-fn tick(w: &mut World) {
-    crate::goals::tick_state(w, run);
 }
 fn run(q: Query<(Entity, &Fetcher, Has<Following>, Has<NeedsPath>), With<Fetching>>, mut cmd: Commands) {
     for (e, f, following, asked) in &q {

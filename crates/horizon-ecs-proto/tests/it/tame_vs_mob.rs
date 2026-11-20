@@ -15,7 +15,7 @@ use horizon_ecs_proto::targeting::{Target, Who};
 
 const UUID: [i32; 4] = [1, 2, 3, 4];
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:wolf")
+    !have_data() || wrong_species(&["minecraft:wolf"])
 }
 struct Pair {
     r: MobRef,

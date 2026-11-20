@@ -11,7 +11,7 @@ fn counter() -> Option<horizon_ecs_proto::instr::Counter> {
 #[test]
 #[ignore = "bench: instructions per baby and tick, run by hand with --ignored"]
 fn cost_of_a_baby_that_waits_for_an_adult() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:armadillo") {
+    if !have_data() || wrong_species(&["minecraft:armadillo"]) {
         return;
     }
     let mut h = Herd::new(500, 6.0, false, false, 3);
@@ -36,7 +36,7 @@ fn cost_of_a_baby_that_waits_for_an_adult() {
 #[test]
 #[ignore = "bench: instructions per turtle and tick, run by hand with --ignored"]
 fn cost_of_a_turtle_with_an_egg_and_no_sand() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:turtle") {
+    if !have_data() || wrong_species(&["minecraft:turtle"]) {
         return;
     }
     let mut h = Herd::new(500, 6.0, false, false, 3);
@@ -61,7 +61,7 @@ fn cost_of_a_turtle_with_an_egg_and_no_sand() {
 /// A baby with no adult near asks slowly (every 20 ticks, no more every 2): an adult that arrives at 8 blocks is followed within 25 ticks.
 #[test]
 fn a_baby_follows_an_adult_that_arrives_within_twenty_five_ticks() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:armadillo") {
+    if !have_data() || wrong_species(&["minecraft:armadillo"]) {
         return;
     }
     let mut h = Herd::new(2, 40.0, false, false, 5);
@@ -92,7 +92,7 @@ fn a_baby_follows_an_adult_that_arrives_within_twenty_five_ticks() {
 /// again by its angry-player target; without the module it never did (the predicate `neutral:angry` was never true).
 #[test]
 fn a_wolf_hit_by_a_player_takes_him_again_while_it_is_angry() {
-    if !have_data() || !matches!(std::env::var("HORIZON_SPECIES").as_deref(), Ok("minecraft:wolf" | "minecraft:zombified_piglin")) {
+    if !have_data() || wrong_species(&["minecraft:wolf", "minecraft:zombified_piglin"]) {
         return;
     }
     let mut h = Herd::new(1, 40.0, false, false, 9);

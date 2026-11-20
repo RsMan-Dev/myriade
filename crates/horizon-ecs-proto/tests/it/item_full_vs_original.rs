@@ -18,11 +18,11 @@ fn an_item_below_the_world_is_removed_when_the_original_is() {
     }
     let mut h = Herd::with_slab(16, true, false);
     let mw = h.world.resource::<Level>().mw.0;
-    let at = Vec3::new(0.5, -90.0, 0.5);
+    let at = Vec3::new(0.5, -120.0, 0.5);
     let mut o = Original { mw, items: vec![original(1, ItemStack::new("minecraft:stick", 1), at, Vec3::ZERO, 0)] };
     let e = drop_item(&mut h.world, ItemStack::new("minecraft:stick", 1), at, Vec3::ZERO, 0);
     let (mut when_o, mut when_e) = (None, None);
-    for t in 1..=40 {
+    for t in 1..=120 {
         o.tick();
         h.tick();
         if when_o.is_none() && o.items.is_empty() {

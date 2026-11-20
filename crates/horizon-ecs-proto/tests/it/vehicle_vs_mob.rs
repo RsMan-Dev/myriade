@@ -12,7 +12,7 @@ use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::vehicle::{self, Vehicle};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:dolphin")
+    !have_data() || wrong_species(&["minecraft:dolphin"])
 }
 fn boxed(at: Vec3) -> Aabb {
     Aabb::new(Vec3::new(at.x - 0.7, at.y, at.z - 0.7), Vec3::new(at.x + 0.7, at.y + 0.6, at.z + 0.7))

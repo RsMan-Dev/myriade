@@ -72,6 +72,9 @@ pub struct Gossips {
 pub struct Heard(pub u64);
 
 impl Gossips {
+    pub fn players(&self) -> impl Iterator<Item = u32> + '_ {
+        self.map.keys().copied()
+    }
     pub fn get(&self, player: u32, kind: Kind) -> i32 {
         self.map.get(&player).map_or(0, |e| e[kind as usize])
     }
@@ -158,6 +161,7 @@ pub fn add(w: &mut World, e: Entity, player: u32, kind: Kind, amount: i32) {
         w.entity_mut(e).remove::<Gossips>();
     } else {
         plan_day(w, e, now);
+        super::defend_village_target::wake_golems(w, e);
     }
 }
 
@@ -186,6 +190,7 @@ pub fn meet(w: &mut World, a: Entity, b: Entity) -> bool {
         }
     }
     plan_day(w, a, now);
+    super::defend_village_target::wake_golems(w, a);
     w.entity_mut(a).insert(Heard(now));
     w.entity_mut(b).insert(Heard(now));
     true

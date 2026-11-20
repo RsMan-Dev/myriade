@@ -97,7 +97,7 @@ pub(crate) fn species_mask(what: Avoid) -> crate::species::SpeciesSet {
         Avoid::Player => SpeciesSet::empty(),
         Avoid::Species(ids) => SpeciesSet::of(ids.iter().map(|&i| i as usize)),
         Avoid::Named(names) => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| names.contains(&s.name)).map(|(i, _)| i)),
-        Avoid::Monsters => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| crate::cow::mob_kind(s.name).category == "monster").map(|(i, _)| i)),
+        Avoid::Monsters => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| crate::cow::is_monster(s.name)).map(|(i, _)| i)),
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
