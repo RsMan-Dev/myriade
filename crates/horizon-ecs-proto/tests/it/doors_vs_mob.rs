@@ -55,6 +55,11 @@ fn opens(id: u32, seed: u64) -> (Option<usize>, Option<usize>) {
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:vindicator").unwrap();
     let e = spawn_species(&mut h.world, &sp, 0.5, START_Z, seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    // The `Mob` is born facing yaw 0, the ECS animal with a drawn one: the turn it must make before walking is not what is compared.
+    h.world.entity_mut(e).insert(Yaw(0.0));
+    if let Some(mut hd) = h.world.get_mut::<horizon_ecs_proto::goals::Head>(e) {
+        hd.body = 0.0;
+    }
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
     h.world.insert_resource(horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots::default());
     let rid = raids::start(&mut h.world, [0, 2, 0], 5);
@@ -91,8 +96,9 @@ fn opens(id: u32, seed: u64) -> (Option<usize>, Option<usize>) {
 }
 
 /// Both sides read the same game rules and walk the same places (the Mob's draws imposed), the raider is in a pen of one block whose only way out
-/// is the door, `mob_griefing` is off (no door-breaking), and the door opens on both sides at the same tick to within the two ticks of the
-/// selector's phase (`goalSelector` runs a goal's `canUse` every other tick).
+/// is the door, `mob_griefing` is off (no door-breaking), and the door opens on both sides at the SAME tick, run by run.
+/// Both start facing yaw 0 (the `Mob` is born so; the ECS animal draws one, and the turn it then makes before walking cost it up to two ticks: that
+/// was the whole gap seen earlier, with `interact_with_door`, which the jar's vindicator does not have, opening the door before the contact).
 #[test]
 fn a_raider_opens_the_door_in_its_way_when_the_mob_does() {
     if !have_data() {
@@ -102,6 +108,6 @@ fn a_raider_opens_the_door_in_its_way_when_the_mob_does() {
     eprintln!("tick of the door opening (mob, ecs): {runs:?}");
     for (m, e) in &runs {
         let (m, e) = (m.expect("the Mob's raider opens it"), e.expect("the ECS raider opens it"));
-        assert!(m.abs_diff(e) <= 2, "{runs:?}");
+        assert_eq!(m, e, "{runs:?}");
     }
 }

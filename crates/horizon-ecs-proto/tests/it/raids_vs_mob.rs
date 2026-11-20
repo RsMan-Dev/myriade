@@ -55,7 +55,9 @@ fn a_wave_walks_to_the_village() {
 /// the Mob reaches it only when its `in_village` flag stays false (the flag is the game's to set). Here the Mob gets the flag from the same
 /// village the ECS side stands in, so both stop at the same place and the same distance is measured on both.
 const NEAR: f64 = 45.0;
-fn mob_arrival(id: u32, far: f64) -> usize {
+/// One run, both sides in lockstep: the Mob draws the places to walk to (`PathfindToRaidGoal`) and each place its navigation heads for goes to the ECS
+/// raider as its next draw (`ImposedSpots`); both are born facing yaw 0. The tick each side comes within `NEAR` blocks of the centre.
+fn arrivals(id: u32, seed: u64, far: f64) -> (usize, usize) {
     let village = village_herd(110);
     let registry = village.world.resource::<PoiRegistry>();
     let mut r = MobRef::new(100, false);
@@ -66,11 +68,33 @@ fn mob_arrival(id: u32, far: f64) -> usize {
     m.ai.targets.clear();
     r.mobs.push(m);
     r.searches.push(0);
+
+    let mut h = village_herd(110);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:vindicator").unwrap();
+    let e = spawn_species(&mut h.world, &sp, far, 0.5, seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    h.world.entity_mut(e).insert(Yaw(0.0));
+    if let Some(mut hd) = h.world.get_mut::<horizon_ecs_proto::goals::Head>(e) {
+        hd.body = 0.0;
+    }
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
+    h.world.insert_resource(horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots::default());
+    let rid = raids::start(&mut h.world, [0, 2, 0], 5);
+    raids::enlist(&mut h.world, e, raids::Raider { raid: Some(rid), wave: 1, leader: false }, true);
+
+    let (mut m_at, mut e_at, mut last_target) = (None, None, None);
     for t in 0..2000 {
         let p = r.mobs[0].position;
-        let near = (p.x.powi(2) + p.z.powi(2)).sqrt() < NEAR;
-        if near {
-            return t;
+        if m_at.is_none() && (p.x.powi(2) + p.z.powi(2)).sqrt() < NEAR {
+            m_at = Some(t);
+        }
+        let q = h.world.get::<Pos>(e).unwrap().0;
+        if e_at.is_none() && (q.x.powi(2) + q.z.powi(2)).sqrt() < NEAR {
+            e_at = Some(t);
+        }
+        if m_at.is_some() && e_at.is_some() {
+            break;
         }
         let s = mobs::raider::state_mut(&mut r.mobs[0]);
         s.active_raid = true;
@@ -79,26 +103,14 @@ fn mob_arrival(id: u32, far: f64) -> usize {
         s.raid_id = Some(1);
         s.in_village = registry.is_village([p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]);
         r.step(None);
-    }
-    2000
-}
-fn ecs_arrival(seed: u64, far: f64) -> usize {
-    let mut h = village_herd(110);
-    let table = h.world.resource::<SpeciesTable>().0.clone();
-    let sp = *table.iter().find(|s| s.name == "minecraft:vindicator").unwrap();
-    let e = spawn_species(&mut h.world, &sp, far, 0.5, seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-    h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
-    let id = raids::start(&mut h.world, [0, 2, 0], 5);
-    raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, true);
-    for t in 0..2000 {
-        h.tick();
-        let p = h.world.get::<Pos>(e).unwrap().0;
-        if (p.x.powi(2) + p.z.powi(2)).sqrt() < NEAR {
-            return t;
+        let target = r.mobs[0].ai.nav.target_pos;
+        if target != last_target && let Some(b) = target {
+            h.world.resource_mut::<horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots>().0.push_back([f64::from(b[0]) + 0.5, f64::from(b[1]), f64::from(b[2]) + 0.5]);
         }
+        last_target = target;
+        h.tick();
     }
-    2000
+    (m_at.unwrap_or(2000), e_at.unwrap_or(2000))
 }
 
 #[test]
@@ -106,11 +118,10 @@ fn the_walk_to_the_raid_takes_the_time_of_the_mob_s() {
     if !have_data() {
         return;
     }
-    let m: Vec<f64> = (0..12).map(|k| mob_arrival(6000 + 10 * k, 70.5) as f64).collect();
-    let e: Vec<f64> = (0..12).map(|k| ecs_arrival(40 + k, 70.5) as f64).collect();
-    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
-    eprintln!("ticks to come within 45 blocks (mean): mob {:.0} ecs {:.0}; mob {m:?} ecs {e:?}", mean(&m), mean(&e));
-    assert!(m.iter().all(|&t| t < 2000.0), "the Mob's raiders come");
-    assert!(e.iter().all(|&t| t < 2000.0), "the ECS raiders come");
-    assert!((mean(&m) / mean(&e) - 1.0).abs() < 0.3, "{} {}", mean(&m), mean(&e));
+    let runs: Vec<_> = (0..12).map(|k| arrivals(6000 + 10 * k, 40 + k as u64, 70.5)).collect();
+    eprintln!("ticks to come within {NEAR} blocks (mob, ecs): {runs:?}");
+    for (m, e) in &runs {
+        assert!(*m < 2000 && *e < 2000, "both come: {runs:?}");
+        assert_eq!(m, e, "{runs:?}");
+    }
 }
