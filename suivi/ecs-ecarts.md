@@ -113,3 +113,5 @@ fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus 
 - A TRANCHER (non inventés) : colère du golem contre un joueur ; cible Johnny.
 - Les 5 rouges `hoglin_vs_mob` et `parallel_equals_sequential` (x4), ainsi que `goals_vs_mob::the_random_look_holds_the_goal_slot...` pour la sorcière, échouent aussi sur la base 9308a375f8 sans mon patch (mesuré).
 - `trader_vs_mob::trade_vs_mob_the_trader_stands_for_a_player_within_four_blocks_only` : `#[ignore]`, le but ECS ne démarre pas (cause à trouver).
+## Lot cerveaux (2026-11-20)
+- swim_controls_vs_mob::the_fluid_height_is_the_mobs_at_the_same_positions, espèces hoglin et piglin : le Mob garde `fluids.water` à 1,3889 de y=3,55 à 4,05 alors que la surface est à 4,889 ; l'ECS calcule 0,84 à 1,34. Mesuré, cause côté Mob non étudiée (Mob intouchable) : à trancher.

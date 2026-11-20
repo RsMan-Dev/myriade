@@ -108,6 +108,16 @@ pub static DEF: Def = Def {
                 duration: None,
                 kids: &[],
             },
+            // `HoglinAi.initIdleActivity`: `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, true)`.
+            BEntry {
+                behaviour: &walk_away::BEHAVIOUR,
+                activity: "idle",
+                priority: 0,
+                params: &walk_away::Params { speed: 1.0, desired: 8.0, memory: &repellent_and_adult::NEAREST_REPELLENT },
+                needs: &[(&repellent_and_adult::NEAREST_REPELLENT, Need::Present)],
+                duration: None,
+                kids: &[],
+            },
             BEntry {
                 behaviour: &walk_away::BEHAVIOUR,
                 activity: "idle",

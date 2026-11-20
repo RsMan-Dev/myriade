@@ -58,6 +58,16 @@ impl MobRef {
         self.searches.push(0);
         self.mobs.len() - 1
     }
+    /// `add_kind` with the id given (the brain's random is seeded by it): the same scene under another draw.
+    pub fn add_kind_id(&mut self, at: Vec3, kind: Arc<mobs::MobType>, id: u32) -> usize {
+        let mut m = Mob::new(id, kind, at, 0.0);
+        m.persistent = true;
+        m.ai.no_action_time = 100;
+        scope(&mut m);
+        self.mobs.push(m);
+        self.searches.push(0);
+        self.mobs.len() - 1
+    }
     pub fn names(&self, i: usize) -> Vec<&'static str> {
         self.mobs[i].ai.goals.running_names()
     }

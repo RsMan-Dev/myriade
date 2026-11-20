@@ -49,6 +49,8 @@ fn near(w: &World, e: Entity, p: &Params) -> bool {
 fn source(w: &World, e: Entity, p: &Params) -> Option<[f64; 3]> {
     match get(w, e, p.memory) {
         Some(MemValue::Who(who)) => info(w, *who).map(|i| [i.pos.x, i.pos.y, i.pos.z]),
+        // `SetWalkTargetAwayFrom.pos`: a block, from its bottom centre (`Vec3.atBottomCenterOf`).
+        Some(MemValue::Block(b)) => Some([f64::from(b[0]) + 0.5, f64::from(b[1]), f64::from(b[2]) + 0.5]),
         _ => None,
     }
 }

@@ -1,9 +1,8 @@
 //! `Piglin` (`mobs/piglin.rs:1329-1363`, `register_piglin`). Brain-less: goals and targets in the priorities of `register_piglin`.
-//! The behaviours are generic; this file only holds the piglin's names and numbers. Not ported (see the notes): the spear,
-//! the baby's hoglin ride, the look at the dropped item (AdmireSeen), the `BackUpIfTooClose` strafe.
+//! The behaviours are generic; this file only holds the piglin's names and numbers. Not ported (see the notes): the baby's hoglin ride.
 use crate::behaviours::{
-    admire, ambient_sound, celebrate, convert_timer, flee_repellent, float, go_to_wanted, hunt_prey, hurt_by, look_at_held,
-    look_at_player, melee, nearest_target, random_look, ranged_bow, stroll, walk_away, Entry,
+    admire, admire_seen, ambient_sound, back_up_if_too_close, celebrate, convert_timer, flee_repellent, float, go_to_wanted, hunt_prey, hurt_by, look_at_held,
+    interact_with_door, look_at_player, melee, nearest_target, random_look, ranged_bow, spear_use, stroll, walk_away, Entry,
 };
 use crate::species::{predicates::Cond, Def};
 
@@ -21,7 +20,10 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zombified_piglin", after: 300 }),
+        // `PiglinAi.initCoreActivity`: `InteractWithDoor.create()`.
+        Entry::new(&interact_with_door::MODULE, 0, &()),
         Entry::new(&admire::MODULE, 1, &admire::Params::DEFAULT),
+        Entry::new(&admire_seen::MODULE, 1, &admire_seen::Params { items: &["minecraft:gold_ingot"], ..admire_seen::Params::DEFAULT }),
         Entry::new(&walk_away::MODULE, 2, &walk_away::Params::DEFAULT),
         Entry::new(&flee_repellent::MODULE, 2, &flee_repellent::Params {
             blocks: &["minecraft:soul_campfire", "minecraft:soul_torch", "minecraft:soul_wall_torch", "minecraft:soul_lantern"],
@@ -30,7 +32,11 @@ pub static DEF: Def = Def {
         }),
         // `crossbow_goal(1.0, 8.0)`: the bow module with a charge of 25 ticks and the fixed power of the crossbow (1.6).
         Entry::new(&ranged_bow::MODULE, 3, &ranged_bow::Params { speed: 1.0, radius: 8.0, charge: 25, fixed_power: Some(1.6), crossbow: true, ..ranged_bow::Params::DEFAULT }).when(&HOLDS_CROSSBOW),
+        // `BackUpIfTooClose.create(5, 0.75)` behind `hasCrossbow` (`PiglinAi.initFightActivity`): backs off from a target too close.
+        Entry::new(&back_up_if_too_close::MODULE, 3, &back_up_if_too_close::Params::DEFAULT).when(&HOLDS_CROSSBOW),
         Entry::new(&melee::MODULE, 3, &melee::Params { interval: 20, ..melee::Params::DEFAULT }).when(&NO_CROSSBOW),
+        // `g.add(3, PiglinSpear)` (`mobs/piglin.rs:1346`): the spear in hand takes the fight, the melee keeps the rest.
+        Entry::new(&spear_use::MODULE, 3, &spear_use::PIGLIN),
         Entry::new(&go_to_wanted::MODULE, 4, &go_to_wanted::Params { items: &["minecraft:gold_ingot"], ..go_to_wanted::Params::DEFAULT }),
         Entry::new(&celebrate::MODULE, 4, &celebrate::Params::DEFAULT),
         Entry::new(&look_at_held::MODULE, 5, &look_at_held::Params { items: &["minecraft:gold_ingot"], ..look_at_held::Params::DEFAULT }),
