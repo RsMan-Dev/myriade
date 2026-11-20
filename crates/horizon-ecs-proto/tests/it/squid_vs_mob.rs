@@ -60,11 +60,6 @@ fn run(name: &str, wet: bool) -> f64 {
             }
             worst = worst.max(d);
             compared += 1;
-            // At the surface the `Mob` reads the squid in the water one tick before the ecs one (and before the fluid function at the start of the
-            // tick: not explained yet): not compared there.
-            if wet && a.y > 4.6 {
-                break;
-            }
         }
     }
     eprintln!("{name}: worst gap {worst:.4} over {compared} squid-ticks (8 squids, up to {n} ticks each)");
@@ -77,12 +72,12 @@ fn a_squid_is_pushed_by_its_cycle_as_a_mob_is() {
         return;
     }
     let _ = flat_pair();
-    if process_species_name() != "minecraft:squid" {
+    if !matches!(process_species_name().as_str(), "minecraft:squid" | "minecraft:glow_squid") {
         return;
     }
     let wet = run("squid in water", true);
     let dry = run("squid out of water", false);
-    assert!(wet < 0.1 && dry < 0.1, "wet {wet}, dry {dry}");
+    assert!(wet == 0.0 && dry == 0.0, "wet {wet}, dry {dry}");
 }
 
 /// The goals with their own draws (the laws): 24 squids on each side in deep water, 400 ticks: the mean distance from the start and the mean
@@ -93,7 +88,7 @@ fn the_squids_wander_as_the_mobs_do() {
         return;
     }
     let _ = flat_pair();
-    if process_species_name() != "minecraft:squid" {
+    if !matches!(process_species_name().as_str(), "minecraft:squid" | "minecraft:glow_squid") {
         return;
     }
     let (mut r, mut h) = flat_pair();
@@ -152,7 +147,7 @@ fn a_hurt_squid_flees_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if process_species_name() != "minecraft:squid" {
+    if !matches!(process_species_name().as_str(), "minecraft:squid" | "minecraft:glow_squid") {
         return;
     }
     use horizon_client_lib::mobs::Who as MWho;

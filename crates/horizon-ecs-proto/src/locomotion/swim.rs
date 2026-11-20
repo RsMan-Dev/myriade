@@ -541,10 +541,16 @@ fn travel(
         if swp.squid {
             // `Squid.travel`: the move by the velocity and nothing else; then `Squid.aiStep` (the species' step, after the travel).
             // `LivingEntity.aiStep` drops the tiny motions before the move. The fluid state is the one `baseTick` read at the start of the tick
-            // (the entity's own `FluidState` is behind by a tick when it enters the water from above: its marker comes with the move).
+            // (the entity's own `FluidState` is behind by a tick when it enters the water from above: its marker comes with the move), read again after
+            // the move when it was dry.
             crate::locomotion::fly::drop_tiny_motion(&mut v);
-            let in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
+            let mut in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
+            // `LivingEntity.checkFallDamage` (inside the move): out of the water the fluid state is read again at the new place, and `Squid.aiStep`
+            // (after the travel) sees the squid in the water that it has just entered from above.
+            if !in_water {
+                in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
+            }
             if let Some(mut st) = squid {
                 squid_step(&mut st, &mut v, &mut rng, in_water, b.gravity);
             }

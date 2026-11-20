@@ -56,6 +56,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
         // The `Mob` learns the water the same way (its `wasEyeInWater`), then both start again from their place at rest.
         for _ in 0..2 {
             r.mobs[i].ai.no_action_time = 0;
+            r.mobs[i].extra.animal_brain = None;
             r.step(None);
         }
         r.mobs[i].position = Vec3::new(s[0], s[1], s[2]);
@@ -65,6 +66,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
         h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
         for _ in 0..8 {
             r.mobs[i].ai.no_action_time = 0;
+            r.mobs[i].extra.animal_brain = None;
             r.step(None);
             h.tick();
         }
@@ -78,6 +80,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
         go_to_at(&mut h.world, e, g, 1.0, 1);
         for t in 1..=300_usize {
             r.mobs[i].ai.no_action_time = 0;
+            r.mobs[i].extra.animal_brain = None;
             r.step(None);
             h.tick();
             let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
@@ -137,6 +140,17 @@ fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
 }
 
 #[test]
+#[ignore = "strict: out of the water the ecs axolotl swaps to the walk mode (ground control), the Mob keeps SmoothSwimmingMoveControl with its 0.5 outside factor (ecart in suivi/ecs-ecarts.md)"]
+fn an_axolotl_swims_to_the_bit_out_of_the_water_too() {
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    let w = legs("axolotl", false, true);
+    assert!(w == [0.0; 3], "{w:?}");
+}
+
+#[test]
 fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their_mobs_do() {
     if !have_data() {
         return;
@@ -146,7 +160,12 @@ fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their
         "minecraft:dolphin" => to_the_bit(legs("dolphin", false, true)),
         // The axolotl has the dolphin's control (verified); the `Mob` axolotl moves by something other than the imposed path (no goal, no brain left:
         // cause not found), so no comparison is made for it.
-        "minecraft:axolotl" => eprintln!("axolotl: not compared (the Mob axolotl does not follow the imposed route)"),
+        // In the water to the bit (the first window, before the route leaves the pool); out of it the ecs axolotl hands over to the walker, the Mob keeps its smooth
+        // control: see the ignored test below.
+        "minecraft:axolotl" => {
+            let w = legs("axolotl", false, true);
+            assert!(w[0] == 0.0, "{w:?}");
+        }
         // The fish (`FishMoveControl`, `AbstractFish.travelInWater`): the legs inside the pool.
         "minecraft:cod" | "minecraft:salmon" | "minecraft:tropical_fish" => to_the_bit(legs("fish", false, true)),
         "minecraft:drowned" => to_the_bit(legs("drowned", true, false)),
