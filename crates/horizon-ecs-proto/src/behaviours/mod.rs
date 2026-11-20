@@ -114,7 +114,9 @@ pub enum Cap {
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {
     pub amount: f32,
-    pub attacker: Option<Entity>,
+    /// Who hurt it (a player or a creature); `direct`: by its own blow, not a projectile.
+    pub who: Option<crate::targeting::Who>,
+    pub direct: bool,
 }
 /// A player's use of an item on an entity (the interactions step fills and sends it).
 pub struct Interaction {
@@ -216,6 +218,8 @@ pub mod fly_stroll;
 pub mod float;
 pub mod defend_leash_holder;
 pub mod follow_caravan;
+pub mod held_swap;
+pub mod pick_up_gear;
 pub mod follow_player_vehicle;
 pub mod follow_parent;
 pub mod look_at_player;
@@ -232,10 +236,7 @@ pub mod door_interact;
 pub mod break_door;
 pub mod raider_open_door;
 pub mod interact_with_door;
-pub mod celebration;
 pub mod hold_ground_attack;
-pub mod raid_move_through_village;
-pub mod obtain_banner;
 pub mod heal_raiders;
 pub mod spell_casting;
 pub mod spell_use;
@@ -297,7 +298,8 @@ pub mod turtle_state;
 pub mod turtle_go_to_water;
 pub mod turtle_travel;
 pub mod turtle_stroll;
-pub mod turtle_lay_egg;
+pub mod lay_egg;
+pub mod spear_use;
 pub mod turtle_go_home;
 pub mod snow_trail;
 pub mod beg;
@@ -321,14 +323,67 @@ pub mod fox_stroll_village;
 pub mod try_find_water;
 pub mod drowned_go_to_beach;
 pub mod drowned_swim_up;
+pub mod strike_pause;
+pub mod shield_stun;
+pub mod ravager_roar;
+pub mod hunt_speed;
+pub mod headbutt;
+pub mod ambient_sound;
+pub mod trust;
+pub mod variant;
+pub mod defend_trusted;
+pub mod shelter;
+pub mod lookout;
+pub mod harness_worn;
+pub mod still_under_riders;
+pub mod heal_weather;
+pub mod square_or_face;
+pub mod fly_steer;
+pub mod equip_decision;
+pub mod equip_source;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
+    &admire::MODULE,
+    &vibration_listen::MODULE,
+    &block_breaker::MODULE,
+    &boss_bar::MODULE,
+    &bounce_drag::MODULE,
+    &burn_on_touch::MODULE,
+    &celebrate::MODULE,
+    &convert_timer::MODULE,
+    &darkness_pulse::MODULE,
+    &dig::MODULE,
+    &emerge::MODULE,
+    &flee_repellent::MODULE,
+    &go_to_disturbance::MODULE,
+    &go_to_wanted::MODULE,
+    &homing_shot::MODULE,
+    &hunt_prey::MODULE,
+    &invulnerable_charge::MODULE,
+    &item_seek::MODULE,
+    &look_at_held::MODULE,
+    &peek::MODULE,
+    &push_on_touch::MODULE,
+    &regen::MODULE,
+    &roar_at_target::MODULE,
+    &side_heads::MODULE,
+    &sniff::MODULE,
+    &sonic_boom::MODULE,
+    &suspect_anger::MODULE,
+    &swallow_item::MODULE,
+    &teleport_on::MODULE,
+    &trade_restock::MODULE,
+    &trade_session::MODULE,
+    &trade_show::MODULE,
+    &trample::MODULE,
+    &walk_away::MODULE,
     &tempt::MODULE,
     &breed::MODULE,
     &breath_air::MODULE,
     &swim_with_player::MODULE,
     &follow_caravan::MODULE,
+    &pick_up_gear::MODULE,
     &defend_leash_holder::MODULE,
     &follow_player_vehicle::MODULE,
     &follow_parent::MODULE,
@@ -347,15 +402,6 @@ pub static TABLE: &[&Module] = &[
     &spell_casting::MODULE,
     &spell_use::MODULE,
     &ranged_crossbow::MODULE,
-    &pathfind_to_raid::MODULE,
-    &break_door::MODULE,
-    &break_door::RAID,
-    &raider_open_door::MODULE,
-    &interact_with_door::MODULE,
-    &celebration::MODULE,
-    &hold_ground_attack::MODULE,
-    &raid_move_through_village::MODULE,
-    &obtain_banner::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
     &avoid_entity::MODULE,
@@ -430,7 +476,8 @@ pub static TABLE: &[&Module] = &[
     &turtle_go_to_water::MODULE,
     &turtle_travel::MODULE,
     &turtle_stroll::MODULE,
-    &turtle_lay_egg::MODULE,
+    &lay_egg::MODULE,
+    &spear_use::MODULE,
     &turtle_go_home::MODULE,
     &snow_trail::MODULE,
     &beg::MODULE,
@@ -454,7 +501,99 @@ pub static TABLE: &[&Module] = &[
     &try_find_water::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_swim_up::MODULE,
+    &strike_pause::MODULE,
+    &shield_stun::MODULE,
+    &ravager_roar::MODULE,
+    &hunt_speed::MODULE,
+    &headbutt::MODULE,
+    &ambient_sound::MODULE,
+    &defend_trusted::MODULE,
+    &shelter::MODULE,
+    &lookout::MODULE,
+    &still_under_riders::MODULE,
+    &heal_weather::MODULE,
+    &square_or_face::MODULE,
     &land_on_shoulder::MODULE,
     &stay_close_to_owner::MODULE,
     &give_to_owner::MODULE,
+    // The modules of the raids, last: the slots of the modules before them stay where they were.
+    &pathfind_to_raid::MODULE,
+    &break_door::MODULE,
+    &break_door::RAID,
+    &raider_open_door::MODULE,
+    &interact_with_door::MODULE,
+    &hold_ground_attack::MODULE,
 ];
+pub mod act_phase;
+pub mod admire;
+pub mod attached_face;
+pub mod bed;
+pub mod bell_heard;
+pub mod blast_fuse;
+pub mod block_breaker;
+pub mod block_reach;
+pub mod bonemeal;
+pub mod boss_bar;
+pub mod bounce_drag;
+pub mod breed_love;
+pub mod burn_on_touch;
+pub mod celebrate;
+pub mod composter;
+pub mod convert_timer;
+pub mod crop_harvest;
+pub mod darkness_pulse;
+pub mod dig;
+pub mod emerge;
+pub mod flee_repellent;
+pub mod food_gift;
+pub mod food_inventory;
+pub mod food_stock;
+pub mod golem_recent;
+pub mod summon_defender;
+pub mod gossip;
+pub mod go_to_disturbance;
+pub mod go_to_wanted;
+pub mod hide;
+pub mod hit_recoil;
+pub mod homing_projectile;
+pub mod homing_shot;
+pub mod hostiles_near;
+pub mod hunt_prey;
+pub mod inventory;
+pub mod invulnerable_charge;
+pub mod item_seek;
+pub mod jump_on_bed;
+pub mod look_at_held;
+pub mod nearby_babies;
+pub mod nearest_bed;
+pub mod nearest_poi;
+pub mod peek;
+pub mod phase_shield;
+pub mod play_tag;
+pub mod poi_claim;
+pub mod profession;
+pub mod push_on_touch;
+pub mod raid;
+pub mod reach_block;
+pub mod regen;
+pub mod ring_bell;
+pub mod roar_at_target;
+pub mod schedule;
+pub mod side_heads;
+pub mod sky_spot;
+pub mod sleep_in_bed;
+pub mod sniff;
+pub mod sonic_boom;
+pub mod stroll_near_block;
+pub mod suspect_anger;
+pub mod swallow_hold;
+pub mod swallow_item;
+pub mod teleport_on;
+pub mod trade_offers;
+pub mod trade_restock;
+pub mod trade_session;
+pub mod trade_show;
+pub mod trample;
+pub mod vibration_listen;
+pub mod victory_celebrate;
+pub mod walk_away;

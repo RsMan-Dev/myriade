@@ -16,7 +16,7 @@ use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
 
 /// How the flier is steered.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Control {
     /// `FlyingMoveControl(max_turn, hovers)` along a path of `FlyingPathNavigation` (parrot, bee).
     Path,
@@ -29,6 +29,8 @@ pub enum Control {
     Direct,
     /// `PhantomMoveControl`: bank toward the wanted point (`MoveTo` is the goal's `vector`), faster on a straight line, turned back by a wall.
     Bank,
+    /// `WitherBoss` flight: accelerate toward the wanted point at `speed`, blending the velocity by `accel` a tick, no path. The goal sets the point.
+    Steer { speed: f64, accel: f64 },
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -389,6 +391,20 @@ fn fly_controls(
                     v.0 = Vec3::new(u.x + (tx - u.x) * 0.2, u.y + (ty - u.y) * 0.2, u.z + (tz - u.z) * 0.2);
                 }
                 d.speed = speed;
+            }
+            Control::Steer { speed, accel } => {
+                drop_tiny_motion(&mut v);
+                if !m.active {
+                    continue;
+                }
+                let dv = Vec3::new(m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+                let len = dv.length();
+                if len < 1.0e-6 {
+                    continue;
+                }
+                let (want, u) = (dv.scale(speed / len), v.0);
+                v.0 = Vec3::new(u.x + (want.x - u.x) * accel, u.y + (want.y - u.y) * accel, u.z + (want.z - u.z) * accel);
+                yaw.0 = -(v.0.x.atan2(v.0.z) as f32).to_degrees();
             }
             Control::Path | Control::None => {}
         }

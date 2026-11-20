@@ -211,7 +211,7 @@ mod tests {
         h.world.get_mut::<ActiveUntil>(c).unwrap().0 = u64::MAX;
         h.world.resource_mut::<crate::goals::Entered>().0.push(c);
         crate::tame::set_owner(&mut h.world, c, Who::Player(1));
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 10.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 10.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         h.tick();
         Some((h, c))
     }

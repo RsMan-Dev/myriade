@@ -50,7 +50,7 @@ fn arm_first(w: &mut World, e: Entity, _: Inst) {
 }
 fn gate(w: &World, e: Entity) -> bool {
     let t = ts::get(w, e);
-    !w.get::<FluidState>(e).is_some_and(|f| f.in_water) && !t.going_home && !t.has_egg
+    !w.get::<FluidState>(e).is_some_and(|f| f.in_water) && !t.going_home && !ts::has_egg(w, e)
 }
 /// Arms the next attempt, unless one is armed.
 fn arm_now(w: &mut World, e: Entity) {

@@ -31,7 +31,7 @@ fn scenario(at: Vec3, nautilus_vehicle: bool, moving: impl Fn(u32) -> bool, pass
         let mut view = player_view(p, None);
         view.passenger = passenger(t);
         view.vehicle = Some(MobVehicle { nautilus: nautilus_vehicle, bounds: boxed(p), velocity: v });
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
         vehicle::set(&mut h.world, 1, Some(Vehicle { nautilus: nautilus_vehicle, bounds: boxed(p), velocity: v, yaw: 0.0, passenger: passenger(t) }));
         r.step(Some(&view));
         h.tick();

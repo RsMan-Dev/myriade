@@ -15,6 +15,7 @@ bevy_utils = { version = "0.20.1", default-features = false, features = ["std", 
 horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
 horizon-client-render = { path = "../horizon-client-render" }
 horizon-core = { path = "../horizon-core" }
+horizon-items = { path = "../horizon-items" }
 horizon-world = { path = "../horizon-world" }
 libc = "0.2"
 

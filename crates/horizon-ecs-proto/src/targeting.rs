@@ -110,6 +110,10 @@ pub fn sight_range(range: f64, visibility: f64) -> f64 {
 pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
     t.seen = false;
     w.entity_mut(e).insert(t);
+    // `StartAttacking` erases the memory of the unreachable: a new target starts afresh.
+    if let Some(mut n) = w.get_mut::<crate::cow::Nav>(e) {
+        n.cant_reach_since = 0;
+    }
     w.resource_mut::<Events>().target_acquired.push(e);
     let watchers = w.resource::<TargetWatchers>().0.clone();
     for f in watchers {
@@ -120,6 +124,7 @@ pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
 pub fn clear_target(w: &mut World, e: Entity) {
     if w.entity_mut(e).take::<Target>().is_some() {
         w.resource_mut::<Events>().target_lost.push(e);
+        crate::behaviours::dig::target_lost(w, e);
     }
 }
 /// `Mob.sees` for the attackers that have a target: the line of sight is read again only when the attacker's eyes or the
@@ -165,6 +170,24 @@ pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Po
             }
         }
     }
+}
+/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), and not `e` itself.
+pub fn can_target(w: &World, e: Entity, who: Who) -> bool {
+    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt)
+}
+/// The first creature within `radius` of `e` (by identifier, ascending) that `e` can target, read from the spatial index.
+pub fn attackable_near(w: &World, e: Entity, radius: f64) -> Option<Who> {
+    let pos = w.get::<Pos>(e)?.0;
+    let mut near = Vec::new();
+    w.resource::<Index>().for_radius(pos.x, pos.z, radius, |c| near.push(c));
+    near.into_iter().filter(|&c| can_target(w, e, Who::Entity(c))).min_by_key(|c| c.index().index()).map(Who::Entity)
+}
+/// `Mob.sees`: the line of sight from the eyes of `e` to the eyes of `who` is free of blocks.
+pub fn sees(w: &World, e: Entity, who: Who) -> bool {
+    let (Some(pos), Some(look), Some(i)) = (w.get::<Pos>(e), w.get::<Eye>(e), info(w, who)) else {
+        return false;
+    };
+    w.resource::<Level>().mw.0.line_of_sight_for(Some(pos.0.y), Vec3::new(pos.0.x, pos.0.y + look.0, pos.0.z), Vec3::new(i.pos.x, i.eye, i.pos.z))
 }
 /// The framework's systems of the targeting service (registered by the modules that choose targets, once).
 pub fn register(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {

@@ -153,7 +153,7 @@ mod tests {
     fn the_player_variant_follows_the_player() {
         let mut h = Herd::with_slab(40, true, false);
         let e = brained(&mut h, &PLAYER_ENTRY, true);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 8.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 8.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         set(&mut h.world, e, &NEAREST_VISIBLE_PLAYER, MemValue::Who(Who::Player(1)), None);
         step(&mut h, e);
         assert_eq!(walk(&h, e).map(|w| w.target), Some(Tracker::Entity(Who::Player(1), true)), "témoin : il suit le joueur");

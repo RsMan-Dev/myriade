@@ -58,13 +58,6 @@ pub struct Effects {
 #[component(storage = "SparseSet")]
 pub struct Invisible;
 
-/// Created at the first effect on a player (never at the world's construction).
-fn ensure_players(w: &mut World) {
-    if !w.contains_resource::<PlayerEffects>() {
-        let host = w.spawn_empty().id();
-        w.insert_resource(PlayerEffects { host: Some(host), ..Default::default() });
-    }
-}
 /// Fire resistance: no fire damage (`Immune` bit read by the burn).
 pub const IMMUNE_FIRE: u32 = 8;
 
@@ -290,57 +283,23 @@ pub struct Undead;
 /// The periodic damage and the speed of a player are the player's own system's; here the reading (a witch's choice, the sight a creature has
 /// of an invisible player, the hunger a husk gives) and the writing.
 #[derive(Resource, Default)]
-pub struct PlayerEffects {
-    pub list: std::collections::HashMap<u32, Vec<(Kind, i32, u64)>>,
-    /// The visibility a player had before invisibility lowered it (put back when it ends).
-    saved: std::collections::HashMap<u32, f64>,
-    /// The entity that carries the wheel entries of the players' effect ends.
-    host: Option<Entity>,
-}
+pub struct PlayerEffects(pub std::collections::HashMap<u32, Vec<(Kind, i32, u64)>>);
 pub fn add_player(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i32) {
-    ensure_players(w);
     let now = w.resource::<Clock>().0;
     let ends = now + ticks.max(0) as u64;
-    let mut res = w.resource_mut::<PlayerEffects>();
-    let host = res.host;
-    let list = res.list.entry(id).or_default();
+    // Born at the first effect of a player (a resource registered at the world's creation costs `arbitrate` even when nothing reads it).
+    let mut res = w.get_resource_or_insert_with(PlayerEffects::default);
+    let list = res.0.entry(id).or_default();
     list.retain(|x| x.2 > now);
     match list.iter().position(|x| x.0 == kind) {
         Some(i) if amp > list[i].1 || amp == list[i].1 && ends > list[i].2 => list[i] = (kind, amp, ends),
-        Some(_) => return,
+        Some(_) => {}
         None => list.push((kind, amp, ends)),
-    }
-    // The end is a deadline of the wheel, carried by the host entity (a player is not an entity).
-    if let Some(host) = host {
-        w.resource_mut::<Wheel>().push(ends.max(now + 1), host, Due::PlayerEffectEnd(id));
-    }
-    // Invisibility is a transition, not a test per candidate: the visibility the targeting already reads is lowered while it lasts.
-    if kind == Kind::Invisibility {
-        let v = w.resource::<crate::hostile::PlayerState>().visibility(id);
-        let mut res = w.resource_mut::<PlayerEffects>();
-        if !res.saved.contains_key(&id) {
-            res.saved.insert(id, v);
-            w.resource_mut::<crate::hostile::PlayerState>().set_visibility(id, v * 0.07);
-        }
-    }
-}
-/// A player's effect may be at its end (`Due::PlayerEffectEnd`): the ended ones go, and an invisibility that ended gives the visibility back.
-pub fn player_end(w: &mut World, id: u32) {
-    if !w.contains_resource::<PlayerEffects>() {
-        return;
-    }
-    let now = w.resource::<Clock>().0;
-    let mut res = w.resource_mut::<PlayerEffects>();
-    let Some(list) = res.list.get_mut(&id) else { return };
-    list.retain(|x| x.2 > now);
-    let invisible = list.iter().any(|x| x.0 == Kind::Invisibility);
-    if !invisible && let Some(v) = res.saved.remove(&id) {
-        w.resource_mut::<crate::hostile::PlayerState>().set_visibility(id, v);
     }
 }
 pub fn player_has(w: &World, id: u32, kind: Kind) -> bool {
     let now = w.resource::<Clock>().0;
-    w.get_resource::<PlayerEffects>().is_some_and(|p| p.list.get(&id).is_some_and(|l| l.iter().any(|x| x.0 == kind && x.2 > now)))
+    w.get_resource::<PlayerEffects>().is_some_and(|p| p.0.get(&id).is_some_and(|l| l.iter().any(|x| x.0 == kind && x.2 > now)))
 }
 /// What a thrown potion carries (`PotionContents`): the effects it puts on what its splash reaches.
 #[derive(Clone, Copy, Debug, PartialEq)]

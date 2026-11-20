@@ -79,7 +79,7 @@ fn loaded(mw: &horizon_client_lib::mobs::MobWorld, n: [f64; 3]) -> bool {
 /// asks no more: the leg is the walk). A failed leg asks again in 2 ticks.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let t = ts::get(w, e);
-    if t.going_home || t.has_egg || !in_water(w, e) {
+    if t.going_home || ts::has_egg(w, e) || !in_water(w, e) {
         return false;
     }
     let Some(wd) = w.get::<Wander>(e).copied() else { return false };

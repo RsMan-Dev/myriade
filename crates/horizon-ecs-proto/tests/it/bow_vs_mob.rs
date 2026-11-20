@@ -9,7 +9,9 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::ranged_bow, cow::*, goals::*, hostile::PlayerState, projectile::*, targeting::*};
 
 fn skip() -> bool {
-    !have_data() || horizon_ecs_proto::cow::skip_unless(&ranged_bow::MODULE, "the bow goal")
+    // A piglin carries `ranged_bow` for its crossbow only (`Piglin` has `CrossbowAttack`, no bow goal): given a bow, the `Mob` and the ECS both shoot
+    // nothing, which is vanilla; its crossbow is compared in `tirs_vs_mob`. This scene is the bow's, run under the skeletons.
+    !have_data() || horizon_ecs_proto::cow::process_species_name() == "minecraft:piglin" || horizon_ecs_proto::cow::skip_unless(&ranged_bow::MODULE, "the bow goal")
 }
 struct Scene {
     r: MobRef,
@@ -29,7 +31,7 @@ fn scene(skeleton: Vec3, player: Vec3) -> Scene {
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let ecs = spawn_species(&mut h.world, &sp, skeleton.x, skeleton.z, 77);
     h.world.get_mut::<ActiveUntil>(ecs).unwrap().0 = u64::MAX;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
     h.world.resource_mut::<PlayerState>().immortal = true;
     // The target is the player on both sides, from the first tick.
     let slot = h.world.get::<GoalSet>(ecs).unwrap().slot_of(&ranged_bow::MODULE).unwrap();

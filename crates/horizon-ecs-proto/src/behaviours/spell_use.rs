@@ -272,7 +272,7 @@ fn bite(w: &mut World, at: Vec3, owner: Entity, allies: &'static [&'static str])
         .collect();
     let tick = w.resource::<Clock>().0;
     for v in victims {
-        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, from: Some(from), by });
+        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, from: Some(from), by, direct: false });
     }
     let mut players: Vec<u32> = Vec::new();
     w.resource::<Online>().for_near(at.x, at.z, 2.0, |pl| {

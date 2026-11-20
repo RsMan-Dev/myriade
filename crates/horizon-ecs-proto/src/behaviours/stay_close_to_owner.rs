@@ -125,7 +125,7 @@ mod tests {
         sp.goals = Config { entries };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
         tame::set_owner(&mut h.world, e, crate::targeting::Who::Player(1));
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         (h, e)
     }
     /// The Manhattan distance in blocks between the creature and its owner (the measure of `stop`).

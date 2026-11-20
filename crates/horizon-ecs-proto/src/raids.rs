@@ -160,7 +160,7 @@ pub fn wake_raiders(w: &mut World, id: i32) {
     let mut q = w.query::<(Entity, &Raider)>();
     let ids: Vec<Entity> = q.iter(w).filter(|(_, r)| r.raid == Some(id)).map(|(e, _)| e).collect();
     for e in ids {
-        for m in [&b::pathfind_to_raid::MODULE, &b::celebration::MODULE, &b::obtain_banner::MODULE, &b::raid_move_through_village::MODULE, &b::raider_open_door::MODULE, &b::break_door::MODULE] {
+        for m in [&b::pathfind_to_raid::MODULE, &b::raider_open_door::MODULE, &b::break_door::MODULE] {
             if let Some(slot) = crate::goals::slot_of(w, e, m) {
                 w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
             }
@@ -215,7 +215,6 @@ fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[r
         let e = spawn_species(w, &species, at.0, at.1, seed);
         teleport(w, e, horizon_core::geometry::Vec3::new(at.0, f64::from(pos[1]) + 1.0, at.1));
         enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, w.get::<crate::behaviours::break_door::BreakDoor>(e).is_some_and(|b| b.p.raid));
-        crate::goals::arm_module(w, e, &crate::behaviours::obtain_banner::MODULE, 40);
         w.resource_mut::<Entered>().0.push(e);
         let health = w.get::<Health>(e).map_or(24.0, |h| h.0);
         let living: f32 = members(w, raid_id).iter().map(|m| m.health).sum();

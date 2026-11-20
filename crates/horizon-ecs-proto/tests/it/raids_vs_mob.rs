@@ -1,6 +1,6 @@
 //! The raids socle: the `Mob`'s own raid state machine (`horizon_client_lib::raid`) driven over the ECS world. A village put down in blocks (a
 //! bell, job blocks), a raid at its centre: the countdown, a wave that spawns far away and walks to the village (`PathfindToRaid`); and the walk
-//! itself against the `Mob`'s `PathfindToRaidGoal` (time to come within 40 blocks of the centre, over 12 raiders per side).
+//! itself against the `Mob`'s `PathfindToRaidGoal` (time to come within 45 blocks of the centre, over 12 raiders per side).
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
@@ -50,10 +50,14 @@ fn a_wave_walks_to_the_village() {
 }
 
 /// The time a raider placed `far` blocks away takes to come within `NEAR` blocks of the centre: the Mob's goal and the module.
-/// "Near" is 40 blocks: the ECS side has a bell at the centre, and a raider within one section (16 blocks) of a village stops walking to the raid
-/// (`isVillage`, in vanilla too) near 32, so 30 was never reached; the Mob's test state has no village. The same distance on both sides.
-const NEAR: f64 = 40.0;
+/// "Near" is 45 blocks. `PathfindToRaidGoal.canUse` and `canContinue` both end on `!level.isVillage(blockPosition)` (javap, server-26.3.jar): a
+/// raider within one section (16 blocks) of the village stops walking to the raid near x = 32, so 30 blocks is never reached, by the Mob either (and on a diagonal it stops at 41.7 blocks, Mob run 6100, hence 45):
+/// the Mob reaches it only when its `in_village` flag stays false (the flag is the game's to set). Here the Mob gets the flag from the same
+/// village the ECS side stands in, so both stop at the same place and the same distance is measured on both.
+const NEAR: f64 = 45.0;
 fn mob_arrival(id: u32, far: f64) -> usize {
+    let village = village_herd(110);
+    let registry = village.world.resource::<PoiRegistry>();
     let mut r = MobRef::new(100, false);
     let mut m = mobs::Mob::new(id, mob_kind("minecraft:vindicator"), Vec3::new(far, 1.0, 0.5), 0.0);
     m.persistent = true;
@@ -73,6 +77,7 @@ fn mob_arrival(id: u32, far: f64) -> usize {
         s.raid_center = [0, 2, 0];
         s.can_join_raid = true;
         s.raid_id = Some(1);
+        s.in_village = registry.is_village([p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]);
         r.step(None);
     }
     2000
@@ -104,7 +109,7 @@ fn the_walk_to_the_raid_takes_the_time_of_the_mob_s() {
     let m: Vec<f64> = (0..12).map(|k| mob_arrival(6000 + 10 * k, 70.5) as f64).collect();
     let e: Vec<f64> = (0..12).map(|k| ecs_arrival(40 + k, 70.5) as f64).collect();
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
-    eprintln!("ticks to come within 40 blocks (mean): mob {:.0} ecs {:.0}; mob {m:?} ecs {e:?}", mean(&m), mean(&e));
+    eprintln!("ticks to come within 45 blocks (mean): mob {:.0} ecs {:.0}; mob {m:?} ecs {e:?}", mean(&m), mean(&e));
     assert!(m.iter().all(|&t| t < 2000.0), "the Mob's raiders come");
     assert!(e.iter().all(|&t| t < 2000.0), "the ECS raiders come");
     assert!((mean(&m) / mean(&e) - 1.0).abs() < 0.3, "{} {}", mean(&m), mean(&e));

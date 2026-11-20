@@ -15,12 +15,10 @@ use horizon_core::geometry::{Aabb, Vec3};
 
 #[derive(Resource)]
 pub struct ExplosionRng(pub Rng);
-/// The stream of the blocks' rays, created at the first block explosion (never at the world's construction).
-fn ensure_rng(w: &mut World) {
-    if !w.contains_resource::<ExplosionRng>() {
-        w.insert_resource(ExplosionRng(Rng(0x2545_F491_4F6C_DD1D)));
-    }
+pub fn insert_resources(w: &mut World) {
+    w.insert_resource(ExplosionRng(Rng(0x2545_F491_4F6C_DD1D)));
 }
+
 /// `ServerExplosion.getSeenPercent` for a box: the share of the grid's rays to the centre that no block collider stops.
 pub fn seen_percent(level: &Level, center: Vec3, b: Aabb) -> f32 {
     let (lo, hi) = (b.min_position(), b.max_position());
@@ -53,7 +51,6 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
     let level = *w.resource::<Level>();
     let mw = level.mw.0;
     let (min_y, max_y) = (mw.world.bottom_y(), mw.world.top_y());
-    ensure_rng(w);
     let mut rng = w.resource::<ExplosionRng>().0;
     let mut set: Vec<[i32; 3]> = Vec::new();
     for xx in 0..16 {

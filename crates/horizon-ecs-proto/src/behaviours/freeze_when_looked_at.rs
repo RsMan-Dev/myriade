@@ -163,7 +163,7 @@ mod tests {
         let pos = h.world.get::<Pos>(e).unwrap().0;
         let eye_y = pos.y + h.world.get::<Eye>(e).unwrap().0;
         let (px, pz) = (pos.x + d, pos.z);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: pos.y, z: pz, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: px, y: pos.y, z: pz, main: 0, off: 0, ..Default::default() });
         let pe = [px, pos.y + 1.62, pz];
         let dir = [pos.x - px, eye_y - pe[1], pos.z - pz];
         let n = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();

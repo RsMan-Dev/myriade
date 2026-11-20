@@ -231,7 +231,7 @@ mod tests {
             sp.goals = Config { entries: Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice()) };
             let a = spawn_species(&mut h.world, &sp, 0.5, 0.5, 80);
             let b = spawn_species(&mut h.world, &sp, 3.5, 0.5, 81);
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 3.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 3.5, main: 0, off: 0, ..Default::default() });
             let mut seen = None;
             for _ in 0..400 {
                 h.tick();

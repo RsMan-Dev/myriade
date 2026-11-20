@@ -24,7 +24,10 @@ fn walls(mut put: impl FnMut(i32, i32, i32)) {
         put(1, y, WALL_Z - 1);
     }
 }
-fn mob_opens(id: u32) -> Option<usize> {
+/// The tick each side opened the door in a run where the Mob's draws are imposed on the ECS: the Mob draws the places to walk to (`PathfindToRaidGoal`),
+/// and each place its navigation heads for goes to the ECS raider as the next draw (`ImposedSpots`), so the two walk the same way and the tick of the
+/// opening is compared, not the luck of the draw.
+fn opens(id: u32, seed: u64) -> (Option<usize>, Option<usize>) {
     let mut r = MobRef::new(100, false);
     r.w = Box::leak(Box::new(MobWorld { mob_griefing: false, ..r.w.clone() }));
     walls(|x, y, z| r.set_block(x, y, z, "minecraft:stone"));
@@ -37,23 +40,7 @@ fn mob_opens(id: u32) -> Option<usize> {
     m.ai.targets.clear();
     r.mobs.push(m);
     r.searches.push(0);
-    for t in 0..900 {
-        let s = mobs::raider::state_mut(&mut r.mobs[0]);
-        s.active_raid = true;
-        s.raid_center = [0, 2, 0];
-        s.can_join_raid = true;
-        s.raid_id = Some(1);
-        s.raided = true; // `game/mobs/raids`: a vindicator with a raid within 96 blocks
-        let before = r.events.len();
-        r.step(None);
-        if r.events[before..].iter().any(|e| matches!(e, MobEvent::SetDoorOpen { open: true, .. })) {
-            return Some(t);
-        }
-    }
-    None
-}
-/// The tick the door opened on the ECS side, or `Err(())`.
-fn ecs_opens(seed: u64) -> Result<usize, ()> {
+
     let mut h = Herd::with_slab(100, false, false);
     let mut level = *h.world.resource::<Level>();
     level.mw = Mw(Box::leak(Box::new(MobWorld { mob_griefing: false, ..level.mw.0.clone() })));
@@ -69,31 +56,52 @@ fn ecs_opens(seed: u64) -> Result<usize, ()> {
     let e = spawn_species(&mut h.world, &sp, 0.5, START_Z, seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
-    let id = raids::start(&mut h.world, [0, 2, 0], 5);
-    raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, true);
+    h.world.insert_resource(horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots::default());
+    let rid = raids::start(&mut h.world, [0, 2, 0], 5);
+    raids::enlist(&mut h.world, e, raids::Raider { raid: Some(rid), wave: 1, leader: false }, true);
+
+    let (mut m_open, mut e_open, mut last_target) = (None, None, None);
     for t in 0..900 {
+        let s = mobs::raider::state_mut(&mut r.mobs[0]);
+        s.active_raid = true;
+        s.raid_center = [0, 2, 0];
+        s.can_join_raid = true;
+        s.raid_id = Some(1);
+        s.raided = true; // `game/mobs/raids`: a vindicator with a raid within 96 blocks
+        let before = r.events.len();
+        r.step(None);
+        if m_open.is_none() && r.events[before..].iter().any(|e| matches!(e, MobEvent::SetDoorOpen { open: true, .. })) {
+            m_open = Some(t);
+        }
+        let target = r.mobs[0].ai.nav.target_pos;
+        if target != last_target && let Some(b) = target {
+            h.world.resource_mut::<horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots>().0.push_back([f64::from(b[0]) + 0.5, f64::from(b[1]), f64::from(b[2]) + 0.5]);
+        }
+        last_target = target;
         h.tick();
         let mw = horizon_ecs_proto::blocks::world_of(&h.world);
-        if [1, 2].iter().any(|&y| horizon_ecs_proto::blocks::property(mw, [0, y, WALL_Z], "open").as_deref() == Some("true")) {
-            return Ok(t);
+        if e_open.is_none() && [1, 2].iter().any(|&y| horizon_ecs_proto::blocks::property(mw, [0, y, WALL_Z], "open").as_deref() == Some("true")) {
+            e_open = Some(t);
+        }
+        if m_open.is_some() && e_open.is_some() {
+            break;
         }
     }
-    Err(())
+    (m_open, e_open)
 }
 
-/// The draws are imposed by what the two sides share: `mob_griefing` is off (a game rule both read), so the one-in-ten draw of the raid's door-breaking
-/// goal has no door to break and no run ends in a broken door; the raider is in a pen of one block whose only way out is the door, so whichever place it
-/// draws to walk toward the raid, the way goes through the door. Every run opens it, on both sides. NOT equal tick for tick: the two sides' draws are
-/// different streams (the Mob 9 to 15 ticks, the ECS 6 to 8 in the last measure); the ECS must not be later than the Mob's latest.
+/// Both sides read the same game rules and walk the same places (the Mob's draws imposed), the raider is in a pen of one block whose only way out
+/// is the door, `mob_griefing` is off (no door-breaking), and the door opens on both sides at the same tick to within the two ticks of the
+/// selector's phase (`goalSelector` runs a goal's `canUse` every other tick).
 #[test]
 fn a_raider_opens_the_door_in_its_way_when_the_mob_does() {
     if !have_data() {
         return;
     }
-    let m: Vec<Option<usize>> = (0..12).map(|k| mob_opens(7000 + 10 * k)).collect();
-    let e: Vec<Option<usize>> = (0..12).map(|k| ecs_opens(60 + k).ok()).collect();
-    eprintln!("tick of the door opening: mob {m:?} ecs {e:?}");
-    assert!(m.iter().all(Option::is_some), "the Mob's raiders open it: {m:?}");
-    assert!(e.iter().all(Option::is_some), "the ECS raiders open it: {e:?}");
-    assert!(e.iter().flatten().max() <= m.iter().flatten().max(), "{m:?} {e:?}");
+    let runs: Vec<_> = (0..12).map(|k| opens(7000 + 10 * k, 60 + k as u64)).collect();
+    eprintln!("tick of the door opening (mob, ecs): {runs:?}");
+    for (m, e) in &runs {
+        let (m, e) = (m.expect("the Mob's raider opens it"), e.expect("the ECS raider opens it"));
+        assert!(m.abs_diff(e) <= 2, "{runs:?}");
+    }
 }

@@ -103,7 +103,7 @@ fn main() {
             let spot = |i: usize| (-f64::from(half) + 24.0 * ((i % k) as f64 + 1.0), -f64::from(half) + 24.0 * ((i / k) as f64 + 1.0));
             for i in 0..np {
                 let (x, z) = spot(i);
-                herd.world.resource_mut::<Online>().set(Player { id: i as u32 + 1, x, y: 1.0, z, main: 0, off: 0 });
+                herd.world.resource_mut::<Online>().set(Player { id: i as u32 + 1, x, y: 1.0, z, main: 0, off: 0, ..Default::default() });
             }
             herd.set_players((0..np).map(spot).collect());
             for i in 0..n {

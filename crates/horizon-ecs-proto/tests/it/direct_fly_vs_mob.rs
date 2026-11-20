@@ -54,7 +54,7 @@ fn a_vex_flies_straight_at_the_wanted_point_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:vex" {
+    if process_species_name() != "minecraft:vex" {
         return;
     }
     run("vex", |m, g, s| m.ai.mov.set_wanted(g[0], g[1], g[2], s), 0.0);
@@ -66,7 +66,7 @@ fn a_phantom_banks_toward_the_wanted_point_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:phantom" {
+    if process_species_name() != "minecraft:phantom" {
         return;
     }
     run("phantom", |m, g, _| m.extra.vector = g, 6.0);

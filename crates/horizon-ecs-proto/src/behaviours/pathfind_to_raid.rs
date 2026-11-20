@@ -63,7 +63,12 @@ fn run(q: Query<(Entity, &ToRaid, Has<Following>, Has<NeedsPath>), With<Walking>
                 return;
             }
             let to = [f64::from(c[0]) + 0.5, f64::from(c[1]), f64::from(c[2]) + 0.5];
-            if let Some(at) = pick_for(w, e, Pick::DefaultTowards { h: 15, v: 4, to, max_rad: std::f64::consts::FRAC_PI_2 }) {
+            // A test gives the ECS the Mob's draws (`ImposedSpots`, absent in the normal state): the next one, or none yet.
+            let at = match w.get_resource_mut::<super::turtle_go_home::ImposedSpots>() {
+                Some(mut q) => q.0.pop_front(),
+                None => pick_for(w, e, Pick::DefaultTowards { h: 15, v: 4, to, max_rad: std::f64::consts::FRAC_PI_2 }),
+            };
+            if let Some(at) = at {
                 go_to_at(w, e, at, speed, 1);
             }
         });

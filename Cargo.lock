@@ -2454,6 +2454,7 @@ dependencies = [
  "horizon-client-lib",
  "horizon-client-render",
  "horizon-core",
+ "horizon-items",
  "horizon-world",
  "libc",
 ]

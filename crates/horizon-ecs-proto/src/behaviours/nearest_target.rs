@@ -45,9 +45,11 @@ pub struct Params {
     pub candidate_when: Option<fn(&World, Entity) -> bool>,
     /// Candidates further than this in height from the attacker's feet are not picked (the slime's player target: `|dy| <= 4`).
     pub max_dy: Option<f64>,
+    /// The player is a candidate only within this distance along the axis of the face the attacker is attached to (the shulker's `|d| <= 4.5`).
+    pub attach_reach: Option<f64>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None, attach_reach: None };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -62,6 +64,8 @@ pub struct Nearest {
     land: bool,
     /// Its deadline is in the wheel.
     armed: bool,
+    /// No creature of its species is alive: no deadline is in the wheel until one is born (`unpark`).
+    parked: bool,
     pick: Option<Who>,
 }
 impl Nearest {
@@ -109,7 +113,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
         Some(other) => panic!("unknown target predicate {other}"),
         None => None,
     };
-    let n = Nearest { p, slot: inst.slot, mask, baby, land: p.predicate == Some("baby_on_land"), armed: false, pick: None };
+    let n = Nearest { p, slot: inst.slot, mask, baby, land: p.predicate == Some("baby_on_land"), armed: false, parked: false, pick: None };
     match w.get_mut::<NearestTargets>(e) {
         Some(mut ts) => {
             debug_assert_eq!(ts.0.len(), inst.nth as usize);
@@ -136,12 +140,28 @@ fn reduced(n: i32) -> i32 {
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let Some(n) = state(w, e, inst) else { return };
-    if n.armed || n.inert() {
+    if n.armed || n.inert() || n.parked {
+        return;
+    }
+    if !n.p.players && w.get_resource::<crate::goals::Carriers>().is_some_and(|c| !n.mask.any_alive(&c.1.0)) {
+        edit(w, e, inst, |n| n.parked = true);
         return;
     }
     let wait = with_rng(w, e, |r| 2 * geometric(r, reduced(n.p.interval)));
     crate::goals::arm(w, e, inst.slot, wait);
     edit(w, e, inst, |n| n.armed = true);
+}
+/// A creature of species `sp` was born where none lived: the instances parked for it are armed again.
+pub fn unpark(w: &mut World, sp: u8) {
+    let ids: Vec<Entity> = w.query_filtered::<Entity, With<NearestTargets>>().iter(w).collect();
+    for e in ids {
+        let hits: Vec<(u8, u8)> = w.get::<NearestTargets>(e).map_or(Vec::new(), |ts| ts.0.iter().enumerate().filter(|(_, n)| n.parked && n.mask.contains(sp)).map(|(i, n)| (n.slot, i as u8)).collect());
+        for (slot, nth) in hits {
+            let inst = Inst { slot, nth };
+            edit(w, e, inst, |n| n.parked = false);
+            arm(w, e, inst);
+        }
+    }
 }
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
     edit(w, e, inst, |n| n.armed = false);
@@ -178,7 +198,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         // `TargetingConditions.forCombat` always checks the line of sight, here for the candidates in range only.
         let ps = w.resource::<crate::hostile::PlayerState>();
         // No player has an effect (the usual): the list is not asked per candidate.
-        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.list.is_empty());
+        let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
         let mut best: Option<(u32, f64)> = None;
         w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
             let reach = if any_effect {
@@ -191,6 +211,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             if d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
                 && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
+                && n.p.attach_reach.is_none_or(|m| {
+                    let face = w.get::<crate::behaviours::attached_face::Attached>(e).map_or(0, |a| a.face);
+                    let d = [p.x - pos.x, p.y - pos.y, p.z - pos.z][crate::behaviours::homing_projectile::axis_of(face) as usize];
+                    d.abs() <= m
+                })
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
@@ -201,7 +226,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
         });
         found = best.map(|b| Who::Player(b.0));
-    } else if !n.mask.is_empty() {
+    } else if !n.mask.is_empty() && w.get_resource::<crate::goals::Carriers>().is_none_or(|c| n.mask.any_alive(&c.1.0)) {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
             if c == e {
