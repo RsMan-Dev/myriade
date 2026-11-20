@@ -84,8 +84,14 @@ mod tests {
         for _ in 0..3 {
             herd.tick();
         }
+        // A species without `Cap::Targets` (the frog) has no `FollowRange`: give one to every creature so the sort is tested whatever the species.
+        let all: Vec<Entity> = herd.world.iter_entities().map(|e| e.id()).collect();
+        for &e in &all {
+            if herd.world.get::<FollowRange>(e).is_none() {
+                herd.world.entity_mut(e).insert(FollowRange(16.0));
+            }
+        }
         let w = &herd.world;
-        let all: Vec<Entity> = w.iter_entities().map(|e| e.id()).collect();
         let (mut lists, mut longest) = (0, 0);
         for e in all {
             let (got, want) = (living_near(w, e), living_near_reference(w, e));

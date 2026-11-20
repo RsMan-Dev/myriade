@@ -90,3 +90,6 @@ fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus 
 - Fin de série : séries qui perdaient leur saut : 0 (grenouille 323/400 avant et après, chèvre 400/400, plat 0/400 : tout candidat atteignable). Chèvre relief : 0 série avec un autre premier candidat après filtrage des cases sans parent. Arc réel non rejoué (arc supposé indépendant).
 - Coût (µs/série, `ecsdev`, k=20 candidats) mémo précédent -> élargi : grenouille plat 101 -> 92, relief 61 -> 48 ; chèvre relief 80 -> 75, plat 20 -> 21 (bruit). Questions sans recherche : grenouille relief 936 -> 2438 sur 4219, chèvre 1131 -> 2839 sur 7155.
 - Mémoire : ensemble par fil vidé en fin de série, 0 octet par mob. Test différentiel : `series_memo_never_says_yes_to_an_unreachable_cell` (ignoré, `ONE_DENSITY`).
+
+## Lot cerveaux (2026-11-20)
+- swim_controls_vs_mob::the_fluid_height_is_the_mobs_at_the_same_positions, espèces hoglin et piglin : le Mob garde `fluids.water` à 1,3889 de y=3,55 à 4,05 alors que la surface est à 4,889 ; l'ECS calcule 0,84 à 1,34. Mesuré, cause côté Mob non étudiée (Mob intouchable) : à trancher.

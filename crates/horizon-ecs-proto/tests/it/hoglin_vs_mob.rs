@@ -28,16 +28,18 @@ fn nearest(spots: &[(f64, f64)], from: (f64, f64)) -> usize {
     (0..spots.len()).min_by(|&a, &b| d(a).partial_cmp(&d(b)).unwrap()).unwrap()
 }
 
-fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
+fn mob_run(n: usize, r: f64, ticks: i64, seed: u32) -> Run {
     let spots = ring(n, r);
     let mut rf = MobRef::new(60, false);
     for s in &spots {
-        rf.add_kind(Vec3::new(s.0, 1.0, s.1), mob_kind("minecraft:hoglin"));
+        rf.add_kind_id(Vec3::new(s.0, 1.0, s.1), mob_kind("minecraft:hoglin"), seed * 100 + rf.mobs.len() as u32 + 1);
     }
     let mut out = Run { acquired: vec![None; n], first_hit: vec![None; n], hits: vec![Vec::new(); n] };
     for t in 1..=ticks {
         let p = player_view(STILL(t), None);
         let from = rf.events.len();
+        // The strike is logged at the position the attacker had when it struck: before the tick moved it (the crowd is a few tenths wide).
+        let before: Vec<(f64, f64)> = rf.mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
         rf.step(Some(&p));
         for (i, m) in rf.mobs.iter().enumerate() {
             if m.ai.target.is_some() && out.acquired[i].is_none() {
@@ -46,8 +48,7 @@ fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
         }
         for e in &rf.events[from..] {
             if let MobEvent::AttackPlayer(_, f) = e {
-                let pos: Vec<(f64, f64)> = rf.mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
-                let i = nearest(&pos, (f[0], f[2]));
+                let i = nearest(&before, (f[0], f[2]));
                 out.first_hit[i].get_or_insert(t);
                 out.hits[i].push(t);
             }
@@ -56,7 +57,7 @@ fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
     out
 }
 
-fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
+fn ecs_run(n: usize, r: f64, ticks: i64, seed: u64) -> Run {
     let spots = ring(n, r);
     let mut h = Herd::with_slab(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
@@ -66,7 +67,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let e = spawn_species(&mut h.world, &table[hoglin], s.0, s.1, 1000 + i as u64);
+            let e = spawn_species(&mut h.world, &table[hoglin], s.0, s.1, 1000 + seed * 100 + i as u64);
             h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
             h.world.resource_mut::<Entered>().0.push(e);
             e
@@ -77,6 +78,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
     for t in 1..=ticks {
         let p = STILL(t);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
+        let before: Vec<(f64, f64)> = ids.iter().map(|&e| { let q = h.world.get::<Pos>(e).unwrap().0; (q.x, q.z) }).collect();
         h.tick();
         for (i, &e) in ids.iter().enumerate() {
             if h.world.get::<Target>(e).is_some() && out.acquired[i].is_none() {
@@ -85,8 +87,7 @@ fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
         }
         let hits = h.world.resource::<PlayerState>().hits.clone();
         for hit in &hits[seen..] {
-            let pos: Vec<(f64, f64)> = ids.iter().map(|&e| { let q = h.world.get::<Pos>(e).unwrap().0; (q.x, q.z) }).collect();
-            let i = nearest(&pos, hit.from);
+            let i = nearest(&before, hit.from);
             out.first_hit[i].get_or_insert(t);
             out.hits[i].push(t);
         }
@@ -111,7 +112,19 @@ fn hoglins_hunt_a_still_player_as_a_mob_does() {
     if !have_data() {
         return;
     }
-    let (m, e) = (mob_run(12, 12.0, 400), ecs_run(12, 12.0, 400));
+    // The ring packs twelve wide animals around one player: which ones reach it and in which order depends on the draws (the ids and seeds
+    // of the animals), so a single run is one sample of a chaotic statistic (the ecs gap goes from 41.0 to 50.2 over seven seeds; pooled, 44.0
+    // against 43.0 for the Mob; each hoglin strikes every 41 ticks on both sides, the jar's 40 + 1). Both sides are pooled over the same seeds.
+    let pool = |runs: Vec<Run>| {
+        let mut all = Run { acquired: Vec::new(), first_hit: Vec::new(), hits: Vec::new() };
+        for r in runs {
+            all.acquired.extend(r.acquired);
+            all.first_hit.extend(r.first_hit);
+            all.hits.extend(r.hits);
+        }
+        all
+    };
+    let (m, e) = (pool((0..7u32).map(|k| mob_run(12, 12.0, 400, k)).collect()), pool((0..7u32).map(|k| ecs_run(12, 12.0, 400, u64::from(k))).collect()));
     eprintln!(
         "ring 12 hoglin: acquired mob {:.1} ecs {:.1}; first hit mob {:.1} ecs {:.1}; gap (mean, min) mob {:?} ecs {:?}",
         mean_of(&m.acquired),
