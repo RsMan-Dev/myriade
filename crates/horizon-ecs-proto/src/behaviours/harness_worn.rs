@@ -7,12 +7,11 @@ use crate::behaviours::Interaction;
 use crate::cow::GrowAt;
 use crate::rules::{no_attrs, no_interact, Rule};
 use bevy_ecs::prelude::*;
-use std::sync::Arc;
 
 /// The worn harness, by item name.
 #[derive(Component, Clone, Debug)]
 pub struct Harness {
-    pub item: Arc<str>,
+    pub item: &'static str,
 }
 
 pub static RULE: Rule = Rule { name: "happy_ghast_harness", equip, attrs: no_attrs, interact };
@@ -29,7 +28,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     if w.get::<Harness>(e).is_some() || w.get::<GrowAt>(e).is_some() || !is_harness(i.item) {
         return no_interact(w, e, p, i);
     }
-    let item: Arc<str> = Arc::from(crate::items::item_name(i.item).unwrap_or_default());
+    let item: &'static str = crate::items::item_name(i.item).unwrap_or_default();
     w.entity_mut(e).insert(Harness { item });
     true
 }
