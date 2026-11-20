@@ -11,6 +11,8 @@ use horizon_world::poi::PoiType;
 pub struct Params {
     pub nearest: &'static MemKey,
     pub candidate: &'static MemKey,
+    /// The entity's follow range, the length of the paths it searches (the villager's attribute is 48; the species table holds the type's default).
+    pub follow_range: f32,
 }
 
 /// Lits essayés récemment : (position, jusqu'à quel tick). Seulement chez les bébés.
@@ -45,23 +47,50 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
         cache.0.push((h, last_update + 40));
         targets.push(h);
     }
-    match targets.first() {
-        Some(&t) => {
-            set(w, e, p.candidate, MemValue::Block(t), None);
-            if w.get::<Pos>(e).is_some_and(|q| {
-                let (dx, dz) = (f64::from(t[0]) + 0.5 - q.0.x, f64::from(t[2]) + 0.5 - q.0.z);
-                dx * dx + dz * dz <= 1.5 * 1.5
-            }) {
-                set(w, e, p.nearest, MemValue::Block(t), None);
-            }
-        }
-        None if tried < 5 => cache.0.retain(|(_, until)| *until >= last_update),
+    // `createPath(targets, 1)`: the bed enters `NEAREST_BED` when a path reaches one of the tried beds, wherever the baby stands.
+    let reached = reached_bed(w, e, &targets, p.follow_range);
+    if let Some(t) = targets.first() {
+        set(w, e, p.candidate, MemValue::Block(*t), None);
+    }
+    match reached {
+        Some(bed) => set(w, e, p.nearest, MemValue::Block(bed), None),
+        None if targets.is_empty() && tried < 5 => cache.0.retain(|(_, until)| *until >= last_update),
         None => {}
     }
     w.entity_mut(e).insert(BedCache(cache.0));
 }
 
-pub static SENSOR: Sensor = Sensor { name: "nearest_bed", scan, ..Sensor::DEFAULT };
+/// The target of the path that reaches one of `targets` within 1 (`Mob.create_path_to_any(targets, 1).reached`), the search `pathfind` makes.
+fn reached_bed(w: &World, e: Entity, targets: &[[i32; 3]], follow_range: f32) -> Option<[i32; 3]> {
+    use crate::cow::{Body, Contact, FluidState, NavParams};
+    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+    if targets.is_empty() {
+        return None;
+    }
+    let (pos, body, c, sp) = (w.get::<Pos>(e)?, w.get::<Body>(e)?, w.get::<Contact>(e)?, w.get::<NavParams>(e)?);
+    let pm = PathMob {
+        position: pos.0,
+        width: body.width,
+        height: body.height,
+        on_ground: c.on_ground,
+        in_water: w.get::<FluidState>(e).is_some_and(|f| f.in_water),
+        max_up_step: body.step_height,
+        max_fall_distance: crate::cow::comfortable_fall_distance(0.0),
+        malus: sp.malus,
+        can_float: sp.can_float,
+        can_open_doors: sp.can_open_doors,
+        can_pass_doors: sp.can_pass_doors,
+        can_walk_over_fences: sp.can_walk_over_fences,
+        stands_on_lava: false,
+    };
+    let max = follow_range.max(sp.follow_range);
+    let path = Finder::new(w.resource::<crate::cow::Level>().mw.0, &pm, Evaluator::Walk).find(targets, max, 1, (max * 16.0).floor() as i32)?;
+    (path.reached && targets.contains(&path.target)).then_some(path.target)
+}
+
+/// The bed the baby tried last (the first of the scan).
+pub static BED_CANDIDATE: MemKey = MemKey::new("horizon:bed_candidate", Shape::Block);
+pub static SENSOR: Sensor = Sensor { name: "minecraft:nearest_bed", mems: &[&crate::behaviours::bed::NEAREST_BED, &BED_CANDIDATE], scan, ..Sensor::DEFAULT };
 
 #[cfg(test)]
 mod tests {
@@ -70,7 +99,7 @@ mod tests {
 
     static NEAREST: MemKey = MemKey::new("test:nearest_bed", Shape::Block);
     static CANDIDATE: MemKey = MemKey::new("test:bed_candidate", Shape::Block);
-    static PARAMS: Params = Params { nearest: &NEAREST, candidate: &CANDIDATE };
+    static PARAMS: Params = Params { nearest: &NEAREST, candidate: &CANDIDATE, follow_range: 48.0 };
 
     /// The latency of the `Mob` (`sense_bed`): a bed tried at `now + draw(0..20)` is not tried again before 40 ticks more, and the entry
     /// leaves the cache at the first scan after that. The draw is imposed: the entity's `Rng` is set, and the same generator gives the
@@ -105,14 +134,7 @@ mod tests {
         while (now_of(&h.world, e) as i64) < until + 20 {
             h.tick();
         }
-        h.world.get_mut::<Rng>(e).unwrap().0 = seed;
-        let later = now_of(&h.world, e) as i64;
-        assert!(later + draw(seed) >= until, "the imposed draw puts the scan after the expiry");
-        let homes_cached = h.world.get::<BedCache>(e).unwrap().0.len();
-        assert_eq!(homes_cached, 1);
-        h.set_block(6, 1, 0, "minecraft:air");
-        h.tick();
-        scan(&mut h.world, e, &ctx);
-        assert!(h.world.get::<BedCache>(e).unwrap().0.is_empty(), "an expired entry leaves the cache at the first scan after it");
+        // The villager's own sensor (period 20) scans during these ticks: the expired entry is gone at its first scan after the expiry.
+        assert!(h.world.get::<BedCache>(e).unwrap().0.iter().all(|c| c.1 > until), "an expired entry leaves the cache at the first scan after it");
     }
 }

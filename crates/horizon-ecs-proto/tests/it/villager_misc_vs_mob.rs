@@ -249,3 +249,38 @@ fn attacker_view(at: Vec3) -> PlayerView {
         vehicle: None,
     }
 }
+
+/// `NearestBedSensor`: a baby villager (never an adult) finds a reachable bed within 48 blocks, at the first scan (interval 20, random start under
+/// 20). The ticks are the two sensors' own random phases: both land in the first 20 ticks, in the same scene, with the bed 30 blocks away.
+#[test]
+fn a_baby_villager_senses_a_reachable_bed_as_a_mob_does() {
+    if !have_data() || !is("minecraft:villager") {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    let bed = [20, 1, 0];
+    mob_block(&r, bed[0], bed[1], bed[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);
+    h.set_block_state(bed[0], bed[1], bed[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);
+    mob_block(&r, bed[0] - 1, bed[1], bed[2], "minecraft:red_bed", &[("part", "foot"), ("facing", "east")]);
+    h.set_block_state(bed[0] - 1, bed[1], bed[2], "minecraft:red_bed", &[("part", "foot"), ("facing", "east")]);
+    r.apply_block_events();
+    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
+    horizon_client_lib::mobs::finalize::set_age(&mut r.mobs[i], -24000, None);
+    let e = spawn_villager(&mut h, 0.5, 0.5);
+    horizon_ecs_proto::behaviours::follow_parent::make_baby(&mut h.world, e, 24000);
+    let (mut mob_at, mut ecs_at) = (None, None);
+    for t in 1..=60u64 {
+        r.step(None);
+        h.tick();
+        if mob_at.is_none() && horizon_client_lib::mobs::villager_brain::describe(&r.mobs[i]).is_some_and(|d| d.1.contains("nearest_bed")) {
+            mob_at = Some(t);
+        }
+        if ecs_at.is_none() && present(&h.world, e, &horizon_ecs_proto::behaviours::bed::NEAREST_BED) {
+            ecs_at = Some(t);
+        }
+    }
+    eprintln!("baby bed: mob {mob_at:?} ecs {ecs_at:?}");
+    let (m, e) = (mob_at.expect("the Mob baby senses the bed"), ecs_at.expect("the ecs baby senses the bed"));
+    assert!(m <= 41 && e <= 41, "the first scan is within the 20-tick start plus a period (mob {m}, ecs {e})");
+}

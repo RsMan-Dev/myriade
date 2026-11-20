@@ -3,7 +3,7 @@
 //! alimenter par la partie POI), le jeu des bébés (`play`), le commerce, la reproduction, la panique du raid (voir villager.md).
 use super::Def;
 use crate::behaviours::Cap;
-use crate::behaviours::{bed::NEAREST_BED, breed_love, composter, crop_harvest, poi_strolls, gossip, reach_block, schedule, sleep_in_bed, stroll_near_block, summon_defender};
+use crate::behaviours::{bed::NEAREST_BED, breed_love, composter, crop_harvest, nearest_bed, poi_strolls, gossip, reach_block, schedule, sleep_in_bed, stroll_near_block, summon_defender};
 use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, walk_away};
 use crate::brain::sensors::{hurt_by, living, secondary_job_site::{self, SECONDARY_JOB_SITE}};
 use crate::brain::*;
@@ -88,7 +88,7 @@ pub static DEF: Def = Def {
     name: "minecraft:villager",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
-        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40)],
+        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40), SensorEntry::new(&nearest_bed::SENSOR, 20).with(&nearest_bed::Params { nearest: &NEAREST_BED, candidate: &nearest_bed::BED_CANDIDATE, follow_range: 48.0 })],
         activities: ACTIVITIES,
         pick: PICK,
         initial: &[],
