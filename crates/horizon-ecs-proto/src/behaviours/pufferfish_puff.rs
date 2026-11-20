@@ -28,6 +28,8 @@ pub struct Puff {
     pub slot: u8,
     pub armed_at: u64,
     pub stopped_at: u64,
+    /// The box and eye height at scale 1 (`Pufferfish.getDefaultDimensions` scales them by the size).
+    pub base: (f32, f32, f64),
 }
 /// The goal runs: the puffer's area is checked every tick.
 #[derive(Component, Clone, Copy, Debug)]
@@ -49,10 +51,40 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
+    let b = *w.get::<Body>(e).unwrap();
+    let eye = w.get::<crate::targeting::Eye>(e).map_or(0.0, |x| x.0);
     w.entity_mut(e).insert((
-        Puff { size: 0, range: p.range, fearless: p.fearless, slot: inst.slot, armed_at: u64::MAX, stopped_at: 0 },
+        Puff { size: 0, range: p.range, fearless: p.fearless, slot: inst.slot, armed_at: u64::MAX, stopped_at: 0, base: (b.width, b.height, eye) },
         PlayerWatch::new(3.0),
     ));
+    rescale(w, e);
+}
+/// `Pufferfish.getScale`: 0.5, 0.7, 1.0 by puff state, over the box and the eye height (`refreshDimensions`: the box keeps its feet and its axis).
+fn rescale(w: &mut World, e: Entity) {
+    let p = *w.get::<Puff>(e).unwrap();
+    let s = match p.size {
+        0 => 0.5_f32,
+        1 => 0.7,
+        _ => 1.0,
+    };
+    let (bw, bh, eye) = (p.base.0 * s, p.base.1 * s, p.base.2 * f64::from(s));
+    let mut b = w.get_mut::<Body>(e).unwrap();
+    b.width = bw;
+    b.height = bh;
+    if let Some(mut f) = w.get_mut::<FluidParams>(e) {
+        f.eye_height = eye;
+    }
+    if let Some(mut x) = w.get_mut::<crate::targeting::Eye>(e) {
+        x.0 = eye;
+    }
+    if let Some(at) = w.get::<Pos>(e).map(|p| p.0) {
+        w.get_mut::<Bounds>(e).unwrap().0 = box_at(at, bw, bh);
+        w.entity_mut(e).insert(Recheck);
+    }
+}
+fn set_puff(w: &mut World, e: Entity, size: u8) {
+    w.get_mut::<Puff>(e).unwrap().size = size;
+    rescale(w, e);
 }
 fn arm_at_local(w: &mut World, e: Entity, at: u64) {
     let slot = w.get::<Puff>(e).unwrap().slot;
@@ -70,15 +102,15 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     if w.get::<Puffing>(e).is_some() {
         // `counter > 40 && size == 1` -> 2 (the forty-first tick of the goal).
         if p.size == 1 {
-            w.get_mut::<Puff>(e).unwrap().size = 2;
+            set_puff(w, e, 2);
         }
     } else if p.size == 2 {
         // `counter2 > 60 && size == 2` -> 1; the next step is 101 ticks after the end.
-        w.get_mut::<Puff>(e).unwrap().size = 1;
+        set_puff(w, e, 1);
         arm_at_local(w, e, p.stopped_at + 101);
     } else if p.size == 1 {
         // `counter2 > 100 && size == 1` -> 0.
-        w.get_mut::<Puff>(e).unwrap().size = 0;
+        set_puff(w, e, 0);
     }
     false
 }
@@ -118,7 +150,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let now = now_of(w, e);
     if w.get::<Puff>(e).unwrap().size == 0 {
-        w.get_mut::<Puff>(e).unwrap().size = 1;
+        set_puff(w, e, 1);
     }
     w.entity_mut(e).insert(Puffing);
     arm_at_local(w, e, now + 40);

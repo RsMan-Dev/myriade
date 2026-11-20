@@ -129,9 +129,9 @@ fn guardians_swim_to_the_bit_as_their_mobs_do() {
 /// The pufferfish's box scales with its puff state (`Pufferfish.getScale`: 0.5, 0.7, 1.0); the ecs one keeps the base size, so the node is reached
 /// a tick later in the Mob (its `canMoveDirectly` reads the height): the port of the body size is not done (suivi/ecs-ecarts.md).
 #[test]
-#[ignore = "strict: the ecs pufferfish has no body size by puff state (not ported, ecart in suivi/ecs-ecarts.md)"]
 fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
-    if !have_data() {
+    // The species of the legs comes from HORIZON_SPECIES: this one is meant for the pufferfish.
+    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:pufferfish") {
         return;
     }
     let _ = flat_pair();
