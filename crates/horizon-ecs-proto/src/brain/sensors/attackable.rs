@@ -55,7 +55,7 @@ thread_local! { static BUF: std::cell::RefCell<Vec<(Who, f64)>> = const { std::c
 /// accepted: no sort); past that the rest is sorted, as a lazy selection over a long list that accepts nothing is quadratic. Ties keep their
 /// position either way (`remove` keeps the order of the rest, and `sort_by` is stable).
 fn first_in_sorted_order<F: FnMut(Who) -> bool>(cands: &mut Vec<(Who, f64)>, mut ok: F) -> Option<Who> {
-    const PICKS: usize = 3;
+    const PICKS: usize = 1;
     for _ in 0..PICKS {
         let best = (0..cands.len()).reduce(|b, i| if cands[i].1.total_cmp(&cands[b].1).is_lt() { i } else { b })?;
         let (who, _) = cands.remove(best);
