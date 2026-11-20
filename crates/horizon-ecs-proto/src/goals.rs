@@ -505,6 +505,26 @@ impl Online {
     pub fn for_all(&self, f: impl FnMut(Player)) {
         self.list.iter().flatten().copied().for_each(f);
     }
+    /// Whether `f` holds for some player of the window (as `for_near`, but it stops at the first: the order does not matter).
+    pub fn any_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player) -> bool) -> bool {
+        let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
+        if (i64::from(x1 - x0) + 1) * (i64::from(z1 - z0) + 1) > 2 * self.bins.len() as i64 {
+            return self.bins.iter().filter(|&(&(bx, bz), _)| (x0..=x1).contains(&bx) && (z0..=z1).contains(&bz)).any(|(_, v)| v.iter().any(|&id| self.get(id).is_some_and(&mut f)));
+        }
+        // The middle first: the players nearest the asker are in the bins around it.
+        let c = bin(x, z);
+        if self.bins.get(&c).into_iter().flatten().any(|&id| self.get(id).is_some_and(&mut f)) {
+            return true;
+        }
+        for bz in z0..=z1 {
+            for bx in x0..=x1 {
+                if (bx, bz) != c && self.bins.get(&(bx, bz)).into_iter().flatten().any(|&id| self.get(id).is_some_and(&mut f)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         // A wide window over few players (a ghast's 100 blocks, 625 bins, none occupied): the occupied bins are visited, in the same (z, x) order.
@@ -563,7 +583,7 @@ fn equip_goals(w: &mut World, e: Entity) {
 /// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
 /// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
 #[derive(Resource, Default)]
-pub struct Carriers(pub Vec<u32>, pub crate::cow::Census);
+pub struct Carriers(pub Vec<u32>, pub crate::cow::Census, pub u128);
 pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries: &[Entry], delta: i32) {
     let reg = crate::species::registry();
     let Some(mut c) = world.get_resource_mut::<Carriers>() else { return };
@@ -572,6 +592,11 @@ pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries
             && let Some(n) = c.0.get_mut(i)
         {
             *n = n.saturating_add_signed(delta);
+            // The modules that have a tick and a carrier, one bit each (their rank in the list of ticks): `tick_modules` reads this word only.
+            if let Some(j) = tick_pos(i).filter(|j| *j < 128) {
+                let on = u128::from(c.0[i] > 0) << j;
+                c.2 = c.2 & !(1 << j) | on;
+            }
         }
     }
 }
@@ -592,7 +617,7 @@ fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifec
 
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
-    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default()));
+    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default(), 0));
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
@@ -978,26 +1003,30 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 
 
 /// Whether some entity holds a component of SparseSet storage: two lookups, no query.
-fn sparse_any<C: Component>(world: &World) -> bool {
+pub(crate) fn sparse_any<C: Component>(world: &World) -> bool {
     world.component_id::<C>().and_then(|id| world.storages().sparse_sets.get(id)).is_some_and(|s| !s.is_empty())
 }
 /// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one
 /// test per module and tick, no system and no run condition in the schedule.
-fn tick_modules(world: &mut World) {
+fn ticks_list() -> &'static [(usize, fn(&mut World))] {
     static TICKS: std::sync::OnceLock<Vec<(usize, fn(&mut World))>> = std::sync::OnceLock::new();
-    let ticks = TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect());
-    // One look at the counters for all the modules (a bit per tick of the list), not one resource lookup per module.
-    let live = {
-        let c = &world.resource::<Carriers>().0;
-        let mut m = 0u128;
-        for (j, &(i, _)) in ticks.iter().enumerate().take(128) {
-            m |= u128::from(c.get(i).is_some_and(|n| *n > 0)) << j;
-        }
-        m
-    };
-    for (j, &(i, t)) in ticks.iter().enumerate() {
-        let on = if j < 128 { live >> j & 1 == 1 } else { world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) };
-        if on {
+    TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect())
+}
+/// The rank of module `i` among those that have a tick.
+fn tick_pos(i: usize) -> Option<usize> {
+    ticks_list().binary_search_by_key(&i, |t| t.0).ok()
+}
+fn tick_modules(world: &mut World) {
+    let ticks = ticks_list();
+    // The bits of the modules carried (kept by the hooks): one word, no walk of the list. Past 128 ticks the rest is looked at one by one.
+    let mut live = world.resource::<Carriers>().2;
+    while live != 0 {
+        let j = live.trailing_zeros() as usize;
+        live &= live - 1;
+        (ticks[j].1)(world);
+    }
+    for &(i, t) in ticks.iter().skip(128) {
+        if world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) {
             t(world);
         }
     }

@@ -74,6 +74,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
 }
 /// `canContinueToUse`, asked before each tick of the goal (`GoalSelector` order), only for the entities that carry a condition and run the goal.
 fn keep(w: &mut World) {
+    if !crate::goals::sparse_any::<hostile::Meleeing>(w) {
+        return;
+    }
     let running: Vec<(Entity, &'static Cond, u8)> = w.query_filtered::<(Entity, &KeepsWhile, &hostile::Attack), With<hostile::Meleeing>>().iter(w).map(|(e, k, a)| (e, k.0, a.melee_slot)).collect();
     for (e, c, slot) in running {
         if !c.eval(w, e) {

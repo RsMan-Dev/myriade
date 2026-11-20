@@ -15,6 +15,7 @@ use horizon_world::registry::BlockStateId;
 
 /// A falling block: the state it will be placed with and the item it drops when it cannot be.
 #[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
 pub struct FallingBlock {
     pub state: BlockStateId,
     pub drop: Option<ItemStack>,
@@ -55,6 +56,10 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// The tick's end for the blocks in the air: the ones whose move ended on the ground land.
 fn lands(w: &mut World) {
+    // Nothing in the air: two lookups, no query to build.
+    if !crate::goals::sparse_any::<FallingBlock>(w) {
+        return;
+    }
     for (c, mut b) in w.query::<(&Contact, &mut FallingBlock)>().iter_mut(w) {
         if !c.on_ground {
             b.fell = c.fall_distance;

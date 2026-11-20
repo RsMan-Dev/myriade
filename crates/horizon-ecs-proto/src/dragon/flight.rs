@@ -232,9 +232,9 @@ pub fn steer(order: &FlyOrder, f: &Flight, pos: &mut Vec3, vel: &mut Vec3, yaw: 
 /// One tick of a dragon (`tick_dragon`, D:2677): the single wake of its flight. Its random stream is observable every tick (ambient
 /// roll, scan roll), so no tick can be skipped: one wake per tick per dragon is the floor, and everything else rides on it.
 pub fn tick(w: &mut World, e: Entity) {
-    let Some(mut f) = w.get_entity_mut(e).ok().and_then(|mut x| x.take::<Flight>()) else { return };
+    // In place: taking a component out and putting it back moves the entity between tables twice a tick.
+    let Some(mut f) = w.get_mut::<Flight>(e) else { return };
     f.ticks += 1;
-    w.entity_mut(e).insert(f);
     if let Some(mut c) = w.get_mut::<hurt::DragonHurt>(e) {
         c.time = (c.time - 1).max(0);
         c.window = (c.window - 1).max(0);
@@ -244,17 +244,20 @@ pub fn tick(w: &mut World, e: Entity) {
         return;
     }
     heal(w, e);
-    let mut f = w.entity_mut(e).take::<Flight>().expect("flight");
-    let mut rng = w.entity_mut(e).take::<DragonRng>().expect("rng");
     let order = order_of(w, e);
     let (pos, vel, mut yaw) = (w.get::<Pos>(e).expect("pos").0, w.get::<Vel>(e).expect("vel").0, w.get::<Yaw>(e).expect("yaw").0);
-    w.resource_scope::<Events, _>(|_, mut ev| pre(&mut f, &order, pos, vel, &mut yaw, &mut rng, &mut ev.host));
-    let scan = f.scan_due;
     let no_ai = w.get::<NoAi>(e).is_some();
-    if no_ai {
-        f.flap = 0.5;
-    }
-    w.entity_mut(e).insert((f, rng, Yaw(yaw)));
+    let scan = w.resource_scope::<Events, _>(|w, mut ev| {
+        let mut em = w.entity_mut(e);
+        let (mut f, mut rng) = em.get_components_mut::<(&mut Flight, &mut DragonRng)>().expect("flight and rng");
+        pre(&mut f, &order, pos, vel, &mut yaw, &mut rng, &mut ev.host);
+        let scan = f.scan_due;
+        if no_ai {
+            f.flap = 0.5;
+        }
+        scan
+    });
+    w.get_mut::<Yaw>(e).expect("yaw").0 = yaw;
     if scan {
         let reach = Aabb::new(Vec3::new(pos.x - 8.0, pos.y, pos.z - 8.0), Vec3::new(pos.x + 8.0, pos.y + 8.0, pos.z + 8.0)).inflate(Vec3::new(32.0, 32.0, 32.0));
         let near = crystals::nearest_to(w, pos, reach);
@@ -263,9 +266,7 @@ pub fn tick(w: &mut World, e: Entity) {
     if no_ai {
         return;
     }
-    let mut hist = w.entity_mut(e).take::<FlightHistory>().expect("history");
-    hist.record(pos.y, yaw);
-    w.entity_mut(e).insert(hist);
+    w.get_mut::<FlightHistory>(e).expect("history").record(pos.y, yaw);
     phases::tick(w, e);
     steer_sys(w, e);
     parts::place(w, e);
@@ -285,13 +286,20 @@ fn heal(w: &mut World, e: Entity) {
 
 fn steer_sys(w: &mut World, e: Entity) {
     let order = order_of(w, e);
-    let f = w.entity_mut(e).take::<Flight>().expect("flight");
     let mut pos = w.get::<Pos>(e).expect("pos").0;
     let mut vel = w.get::<Vel>(e).expect("vel").0;
     let mut yaw = w.get::<Yaw>(e).expect("yaw").0;
     let mut accel = w.get::<YawAccel>(e).map_or(0.0, |a| a.0);
-    steer(&order, &f, &mut pos, &mut vel, &mut yaw, &mut accel);
-    w.entity_mut(e).insert((f, Pos(pos), Vel(vel), Yaw(yaw), YawAccel(accel)));
+    steer(&order, w.get::<Flight>(e).expect("flight"), &mut pos, &mut vel, &mut yaw, &mut accel);
+    w.get_mut::<Pos>(e).expect("pos").0 = pos;
+    w.get_mut::<Vel>(e).expect("vel").0 = vel;
+    w.get_mut::<Yaw>(e).expect("yaw").0 = yaw;
+    match w.get_mut::<YawAccel>(e) {
+        Some(mut a) => a.0 = accel,
+        None => {
+            w.entity_mut(e).insert(YawAccel(accel));
+        }
+    }
 }
 
 /// The wake of the flight: it re-arms itself for the next tick, the only per-tick wake of a dragon.
