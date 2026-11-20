@@ -562,7 +562,7 @@ fn travel(
             if swp.push == Push::Speed {
                 crate::locomotion::fly::move_relative_3d(&mut v, y.0, push, d.xxa, d.yya, d.zza);
             } else {
-                move_relative(&mut v, y.0, push, d.xxa, d.zza);
+                move_relative(&mut v, y.0, push, d.xxa, d.yya, d.zza);
             }
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
@@ -570,7 +570,7 @@ fn travel(
             let sink = if swp.sinks && (swp.control != Control::Guardian || (d.speed == 0.0 && !has_target)) { 0.005 } else { 0.0 };
             v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
         } else {
-            let rest = travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
+            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall, false);
             // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.
             if rest && !following.contains(e) {
                 par.command_scope(e, |mut cmd| {

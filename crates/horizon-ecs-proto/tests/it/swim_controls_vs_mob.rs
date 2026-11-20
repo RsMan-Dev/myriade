@@ -89,7 +89,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
             if std::env::var_os("TRACE2").is_some() && d > 0.05 && t % 15 == 0 {
                 eprintln!("{name} {k} t={t} gap {d:.3} MOB ({:.3},{:.3},{:.3}) | ECS ({:.3},{:.3},{:.3})", a.x, a.y, a.z, b.x, b.y, b.z);
             }
-            if std::env::var_os("TRACE3").is_some() && Some(k) == std::env::var("TRACE_K").ok().and_then(|v| v.parse::<usize>().ok()).or(Some(3)) && t <= 8 {
+            if std::env::var_os("TRACE3").is_some() && Some(k) == std::env::var("TRACE_K").ok().and_then(|v| v.parse::<usize>().ok()).or(Some(3)) && (std::env::var("TRACE_T").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1)..).contains(&t) && t <= std::env::var("TRACE_T").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1) + 7 {
                 let dd = h.world.get::<Drive>(e).unwrap();
                 eprintln!("t={t} MOB pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2} | ECS pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2}", a.x, a.y, a.z, r.mobs[i].velocity.x, r.mobs[i].velocity.y, r.mobs[i].velocity.z, r.mobs[i].ai.speed, r.mobs[i].ai.zza, r.mobs[i].ai.yya, r.mobs[i].head_pitch, r.mobs[i].yaw, b.x, b.y, b.z, h.world.get::<Vel>(e).unwrap().0.x, h.world.get::<Vel>(e).unwrap().0.y, h.world.get::<Vel>(e).unwrap().0.z, dd.speed, dd.zza, dd.yya, dd.pitch, h.world.get::<Yaw>(e).unwrap().0);
             }
@@ -104,8 +104,8 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
     worst
 }
 
-fn within_old_bounds(w: [f64; 3]) {
-    assert!(w[0] < 0.15 && w[2] < 0.5, "{w:?}");
+fn to_the_bit(w: [f64; 3]) {
+    assert_eq!(w, [0.0; 3], "the swimmer leaves the Mob's route");
 }
 
 /// The guardian's yaw: the jar turns toward `Mth.atan2(zd, xd) * 57.2957763671875 - 90` (what the ecs does); the `Mob` guardian uses the platform's
@@ -129,18 +129,18 @@ fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their
     }
     let _ = flat_pair();
     match species().name {
-        "minecraft:dolphin" => within_old_bounds(legs("dolphin", false, true)),
+        "minecraft:dolphin" => to_the_bit(legs("dolphin", false, true)),
         // The axolotl has the dolphin's control (verified); the `Mob` axolotl moves by something other than the imposed path (no goal, no brain left:
         // cause not found), so no comparison is made for it.
         "minecraft:axolotl" => eprintln!("axolotl: not compared (the Mob axolotl does not follow the imposed route)"),
-        "minecraft:drowned" => within_old_bounds(legs("drowned", true, false)),
+        "minecraft:drowned" => to_the_bit(legs("drowned", true, false)),
         "minecraft:guardian" | "minecraft:elder_guardian" => {
             let w = legs("guardian", false, true);
             assert!(w[2] < 1.0e-3, "{w:?}");
         }
         // The nautiluses' control (the smooth swimming one, no sinking: `AbstractNautilus.travelInWater`): the legs inside the pool.
-        "minecraft:nautilus" => within_old_bounds(legs("nautilus", false, true)),
-        "minecraft:zombie_nautilus" => within_old_bounds(legs("zombie_nautilus", false, true)),
+        "minecraft:nautilus" => to_the_bit(legs("nautilus", false, true)),
+        "minecraft:zombie_nautilus" => to_the_bit(legs("zombie_nautilus", false, true)),
         _ => {}
     }
 }

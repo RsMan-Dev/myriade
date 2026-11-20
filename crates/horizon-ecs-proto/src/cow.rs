@@ -1612,7 +1612,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, fluid_update, move_control, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
@@ -2164,8 +2164,8 @@ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&P
 /// `LivingEntity.travel` of a cow on the ground (air branch): `Entity.moveRelative`, the real block sweep,
 /// gravity and the drags. Block friction is the stone's 0.6.
 /// `Entity.moveRelative`.
-pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, zza: f32) {
-    let input = Vec3::new(f64::from(xxa), 0.0, f64::from(zza));
+pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32, zza: f32) {
+    let input = Vec3::new(f64::from(xxa), f64::from(yya), f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
         return;
@@ -2236,7 +2236,7 @@ fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut
     }
     if d.zza != 0.0 || d.xxa != 0.0 {
         let speed = if c.on_ground { d.speed } else { 0.02 };
-        move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+        move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
     if c.on_ground && horizontal <= 1.0e-5 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
@@ -2290,7 +2290,12 @@ fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &
 }
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_one(
+pub(crate) fn travel_one(level: &Level, sp: &FluidParams, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, jumping: bool, fall_damage: &mut f32) -> bool {
+    travel_one_with(level, sp, pos, vel, yaw, c, d, body, bounds, fs, jumping, fall_damage, true)
+}
+/// `travel_one`, with the tiny motions dropped here (`drop_tiny`) or already dropped by the caller's control, before it changed the velocity.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn travel_one_with(
     level: &Level,
     sp: &FluidParams,
     pos: &mut Pos,
@@ -2303,6 +2308,7 @@ pub(crate) fn travel_one(
     fs: &FluidState,
     jumping: bool,
     fall_damage: &mut f32,
+    drop_tiny: bool,
 ) -> bool {
     if body.object {
         return travel_object(level, pos, vel, yaw, c, d, body, bounds, fs, fall_damage);
@@ -2319,12 +2325,9 @@ pub(crate) fn travel_one(
         vel.0.y *= body.fall_factor;
     }
     // `LivingEntity.aiStep`: the tiny motions are dropped.
-    let v = vel.0;
-    vel.0 = Vec3::new(
-        if v.x.abs() < 0.003 { 0.0 } else { v.x },
-        if v.y.abs() < 0.003 { 0.0 } else { v.y },
-        if v.z.abs() < 0.003 { 0.0 } else { v.z },
-    );
+    if drop_tiny {
+        crate::locomotion::fly::drop_tiny_motion(vel);
+    }
     // `LivingEntity.handleJumping`, in a fluid: the jump input lifts a cow whose feet are in water or lava.
     let threshold = if sp.eye_height < 0.4 { 0.0 } else { 0.4 };
     if jumping && in_fluid {
@@ -2358,14 +2361,14 @@ pub(crate) fn travel_one(
                 slow += (0.546_000_06 - slow) * efficiency;
                 speed += (d.speed - speed) * efficiency;
             }
-            move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+            move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let m = vel.0;
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
             vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
             c.fall_distance = 0.0;
         } else {
-            move_relative(vel, yaw.0, 0.02, d.xxa, d.zza);
+            move_relative(vel, yaw.0, 0.02, d.xxa, d.yya, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let v = vel.0;
             if fs.lava <= threshold {
@@ -2393,7 +2396,7 @@ pub(crate) fn travel_one(
     } else {
         d.air_speed.unwrap_or(0.02)
     };
-    move_relative(vel, yaw.0, speed, d.xxa, d.zza);
+    move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     // `LivingEntity.handleOnClimbable`, the move, then the climb up a wall (a wall climber pressed against one).
     let climbing = d.climber && d.climbing;
     if climbing {

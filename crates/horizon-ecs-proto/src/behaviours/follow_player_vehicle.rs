@@ -144,7 +144,7 @@ fn escort_step(w: &mut World, e: Entity) {
     let speed = if s.leading { s.p.push_lead } else { s.p.push_follow };
     if let (Some(d), Some(yaw)) = (w.get::<Drive>(e).copied(), w.get::<Yaw>(e).map(|y| y.0)) {
         let mut push = Vel(Vec3::ZERO);
-        move_relative(&mut push, yaw, speed, d.xxa, d.zza);
+        move_relative(&mut push, yaw, speed, d.xxa, 0.0, d.zza);
         push.0.y += f64::from(d.yya * speed);
         impulse(w, e, push.0);
     }
