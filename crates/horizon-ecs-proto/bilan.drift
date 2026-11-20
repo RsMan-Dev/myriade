@@ -430,3 +430,21 @@ merge ecs/shot-ends f7cc5756fe|zone mid ring (cow, 6, 10)|ecs|34.0|33.9
 merge ecs/shot-ends f7cc5756fe|zone far ring (cow, 6, 10)|ecs|-0.6|-0.0
 merge ecs/shot-ends f7cc5756fe|items at rest (slope per stack, 500 to 2000)|ecs|29|7
 merge ecs/shot-ends f7cc5756fe|schedule at rest (empty world, per tick)|ecs|126074|126891
+merge ecs/port-tirs f5ce6800be|cow idle|ecs-eager|974|975
+merge ecs/port-tirs f5ce6800be|cow active(1000 players, no solicitation)|ecs|4343|4340
+merge ecs/port-tirs f5ce6800be|cow active(1000 players, no solicitation)|ecs-eager|4193|4194
+merge ecs/port-tirs f5ce6800be|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8053|8054
+merge ecs/port-tirs f5ce6800be|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8212|8211
+merge ecs/port-tirs f5ce6800be|sheep active(1000 players, no solicitation)|ecs-eager|4124|4125
+merge ecs/port-tirs f5ce6800be|chicken idle|ecs|34|35
+merge ecs/port-tirs f5ce6800be|chicken active(1000 players, no solicitation)|ecs-eager|3083|3084
+merge ecs/port-tirs f5ce6800be|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|5401|5400
+merge ecs/port-tirs f5ce6800be|zombie idle|ecs-eager|272|273
+merge ecs/port-tirs f5ce6800be|zombie active(1000 players, no solicitation)|ecs|9439|9433
+merge ecs/port-tirs f5ce6800be|zombie active(1000 players, no solicitation)|ecs-eager|9321|9324
+merge ecs/port-tirs f5ce6800be|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5464|5465
+merge ecs/port-tirs f5ce6800be|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6717|6715
+merge ecs/port-tirs f5ce6800be|zone near ring (cow, 6, 10)|ecs|2322.6|2322.7
+merge ecs/port-tirs f5ce6800be|zone far ring (cow, 6, 10)|ecs|-0.0|0.0
+merge ecs/port-tirs f5ce6800be|items at rest (slope per stack, 500 to 2000)|ecs|7|8
+merge ecs/port-tirs f5ce6800be|schedule at rest (empty world, per tick)|ecs|126891|127650
