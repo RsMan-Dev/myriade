@@ -51,3 +51,8 @@ Suite lot 3 (non commitée): jump_arc::angle_trig (sin/cos des 4 angles mis en t
 - `cached`/`static_floor` scindés en `cached_at`/`static_floor_at` : le fast path de `find_accepted_p` réutilise le `slot` déjà calculé (plus de second `slot`+`fresh` par voisin). Identique (tests `own_` verts). Gain : frog plat 7,4 -> 7,1 us, cow plat 2,1 -> 1,9 us ; rough dans le bruit (13-14 us frog, 9-10 us cow).
 - Profil par ligne (frog plat) : le coût est réparti (slot/fresh, lecture type/sol, relaxation, tas ~3 %). Pas de point chaud unique ; plancher ~250 instr par voisin sans refonte de la grille.
 - Non fait : boîte de `try_jump_on` par la couche (formes partielles), tampon de colonnes pour `static_floor`/`first_ground_below` : pas de gain démontré dans ce passage.
+
+## Passe 4 (plafonds mesurés, rien câblé)
+- Boîte du corps de `try_jump_on` court-circuitée (interrupteur de banc, résultat faux, retiré ensuite) : cow accidenté 8,9 -> 8,3 us (-6,6 %), grenouille accidentée 13,1 -> 11,8 us (-9,9 %) ; callgrind cow accidenté 145k -> 140k instr/recherche (-3,7 %). Plafond < 15 % : étape B (boîte décidée par la couche) non câblée. La boîte est déjà amortie par le cache `collisions` (clé flottante).
+- Table de nœuds : déjà une grille directe relative au départ avec époque (`slot`/`fresh`). Lignes `slot`/`fresh` du profil par ligne = ~7,5 % de `find` (frog plat) : plafond < 8 %, non câblé.
+- Instr/recherche après : cow accidenté 144,8k, frog plat 181,5k, frog accidenté 230,8k (passe 2 : 157k, 198k, 251k).
