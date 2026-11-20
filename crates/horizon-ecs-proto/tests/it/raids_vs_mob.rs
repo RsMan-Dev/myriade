@@ -82,8 +82,7 @@ fn ecs_arrival(seed: u64, far: f64) -> usize {
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
     let id = raids::start(&mut h.world, [0, 2, 0], 5);
-    h.world.entity_mut(e).insert(raids::Raider { raid: Some(id), wave: 1, leader: false });
-    horizon_ecs_proto::behaviours::pathfind_to_raid::wake(&mut h.world, e);
+    raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, true);
     for t in 0..2000 {
         h.tick();
         let p = h.world.get::<Pos>(e).unwrap().0;

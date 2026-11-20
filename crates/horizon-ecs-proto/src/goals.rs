@@ -511,6 +511,10 @@ impl Online {
     pub fn players(&self) -> impl Iterator<Item = Player> + '_ {
         self.list.iter().flatten().copied()
     }
+    /// Every player, in order of id (no bins: the cost is the list, not an area).
+    pub fn for_all(&self, f: impl FnMut(Player)) {
+        self.list.iter().flatten().copied().for_each(f);
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         for bz in z0..=z1 {

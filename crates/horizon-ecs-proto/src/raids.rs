@@ -76,7 +76,7 @@ impl RaidLevel for Level<'_> {
     fn players(&self) -> Vec<RaidPlayer> {
         let on = self.w.resource::<Online>();
         let mut v = Vec::new();
-        on.for_near(0.0, 0.0, 1.0e9, |p| v.push(RaidPlayer { uuid: u128::from(p.id), position: [p.x, p.y, p.z], block: [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], alive: true }));
+        on.for_all(|p| v.push(RaidPlayer { uuid: u128::from(p.id), position: [p.x, p.y, p.z], block: [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], alive: true }));
         v
     }
 }
@@ -196,6 +196,16 @@ pub struct Aggressive;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Celebrating;
+/// A creature joins a raid: its `Raider`, then what the game's step does for an illager near a raid. `Vindicator.customServerAiStep`
+/// opens doors while `raided` (game code: a raid within 96 blocks), written once here at the join, not each step (the raid does not move; a
+/// vindicator that walks off 96 blocks keeps it: see `suivi/ecs-ecarts.md`); then the raider is asked to walk to the raid.
+pub fn enlist(w: &mut World, e: Entity, r: Raider, opens_doors: bool) {
+    w.entity_mut(e).insert(r);
+    if opens_doors && let Some(mut n) = w.get_mut::<NavParams>(e) {
+        n.can_open_doors = true;
+    }
+    crate::behaviours::pathfind_to_raid::wake(w, e);
+}
 fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[raid::Spawn]) {
     let table = w.resource::<SpeciesTable>().0.clone();
     for sp in spawns {
@@ -204,8 +214,7 @@ fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[r
         let seed = u64::from(pos[0] as u32) << 32 ^ u64::from(pos[2] as u32) ^ (wave as u64) << 8 ^ 0x9E37_79B9_7F4A_7C15;
         let e = spawn_species(w, &species, at.0, at.1, seed);
         teleport(w, e, horizon_core::geometry::Vec3::new(at.0, f64::from(pos[1]) + 1.0, at.1));
-        w.entity_mut(e).insert(Raider { raid: Some(raid_id), wave, leader: sp.leader });
-        crate::behaviours::pathfind_to_raid::wake(w, e);
+        enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, species.name == "minecraft:vindicator");
         crate::goals::arm_module(w, e, &crate::behaviours::obtain_banner::MODULE, 40);
         w.resource_mut::<Entered>().0.push(e);
         let health = w.get::<Health>(e).map_or(24.0, |h| h.0);
