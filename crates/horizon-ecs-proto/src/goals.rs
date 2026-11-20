@@ -479,6 +479,10 @@ impl Online {
     pub fn players(&self) -> impl Iterator<Item = Player> + '_ {
         self.list.iter().flatten().copied()
     }
+    /// Every player, in order of id (no bins: the cost is the list, not an area).
+    pub fn for_all(&self, f: impl FnMut(Player)) {
+        self.list.iter().flatten().copied().for_each(f);
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         for bz in z0..=z1 {
@@ -524,7 +528,7 @@ fn equip_goals(w: &mut World, e: Entity) {
 /// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
 /// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
 #[derive(Resource, Default)]
-pub struct Carriers(pub Vec<u32>);
+pub struct Carriers(pub Vec<u32>, pub crate::cow::Census);
 pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries: &[Entry], delta: i32) {
     let reg = crate::species::registry();
     let Some(mut c) = world.get_resource_mut::<Carriers>() else { return };
@@ -553,7 +557,7 @@ fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifec
 
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
-    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()]));
+    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default()));
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());

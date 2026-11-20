@@ -105,6 +105,10 @@ impl PoiRegistry {
     }
     /// `PoiManager.sectionsToVillage`: the distance in sections (the largest of the three axes) to the nearest section with a village
     /// point, 7 when there is none within that.
+    /// `ServerLevel.isVillage` for a section: at most one section from a village.
+    pub fn is_village_section(&self, s: [i32; 3]) -> bool {
+        self.sections_to_village(s) <= 1
+    }
     pub fn sections_to_village(&self, s: [i32; 3]) -> i32 {
         self.sections.keys().map(|v| (0..3).map(|i| (v[i] - s[i]).abs()).max().unwrap_or(0)).min().unwrap_or(7).min(7)
     }

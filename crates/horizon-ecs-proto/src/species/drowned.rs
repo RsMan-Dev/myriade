@@ -1,11 +1,12 @@
 //! `Drowned`: its swim: amphibious navigation, `DrownedMoveControl` (the marker `WantsToSwim` makes it swim, else the ground's control), the push 0.01 only under water when it wants to. Its goals are not configured yet (the water goals of the species are written on top of this configuration).
 use super::Def;
-use crate::behaviours::{attack_turtle_egg, drowned_go_to_beach, drowned_swim_up, look_at_player, random_look, ranged_attack, stroll, try_find_water, Cap, Entry};
+use crate::behaviours::{attack_turtle_egg, drowned_go_to_beach, break_door, drowned_swim_up, look_at_player, random_look, ranged_attack, stroll, try_find_water, Cap, Entry};
 use crate::locomotion::{swim, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:drowned",
     goals: &[
+        Entry::new(&break_door::MODULE, 1, &break_door::Params::ZOMBIE),
         Entry::new(&ranged_attack::MODULE, 2, &ranged_attack::Params::TRIDENT),
         Entry::new(&try_find_water::MODULE, 1, &try_find_water::DROWNED),
         Entry::new(&attack_turtle_egg::MODULE, 4, &attack_turtle_egg::Params::DEFAULT),

@@ -231,6 +231,13 @@ pub mod guardian_beam;
 pub mod limited_life;
 pub mod drink_potion;
 pub mod ranged_bow;
+pub mod pathfind_to_raid;
+pub mod door_interact;
+pub mod break_door;
+pub mod raider_open_door;
+pub mod interact_with_door;
+pub mod hold_ground_attack;
+pub mod heal_raiders;
 pub mod spell_casting;
 pub mod spell_use;
 pub mod ranged_crossbow;
@@ -509,6 +516,13 @@ pub static TABLE: &[&Module] = &[
     &land_on_shoulder::MODULE,
     &stay_close_to_owner::MODULE,
     &give_to_owner::MODULE,
+    // The modules of the raids, last: the slots of the modules before them stay where they were.
+    &pathfind_to_raid::MODULE,
+    &break_door::MODULE,
+    &break_door::RAID,
+    &raider_open_door::MODULE,
+    &interact_with_door::MODULE,
+    &hold_ground_attack::MODULE,
 ];
 pub mod act_phase;
 pub mod admire;

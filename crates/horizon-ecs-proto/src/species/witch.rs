@@ -1,12 +1,18 @@
 //! `Witch` (`mobs/witch.rs:15-35`): the potion throw (`ranged_attack` with `Params::WITCH`: the potion chosen by the target), the stroll, looking; the
-//! hurt-by and nearest-player targets. Drinking its own potions: `drink_potion`. Left out: healing the raiders,
+//! hurt-by and nearest-player targets. Drinking its own potions: `drink_potion`. Healing the raiders: `heal_raiders`. Left out:
 //! the raider friendly fire, the stroll that avoids water, the gate of the nearest-player goal.
 use super::Def;
 use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, random_look, ranged_attack, stroll, drink_potion, Entry};
 
+const RAIDERS: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:evoker", "minecraft:illusioner", "minecraft:ravager"];
+
 pub static DEF: Def = Def {
     name: "minecraft:witch",
-    targets: &[Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT), Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::PLAYER)],
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT),
+        Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { types: RAIDERS, ..nearest_target::Params::HEAL_RAIDERS }),
+        Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::WITCH_PLAYER),
+    ],
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
         Entry::new(&drink_potion::MODULE, 0, &drink_potion::Params::DEFAULT),

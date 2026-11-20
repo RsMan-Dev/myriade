@@ -549,6 +549,8 @@ pub enum Due {
     Effect,
     /// A creeper's fuse may be at its end (`explosion.rs`).
     Fuse,
+    /// The raids tick (`raids.rs`).
+    Raids,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
     /// The mob may go away from now on (`despawn.rs`).
@@ -992,7 +994,35 @@ fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[component(on_add = census_added, on_remove = census_removed)]
 pub struct SpeciesId(pub u8);
+/// How many entities of each species are alive (by `SpeciesId`): kept by the hooks, read by the goals that scan for a species.
+/// It lives in `Carriers` (a resource of its own would be one more entity, and shift the bench's picks).
+#[derive(Default)]
+pub struct Census(pub Vec<u32>);
+fn census_added(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let id = w.get::<SpeciesId>(ctx.entity).unwrap().0 as usize;
+    let first = w.get_resource_mut::<crate::goals::Carriers>().is_some_and(|mut c| {
+        let c = &mut c.1;
+        if c.0.len() <= id {
+            c.0.resize(id + 1, 0);
+        }
+        c.0[id] += 1;
+        c.0[id] == 1
+    });
+    if first {
+        w.commands().queue(move |w: &mut World| crate::behaviours::nearest_target::unpark(w, id as u8));
+    }
+}
+fn census_removed(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let id = w.get::<SpeciesId>(ctx.entity).unwrap().0 as usize;
+    if let Some(mut c) = w.get_resource_mut::<crate::goals::Carriers>() {
+        let c = &mut c.1;
+        if let Some(n) = c.0.get_mut(id) {
+            *n = n.saturating_sub(1);
+        }
+    }
+}
 /// A set of species by `SpeciesId`: 256 bits, one per value of the id (no species is left out of a set).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SpeciesSet([u64; 4]);
@@ -3520,6 +3550,7 @@ pub(crate) fn due(
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
+            Due::Raids => commands.queue(|w: &mut World| crate::raids::raid_due(w)),
             Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Despawn => commands.queue(move |w: &mut World| crate::despawn::due(w, e)),
             Due::Burn => {

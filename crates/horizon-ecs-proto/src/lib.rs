@@ -37,6 +37,7 @@ pub mod occupancy;
 pub mod poi;
 pub mod profile;
 pub mod projectile;
+pub mod raids;
 pub mod rules;
 pub mod size;
 pub mod spawn_reference;
