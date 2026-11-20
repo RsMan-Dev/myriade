@@ -46,6 +46,10 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let who = h.who;
     r.handled = h.at;
     w.entity_mut(e).insert(r);
+    retreat_from_nearest(w, e, who);
+}
+/// `HoglinAi.retreatFromNearestTarget`: keep away from the nearest of `who`, the avoid target and the attack target.
+pub fn retreat_from_nearest(w: &mut World, e: Entity, who: Who) {
     let Some(me) = w.get::<Pos>(e).map(|p| p.0) else { return };
     let d2 = |p: horizon_core::geometry::Vec3| (p.x - me.x).powi(2) + (p.y - me.y).powi(2) + (p.z - me.z).powi(2);
     let mut best = (who, targeting::info(w, who).map_or(f64::MAX, |i| d2(i.pos)));
@@ -61,8 +65,12 @@ fn start(w: &mut World, e: Entity, _: Inst) {
             best = (other, d2(i.pos));
         }
     }
+    avoid_target(w, e, best.0);
+}
+/// `HoglinAi.setAvoidTarget`: forget the attack target and the walk, avoid `who` for 100 to 400 ticks.
+pub fn avoid_target(w: &mut World, e: Entity, who: Who) {
     targeting::clear_target(w, e);
     stop_nav(w, e);
     let ticks = 100 + with_rng(w, e, |r| r.next_int(301)) as u64;
-    brain::set(w, e, &AVOID_TARGET, MemValue::Who(best.0), Some(ticks));
+    brain::set(w, e, &AVOID_TARGET, MemValue::Who(who), Some(ticks));
 }

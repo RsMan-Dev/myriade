@@ -22,4 +22,6 @@ pub struct Params {
 fn start(w: &mut World, e: Entity, c: &Ctx) {
     set(w, e, &PACIFIED, MemValue::Bool(true), Some(c.get::<Params>().ttl));
     erase(w, e, &ATTACK_TARGET);
+    // `BecomePassiveIfMemoryPresent` erases the attack target: the goals' own target goes with it.
+    crate::targeting::clear_target(w, e);
 }

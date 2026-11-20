@@ -224,3 +224,121 @@ fn a_hurt_baby_hoglin_flees_as_a_mob_does() {
     assert!(mob_avoid && ecs_avoid, "both keep away from the attacker (mob {mob_avoid}, ecs {ecs_avoid})");
     assert!(mob_peak > 3.0 && ecs_peak > 3.0, "both flee east, away from x=-3 (mob {mob_peak}, ecs {ecs_peak})");
 }
+
+fn ecs_of(h: &mut Herd, name: &str, x: f64, z: f64, seed: u64) -> Entity {
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == name).unwrap();
+    let e = spawn_species(&mut h.world, &sp, x, z, seed);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
+    e
+}
+
+/// `HoglinAi.onHitTarget` and `broadcastRetreat`: an adult hoglin that strikes a piglin while the adult piglins it sees outnumber the adult
+/// hoglins by more than one (4 against 1 here) retreats from it and tells the adult hoglins it sees to. `HoglinAi.wasHurtBy` and
+/// `broadcastAttackTarget`: the hit hoglin retaliates and the adult hoglins it sees take the attacker as their target.
+#[test]
+fn hoglins_retreat_from_piglins_that_outnumber_them_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    let hog = [(0.5, 0.5), (0.5, 3.5)];
+    let pig = [(3.5, 0.5), (3.5, 3.0), (3.5, -2.0), (6.0, 0.5)];
+    let mi: Vec<usize> = hog.iter().map(|p| r.add_kind(Vec3::new(p.0, 1.0, p.1), mob_kind("minecraft:hoglin"))).collect();
+    let mp: Vec<usize> = pig.iter().map(|p| r.add_kind(Vec3::new(p.0, 1.0, p.1), mob_kind("minecraft:piglin"))).collect();
+    let ei: Vec<Entity> = hog.iter().enumerate().map(|(k, p)| ecs_of(&mut h, "minecraft:hoglin", p.0, p.1, 100 + k as u64)).collect();
+    let ep: Vec<Entity> = pig.iter().enumerate().map(|(k, p)| ecs_of(&mut h, "minecraft:piglin", p.0, p.1, 200 + k as u64)).collect();
+    let (mut mob_avoid, mut ecs_avoid) = ([None; 2], [None; 2]);
+    let (mut mob_tgt, mut ecs_tgt) = ([None; 2], [None; 2]);
+    for t in 1..=200i64 {
+        if t == 25 {
+            r.hit_by_mob(mi[0], 1.0, mp[0]);
+            h.world.resource_mut::<DamageQueue>().add_by_entity(ei[0], 1.0, (3.5, 0.5), ep[0]);
+        }
+        let from = r.events.len();
+        r.step(None);
+        h.tick();
+        // The game's dispatch of the two broadcasts, which the harness does not run.
+        for ev in r.events[from..].to_vec() {
+            match ev {
+                MobEvent::Retreat { mob, from, at } => {
+                    if let Some(k) = r.mobs.iter().position(|m| m.id == mob) {
+                        horizon_client_lib::mobs::piglin::receive_retreat(&mut r.mobs[k], from, at);
+                    }
+                }
+                MobEvent::HoglinAttackTarget { mob, target, .. } => {
+                    if let Some(k) = r.mobs.iter().position(|m| m.id == mob) {
+                        let pos: Vec<_> = r.mobs.iter().map(|m| (m.id, m.position)).collect();
+                        let at = |w: horizon_client_lib::mobs::Who| match w {
+                            horizon_client_lib::mobs::Who::Mob(id) => pos.iter().find(|p| p.0 == id).map(|p| p.1),
+                            _ => None,
+                        };
+                        if let Some(t) = horizon_client_lib::mobs::piglin::receive_attack_target(&r.mobs[k], target, |w, _| at(w)) {
+                            r.mobs[k].ai.target = Some(t);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for k in 0..2 {
+            if mob_avoid[k].is_none() && r.mobs[mi[k]].extra.piglin.avoid.is_some() {
+                mob_avoid[k] = Some(t);
+            }
+            if ecs_avoid[k].is_none() && horizon_ecs_proto::species::hoglin::retreating(&h.world, ei[k]) {
+                ecs_avoid[k] = Some(t);
+            }
+            if mob_tgt[k].is_none() && r.mobs[mi[k]].ai.target.is_some() {
+                mob_tgt[k] = Some(t);
+            }
+            if ecs_tgt[k].is_none() && h.world.get::<Target>(ei[k]).is_some() {
+                ecs_tgt[k] = Some(t);
+            }
+        }
+    }
+    eprintln!("outnumbered: avoid mob {mob_avoid:?} ecs {ecs_avoid:?}; target mob {mob_tgt:?} ecs {ecs_tgt:?}");
+    let _ = ep;
+    assert!(mob_avoid.iter().all(Option::is_some), "the Mob's two hoglins retreat ({mob_avoid:?})");
+    assert!(ecs_avoid.iter().all(Option::is_some), "the ecs's two hoglins retreat ({ecs_avoid:?})");
+    assert!(mob_tgt[1].is_some() == ecs_tgt[1].is_some(), "the visible adult hoglin takes the target as the Mob's does (mob {mob_tgt:?}, ecs {ecs_tgt:?})");
+}
+
+/// `BecomePassiveIfMemoryPresent` in the fight activity: a hoglin that already hunts a player drops the target and is pacified for 200 ticks
+/// when a repellent block (a warped fungus) comes within reach, at the next scan of the sensor (every 20 ticks).
+#[test]
+fn a_repellent_pacifies_a_hoglin_that_is_already_attacking_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    let i = r.add_kind(Vec3::new(8.5, 1.0, 0.5), mob_kind("minecraft:hoglin"));
+    let e = ecs_of(&mut h, "minecraft:hoglin", 8.5, 0.5, 5);
+    h.set_online(&[(0.5, 0.5)]);
+    let view = player_view(Vec3::new(0.5, 1.0, 0.5), None);
+    let (mut mob_drop, mut ecs_drop) = (None, None);
+    let (mut mob_had, mut ecs_had) = (false, false);
+    for t in 1..=120i64 {
+        if t == 30 {
+            r.set_block(12, 1, 0, "minecraft:warped_fungus");
+            r.apply_block_events();
+            h.set_block(12, 1, 0, "minecraft:warped_fungus");
+        }
+        r.step(Some(&view));
+        h.tick();
+        mob_had |= r.mobs[i].ai.target.is_some();
+        ecs_had |= h.world.get::<Target>(e).is_some();
+        if t > 30 && mob_had && mob_drop.is_none() && r.mobs[i].ai.target.is_none() {
+            mob_drop = Some(t);
+        }
+        if t > 30 && ecs_had && ecs_drop.is_none() && h.world.get::<Target>(e).is_none() {
+            ecs_drop = Some(t);
+        }
+    }
+    eprintln!("pacify while attacking: had target mob {mob_had} ecs {ecs_had}; dropped mob {mob_drop:?} ecs {ecs_drop:?} pacified ecs {}", horizon_ecs_proto::species::hoglin::pacified(&h.world, e));
+    assert!(mob_had && ecs_had, "both hunt the player first (mob {mob_had}, ecs {ecs_had})");
+    let (m, c) = (mob_drop.expect("the Mob drops its target"), ecs_drop.expect("the ecs drops its target"));
+    assert!((m - c).abs() <= 21, "the target is dropped within a scan period of each other (mob {m}, ecs {c})");
+}

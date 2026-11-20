@@ -737,6 +737,14 @@ pub fn find_closest(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bo
         i += 1;
     }
 }
+/// Every entry of `visible_mobs` that passes the filter and the sight test, in the list's order.
+pub fn find_all(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bool) -> Vec<Who> {
+    let list = match get(w, e, &VISIBLE_MOBS) {
+        Some(MemValue::Whos(l)) => l.clone(),
+        _ => return Vec::new(),
+    };
+    list.into_iter().filter(|&who| filter(w, who) && visible_test(w, e, who)).collect()
+}
 /// `NearestVisibleLivingEntities.contains`.
 pub fn visible_contains(w: &mut World, e: Entity, who: Who) -> bool {
     let listed = matches!(get(w, e, &VISIBLE_MOBS), Some(MemValue::Whos(l)) if l.contains(&who));

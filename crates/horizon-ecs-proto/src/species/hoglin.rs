@@ -6,7 +6,7 @@
 use super::Def;
 use crate::behaviours::{ambient_sound, breed, convert_timer, float, retreat_on_hurt, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
 use crate::brain::behaviours::{look_at_target_sink, move_to_target_sink, pacify, walk_away};
-use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, repellent_and_adult};
+use crate::brain::sensors::{hoglin_sight, hurt_by as hurt_by_sensor, living, repellent_and_adult};
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 
@@ -28,11 +28,16 @@ pub fn pacified(w: &World, e: Entity) -> bool {
     present(w, e, &pacify::PACIFIED)
 }
 
+/// `HoglinAi.setAttackTargetIfCloserThanCurrent`: nothing for a pacified hoglin that receives the broadcast.
+fn not_pacified(w: &World, e: Entity) -> bool {
+    !pacified(w, e)
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:hoglin",
     reference: None,
     targets: &[
-        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], ..hurt_by::Params::DEFAULT }).when(&ADULT),
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], alert_when: Some(not_pacified), ..hurt_by::Params::DEFAULT }).when(&ADULT),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&TARGETING),
     ],
     goals: &[
@@ -56,6 +61,7 @@ pub static DEF: Def = Def {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),
             SensorEntry::new(&hurt_by_sensor::SENSOR, 20),
+            SensorEntry::new(&hoglin_sight::SENSOR, 20),
             SensorEntry::new(&repellent_and_adult::SENSOR, 20).with(&repellent_and_adult::Params {
                 block_tag: "minecraft:hoglin_repellents",
                 species: "minecraft:piglin",

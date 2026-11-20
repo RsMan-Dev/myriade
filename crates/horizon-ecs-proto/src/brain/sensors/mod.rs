@@ -2,6 +2,7 @@
 pub mod adult;
 pub mod attackable;
 pub mod attackables;
+pub mod hoglin_sight;
 pub mod hurt_by;
 pub mod living;
 pub mod nearest_players;

@@ -66,6 +66,12 @@ impl MobRef {
         let mut lvl = self.tl.level();
         self.mobs[i].damage(&mut lvl, amount, Damage::player(from));
     }
+    /// A blow of the mob `by` (an index in `mobs`) on `i`.
+    pub fn hit_by_mob(&mut self, i: usize, amount: f32, by: usize) {
+        let (id, from) = (self.mobs[by].id, [self.mobs[by].position.x, self.mobs[by].position.y, self.mobs[by].position.z]);
+        let mut lvl = self.tl.level();
+        self.mobs[i].damage(&mut lvl, amount, Damage::mob(id, from));
+    }
     pub fn step(&mut self, player: Option<&PlayerView>) {
         self.step_where(player, |_| true);
     }
