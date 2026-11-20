@@ -505,6 +505,26 @@ impl Online {
     pub fn for_all(&self, f: impl FnMut(Player)) {
         self.list.iter().flatten().copied().for_each(f);
     }
+    /// Whether `f` holds for some player of the window (as `for_near`, but it stops at the first: the order does not matter).
+    pub fn any_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player) -> bool) -> bool {
+        let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
+        if (i64::from(x1 - x0) + 1) * (i64::from(z1 - z0) + 1) > 2 * self.bins.len() as i64 {
+            return self.bins.iter().filter(|&(&(bx, bz), _)| (x0..=x1).contains(&bx) && (z0..=z1).contains(&bz)).any(|(_, v)| v.iter().any(|&id| self.get(id).is_some_and(&mut f)));
+        }
+        // The middle first: the players nearest the asker are in the bins around it.
+        let c = bin(x, z);
+        if self.bins.get(&c).into_iter().flatten().any(|&id| self.get(id).is_some_and(&mut f)) {
+            return true;
+        }
+        for bz in z0..=z1 {
+            for bx in x0..=x1 {
+                if (bx, bz) != c && self.bins.get(&(bx, bz)).into_iter().flatten().any(|&id| self.get(id).is_some_and(&mut f)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         // A wide window over few players (a ghast's 100 blocks, 625 bins, none occupied): the occupied bins are visited, in the same (z, x) order.

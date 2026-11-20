@@ -53,6 +53,9 @@ pub struct CloudVisits(pub u64);
 /// The live clouds, one step each per tick, against the players and creatures their box meets. Players they harm take the
 /// instant damage. Not done: the creatures' effect (`breath_affect_mob`) and the damage source `indirect_magic`.
 pub fn tick_live(w: &mut World) {
+    if !crate::goals::sparse_any::<Live>(w) {
+        return;
+    }
     let ids: Vec<Entity> = w.query_filtered::<Entity, With<Live>>().iter(w).collect();
     if ids.is_empty() {
         return;

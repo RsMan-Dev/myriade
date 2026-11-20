@@ -170,10 +170,7 @@ fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
     if range + 1.0 > 64.0 {
         return true;
     }
-    let mut any = false;
-    w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
-        any |= (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= range * range;
-    });
+    let any = w.resource::<Online>().any_near(pos.x, pos.z, range, |p| (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= range * range);
     if any {
         return true;
     }
