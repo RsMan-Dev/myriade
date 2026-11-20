@@ -126,6 +126,7 @@ mod cushion_knot_vs_original;
 mod end_crystal_vs_original;
 mod falling_block_vs_original;
 mod village_behaviours_vs_mob;
+mod trader_vs_mob;
 mod firework_vs_original;
 mod minecart_vs_original;
 mod trident_vs_original;

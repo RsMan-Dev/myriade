@@ -18,8 +18,8 @@ use std::collections::BTreeMap;
 
 /// ASSUMED : `invulnerableTime` de vanilla après un coup, 10 ticks ; pas de constante nommée côté ECS (`cow.rs` le documente).
 const HURT_INVULNERABLE_TICKS: u64 = 10;
-/// `TradeWithPlayer` : le joueur à 16 blocs au plus (au carré).
-const TRADE_RANGE2: f64 = 256.0;
+/// `TradeWithPlayer` : le joueur à 4 blocs au plus (`distanceToSqr > 16.0` au jar, comme le `Mob`).
+const TRADE_RANGE2: f64 = 16.0;
 
 /// Le joueur qui commerce et le côté marchand de l'écran ; `since` est le tick d'ouverture.
 #[derive(Component)]
@@ -30,9 +30,19 @@ pub struct Trading {
     pub since: u64,
 }
 
+/// `wandering` : le marchand n'a pas de métier et vend les trois ensembles du marchand ambulant (`Merchant.wandering`).
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    pub wandering: bool,
+}
+impl Params {
+    pub const DEFAULT: Self = Self { wandering: false };
+}
+
 pub static MODULE: Module = Module {
     name: "trade",
     flags: MOVE | LOOK,
+    equip,
     can_use,
     start,
     stop,
@@ -40,6 +50,11 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body],
     ..Module::DEFAULT
 };
+
+/// Une espèce qui porte le but est un marchand : ses offres se font à la première demande.
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert_if_new(Merchant::new(params::<Params>(p).wandering, 0, 0));
+}
 
 /// `TradeWithPlayer.canUse` : le joueur est défini et présent, le marchand vit, n'a pas été touché, n'est pas dans l'eau, est au
 /// sol, et le joueur est à portée.

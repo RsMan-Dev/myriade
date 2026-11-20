@@ -24,7 +24,7 @@ fn skip() -> bool {
 }
 
 /// Les registres du monde de test (items, enchantements) et le registre de commerce chargé des ressources.
-fn registries() -> (&'static Items, &'static Enchantments, Trades) {
+pub(crate) fn registries() -> (&'static Items, &'static Enchantments, Trades) {
     let r = MobRef::new(1, false);
     let items = r.w.items.expect("items");
     let root = std::path::PathBuf::from(std::env::var("HORIZON_TEST_RESOURCES").expect("resources"));
