@@ -123,3 +123,7 @@ pub fn check(w: &mut World, a: Entity, p: &Params) -> bool {
     }
     true
 }
+
+/// Holds `DEFENDER_SEEN` in the brain's plan (the memory is written by `check`, the call of the golem is made by the host's
+/// meeting of two villagers): it never runs.
+pub static MEMORY: Behaviour = Behaviour { name: "summon_defender:memory", mems: &[&DEFENDER_SEEN], passive: true, ..Behaviour::DEFAULT };

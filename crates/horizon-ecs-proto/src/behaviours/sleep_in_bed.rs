@@ -31,13 +31,21 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
         walk_to(w, e, block_centre(p), c.get::<Params>().speed);
     }
 }
-fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
+fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if w.get::<Sleeping>(e).is_some() {
         // Frappé au lit : le villageois se réveille (`stop` retire `Sleeping`).
         return !hurt_recently(w, e);
     }
     let Some(p) = bed(w, e) else { return false };
-    if !nav_done(w, e) {
+    // `SleepInBed.checkExtraStartConditions`: the bed's centre within 2 blocks; short of it, the walk goes on (or starts again).
+    let close = w.get::<crate::cow::Pos>(e).is_some_and(|at| {
+        let c = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
+        (at.0.x - c[0]).powi(2) + (at.0.y - c[1]).powi(2) + (at.0.z - c[2]).powi(2) < 4.0
+    });
+    if !close {
+        if nav_done(w, e) {
+            walk_to(w, e, block_centre(p), c.get::<Params>().speed);
+        }
         return true;
     }
     if bed_taken(w, e, p) {

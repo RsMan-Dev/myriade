@@ -181,7 +181,7 @@ fn reach_cat_bed_and_turtle_egg() {
         let i = mob_add(&mut r, mob_kind("minecraft:turtle"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[i].extra.flag = true;
         let e = ecs_named(&mut h, "minecraft:turtle", None, 0.5, 0.5, 5000 + j as u64, u64::from(id));
-        horizon_ecs_proto::behaviours::turtle_state::update(&mut h.world, e, |t| t.has_egg = true);
+        h.world.entity_mut(e).insert(horizon_ecs_proto::behaviours::lay_egg::Carrying);
         for x in 6..=14 {
             for z in -1..=1 {
                 r.set_block(x, 0, z, "minecraft:sand");

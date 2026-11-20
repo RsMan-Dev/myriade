@@ -17,6 +17,7 @@ fn villager_at(h: &mut Herd, at: (f64, f64), seed: u64) -> Entity {
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == species().name).unwrap();
     let e = spawn_species(&mut h.world, &sp, at.0, at.1, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
     e
 }
 
@@ -29,8 +30,9 @@ fn the_gossip_of_a_player_decays_a_day() {
     }
     let mut h = Herd::with_slab(60, true, false);
     let e = villager_at(&mut h, (0.5, 0.5), 7);
+    h.tick(); // the brain exists after its first tick: the memories need it
     eg::add(&mut h.world, e, 7, eg::Kind::MinorNegative, 25);
-    for _ in 0..eg::DAY {
+    for _ in 0..=eg::DAY {
         h.tick();
     }
     let ecs = h.world.get::<eg::Gossips>(e).map_or(0, |g| g.reputation(7));
@@ -49,6 +51,7 @@ fn five_villagers_who_slept_call_an_iron_golem_on_a_column() {
     for &e in &ids {
         h.world.entity_mut(e).insert(summon_defender::LastSlept(0));
     }
+    h.tick();
     let called = summon_defender::check(&mut h.world, ids[0], &summon_defender::Params { species: "minecraft:iron_golem", sound: "", needed: 5 });
     let golem_id = h.world.resource::<SpeciesTable>().0.iter().position(|s| s.name == "minecraft:iron_golem").unwrap() as u8;
     let golems: Vec<[f64; 3]> = {
@@ -79,16 +82,18 @@ fn a_birth_comes_at_its_tick_and_the_parents_rest() {
     let start = now_of(&h.world, a);
     breed_love::start(&mut h.world, a, b);
     let due = h.world.get::<breed_love::Mating>(a).unwrap().birth;
-    while now_of(&h.world, a) < due {
+    // The brain's `breed:birth` makes the baby when the memory `BIRTH_DUE` expires.
+    let mut baby = None;
+    while baby.is_none() && now_of(&h.world, a) < due + 50 {
         h.tick();
+        baby = h.world.query_filtered::<Entity, With<GrowAt>>().iter(&h.world).next();
     }
-    let items = food_stock::items(&h.world);
-    let baby = breed_love::birth(&mut h.world, a, items).expect("the birth is due");
+    let baby = baby.expect("the birth is due");
     let now = now_of(&h.world, a);
+    assert!(now >= due && now <= due + 2, "the birth comes at its tick (due {due}, made at {now})");
     assert!((275..325).contains(&(due - start)), "delay 275 + rand(50): {}", due - start);
-    assert_eq!(now, due, "the birth comes at its tick");
-    assert!(h.world.get::<GrowAt>(baby).is_some_and(|g| g.0 == now + breed_love::GROWN), "the baby grows in 24000 ticks");
+    assert!(h.world.get::<GrowAt>(baby).is_some_and(|g| (now - 2..=now).contains(&(g.0 - breed_love::GROWN))), "the baby grows in 24000 ticks");
     for &p in &[a, b] {
-        assert!(h.world.get::<Resting>(p).is_some_and(|r| r.0 == now + breed_love::REST), "the parents rest 6000 ticks");
+        assert!(h.world.get::<Resting>(p).is_some_and(|r| (now - 2..=now).contains(&(r.0 - breed_love::REST))), "the parents rest 6000 ticks");
     }
 }

@@ -208,6 +208,16 @@ impl MobRef {
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
     }
+    /// A block with properties over its default state (a bed's head, an open door).
+    pub fn set_block_props(&self, x: i32, y: i32, z: i32, name: &str, props: &[(&str, &str)]) {
+        let Some(state) = horizon_ecs_proto::blocks::resolve(self.w, name, props) else { return };
+        // SAFETY: as in `set_block`.
+        unsafe {
+            let world = &mut *self.level.blocks.0;
+            let _ = world.set(x, y, z, state);
+            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+        }
+    }
     /// Applies to the `Mob` world the block changes the mobs asked for since the last call.
     pub fn apply_block_events(&mut self) {
         let fresh: Vec<(i32, i32, i32, &'static str)> = self.events[self.applied..]

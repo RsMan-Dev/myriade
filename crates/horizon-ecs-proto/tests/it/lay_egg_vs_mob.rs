@@ -8,7 +8,7 @@ use common::*;
 use horizon_client_lib::mobs::MobEvent;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    behaviours::lay_egg::{self, Carrying, Lay},
+    behaviours::{lay_egg::{self, Carrying, Lay}, turtle_go_home},
     cow::*,
     goals::*,
     host_out::HostEvent,
@@ -45,6 +45,10 @@ fn a_turtle_with_an_egg_walks_digs_and_lays_it_as_a_mob_does() {
     }
     let at = Vec3::new(2.5, 1.0, 0.5);
     let (mut r, mut h, i, e) = scene(at);
+    // The go-home goal draws its spots from the random stream of each side: the Mob's draws are imposed on the ECS (the spot, as
+    // the block the Mob's navigation heads for), so the interference of that goal is compared at the tick.
+    h.world.insert_resource(turtle_go_home::ImposedSpots::default());
+    let (mut last_target, lay_block) = (None, [2, 0, 0]);
     let (mut m_dig, mut m_laid): (Option<i64>, Option<(i64, [i32; 3])>) = (None, None);
     let (mut e_dig, mut e_laid): (Option<i64>, Option<(i64, [i32; 3])>) = (None, None);
     for t in 1..=900i64 {
@@ -58,6 +62,12 @@ fn a_turtle_with_an_egg_walks_digs_and_lays_it_as_a_mob_does() {
                 m_laid.get_or_insert((t, *pos));
             }
         }
+        let target = r.mobs[i].ai.nav.target_pos;
+        if target != last_target && target.is_some_and(|b| b != lay_block) {
+            let b = target.unwrap();
+            h.world.resource_mut::<turtle_go_home::ImposedSpots>().0.push_back([f64::from(b[0]) + 0.5, f64::from(b[1]), f64::from(b[2]) + 0.5]);
+        }
+        last_target = target;
         h.tick();
         if e_dig.is_none() && h.world.get::<Lay>(e).is_some_and(|l| l.dug >= 1) {
             e_dig = Some(t);
@@ -76,10 +86,11 @@ fn a_turtle_with_an_egg_walks_digs_and_lays_it_as_a_mob_does() {
     eprintln!("dig: mob from {m_dig}, ecs from {e_dig}; laid: mob {m_t} at {m_pos:?}, ecs {e_t} at {e_pos:?}");
     // The walk to the spot: the same tick to within the path's own variations.
     assert!((m_dig - e_dig).abs() <= 10, "walk: mob {m_dig}, ecs {e_dig}");
-    // The digging: 200 ticks on both sides (`counter > 200`, `dug > 200`), to within a tick.
-    let (m_span, e_span) = (m_t - m_dig, e_t - e_dig);
-    assert!((195..=205).contains(&m_span) && (195..=205).contains(&e_span), "dig: mob {m_span}, ecs {e_span}");
-    assert!((m_span - e_span).abs() <= 2, "dig: mob {m_span}, ecs {e_span}");
+    // The Mob's go-home goal moves the turtle away from the spot while it has the egg, and the counter pauses: the same laying tick.
+    assert!((m_t - e_t).abs() <= 2, "laying tick: mob {m_t}, ecs {e_t}");
+    // The digging is 200 counted ticks on both sides (`counter > 200`, `dug > 200`); with the egg and the home within 7 blocks the
+    // go-home goal leads the turtle away from the spot and stops the count (oracle corrected: the old 195..=205 span assumed no
+    // interference and the Mob itself takes 277), so what is compared is the tick of the laying, to within the 2 ticks of the path.
     // The egg block: one block above a sand block, within 9 blocks of the anchor on the ground.
     for pos in [m_pos, e_pos] {
         assert_eq!(pos[1], 1, "the egg is one block above the sand: {pos:?}");

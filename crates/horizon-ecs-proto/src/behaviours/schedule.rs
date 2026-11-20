@@ -15,12 +15,22 @@ impl Times {
     /// The host says it is `day` now.
     pub fn set(w: &mut World, day: i64) {
         let at = w.resource::<crate::cow::Clock>().0;
+        // A jump (`/time set`, the night skipped): the memories of the activities were computed for the old hour and would
+        // last until their expiry; every brain recomputes its schedule now. A host that repeats the hour tick by tick is no jump.
+        let jumped = w.get_resource::<Times>().is_some_and(|_| (day - Self::absolute(w)).abs() > 1);
         w.insert_resource(Times { day, set_at: at });
+        if jumped {
+            resync(w);
+        }
     }
     /// The day time now, without the wrap at 24000 (what the restock counts days from).
     pub fn absolute(w: &World) -> i64 {
-        let t = w.resource::<Times>();
-        t.day + (w.resource::<crate::cow::Clock>().0 - t.set_at) as i64
+        let clock = w.resource::<crate::cow::Clock>().0;
+        // A host that never says the time: the world's own (`MobWorld.day_time`), moving with the clock.
+        match w.get_resource::<Times>() {
+            Some(t) => t.day + (clock - t.set_at) as i64,
+            None => w.resource::<crate::cow::Level>().mw.0.day_time + clock as i64,
+        }
     }
     /// The time of day now (0..24000).
     pub fn now(w: &World) -> i64 {
@@ -59,3 +69,11 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
 }
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "schedule:timeline", can_start, start, one_shot: true, passive: true, ..Behaviour::DEFAULT };
+
+/// The schedule starts again on every brain that has one (the hour jumped).
+fn resync(w: &mut World) {
+    let all: Vec<Entity> = w.query_filtered::<Entity, With<Brain>>().iter(w).collect();
+    for e in all {
+        restart(w, e, &BEHAVIOUR);
+    }
+}

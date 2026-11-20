@@ -41,7 +41,9 @@ fn window(day: i64, ticks: usize) -> impl Iterator<Item = i64> {
 }
 fn mob_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     let mut r = MobRef::new(60, false);
-    r.set_block(BED[0], BED[1], BED[2], "minecraft:red_bed");
+    // Only the head of a bed is a home (`minecraft:home`): the foot lies one block west of it.
+    r.set_block_props(BED[0], BED[1], BED[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);
+    r.set_block_props(BED[0] - 1, BED[1], BED[2], "minecraft:red_bed", &[("part", "foot"), ("facing", "east")]);
     r.set_block(JOB[0], JOB[1], JOB[2], "minecraft:composter");
     r.set_block(BELL[0], BELL[1], BELL[2], "minecraft:bell");
     r.apply_block_events();
@@ -81,8 +83,24 @@ fn marks(run: &[((f64, f64), bool)], days: &[i64]) -> Marks {
     let sleep = first(&|k| run[k].1);
     let bed = first(&|k| near(run[k].0, BED, 1.5));
     let wake = sleep.and_then(|s| (s..run.len()).find(|&k| !run[k].1));
-    let work = first(&|k| days[k] >= 2000 && near(run[k].0, JOB, 9.0));
-    let bell = first(&|k| days[k] >= 9000 && near(run[k].0, BELL, 6.0));
+    // Only inside the work slice (2000..9000) and from the second window: the spawn is already within 9 blocks of the post.
+    let work = first(&|k| k >= 600 && (2000..9000).contains(&days[k]) && near(run[k].0, JOB, 4.0));
+    // The Mob finds its bed with its sensors (65 ticks after the start here); the ECS has the memory by hand. The walk to the bed is
+    // measured from the first step of each side (the latency of the sensors is the Mob's, see `suivi/ecs-ecarts.md`).
+    let moved = first(&|k| !near(run[k].0, [0, 1, 0], 0.3)).unwrap_or(0);
+    let (sleep, bed) = (sleep.map(|s| s - moved.min(s)), bed.map(|b| b - moved.min(b)));
+    // The Mob's WORK is a random mix (`run_one`: WorkAtPoi, StrollToPoi, ...), so where it stands at 9000 is not the ECS's; the time to
+    // the bell then depends on that distance, not on the schedule. The departure toward the bell is what the schedule decides: the
+    // first step that is 2 blocks closer than the farthest point reached since 9000. Arrival is only required (see `reached`).
+    let d = |k: usize| ((run[k].0.0 - f64::from(BELL[0]) - 0.5).powi(2) + (run[k].0.1 - f64::from(BELL[2]) - 0.5).powi(2)).sqrt();
+    let from = first(&|k| k >= 1000 && days[k] >= 9000).unwrap_or(run.len());
+    let mut far = 0.0f64;
+    let depart = (from..run.len()).find(|&k| {
+        far = far.max(d(k));
+        d(k) + 2.0 < far
+    });
+    let arrived = first(&|k| k >= 1000 && days[k] >= 9000 && near(run[k].0, BELL, 6.0)).and(depart);
+    let bell = arrived;
     Marks { sleep, bed, wake, work, bell }
 }
 
@@ -92,7 +110,7 @@ fn bedtime_departure_and_meeting_match_the_mob() {
         return;
     }
     // Trois fenêtres d'une même partie : coucher (11960 à 12600), départ (1960 à 2600), rencontre (8960 à 9600).
-    let mut days: Vec<i64> = window(11_960, 640).collect();
+    let mut days: Vec<i64> = window(12_000, 600).collect();
     days.extend(window(1_960, 640));
     days.extend(window(8_960, 640));
     let (mob, ecs) = (mob_side(&days), ecs_side(&days));

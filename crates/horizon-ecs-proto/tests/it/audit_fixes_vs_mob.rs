@@ -43,7 +43,7 @@ fn cost_of_a_turtle_with_an_egg_and_no_sand() {
     let all: Vec<_> = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).collect();
     let es: Vec<_> = all.into_iter().filter(|e| h.world.get::<ActiveUntil>(*e).is_some()).collect();
     for e in &es {
-        turtle_state::update(&mut h.world, *e, |t| t.has_egg = true);
+        h.world.entity_mut(*e).insert(horizon_ecs_proto::behaviours::lay_egg::Carrying);
         h.world.get_mut::<ActiveUntil>(*e).unwrap().0 = u64::MAX;
         horizon_ecs_proto::behaviours::lay_egg::load(&mut h.world, *e);
     }

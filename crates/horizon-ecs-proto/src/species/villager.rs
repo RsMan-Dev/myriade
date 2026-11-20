@@ -2,8 +2,9 @@
 //! Hors de ce fichier : capteurs de lit, de bébés, de golem et d'hostiles, poste et cloche (`JOB_SITE`, `MEETING_POINT` à
 //! alimenter par la partie POI), le jeu des bébés (`play`), le commerce, la reproduction, la panique du raid (voir villager.md).
 use super::Def;
-use crate::behaviours::{bed::NEAREST_BED, reach_block, schedule, sleep_in_bed, stroll_near_block};
-use crate::brain::behaviours::{do_nothing, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
+use crate::behaviours::Cap;
+use crate::behaviours::{bed::NEAREST_BED, breed_love, gossip, reach_block, schedule, sleep_in_bed, stroll_near_block, summon_defender};
+use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
 
@@ -53,6 +54,7 @@ static IDLE_KIDS: &[Kid] = &[
 ];
 
 static CORE: &[BEntry] = &[
+    BEntry { behaviour: &interact_with_door::BEHAVIOUR, activity: "core", priority: 0, params: &interact_with_door::Params::DEFAULT, needs: &[], duration: None, kids: &[] },
     BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
     BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: None, kids: &[] },
     BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 0, params: &panic::Params { speed: 0.75 }, needs: &[], duration: Some((60, 60)), kids: &[] },
@@ -63,6 +65,7 @@ static CORE: &[BEntry] = &[
 
 pub static DEF: Def = Def {
     name: "minecraft:villager",
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20)],
         activities: ACTIVITIES,
@@ -70,11 +73,14 @@ pub static DEF: Def = Def {
         initial: &[],
         behaviours: &[
             BEntry { behaviour: &schedule::BEHAVIOUR, activity: "core", priority: 0, params: &schedule::Params { adult: ADULT_SLICES, baby: BABY_SLICES }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "work", priority: 0, params: &reach_block::Params { memory: &JOB_SITE, speed: 0.5, range: 9.0 }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "work", priority: 1, params: &stroll_near_block::Params { memory: &JOB_SITE, speed: 0.4, max_dist: 4.0 }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "meet", priority: 0, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.5, range: 6.0 }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "meet", priority: 1, params: &stroll_near_block::Params { memory: &MEETING_POINT, speed: 0.4, max_dist: 40.0 }, needs: &[], duration: None, kids: &[] },
-            CORE[0], CORE[1], CORE[2], CORE[3], CORE[4], CORE[5],
+            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "work", priority: 0, params: &reach_block::Params { memory: &JOB_SITE, speed: 0.5, range: 9.0 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "work", priority: 1, params: &stroll_near_block::Params { memory: &JOB_SITE, speed: 0.4, max_dist: 4.0 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "meet", priority: 0, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.5, range: 6.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "meet", priority: 1, params: &stroll_near_block::Params { memory: &MEETING_POINT, speed: 0.4, max_dist: 40.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
+            CORE[0], CORE[1], CORE[2], CORE[3], CORE[4], CORE[5], CORE[6],
+            BEntry { behaviour: &gossip::DECAY, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &summon_defender::MEMORY, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &breed_love::BIRTH, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
         ],
     },
     ..Def::EMPTY

@@ -81,7 +81,7 @@ pub fn wants_water(w: &World, e: Entity) -> bool {
         return true;
     }
     let t = ts::get(w, e);
-    !t.going_home && !in_water && !t.has_egg
+    !t.going_home && !in_water && !ts::has_egg(w, e)
 }
 fn is_water(mw: &MobWorld, p: [i32; 3]) -> bool {
     mw.facts.get(mw.world.block(p[0], p[1], p[2])).name.as_ref() == "minecraft:water"

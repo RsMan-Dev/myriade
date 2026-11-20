@@ -34,6 +34,10 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     let p = c.get::<Params>();
     if let Some(b) = block(w, e, p.memory) {
         walk_to(w, e, block_centre(b), p.speed);
+        // The post is a block with a body (a composter, a bell): the path may end beside it.
+        if let Some(mut n) = w.get_mut::<crate::cow::Nav>(e) {
+            n.reach = 1;
+        }
     }
 }
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
