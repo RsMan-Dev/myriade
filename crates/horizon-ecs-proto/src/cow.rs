@@ -2193,9 +2193,13 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
     let moved = level.occ.resolve(scene, bounds.0, wanted, body.step_height, c.on_ground).unwrap_or(Vec3::ZERO);
-    pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
-    if moved != Vec3::ZERO {
-        bounds.0 = bounds.0.move_by(moved);
+    // `Entity.move`: a move shorter than 1.0E-7 (squared) that a collision cut is not applied (a creeping walker on the ground).
+    let sq = |v: Vec3| v.x * v.x + v.y * v.y + v.z * v.z;
+    if sq(moved) > 1.0e-7 || sq(wanted) - sq(moved) < 1.0e-7 {
+        pos.0 = Vec3::new(p.x + moved.x, p.y + moved.y, p.z + moved.z);
+        if moved != Vec3::ZERO {
+            bounds.0 = bounds.0.move_by(moved);
+        }
     }
     let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
     c.horizontal = differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
