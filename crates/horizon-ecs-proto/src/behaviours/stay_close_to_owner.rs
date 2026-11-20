@@ -125,6 +125,8 @@ mod tests {
         sp.goals = Config { entries };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
         tame::set_owner(&mut h.world, e, crate::targeting::Who::Player(1));
+        // The goal ends within `stop`, a tick later the body has moved on: the scene fixes the pace (a cow's 0.2), so the species of the bench (the frog's attribute is 1.0, over a block per tick) does not decide the result.
+        h.world.get_mut::<Body>(e).unwrap().speed = 0.2;
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         (h, e)
     }
