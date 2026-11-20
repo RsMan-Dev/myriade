@@ -126,19 +126,30 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
         pairs.push((i, e, j, se));
     }
     let mut eaten = [[None; 4], [None; 4]];
+    let mut ended = [[None; 4], [None; 4]];
     for t in 1..=400 {
         r.step(None);
         h.tick();
         for (k, &(_, _, j, se)) in pairs.iter().enumerate() {
             if eaten[0][k].is_none() && r.events.iter().any(|ev| matches!(ev, horizon_client_lib::mobs::MobEvent::RemoveKilled { target } if *target == r.mobs[j].id)) {
                 eaten[0][k] = Some(t);
+                // The host applies `RemoveKilled` after the tick: the prey is gone for the next one (`canStillUse`: `isAlive`).
+                r.mobs[j].health = 0.0;
+                r.mobs[j].removed = true;
             }
             if eaten[1][k].is_none() && h.world.get_entity(se).is_err() {
                 eaten[1][k] = Some(t);
             }
+            let (i, e, _, _) = pairs[k];
+            if eaten[0][k].is_some() && ended[0][k].is_none() && r.mobs[i].extra.frog.tongue_target.is_none() {
+                ended[0][k] = Some(t);
+            }
+            if eaten[1][k].is_some() && ended[1][k].is_none() && h.world.get::<horizon_ecs_proto::behaviours::shoot_tongue::Shooting>(e).is_none() {
+                ended[1][k] = Some(t);
+            }
         }
     }
-    eprintln!("eaten at Mob {:?} ECS {:?}", eaten[0], eaten[1]);
+    eprintln!("eaten at Mob {:?} ECS {:?}; tongue over at Mob {:?} ECS {:?}", eaten[0], eaten[1], ended[0], ended[1]);
     assert!(eaten[0].iter().all(Option::is_some), "witness: the Mob frogs eat: {:?}", eaten[0]);
     // The scene is the same and the draws are imposed (the sensor's first scan at tick 1, still prey): the bite comes at the same tick on both
     // sides, except for one tick the `Mob` is late by: vanilla's `StartAttacking` (idle activity) sets the target in the tick of the scan and
@@ -146,4 +157,7 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
     // tick after that (`suivi/ecs-ecarts.md`). Every frog: ECS + 1 == Mob.
     let late: Vec<_> = eaten[1].iter().map(|x| x.map(|t| t + 1)).collect();
     assert_eq!(eaten[0].to_vec(), late, "tick of the first bite: Mob, ECS + 1");
+    // The end of the tongue (the goal stops): the same tick on both sides, up to the same start tick.
+    let late: Vec<_> = ended[1].iter().map(|x| x.map(|t| t + 1)).collect();
+    assert_eq!(ended[0].to_vec(), late, "tick the tongue is over: Mob, ECS + 1");
 }

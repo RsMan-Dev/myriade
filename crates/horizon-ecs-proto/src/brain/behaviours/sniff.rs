@@ -136,7 +136,7 @@ fn calm_mem(w: &World, e: Entity) -> bool {
 }
 
 // ---- FeelingHappy -----------------------------------------------------------------------------------------------------
-pub static FEELING_HAPPY_B: Behaviour = Behaviour { name: "minecraft:feeling_happy", mems: &[&SNIFFER_HAPPY], requires: &[Cap::Brain, Cap::Body], passive: true, equip, start: start_happy, stop: stop_happy, ..Behaviour::DEFAULT };
+pub static FEELING_HAPPY_B: Behaviour = Behaviour { name: "minecraft:feeling_happy", mems: &[&SNIFFER_HAPPY], requires: &[Cap::Brain, Cap::Body], passive: true, equip, start: start_happy, stop: stop_happy, survives_activity: true, ..Behaviour::DEFAULT };
 fn start_happy(w: &mut World, e: Entity, _: &Ctx) {
     transition(w, e, FEELING_HAPPY);
 }
@@ -146,7 +146,7 @@ fn stop_happy(w: &mut World, e: Entity, _: &Ctx) {
 }
 
 // ---- Scenting ---------------------------------------------------------------------------------------------------------
-pub static SCENTING_B: Behaviour = Behaviour { name: "minecraft:scenting", mems: &[&SNIFFER_DIGGING, &SNIFFER_SNIFFING_TARGET, &SNIFFER_HAPPY, &BREED_TARGET, &IS_PANICKING, &TEMPTING_PLAYER], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_scent, start: start_scent, stop: stop_scent, ..Behaviour::DEFAULT };
+pub static SCENTING_B: Behaviour = Behaviour { name: "minecraft:scenting", mems: &[&SNIFFER_DIGGING, &SNIFFER_SNIFFING_TARGET, &SNIFFER_HAPPY, &BREED_TARGET, &IS_PANICKING, &TEMPTING_PLAYER], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_scent, start: start_scent, stop: stop_scent, survives_activity: true, ..Behaviour::DEFAULT };
 fn can_scent(w: &mut World, e: Entity, _: &Ctx) -> bool {
     !(present(w, e, &IS_PANICKING) || present(w, e, &SNIFFER_DIGGING) || present(w, e, &SNIFFER_SNIFFING_TARGET) || present(w, e, &SNIFFER_HAPPY) || present(w, e, &BREED_TARGET) || present(w, e, &TEMPTING_PLAYER))
 }
@@ -158,7 +158,7 @@ fn stop_scent(w: &mut World, e: Entity, _: &Ctx) {
 }
 
 // ---- Sniffing ---------------------------------------------------------------------------------------------------------
-pub static SNIFFING_B: Behaviour = Behaviour { name: "minecraft:sniffing", mems: &[&WALK_TARGET, &SNIFFER_SNIFFING_TARGET, &SNIFF_COOLDOWN], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_sniff_start, start: start_sniff, tick: tick_sniff, stop: stop_sniff, ..Behaviour::DEFAULT };
+pub static SNIFFING_B: Behaviour = Behaviour { name: "minecraft:sniffing", mems: &[&WALK_TARGET, &SNIFFER_SNIFFING_TARGET, &SNIFF_COOLDOWN], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_sniff_start, start: start_sniff, tick: tick_sniff, stop: stop_sniff, survives_activity: true, ..Behaviour::DEFAULT };
 fn can_sniff_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     !(present(w, e, &WALK_TARGET) || present(w, e, &SNIFFER_SNIFFING_TARGET) || present(w, e, &SNIFF_COOLDOWN)) && !baby(w, e) && can_sniff(w, e)
 }
@@ -178,7 +178,7 @@ fn stop_sniff(w: &mut World, e: Entity, c: &Ctx) {
 }
 
 // ---- Searching --------------------------------------------------------------------------------------------------------
-pub static SEARCHING_B: Behaviour = Behaviour { name: "minecraft:searching", mems: &[&WALK_TARGET, &SNIFFER_SNIFFING_TARGET, &SNIFFER_DIGGING, &IS_PANICKING], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_search, start: start_search, tick: tick_search, stop: stop_search, ..Behaviour::DEFAULT };
+pub static SEARCHING_B: Behaviour = Behaviour { name: "minecraft:searching", mems: &[&WALK_TARGET, &SNIFFER_SNIFFING_TARGET, &SNIFFER_DIGGING, &IS_PANICKING], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_search, start: start_search, tick: tick_search, stop: stop_search, survives_activity: true, ..Behaviour::DEFAULT };
 fn can_search(w: &mut World, e: Entity, _: &Ctx) -> bool {
     present(w, e, &WALK_TARGET) && calm_mem(w, e) && present(w, e, &SNIFFER_SNIFFING_TARGET) && can_sniff(w, e)
 }
@@ -206,7 +206,7 @@ fn stop_search(w: &mut World, e: Entity, c: &Ctx) {
 }
 
 // ---- Digging ----------------------------------------------------------------------------------------------------------
-pub static DIGGING_B: Behaviour = Behaviour { name: "minecraft:digging", mems: &[&IS_PANICKING, &WALK_TARGET, &SNIFFER_DIGGING, &SNIFF_COOLDOWN, &SEED_PENDING], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_start_dig, start: start_dig, tick: tick_dig, stop: stop_dig, ..Behaviour::DEFAULT };
+pub static DIGGING_B: Behaviour = Behaviour { name: "minecraft:digging", mems: &[&IS_PANICKING, &WALK_TARGET, &SNIFFER_DIGGING, &SNIFF_COOLDOWN, &SEED_PENDING], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_start_dig, start: start_dig, tick: tick_dig, stop: stop_dig, survives_activity: true, ..Behaviour::DEFAULT };
 fn can_start_dig(w: &mut World, e: Entity, c: &Ctx) -> bool {
     !(present(w, e, &IS_PANICKING) || present(w, e, &WALK_TARGET) || !present(w, e, &SNIFFER_DIGGING) || present(w, e, &SNIFF_COOLDOWN)) && can_sniff(w, e) && {
         let _ = c;
@@ -251,7 +251,7 @@ fn drop_seed(w: &mut World, e: Entity, p: &Params) {
 }
 
 // ---- FinishedDigging --------------------------------------------------------------------------------------------------
-pub static FINISHED_DIGGING_B: Behaviour = Behaviour { name: "minecraft:finished_digging", mems: &[&IS_PANICKING, &WALK_TARGET, &SNIFFER_DIGGING, &SNIFF_COOLDOWN, &SNIFFER_HAPPY], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_finish, start: start_finish, tick: tick_finish, stop: stop_finish, ..Behaviour::DEFAULT };
+pub static FINISHED_DIGGING_B: Behaviour = Behaviour { name: "minecraft:finished_digging", mems: &[&IS_PANICKING, &WALK_TARGET, &SNIFFER_DIGGING, &SNIFF_COOLDOWN, &SNIFFER_HAPPY], requires: &[Cap::Brain, Cap::Body], passive: true, equip, can_start: can_finish, start: start_finish, tick: tick_finish, stop: stop_finish, survives_activity: true, ..Behaviour::DEFAULT };
 fn can_finish(w: &mut World, e: Entity, _: &Ctx) -> bool {
     !(present(w, e, &IS_PANICKING) || present(w, e, &WALK_TARGET) || !present(w, e, &SNIFFER_DIGGING) || !present(w, e, &SNIFF_COOLDOWN))
 }

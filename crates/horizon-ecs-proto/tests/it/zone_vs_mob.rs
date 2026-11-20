@@ -153,7 +153,7 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
         return;
     }
     let (s1, s2) = (100, 500);
-    let _ = pair();
+    let babyable = horizon_client_lib::mobs::species::can_be_a_baby(pair().0.kind.species);
     // A monster is not a baby and is never in love: its own timers are the fire and the zombie test below.
     let monster = !species().goals.has(&horizon_ecs_proto::behaviours::breed::MODULE);
     let (mf, ef, slept) = run(700, s1, s2, What::Fire);
@@ -170,11 +170,17 @@ fn a_creature_that_sleeps_keeps_its_timers_as_a_mob_does() {
     let (ml, el, _) = run(700, s1, s2, What::Love);
     eprintln!("baby, no gap: mob {m0:?} ecs {e0:?}\nbaby, gap 700: mob {mg:?} ecs {eg:?}\nlove: mob {ml:?} ecs {el:?}\nfire: mob {mf:?} ecs {ef:?}");
     assert!(slept, "the creature must have slept");
+    // A species the jar never makes a baby (`LivingEntity.isBaby` is false for it: the frog) does not grow: the `Mob` keeps its age, so
+    // only the love and the fire are compared.
+    if babyable {
     // The Mob after the gap equals the Mob with no gap, shifted by the gap.
     assert_eq!(mg.grew.map(|t| t - 700), m0.grew);
+    }
     // The ecs creature against the Mob (within a tick: the two count a deadline on either side of the tick).
     let close = |a: Option<i64>, b: Option<i64>| a.zip(b).is_some_and(|(a, b)| (a - b).abs() <= 1);
-    assert!(close(eg.grew, mg.grew), "baby: mob {:?} ecs {:?}", mg.grew, eg.grew);
+    if babyable {
+        assert!(close(eg.grew, mg.grew), "baby: mob {:?} ecs {:?}", mg.grew, eg.grew);
+    }
     assert!(ml.love_left == 4400 && (el.love_left - ml.love_left).abs() <= 1, "love: mob {} ecs {}", ml.love_left, el.love_left);
     assert!(close(ef.fire_out, mf.fire_out), "fire: mob {:?} ecs {:?}", mf.fire_out, ef.fire_out);
     assert_eq!(ef.health, mf.health, "health after the fire");
