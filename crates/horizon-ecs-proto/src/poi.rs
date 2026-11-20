@@ -21,6 +21,8 @@ pub struct PoiRegistry {
     points: HashMap<[i32; 3], Poi>,
     /// The village points (homes, job sites, meeting points) in each section: what `sections_to_village` measures from.
     sections: HashMap<[i32; 3], u32>,
+    /// Every point of each section (village or not): what `in_range` searches.
+    by_section: HashMap<[i32; 3], Vec<[i32; 3]>>,
     scanned: bool,
     /// The points that appeared / went this tick, and the ones of the tick before (what the modules read).
     now: (Vec<[i32; 3]>, Vec<[i32; 3]>),
@@ -55,6 +57,7 @@ impl PoiRegistry {
             if is_village(kind) {
                 *self.sections.entry(section(p)).or_default() += 1;
             }
+            self.by_section.entry(section(p)).or_default().push(p);
             self.now.0.push(p);
         }
     }
@@ -68,12 +71,55 @@ impl PoiRegistry {
                     self.sections.remove(&section(p));
                 }
             }
+            if let Some(v) = self.by_section.get_mut(&section(p))
+                && let Some(i) = v.iter().position(|q| *q == p)
+            {
+                v.swap_remove(i);
+            }
+            if self.by_section.get(&section(p)).is_some_and(Vec::is_empty) {
+                self.by_section.remove(&section(p));
+            }
             self.now.1.push(p);
         }
+    }
+    /// The sections the cube `±radius` around `center` touches, among those holding points (all of them when there are fewer).
+    fn sections_near(&self, center: [i32; 3], radius: i32) -> Vec<[i32; 3]> {
+        let lo = center.map(|c| c.saturating_sub(radius) >> 4);
+        let hi = center.map(|c| c.saturating_add(radius) >> 4);
+        let cells: i64 = (0..3).map(|i| i64::from(hi[i] - lo[i] + 1).max(0)).product();
+        if cells > self.by_section.len() as i64 {
+            return self.by_section.keys().copied().filter(|s| (0..3).all(|i| (lo[i]..=hi[i]).contains(&s[i]))).collect();
+        }
+        let mut v = Vec::new();
+        for z in lo[2]..=hi[2] {
+            for y in lo[1]..=hi[1] {
+                for x in lo[0]..=hi[0] {
+                    if self.by_section.contains_key(&[x, y, z]) {
+                        v.push([x, y, z]);
+                    }
+                }
+            }
+        }
+        v
     }
     /// `PoiManager.getInRange` (with `HAS_SPACE` when `free`): the points of the accepted types within `radius` blocks of `center` on each axis,
     /// nearest first, ties by chunk (z, then x) then y, z, x.
     pub fn in_range(&self, center: [i32; 3], radius: i32, free: bool, accept: impl Fn(PoiType) -> bool) -> Vec<([i32; 3], PoiType)> {
+        let mut v: Vec<(i64, i32, i32, [i32; 3], PoiType)> = Vec::new();
+        for s in self.sections_near(center, radius) {
+            for p in &self.by_section[&s] {
+                let poi = self.points[p];
+                if (0..3).all(|i| (p[i] - center[i]).abs() <= radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()) {
+                    v.push(((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, *p, poi.kind));
+                }
+            }
+        }
+        v.sort_by_key(|x| (x.0, x.1, x.2, x.3[1], x.3[2], x.3[0]));
+        v.into_iter().map(|x| (x.3, x.4)).collect()
+    }
+    /// The reference scan of `in_range` (every point), kept to check the index against it.
+    #[cfg(test)]
+    fn in_range_scan(&self, center: [i32; 3], radius: i32, free: bool, accept: impl Fn(PoiType) -> bool) -> Vec<([i32; 3], PoiType)> {
         let mut v: Vec<(i64, i32, i32, [i32; 3], PoiType)> = self
             .points
             .iter()
@@ -204,5 +250,89 @@ impl PoiRegistry {
             }
         }
         v
+    }
+}
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+    const KINDS: [PoiType; 21] = [
+        PoiType::Armorer,
+        PoiType::Butcher,
+        PoiType::Cartographer,
+        PoiType::Cleric,
+        PoiType::Farmer,
+        PoiType::Fisherman,
+        PoiType::Fletcher,
+        PoiType::Leatherworker,
+        PoiType::Librarian,
+        PoiType::Mason,
+        PoiType::Shepherd,
+        PoiType::Toolsmith,
+        PoiType::Weaponsmith,
+        PoiType::Meeting,
+        PoiType::Home,
+        PoiType::Beehive,
+        PoiType::BeeNest,
+        PoiType::NetherPortal,
+        PoiType::Lodestone,
+        PoiType::TestInstance,
+        PoiType::LightningRod,
+    ];
+    const RADII: [i32; 7] = [-1, 0, 1, 15, 16, 48, 200];
+    fn next(s: &mut u64) -> u64 {
+        *s ^= *s << 13;
+        *s ^= *s >> 7;
+        *s ^= *s << 17;
+        *s
+    }
+    fn pick(s: &mut u64, n: usize) -> usize {
+        (next(s) % n as u64) as usize
+    }
+    fn coord(s: &mut u64, lo: i32, hi: i32) -> i32 {
+        lo + pick(s, (hi - lo + 1) as usize) as i32
+    }
+    fn point(s: &mut u64, lo: i32, hi: i32) -> [i32; 3] {
+        [coord(s, lo, hi), coord(s, lo, hi), coord(s, lo, hi)]
+    }
+    #[test]
+    fn in_range_equals_scan() {
+        let mut s = 0x2545_F491_4F6C_DD1Du64;
+        for _ in 0..3000 {
+            let mut reg = PoiRegistry::default();
+            let mut pts: Vec<[i32; 3]> = Vec::new();
+            for _ in 0..pick(&mut s, 401) {
+                let p = point(&mut s, -80, 80);
+                reg.add(p, KINDS[pick(&mut s, KINDS.len())]);
+                pts.push(p);
+            }
+            for _ in 0..pick(&mut s, 200) {
+                let p = if pts.is_empty() || pick(&mut s, 2) == 0 { point(&mut s, -80, 80) } else { pts[pick(&mut s, pts.len())] };
+                match pick(&mut s, 4) {
+                    0 => {
+                        reg.add(p, KINDS[pick(&mut s, KINDS.len())]);
+                        pts.push(p);
+                    }
+                    1 => reg.remove(p),
+                    2 => {
+                        reg.acquire(p);
+                    }
+                    _ => {
+                        reg.release(p);
+                    }
+                }
+            }
+            for _ in 0..20 {
+                let center = point(&mut s, -100, 100);
+                let radius = RADII[pick(&mut s, RADII.len())];
+                let free = pick(&mut s, 2) == 1;
+                let accept: fn(PoiType) -> bool = match pick(&mut s, 4) {
+                    0 => |_| true,
+                    1 => PoiType::is_job,
+                    2 => |k| k == PoiType::Home,
+                    _ => |_| false,
+                };
+                assert_eq!(reg.in_range(center, radius, free, accept), reg.in_range_scan(center, radius, free, accept));
+            }
+        }
     }
 }
