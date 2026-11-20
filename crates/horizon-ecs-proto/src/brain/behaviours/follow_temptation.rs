@@ -27,9 +27,11 @@ pub struct Params {
     pub speed: f32,
     pub close: f64,
     pub look_in_the_eyes: bool,
+    /// The speed when the entity is out of water (the axolotl: 0.15, 0.5 in water); none: `speed` always.
+    pub dry_speed: Option<f32>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { speed: 1.25, close: 2.5, look_in_the_eyes: false };
+    pub const DEFAULT: Params = Params { speed: 1.25, close: 2.5, look_in_the_eyes: false, dry_speed: None };
 }
 
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -48,13 +50,16 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
         erase(w, e, &WALK_TARGET);
     } else {
         let target = Tracker::Entity(player, p.look_in_the_eyes);
-        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target, speed: p.speed, close: WALK_CLOSE }), None);
+        let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
+        let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target, speed, close: WALK_CLOSE }), None);
     }
     true
 }
 
 fn stop(w: &mut World, e: Entity, _: &Ctx) {
-    set(w, e, &TEMPTATION_COOLDOWN_TICKS, MemValue::Int(COOLDOWN_TICKS), None);
+    // The cooldown is a memory that expires (a deadline of the wheel), not a count written each tick.
+    set(w, e, &TEMPTATION_COOLDOWN_TICKS, MemValue::Int(COOLDOWN_TICKS), Some(COOLDOWN_TICKS as u64));
     erase(w, e, &WALK_TARGET);
     erase(w, e, &LOOK_TARGET);
 }

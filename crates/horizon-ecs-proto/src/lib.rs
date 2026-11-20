@@ -12,6 +12,7 @@ pub mod despawn;
 pub mod effects;
 pub mod equipment;
 pub mod explosion;
+pub mod jump_arc;
 pub mod farm;
 pub mod flat;
 pub mod goals;

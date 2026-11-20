@@ -452,70 +452,11 @@ fn candidates([x, y, z]: [i32; 3], width: i32, height: i32) -> Vec<([i32; 3], i3
 
 /// `LongJumpToRandomPos.calculateOptimalJumpVector` : les angles mélangés, le premier arc qui atteint la cible sans bloc.
 fn optimal_jump_vector(w: &mut World, e: Entity, p: &Params, mw: &MobWorld, target: Vec3) -> Option<Vec3> {
-    let mut angles = ALLOWED_ANGLES;
-    for i in (2..=angles.len()).rev() {
-        let j = with_rng(w, e, |r| r.next_int(i as i32)) as usize;
-        angles.swap(i - 1, j);
-    }
+    let angles = crate::jump_arc::shuffle(ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
     let max = (p.jump_strength * f64::from(JUMP_VELOCITY_MULTIPLIER)) as f32;
-    angles.iter().find_map(|&a| jump_vector(w, e, mw, target, max, a))
-}
-
-/// `LongJumpUtil.calculateJumpVectorForAngle` avec la vérification de collision de l'arc (`breeze.rs:117-190`).
-fn jump_vector(w: &World, e: Entity, mw: &MobWorld, target: Vec3, max_velocity: f32, angle: i32) -> Option<Vec3> {
-    let pos = w.get::<Pos>(e)?.0;
-    let body = *w.get::<Body>(e)?;
-    let plane = Vec3::new(target.x - pos.x, 0.0, target.z - pos.z).normalize().scale(0.5);
-    let aim = target.subtract(plane);
-    let d = aim.subtract(pos);
-    let angrad = angle as f32 * std::f32::consts::PI / 180.0;
-    let xz = trig::fdlibm_atan2(d.z, d.x);
-    let r2 = d.x * d.x + 0.0 + d.z * d.z;
-    let r = r2.sqrt();
-    let y = d.y;
-    let g = body.gravity;
-    let sin2 = jmath::sin(f64::from(2.0 * angrad));
-    let cos_sq = jmath::pow(jmath::cos(f64::from(angrad)), 2.0);
-    let (sin, cos) = (jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad)));
-    let v0sq = r2 * g / (r * sin2 - 2.0 * y * cos_sq);
-    if v0sq < 0.0 {
-        return None;
-    }
-    let v0 = v0sq.sqrt();
-    if v0 > f64::from(max_velocity) {
-        return None;
-    }
-    let (v0r, v0y) = (v0 * cos, v0 * sin);
-    // `ceil(r / v0r) * 2` points along the arc, each step clear of blocks (`clear_transition`, boîte debout : repli).
-    let samples = (r / v0r).ceil() as i32 * 2;
-    let (sin_xz, cos_xz) = (jmath::sin(xz), jmath::cos(xz));
-    let mut ri = 0.0;
-    let mut previous: Option<Vec3> = None;
-    for _ in 0..samples - 1 {
-        ri += r / f64::from(samples);
-        let yi = sin / cos * ri - jmath::pow(ri, 2.0) * g / (2.0 * v0sq * jmath::pow(cos, 2.0));
-        let p = Vec3::new(pos.x + ri * cos_xz, pos.y + yi, pos.z + ri * sin_xz);
-        if previous.is_some_and(|q| !clear_transition(mw, body.width, body.height, q, p)) {
-            return None;
-        }
-        previous = Some(p);
-    }
-    Some(Vec3::new(v0r * jmath::cos(xz), v0y, v0r * jmath::sin(xz)).scale(f64::from(0.95_f32)))
-}
-
-/// `LongJumpUtil.isClearTransition` : la boîte tient aux points espacés de neuf dixièmes de son petit côté.
-fn clear_transition(mw: &MobWorld, width: f32, height: f32, from: Vec3, to: Vec3) -> bool {
-    let (width, height) = (f64::from(width), f64::from(height));
-    let d = to.subtract(from);
-    let min = width.min(height);
-    let checks = (d.length() / min).ceil() as i32;
-    let step = d.normalize().scale(min * f64::from(0.9_f32));
-    let half = width / 2.0;
-    let mut p = from;
-    (0..checks).all(|i| {
-        p = if i == checks - 1 { to } else { p.add_vector(step) };
-        mw.no_collision(Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half)))
-    })
+    let (pos, body) = (w.get::<Pos>(e)?.0, *w.get::<Body>(e)?);
+    // The arc is tested with the standing box (fallback: the pose's box is not read).
+    crate::jump_arc::first_reaching(&angles, pos, body.gravity, target, max, Some((mw, crate::jump_arc::Footprint { width: body.width, height: body.height })))
 }
 
 /// `LongJumpMidJump` : le bond (vitesse de l'arc, frottement coupé, le corps tourné vers son cap), puis le vol.

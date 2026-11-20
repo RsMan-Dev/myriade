@@ -49,7 +49,7 @@ static BABY_SLICES: &[schedule::Slice] = &[
 
 /// Inactivité : flâner ou ne rien faire, au hasard, poids 1 chacun (`villager_brain.rs` ~4151).
 static IDLE_KIDS: &[Kid] = &[
-    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &stroll::Params { speed: 0.5, h: 10, v: 7 }, needs: &[], duration: None },
+    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &stroll::Params { speed: 0.5, h: 10, v: 7, dry_only: false }, needs: &[], duration: None },
     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 1, params: &(), needs: &[], duration: Some((30, 60)) },
 ];
 

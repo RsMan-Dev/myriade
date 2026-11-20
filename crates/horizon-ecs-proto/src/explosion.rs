@@ -95,6 +95,38 @@ pub fn blast_damage(dist: f64, exposure: f32, diameter: f64) -> f32 {
     ((pow * pow + pow) / 2.0 * 7.0 * diameter + 1.0) as f32
 }
 /// The explosion: the creatures, then the blocks (and their fire).
+/// A wind charge's burst (`ServerExplosion` with `TRIGGER_BLOCK`): no damage, no block; every creature within the diameter is pushed
+/// away from the centre by `(1 - distance / diameter) * exposure`, its distance from its feet and its direction from its eyes, as
+/// `Entity.pushFromExplosion`. Players are the host's (their push is not in the state of the frame); blocks that react (doors, levers) are not ported.
+pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::targeting::Who>) {
+    let level = *w.resource::<Level>();
+    let diameter = f64::from(radius * 2.0);
+    let mut near: Vec<Entity> = Vec::new();
+    w.resource::<Index>().for_radius(at.x, at.z, diameter, |c| near.push(c));
+    for c in near {
+        // A breeze's charge does not push its own owner's kind: the owner is spared (`Breeze.isInvulnerableTo` covers the damage).
+        if owner == Some(crate::targeting::Who::Entity(c)) {
+            continue;
+        }
+        let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
+        let dist = ((feet.x - at.x).powi(2) + (feet.y - at.y).powi(2) + (feet.z - at.z).powi(2)).sqrt() / diameter;
+        if dist > 1.0 || w.get::<Vel>(c).is_none() {
+            continue;
+        }
+        let exposure = seen_percent(&level, at, bounds);
+        let eye = feet.y + w.get::<crate::targeting::Eye>(c).map_or(0.0, |e| e.0);
+        let (dx, dy, dz) = (feet.x - at.x, eye - at.y, feet.z - at.z);
+        let l = (dx * dx + dy * dy + dz * dz).sqrt();
+        let dir = if l < 1.0e-5 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
+        let pow = (1.0 - dist) * f64::from(exposure);
+        if let Some(mut v) = w.get_mut::<Vel>(c) {
+            v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);
+        }
+        if let Ok(mut m) = w.get_entity_mut(c) {
+            m.insert(Moving);
+        }
+    }
+}
 pub fn explode(w: &mut World, b: Blast) {
     if b.radius < 1.0e-5 {
         return;

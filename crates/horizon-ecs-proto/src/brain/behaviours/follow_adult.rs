@@ -27,9 +27,11 @@ pub struct Params {
     pub close: i32,
     pub eyes: bool,
     pub player: bool,
+    /// The speed when the entity is out of water (the axolotl: 0.15, 0.6 in water); none: `speed` always.
+    pub dry_speed: Option<f32>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { speed: 1.1, min: 3.0, max: 17.0, close: 2, eyes: true, player: false };
+    pub const DEFAULT: Params = Params { speed: 1.1, min: 3.0, max: 17.0, close: 2, eyes: true, player: false, dry_speed: None };
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -48,7 +50,9 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if !(d >= p.min * p.min && d < p.max * p.max) {
         return false;
     }
-    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, p.eyes), speed: p.speed, close: p.close }), None);
+    let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
+    let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, p.eyes), speed, close: p.close }), None);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
     true
 }
@@ -61,7 +65,7 @@ mod tests {
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[];
-    static ADULT: Params = Params { speed: 1.1, min: 3.0, max: 17.0, close: 2, eyes: true, player: false };
+    static ADULT: Params = Params { speed: 1.1, min: 3.0, max: 17.0, close: 2, eyes: true, player: false, dry_speed: None };
     static PLAYER: Params = Params { player: true, ..Params::DEFAULT };
     static ADULT_ENTRY: [BEntry; 1] = [BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 3, params: &ADULT, needs: NEEDS, duration: None, kids: &[] }];
     static PLAYER_ENTRY: [BEntry; 1] = [BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 2, params: &PLAYER, needs: NEEDS, duration: None, kids: &[] }];

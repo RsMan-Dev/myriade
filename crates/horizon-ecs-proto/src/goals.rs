@@ -684,6 +684,8 @@ pub struct Events {
     pub unleashed: Ev,
     /// The vehicle of a player moved, stopped or went (`vehicle.rs`): the player's id.
     pub vehicle_moved: Ev<u32>,
+    /// A parent took `Carrying` (a pregnancy, `breed`).
+    pub carrying: Ev,
     /// A slot of `Equipment` changed (`equipment::set_slot`).
     pub equipment_changed: Ev,
     /// A vibration happened (`cow::apply_damage`, `projectile.rs` at impact, the host's pushes): read by `vibration_listen`.
@@ -725,6 +727,7 @@ impl Events {
         self.leashed.swap();
         self.unleashed.swap();
         self.vehicle_moved.swap();
+        self.carrying.swap();
         self.equipment_changed.swap();
         self.vibration.swap();
         self.touched.swap();
@@ -1048,6 +1051,7 @@ pub fn force_start(w: &mut World, e: Entity, slot: u8) {
 }
 /// The entity took damage: every module of its selector reacts through its `damaged` entry point (a default that does nothing).
 pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    crate::brain::dispatch_damaged(w, e, d);
     let Some(g) = w.get::<GoalSet>(e) else { return };
     for slot in 0..g.len() as u8 {
         let Some((m, inst)) = of(w, e, slot) else { return };
@@ -1779,7 +1783,7 @@ mod tests {
         let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
         let e = h.world.spawn(cow_bundle(-39.0, -47.0, 51)).id();
         h.world.get_mut::<Pos>(e).unwrap().0.y = 3.0;
-        h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), 0.9, 1.4);
+        h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), crate::cow::species().width, crate::cow::species().height);
         ticks(&mut h, 60);
         let (mut floating, mut jumps, mut low, mut was) = (0, 0, 9.0_f64, false);
         for _ in 0..1500 {

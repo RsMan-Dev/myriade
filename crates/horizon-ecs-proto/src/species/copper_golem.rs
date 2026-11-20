@@ -28,7 +28,7 @@ pub static DEF: Def = Def {
                 needs: &[(&WALK_TARGET, Need::Absent), (&TRANSPORT_ITEMS_COOLDOWN_TICKS, Need::Present)],
                 duration: None,
                 kids: &[
-                    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &stroll::Params { speed: 1.0, h: 2, v: 2 }, needs: &[], duration: None },
+                    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &stroll::Params { speed: 1.0, h: 2, v: 2, dry_only: false }, needs: &[], duration: None },
                     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 1, params: &(), needs: &[], duration: Some((30, 60)) },
                 ],
             },

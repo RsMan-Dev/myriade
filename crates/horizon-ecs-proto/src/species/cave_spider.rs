@@ -17,7 +17,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],
-    locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true }))],
+    locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true, ..walk::Params::DEFAULT }))],
         rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::CAVE_SPIDER)],
     ..Def::EMPTY
 };
