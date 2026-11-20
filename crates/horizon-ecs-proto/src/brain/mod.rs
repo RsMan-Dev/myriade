@@ -183,7 +183,12 @@ pub struct Behaviour {
     /// Every tick while it runs, after the timeout check; false = stop.
     pub tick: fn(&mut World, Entity, &Ctx) -> bool,
     pub stop: fn(&mut World, Entity, &Ctx),
+    /// The entity took damage (running or not): a reaction of the behaviour (`Animal.actuallyHurt` ends love), like a goal's `damaged`.
+    pub damaged: fn(&mut World, Entity, &Ctx, &crate::behaviours::Damaged),
+    /// Keeps running when the active activity changes (the jar's `Brain.setActiveActivity` stops nothing: a behaviour ends by its own `canStillUse`).
+    pub survives_activity: bool,
 }
+fn no_damage(_: &mut World, _: Entity, _: &Ctx, _: &crate::behaviours::Damaged) {}
 fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
     true
 }
@@ -201,6 +206,8 @@ impl Behaviour {
         start: nothing,
         tick: yes,
         stop: nothing,
+        damaged: no_damage,
+        survives_activity: false,
     };
 }
 #[derive(Clone, Copy)]
@@ -494,6 +501,19 @@ pub fn forget_due(w: &mut World, e: Entity, local: u16, token: u32) {
         wake(w, e);
     }
 }
+/// The entity took damage: each behaviour of its plan reacts through its `damaged` entry point (a default that does nothing).
+/// Only on a damage, never per tick.
+pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged) {
+    let Some(plan) = w.get::<Brain>(e).map(|b| b.plan) else { return };
+    for (id, inst) in plan.insts.iter().enumerate() {
+        (inst.b.damaged)(w, e, &Ctx { id: id as u16, nth: inst.nth, params: inst.params }, d);
+    }
+}
+/// Whether the timed behaviour of this `Ctx` is past its time (`Timed.timed_out`): read in its `stop` to tell the end of its time from an
+/// interruption.
+pub fn timed_out(w: &World, e: Entity, c: &Ctx) -> bool {
+    w.get::<Brain>(e).is_some_and(|b| b.run[c.id as usize].end < now_of(w, e))
+}
 /// The brain has something to do at the next step.
 pub fn wake(w: &mut World, e: Entity) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
@@ -592,11 +612,10 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     update_activity(w, e, plan);
-    // The activity changed: what runs for the previous one stops (`Brain.setActiveActivity` stops the behaviours that are not in
-    // the new activity's list).
+    // The activity changed: what runs for the previous one stops, unless the behaviour says it survives it (`survives_activity`).
     for &id in &plan.order {
         let inst = &plan.insts[id as usize];
-        if running(w, e, id) && !active(w, e, inst.act) {
+        if running(w, e, id) && !active(w, e, inst.act) && !inst.b.survives_activity {
             do_stop(w, e, plan, id);
         }
     }
@@ -705,11 +724,18 @@ fn update_activity(w: &mut World, e: Entity, plan: &'static Plan) {
 // ---- the services the modules use -------------------------------------------------------------------------------------
 /// `NearestVisibleLivingEntities.findClosest`: the first of `visible_mobs` that passes the filter and the sight test.
 pub fn find_closest(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bool) -> Option<Who> {
-    let list = match get(w, e, &VISIBLE_MOBS) {
-        Some(MemValue::Whos(l)) => l.clone(),
-        _ => return None,
-    };
-    list.into_iter().find(|&who| filter(w, who) && visible_test(w, e, who))
+    // The list is read one entry at a time (no copy of the list: this runs at every step of an awake brain).
+    let mut i = 0;
+    loop {
+        let who = match get(w, e, &VISIBLE_MOBS) {
+            Some(MemValue::Whos(l)) => *l.get(i)?,
+            _ => return None,
+        };
+        if filter(w, who) && visible_test(w, e, who) {
+            return Some(who);
+        }
+        i += 1;
+    }
 }
 /// `NearestVisibleLivingEntities.contains`.
 pub fn visible_contains(w: &mut World, e: Entity, who: Who) -> bool {

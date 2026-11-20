@@ -106,6 +106,9 @@ mod tests {
         sp.goals = Config { entries };
         let wolf = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
         let other = spawn_species(&mut h.world, &sp, 4.5, 0.5, 9);
+        // Goals only: a species' brain would walk both elsewhere.
+        h.world.entity_mut(wolf).remove::<crate::brain::Brain>();
+        h.world.entity_mut(other).remove::<crate::brain::Brain>();
         if let Some(s) = strength_of_others {
             h.world.entity_mut(other).insert(LlamaStrength(s));
         }

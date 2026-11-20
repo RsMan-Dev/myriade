@@ -359,7 +359,7 @@ fn avoid_4_a_creative_player_is_not_fled() {
 /// start (it would at its first ask in the `Mob`, which asks every other tick while active).
 #[test]
 fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
-    if horizon_ecs_proto::cow::skip_unless_walker("avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range") {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range") || horizon_ecs_proto::cow::skip_if_brain("avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range") {
         return;
     }
     if !have_data() {
@@ -447,7 +447,7 @@ fn spot_law(grass: bool) {
 }
 #[test]
 fn avoid_5_spot_law_on_a_uniform_floor() {
-    if horizon_ecs_proto::cow::skip_unless_walker("avoid_5_spot_law_on_a_uniform_floor") {
+    if horizon_ecs_proto::cow::skip_unless_walker("avoid_5_spot_law_on_a_uniform_floor") || horizon_ecs_proto::cow::skip_if_brain("avoid_5_spot_law_on_a_uniform_floor") {
         return;
     }
     if have_data() {

@@ -22,9 +22,11 @@ pub struct Params {
     pub speed: f32,
     pub close: i32,
     pub needs_same_fluid: bool,
+    /// The speed when the entity is out of water (the axolotl's `axolotl_speed`: 0.5 in water, 0.15 out); none: `speed` always.
+    pub dry_speed: Option<f32>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { speed: 0.5, close: 3, needs_same_fluid: false };
+    pub const DEFAULT: Params = Params { speed: 0.5, close: 3, needs_same_fluid: false, dry_speed: None };
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -38,7 +40,9 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
             return false;
         }
     }
-    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: look, speed: p.speed, close: p.close }), None);
+    let wet = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+    let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: look, speed, close: p.close }), None);
     true
 }
 
@@ -50,7 +54,7 @@ mod tests {
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static NEEDS: Needs = &[(&WALK_TARGET, Need::Absent), (&LOOK_TARGET, Need::Present)];
     static ENTRIES: [BEntry; 1] = [BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 3, params: &Params::DEFAULT, needs: NEEDS, duration: None, kids: &[] }];
-    static SAME_FLUID: Params = Params { speed: 0.5, close: 3, needs_same_fluid: true };
+    static SAME_FLUID: Params = Params { speed: 0.5, close: 3, needs_same_fluid: true, dry_speed: Some(0.15) };
 
     fn brained(h: &mut Herd) -> Entity {
         let def = BrainDef {

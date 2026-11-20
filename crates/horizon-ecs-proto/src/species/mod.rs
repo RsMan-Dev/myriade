@@ -87,6 +87,9 @@ pub mod goat;
 pub mod camel;
 pub mod camel_husk;
 pub mod polar_bear;
+pub mod creaking;
+pub mod breeze;
+pub mod sniffer;
 pub mod ravager;
 pub mod hoglin;
 pub mod fox;
@@ -127,6 +130,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &bee::DEF,
     &dolphin::DEF,
     &axolotl::DEF,
+    &sniffer::DEF,
     &drowned::DEF,
     &spider::DEF,
     &cave_spider::DEF,
@@ -140,6 +144,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &iron_golem::DEF,
     &blaze::DEF,
     &polar_bear::DEF,
+    &creaking::DEF,
+    &breeze::DEF,
     &witch::DEF,
  &pillager::DEF, &evoker::DEF, &illusioner::DEF, &guardian::DEF, &elder_guardian::DEF, &stray::DEF, &bogged::DEF, &parched::DEF, &wither_skeleton::DEF,
     &goat::DEF,
@@ -631,9 +637,10 @@ mod tests {
         ("minecraft:dolphin", &[("breath_air", 0), ("try_find_water", 0), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:dolphin", &[("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
         ("minecraft:axolotl", &[]),
+        ("minecraft:sniffer", &[("float", 0)]),
+        ("minecraft:frog", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("shoot_tongue", 2), ("lay_spawn", 2), ("long_jump", 3), ("croak", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:drowned", &[("ranged_attack", 2), ("try_find_water", 1), ("attack_turtle_egg", 4), ("drowned_go_to_beach", 5), ("drowned_swim_up", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:bee", &[("hurt_by", 1), ("nearest_target", 2), ("neutral_anger", 255), ("melee", 0), ("bee_enter_hive", 1), ("breed", 2), ("tempt", 3), ("bee_validate_hive", 3), ("bee_validate_flower", 3), ("bee_pollinate", 4), ("follow_parent", 5), ("bee_locate_hive", 5), ("bee_go_to_hive", 5), ("bee_go_to_known_flower", 6), ("bee_grow_crop", 7), ("fly_stroll", 8)]),
-        ("minecraft:frog", &[("long_jump", 3), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:glow_squid", &[("squid_random_movement", 0), ("squid_flee", 1)]),
         ("minecraft:vex", &[("hurt_by", 1), ("vex_copy_owner_target", 2), ("nearest_target", 3), ("float", 0), ("vex_charge", 4), ("vex_random_move", 8), ("look_at_player", 9), ("limited_life", 10)]),
@@ -686,6 +693,8 @@ mod tests {
         ("minecraft:camel", &[("float", 0), ("animal_panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("charge_attack", 3)]),
+        ("minecraft:creaking", &[("float", 0), ("stare_freeze", 0)]),
+        ("minecraft:breeze", &[("float", 0)]),
         ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("admire", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_bow", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
         ("minecraft:shulker", &[("hurt_by", 1), ("nearest_target", 2), ("look_at_player", 1), ("homing_shot", 4), ("peek", 7), ("random_look", 8), ("teleport_on", 0)]),
         ("minecraft:sulfur_cube", &[("bounce_drag", 0), ("float", 1), ("swallow_item", 2), ("burn_on_touch", 2), ("push_on_touch", 2), ("tempt", 3), ("item_seek", 3)]),

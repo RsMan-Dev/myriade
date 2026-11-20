@@ -78,6 +78,16 @@ pub fn roll(world: &mut World, kind: &str, on_fire: bool, baby: bool, seed: i64)
     });
     stacks.into_iter().filter(|s| !s.is_empty()).map(|s| ItemStack::from_loot(&s)).collect()
 }
+/// The stacks a table that is not an entity's rolls (a gameplay table such as the dig of a seed: `minecraft:gameplay/...`), from `seed`.
+pub fn roll_table(world: &mut World, table: &str, seed: i64) -> Vec<ItemStack> {
+    if !tables(world) {
+        return Vec::new();
+    }
+    // No entity rolls this table: a placeholder type that is no species.
+    let params = EntityLootParams { this: LootEntity::new("minecraft:marker"), damage: None, player: None, luck: 0.0 };
+    let stacks = world.resource_scope(|_, t: Mut<LootTables>| t.0.roll_entity(table, &mut LegacyRandom::new(seed), &params));
+    stacks.into_iter().filter(|s| !s.is_empty()).map(|s| ItemStack::from_loot(&s)).collect()
+}
 /// The death of `e`: its hand, then its table, on the ground where it died. Run before the entity goes.
 pub fn on_death(world: &mut World, e: Entity) {
     let Some(at) = world.get::<Pos>(e).map(|p| p.0) else { return };
