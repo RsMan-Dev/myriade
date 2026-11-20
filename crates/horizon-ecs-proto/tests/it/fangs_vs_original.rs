@@ -6,6 +6,7 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::fangs::spawn_fang;
+use horizon_ecs_proto::cow::Herd;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::hostile::*;

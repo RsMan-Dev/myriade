@@ -36,9 +36,9 @@ pub struct Kind {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Boat {
     pub status: Status,
-    old_status: Status,
+    pub old_status: Status,
     /// False until a status has been set (`AbstractBoat.oldStatus` is null before the first tick).
-    known: bool,
+    pub known: bool,
     /// The water surface under the hull (`waterLevel`), set with the status.
     pub water_level: f64,
     /// `landFriction`: the ground's, halved by each controlled tick on land.

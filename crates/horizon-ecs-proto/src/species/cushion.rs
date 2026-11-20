@@ -166,13 +166,13 @@ pub fn hurt(w: &mut World, e: Entity, source: Source) -> bool {
     if w.get::<Cushion>(e).is_none() {
         return false;
     }
-    remove(w, e, true, source);
+    remove(w, e, source);
     true
 }
 
-/// `BlockAttachedEntity.kill` (`killed`) or `discard` (lost support, no kill), then `Cushion.dropItem`: the sound, the wool, and the
-/// cushion unless drops are off or a creative player broke it. The rider of a removed cushion is let go without a sound.
-fn remove(w: &mut World, e: Entity, killed: bool, source: Source) {
+/// `Cushion.dropItem` (after `kill` or `discard`): the sound, the wool, and the cushion unless drops are off or a creative player broke
+/// it. The rider of a removed cushion is let go without a sound.
+fn remove(w: &mut World, e: Entity, source: Source) {
     let Some(c) = w.get::<Cushion>(e).copied() else { return };
     let at = pos_of(w, e);
     let named = w.get::<Named>(e).map(|n| n.0.clone());
@@ -181,7 +181,6 @@ fn remove(w: &mut World, e: Entity, killed: bool, source: Source) {
     }
     w.despawn(e);
     let p = [at.x, at.y, at.z];
-    let _ = killed; // `entity_die` has no channel in the ECS yet: see the notes.
     let mut events = w.resource_mut::<Events>();
     events.host.sound("entity.cushion.break", p, 1.0, 1.0);
     events.host.particles(WOOL[usize::from(c.color)], p, [0.25, 0.0625, 0.25], 0.05, 10);
@@ -206,11 +205,11 @@ fn check(w: &mut World, e: Entity) {
         return;
     }
     let at = pos_of(w, e);
-    let (hazard, survives) = w.get_resource::<CushionHost>().map_or((None, true), |h| ((h.hazard)(w, at), (h.survives)(w, at)));
-    if hazard.is_some_and(|h| h != Hazard::None) {
-        remove(w, e, true, Source::Environment);
+    let (hazard, survives) = w.get_resource::<CushionHost>().map_or((Hazard::None, true), |h| ((h.hazard)(w, at), (h.survives)(w, at)));
+    if hazard != Hazard::None {
+        remove(w, e, Source::Environment);
     } else if !survives {
-        remove(w, e, false, Source::Environment);
+        remove(w, e, Source::Environment);
     }
 }
 
@@ -239,5 +238,5 @@ pub fn insert_resources(w: &mut World) {
     w.insert_resource(CushionIndex::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(cushion_wake);
+    s.add_systems(cushion_wake.after(crate::cow::block_changes));
 }

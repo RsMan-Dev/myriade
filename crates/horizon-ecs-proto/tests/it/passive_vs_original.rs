@@ -38,7 +38,7 @@ fn a_block_display_saves_its_settings_as_horizon_does() {
     let Tag::Compound(got) = saved else { panic!("not a compound") };
     let Tag::Compound(want) = want else { unreachable!() };
     for (key, value) in &want {
-        assert_eq!(got.get(key), Some(value), "{key}");
+        assert_eq!(got.get(key), Some(value), "{:?}", key);
     }
     assert!(!got.contains_key(&"start_interpolation".into()));
     let pos = w.get::<Pos>(e).unwrap().0;

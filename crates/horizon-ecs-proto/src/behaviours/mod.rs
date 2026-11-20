@@ -110,6 +110,14 @@ pub enum Cap {
     Tamable,
     /// A stack on the ground (`item.rs`): needs `Transform`; no life, no goals, no box in the creature index.
     Item,
+    /// A porte-armure's state (`stand.rs`): needs `Living`.
+    Stand,
+    /// A projectile in flight (`projectile_more.rs`): needs `Transform`.
+    Projectile,
+    /// An entity with no tick (display, interaction, marker): `Transform` only.
+    Passive,
+    /// An entity hung on a block (`hanging.rs`): `Transform` only.
+    Hanging,
 }
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {

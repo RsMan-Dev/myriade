@@ -3,6 +3,8 @@
 //! (collisions, border) and keeps the rest (fire, cactus, lava, TNT fuse and blast, loot, command, spawner, passengers). Position and
 //! velocity are `Vec3`, as in `boat.rs`. Constants read in the jar: the speeds 0.4 and 0.2, the slide 0.0078125. The others are Horizon's
 //! and are listed in the notes as doubts.
+use crate::behaviours::Cap;
+use crate::species::Def;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
@@ -258,3 +260,126 @@ pub fn can_park(rail: Option<&Rail>, vel: Vec3, ridden: bool, push: Vec3) -> boo
     let Some(rail) = rail else { return false };
     vel.length_squared() == 0.0 && !rail.slope() && !ridden && push.length_squared() == 0.0 && rail.powered.is_none()
 }
+
+/// `AbstractMinecart`'s gravity: `applyGravity` takes it off the vertical speed each tick (jar: 0.04).
+pub const GRAVITY: f64 = 0.04;
+
+/// `comeOffTrack`, before the move: the speed held to `max` (the cart's medium's), halved on the ground.
+pub fn off_track_velocity(vel: Vec3, on_ground: bool, max: f64) -> Vec3 {
+    let v = Vec3::new(vel.x.clamp(-max, max), vel.y, vel.z.clamp(-max, max));
+    if on_ground { v.scale(0.5) } else { v }
+}
+
+/// `comeOffTrack`, after the move and the block's speed factor: the air drag 0.95 unless on the ground.
+pub fn off_track_drag(vel: Vec3, on_ground: bool) -> Vec3 {
+    if on_ground { vel } else { vel.scale(0.95) }
+}
+
+/// The fall distance of a cart in the air. Absent when it is not falling.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Fall(pub f64);
+
+/// `checkFallDamage` of a cart's move of `moved_y` (negative when it fell): a fall adds to the distance unless the cart is in water; on
+/// the ground the distance is spent, and a TNT cart that fell three blocks or more returns the squared speed of its blast, (distance/10)^2.
+pub fn fall_step(fall: &mut f64, moved_y: f64, in_water: bool, on_ground: bool, tnt: bool) -> Option<f64> {
+    if moved_y < 0.0 && !in_water {
+        *fall -= f64::from(moved_y as f32);
+    }
+    if !on_ground {
+        return None;
+    }
+    let blast = (tnt && *fall >= 3.0).then(|| (*fall / 10.0).powi(2));
+    *fall = 0.0;
+    blast
+}
+
+/// `AbstractMinecart.push` of a non-cart entity at `feet`: the horizontal push the entity gets from a cart at `cart`, 0.05 at most (the
+/// cart keeps a quarter of it). `None` when the entity stands on the cart's centre.
+pub fn push_from(feet: Vec3, cart: Vec3) -> Option<[f64; 2]> {
+    let (xa, za) = (feet.x - cart.x, feet.z - cart.z);
+    let dd = xa * xa + za * za;
+    if dd < 1.0e-4 {
+        return None;
+    }
+    let d = dd.sqrt();
+    let k = f64::from(0.1_f32) * 0.5;
+    let pow = (1.0 / d).min(1.0);
+    Some([xa / d * pow * k, za / d * pow * k])
+}
+
+/// The box a hopper cart sucks items from when it takes nothing above: the cart's own box, widened 0.25 sideways.
+pub fn hopper_box(lo: Vec3, hi: Vec3) -> ([f64; 3], [f64; 3]) {
+    ([lo.x - 0.25, lo.y, lo.z - 0.25], [hi.x + 0.25, hi.y, hi.z + 0.25])
+}
+
+/// `activateMinecart` of an activator rail, by variant. A hopper cart is enabled by an unpowered rail.
+pub fn hopper_enabled_on_activator(powered: bool) -> bool {
+    !powered
+}
+
+/// A powered activator primes an unprimed TNT cart: the fuse (80, as Horizon; the gamerule is the host's check) or none.
+pub fn tnt_primed_by(powered: bool, fuse: i32) -> Option<i32> {
+    (powered && fuse < 0).then_some(FUSE)
+}
+
+/// A powered activator runs a command cart's command, at most every four ticks (`ACTIVATION_DELAY`, jar: 4).
+pub fn command_due(powered: bool, now: i32, last: i32) -> bool {
+    powered && now - last >= 4
+}
+
+/// The fuse of a TNT cart: -1 unprimed. Absent on the other genres.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fuse(pub i32);
+
+/// `MinecartTNT.primeFuse`: the fuse a primed cart starts with (jar: 80, as Horizon).
+pub const FUSE: i32 = 80;
+
+/// `MinecartTNT.tick`'s fuse, returned as (new fuse, explodes now, smokes). It counts down while positive; at zero the cart explodes.
+pub fn fuse_step(fuse: i32) -> (i32, bool, bool) {
+    if fuse > 0 {
+        (fuse - 1, false, true)
+    } else {
+        (fuse, fuse == 0, false)
+    }
+}
+
+/// A horizontal collision at 0.01 of squared speed or more sets a TNT cart off (jar: 0.009999999776482582).
+pub fn ignites_by_collision(horizontal_collision: bool, speed_sqr: f64) -> bool {
+    horizontal_collision && speed_sqr >= 0.009_999_999_776_482_582
+}
+
+/// The power of a TNT cart's blast: 4.0 plus its speed factor (1.0) times a random draw `r` in [0, 1) times 1.5 times the speed (at most
+/// 5 blocks a tick). Jar constants: 4.0, 1.5 and 5.0.
+pub fn blast_power(speed_sqr: f64, r: f64) -> f32 {
+    (f64::from(4.0_f32) + f64::from(1.0_f32) * r * 1.5 * speed_sqr.sqrt().min(5.0)) as f32
+}
+
+/// `container_signal`: the comparator level of a container's slots, from each filled slot's fill fraction (count over its stack's max)
+/// and the slot count.
+pub fn container_signal(fractions: &[f32], slots: usize) -> i32 {
+    let total = fractions.iter().sum::<f32>() / slots.max(1) as f32;
+    (total * 14.0).floor() as i32 + i32::from(total > 0.0)
+}
+
+/// The cart's capabilities: a position and a box. Its rail motion is driven by the host, so no brain, body or goal cap.
+const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid];
+
+/// The seven genres (Horizon's `CartKind`). The genre is configuration: its `Kind` is set when the cart is spawned.
+pub const RIDEABLE: Def = Def { name: "minecraft:minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const CHEST: Def = Def { name: "minecraft:chest_minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const HOPPER: Def = Def { name: "minecraft:hopper_minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const FURNACE: Def = Def { name: "minecraft:furnace_minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const TNT: Def = Def { name: "minecraft:tnt_minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const COMMAND_BLOCK: Def = Def { name: "minecraft:command_block_minecart", caps: Some(CAPS), ..Def::EMPTY };
+pub const SPAWNER: Def = Def { name: "minecraft:spawner_minecart", caps: Some(CAPS), ..Def::EMPTY };
+
+/// Each genre's `Def` with the `Kind` it spawns as.
+pub const GENRES: [(&Def, Kind); 7] = [
+    (&RIDEABLE, Kind::Rideable),
+    (&CHEST, Kind::Chest),
+    (&HOPPER, Kind::Hopper),
+    (&FURNACE, Kind::Furnace),
+    (&TNT, Kind::Tnt),
+    (&COMMAND_BLOCK, Kind::CommandBlock),
+    (&SPAWNER, Kind::Spawner),
+];
