@@ -86,6 +86,10 @@ impl Flight {
     pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Fixed(1.0), ..Self::BASE };
     /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
     pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, ..Self::BASE };
+    /// `ThrownTrident` as a mob throws it: gravity 0.05, `ceil(speed * 8)`; no pierce, no return (the item and the loyalty are not modelled).
+    pub const TRIDENT: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
+    /// `WitherSkull` (not dangerous): inertia 0.95, 8 damage, wither effect on a hit; the blue skull's blast is `wither_skull_blue`.
+    pub const WITHER_SKULL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Effect(crate::effects::Kind::Wither, 1, 200), ..Self::BASE };
     pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
     /// `WitherSkull`: a blue (dangerous) skull keeps 0.73 of its speed a tick, the others 0.95; 8 damage, then a power 1 blast without fire.
     pub const fn wither_skull(dangerous: bool) -> Flight {

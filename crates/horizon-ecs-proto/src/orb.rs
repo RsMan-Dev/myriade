@@ -346,6 +346,10 @@ fn orb_moved(world: &mut World, mut cached: Local<Option<QueryState<(Entity, &Or
         state.iter(world).map(|(e, o, p, m)| (o.id, e, p.0, m, o.cell, o.born, o.check != 0)).collect();
     list.sort_unstable_by_key(|l| l.0);
     for (_, e, p, moving, old, born, pending) in list {
+        // An orb merged away by an earlier scan of this pass is gone.
+        if world.get::<Orb>(e).is_none() {
+            continue;
+        }
         let now = now_of(world, e);
         let cell = cell_of(p);
         let ticks = now - born;

@@ -18,6 +18,7 @@ pub enum HostEvent {
     /// A boss bar of entity `id`: its progress (0..1) and colour; `remove` closes it.
     BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
     PushPlayer { player: u32, velocity: [f64; 3] },
+    ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
 }
 
 #[derive(Default)]
@@ -52,6 +53,10 @@ impl HostOut {
     }
     pub fn push_player(&mut self, player: u32, velocity: [f64; 3]) {
         self.out.push(HostEvent::PushPlayer { player, velocity });
+    }
+    /// `MobEvent::ParrotToShoulder`: the host puts the creature on the player's shoulder and removes it.
+    pub fn shoulder(&mut self, parrot: bevy_ecs::entity::Entity, player: u32) {
+        self.out.push(HostEvent::ParrotToShoulder { parrot, player });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

@@ -227,7 +227,13 @@ pub mod melee;
 pub mod panic;
 pub mod random_look;
 pub mod random_stand;
+pub mod guardian_beam;
+pub mod limited_life;
+pub mod drink_potion;
 pub mod ranged_bow;
+pub mod spell_casting;
+pub mod spell_use;
+pub mod ranged_crossbow;
 pub mod stroll;
 pub mod hurt_by;
 pub mod nearest_target;
@@ -263,6 +269,9 @@ pub mod attack_turtle_egg;
 pub mod brute_stroll_home;
 pub mod silverfish_merge;
 pub mod follow_owner;
+pub mod stay_close_to_owner;
+pub mod give_to_owner;
+pub mod land_on_shoulder;
 pub mod burst_shot;
 pub mod ender_teleport;
 pub mod charged_shot;
@@ -379,7 +388,13 @@ pub static TABLE: &[&Module] = &[
     &hurt_by::MODULE,
     &nearest_target::MODULE,
     &melee::MODULE,
+    &guardian_beam::MODULE,
+    &limited_life::MODULE,
+    &drink_potion::MODULE,
     &ranged_bow::MODULE,
+    &spell_casting::MODULE,
+    &spell_use::MODULE,
+    &ranged_crossbow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
     &avoid_entity::MODULE,
@@ -491,6 +506,9 @@ pub static TABLE: &[&Module] = &[
     &still_under_riders::MODULE,
     &heal_weather::MODULE,
     &square_or_face::MODULE,
+    &land_on_shoulder::MODULE,
+    &stay_close_to_owner::MODULE,
+    &give_to_owner::MODULE,
 ];
 pub mod act_phase;
 pub mod admire;

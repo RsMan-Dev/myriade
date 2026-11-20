@@ -26,6 +26,10 @@ pub enum Control {
     /// `SmoothSwimmingMoveControl(maxTurnX, maxTurnY, inWater, outsideWater, applyGravity)` (dolphin, axolotl, tadpole, frog): the pitch follows
     /// the wanted point, the forward and the vertical inputs follow the pitch.
     Smooth { max_turn_x: f32, max_turn_y: f32, in_water: f32, outside: f32, gravity: bool },
+    /// `Guardian.GuardianMoveControl` (`mobs/guardian.rs:167`): the yaw turns to the wanted point (90 degrees a tick), the speed goes an eighth
+    /// toward the wanted one, and the velocity gets a wobble of the age and a push toward the wanted height; no forward input (`zza` 0). With no
+    /// target and no move the animal sinks (the travel reads the speed).
+    Guardian,
 }
 /// What `moveRelative` pushes by in the water.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -280,8 +284,8 @@ pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob:
 /// `FishMoveControl.tick`, every tick of a fish in the water: the water lifts it a little, and while a path is followed the speed
 /// goes toward the wanted one by an eighth of the gap, it climbs or dives toward the wanted height and turns toward the node.
 #[allow(clippy::type_complexity)]
-fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>, Has<WantsToSwim>), With<SwimMode>>) {
-    for (pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following, wants) in &mut q {
+fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(Entity, &Pos, &mut Vel, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &FluidState, &Contact, &SwimParams, Has<Following>, Has<WantsToSwim>), With<SwimMode>>) {
+    for (e, pos, mut vel, mut yaw, mut m, mut d, body, fs, c, swp, following, wants) in &mut q {
         // `LivingEntity.aiStep` drops the tiny motions BEFORE the control (the lift of the water comes after).
         crate::locomotion::fly::drop_tiny_motion(&mut vel);
         if swp.squid {
@@ -295,6 +299,10 @@ fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut 
             }
             Control::Drowned => {
                 drowned_control(&level, pos, &mut vel, &mut yaw, &mut m, &mut d, body, fs, c, following, wants);
+                continue;
+            }
+            Control::Guardian => {
+                guardian_control(&clock, e, pos, &mut vel, &mut yaw, &mut m, &mut d, body, following);
                 continue;
             }
             Control::Smooth { max_turn_x, max_turn_y, in_water, outside, gravity } => {
@@ -325,6 +333,32 @@ fn move_control(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Yaw, &mut 
         }
         m.active = false;
     }
+}
+
+/// `GuardianMoveControl.tick`: swim at the wanted point with a wobble. The Mob draws the age and the id: here the entity's own time and its index.
+#[allow(clippy::too_many_arguments)]
+fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, body: &Body, following: bool) {
+    d.xxa = 0.0;
+    d.zza = 0.0;
+    if !(m.active && following) {
+        d.speed = 0.0;
+        m.active = false;
+        return;
+    }
+    let (dx, dy, dz) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
+    let len = (dx * dx + dy * dy + dz * dz).sqrt();
+    let yd = dy / len;
+    yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(dz, dx) - 90.0, 90.0);
+    let target = (m.speed_modifier * body.speed) as f32;
+    let speed = d.speed + (target - d.speed) * 0.125;
+    d.speed = speed;
+    let t = (clock.of(e) as i64 + i64::from(e.index().index())) as f64;
+    let push = f64::from(trig::sin(t * 0.5)) * 0.05;
+    let rad = f64::from(yaw.0 * trig::DEG_TO_RAD);
+    let (cos, sin) = (f64::from(trig::cos(rad)), f64::from(trig::sin(rad)));
+    let y_push = f64::from(trig::sin(t * 0.75)) * 0.05;
+    vel.0 = Vec3::new(vel.0.x + push * cos, vel.0.y + y_push * (sin + cos) * 0.25 + f64::from(speed) * yd * 0.1, vel.0.z + push * sin);
+    m.active = false;
 }
 
 /// `SmoothSwimmingMoveControl.tick`: in the water the pitch goes toward the wanted point (at most `max_turn_x`, 5 degrees a tick) and the
@@ -491,12 +525,14 @@ fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, g
 fn travel(
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
+    targets: Query<(), With<crate::targeting::Target>>,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
         (With<Moving>, Without<Overlapping>, With<SwimMode>),
     >,
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
+        let has_target = targets.contains(e);
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
         if swp.squid {
@@ -529,7 +565,7 @@ fn travel(
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
             // `Vec3.add(0.0, -0.005, 0.0)`: an animal with no target sinks a little.
-            let sink = if swp.sinks { 0.005 } else { 0.0 };
+            let sink = if swp.sinks && (swp.control != Control::Guardian || (d.speed == 0.0 && !has_target)) { 0.005 } else { 0.0 };
             v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
         } else {
             travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);

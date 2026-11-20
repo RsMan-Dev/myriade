@@ -1791,7 +1791,11 @@ pub(crate) fn pathfind(
             .then(|| {
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                if crate::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) {
+                    crate::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                } else {
+                    Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                }
             })
             .flatten();
         if climber {
@@ -4370,7 +4374,10 @@ mod tests {
     /// cell (the player moved nowhere: only the cell change tells).
     #[test]
     fn a_cow_leaving_a_standing_player_stops_being_active() {
-        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() || skip_unless_walker("a_cow_leaving_a_standing_player_stops_being_active") {
+        if skip_unless_walker("a_cow_leaving_a_standing_player_stops_being_active") {
+            return;
+        }
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
         let mut herd = Herd::new(0, 6.0, true, false, 3);

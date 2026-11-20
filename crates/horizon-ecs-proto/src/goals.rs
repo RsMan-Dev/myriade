@@ -12,7 +12,7 @@ pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
     float::{Buoyancy, Floating},
     follow_parent::{Babies, FollowParent, Mother, Trailing, adopt, make_baby},
-    look_at_player::{Glance, Glancing},
+    look_at_player::Glancing,
     panic::{Hurts, Panic, Panicking, hurt, ignite},
     random_look::{Scan, Scanning},
     tempt::{Tempt, Tempting, Tempts},
@@ -156,7 +156,7 @@ macro_rules! item_fns {
 }
 item_fns!(wheat => "minecraft:wheat", carrot => "minecraft:carrot", potato => "minecraft:potato", beetroot => "minecraft:beetroot", carrot_on_a_stick => "minecraft:carrot_on_a_stick",
     wheat_seeds => "minecraft:wheat_seeds", beetroot_seeds => "minecraft:beetroot_seeds", melon_seeds => "minecraft:melon_seeds", pumpkin_seeds => "minecraft:pumpkin_seeds",
-    shears => "minecraft:shears", bone => "minecraft:bone", lead => "minecraft:lead", warped_fungus_on_a_stick => "minecraft:warped_fungus_on_a_stick", saddle => "minecraft:saddle");
+    shears => "minecraft:shears", bone => "minecraft:bone", lead => "minecraft:lead", warped_fungus_on_a_stick => "minecraft:warped_fungus_on_a_stick", saddle => "minecraft:saddle", trident => "minecraft:trident", crossbow => "minecraft:crossbow");
 /// The phase of the goal selector of the entity: it asks `canUse` on the ticks where tick + phase is even (the id of
 /// a `Mob`). By default the animal's `Uid`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -1389,8 +1389,11 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut g) = h.world.get_mut::<Glance>(e) {
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance>(e) {
             g.armed = armed;
+        }
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance2>(e) {
+            g.0.armed = armed;
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;
