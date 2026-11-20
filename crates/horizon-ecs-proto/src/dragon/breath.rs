@@ -183,7 +183,7 @@ pub fn spawn(w: &mut World, c: Cloud) -> Entity {
 
 /// Spawns the dragon's flame at `at`.
 pub fn spawn_flame(w: &mut World, at: [f64; 3]) -> Entity {
-    let e = crate::breath_cloud::spawn(w, FLAME, at);
+    let e = crate::breath_cloud::spawn_led(w, FLAME, at, 1);
     w.entity_mut(e).insert(Flame);
     e
 }

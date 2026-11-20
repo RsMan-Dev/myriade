@@ -18,12 +18,18 @@ pub struct Live;
 
 /// Spawns a cloud of `spec` at its floor `at`, asleep until its wait is over.
 pub fn spawn(w: &mut World, spec: CloudSpec, at: [f64; 3]) -> Entity {
+    spawn_led(w, spec, at, 0)
+}
+
+/// `spawn` for a cloud made before the tick's cloud step (the dragon's flame: Horizon ages it on the tick it is made): its
+/// timers come `lead` ticks sooner.
+pub fn spawn_led(w: &mut World, spec: CloudSpec, at: [f64; 3], lead: i32) -> Entity {
     let c = spec.cloud(at);
     let (radius, duration) = (c.radius, c.duration);
     let e = w.spawn((Pos(Vec3::new(at[0], at[1], at[2])), c, OwnTime)).id();
     w.resource_mut::<Events>().host.cloud(at, radius, duration);
-    after(w, e, WAIT, wake);
-    after(w, e, WAIT + duration, gone);
+    after(w, e, WAIT - lead, wake);
+    after(w, e, WAIT + duration - lead, gone);
     e
 }
 
