@@ -16,6 +16,7 @@ fn main() {
     let players = arg(4, if scene == "idle" { 0 } else { n / 10 });
     let spacing: f64 = std::env::var("SPACING").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
     let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
+    horizon_ecs_proto::behaviours::long_jump::LJ_ON.store(true, std::sync::atomic::Ordering::Relaxed);
     let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") || scene.starts_with("orb") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
@@ -161,5 +162,16 @@ fn main() {
         let per = (x.run + x.apply) as f64 / t;
         let v = x.visited as f64 / t;
         println!("{i:>3} {name:<22} {per:>12.0} {:>12.0} {v:>10.1} {:>12} {:>6.1}%", x.apply as f64 / t, if v > 0.0 { format!("{:.0}", per / v) } else { "-".into() }, 100.0 * per / (total as f64 / t));
+    }
+    let l: Vec<u64> = horizon_ecs_proto::behaviours::long_jump::LJ.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).collect();
+    if l[0] > 0 {
+        println!(
+            "LJ starts={} picks={} drawn={} own_cell={} not_acceptable={} no_arc={} searches={} reached={} chosen={} mean_dist={:.2} found_nothing={} on_earlier_path={}",
+            l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9] as f64 / 100.0 / l[8].max(1) as f64, l[10], l[13]
+        );
+    }
+    let h: Vec<u64> = horizon_ecs_proto::behaviours::long_jump::LJH.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).collect();
+    if l[0] > 0 {
+        println!("LJH drawn/50 {:?} searches/10 {:?} chosen-by-drawn {:?}", &h[0..9], &h[9..18], &h[18..27]);
     }
 }

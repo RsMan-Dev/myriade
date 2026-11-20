@@ -28,9 +28,7 @@ pub fn jump_vector(pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, ang
     let r = r2.sqrt();
     let y = d.y;
     let g = gravity;
-    let sin2 = jmath::sin(f64::from(2.0 * angrad));
-    let cos_sq = jmath::pow(jmath::cos(f64::from(angrad)), 2.0);
-    let (sin, cos) = (jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad)));
+    let [sin2, cos_sq, sin, cos] = angle_trig(angle, angrad);
     let v0sq = r2 * g / (r * sin2 - 2.0 * y * cos_sq);
     if v0sq < 0.0 {
         return None;
@@ -57,6 +55,22 @@ pub fn jump_vector(pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, ang
         }
     }
     Some(Vec3::new(v0r * jmath::cos(xz), v0y, v0r * jmath::sin(xz)).scale(f64::from(0.95_f32)))
+}
+
+thread_local! {
+    static ANGLES: std::cell::RefCell<Vec<(i32, [f64; 4])>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// `[sin 2a, cos^2 a, sin a, cos a]` of an allowed angle: the same four angles for every candidate, worked out once.
+fn angle_trig(angle: i32, angrad: f32) -> [f64; 4] {
+    ANGLES.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some(e) = c.iter().find(|e| e.0 == angle) {
+            return e.1;
+        }
+        let v = [jmath::sin(f64::from(2.0 * angrad)), jmath::pow(jmath::cos(f64::from(angrad)), 2.0), jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad))];
+        c.push((angle, v));
+        v
+    })
 }
 
 /// `LongJumpUtil.isClearTransition`.

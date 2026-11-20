@@ -225,6 +225,11 @@ fn block_at(w: &MobWorld, x: i32, y: i32, z: i32) -> BlockStateId {
     })
 }
 
+/// Whether a block state of this path type can hold a water fluid (waterlogged). Read off every state of the registry by the test
+/// `water_fluid_states_by_path_type`: a cell of any other type has no water fluid, so its floor is the static one.
+pub fn may_hold_water(t: PathType) -> bool {
+    matches!(t, PathType::Blocked | PathType::DamageCautious | PathType::Fence | PathType::Fire | PathType::Leaves | PathType::Rail | PathType::Trapdoor | PathType::Water)
+}
 pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
     bump(12);
     w.world.cached_path_type(BlockPos::new(x, y, z), || {
@@ -426,6 +431,9 @@ const NONE: u32 = u32::MAX;
 
 /// One pathfinding query: the node arena, open set and per-query caches.
 pub struct Finder<'a, 'w> {
+    /// Set by the caller of one `find_accepted` that reads only whether the node found is Water: the body-box check of `try_jump_on`
+    /// (which turns a node into none) then changes nothing it reads, unless the node is Water. Cleared by `try_jump_on` before it recurses.
+    lazy_box: bool,
     w: &'a MobWorld<'w>,
     mob: &'a PathMob,
     eval: Evaluator,
@@ -453,6 +461,10 @@ pub struct Finder<'a, 'w> {
     statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     collisions: FxHashMap<[u64; 6], bool>,
     use_layer: bool,
+    /// First grid stamp of the run of searches whose cell bytes stay valid.
+    kstamp: u16,
+    /// Set in the layer's section key of the amphibious evaluator (its static types differ from the walking ones).
+    lbit: u64,
     occ: Option<&'static crate::occupancy::Occupancy>,
     visited: i32,
     sig: u64,
@@ -571,7 +583,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 stamp = 1;
             }
         }
-        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
+        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk | Evaluator::Amphibious { .. }) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
         if use_layer && stamp & 63 == 0 {
             layer_evict();
         }
@@ -609,6 +621,12 @@ impl<'a, 'w> Finder<'a, 'w> {
         } else {
             0
         };
+        let kstamp = KSTAMP.with(|k| {
+            if sig == 0 || sig != kept_sig {
+                k.set(stamp as u16);
+            }
+            k.get()
+        });
         if sig == 0 || sig != kept_sig {
             types.clear();
             statics.get_mut().clear();
@@ -640,10 +658,13 @@ impl<'a, 'w> Finder<'a, 'w> {
             statics,
             collisions,
             use_layer,
+            kstamp,
+            lazy_box: false,
             occ: None,
             visited: 0,
             saw_rail: std::cell::Cell::new(false),
-            profile,
+            profile: if amph { profile ^ AMPH_MIX } else { profile },
+            lbit: if amph { AMPH_BIT } else { 0 },
             entity_width: (mob.width + 1.0).ifloor(),
             entity_height: (mob.height + 1.0).ifloor(),
             entity_depth: (mob.width + 1.0).ifloor(),
@@ -691,11 +712,11 @@ impl<'a, 'w> Finder<'a, 'w> {
             if !p.is_null() {
                 return p;
             }
-            let p = LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)));
+            let p = LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z) | self.lbit));
             cell.set(p);
             return p;
         }
-        LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)))
+        LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z) | self.lbit))
     }
     #[inline(always)]
     fn psect(&self, x: i32, y: i32, z: i32) -> *mut [u8; 4096] {
@@ -1036,8 +1057,11 @@ impl<'a, 'w> Finder<'a, 'w> {
     unsafe fn fresh(&self, p: *mut u64) {
         // SAFETY: the caller gives a cell of the grid.
         unsafe {
-            if ((*p >> 32) as u16) != self.stamp as u16 {
-                *p = (0xFFu64 << 56) | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
+            let old = (*p >> 32) as u16;
+            if old != self.stamp as u16 {
+                // The type and floor bytes of a search of the same batch, mob and place stay true (the world does not change inside a batch).
+                let keep = if old >= self.kstamp && old != 0 { *p & (!0u64 << 48) } else { 0xFFu64 << 56 };
+                *p = keep | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
             }
         }
     }
@@ -1254,7 +1278,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
-        if self.use_layer && !Self::partial_collision(current) {
+        if self.use_layer && !Self::partial_collision(current) && !(self.lbit != 0 && NO_AMPH_FAST.load(std::sync::atomic::Ordering::Relaxed)) {
             if let Some(p) = self.slot(x, y, z) {
                 return self.find_accepted_p(p, x, y, z, jump, node_height, dir, current);
             }
@@ -1292,6 +1316,22 @@ impl<'a, 'w> Finder<'a, 'w> {
             node.kind = PathType::Walkable;
             node.cost_malus = node.cost_malus.max(cost);
             return Some(idx);
+        }
+        let t = PathType::ALL[usize::from(ty) - 1];
+        if c < 0xFE && !may_hold_water(t) {
+            // The floor of a cell that cannot hold water is the static one (`floor_level`).
+            if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
+                return None;
+            }
+            let cost = self.mt[t as usize];
+            if cost >= 0.0 {
+                // `find_accepted_slow` returns this node, or the first ground below an Open cell.
+                let n = self.node_update_max(x, y, z, t, cost);
+                return Some(if t == PathType::Open { self.first_ground_below(x, y, z) } else { n });
+            }
+            if jump <= 0 && t != PathType::Open && !Self::partial_collision(t) {
+                return None;
+            }
         }
         self.find_accepted_slow(x, y, z, jump, node_height, dir, current)
     }
@@ -1360,8 +1400,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         current: PathType,
     ) -> Option<u32> {
         bump(3);
+        let lazy = std::mem::take(&mut self.lazy_box);
         let above = self.find_accepted(x, y + 1, z, jump - 1, node_height, dir, current)?;
-        if self.mob.width >= 1.0 {
+        if self.mob.width >= 1.0 || lazy && self.nodes[above as usize].kind != PathType::Water {
             return Some(above);
         }
         let (ak, ax, ay, az) = {
@@ -1522,7 +1563,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
         if let Evaluator::Amphibious { prefers_shallow } = self.eval {
             let up = self.find_accepted(px, py + 1, pz, (jump - 1).max(0), height, (0, 0), current);
+            self.lazy_box = true;
             let down = self.find_accepted(px, py - 1, pz, jump, height, (0, 0), current);
+            self.lazy_box = false;
             if self.neighbor_valid(up, pos)
                 && up.is_some_and(|u| self.nodes[u as usize].kind == PathType::Water)
             {
@@ -2068,6 +2111,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
             drop(g6);
         }
+        LAST_VISITED.store(count, std::sync::atomic::Ordering::Relaxed);
         let g11 = sec(11);
         let reached: Vec<&Target> = targets.iter().filter(|t| t.reached).collect();
         let build = |s: &Self, t: &Target, reached: bool| -> Option<Path> {
@@ -2208,6 +2252,15 @@ pub struct Layer {
 thread_local! {
     static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { epoch: 0, map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
 }
+thread_local! {
+    static KSTAMP: std::cell::Cell<u16> = const { std::cell::Cell::new(0) };
+}
+/// Bench only: switches the amphibious fast path off, to measure its gain in one binary.
+/// Bench only: nodes opened by the last search.
+pub static LAST_VISITED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+pub static NO_AMPH_FAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const AMPH_BIT: u64 = 1 << 63;
+const AMPH_MIX: u64 = 0x9E37_79B9_7F4A_7C15;
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
     (((x >> 4) as u64) & 0x1F_FFFF) | ((((z >> 4) as u64) & 0x1F_FFFF) << 21) | ((((y >> 4) as u64) & 0x1F_FFFF) << 42)
 }
@@ -2266,11 +2319,13 @@ pub fn layer_changed(x: i32, y: i32, z: i32) {
             });
         }
         boxes([x - 1, y - 1, z - 1], [x + 1, y + 2, z + 1], |key, a, b| {
-            if let Some(sct) = l.map.get_mut(&key) {
-                each(a, b, |i, j| {
-                    sct.stat[i..j].fill(0);
-                    sct.top[i..j].fill(0xFF);
-                });
+            for k in [key, key | AMPH_BIT] {
+                if let Some(sct) = l.map.get_mut(&k) {
+                    each(a, b, |i, j| {
+                        sct.stat[i..j].fill(0);
+                        sct.top[i..j].fill(0xFF);
+                    });
+                }
             }
         });
     });

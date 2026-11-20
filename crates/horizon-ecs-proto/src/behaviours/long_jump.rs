@@ -222,10 +222,42 @@ fn level_mw(w: &World) -> &'static MobWorld<'static> {
     w.resource::<Level>().mw.0
 }
 
+/// Bench counters (off unless `LJ_ON`): 0 starts, 1 pick calls, 2 candidates drawn, 3 own cell, 4 not acceptable, 5 no arc, 6 searches,
+/// 7 search reached (rejected), 8 chosen, 9 sum of chosen distances x100, 10 found nothing, 13 searches whose target was already on a path found earlier in the same series.
+pub static LJ_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static LJ: [std::sync::atomic::AtomicU64; 14] = [const { std::sync::atomic::AtomicU64::new(0) }; 14];
+/// Bench histograms: drawn per pick in buckets of 50 (0..=8), then searches per pick in buckets of 10, then 'ended with a chosen jump' by drawn bucket.
+pub static LJH: [std::sync::atomic::AtomicU64; 27] = [const { std::sync::atomic::AtomicU64::new(0) }; 27];
+struct Hist {
+    drawn: u64,
+    searches: u64,
+    chosen: bool,
+}
+impl Drop for Hist {
+    fn drop(&mut self) {
+        SEEN.with(|m| m.borrow_mut().clear());
+        if LJ_ON.load(std::sync::atomic::Ordering::Relaxed) {
+            let d = (self.drawn / 50).min(8) as usize;
+            LJH[d].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            LJH[9 + (self.searches / 10).min(8) as usize].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if self.chosen {
+                LJH[18 + d].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+}
+#[inline(always)]
+fn cnt(i: usize, by: u64) {
+    if LJ_ON.load(std::sync::atomic::Ordering::Relaxed) {
+        LJ[i].fetch_add(by, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// `LongJumpToRandomPos.start` : la boîte des candidates, la préparation, et le tirage « préféré » ; puis le tick du
 /// même tick (GUIDE règle 9.1).
 fn start(w: &mut World, e: Entity, _: Inst) {
     let Some(st) = w.get::<LongJumpState>(e).copied() else { return };
+    cnt(0, 1);
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let cands = candidates(block_of(pos), st.p.width, st.p.height);
     let mut leap = Leap {
@@ -288,6 +320,7 @@ fn run_preparing(w: &mut World, e: Entity) {
     let found_nothing = leap.initial == Some(pos) && leap.chosen.is_none() && leap.candidates.is_empty() && !leap.wanting_preferred;
     if !valid {
         if found_nothing {
+            cnt(10, 1);
             let now = now_of(w, e);
             if let Some(mut st) = w.get_mut::<LongJumpState>(e) {
                 st.futile = Some((block_of(pos), now + FUTILE_FOR));
@@ -336,21 +369,36 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     crate::pathsearch::adjacent_reset();
     // The ~40 candidates of one pick read the same cells; the world does not change inside it.
     let _batch = crate::pathsearch::BlockBatch::begin();
+    cnt(1, 1);
+    SEEN.with(|m| m.borrow_mut().clear());
+    let mut hist = Hist { drawn: 0, searches: 0, chosen: false };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    let mut tags = Tags::default();
     while !leap.candidates.is_empty() {
-        let Some((target, _)) = next_candidate(w, e, leap, &p, mw) else { continue };
+        let Some((target, _)) = next_candidate(w, e, leap, &p, mw, &mut tags) else { continue };
+        cnt(2, 1);
+        hist.drawn += 1;
         let here = [pos.x.ifloor(), pos.z.ifloor()];
-        let acceptable = if p.swim_rules { acceptable_landing(w, e, &p, mw, target) } else { default_landing(w, e, mw, target) };
+        let acceptable = if p.swim_rules { acceptable_landing(w, e, &p, mw, &mut tags, target) } else { default_landing(w, e, mw, target) };
         if here == [target[0], target[2]] || !acceptable {
+            cnt(if acceptable { 3 } else { 4 }, 1);
             continue;
         }
         let centre = Vec3::new(f64::from(target[0]) + 0.5, f64::from(target[1]) + 0.5, f64::from(target[2]) + 0.5);
-        let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else { continue };
+        let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else {
+            cnt(5, 1);
+            continue;
+        };
         leap.look = [centre.x, centre.y, centre.z];
         // `create_path_raw(&[target], 0, 8.0).reached` (`frog.rs:860-866`) : une case qu'un chemin de 8 blocs atteint se marche, pas de bond.
+        hist.searches += 1;
         if walkable(w, e, &p, target) {
+            cnt(7, 1);
             continue;
         }
+        cnt(8, 1);
+        hist.chosen = true;
+        cnt(9, (((f64::from(target[0]) + 0.5 - pos.x).powi(2) + (f64::from(target[2]) + 0.5 - pos.z).powi(2)).sqrt() * 100.0) as u64);
         leap.chosen = Some(v);
         leap.prepare = 0;
         return;
@@ -382,21 +430,55 @@ fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
         can_walk_over_fences: sp.can_walk_over_fences,
         stands_on_lava: false,
     };
-    crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let evaluator = if p.swim_rules { Evaluator::Amphibious { prefers_shallow: true } } else { Evaluator::Walk };
-    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).with_occ(w.resource::<Level>().occ).find(&[target], 8.0, 0, (sp.follow_range * 16.0).ifloor()).is_some_and(|path| path.reached)
+    let max_visited = (sp.follow_range * 16.0).ifloor();
+    search(w, &pm, evaluator, target, max_visited)
+}
+
+thread_local! {
+    /// The cells of the paths found by the searches of the series in progress (cleared at its end; at most some hundreds of cells).
+    static SEEN: std::cell::RefCell<std::collections::HashSet<[i32; 3]>> = std::cell::RefCell::new(Default::default());
+}
+fn search(w: &World, pm: &horizon_client_lib::mobs::path::PathMob, evaluator: horizon_client_lib::mobs::path::Evaluator, target: [i32; 3], max_visited: i32) -> bool {
+    use crate::pathsearch::Finder;
+    // Accepted deviation (suivi/ecs-ecarts.md): a cell of a path found earlier in this series is reachable.
+    if SEEN.with(|m| m.borrow().contains(&target)) {
+        cnt(13, 1);
+        return true;
+    }
+    cnt(6, 1);
+    crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = Finder::new(w.resource::<Level>().mw.0, pm, evaluator).with_occ(w.resource::<Level>().occ).find(&[target], 8.0, 0, max_visited);
+    if let Some(p) = path.as_ref().filter(|p| p.reached) {
+        SEEN.with(|m| m.borrow_mut().extend(p.nodes.iter().map(|n| [n.x, n.y, n.z])));
+    }
+    path.is_some_and(|path| path.reached)
+}
+
+/// Tag membership by block state, kept for one pick (a handful of states: the 404 cells of a series hash the block name otherwise).
+#[derive(Default)]
+struct Tags(Vec<(u32, bool)>);
+fn preferred_at(p: &Params, mw: &MobWorld, tags: &mut Tags, x: i32, y: i32, z: i32) -> bool {
+    let Some((tag, _)) = p.preferred else { return false };
+    let id = mw.world.block(x, y, z).0;
+    if let Some(t) = tags.0.iter().find(|t| t.0 == id) {
+        return t.1;
+    }
+    let v = mw.has_tag(tag, mw.block_name(x, y, z));
+    tags.0.push((id, v));
+    v
 }
 
 /// `LongJumpToPreferredBlock.getJumpCandidate` : tant qu'il en veut, la première case tirée sur un bloc préféré, sinon la
 /// première passée sur le côté.
-fn next_candidate(w: &mut World, e: Entity, leap: &mut Leap, p: &Params, mw: &MobWorld) -> Option<([i32; 3], i32)> {
+fn next_candidate(w: &mut World, e: Entity, leap: &mut Leap, p: &Params, mw: &MobWorld, tags: &mut Tags) -> Option<([i32; 3], i32)> {
     if !leap.wanting_preferred {
         return draw(w, e, leap);
     }
     while !leap.candidates.is_empty() {
         if let Some(c) = draw(w, e, leap) {
             let [x, y, z] = c.0;
-            if p.preferred.is_some_and(|(tag, _)| mw.has_tag(tag, mw.block_name(x, y - 1, z))) {
+            if preferred_at(p, mw, tags, x, y - 1, z) {
                 return Some(c);
             }
             leap.not_preferred.push(c);
@@ -423,12 +505,11 @@ fn draw(w: &mut World, e: Entity, leap: &mut Leap) -> Option<([i32; 3], i32)> {
 
 /// `FrogAi.isAcceptableLandingSpot` : pas de fluide dans les trois cases, une case préférée (ou au-dessus), une trappe, sinon
 /// le défaut.
-fn acceptable_landing(w: &World, e: Entity, p: &Params, mw: &MobWorld, [x, y, z]: [i32; 3]) -> bool {
+fn acceptable_landing(w: &World, e: Entity, p: &Params, mw: &MobWorld, tags: &mut Tags, [x, y, z]: [i32; 3]) -> bool {
     if (y - 1..=y + 1).any(|yy| mw.fluid(x, yy, z) != Fluid::None) {
         return false;
     }
-    let preferred = |yy: i32| p.preferred.is_some_and(|(tag, _)| mw.has_tag(tag, mw.block_name(x, yy, z)));
-    if preferred(y) || preferred(y - 1) {
+    if preferred_at(p, mw, tags, x, y, z) || preferred_at(p, mw, tags, x, y - 1, z) {
         return true;
     }
     if crate::pathsearch::path_type_static(mw, x, y, z) == PathType::Trapdoor
