@@ -345,3 +345,90 @@ fn the_elder_curse_comes_on_the_ticks_of_the_mob() {
     let first = mob_ticks[0];
     assert_eq!(applied, vec![(1, first, 2), (1, first + 6000, 2)]);
 }
+
+/// `FluidState.water` against the `Mob`'s `fluids.water` at the same positions (both put there at rest, one tick): the value is the box's fluid height, so
+/// it differs only if the positions do. This isolates the height from the position drift. The entity is held two ticks: `reindex` marks it `InFluid` on the first, and its `FluidState` is computed from the next one.
+#[test]
+fn the_fluid_height_is_the_mobs_at_the_same_positions() {
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = pools();
+    let (i, e) = (r.add(Vec3::new(-6.5, 2.0, 0.5)), ecs_cow(&mut h, -6.5, 2.0, 0.5, 4100));
+    let mut worst = 0.0_f64;
+    let mut n = 0;
+    for k in 0..400 {
+        // From the pool floor to above the surface, and across its edge at x = -1.
+        let y = 1.0 + f64::from(k % 100) * 0.05;
+        let x = if k < 200 { -6.5 } else { -1.0 + 0.8 * f64::from(k % 100) / 100.0 - 0.4 };
+        let p = Vec3::new(x, y, 0.5);
+        // Twice: the entity enters the fluid on the first tick (`reindex` marks it), and its fluid state is computed from the next one.
+        for _ in 0..2 {
+            r.mobs[i].position = p;
+            r.mobs[i].previous = p;
+            r.mobs[i].velocity = Vec3::ZERO;
+            h.teleport(e, p);
+            h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
+            r.step(None);
+            h.tick();
+        }
+        let (m, c) = (r.mobs[i].fluids.water, h.world.get::<FluidState>(e).map_or(0.0, |f| f.water));
+        // The tick may move the creature (gravity, buoyancy): compare only when both stayed.
+        let (a, b) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
+        if (a.y - b.y).abs() < 1.0e-9 && (a.x - b.x).abs() < 1.0e-9 {
+            worst = worst.max((m - c).abs());
+            n += 1;
+        }
+        if std::env::var_os("TRACE5").is_some() && (m - c).abs() > 1.0e-9 {
+            eprintln!("k={k} pos ({x:.3},{y:.3}) mob water {m:.4} ecs {c:.4} mob y {:.5} ecs y {:.5}", a.y, b.y);
+        }
+    }
+    eprintln!("fluid height: {n} positions compared, worst difference {worst:e}");
+    // (An axolotl moves on its own each tick: only 4 positions stay equal for it; the others 100 to 400.)
+    assert!(n >= 4 && worst < 1.0e-9, "{n} positions, worst {worst}");
+}
+
+/// The look between two guardians (`LookAtPlayerGoal(Guardian.class, 12, 0.01)`): the random draws differ between the `Mob` and the ecs, so the
+/// check is statistical: over a long run with no player, the share of ticks a guardian spends looking at the other one is of the same size on
+/// both sides (the ecs period 100 is the `Mob`'s probability 0.01).
+#[test]
+fn two_guardians_look_at_each_other_as_often_as_their_mobs_do() {
+    if !is_guardian() {
+        return;
+    }
+    let (mut r, mut h) = pools();
+    let (i1, i2) = (r.add(Vec3::new(-6.5, 2.0, 0.5)), r.add(Vec3::new(-4.5, 2.0, 0.5)));
+    let (e1, e2) = (ecs_cow(&mut h, -6.5, 2.0, 0.5, 9100), ecs_cow(&mut h, -4.5, 2.0, 0.5, 9200));
+    // A player far from both (the look at a creature does not need one, but the ecs runs looks only where a player watches: `LazyLook`).
+    h.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(horizon_ecs_proto::goals::Player { id: 1, x: -6.5, y: 1.0, z: 14.0, ..Default::default() });
+    let (mut mob, mut ecs) = (0_u32, 0_u32);
+    let (mut mob_starts, mut ecs_starts) = (0_u32, 0_u32);
+    let (mut was_m, mut was_e) = (false, false);
+    let ticks = 40_000;
+    for _ in 0..ticks {
+        // Both pairs stay where they started (a swim away would end a look by distance, and the two sides swim differently).
+        for (i, e, p) in [(i1, e1, Vec3::new(-6.5, 2.0, 0.5)), (i2, e2, Vec3::new(-4.5, 2.0, 0.5))] {
+            r.mobs[i].ai.no_action_time = 0;
+            r.mobs[i].position = p;
+            r.mobs[i].previous = p;
+            r.mobs[i].velocity = Vec3::ZERO;
+            if h.world.get_entity(e).is_ok() {
+                h.teleport(e, p);
+            }
+        }
+        r.step(None);
+        h.tick();
+        let m = r.names(i1).iter().any(|n| *n == "LookAtPlayer");
+        let Some(gs) = h.world.get::<GoalSet>(e1) else { panic!("the ecs guardian is gone after {mob} + {ecs} ticks of looks") };
+        let c = gs.is_running(&horizon_ecs_proto::behaviours::look_at_player::MODULE);
+        mob += u32::from(m);
+        ecs += u32::from(c);
+        mob_starts += u32::from(m && !was_m);
+        ecs_starts += u32::from(c && !was_e);
+        (was_m, was_e) = (m, c);
+    }
+    eprintln!("look between guardians over {ticks} ticks: mob {mob} ticks in {mob_starts} looks, ecs {ecs} ticks in {ecs_starts} looks");
+    assert!(mob > 0 && ecs > 0, "one side never looks: mob {mob}, ecs {ecs}");
+    let ratio = f64::from(ecs) / f64::from(mob);
+    assert!((0.7..1.4).contains(&ratio), "share of looking ticks: mob {mob}, ecs {ecs}");
+}
