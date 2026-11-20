@@ -202,6 +202,7 @@ pub struct FluidState {
 }
 /// The fluid module is active: the box overlaps a column with water or lava (`fluid_update` visits only these).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
 pub struct InFluid;
 /// `Entity.getAirSupply`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -232,6 +233,7 @@ pub struct HurtAt {
 }
 /// On fire until this tick; its damage is in the timer wheel (`Due::Burn`, every 20 ticks).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
 pub struct Burning {
     pub until: u64,
 }
@@ -576,10 +578,12 @@ pub struct Wheel {
     /// that leaves the zone takes its entries out without a scan of the wheel.
     track: bool,
     owned: Vec<Vec<(Entity, u64, Due)>>,
+    /// How many entries have fired since the world began (the tests of the rest cost count the wakes).
+    pub fired_total: u64,
 }
 impl Default for Wheel {
     fn default() -> Self {
-        Self { slots: vec![Vec::new(); WHEEL], far: Default::default(), now: 0, track: false, owned: Vec::new() }
+        Self { slots: vec![Vec::new(); WHEEL], far: Default::default(), now: 0, track: false, owned: Vec::new(), fired_total: 0 }
     }
 }
 impl Wheel {
@@ -1621,6 +1625,7 @@ pub fn schedule() -> Schedule {
     crate::item::register(&mut s);
     crate::orb::register(&mut s);
     crate::poi::register(&mut s);
+    crate::block_watch::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
@@ -3552,6 +3557,7 @@ pub(crate) fn due(
     }
     let slot = (clock.0 % WHEEL as u64) as usize;
     let list = std::mem::take(&mut wheel.slots[slot]);
+    wheel.fired_total += list.len() as u64;
     if wheel.track {
         for &(e, d) in &list {
             wheel.fired(e, clock.0, d);

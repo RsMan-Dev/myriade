@@ -60,6 +60,7 @@ mod zombie_vs_mob;
 mod zone_vs_mob;
 mod illagers_vs_mob;
 mod raids_vs_mob;
+mod rest_wakes;
 mod doors_vs_mob;
 mod lot5_vs_mob;
 mod creaking_vs_mob;

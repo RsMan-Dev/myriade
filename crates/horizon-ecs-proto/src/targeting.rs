@@ -17,7 +17,7 @@ pub enum Who {
 /// The current target of an attacker: whom, the last line-of-sight reading, the unseen evaluations counted (every other
 /// tick) against `memory` (`unseenMemoryTicks` / 2), and the goal (rank in the selector) that holds it (`u8::MAX`: none).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_add = crate::behaviours::drink_potion::thirst_hook)]
 pub struct Target {
     pub who: Who,
     /// `Mob.sees(target)` as last read; re-read by `sight_eval` only when an eye changes block or a block changes on or
