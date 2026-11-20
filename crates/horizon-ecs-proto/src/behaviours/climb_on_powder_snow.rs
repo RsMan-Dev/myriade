@@ -104,7 +104,7 @@ mod tests {
 
     fn guard(test: &str) -> bool {
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
-            eprintln!("SKIP {test}: HORIZON_TEST_RESOURCES is not set");
+            crate::cow::skip_note(test, "HORIZON_TEST_RESOURCES is not set");
             return true;
         }
         false

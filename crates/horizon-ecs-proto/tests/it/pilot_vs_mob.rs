@@ -551,7 +551,7 @@ fn flee_2_burning_animal_walks_to_the_spot_at_the_first_selector_tick() {
         return;
     }
     if run_species() != "minecraft:cow" {
-        eprintln!("SKIP flee_2: a zombie burns in the sun by itself on both sides");
+        horizon_ecs_proto::cow::skip_note("flee_2", "a zombie burns in the sun by itself on both sides");
         return;
     }
     let n = 12;
@@ -666,7 +666,7 @@ fn flee_3_night_means_no_start() {
         return;
     }
     if run_species() != "minecraft:cow" {
-        eprintln!("SKIP flee_3 (cow only: no sun burn)");
+        horizon_ecs_proto::cow::skip_note("flee_3", "(cow only: no sun burn)");
         return;
     }
     let mut r = MobRef::new(20, false);
@@ -703,7 +703,7 @@ fn flee_4_the_roof_goes_and_a_burning_monster_flees() {
         return;
     }
     if !is_zombie() {
-        eprintln!("SKIP flee_4 (zombie only: the cow's walk value differs, see flee_1)");
+        horizon_ecs_proto::cow::skip_note("flee_4", "(zombie only: the cow's walk value differs, see flee_1)");
         return;
     }
     let mut r = MobRef::new(20, false);

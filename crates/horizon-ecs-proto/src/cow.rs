@@ -1248,6 +1248,19 @@ pub fn process_species_name() -> String {
     }
     name
 }
+/// The single point of every runtime skip of a test: prints `SKIP`, and when `HORIZON_SKIP_LOG` names a file, appends one line
+/// `species<TAB>test<TAB>reason` to it (one `write` on an `O_APPEND` file: atomic for a line, whatever the number of processes).
+pub fn skip_note(test: &str, reason: &str) {
+    eprintln!("SKIP {test}: {reason}");
+    if let Some(path) = std::env::var_os("HORIZON_SKIP_LOG") {
+        use std::io::Write;
+        let species = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+        let line = format!("{species}\t{test}\t{}\n", reason.replace(['\t', '\n'], " "));
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+}
 /// For the tests of a behaviour only some species have: whether to skip the test of the process's species, which has no
 /// such goal (the skip is printed, so it is never silent).
 pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bool {
@@ -1255,7 +1268,7 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
     let name = process_species_name();
     let has = crate::species::config(&name).has(module);
     if !has {
-        eprintln!("SKIP {test}: {name} has no {} goal", module.name);
+        crate::cow::skip_note(test, &format!("{name} has no {} goal", module.name));
     }
     !has
 }
@@ -1275,7 +1288,7 @@ pub fn skip_unless_farm_goals(test: &str) -> bool {
     let cfg = crate::species::registry().by_name(&name).map(|r| r.config);
     let ok = cfg.is_ok_and(|c| c.has(&tempt::MODULE) && c.has(&breed::MODULE) && c.has(&follow_parent::MODULE) && c.has(&panic::MODULE) && c.has(&stroll::MODULE));
     if !ok {
-        eprintln!("SKIP {test}: {name} lacks the farm animal's goals (tempt, breed, follow parent, panic, stroll)");
+        crate::cow::skip_note(test, &format!("{name} lacks the farm animal's goals (tempt, breed, follow parent, panic, stroll)"));
     }
     !ok
 }
@@ -1286,7 +1299,7 @@ pub fn skip_unless_small_body(test: &str) -> bool {
     let (w, h) = species_size(&name);
     let skip = w > 0.95 || h > 1.5 || (w < 0.5 && h <= 0.5);
     if skip {
-        eprintln!("SKIP {test}: {name} is {w} x {h}: the scene is made for a small animal");
+        crate::cow::skip_note(test, &format!("{name} is {w} x {h}: the scene is made for a small animal"));
     }
     skip
 }
@@ -1302,7 +1315,7 @@ pub fn skip_if_fire_immune(test: &str) -> bool {
     let name = process_species_name();
     let immune = crate::species::registry().by_name(&name).is_ok_and(|r| r.modes.iter().any(|m| m.0 == crate::locomotion::Medium::Lava));
     if immune {
-        eprintln!("SKIP {test}: {name} walks on lava: the framework has no fire immunity yet");
+        crate::cow::skip_note(test, &format!("{name} walks on lava: the framework has no fire immunity yet"));
     }
     immune
 }
@@ -1317,7 +1330,7 @@ pub fn skip_unless_default_species(test: &str) -> bool {
     let name = process_species_name();
     let skip = name != crate::species::PROCESS_DEFAULT;
     if skip {
-        eprintln!("SKIP {test}: a law test of its own configuration, run once (in the process of {})", crate::species::PROCESS_DEFAULT);
+        crate::cow::skip_note(test, &format!("a law test of its own configuration, run once (in the process of {})", crate::species::PROCESS_DEFAULT));
     }
     skip
 }
@@ -1327,7 +1340,7 @@ pub fn skip_unless_caps(caps: &[crate::behaviours::Cap], test: &str) -> bool {
     let have = crate::species::registry().by_name(&name).map(|r| r.caps).unwrap_or(&[]);
     let missing: Vec<_> = caps.iter().filter(|c| !have.contains(c)).collect();
     if !missing.is_empty() {
-        eprintln!("SKIP {test}: {name} lacks the capabilities {missing:?}");
+        crate::cow::skip_note(test, &format!("{name} lacks the capabilities {missing:?}"));
     }
     !missing.is_empty()
 }
@@ -1339,7 +1352,7 @@ pub fn skip_unless_ground_only(test: &str) -> bool {
         r.modes.iter().any(|m| m.0 != crate::locomotion::Medium::Ground || !std::ptr::eq(m.1.module, &crate::locomotion::walk::MODULE))
     });
     if other {
-        eprintln!("SKIP {test}: {name} moves in another medium than the ground, or other than by walking");
+        crate::cow::skip_note(test, &format!("{name} moves in another medium than the ground, or other than by walking"));
     }
     other
 }
@@ -1348,7 +1361,7 @@ pub fn skip_unless_goals(test: &str) -> bool {
     let name = process_species_name();
     let none = crate::species::registry().by_name(&name).is_ok_and(|r| r.config.entries.is_empty());
     if none {
-        eprintln!("SKIP {test}: {name} has no goal");
+        crate::cow::skip_note(test, &format!("{name} has no goal"));
     }
     none
 }
@@ -1358,7 +1371,7 @@ pub fn skip_if(module: &'static crate::behaviours::Module, test: &str) -> bool {
     let name = process_species_name();
     let has = crate::species::config(&name).has(module);
     if has {
-        eprintln!("SKIP {test}: {name} has a {} goal: the player in range makes it hunt, the test measures passive looking", module.name);
+        crate::cow::skip_note(test, &format!("{name} has a {} goal: the player in range makes it hunt, the test measures passive looking", module.name));
     }
     has
 }

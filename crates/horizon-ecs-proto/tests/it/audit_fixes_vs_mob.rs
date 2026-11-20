@@ -9,7 +9,7 @@ fn counter() -> Option<horizon_ecs_proto::instr::Counter> {
 }
 /// 500 baby armadillos with no adult within reach, spaced 6 blocks: instructions per baby and tick.
 #[test]
-#[ignore]
+#[ignore = "bench: instructions per baby and tick, run by hand with --ignored"]
 fn cost_of_a_baby_that_waits_for_an_adult() {
     if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:armadillo") {
         return;
@@ -34,7 +34,7 @@ fn cost_of_a_baby_that_waits_for_an_adult() {
 }
 /// 500 turtles with an egg near home and no sand within reach: instructions per turtle and tick.
 #[test]
-#[ignore]
+#[ignore = "bench: instructions per turtle and tick, run by hand with --ignored"]
 fn cost_of_a_turtle_with_an_egg_and_no_sand() {
     if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:turtle") {
         return;
