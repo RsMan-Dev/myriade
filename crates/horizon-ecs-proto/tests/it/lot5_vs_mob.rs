@@ -437,3 +437,51 @@ fn a_drowned_hunts_a_villager_and_drops_the_attack_when_it_leaves_the_water() {
         assert!(!rows[0].1 || !rows[0].2 || rows.iter().any(|r| !r.1), "{rows:?}");
     }
 }
+
+/// The tick of the first villager target (`NearestAttackableTargetGoal`, 1 draw in 10) by day and by night, N draws per side: the laws agree.
+#[test]
+fn a_drowned_picks_a_villager_target_at_the_pace_of_its_mob() {
+    if !on() {
+        return;
+    }
+    for night in [true, false] {
+        let (mut m, mut x) = (Vec::new(), Vec::new());
+        for k in 0..40usize {
+            let mut r = MobRef::new(24, false);
+            let mut h = Herd::with_slab(24, false, false);
+            platform(&r, &mut h);
+            set_day(&r, &mut h, !night);
+            let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(-6.5, 60.0, 0.5), 3 + 17 * k);
+            let v = mob_add(&mut r, mob_kind("minecraft:villager"), Vec3::new(-3.5, 60.0, 0.5), 9);
+            r.mobs[v].ai.goals = Default::default();
+            r.mobs[i].ai.no_action_time = 0;
+            let e = ecs_named(&mut h, "minecraft:drowned", None, 0.5, 0.5, 11_000 + 977 * k as u64, 3 + 17 * k as u64);
+            h.teleport(e, Vec3::new(-6.5, 60.0, 0.5));
+            let ev = ecs_named(&mut h, "minecraft:villager", Some(&[]), 0.5, 0.5, 12_000, 9);
+            h.teleport(ev, Vec3::new(-3.5, 60.0, 0.5));
+            for en in [e, ev] {
+                let mut f = h.world.get_mut::<FluidState>(en).unwrap();
+                f.in_water = true;
+                f.water = 1.0;
+            }
+            let (mut tm, mut te) = (None, None);
+            for t in 0..120 {
+                r.mobs[i].ai.no_action_time = 0;
+                r.step(None);
+                h.tick();
+                if tm.is_none() && r.mobs[i].ai.target.is_some() {
+                    tm = Some(t);
+                }
+                if te.is_none() && h.world.get::<Target>(e).is_some() {
+                    te = Some(t);
+                }
+            }
+            m.push(tm);
+            x.push(te);
+        }
+        let (nm, am) = mean_of(&m);
+        let (nx, ax) = mean_of(&x);
+        eprintln!("villager target night {night}: mob {nm}/40 mean {am:.1}, ecs {nx}/40 mean {ax:.1}");
+        assert!(nm == 40 && nx == 40 && (am - ax).abs() < 0.25 * am.max(ax), "night {night}: mob {nm} {am:.1} ecs {nx} {ax:.1}");
+    }
+}
