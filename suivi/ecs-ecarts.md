@@ -94,3 +94,4 @@ fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus 
 ## Divers, lot divers (2026-11-20)
 - mannequin : Avatar (LivingEntity) sans buts dans le jar ; le Mob lui en donne cinq (Float, Panic, Stroll, LookAtPlayer, RandomLookAround). L'ECS suit le jar : aucun but. Test strict ignoré dans `tests/it/divers_goals_vs_mob.rs`.
 - camel_husk : canMate / canFallInLove faux dans le jar ; le Mob lui met Breed. Écart : l'ECS suit le jar (pas de `breed`, `follow_parent` gardé).
+- happy_ghast : AnimalPanic(2.0) du jar absent du Mob ; ECS conforme au jar. Priorité 3 du float venue du Mob (le jar ne la donne pas). Nourriture supposée `minecraft:snowball` (tag `happy_ghast_food` non lisible hors ligne).
