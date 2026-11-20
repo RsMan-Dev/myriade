@@ -24,6 +24,7 @@ const EXPLODE_EVENT: u8 = 17;
 /// shot at an angle, whether its last move was stopped sideways (`horizontalCollision`), whether it is silent, and whether its life
 /// is over (set by its deadline; it goes off where it is).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
 pub struct Rocket {
     pub explosions: u8,
     pub carrier: Option<u32>,
@@ -63,7 +64,7 @@ pub fn insert_resources(w: &mut World) {
     w.insert_resource(Gliders::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(fly_rockets.after(travel).before(reindex));
+    s.add_systems(rockets.after(travel).before(reindex));
 }
 
 /// `FireworkRocketEntity`'s constructor, its draws in vanilla's order: the two triangles of the velocity (x, then z), then the two
@@ -215,6 +216,12 @@ fn exposure(level: &Level, from: Vec3, feet: Vec3, height: f64, damage: f32) -> 
 /// One tick of every rocket: the sound at its first tick, its deadline, its holder's boost, its speed-up and rise, its move, and
 /// the impact that makes it go off (an entity, or a block when it carries explosions).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+/// Nothing to run without a rocket in flight: the system (a dozen parameters to fetch) is run only then.
+fn rockets(w: &mut World) {
+    if crate::goals::sparse_any::<Rocket>(w) {
+        let _ = w.run_system_cached(fly_rockets);
+    }
+}
 pub fn fly_rockets(
     clock: Res<Clock>,
     level: Res<Level>,
