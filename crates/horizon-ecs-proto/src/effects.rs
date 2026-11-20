@@ -25,6 +25,8 @@ pub enum Kind {
     Hunger,
     /// `MobEffects.MINING_FATIGUE`: a player's (the elder guardian's curse).
     MiningFatigue,
+    /// `MobEffects.BLINDNESS`: the illusioner's spell; nothing for a creature (the sight is the Mob's own, not ported).
+    Blindness,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).

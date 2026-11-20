@@ -18,6 +18,8 @@ pub static DEF: Def = Def {
         Change::Remove { module: &melee::MODULE, nth: 0 },
         // Drowned.addBehaviourGoals does not call Zombie's: no SpearUseGoal (checked in the jar).
         Change::Remove { module: &spear_use::MODULE, nth: 0 },
+        // Nor Zombie.addBehaviourGoals' MoveThroughVillage (the Mob's drowned has none).
+        Change::Remove { module: &crate::behaviours::move_through_village::MODULE, nth: 0 },
         // Drowned.addBehaviourGoals re-lists the player, villager and golem targets itself: the base's three go (else each is asked twice,
         // twice as often as the Mob's goal).
         Change::Remove { module: &nearest_target::MODULE, nth: 0 },
