@@ -44,6 +44,10 @@ fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
                 out.acquired[i] = Some(t);
             }
         }
+        if std::env::var_os("DBG_HOGLIN").is_some() && [100, 250, 290, 330, 400].contains(&t) {
+            let d: Vec<String> = rf.mobs.iter().map(|m| format!("{:.1}/{}", ((m.position.x - 0.5).powi(2) + (m.position.z - 0.5).powi(2)).sqrt(), m.ai.target.is_some())).collect();
+            eprintln!("t={t} dist/target: {}", d.join(" "));
+        }
         for e in &rf.events[from..] {
             if let MobEvent::AttackPlayer(_, f) = e {
                 let pos: Vec<(f64, f64)> = rf.mobs.iter().map(|m| (m.position.x, m.position.z)).collect();
@@ -127,4 +131,23 @@ fn hoglins_hunt_a_still_player_as_a_mob_does() {
     assert!((mh - eh).abs() < 25.0, "first hit: mob {mh}, ecs {eh}");
     let ((mg, _), (eg, _)) = (gap(&m), gap(&e));
     assert!((mg - eg).abs() < 4.0, "gap between strikes: mob {mg}, ecs {eg}");
+}
+
+/// `StopAttackingIfTargetInvalid` (jar: `CANT_REACH_WALK_TARGET_SINCE` older than 200 ticks): in the `Mob` all twelve hoglins have stopped striking by t=290
+/// (the last strikes are at 158..285, four never struck) while they stand 0.9 to 3.2 blocks from the player with a target; the ECS keeps eight striking
+/// after t=300. OPEN divergence (suivi/ecs-ecarts.md, 2026-11-20 hoglin): `Nav.cant_reach_since` and `melee::Params.forget_unreachable` exist, but the ECS
+/// does not repath while adjacent, so its clock is rarely started; the `Mob`'s path attempts that fail next to the player are not reproduced.
+#[test]
+#[ignore = "open divergence: the unreachable clock of the Mob hoglins starts where the ECS makes no path (see ecs-ecarts.md)"]
+fn hoglins_forget_an_unreachable_target_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let (m, e) = (mob_run(12, 12.0, 400), ecs_run(12, 12.0, 400));
+    // `StopAttackingIfTargetInvalid`: a target no path reaches for 200 ticks is forgotten, so the hoglins that cannot reach the player stop
+    // touching it. The count of those still striking after t=300, and the tick of the last strike of each, are compared.
+    let late = |r: &Run| r.hits.iter().filter(|h| h.iter().any(|&t| t > 300)).count();
+    let lasts = |r: &Run| -> Vec<i64> { let mut v: Vec<i64> = r.hits.iter().map(|h| h.last().copied().unwrap_or(0)).collect(); v.sort_unstable(); v };
+    eprintln!("still striking after t=300: mob {} ecs {}; last strikes mob {:?} ecs {:?}", late(&m), late(&e), lasts(&m), lasts(&e));
+    assert_eq!(late(&m), late(&e), "hoglins still striking after t=300 (the unreachable ones forget their target)");
 }

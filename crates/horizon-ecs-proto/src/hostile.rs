@@ -39,6 +39,8 @@ pub struct Attack {
     pub melee_slot: u8,
     /// Called (in the next flush) when a strike lands: the bee's sting, which costs it its life.
     pub on_hit: Option<fn(&mut World, Entity)>,
+    /// `StopAttackingIfTargetInvalid`: the target is forgotten when the last path to it has not reached it for this many ticks (`Nav.cant_reach_since`); the brain animals' rule.
+    pub forget_unreachable: Option<i32>,
 }
 /// The blocks that changed this tick (`block_changes` writes, `sight_eval` reads and clears).
 #[derive(Resource, Default)]
@@ -248,6 +250,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         armed: false,
         melee_slot: u8::MAX,
         on_hit: None,
+        forget_unreachable: None,
     });
 }
 // ---- the melee goal ---------------------------------------------------------------------------------------------
@@ -324,7 +327,13 @@ pub fn stop_melee(w: &mut World, e: Entity) {
     if let Some(mut nav) = w.get_mut::<Nav>(e) {
         nav.reach = 1;
     }
+    // `StopAttackingIfTargetInvalid`: no path has reached the target for the allowed time, it is forgotten.
+    let forget = w.get::<Attack>(e).and_then(|a| a.forget_unreachable).zip(w.get::<Nav>(e)).is_some_and(|(n, nav)| nav.cant_reach_since != 0 && now_of(w, e).saturating_sub(nav.cant_reach_since) > n as u64);
     stop_nav(w, e);
+    if forget {
+        targeting::clear_target(w, e);
+        return;
+    }
     if w.get::<Target>(e).is_some() {
         arm_melee_after(w, e);
     }

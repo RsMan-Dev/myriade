@@ -15,9 +15,11 @@ pub struct Params {
     pub follow_unseen: bool,
     /// `SpiderAttackGoal.canContinue`: in light (`brightness >= BRIGHT`) the goal gives up, with one chance in `n` per tick, and drops the target.
     pub quit_in_light: Option<i32>,
+    /// `StopAttackingIfTargetInvalid` (the hoglin's brain): the target is forgotten once no path has reached it for this many ticks (200).
+    pub forget_unreachable: Option<i32>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false, quit_in_light: None };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false, quit_in_light: None, forget_unreachable: None };
 }
 /// The light at which a goal that fears light stops (`brightness >= 0.5`: the same threshold as `horizon:dark_enough`, which is its opposite).
 pub const BRIGHT: f32 = 0.5;
@@ -56,6 +58,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     a.interval = p.interval;
     a.interval_baby = p.interval_baby;
     a.follow_unseen = p.follow_unseen;
+    a.forget_unreachable = p.forget_unreachable;
     if let Some(n) = p.quit_in_light {
         w.entity_mut(e).insert(QuitsInLight(n));
     }

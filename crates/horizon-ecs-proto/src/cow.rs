@@ -135,10 +135,12 @@ pub struct Nav {
     pub delayed: bool,
     /// `createPath`'s accuracy: how close to the target block the path may end (1 for a spot, 0 for an entity).
     pub reach: i32,
+    /// `Brain.CANT_REACH_WALK_TARGET_SINCE`: the own tick of the first path since the last one that reached its target which did not (0: none).
+    pub cant_reach_since: u64,
 }
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1 }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1, cant_reach_since: 0 }
     }
 }
 /// The size of an adult and of a baby of the species (data, not code).
@@ -1813,6 +1815,12 @@ pub(crate) fn pathfind(
             }
             p
         });
+        // `MoveToTargetSink`: a path that does not reach its target starts the clock of the unreachable, one that does clears it.
+        if path.as_ref().is_some_and(|p| p.reached && !p.nodes.is_empty()) {
+            nav.cant_reach_since = 0;
+        } else if nav.cant_reach_since == 0 {
+            nav.cant_reach_since = now.max(1);
+        }
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);

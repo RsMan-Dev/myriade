@@ -3,7 +3,7 @@
 //! alimenter par la partie POI), le jeu des bébés (`play`), le commerce, la reproduction, la panique du raid (voir villager.md).
 use super::Def;
 use crate::behaviours::Cap;
-use crate::behaviours::{bed::NEAREST_BED, breed_love, gossip, reach_block, schedule, sleep_in_bed, stroll_near_block, summon_defender};
+use crate::behaviours::{bed::NEAREST_BED, breed_love, crop_harvest, gossip, reach_block, schedule, sleep_in_bed, stroll_near_block, summon_defender};
 use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
@@ -63,6 +63,17 @@ static CORE: &[BEntry] = &[
     BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
 ];
 
+/// The profession of a farmer, in configuration: the crops it harvests (full grown: the `age` of the crop at its largest) and what it leaves
+/// (it carries no seeds: the crop is broken; a villager with seeds would replant it at age 0).
+const CROPS: &[(&str, i32)] = &[("minecraft:wheat", 7), ("minecraft:carrots", 7), ("minecraft:potatoes", 7), ("minecraft:beetroots", 3)];
+fn crop_ripe(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> bool {
+    let name = mw.block_name(p[0], p[1], p[2]);
+    CROPS.iter().any(|&(n, max)| n == name && crate::blocks::int_property(mw, p, "age") == Some(max))
+}
+fn crop_leaves(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, _: [i32; 3]) -> Option<horizon_world::registry::BlockStateId> {
+    crate::blocks::resolve(mw, "minecraft:air", &[])
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:villager",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
@@ -75,6 +86,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &schedule::BEHAVIOUR, activity: "core", priority: 0, params: &schedule::Params { adult: ADULT_SLICES, baby: BABY_SLICES }, needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "work", priority: 0, params: &reach_block::Params { memory: &JOB_SITE, speed: 0.5, range: 9.0 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "work", priority: 1, params: &stroll_near_block::Params { memory: &JOB_SITE, speed: 0.4, max_dist: 4.0 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &crop_harvest::BEHAVIOUR, activity: "work", priority: 2, params: &crop_harvest::Params { ripe: crop_ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "meet", priority: 0, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.5, range: 6.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "meet", priority: 1, params: &stroll_near_block::Params { memory: &MEETING_POINT, speed: 0.4, max_dist: 40.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
             CORE[0], CORE[1], CORE[2], CORE[3], CORE[4], CORE[5], CORE[6],

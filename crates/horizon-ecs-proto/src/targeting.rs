@@ -110,6 +110,10 @@ pub fn sight_range(range: f64, visibility: f64) -> f64 {
 pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
     t.seen = false;
     w.entity_mut(e).insert(t);
+    // `StartAttacking` erases the memory of the unreachable: a new target starts afresh.
+    if let Some(mut n) = w.get_mut::<crate::cow::Nav>(e) {
+        n.cant_reach_since = 0;
+    }
     w.resource_mut::<Events>().target_acquired.push(e);
     let watchers = w.resource::<TargetWatchers>().0.clone();
     for f in watchers {
