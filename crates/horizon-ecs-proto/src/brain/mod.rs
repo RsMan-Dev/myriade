@@ -556,6 +556,10 @@ pub fn set(w: &mut World, e: Entity, k: &MemKey, v: MemValue, ttl: Option<u64>) 
         return erase(w, e, k);
     }
     let s = &mut b.slots[i];
+    // Written again with the same value (a schedule's slice, a re-sensed flag): only the expiry moves, nothing to re-evaluate.
+    let same = matches!((&s.v, &v), (Some(MemValue::Unit), MemValue::Unit))
+        || matches!((&s.v, &v), (Some(MemValue::Bool(a)), MemValue::Bool(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Int(a)), MemValue::Int(c)) if a == c);
     s.v = Some(v);
     s.token += 1;
     s.until = ttl.map_or(u64::MAX, |t| now + t + 1);
@@ -564,7 +568,9 @@ pub fn set(w: &mut World, e: Entity, k: &MemKey, v: MemValue, ttl: Option<u64>) 
     if let Some(t) = ttl {
         arm_at(w, e, now + t + 1, Due::Forget(i as u16, token));
     }
-    wake(w, e);
+    if !same {
+        wake(w, e);
+    }
 }
 pub fn erase(w: &mut World, e: Entity, k: &MemKey) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
