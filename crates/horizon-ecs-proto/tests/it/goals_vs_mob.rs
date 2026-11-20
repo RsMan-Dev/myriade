@@ -1005,7 +1005,7 @@ fn breeding_follows_the_mob_s_partner_and_trajectory_when_it_is_imposed() {
         h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
         h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
     }
-    h.world.resource_mut::<Forced>().partners.insert(cows[pk].1, cows[qk].1);
+    h.world.entity_mut(cows[pk].1).insert(ForcedPartner(cows[qk].1));
     for &(_, e) in &cows {
         assert!(feed(&mut h.world, e));
     }

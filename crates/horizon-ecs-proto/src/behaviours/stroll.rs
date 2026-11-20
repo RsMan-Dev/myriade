@@ -107,7 +107,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let level = *w.resource::<Level>();
     let (Some(mut s), Some(rng)) = (w.get::<Stroll>(e).copied(), w.get::<Rng>(e).map(|r| r.0)) else { return false };
     let mut r = Rng(rng);
-    let forced = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot));
+    let forced = take_xz(w, e, inst.slot);
     let ok = match forced {
         Some((x, z)) => {
             (s.walking, s.tx, s.tz) = (true, x, z);

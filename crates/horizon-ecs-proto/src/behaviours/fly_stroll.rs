@@ -71,7 +71,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let walk = w.get::<crate::spots::WalkValue>(e).copied().unwrap_or(crate::spots::WalkValue::Zero);
     let mut r = Rng(rng);
     // The tests of the comparison impose the spot of the `Mob` (its height is the entity's `Stroll.ty`, which they set).
-    let forced = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot));
+    let forced = take_xz(w, e, inst.slot);
     let picked = if let Some((x, z)) = forced {
         Some([x, f64::from(s.ty), z])
     } else {

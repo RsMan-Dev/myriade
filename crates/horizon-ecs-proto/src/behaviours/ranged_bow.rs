@@ -105,12 +105,11 @@ fn bow_run(
     tg: targeting::Targets,
     level: Res<Level>,
     clock: Res<Clock>,
-    mut q: Query<(Aim, &mut Bow, &mut Drive, &mut Yaw, &Body, Option<&Target>, &mut Rng), With<Bowing>>,
+    mut q: Query<(Aim, &mut Bow, &mut Drive, &mut Yaw, &Body, Option<&Target>, &mut Rng, Option<&ForcedStrafe>), With<Bowing>>,
     mut reqs: ResMut<Requests>,
-    mut forced: ResMut<Forced>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, following, asked), mut b, mut drive, mut yaw, body, target, mut rng) in &mut q {
+    for ((e, pos, mut look, looking, following, asked), mut b, mut drive, mut yaw, body, target, mut rng, forced) in &mut q {
         // `canContinueToUse`: a target, or a walk still going.
         let Some(t) = target else {
             if !following && !asked {
@@ -143,8 +142,8 @@ fn bow_run(
         }
         if b.strafe_time >= 20 {
             // The state a `Mob` has (the tests that compare with its draws), else the two draws of 0.3.
-            match forced.strafes.get(&e) {
-                Some(&(cw, back)) => (b.strafe_clockwise, b.strafe_back) = (cw, back),
+            match forced {
+                Some(&ForcedStrafe((cw, back))) => (b.strafe_clockwise, b.strafe_back) = (cw, back),
                 None => {
                     b.strafe_clockwise ^= next_float(&mut rng) < 0.3;
                     b.strafe_back ^= next_float(&mut rng) < 0.3;

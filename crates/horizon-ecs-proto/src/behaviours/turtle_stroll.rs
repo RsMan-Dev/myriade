@@ -79,7 +79,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return false;
     }
     let Some(mut s) = w.get::<Stroll>(e).copied() else { return false };
-    let forced = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot));
+    let forced = take_xz(w, e, inst.slot);
     let picked = match forced {
         Some((x, z)) => Some([x, f64::from(s.ty), z]),
         None => pick_for(w, e, Pick::Land { h: 10, v: 7 }),

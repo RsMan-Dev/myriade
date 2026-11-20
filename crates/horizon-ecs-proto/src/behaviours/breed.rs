@@ -155,7 +155,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             best = Some((c, d));
         }
     }
-    if let Some(c) = w.resource_mut::<Forced>().partners.remove(&e)
+    let forced = w.get::<ForcedPartner>(e).copied();
+    if forced.is_some() {
+        w.entity_mut(e).remove::<ForcedPartner>();
+    }
+    if let Some(ForcedPartner(c)) = forced
         && w.get::<Love>(c).is_some_and(|l| l.0 > crate::cow::now_of(w, c))
     {
         best = Some((c, 0.0));

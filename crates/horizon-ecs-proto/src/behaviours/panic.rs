@@ -100,7 +100,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         return false;
     }
     let pick = |w: &mut World, v: (f64, i32, f64)| w.get_mut::<Panic>(e).unwrap().pick = v;
-    if let Some((x, z)) = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot)) {
+    if let Some((x, z)) = take_xz(w, e, inst.slot) {
         pick(w, (x, 1, z));
         return true;
     }

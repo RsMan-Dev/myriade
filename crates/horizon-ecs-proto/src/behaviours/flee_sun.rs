@@ -80,7 +80,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         arm(w, e, inst.slot, 2);
         return false;
     }
-    if let Some((x, z)) = w.resource_mut::<Forced>().spots.remove(&(e, inst.slot)) {
+    if let Some((x, z)) = take_xz(w, e, inst.slot) {
         pick(w, e, (x, by, z));
         return true;
     }

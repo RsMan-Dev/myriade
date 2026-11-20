@@ -49,7 +49,7 @@ impl Scene {
         // The strafe the `Mob` is in this tick (sideways and forwards signs), for the ECS to take at its own strafe events.
         let mc = &self.r.mobs[self.mob].ai.mov;
         if mc.strafe_right != 0.0 {
-            self.h.world.resource_mut::<Forced>().strafes.insert(self.ecs, (mc.strafe_right > 0.0, mc.strafe_forwards < 0.0));
+            self.h.world.entity_mut(self.ecs).insert(ForcedStrafe((mc.strafe_right > 0.0, mc.strafe_forwards < 0.0)));
         }
         self.h.tick();
         let mob_shot = self.r.events[from..].iter().any(|e| matches!(e, MobEvent::BowShot { .. }));

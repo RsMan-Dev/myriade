@@ -287,7 +287,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         }
     }
     // The target is there: when no spot is found, or the spot is not farther than the animal, `canUse` is asked again.
-    let spot = w.resource_mut::<Forced>().take_spot(e, inst.slot, pos.y.floor()).map(|p| (p[0], p[1], p[2])).or_else(|| random_spot(w, e, pos, from));
+    let spot = take_spot(w, e, inst.slot, pos.y.floor()).map(|p| (p[0], p[1], p[2])).or_else(|| random_spot(w, e, pos, from));
     let Some((x, y, z)) = spot.filter(|&(x, y, z)| d2(Vec3::new(x, y, z), from) >= d2(pos, from)) else {
         arm(w, e, inst.slot, 2);
         return false;

@@ -722,7 +722,7 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
     if let Some(g) = inst.b.gate {
         let mut order = inst.kids.clone();
         if g.shuffle {
-            let forced = w.resource_mut::<Forced>().shuffles.get_mut(&e).and_then(|q| q.pop_front());
+            let forced = w.get_mut::<ForcedShuffle>(e).and_then(|mut q| q.0.pop_front());
             match forced {
                 Some(p) => order = p.into_iter().filter_map(|k| inst.kids.get(k).copied()).collect(),
                 None => {

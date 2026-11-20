@@ -152,13 +152,16 @@ impl Trial {
     }
 }
 
-/// The trial spawners of the world, their wake-ups, the mobs' owners.
+/// The trial spawners of the world and their wake-ups.
 #[derive(Resource, Default)]
 pub struct Trials {
     at: HashMap<Block3, Trial>,
     wakes: BTreeMap<u64, Vec<Block3>>,
-    owner: HashMap<Entity, Block3>,
 }
+
+/// The spawner a mob was made by (on the mob; gone with it).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct TrialOwner(pub Block3);
 
 /// What a test or a tool reads of one spawner.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -209,11 +212,10 @@ pub fn info(w: &World, pos: Block3) -> Option<Info> {
 
 /// The death of a mob the spawner made: it leaves the spawner's list at this event, not at its next wake-up.
 pub fn forget(w: &mut World, e: Entity) {
+    let Some(pos) = w.get::<TrialOwner>(e).map(|o| o.0) else { return };
     let Some(mut s) = w.get_resource_mut::<Trials>() else { return };
-    if let Some(pos) = s.owner.remove(&e) {
-        if let Some(t) = s.at.get_mut(&pos) {
-            t.mobs.retain(|&m| m != e);
-        }
+    if let Some(t) = s.at.get_mut(&pos) {
+        t.mobs.retain(|&m| m != e);
     }
 }
 
@@ -268,8 +270,8 @@ fn center(pos: Block3) -> [f64; 3] {
 }
 
 fn disown(w: &mut World, e: Entity) {
-    if let Some(mut s) = w.get_resource_mut::<Trials>() {
-        s.owner.remove(&e);
+    if let Ok(mut m) = w.get_entity_mut(e) {
+        m.remove::<TrialOwner>();
     }
 }
 
@@ -390,7 +392,6 @@ fn apply_ominous(w: &mut World, now: u64, t: &mut Trial) {
             w.resource_mut::<Events>().host.particles("minecraft:flame", [p.x, p.y, p.z], [0.0; 3], 0.0, 20);
         }
         despawn::remove(w, e);
-        disown(w, e);
     }
     if t.cfg.ominous.has_potentials() {
         t.next_species = None;
@@ -542,7 +543,7 @@ fn step(w: &mut World, rng: &mut LegacyRandom, env: &Env, pos: Block3, now: u64,
             } else if now >= t.next_spawn && (t.mobs.len() as i32) < wave.simultaneous_target(additional) {
                 if let Some(e) = spawn_mob(w, rng, env, pos, t, &wave) {
                     t.mobs.push(e);
-                    w.resource_mut::<Trials>().owner.insert(e, pos);
+                    w.entity_mut(e).insert(TrialOwner(pos));
                     t.total += 1;
                     t.next_spawn = now + wave.ticks_between_spawn;
                     t.next_species = weighted(&wave.potentials, rng);

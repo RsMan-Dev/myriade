@@ -301,31 +301,52 @@ pub fn set_lazy_look(world: &mut World, on: bool) {
     }
 }
 /// Imposed random draws, for comparing with a `Mob` that drew its own: the spot (x, z) a goal of this cow takes next
-/// instead of drawing one. Empty outside the tests.
-#[derive(Resource, Default)]
-pub struct Forced {
-    pub spots: HashMap<(Entity, u8), (f64, f64)>,
-    /// The row (y) of an imposed spot, when the test gives one (`impose_spot`): the `Mob` draws a row too.
-    pub rows: HashMap<(Entity, u8), f64>,
-    /// The partner a cow in love takes instead of the nearest one.
-    pub partners: HashMap<Entity, Entity>,
-    /// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
-    pub strafes: HashMap<Entity, (bool, bool)>,
-    /// The order the kids of a shuffled composite of the brain are tried in (indices of the kids), instead of a draw.
-    pub shuffles: HashMap<Entity, std::collections::VecDeque<Vec<usize>>>,
-}
+/// instead of drawing one. Absent outside the tests. `slot` is the goal's slot; the component is removed when taken.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct ForcedSpot(pub u8, pub (f64, f64));
+/// The row (y) of an imposed spot, when the test gives one (`impose_spot`): the `Mob` draws a row too.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct ForcedRow(pub u8, pub f64);
+/// The partner a cow in love takes instead of the nearest one.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct ForcedPartner(pub Entity);
+/// The strafe state (clockwise, back) the bow goal takes when its strafe time comes up, instead of drawing the flips.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct ForcedStrafe(pub (bool, bool));
+/// The order the kids of a shuffled composite of the brain are tried in (indices of the kids), instead of a draw.
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct ForcedShuffle(pub std::collections::VecDeque<Vec<usize>>);
 
-impl Forced {
-    /// A spot in 3D for the goal of `slot`: the module takes it with `take_spot` instead of drawing one.
-    pub fn impose_spot(&mut self, e: Entity, slot: u8, at: [f64; 3]) {
-        self.spots.insert((e, slot), (at[0], at[2]));
-        self.rows.insert((e, slot), at[1]);
+/// A spot in 3D for the goal of `slot`: the module takes it with `take_spot` instead of drawing one.
+pub fn impose_spot(w: &mut World, e: Entity, slot: u8, at: [f64; 3]) {
+    w.entity_mut(e).insert((ForcedSpot(slot, (at[0], at[2])), ForcedRow(slot, at[1])));
+}
+/// Takes the imposed (x, z) of the goal of `slot`, or `None`.
+pub fn take_xz(w: &mut World, e: Entity, slot: u8) -> Option<(f64, f64)> {
+    let ForcedSpot(s, xz) = *w.get::<ForcedSpot>(e)?;
+    if s != slot {
+        return None;
     }
-    /// The imposed spot of this goal (x, y, z), or `None`; `default_y` is the row when only (x, z) was imposed.
-    pub fn take_spot(&mut self, e: Entity, slot: u8, default_y: f64) -> Option<[f64; 3]> {
-        let (x, z) = self.spots.remove(&(e, slot))?;
-        Some([x, self.rows.remove(&(e, slot)).unwrap_or(default_y), z])
-    }
+    w.entity_mut(e).remove::<ForcedSpot>();
+    Some(xz)
+}
+/// The imposed spot of this goal (x, y, z), taken, or `None`; `default_y` is the row when only (x, z) was imposed.
+pub fn take_spot(w: &mut World, e: Entity, slot: u8, default_y: f64) -> Option<[f64; 3]> {
+    let (x, z) = take_xz(w, e, slot)?;
+    let row = w.get::<ForcedRow>(e).copied();
+    let y = match row {
+        Some(ForcedRow(s, y)) if s == slot => {
+            w.entity_mut(e).remove::<ForcedRow>();
+            y
+        }
+        _ => default_y,
+    };
+    Some([x, y, z])
 }
 /// What stops an entity from acting (`Mob.isImmobile` / the goals' "cannot act" tests): a bit per reason, set by the module that
 /// causes it and read by any goal, which never needs to know that module. Absent: free.
@@ -575,7 +596,6 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
-    world.insert_resource(Forced::default());
     world.insert_resource(LazyLook::default());
     world.insert_resource(Events::default());
     world.insert_resource(crate::farm::Grown::default());
@@ -816,7 +836,7 @@ pub fn end(w: &mut World, e: Entity, m: &'static Module) {
 /// Imposes the spot the module's goal takes next instead of drawing one (the comparison tests).
 pub fn force_spot(w: &mut World, e: Entity, m: &'static Module, spot: (f64, f64)) {
     if let Some(s) = slot_of(w, e, m) {
-        w.resource_mut::<Forced>().spots.insert((e, s), spot);
+        w.entity_mut(e).insert(ForcedSpot(s, spot));
     }
 }
 /// Fires the module's deadline of the animal now (the comparison tests).
