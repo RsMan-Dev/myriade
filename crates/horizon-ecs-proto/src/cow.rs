@@ -1829,7 +1829,8 @@ pub(crate) fn pathfind(
             can_walk_over_fences: sp.can_walk_over_fences,
             stands_on_lava: lava,
         };
-        let max_len = sp.follow_range;
+        // `PathNavigation.getMaxPathLength`: max(follow range, `requiredPathLength` = 16): a vindicator (12) searches as far as a cow.
+        let max_len = sp.follow_range.max(16.0);
         let max_visited = (max_len * 16.0).floor() as i32;
         let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
