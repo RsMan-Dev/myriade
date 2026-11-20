@@ -5,6 +5,7 @@
 //! the circle, the strategy) have a marker that their system visits: a goal that does not run costs nothing.
 //! The `Mob` ticks a goal that is not `every_tick` every other tick: the counts here are in ticks (twice the `reduced` ones).
 //! Not ported: the cats that scare a diving phantom (`SweepAttack.can_continue`), the sounds, the owner link made at the summon.
+use crate::IFloor as _;
 use super::*;
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
@@ -107,7 +108,7 @@ fn random_fired(w: &mut World, e: Entity, i: Inst) -> bool {
 }
 fn random_start(w: &mut World, e: Entity, _: Inst) {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let origin = w.get::<Anchor>(e).map_or([p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], |a| a.0);
+    let origin = w.get::<Anchor>(e).map_or([p.x.ifloor(), p.y.ifloor(), p.z.ifloor()], |a| a.0);
     let mw = w.resource::<Level>().mw.0;
     for _ in 0..3 {
         let c = with_rng(w, e, |r| [origin[0] + r.next_int(15) - 7, origin[1] + r.next_int(11) - 5, origin[2] + r.next_int(15) - 7]);
@@ -219,8 +220,8 @@ fn scan_stop(w: &mut World, e: Entity, _: Inst) {
 fn anchor_above_target(w: &mut World, e: Entity) {
     let Some((_, t)) = target_of(w, e) else { return };
     let sea = w.resource::<Level>().mw.0.sea_level;
-    let y = (t.pos.y.floor() as i32 + 20 + with_rng(w, e, |r| r.next_int(20))).max(sea + 1);
-    w.entity_mut(e).insert(Anchor([t.pos.x.floor() as i32, y, t.pos.z.floor() as i32]));
+    let y = (t.pos.y.ifloor() + 20 + with_rng(w, e, |r| r.next_int(20))).max(sea + 1);
+    w.entity_mut(e).insert(Anchor([t.pos.x.ifloor(), y, t.pos.z.ifloor()]));
 }
 /// Sets or clears the dive and wakes the goals it concerns (the sweep starts, the circle starts again when the dive ends).
 fn set_diving(w: &mut World, e: Entity, on: bool) {
@@ -335,7 +336,7 @@ pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle
 fn circle_equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
     // `Phantom.register`: the anchor is 5 blocks above where it appeared.
     if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
-        w.entity_mut(e).insert(Anchor([p.x.floor() as i32, p.y.floor() as i32 + 5, p.z.floor() as i32]));
+        w.entity_mut(e).insert(Anchor([p.x.ifloor(), p.y.ifloor() + 5, p.z.ifloor()]));
     }
 }
 fn circle_arm(w: &mut World, e: Entity, i: Inst) {
@@ -346,7 +347,7 @@ fn circle_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn select_next(w: &mut World, e: Entity) {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let a = w.get::<Anchor>(e).map_or([p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], |a| a.0);
+    let a = w.get::<Anchor>(e).map_or([p.x.ifloor(), p.y.ifloor(), p.z.ifloor()], |a| a.0);
     w.entity_mut(e).insert(Anchor(a));
     let Some(mut c) = w.get_mut::<Circle>(e) else { return };
     c.angle += c.clockwise * 15.0_f32.to_radians();
@@ -405,7 +406,7 @@ fn circle_tick(w: &mut World) {
             }
             let mw = w.resource::<Level>().mw.0;
             let air = |x: i32, y: i32, z: i32| mw.facts.get(mw.world.block(x, y, z)).name.as_ref() == "minecraft:air";
-            let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let (x, y, z) = (p.x.ifloor(), p.y.ifloor(), p.z.ifloor());
             let t = w.get::<MoveTo>(e).copied().unwrap_or(t);
             if t.y < p.y && !air(x, y - 1, z) {
                 let mut c = *w.get::<Circle>(e).unwrap();

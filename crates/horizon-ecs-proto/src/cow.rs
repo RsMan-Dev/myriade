@@ -2,6 +2,7 @@
 //! `nextInt(60) == 0` each tick, then `LandRandomPos` 10 x 7), the move control, `LivingEntity.travel` on the
 //! ground with Horizon's real block collision sweep (`SceneCollisions::resolve_in_border_with`), and sleeping.
 //! Species data (size, step, speed, stroll range) are component values, not branches.
+use crate::IFloor as _;
 use bevy_ecs::{
     entity_disabling::Disabled,
     prelude::*,
@@ -415,15 +416,15 @@ impl Hazards {
         let e = 1.0e-7;
         // Fluids have a surface below the top of their block and flow: they are looked at a block wider (the real
         // test is `fluids`); fire, cactus and snow are the blocks the box overlaps.
-        let (y0, y1) = (mn.y.floor() as i32 - 1, (mx.y - e).floor() as i32 + 1);
-        let (x0, x1) = ((mn.y + 0.001).floor() as i32, (mx.y - 0.001).floor() as i32);
+        let (y0, y1) = (mn.y.ifloor() - 1, (mx.y - e).ifloor() + 1);
+        let (x0, x1) = ((mn.y + 0.001).ifloor(), (mx.y - 0.001).ifloor());
         let mut bits = 0;
-        for x in mn.x.floor() as i32..=(mx.x - e).floor() as i32 {
-            for z in mn.z.floor() as i32..=(mx.z - e).floor() as i32 {
-                let (cx, cz) = (x - self.origin, z - self.origin);
-                if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
-                    continue;
-                }
+        // The columns inside the grid, clamped once (the loops then need no bounds test); an empty column costs one read.
+        let w = self.width as i32;
+        let (xa, xb) = (mn.x.ifloor().saturating_sub(self.origin).max(0), (mx.x - e).ifloor().saturating_sub(self.origin).min(w - 1));
+        let (za, zb) = (mn.z.ifloor().saturating_sub(self.origin).max(0), (mx.z - e).ifloor().saturating_sub(self.origin).min(w - 1));
+        for cx in xa..=xb {
+            for cz in za..=zb {
                 let c = self.cols[cz as usize * self.width + cx as usize];
                 if c != 0 {
                     for &(y, bit) in &self.pool[c as usize - 1] {
@@ -1571,7 +1572,7 @@ pub fn idle_wait(rng: &mut Rng, n: i32) -> i32 {
 }
 pub fn geometric(rng: &mut Rng, n: i32) -> i32 {
     let u = rng.next_f64().max(1.0e-12);
-    (u.ln() / (1.0 - 1.0 / f64::from(n)).ln()).floor() as i32
+    (u.ln() / (1.0 - 1.0 / f64::from(n)).ln()).ifloor()
 }
 
 pub fn schedule() -> Schedule {
@@ -1626,7 +1627,7 @@ pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, n
     s.walking = true;
     s.tx = p[0];
     s.tz = p[2];
-    s.ty = p[1].floor() as i32;
+    s.ty = p[1].ifloor();
     true
 }
 
@@ -1782,7 +1783,7 @@ pub(crate) fn player_near(
 }
 
 pub(crate) fn comfortable_fall_distance(f: f32) -> i32 {
-    (f + 3.0).floor() as i32
+    (f + 3.0).ifloor()
 }
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
 /// that asked for a path are visited, in parallel when asked; what follows (the next module, the end of the walk)
@@ -1816,8 +1817,8 @@ pub(crate) fn pathfind(
             stands_on_lava: lava,
         };
         let max_len = sp.follow_range;
-        let max_visited = (max_len * 16.0).floor() as i32;
-        let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
+        let max_visited = (max_len * 16.0).ifloor();
+        let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
         let path = (c.on_ground || fluid)
             .then(|| {
@@ -1840,7 +1841,7 @@ pub(crate) fn pathfind(
         // `GroundPathNavigation.trimPath` with `avoidSun`: a mob out of the sky's sight keeps only the nodes before the first one the sky sees.
         let path = path.map(|mut p| {
             if sunless && day.0 {
-                let at = [pos.0.x.floor() as i32, (pos.0.y + 0.5).floor() as i32, pos.0.z.floor() as i32];
+                let at = [pos.0.x.ifloor(), (pos.0.y + 0.5).ifloor(), pos.0.z.ifloor()];
                 if !mw.can_see_sky(at[0], at[1], at[2]) {
                     if let Some(i) = p.nodes.iter().position(|n| mw.can_see_sky(n.x, n.y, n.z)) {
                         p.nodes.truncate(i);
@@ -1942,7 +1943,7 @@ pub(crate) fn follow(
                     end = true;
                 } else {
                     let target = path.entity_pos_at(path.next, width);
-                    let (bx, by, bz) = (target.x.floor() as i32, target.y.floor() as i32, target.z.floor() as i32);
+                    let (bx, by, bz) = (target.x.ifloor(), target.y.ifloor(), target.z.ifloor());
                     let y = if mw.facts.is_air(mw.world.block(bx, by.saturating_sub(1), bz)) {
                         target.y
                     } else {
@@ -2043,12 +2044,13 @@ pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: 
     let angle = f64::from(yaw.0 * trig::DEG_TO_RAD);
     let (s, co) = (trig::sin(angle), trig::cos(angle));
     let (dx, dz) = (xa * co - za * s, za * co + xa * s);
-    let (x, y, z) = ((pos.0.x + f64::from(dx)).floor() as i32, pos.0.y.floor() as i32, (pos.0.z + f64::from(dz)).floor() as i32);
+    let (x, y, z) = ((pos.0.x + f64::from(dx)).ifloor(), pos.0.y.ifloor(), (pos.0.z + f64::from(dz)).ifloor());
     // The kind of the block is read once per block and kept for 10 ticks (a strafe step is 0.1 block: the same block for many ticks).
     let ok = match *walkable {
         Some((b, ok, at)) if b == (x, y, z) && now < at + 10 => ok,
         _ => {
-            let ok = level.mw.0.path_type_static(x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
+            crate::pathsearch::adjacent_reset();
+            let ok = crate::pathsearch::path_type_static(level.mw.0, x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
             *walkable = Some(((x, y, z), ok, now));
             ok
         }
@@ -2108,7 +2110,7 @@ pub(crate) fn move_control_one(level: &Level, pos: &Pos, yaw: &mut Yaw, m: &mut 
 /// reached its top (a cactus, a slab, a carpet): it jumps, unless the block is a door or a fence.
 fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
     let mw = level.mw.0;
-    let (bx, by, bz) = (pos.0.x.floor() as i32, pos.0.y.floor() as i32, pos.0.z.floor() as i32);
+    let (bx, by, bz) = (pos.0.x.ifloor(), pos.0.y.ifloor(), pos.0.z.ifloor());
     let state = mw.world.block(bx, by, bz);
     let top = mw.data.state(state).top;
     if top <= 0.0 {
@@ -2215,7 +2217,7 @@ fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut
     let mut friction = 0.98_f32;
     if c.on_ground {
         let mw = level.mw.0;
-        let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.999_999).floor() as i32, pos.0.z.floor() as i32);
+        let below = mw.world.block(pos.0.x.ifloor(), (pos.0.y - 0.999_999).ifloor(), pos.0.z.ifloor());
         friction *= mw.facts.get(below).friction;
     }
     let (f, air) = (f64::from(friction), f64::from(0.98_f32));
@@ -2244,7 +2246,7 @@ fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &
     do_move(level, pos, vel, c, body, bounds, fall_damage);
     let mut friction = 0.98_f32;
     if c.on_ground {
-        let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.999_999).floor() as i32, pos.0.z.floor() as i32);
+        let below = mw.world.block(pos.0.x.ifloor(), (pos.0.y - 0.999_999).ifloor(), pos.0.z.ifloor());
         friction *= mw.facts.get(below).friction;
     }
     let f = f64::from(friction);
@@ -2526,7 +2528,7 @@ fn breathing(
             queue.add(e, 1.0, Cause::Drown);
         }
         let submerged = fs.eye_in_water && {
-            let (x, y, z) = (pos.0.x.floor() as i32, (pos.0.y + fp.eye_height).floor() as i32, pos.0.z.floor() as i32);
+            let (x, y, z) = (pos.0.x.ifloor(), (pos.0.y + fp.eye_height).ifloor(), pos.0.z.ifloor());
             mw.block_name(x, y, z) != "minecraft:bubble_column"
         };
         let drowns = submerged && !imm.has(BREATHES_WATER);
@@ -3712,7 +3714,7 @@ impl Herd {
         for &e in &ids {
             let p = self.world.get::<Pos>(e).unwrap().0;
             let mut s = self.world.get_mut::<Stroll>(e).unwrap();
-            (s.tx, s.tz, s.ty) = (p.x + 1.5, p.z, p.y.floor() as i32);
+            (s.tx, s.tz, s.ty) = (p.x + 1.5, p.z, p.y.ifloor());
             self.world.entity_mut(e).insert(NeedsPath);
         }
     }
@@ -3733,9 +3735,9 @@ impl Herd {
             let (pos, body, c, s, sp) = (self.world.get::<Pos>(e).unwrap().0, *self.world.get::<Body>(e).unwrap(), *self.world.get::<Contact>(e).unwrap(), *self.world.get::<Stroll>(e).unwrap(), *self.world.get::<NavParams>(e).unwrap());
             let reach = self.world.get::<Nav>(e).unwrap().reach;
             let pm = PathMob { position: pos, width: body.width, height: body.height, on_ground: c.on_ground, in_water: false, max_up_step: body.step_height, max_fall_distance: comfortable_fall_distance(0.0), malus: sp.malus, can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, stands_on_lava: false };
-            let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
+            let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
             let max_len = sp.follow_range;
-            std::hint::black_box(Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, reach, (max_len * 16.0).floor() as i32));
+            std::hint::black_box(Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, reach, (max_len * 16.0).ifloor()));
             n += 1;
         }
         n
@@ -4183,7 +4185,7 @@ mod tests {
         assert!((y0 - y1 - 1.0).abs() < 1.0e-6 && !moving(&herd, a), "{y0} -> {y1}");
         // A stone at head height: suffocation by the event.
         // A stone in the block of the eyes: the head is in a wall.
-        let eye_y = (1.0 + species().eye_height).floor() as i32;
+        let eye_y = (1.0 + species().eye_height).ifloor();
         herd.set_block(20, eye_y, 20, "minecraft:stone");
         for _ in 0..15 {
             herd.tick();

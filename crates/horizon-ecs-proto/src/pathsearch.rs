@@ -1,4 +1,5 @@
 //! Counting copy of Horizon's `Finder` (walk evaluator included), to be reduced. See suivi/ecs-portage/relais/chemin-partage.md.
+use crate::IFloor as _;
 use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType, PATH_TYPES}};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::fast_hash::FxHashMap;
@@ -65,6 +66,15 @@ pub fn adjacent_of_state(w: &MobWorld, state: horizon_world::registry::BlockStat
     default
         .or_else(|| matches!(facts.fluid, Fluid::Water | Fluid::Modded).then_some(PathType::WaterBorder))
         .or_else(|| vanilla_adjacent(w.data.path_type(state)))
+}
+/// A new query: the neighbour answers worked out so far (by state, valid for one registry and one set of tags) are forgotten.
+pub fn adjacent_reset() {
+    ADJACENT.with(|cell| {
+        let (table, touched) = &mut *cell.borrow_mut();
+        for id in touched.drain(..) {
+            table[id as usize] = 0;
+        }
+    });
 }
 /// `check_neighbours` inside a finder's query, with no mod hooks: a neighbour's answer depends on its state alone,
 /// so it is worked out once per state per query.
@@ -419,12 +429,7 @@ fn swim_cell_type(
 impl<'a, 'w> Finder<'a, 'w> {
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
         let _g = sec(0);
-        ADJACENT.with(|cell| {
-            let (table, touched) = &mut *cell.borrow_mut();
-            for id in touched.drain(..) {
-                table[id as usize] = 0;
-            }
-        });
+        adjacent_reset();
         let (nodes, index, heap, mut grid, mut stamp, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
                 buf.clear();
@@ -519,9 +524,9 @@ impl<'a, 'w> Finder<'a, 'w> {
             use_layer,
             saw_rail: std::cell::Cell::new(false),
             profile,
-            entity_width: (mob.width + 1.0).floor() as i32,
-            entity_height: (mob.height + 1.0).floor() as i32,
-            entity_depth: (mob.width + 1.0).floor() as i32,
+            entity_width: (mob.width + 1.0).ifloor(),
+            entity_height: (mob.height + 1.0).ifloor(),
+            entity_depth: (mob.width + 1.0).ifloor(),
         }
     }
     /// Mob.getPathfindingMalus; AmphibiousNodeEvaluator.prepare overrides three
@@ -970,35 +975,35 @@ impl<'a, 'w> Finder<'a, 'w> {
         match self.eval {
             Evaluator::Swim { .. } => {
                 return Some(self.node(
-                    lo.x.floor() as i32,
-                    (lo.y + 0.5).floor() as i32,
-                    lo.z.floor() as i32,
+                    lo.x.ifloor(),
+                    (lo.y + 0.5).ifloor(),
+                    lo.z.ifloor(),
                 ));
             }
             Evaluator::Amphibious { .. } if m.in_water => {
                 return Some(self.start_node(
-                    lo.x.floor() as i32,
-                    (lo.y + 0.5).floor() as i32,
-                    lo.z.floor() as i32,
+                    lo.x.ifloor(),
+                    (lo.y + 0.5).ifloor(),
+                    lo.z.ifloor(),
                 ));
             }
             Evaluator::Fly => {
-                let (bx, bz) = (p.x.floor() as i32, p.z.floor() as i32);
+                let (bx, bz) = (p.x.ifloor(), p.z.ifloor());
                 let mut start_y;
                 if m.can_float && m.in_water {
-                    start_y = p.y.floor() as i32;
+                    start_y = p.y.ifloor();
                     while &*self.w.facts.get(self.w.world.block(bx, start_y, bz)).name
                         == "minecraft:water"
                     {
                         start_y += 1;
                     }
                 } else {
-                    start_y = (p.y + 0.5).floor() as i32;
+                    start_y = (p.y + 0.5).ifloor();
                 }
                 if !self.can_start_at(bx, start_y, bz) {
-                    let by = p.y.floor() as i32;
+                    let by = p.y.ifloor();
                     for (cx, cz) in [(lo.x, lo.z), (lo.x, hi.z), (hi.x, lo.z), (hi.x, hi.z)] {
-                        let (cx, cz) = (cx.floor() as i32, cz.floor() as i32);
+                        let (cx, cz) = (cx.ifloor(), cz.ifloor());
                         if self.can_start_at(cx, by, cz) {
                             return Some(self.start_node(cx, by, cz));
                         }
@@ -1009,8 +1014,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             _ => {}
         }
         // WalkNodeEvaluator.getStart
-        let (bx, bz) = (p.x.floor() as i32, p.z.floor() as i32);
-        let mut start_y = p.y.floor() as i32;
+        let (bx, bz) = (p.x.ifloor(), p.z.ifloor());
+        let mut start_y = p.y.ifloor();
         let fluid_at = |s: &Self, y: i32| s.fluid(bx, y, bz);
         if !(m.stands_on_lava && fluid_at(self, start_y) == Fluid::Lava) {
             if m.can_float && fluid_at(self, start_y) == Fluid::Water {
@@ -1019,9 +1024,9 @@ impl<'a, 'w> Finder<'a, 'w> {
                 }
                 start_y -= 1;
             } else if m.on_ground {
-                start_y = (p.y + 0.5).floor() as i32;
+                start_y = (p.y + 0.5).ifloor();
             } else {
-                let mut y = (p.y + 1.0).floor() as i32;
+                let mut y = (p.y + 1.0).ifloor();
                 while y > self.w.world.bottom_y() {
                     start_y = y;
                     y -= 1;
@@ -1041,7 +1046,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
         if !self.can_start_at(bx, start_y, bz) {
             for (cx, cz) in [(lo.x, lo.z), (lo.x, hi.z), (hi.x, lo.z), (hi.x, hi.z)] {
-                let (cx, cz) = (cx.floor() as i32, cz.floor() as i32);
+                let (cx, cz) = (cx.ifloor(), cz.ifloor());
                 if self.can_start_at(cx, start_y, cz) {
                     return Some(self.start_node(cx, start_y, cz));
                 }
@@ -1249,7 +1254,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let grow = Aabb::new(
             Vec3::new(
                 cx - half,
-                self.floor_level(cx.floor() as i32, y + 1, cz.floor() as i32) + 0.001,
+                self.floor_level(cx.ifloor(), y + 1, cz.ifloor()) + 0.001,
                 cz - half,
             ),
             Vec3::new(
@@ -1349,7 +1354,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let current = self.cached(px, py, pz);
         let mut jump = 0;
         if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
-            jump = self.mob.max_up_step.max(1.0).floor() as i32;
+            jump = self.mob.max_up_step.max(1.0).ifloor();
         }
         let height = self.floor_level(px, py, pz);
         // Direction.Plane.HORIZONTAL: north, east, south, west; 2D index S=0 W=1 N=2 E=3.
@@ -1454,7 +1459,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         };
         let mut jump = 0;
         if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
-            jump = self.mob.max_up_step.max(1.0).floor() as i32;
+            jump = self.mob.max_up_step.max(1.0).ifloor();
         }
         const DIRS: [(i32, i32, usize); 4] = [(0, -1, 2), (1, 0, 3), (0, 1, 0), (-1, 0, 1)];
         let pos_malus_neg = self.nodes[pos as usize].cost_malus < 0.0;
@@ -1999,7 +2004,7 @@ fn vanilla_adjacent(t: PathType) -> Option<PathType> {
 }
 
 fn block_pos(m: &PathMob) -> [i32; 3] {
-    [m.position.x.floor() as i32, m.position.y.floor() as i32, m.position.z.floor() as i32]
+    [m.position.x.ifloor(), m.position.y.ifloor(), m.position.z.ifloor()]
 }
 fn make_path(nodes: Vec<PathNode>, target: [i32; 3], reached: bool) -> Path {
     let dist_to_target = nodes.last().map_or(f32::MAX, |n| {

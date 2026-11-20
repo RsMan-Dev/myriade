@@ -7,6 +7,7 @@
 //! entity is stepped (`brain_step`) only when something woke it: a sensor scanned, a memory changed, a behaviour runs or is
 //! polled. A brain that has nothing to do costs its sensors' scans. The brain needs the `Goals` capability (the random
 //! stream, the look and the head) and `Locomotion` for the behaviours that walk.
+use crate::IFloor as _;
 use crate::behaviours::Cap;
 use crate::cow::*;
 use crate::goals::*;
@@ -53,9 +54,9 @@ impl Tracker {
     }
     pub fn block(&self, w: &World) -> Option<[i32; 3]> {
         match *self {
-            Tracker::Entity(who, _) => crate::targeting::info(w, who).map(|i| [i.pos.x.floor() as i32, i.pos.y.floor() as i32, i.pos.z.floor() as i32]),
+            Tracker::Entity(who, _) => crate::targeting::info(w, who).map(|i| [i.pos.x.ifloor(), i.pos.y.ifloor(), i.pos.z.ifloor()]),
             Tracker::Block(p) => Some(p),
-            Tracker::Point(v) => Some([v[0].floor() as i32, v[1].floor() as i32, v[2].floor() as i32]),
+            Tracker::Point(v) => Some([v[0].ifloor(), v[1].ifloor(), v[2].ifloor()]),
         }
     }
 }
@@ -441,7 +442,7 @@ fn wake_walks(
         }
     }
     for (e, p, s) in &moved {
-        let d = (p.0.x.floor() as i32 - s.target[0]).abs() + (p.0.y.floor() as i32 - s.target[1]).abs() + (p.0.z.floor() as i32 - s.target[2]).abs();
+        let d = (p.0.x.ifloor() - s.target[0]).abs() + (p.0.y.ifloor() - s.target[1]).abs() + (p.0.z.ifloor() - s.target[2]).abs();
         if d <= s.close && let Ok(mut b) = q.get_mut(e) && !b.awake {
             b.awake = true;
             awake.0.push(e);
@@ -846,7 +847,7 @@ fn targetable(w: &World, e: Entity, who: Who) -> bool {
 /// `PathNavigation.moveTo`: a path to the block (exact: reach 0), at this speed modifier; the walk is `pathfind`'s.
 pub fn walk_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
-        (s.tx, s.ty, s.tz) = (at[0], at[1].floor() as i32, at[2]);
+        (s.tx, s.ty, s.tz) = (at[0], at[1].ifloor(), at[2]);
     }
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.speed = speed;

@@ -5,6 +5,7 @@
 //! `blocks` (`HappyGhast.RandomFloatAroundGoal`, `FloatAround { blocks }`, `happy_ghast.rs:453-540`): a point is kept only when it is air
 //! with a solid block within `blocks - 1` cells in one of the six directions; `0` keeps any point (the ghast). Not ported: the 64th try's
 //! fallback is the last point drawn, without the surface clamp of `start` (`motion_blocking_height`: DOUTE, no service).
+use crate::IFloor as _;
 use super::*;
 use crate::{cow::*, goals::*};
 
@@ -54,7 +55,7 @@ fn good(w: &World, blocks: i32, t: [f64; 3]) -> bool {
         return true;
     }
     let mw = w.resource::<Level>().mw.0;
-    let at = [t[0].floor() as i32, t[1].floor() as i32, t[2].floor() as i32];
+    let at = [t[0].ifloor(), t[1].ifloor(), t[2].ifloor()];
     if !mw.facts.is_air(mw.world.block(at[0], at[1], at[2])) {
         return false;
     }
@@ -122,7 +123,7 @@ mod tests {
             return true;
         }
         let mw = h.world.resource::<Level>().mw.0;
-        let at = [t[0].floor() as i32, t[1].floor() as i32, t[2].floor() as i32];
+        let at = [t[0].ifloor(), t[1].ifloor(), t[2].ifloor()];
         let solid = |q: [i32; 3]| !mw.facts.is_air(mw.world.block(q[0], q[1], q[2]));
         if solid(at) {
             return false;

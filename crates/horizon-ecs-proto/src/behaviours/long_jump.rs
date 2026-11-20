@@ -5,6 +5,7 @@
 //! Replis (fiches 97 et 98, à faire lire au contrôleur) : pas de sonde de chemin (toute case est traitée comme non
 //! marchable), hasard de l'animal (pas celui du niveau), boîte de pose debout, pas de bonus de saut, frottement par le
 //! drapeau `Drive.discard_friction`, `interruptable` constant (vrai), pas de condition de tentation ni d'amour.
+use crate::IFloor as _;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
@@ -212,7 +213,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 
 fn block_of(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
+    [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()]
 }
 
 fn level_mw(w: &World) -> &'static MobWorld<'static> {
@@ -328,10 +329,11 @@ fn prepare_tick(w: &mut World, e: Entity) {
 fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     let Some(p) = w.get::<LongJumpState>(e).map(|s| s.p) else { return };
     let mw = level_mw(w);
+    crate::pathsearch::adjacent_reset();
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     while !leap.candidates.is_empty() {
         let Some((target, _)) = next_candidate(w, e, leap, &p, mw) else { continue };
-        let here = [pos.x.floor() as i32, pos.z.floor() as i32];
+        let here = [pos.x.ifloor(), pos.z.ifloor()];
         let acceptable = if p.swim_rules { acceptable_landing(w, e, &p, mw, target) } else { default_landing(w, e, mw, target) };
         if here == [target[0], target[2]] || !acceptable {
             continue;
@@ -352,7 +354,8 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
 /// Whether a path of at most 8 blocks reaches the block (`Mob.create_path_raw(&[target], 0, 8.0).reached`): the search `pathfind` makes, without
 /// touching the animal. The frog's is the amphibious one that prefers shallow water (`nav.rs:20`), the goat's the walking one.
 fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
-    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+    use crate::pathsearch::Finder;
+    use horizon_client_lib::mobs::path::{Evaluator, PathMob};
     let (Some(pos), Some(body), Some(c), Some(sp)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Contact>(e), w.get::<NavParams>(e)) else { return false };
     let in_fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     if !c.on_ground && !in_fluid {
@@ -375,7 +378,7 @@ fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
     };
     crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let evaluator = if p.swim_rules { Evaluator::Amphibious { prefers_shallow: true } } else { Evaluator::Walk };
-    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).find(&[target], 8.0, 0, (sp.follow_range * 16.0).floor() as i32).is_some_and(|path| path.reached)
+    Finder::new(w.resource::<Level>().mw.0, &pm, evaluator).find(&[target], 8.0, 0, (sp.follow_range * 16.0).ifloor()).is_some_and(|path| path.reached)
 }
 
 /// `LongJumpToPreferredBlock.getJumpCandidate` : tant qu'il en veut, la première case tirée sur un bloc préféré, sinon la
@@ -420,8 +423,8 @@ fn acceptable_landing(w: &World, e: Entity, p: &Params, mw: &MobWorld, [x, y, z]
     if preferred(y) || preferred(y - 1) {
         return true;
     }
-    if mw.path_type_static(x, y, z) == PathType::Trapdoor
-        || mw.facts.is_air(mw.world.block(x, y, z)) && mw.path_type_static(x, y - 1, z) == PathType::Trapdoor
+    if crate::pathsearch::path_type_static(mw, x, y, z) == PathType::Trapdoor
+        || mw.facts.is_air(mw.world.block(x, y, z)) && crate::pathsearch::path_type_static(mw, x, y - 1, z) == PathType::Trapdoor
     {
         return true;
     }
@@ -430,7 +433,7 @@ fn acceptable_landing(w: &World, e: Entity, p: &Params, mw: &MobWorld, [x, y, z]
 
 /// `LongJumpToRandomPos.defaultAcceptableLandingSpot` : un bloc plein dessous et un type de chemin sans malus.
 fn default_landing(w: &World, e: Entity, mw: &MobWorld, [x, y, z]: [i32; 3]) -> bool {
-    let t = mw.path_type_static(x, y, z);
+    let t = crate::pathsearch::path_type_static(mw, x, y, z);
     let malus = w.get::<NavParams>(e).map_or(t.malus(), |n| n.malus[t as usize].unwrap_or_else(|| t.malus()));
     mw.facts.get(mw.world.block(x, y - 1, z)).solid_render && malus == 0.0
 }

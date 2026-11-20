@@ -5,6 +5,7 @@
 //! The Mob's `Swim` is the goal `float` here (the same jump). Left out: the baby's tempting stop distance (2.5, the adult's 3.5 is used), the
 //! sounds, the egg block of a birth is laid by `lay_egg` below as a `block_changes` change of the block at the parent's feet, the path test of
 //! the dig (see `sniff.rs`).
+use crate::IFloor as _;
 use super::Def;
 use crate::behaviours::{breed, float, Cap, Entry};
 use crate::brain::behaviours::{do_nothing, follow_temptation, look_at_player, look_at_player_sometimes, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
@@ -22,7 +23,7 @@ const SNIFF: sniff::Params = sniff::Params::DEFAULT;
 /// `Sniffer.spawnChildFromBreeding`: the egg is laid on the block at the parent's feet.
 fn lay_egg(w: &mut bevy_ecs::prelude::World, parent: bevy_ecs::prelude::Entity, _: bevy_ecs::prelude::Entity) {
     let Some(p) = w.get::<crate::cow::Pos>(parent).map(|p| p.0) else { return };
-    crate::blocks::set_state(w, [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], "minecraft:sniffer_egg", &[]);
+    crate::blocks::set_state(w, [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()], "minecraft:sniffer_egg", &[]);
 }
 
 pub static DEF: Def = Def {

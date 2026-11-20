@@ -1,5 +1,6 @@
 //! `MoveToTargetSink`: walks to the walk target (a path asked for, made again when the target moves by more than 2 blocks), for
 //! its duration or until it is reached or the walk is over. `path` is present while it runs.
+use crate::IFloor as _;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::stop_nav;
@@ -15,7 +16,7 @@ fn equip(w: &mut World, e: Entity, _: &Ctx) {
 }
 fn block_of(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
+    [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()]
 }
 fn reached(w: &World, e: Entity, walk: &WalkTarget) -> bool {
     walk.target.block(w).is_some_and(|p| {

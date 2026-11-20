@@ -13,6 +13,7 @@
 //! every query; its sparse-set markers (the goals that were running, `Moving`...) are taken off and kept in `Dormant`, and
 //! its entries of the timer wheel are taken out. Waking it shifts every deadline it holds by the time it slept (the
 //! `Mob`'s counters do not count while it is not ticked) and puts the entries back.
+use crate::IFloor as _;
 use crate::cow::{Clock, Crowded, Due, Following, Index, Moving, NeedsPath, Overlapping, Players, Recheck, Touching, Wheel};
 use bevy_ecs::{entity_disabling::Disabled, prelude::*};
 
@@ -79,9 +80,9 @@ const CHUNK: f64 = 16.0;
 impl Zone {
     fn build_grid(&mut self, origin: f64, width: usize, cell: f64) {
         self.width = width;
-        self.cx0 = (origin / CHUNK).floor() as i32;
+        self.cx0 = (origin / CHUNK).ifloor();
         self.cz0 = self.cx0;
-        self.col = (0..width).map(|c| ((origin + c as f64 * cell) / CHUNK).floor() as i32 - self.cx0).collect();
+        self.col = (0..width).map(|c| ((origin + c as f64 * cell) / CHUNK).ifloor() - self.cx0).collect();
         self.cw = self.col.last().copied().unwrap_or(0) + 1;
         self.first = vec![0; self.cw as usize + 1];
         for k in 0..self.cw as usize {
@@ -109,7 +110,7 @@ impl Zone {
         if !self.on {
             return true;
         }
-        let (cx, cz) = ((x / CHUNK).floor() as i32 - self.cx0, (z / CHUNK).floor() as i32 - self.cz0);
+        let (cx, cz) = ((x / CHUNK).ifloor() - self.cx0, (z / CHUNK).ifloor() - self.cz0);
         (0..self.cw).contains(&cx) && (0..self.cw).contains(&cz) && self.count[(cz * self.cw + cx) as usize] > 0
     }
     /// Whether chunk `(cx, cz)` (absolute chunk coordinates) ticks.
@@ -159,7 +160,7 @@ impl Zone {
         self.epoch += 1;
         let n = list.len().max(self.chunks.len());
         for i in 0..n {
-            let new = list.get(i).map(|p| ((p.0 / CHUNK).floor() as i32 - self.cx0, (p.1 / CHUNK).floor() as i32 - self.cz0));
+            let new = list.get(i).map(|p| ((p.0 / CHUNK).ifloor() - self.cx0, (p.1 / CHUNK).ifloor() - self.cz0));
             let old = self.chunks.get(i).copied();
             if new == old {
                 continue;
@@ -172,7 +173,7 @@ impl Zone {
             }
         }
         self.chunks.clear();
-        self.chunks.extend(list.iter().map(|p| ((p.0 / CHUNK).floor() as i32 - self.cx0, (p.1 / CHUNK).floor() as i32 - self.cz0)));
+        self.chunks.extend(list.iter().map(|p| ((p.0 / CHUNK).ifloor() - self.cx0, (p.1 / CHUNK).ifloor() - self.cz0)));
     }
     /// The chunks whose state changed (true: now ticks), after `sync_players`.
     fn transitions(&mut self) -> Vec<(usize, bool)> {

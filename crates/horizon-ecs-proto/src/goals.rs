@@ -2,6 +2,7 @@
 //! the list of its goals (module, priority, flags), the locks, what runs and what waits. It knows NO goal: a goal is a
 //! `behaviours::Module` (one file) that a species lists with its parameters (`species.rs`). A goal is woken by a
 //! deadline of the timer wheel or by an event and never scans; only a goal that runs ticks, through its own marker.
+use crate::IFloor as _;
 use crate::behaviours::{Change, Entry, Inst, Module};
 use crate::cow::*;
 use bevy_ecs::{prelude::*, schedule::Schedule};
@@ -251,7 +252,7 @@ impl Default for LazyLook {
     }
 }
 fn bin16(x: f64, z: f64) -> (i32, i32) {
-    ((x / 16.0).floor() as i32, (z / 16.0).floor() as i32)
+    ((x / 16.0).ifloor(), (z / 16.0).ifloor())
 }
 impl LazyLook {
     /// Whether a player can see an animal at (x, z); always true with the option off.
@@ -431,7 +432,7 @@ impl Player {
     }
 }
 fn bin(x: f64, z: f64) -> (i32, i32) {
-    ((x / 8.0).floor() as i32, (z / 8.0).floor() as i32)
+    ((x / 8.0).ifloor(), (z / 8.0).ifloor())
 }
 /// The players of the world, in 8-block bins; every change is an event (old, new) read by `online_events`.
 #[derive(Resource, Default)]
@@ -481,6 +482,19 @@ impl Online {
     }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
+        // A wide window over few players (a ghast's 100 blocks, 625 bins, none occupied): the occupied bins are visited, in the same (z, x) order.
+        if (i64::from(x1 - x0) + 1) * (i64::from(z1 - z0) + 1) > 2 * self.bins.len() as i64 {
+            let mut hit: Vec<(i32, i32)> = self.bins.iter().filter(|&(&(bx, bz), v)| !v.is_empty() && (x0..=x1).contains(&bx) && (z0..=z1).contains(&bz)).map(|(&(bx, bz), _)| (bz, bx)).collect();
+            hit.sort_unstable();
+            for (bz, bx) in hit {
+                for &id in &self.bins[&(bx, bz)] {
+                    if let Some(p) = self.get(id) {
+                        f(p);
+                    }
+                }
+            }
+            return;
+        }
         for bz in z0..=z1 {
             for bx in x0..=x1 {
                 for &id in self.bins.get(&(bx, bz)).into_iter().flatten() {
@@ -1305,7 +1319,7 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
     let e = crate::mount::nav_owner(w, e);
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         s.tx = at[0];
-        s.ty = at[1].floor() as i32;
+        s.ty = at[1].ifloor();
         s.tz = at[2];
     }
     if let Some(mut n) = w.get_mut::<Nav>(e) {

@@ -1,5 +1,6 @@
 //! Level reads for the block-breaking and trampling modules. Blocks come from the Mob's `MobWorld` (`blocks::world_of`), the
 //! flags from `Level` and `goals::mob_griefing`. A write is an event (`blocks::set_state`), applied at the next step.
+use crate::IFloor as _;
 use crate::blocks::{set_state, world_of};
 use crate::cow::{Bounds, Contact, Level, Vel};
 use crate::goals::mob_griefing;
@@ -42,9 +43,9 @@ pub fn cells_in(w: &World, e: Entity, inflate: f64) -> Vec<[i32; 3]> {
     };
     let (lo, hi) = (b.min_position(), b.max_position());
     let mut cells = Vec::new();
-    for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
-        for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
-            for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+    for x in lo.x.ifloor()..=hi.x.ifloor() {
+        for y in lo.y.ifloor()..=hi.y.ifloor() {
+            for z in lo.z.ifloor()..=hi.z.ifloor() {
                 cells.push([x, y, z]);
             }
         }

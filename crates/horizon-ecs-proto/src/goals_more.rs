@@ -1,4 +1,5 @@
 //! Helpers the goal modules call through `goals::`: repellents, a player's held item, the head, a spot away.
+use crate::IFloor as _;
 use crate::area::species_name;
 use crate::blocks::world_of;
 use crate::brain;
@@ -34,8 +35,8 @@ pub fn repellent_near(
 ) -> Option<[f64; 3]> {
     let at = arr(w.get::<Pos>(e)?.0);
     let mut best = None;
-    let r = horizontal.floor() as i32;
-    let (cx, cy, cz) = (at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32);
+    let r = horizontal.ifloor();
+    let (cx, cy, cz) = (at[0].ifloor(), at[1].ifloor(), at[2].ifloor());
     if !blocks.is_empty() {
         let mw = world_of(w);
         for x in cx - r..=cx + r {
