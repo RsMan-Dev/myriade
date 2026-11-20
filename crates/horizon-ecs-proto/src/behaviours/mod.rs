@@ -599,6 +599,7 @@ pub mod sleep_in_bed;
 pub mod sniff;
 pub mod sonic_boom;
 pub mod stroll_near_block;
+pub mod poi_strolls;
 pub mod suspect_anger;
 pub mod swallow_hold;
 pub mod swallow_item;
