@@ -735,9 +735,17 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// WalkNodeEvaluator.getFloorLevel(level, pos).
     pub fn static_floor(&self, x: i32, y: i32, z: i32) -> f64 {
-        let below = y.saturating_sub(1);
         if self.use_layer {
             let slot = self.slot(x, y, z);
+            return self.static_floor_at(slot, x, y, z);
+        }
+        f64::from(y.saturating_sub(1)) + f64::from(self.state(x, y.saturating_sub(1), z).top)
+    }
+    /// `static_floor` of a cell whose grid cell (`slot`) is known and reset, with the layer on.
+    #[inline(always)]
+    fn static_floor_at(&self, slot: Option<*mut u64>, x: i32, y: i32, z: i32) -> f64 {
+        let below = y.saturating_sub(1);
+        {
             if let Some(p) = slot {
                 // SAFETY: a grid cell.
                 let c = unsafe { (*p >> 56) as u8 };
@@ -758,9 +766,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             if let Some(p) = slot {
                 unsafe { *p = (*p & !(0xFFu64 << 56)) | (u64::from(c) << 56) };
             }
-            return if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) };
+            if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) }
         }
-        f64::from(below) + f64::from(self.state(x, below, z).top)
     }
     fn floor_level(&self, x: i32, y: i32, z: i32) -> f64 {
         let amphibious = matches!(self.eval, Evaluator::Amphibious { .. });
@@ -999,6 +1006,14 @@ impl<'a, 'w> Finder<'a, 'w> {
         bump(7);
         if self.use_layer {
             let slot = self.slot(x, y, z);
+            return self.cached_at(slot, x, y, z);
+        }
+        self.cached_off_layer(x, y, z)
+    }
+    /// `cached` of a cell whose grid cell (`slot`) is known and reset.
+    #[inline(always)]
+    fn cached_at(&mut self, slot: Option<*mut u64>, x: i32, y: i32, z: i32) -> PathType {
+        {
             if let Some(p) = slot {
                 // SAFETY: a grid cell.
                 let v = unsafe { (*p >> 48) as u8 };
@@ -1028,6 +1043,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
             return t;
         }
+    }
+    fn cached_off_layer(&mut self, x: i32, y: i32, z: i32) -> PathType {
         if let Some(t) = self.types.get(&(x, y, z)) {
             return *t;
         }
@@ -1293,11 +1310,11 @@ impl<'a, 'w> Finder<'a, 'w> {
         // SAFETY: a grid cell; `cached`/`static_floor`/`node_update_max` only fill fields of it.
         let mut e = unsafe { *p };
         if (e >> 48) as u8 == 0 {
-            self.cached(x, y, z);
+            self.cached_at(Some(p), x, y, z);
             e = unsafe { *p };
         }
         if (e >> 56) as u8 == 0xFF {
-            self.static_floor(x, y, z);
+            self.static_floor_at(Some(p), x, y, z);
             e = unsafe { *p };
         }
         let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);

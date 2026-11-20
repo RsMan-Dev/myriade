@@ -46,3 +46,8 @@ Suite lot 3 (non commitée): jump_arc::angle_trig (sin/cos des 4 angles mis en t
   Zombie absent de la table d'espèces du banc. Les recherches non atteintes s'arrêtent à ~42 nœuds (longueur de chemin 8), jamais au plafond 256.
 - Jar (javap) : `AmphibiousNodeEvaluator.prepare` pose WATER 0, WALKABLE 6, WATER_BORDER 4 : mêmes valeurs que `mt`. Malus 6 par case ouverte + h x 1,5 = A* proche d'un Dijkstra (~42 nœuds dans un rayon de 8) ; conforme au jeu.
 - Où va le coût grenouille : l'amphibie évalue 10 voisins par nœud (8 + haut/bas, `walk_neighbors`) et n'a pas le chemin fusionné `expand_walk` de la marche. Mesure : sans haut/bas, 16,4 -> 5,5 µs (plat, mêmes nœuds) et 22,4 -> 16,0 µs (accidenté, résultat légèrement différent : les nœuds créés par haut/bas ont des effets de bord). Piste identique : fast path du haut/bas (type Open -> `first_ground_below`), à prouver par `own_static_equal`. Non faite.
+
+## Passe 3 (coûts)
+- `cached`/`static_floor` scindés en `cached_at`/`static_floor_at` : le fast path de `find_accepted_p` réutilise le `slot` déjà calculé (plus de second `slot`+`fresh` par voisin). Identique (tests `own_` verts). Gain : frog plat 7,4 -> 7,1 us, cow plat 2,1 -> 1,9 us ; rough dans le bruit (13-14 us frog, 9-10 us cow).
+- Profil par ligne (frog plat) : le coût est réparti (slot/fresh, lecture type/sol, relaxation, tas ~3 %). Pas de point chaud unique ; plancher ~250 instr par voisin sans refonte de la grille.
+- Non fait : boîte de `try_jump_on` par la couche (formes partielles), tampon de colonnes pour `static_floor`/`first_ground_below` : pas de gain démontré dans ce passage.
