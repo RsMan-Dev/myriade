@@ -22,6 +22,14 @@ case "${1:-}" in
     mapfile -t species < <(printf '%s\n' "${species[@]}" | sort -u) ;;
   *) species=("$@") ;;
 esac
+# 0. every name must be a registered species (the process panics on an unknown HORIZON_SPECIES, but say it before building), and for --all the
+# species launched must be the species of BUILTIN: a mismatch means species run unnamed or not at all.
+for s in "${species[@]}"; do all | grep -qx "$s" || { echo "unknown species '$s' (not in the table of species/mod.rs; give it without the minecraft: prefix)"; exit 2; }; done
+if [ "${1:-}" = --all ]; then
+  nb=$(awk '/^pub static BUILTIN/{f=1} f{n+=gsub(/&[a-z_0-9]+::DEF/,"&")} f&&/\];/{print n; exit}' src/species/mod.rs)
+  [ "$nb" = "${#species[@]}" ] || { echo "--all launches ${#species[@]} species but BUILTIN has $nb"; exit 2; }
+  echo "species launched: ${#species[@]} = BUILTIN"
+fi
 # 1. build once, list the test executables
 ${BUILD:-cargo} test -p horizon-ecs-proto --profile fast --no-run --message-format=json 2> "$out/build.err" | python3 -c '
 import sys,json

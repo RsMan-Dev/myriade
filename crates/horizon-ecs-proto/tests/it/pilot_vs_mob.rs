@@ -466,7 +466,7 @@ fn avoid_6_spot_law_with_grass_walk_value() {
 // FleeSun
 // ======================================================================================================================
 fn run_species() -> String {
-    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into())
+    horizon_ecs_proto::cow::process_species_name()
 }
 fn is_zombie() -> bool {
     run_species() == "minecraft:zombie"
