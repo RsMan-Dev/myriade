@@ -19,11 +19,32 @@ struct Run {
     nearest: f64,
     reached_at: Option<usize>,
     inside: f64,
+    end: (f64, f64),
+    entered: Option<(f64, f64)>,
 }
-fn summarise(track: &[f64]) -> Run {
-    let reached_at = track.iter().position(|&d| d < 20.0).map(|t| t * 10);
-    let last = &track[track.len() * 2 / 3..];
-    Run { nearest: track.iter().copied().fold(f64::MAX, f64::min), reached_at, inside: last.iter().filter(|&&d| d < 36.0).count() as f64 / last.len() as f64 }
+fn norm((x, z): (f64, f64)) -> f64 {
+    (x * x + z * z).sqrt()
+}
+/// Chebyshev distance in sections from the position to the nearest village point's section (0 inside it).
+fn zone_gap((x, z): (f64, f64)) -> i32 {
+    let (sx, sz) = ((x.floor() as i32).div_euclid(16), (z.floor() as i32).div_euclid(16));
+    POINTS.iter().map(|(p, _)| (sx - p[0].div_euclid(16)).abs().max((sz - p[2].div_euclid(16)).abs())).min().unwrap_or(i32::MAX)
+}
+/// Stopped in the village zone: the end is within 2 sections of the village, and it has not gone on toward the village since it entered.
+fn stays_in_zone(r: &Run) -> bool {
+    r.entered.is_some_and(|e| zone_gap(r.end) <= 2 && norm(r.end) >= norm(e) - 1.0)
+}
+fn summarise(track: &[(f64, f64)]) -> Run {
+    let d: Vec<f64> = track.iter().map(|&p| norm(p)).collect();
+    let reached_at = d.iter().position(|&x| x < 20.0).map(|t| t * 10);
+    let last = &d[d.len() * 2 / 3..];
+    Run {
+        nearest: d.iter().copied().fold(f64::MAX, f64::min),
+        reached_at,
+        inside: last.iter().filter(|&&x| x < 36.0).count() as f64 / last.len() as f64,
+        end: track[track.len() - 1],
+        entered: track.iter().copied().find(|&p| zone_gap(p) <= 2),
+    }
 }
 fn ecs_run(villagers: bool) -> Run {
     ecs_seed(villagers, 21)
@@ -46,7 +67,7 @@ fn ecs_seed(villagers: bool, seed: u64) -> Run {
         h.tick();
         if t % 10 == 0 {
             let p = h.world.get::<Pos>(e).unwrap().0;
-            track.push((p.x.powi(2) + p.z.powi(2)).sqrt());
+            track.push((p.x, p.z));
         }
     }
     summarise(&track)
@@ -75,7 +96,7 @@ fn mob_seed(villagers: bool, id: u32) -> Run {
         r.step(Some(&view));
         if t % 10 == 0 {
             let p = r.mobs[g].position;
-            track.push((p.x.powi(2) + p.z.powi(2)).sqrt());
+            track.push((p.x, p.z));
         }
     }
     summarise(&track)
@@ -104,8 +125,20 @@ fn a_village_nobody_holds_is_seen_by_the_registry_and_not_by_the_villagers_memor
     eprintln!("the village held by nobody: ecs {e:?}\n                            mob {m:?}");
     // Jar: `MoveBackToVillageGoal.canUse` is false once `isVillage(pos)` (within 2 sections of the village, `findSectionClosestToVillage(.., 2)`),
     // so the registry's golem is pulled only up to that range (about 23 blocks from the bell here, not the 20 of the villagers' case) and stays.
-    assert!(e.nearest < 32.0 && e.inside > 0.8, "{e:?}");
+    assert!(stays_in_zone(&e) && e.inside > 0.8, "{e:?}");
     assert!(e.nearest < m.nearest - 10.0, "the Mob's golem does not see the village: ecs {e:?}, mob {m:?}");
+}
+
+/// The same stop, held to the `Mob` too. Not yet true: the `Mob` keeps walking past the zone's entrance.
+#[test]
+#[ignore = "Mob non conforme au jar : MoveBackToVillage ne s'arrête pas à l'entrée de la zone village (Mob 40,2 blocs, jar ~23)"]
+fn the_village_nobody_holds_stops_the_ecs_golem_and_the_mob_golem_in_the_zone() {
+    if skip() {
+        return;
+    }
+    let (e, m) = (ecs_run(false), mob_run(false));
+    eprintln!("the village held by nobody: ecs {e:?}\n                            mob {m:?}");
+    assert!(stays_in_zone(&e) && stays_in_zone(&m) && e.inside > 0.8 && m.inside > 0.8, "ecs {e:?}, mob {m:?}");
 }
 
 /// The return time is a random walk (the golem is 3 sections away, the pull toward the village reaches 2): one seed proves nothing. The law of
