@@ -4,8 +4,8 @@
 //! when idle; an `AVOID_TARGET` makes it retreat at 1.3 to 15 blocks. The zoglin conversion and its ambient sound are goals.
 //! Left out (see `suivi/ecs-portage/reste/hoglin.md`): the retreat and fight sounds, the baby recoil, the walk value.
 use super::Def;
-use crate::behaviours::{ambient_sound, breed, convert_timer, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
-use crate::brain::behaviours::{pacify, walk_away};
+use crate::behaviours::{ambient_sound, breed, convert_timer, float, retreat_on_hurt, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
+use crate::brain::behaviours::{look_at_target_sink, move_to_target_sink, pacify, walk_away};
 use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, repellent_and_adult};
 use crate::brain::*;
 use bevy_ecs::prelude::*;
@@ -36,6 +36,8 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&TARGETING),
     ],
     goals: &[
+        // `HoglinAi.wasHurtBy`, baby: it retreats from the attacker.
+        Entry::new(&retreat_on_hurt::MODULE, 0, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         // `Hoglin.aiStep`: more than 300 ticks where piglins cannot live (the host's `UnsafePlace`) and it becomes a zoglin.
         Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300 }),
@@ -70,6 +72,9 @@ pub static DEF: Def = Def {
         pick: &["fight", "avoid", "idle"],
         initial: &[],
         behaviours: &[
+            // `HoglinAi.initCoreActivity`: `LookAtTargetSink` and `MoveToTargetSink` carry out the walks the activities ask for.
+            BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
+            BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry {
                 behaviour: &pacify::BEHAVIOUR,
                 activity: "fight",

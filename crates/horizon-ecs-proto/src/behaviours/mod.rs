@@ -244,6 +244,7 @@ pub mod spell_use;
 pub mod ranged_crossbow;
 pub mod stroll;
 pub mod hurt_by;
+pub mod retreat_on_hurt;
 pub mod nearest_target;
 pub mod panda_lie_on_back;
 pub mod panda_roll;
@@ -400,6 +401,7 @@ pub static TABLE: &[&Module] = &[
     &float::MODULE,
     &panic::MODULE,
     &hurt_by::MODULE,
+    &retreat_on_hurt::MODULE,
     &nearest_target::MODULE,
     &melee::MODULE,
     &guardian_beam::MODULE,

@@ -183,3 +183,44 @@ fn hoglins_convert_after_300_ticks_as_a_mob_does() {
     eprintln!("conversion ticks: mob {mob_ticks:?} ecs {ecs_ticks:?}");
     assert_eq!(mob_ticks, ecs_ticks, "the tick of every hoglin conversion");
 }
+
+/// `HoglinAi.wasHurtBy`: a baby retreats from the attacker (`AVOID_TARGET`, flees away), an adult does not retreat but retaliates. A player
+/// at x=-3 hits a hoglin at x=0.5: both babies flee east, the draws (level random for the Mob, own generator here) only set the duration.
+#[test]
+fn a_hurt_baby_hoglin_flees_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:hoglin"));
+    horizon_client_lib::mobs::finalize::set_age(&mut r.mobs[i], -24000, None);
+    let mut h = Herd::with_slab(60, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let hoglin = table.iter().position(|s| s.name == "minecraft:hoglin").unwrap();
+    let e = spawn_species(&mut h.world, &table[hoglin], 0.5, 0.5, 1000);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
+    horizon_ecs_proto::behaviours::follow_parent::make_baby(&mut h.world, e, 24000);
+    let at = Vec3::new(-3.0, 1.0, 0.5);
+    h.set_online(&[(-3.0, 0.5)]);
+    let view = player_view(at, None);
+    for _ in 0..3 {
+        r.step(Some(&view));
+        h.tick();
+    }
+    r.hit(i, 1.0, [-3.0, 1.0, 0.5]);
+    h.hit_by(e, 1.0, 1);
+    let (mut mob_peak, mut ecs_peak) = (0.5f64, 0.5f64);
+    let (mut mob_avoid, mut ecs_avoid) = (false, false);
+    for _ in 0..300 {
+        r.step(Some(&view));
+        h.tick();
+        mob_peak = mob_peak.max(r.mobs[i].position.x);
+        ecs_peak = ecs_peak.max(h.world.get::<Pos>(e).map_or(ecs_peak, |p| p.0.x));
+        mob_avoid |= r.mobs[i].extra.piglin.avoid.is_some();
+        ecs_avoid |= horizon_ecs_proto::species::hoglin::retreating(&h.world, e);
+    }
+    eprintln!("baby flee: mob peak {mob_peak} avoid {mob_avoid}; ecs peak {ecs_peak} avoid {ecs_avoid}");
+    assert!(mob_avoid && ecs_avoid, "both keep away from the attacker (mob {mob_avoid}, ecs {ecs_avoid})");
+    assert!(mob_peak > 3.0 && ecs_peak > 3.0, "both flee east, away from x=-3 (mob {mob_peak}, ecs {ecs_peak})");
+}
