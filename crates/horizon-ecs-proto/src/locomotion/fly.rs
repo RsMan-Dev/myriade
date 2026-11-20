@@ -135,7 +135,7 @@ fn pathfind(
         let max_len = sp.follow_range;
         let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
         nav.searches += 1;
-        crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        crate::pathsearch::probe!(crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
         let path = Finder::new(mw, &pm, Evaluator::Fly).find(&[target], max_len, nav.reach, (max_len * 16.0).ifloor());
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {

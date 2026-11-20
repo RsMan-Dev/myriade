@@ -175,7 +175,7 @@ fn pathfind(
         let path = (fluid || swp.amphibious.is_some() || swp.breach)
             .then(|| {
                 nav.searches += 1;
-                crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::pathsearch::probe!(crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
                 Finder::new(mw, &pm, evaluator).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32)
             })
             .flatten();

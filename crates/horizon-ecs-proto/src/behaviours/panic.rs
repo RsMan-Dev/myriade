@@ -142,7 +142,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     w.get_mut::<Nav>(e).unwrap().speed = p.speed;
     let mut s = w.get_mut::<Stroll>(e).unwrap();
     (s.tx, s.ty, s.tz) = (x, y, z);
-    ASKS[1].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::pathsearch::probe!(ASKS[1].fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     w.entity_mut(e).insert(NeedsPath);
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {

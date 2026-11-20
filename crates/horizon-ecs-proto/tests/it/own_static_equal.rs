@@ -1,6 +1,7 @@
 //! The prototype's `path_type_static` (neighbour answers worked out once per state per query) against Horizon's, on every cell of a
 //! slab of fire, berries, water, lava, doors, fences, torches and cactus; and the amphibious / short searches of the long jump against
 //! Horizon's `Finder`.
+#![cfg(feature = "probes")]
 use crate::common::*;
 use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::Vec3;

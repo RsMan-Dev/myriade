@@ -8,20 +8,36 @@ use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
 
 
+#[cfg(feature = "probes")]
+macro_rules! probe { ($($s:tt)*) => { $($s)* }; }
+#[cfg(not(feature = "probes"))]
+macro_rules! probe { ($($s:tt)*) => {}; }
+pub(crate) use probe;
 /// Counters of the search (bench option): `ON` set by the benches with PATHCOUNT.
+#[cfg(feature = "probes")]
 pub static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(feature = "probes")]
 pub const NAMES: [&str; 24] = ["opened", "neighbours_pushed", "find_accepted", "try_jump", "first_ground", "node()", "node_new", "cached()", "cached_miss", "path_type()", "path_type_miss(statics)", "static()", "from_state", "from_state_miss(world cache)", "block_read_floor", "block_read_other", "block_read_neigh", "check_neigh", "check_neigh_scan", "within_bb(alloc)", "has_collisions", "has_collisions_miss", "heap_ops(ins/pop/chg)", "heap_steps"];
+#[cfg(feature = "probes")]
 pub static C: [std::sync::atomic::AtomicU64; 24] = [const { std::sync::atomic::AtomicU64::new(0) }; 24];
+#[cfg(feature = "probes")]
 pub const SEC: [&str; 16] = ["Finder::new", "Finder drop", "find_accepted", "walk_neighbors", "heap ops", "within_bb", "loop: neighbours", "heap_pop", "find (whole)", "static_floor", "cached()", "after loop", "start()", "node()", "path_type()", "best_h"];
+#[cfg(feature = "probes")]
 pub static ACC: [std::sync::atomic::AtomicU64; 16] = [const { std::sync::atomic::AtomicU64::new(0) }; 16];
+#[cfg(feature = "probes")]
 thread_local! { static CTR: Option<crate::instr::Counter> = crate::instr::Counter::new(); }
+#[cfg(feature = "probes")]
 pub struct Sec(usize, u64);
+#[cfg(feature = "probes")]
 pub static MASK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+#[cfg(feature = "probes")]
 pub static CNT: [std::sync::atomic::AtomicU64; 16] = [const { std::sync::atomic::AtomicU64::new(0) }; 16];
 /// Instructions between two readings of the counter around nothing: the guard's own cost, to take off per guard.
+#[cfg(feature = "probes")]
 pub fn calibrate(i: usize) -> u64 {
     let (a, n) = (ACC[i].load(std::sync::atomic::Ordering::Relaxed), CNT[i].load(std::sync::atomic::Ordering::Relaxed));
     for _ in 0..20000 {
+        #[cfg(feature = "probes")]
         let _g = sec(i);
     }
     let o = (ACC[i].load(std::sync::atomic::Ordering::Relaxed) - a) / 20000;
@@ -30,19 +46,24 @@ pub fn calibrate(i: usize) -> u64 {
     o
 }
 /// The counters and guards exist only in a build with `PATH_PROBE` set in the environment (they cost instructions on the hot path).
+#[cfg(feature = "probes")]
 const REP: u32 = match option_env!("PATH_REP") { Some(v) => (v.as_bytes()[0] - b'0') as u32, None => 0 };
+#[cfg(feature = "probes")]
 const PROBE: bool = option_env!("PATH_PROBE").is_some();
+#[cfg(feature = "probes")]
 #[inline(always)]
 fn sec(i: usize) -> Option<Sec> {
     if !PROBE { return None; }
     if MASK.load(std::sync::atomic::Ordering::Relaxed) & (1 << i) == 0 { return None; }
     CTR.with(|c| c.as_ref().map(|c| Sec(i, c.read())))
 }
+#[cfg(feature = "probes")]
 impl Drop for Sec {
     fn drop(&mut self) {
         CTR.with(|c| if let Some(c) = c { ACC[self.0].fetch_add(c.read() - self.1, std::sync::atomic::Ordering::Relaxed); CNT[self.0].fetch_add(1, std::sync::atomic::Ordering::Relaxed); });
     }
 }
+#[cfg(feature = "probes")]
 #[inline(always)]
 fn bump(i: usize) {
     if PROBE && ON.load(std::sync::atomic::Ordering::Relaxed) {
@@ -97,7 +118,7 @@ pub fn check_neighbours_cached(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType
         if !neighbourhood_may_answer(w, x, y, z, &mut |id| answer(id) > 1) {
             return t;
         }
-        bump(18);
+        probe!(bump(18));
         let mut column: ((i32, i32), Option<&horizon_client_render::chunk::Chunk>) = ((i32::MIN, i32::MIN), None);
         for dx in -1..=1 {
             for dy in -1..=1 {
@@ -111,7 +132,7 @@ pub fn check_neighbours_cached(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType
                     if column.0 != key {
                         column = (key, w.world.chunks.get(&key).map(|c| &**c));
                     }
-                    bump(16);
+                    probe!(bump(16));
                     let state = column.1.map_or(w.world.air, |chunk| chunk.block(nx & 15, ny, nz & 15));
                     let code = answer(state.0);
                     if code > 1 {
@@ -231,9 +252,9 @@ pub fn may_hold_water(t: PathType) -> bool {
     matches!(t, PathType::Blocked | PathType::DamageCautious | PathType::Fence | PathType::Fire | PathType::Leaves | PathType::Rail | PathType::Trapdoor | PathType::Water)
 }
 pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
-    bump(12);
+    probe!(bump(12));
     w.world.cached_path_type(BlockPos::new(x, y, z), || {
-        bump(13);
+        probe!(bump(13));
         let state = block_at(w, x, y, z);
         w.mob_hooks
             .and_then(|hooks| hooks.block_path_type(state, [x, y, z]))
@@ -245,7 +266,7 @@ pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
 /// saturates: a finite coordinate at `i32::MIN` or `i32::MAX` is never
 /// refused, and never overflows a checked build either (arismoko/horizon#4443).
 pub fn path_type_static(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
-    bump(11);
+    probe!(bump(11));
     let t = path_type_from_state(w, x, y, z);
     if t == PathType::Open && y > w.world.bottom_y() {
         match path_type_from_state(w, x, y.saturating_sub(1), z) {
@@ -268,7 +289,7 @@ pub fn path_type_static(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
 /// (`getAdjacentBlockPathType`) decides it. The neighbour step saturates, so a
 /// node at the edge of the `i32` range still reads its eight neighbours (arismoko/horizon#4443).
 pub fn check_neighbours(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType) -> PathType {
-    bump(17);
+    probe!(bump(17));
     if w.mob_hooks.is_none() {
         return check_neighbours_cached(w, x, y, z, t);
     }
@@ -321,7 +342,7 @@ pub fn check_neighbours(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType) -> Pa
 /// the same block instead of overflowing (arismoko/horizon#4443).
 pub fn floor_level(w: &MobWorld, x: i32, y: i32, z: i32) -> f64 {
     let below = y.saturating_sub(1);
-    bump(14);
+    probe!(bump(14));
     f64::from(below) + f64::from(w.data.state(block_at(w, x, below, z)).top)
 }
 
@@ -477,6 +498,7 @@ pub struct Finder<'a, 'w> {
 
 impl<'a, 'w> Drop for Finder<'a, 'w> {
     fn drop(&mut self) {
+        #[cfg(feature = "probes")]
         let _g = sec(1);
         TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
@@ -527,6 +549,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         self
     }
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
+        #[cfg(feature = "probes")]
         let _g = sec(0);
         adjacent_reset();
         LAYER.with(|l| {
@@ -583,7 +606,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 stamp = 1;
             }
         }
-        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk | Evaluator::Amphibious { .. }) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
+        let use_layer = layer_on() && matches!(eval, Evaluator::Walk | Evaluator::Amphibious { .. }) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
         if use_layer && stamp & 63 == 0 {
             layer_evict();
         }
@@ -684,22 +707,22 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     // --- world access -------------------------------------------------
     fn state(&self, x: i32, y: i32, z: i32) -> data::StateData {
-        bump(15);
+        probe!(bump(15));
         self.w.data.state(block_at(self.w, x, y, z))
     }
     fn pathfindable(&self, x: i32, y: i32, z: i32, kind: PathComputationType) -> bool {
-        bump(15);
+        probe!(bump(15));
         self.w.data.pathfindable(block_at(self.w, x, y, z), kind)
     }
     fn type_from_state(&self, x: i32, y: i32, z: i32) -> PathType {
         path_type_from_state(self.w, x, y, z)
     }
     fn fluid(&self, x: i32, y: i32, z: i32) -> Fluid {
-        bump(15);
+        probe!(bump(15));
         self.w.facts.get(block_at(self.w, x, y, z)).fluid
     }
     fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
-        bump(15);
+        probe!(bump(15));
         self.w.facts.is_air(block_at(self.w, x, y, z))
     }
     /// The layer's section of a cell: from the per-search table when it is within reach of the mob, else from the layer.
@@ -779,8 +802,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
     }
     fn has_collisions(&mut self, b: Aabb) -> bool {
+        #[cfg(feature = "probes")]
         let _g = sec(6);
-        bump(20);
+        probe!(bump(20));
         let (lo, hi) = (b.min_position(), b.max_position());
         let key = [
             lo.x.to_bits(),
@@ -793,7 +817,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         if let Some(v) = self.collisions.get(&key) {
             return *v;
         }
-        bump(21);
+        probe!(bump(21));
         let v = match self.occ {
             Some(o) => !o.no_collision(horizon_client_render::collisions::SceneCollisions { world: self.w.world, binding: self.w.collision, subject: None }, b),
             None => !self.w.no_collision(b),
@@ -806,8 +830,9 @@ impl<'a, 'w> Finder<'a, 'w> {
     /// The world doesn't change during a query, so each position's type is
     /// worked out once.
     fn path_type(&self, x: i32, y: i32, z: i32) -> PathType {
+        #[cfg(feature = "probes")]
         let _g = sec(14);
-        bump(9);
+        probe!(bump(9));
         if self.use_layer {
             let idx = layer_idx(x, y, z);
             let sect = self.sect(x, y, z);
@@ -816,7 +841,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             if *cell != 0 {
                 return PathType::ALL[usize::from(*cell - 1)];
             }
-            bump(10);
+            probe!(bump(10));
             let t = self.compute_path_type(x, y, z);
             *cell = t as u8 + 1;
             return t;
@@ -824,12 +849,13 @@ impl<'a, 'w> Finder<'a, 'w> {
         if let Some(t) = self.statics.borrow().get(&(x, y, z)) {
             return *t;
         }
-        bump(10);
+        probe!(bump(10));
         let t = self.compute_path_type(x, y, z);
         self.statics.borrow_mut().insert((x, y, z), t);
         t
     }
     fn compute_path_type(&self, x: i32, y: i32, z: i32) -> PathType {
+        #[cfg(feature = "probes")]
         let _g = sec(1);
         match self.eval {
             Evaluator::Fly => self.fly_path_type(x, y, z),
@@ -893,8 +919,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         t
     }
     fn within_bb(&self, x: i32, y: i32, z: i32) -> Small {
+        #[cfg(feature = "probes")]
         let _g = sec(5);
-        bump(19);
+        probe!(bump(19));
         let mut out = Small::new();
         let mp = block_pos(self.mob);
         for dx in 0..self.entity_width {
@@ -929,6 +956,7 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// WalkNodeEvaluator.getPathTypeOfMob.
     fn path_type_of_mob(&self, x: i32, y: i32, z: i32) -> PathType {
+        #[cfg(feature = "probes")]
         let _g = sec(0);
         if let Evaluator::Swim { .. } = self.eval {
             return self.swim_path_type(x, y, z);
@@ -1003,8 +1031,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
     }
     fn cached(&mut self, x: i32, y: i32, z: i32) -> PathType {
+        #[cfg(feature = "probes")]
         let _g = sec(10);
-        bump(7);
+        probe!(bump(7));
         if self.use_layer {
             let slot = self.slot(x, y, z);
             return self.cached_at(slot, x, y, z);
@@ -1033,7 +1062,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 }
                 return PathType::ALL[usize::from(v - 1)];
             }
-            bump(8);
+            probe!(bump(8));
             self.saw_rail.set(false);
             let t = self.path_type_of_mob(x, y, z);
             if !self.saw_rail.get() {
@@ -1051,7 +1080,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         if let Some(t) = self.types.get(&(x, y, z)) {
             return *t;
         }
-        bump(8);
+        probe!(bump(8));
         let t = self.path_type_of_mob(x, y, z);
         self.types.insert((x, y, z), t);
         t
@@ -1100,7 +1129,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         Some(unsafe { self.gp.add((dy * GW + dz) * GW + dx) })
     }
     fn node(&mut self, x: i32, y: i32, z: i32) -> u32 {
-        bump(5);
+        probe!(bump(5));
         if let Some(p) = self.slot(x, y, z) {
             // SAFETY: `slot` gives a cell of the grid.
             let e = unsafe { *p };
@@ -1108,7 +1137,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 return e as u32;
             }
             let i = self.nodes.len() as u32;
-            bump(6);
+            probe!(bump(6));
             self.nodes.push(Node::new(x, y, z));
             // SAFETY: as above, `p` from `slot()`; the grid is not reallocated by the push (it is a different Vec).
             unsafe { *p = (e & !0xFFFF_FFFF) | u64::from(i) };
@@ -1118,7 +1147,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             return *i;
         }
         let i = self.nodes.len() as u32;
-        bump(6);
+        probe!(bump(6));
         self.nodes.push(Node::new(x, y, z));
         self.index.insert((x, y, z), i);
         i
@@ -1259,6 +1288,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         )
     }
     fn can_reach_without_collision(&mut self, n: u32) -> bool {
+        #[cfg(feature = "probes")]
         let _g = sec(7);
         let (nx, ny, nz) = {
             let node = &self.nodes[n as usize];
@@ -1303,7 +1333,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
-        if self.use_layer && !Self::partial_collision(current) && !(self.lbit != 0 && NO_AMPH_FAST.load(std::sync::atomic::Ordering::Relaxed)) {
+        if self.use_layer && !Self::partial_collision(current) && !(self.lbit != 0 && no_amph_fast()) {
             if let Some(p) = self.slot(x, y, z) {
                 return self.find_accepted_p(p, x, y, z, jump, node_height, dir, current);
             }
@@ -1374,9 +1404,10 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
+        #[cfg(feature = "probes")]
         let _g = sec(2);
         let amphibious = matches!(self.eval, Evaluator::Amphibious { .. });
-        bump(2);
+        probe!(bump(2));
         let max_y_target = self.floor_level(x, y, z);
         if max_y_target - node_height > self.jump_height() {
             return None;
@@ -1426,7 +1457,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
-        bump(3);
+        probe!(bump(3));
         let lazy = std::mem::take(&mut self.lazy_box);
         let above = self.find_accepted(x, y + 1, z, jump - 1, node_height, dir, current)?;
         if self.mob.width >= 1.0 || lazy && self.nodes[above as usize].kind != PathType::Water {
@@ -1480,7 +1511,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         best
     }
     fn first_ground_below(&mut self, x: i32, y: i32, z: i32) -> u32 {
-        bump(4);
+        probe!(bump(4));
         let mut cy = y - 1;
         while cy >= self.w.world.bottom_y() {
             if y - cy > self.mob.max_fall_distance {
@@ -1536,6 +1567,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         })
     }
     fn walk_neighbors(&mut self, pos: u32, out: &mut Vec<u32>) {
+        #[cfg(feature = "probes")]
         let _g = sec(3);
         let (px, py, pz) = {
             let n = &self.nodes[pos as usize];
@@ -1921,14 +1953,14 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     // --- binary heap (vanilla BinaryHeap) --------------------------------
     fn heap_insert(&mut self, n: u32) {
-        bump(22);
+        probe!(bump(22));
         let i = self.heap.len();
         self.heap.push((self.nodes[n as usize].f, n));
         self.nodes[n as usize].heap = i as i32;
         self.up_heap(i);
     }
     fn heap_pop(&mut self) -> u32 {
-        bump(22);
+        probe!(bump(22));
         let popped = self.heap[0].1;
         let last = self.heap.pop().unwrap_or((0.0, popped));
         if !self.heap.is_empty() {
@@ -1940,7 +1972,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         popped
     }
     fn change_cost(&mut self, n: u32, cost: f32) {
-        bump(22);
+        probe!(bump(22));
         let old = self.nodes[n as usize].f;
         self.nodes[n as usize].f = cost;
         let i = self.nodes[n as usize].heap as usize;
@@ -1954,7 +1986,7 @@ impl<'a, 'w> Finder<'a, 'w> {
     fn up_heap(&mut self, mut i: usize) {
         let entry = self.heap[i];
         while i > 0 {
-            bump(23);
+            probe!(bump(23));
             let parent_i = (i - 1) >> 1;
             let parent = self.heap[parent_i];
             if entry.0 >= parent.0 {
@@ -1971,7 +2003,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let entry = self.heap[i];
         let size = self.heap.len();
         loop {
-            bump(23);
+            probe!(bump(23));
             let left_i = 1 + (i << 1);
             let right_i = left_i + 1;
             if left_i >= size {
@@ -2001,6 +2033,7 @@ impl<'a, 'w> Finder<'a, 'w> {
     // --- PathFinder.findPath ------------------------------------------------
     #[inline(always)]
     fn best_h(&self, n: u32, targets: &mut [Target]) -> f32 {
+        #[cfg(feature = "probes")]
         let _g = sec(15);
         if targets.is_empty() {
             return 0.0;
@@ -2049,10 +2082,12 @@ impl<'a, 'w> Finder<'a, 'w> {
         reach_range: i32,
         max_visited: i32,
     ) -> Option<Path> {
+        #[cfg(feature = "probes")]
         let _g = sec(8);
+        #[cfg(feature = "probes")]
         let g12 = sec(12);
         let from = self.start()?;
-        drop(g12);
+        probe!(drop(g12));
         let mut targets: Vec<Target> = positions
             .iter()
             .map(|p| {
@@ -2089,10 +2124,11 @@ impl<'a, 'w> Finder<'a, 'w> {
             if count >= max_visited {
                 break;
             }
-            bump(0);
+            probe!(bump(0));
+            #[cfg(feature = "probes")]
             let g7 = sec(7);
             let current = self.heap_pop();
-            drop(g7);
+            probe!(drop(g7));
             self.nodes[current as usize].closed = true;
             let mut any = false;
             for t in targets.iter_mut() {
@@ -2108,9 +2144,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 continue;
             }
             if walk_fast {
-                if REP > 0 {
-                    self.expand_walk(current, &mut targets, max_path_length);
-                }
+                probe! { if REP > 0 { self.expand_walk(current, &mut targets, max_path_length); } }
                 self.expand_walk(current, &mut targets, max_path_length);
                 continue;
             }
@@ -2122,13 +2156,14 @@ impl<'a, 'w> Finder<'a, 'w> {
                 Evaluator::Swim { .. } => self.swim_neighbors(current, &mut neighbors),
                 Evaluator::Fly => self.fly_neighbors(current, &mut neighbors),
             }
+            #[cfg(feature = "probes")]
             let g6 = sec(6);
             let (cx, cy, cz, cg, cw) = {
                 let c = &self.nodes[current as usize];
                 (c.x, c.y, c.z, c.g, c.walked)
             };
             for &neighbor in &neighbors {
-                bump(1);
+                probe!(bump(1));
                 let nn = &mut self.nodes[neighbor as usize];
                 let distance = nn.distance(cx, cy, cz);
                 let walked = cw + distance;
@@ -2148,9 +2183,10 @@ impl<'a, 'w> Finder<'a, 'w> {
                     }
                 }
             }
-            drop(g6);
+            probe!(drop(g6));
         }
-        LAST_VISITED.store(count, std::sync::atomic::Ordering::Relaxed);
+        probe!(LAST_VISITED.store(count, std::sync::atomic::Ordering::Relaxed));
+        #[cfg(feature = "probes")]
         let g11 = sec(11);
         let reached: Vec<&Target> = targets.iter().filter(|t| t.reached).collect();
         let build = |s: &Self, t: &Target, reached: bool| -> Option<Path> {
@@ -2187,7 +2223,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                         .then(a.nodes.len().cmp(&b.nodes.len()))
                 })
         };
-        drop(g11);
+        probe!(drop(g11));
         out
     }
 }
@@ -2268,8 +2304,19 @@ impl Small {
 /// `path_type_static` of a cell does not depend on the mob: one byte per block (0 unknown, else 1 + the type), filled the first
 /// time a search asks, shared by every search, dropped around a change (`layer_changed`). 4096 bytes a section.
 /// The herd's navigation uses this search instead of Horizon's `Finder` (bench option `OWN`).
+#[cfg(feature = "probes")]
 pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[cfg(feature = "probes")]
 pub static LAYER_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// The bench switches, their default without the `probes` feature.
+#[cfg(feature = "probes")]
+pub fn use_own() -> bool { USE_OWN.load(std::sync::atomic::Ordering::Relaxed) }
+#[cfg(not(feature = "probes"))]
+pub fn use_own() -> bool { true }
+#[cfg(feature = "probes")]
+pub fn layer_on() -> bool { LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) }
+#[cfg(not(feature = "probes"))]
+pub fn layer_on() -> bool { true }
 /// `stat`: 0 unknown, else 1 + the type; `top`: 0xFF unknown, else the collision top of the block in sixteenths (0xFE: not a multiple of 1/16, read the block).
 pub struct Sect {
     stat: [u8; 4096],
@@ -2295,9 +2342,15 @@ thread_local! {
     static KSTAMP: std::cell::Cell<u16> = const { std::cell::Cell::new(0) };
 }
 /// Bench only: switches the amphibious fast path off, to measure its gain in one binary.
-/// Bench only: nodes opened by the last search.
-pub static LAST_VISITED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+#[cfg(feature = "probes")]
 pub static NO_AMPH_FAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(feature = "probes")]
+pub fn no_amph_fast() -> bool { NO_AMPH_FAST.load(std::sync::atomic::Ordering::Relaxed) }
+#[cfg(not(feature = "probes"))]
+pub fn no_amph_fast() -> bool { false }
+/// Bench only: nodes opened by the last search.
+#[cfg(feature = "probes")]
+pub static LAST_VISITED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 const AMPH_BIT: u64 = 1 << 63;
 const AMPH_MIX: u64 = 0x9E37_79B9_7F4A_7C15;
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
@@ -2399,10 +2452,13 @@ pub fn layer_size() -> (usize, usize) {
     LAYER.with(|l| (l.borrow().map.len(), l.borrow().map.len() * 8192 + l.borrow().pmap.len() * 4096))
 }
 
+#[cfg(feature = "probes")]
 static OVH: [std::sync::atomic::AtomicU64; 16] = [const { std::sync::atomic::AtomicU64::new(0) }; 16];
+#[cfg(feature = "probes")]
 pub fn set_ovh(i: usize) {
     OVH[i].store(calibrate(i), std::sync::atomic::Ordering::Relaxed);
 }
+#[cfg(feature = "probes")]
 pub fn ovh(i: usize) -> u64 {
     OVH[i].load(std::sync::atomic::Ordering::Relaxed)
 }

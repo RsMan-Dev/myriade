@@ -1,6 +1,7 @@
 //! One cow tempted by one player who walks a fixed line then turns (200 ticks), on both sides: the ticks where a path
 //! is asked and where the `Finder` really runs, with the player's block, the path's target, whether it is done, the
 //! distance and the nodes left.
+#![cfg(feature = "probes")]
 use crate::common;
 use common::*;
 use horizon_client_lib::mobs::nav::FINDER_CALLS;

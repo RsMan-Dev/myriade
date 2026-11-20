@@ -140,7 +140,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let speed = w.get::<StrollGoal>(e).map_or(1.0, |g| g.speed);
     w.get_mut::<Nav>(e).unwrap().speed = speed;
-    ASKS[0].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::pathsearch::probe!(ASKS[0].fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     w.entity_mut(e).insert(NeedsPath);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {

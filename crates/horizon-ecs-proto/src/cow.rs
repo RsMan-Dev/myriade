@@ -2109,8 +2109,8 @@ pub(crate) fn pathfind(
         let path = (c.on_ground || fluid || amph.is_some())
             .then(|| {
                 nav.searches += 1;
-                crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if crate::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) {
+                crate::pathsearch::probe!(crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+                if crate::pathsearch::use_own() {
                     crate::pathsearch::Finder::new(mw, &pm, eval()).with_occ(level.occ).find(&[target], max_len, nav.reach, max_visited)
                 } else {
                     Finder::new(mw, &pm, eval()).find(&[target], max_len, nav.reach, max_visited)
@@ -2144,8 +2144,8 @@ pub(crate) fn pathfind(
         }
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
-                crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
-                crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::pathsearch::probe!(crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed));
+                crate::pathsearch::probe!(crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
                 nav.path = Some(p);
                 // `PathNavigation.moveTo` sets `lastStuckCheck` before the tick of the navigation counts (the first tick of a path is `+1`).
                 nav.last_check = now.saturating_sub(1);

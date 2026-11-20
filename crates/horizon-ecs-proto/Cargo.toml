@@ -24,3 +24,35 @@ libc = "0.2"
 default = ["sparse"]
 # The sleeping marker in sparse-set storage instead of a table (measured against the table).
 sparse = []
+# Bench probes (atomic counters of the searches and of the long jump), absent from a build without it.
+probes = []
+
+[[bin]]
+name = "path_bench"
+path = "src/bin/path_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "prof_bench"
+path = "src/bin/prof_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "scale_bench"
+path = "src/bin/scale_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "floor_bench"
+path = "src/bin/floor_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "goal_bench"
+path = "src/bin/goal_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "cow_bench"
+path = "src/bin/cow_bench.rs"
+required-features = ["probes"]

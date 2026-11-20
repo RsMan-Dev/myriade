@@ -1371,14 +1371,18 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
 
 
 /// Path searches asked, by goal: 0 stroll, 1 panic, 2 tempt, 3 breed, 4 follow parent, 5 melee (benches read them).
+#[cfg(feature = "probes")]
 pub static ASKS: [std::sync::atomic::AtomicU64; 32] = [const { std::sync::atomic::AtomicU64::new(0) }; 32];
 /// The searches `pathfind` ran.
+#[cfg(feature = "probes")]
 pub static FINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// The nodes of the paths those searches found (the mean length of a path is `PATH_NODES / paths found`).
+#[cfg(feature = "probes")]
 pub static PATH_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(feature = "probes")]
 pub static PATHS_FOUND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, goal: usize) {
-    ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::pathsearch::probe!(ASKS[goal].fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     cmd.queue(move |w: &mut World| {
         let e = crate::mount::nav_owner(w, e);
         if let Some(mut s) = w.get_mut::<Stroll>(e) {

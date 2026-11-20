@@ -224,28 +224,35 @@ fn level_mw(w: &World) -> &'static MobWorld<'static> {
 
 /// Bench counters (off unless `LJ_ON`): 0 starts, 1 pick calls, 2 candidates drawn, 3 own cell, 4 not acceptable, 5 no arc, 6 searches,
 /// 7 search reached (rejected), 8 chosen, 9 sum of chosen distances x100, 10 found nothing, 13 searches whose target was already on a path found earlier in the same series.
+#[cfg(feature = "probes")]
 pub static LJ_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(feature = "probes")]
 pub static LJ: [std::sync::atomic::AtomicU64; 14] = [const { std::sync::atomic::AtomicU64::new(0) }; 14];
 /// Bench histograms: drawn per pick in buckets of 50 (0..=8), then searches per pick in buckets of 10, then 'ended with a chosen jump' by drawn bucket.
+#[cfg(feature = "probes")]
 pub static LJH: [std::sync::atomic::AtomicU64; 27] = [const { std::sync::atomic::AtomicU64::new(0) }; 27];
 struct Hist {
+    #[cfg(feature = "probes")]
     drawn: u64,
+    #[cfg(feature = "probes")]
     searches: u64,
+    #[cfg(feature = "probes")]
     chosen: bool,
 }
 impl Drop for Hist {
     fn drop(&mut self) {
         SEEN.with(|m| m.borrow_mut().clear());
-        if LJ_ON.load(std::sync::atomic::Ordering::Relaxed) {
+        crate::pathsearch::probe! { if LJ_ON.load(std::sync::atomic::Ordering::Relaxed) {
             let d = (self.drawn / 50).min(8) as usize;
             LJH[d].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             LJH[9 + (self.searches / 10).min(8) as usize].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if self.chosen {
                 LJH[18 + d].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
-        }
+        } }
     }
 }
+#[cfg(feature = "probes")]
 #[inline(always)]
 fn cnt(i: usize, by: u64) {
     if LJ_ON.load(std::sync::atomic::Ordering::Relaxed) {
@@ -257,7 +264,7 @@ fn cnt(i: usize, by: u64) {
 /// même tick (GUIDE règle 9.1).
 fn start(w: &mut World, e: Entity, _: Inst) {
     let Some(st) = w.get::<LongJumpState>(e).copied() else { return };
-    cnt(0, 1);
+    crate::pathsearch::probe!(cnt(0, 1));
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let cands = candidates(block_of(pos), st.p.width, st.p.height);
     let mut leap = Leap {
@@ -320,7 +327,7 @@ fn run_preparing(w: &mut World, e: Entity) {
     let found_nothing = leap.initial == Some(pos) && leap.chosen.is_none() && leap.candidates.is_empty() && !leap.wanting_preferred;
     if !valid {
         if found_nothing {
-            cnt(10, 1);
+            crate::pathsearch::probe!(cnt(10, 1));
             let now = now_of(w, e);
             if let Some(mut st) = w.get_mut::<LongJumpState>(e) {
                 st.futile = Some((block_of(pos), now + FUTILE_FOR));
@@ -369,36 +376,37 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     crate::pathsearch::adjacent_reset();
     // The ~40 candidates of one pick read the same cells; the world does not change inside it.
     let _batch = crate::pathsearch::BlockBatch::begin();
-    cnt(1, 1);
+    crate::pathsearch::probe!(cnt(1, 1));
     SEEN.with(|m| m.borrow_mut().clear());
-    let mut hist = Hist { drawn: 0, searches: 0, chosen: false };
+    #[allow(unused_mut)]
+    let mut _hist = Hist { #[cfg(feature = "probes")] drawn: 0, #[cfg(feature = "probes")] searches: 0, #[cfg(feature = "probes")] chosen: false };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let mut tags = Tags::default();
     while !leap.candidates.is_empty() {
         let Some((target, _)) = next_candidate(w, e, leap, &p, mw, &mut tags) else { continue };
-        cnt(2, 1);
-        hist.drawn += 1;
+        crate::pathsearch::probe!(cnt(2, 1));
+        crate::pathsearch::probe!(_hist.drawn += 1);
         let here = [pos.x.ifloor(), pos.z.ifloor()];
         let acceptable = if p.swim_rules { acceptable_landing(w, e, &p, mw, &mut tags, target) } else { default_landing(w, e, mw, target) };
         if here == [target[0], target[2]] || !acceptable {
-            cnt(if acceptable { 3 } else { 4 }, 1);
+            crate::pathsearch::probe!(cnt(if acceptable { 3 } else { 4 }, 1));
             continue;
         }
         let centre = Vec3::new(f64::from(target[0]) + 0.5, f64::from(target[1]) + 0.5, f64::from(target[2]) + 0.5);
         let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else {
-            cnt(5, 1);
+            crate::pathsearch::probe!(cnt(5, 1));
             continue;
         };
         leap.look = [centre.x, centre.y, centre.z];
         // `create_path_raw(&[target], 0, 8.0).reached` (`frog.rs:860-866`) : une case qu'un chemin de 8 blocs atteint se marche, pas de bond.
-        hist.searches += 1;
+        crate::pathsearch::probe!(_hist.searches += 1);
         if walkable(w, e, &p, target) {
-            cnt(7, 1);
+            crate::pathsearch::probe!(cnt(7, 1));
             continue;
         }
-        cnt(8, 1);
-        hist.chosen = true;
-        cnt(9, (((f64::from(target[0]) + 0.5 - pos.x).powi(2) + (f64::from(target[2]) + 0.5 - pos.z).powi(2)).sqrt() * 100.0) as u64);
+        crate::pathsearch::probe!(cnt(8, 1));
+        crate::pathsearch::probe!(_hist.chosen = true);
+        crate::pathsearch::probe!(cnt(9, (((f64::from(target[0]) + 0.5 - pos.x).powi(2) + (f64::from(target[2]) + 0.5 - pos.z).powi(2)).sqrt() * 100.0) as u64));
         leap.chosen = Some(v);
         leap.prepare = 0;
         return;
@@ -443,11 +451,11 @@ fn search(w: &World, pm: &horizon_client_lib::mobs::path::PathMob, evaluator: ho
     use crate::pathsearch::Finder;
     // Accepted deviation (suivi/ecs-ecarts.md, 2026-11-20): a cell closed by an earlier search of this series is reachable on foot.
     if SEEN.with(|m| m.borrow().contains(&target)) {
-        cnt(13, 1);
+        crate::pathsearch::probe!(cnt(13, 1));
         return true;
     }
-    cnt(6, 1);
-    crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    crate::pathsearch::probe!(cnt(6, 1));
+    crate::pathsearch::probe!(crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     let f = Finder::new(w.resource::<Level>().mw.0, pm, evaluator).with_occ(w.resource::<Level>().occ);
     SEEN.with(|m| f.find_reached(target, 8.0, max_visited, &mut m.borrow_mut()))
 }
