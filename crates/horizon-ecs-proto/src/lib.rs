@@ -67,6 +67,10 @@ pub mod eye;
 // pub mod breath_cloud; // dragon
 // pub mod dragon; // en cours
 pub mod lightning;
+pub mod end_crystal;
+pub mod firework;
+pub mod minecart;
+pub mod trident;
 pub mod ominous_spawner;
 pub mod passive;
 pub mod hanging;

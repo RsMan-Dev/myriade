@@ -150,7 +150,7 @@ fn bounds(at: Vec3, size: f64) -> Aabb {
 }
 /// `ProjectileUtil.getManyEntityHitResult` for one box: where the path enters it, else where it enters the box grown by
 /// `margin`, if a line from there towards the centre (stopped by blocks) reaches the box.
-fn entity_hit(level: &Level, b: Aabb, from: Vec3, to: Vec3, margin: f64) -> Option<Vec3> {
+pub fn entity_hit(level: &Level, b: Aabb, from: Vec3, to: Vec3, margin: f64) -> Option<Vec3> {
     if let Some(at) = b.clip(from, to) {
         return Some(at);
     }

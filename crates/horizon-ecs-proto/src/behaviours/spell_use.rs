@@ -48,16 +48,6 @@ pub struct Spells {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Spelling;
-/// A fang (`EvokerFangs`): its own entity, a component of the spot, the owner and the countdown (`warmup`, which bites at -8). It is not a
-/// creature: only this module's tick knows it, and each fang holds one carrier of the module (`Carriers`) so that the tick goes on until it is gone.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Fang {
-    at: Vec3,
-    delay: i32,
-    owner: Entity,
-    allies: &'static [&'static str],
-}
-
 pub static MODULE: Module = Module {
     name: "spell_use",
     flags: 0,
@@ -141,7 +131,6 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 /// `canContinueToUse`: a living target and a warm-up not over.
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, warm);
-    pending(w);
 }
 fn warm(mut q: Query<(Entity, &mut Spells, Option<&Target>), With<Spelling>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
     for (e, mut s, target) in &mut q {
@@ -186,7 +175,7 @@ fn summon(w: &mut World, e: Entity, species: &'static str) {
     }
 }
 /// `EvokerAttackSpellGoal.performSpellCasting`: a ring of 5 and a ring of 8 (delay 3) near, else a line of 16 (delay 0 to 15).
-fn fangs(w: &mut World, e: Entity, allies: &'static [&'static str]) {
+fn fangs(w: &mut World, e: Entity, _allies: &'static [&'static str]) {
     let Some(t) = w.get::<Target>(e).and_then(|t| targeting::info(w, t.who)) else { return };
     let me = w.get::<Pos>(e).unwrap().0;
     let (min_y, max_y) = (t.pos.y.min(me.y), t.pos.y.max(me.y) + 1.0);
@@ -210,10 +199,7 @@ fn fangs(w: &mut World, e: Entity, allies: &'static [&'static str]) {
     }
     for (x, z, delay) in spots {
         if let Some(y) = floor(w, x, z, min_y, max_y) {
-            w.spawn(Fang { at: Vec3::new(x, y, z), delay, owner: e, allies });
-            if let Some(i) = crate::species::registry().module_id(&MODULE) {
-                w.resource_mut::<Carriers>().0[i] += 1;
-            }
+            crate::fangs::spawn_fang(w, Vec3::new(x, y, z), delay, e);
         }
     }
 }
@@ -230,57 +216,4 @@ fn floor(w: &World, x: f64, z: f64, min_y: f64, max_y: f64) -> Option<f64> {
         y -= 1;
     }
     None
-}
-/// The fangs count down and bite when `warmup` reaches -8 (`EvokerFangs.tick`), then are removed.
-fn pending(w: &mut World) {
-    let mut bites: Vec<(Vec3, Entity, &'static [&'static str])> = Vec::new();
-    let mut gone: Vec<Entity> = Vec::new();
-    for (f, mut fang) in w.query::<(Entity, &mut Fang)>().iter_mut(w) {
-        fang.delay -= 1;
-        if fang.delay == -8 {
-            bites.push((fang.at, fang.owner, fang.allies));
-        }
-        if fang.delay <= -8 {
-            gone.push(f);
-        }
-    }
-    for f in gone {
-        w.despawn(f);
-        if let Some(i) = crate::species::registry().module_id(&MODULE) {
-            let c = &mut w.resource_mut::<Carriers>().0[i];
-            *c = c.saturating_sub(1);
-        }
-    }
-    for (at, owner, allies) in bites {
-        bite(w, at, owner, allies);
-    }
-}
-/// `EvokerFangs.dealDamageTo`: 6 of indirect magic to everything alive in the box (0.5 wide inflated 0.2 sideways, 0.8 high) but the
-/// owner and its allies; a missing owner hurts everyone.
-fn bite(w: &mut World, at: Vec3, owner: Entity, allies: &'static [&'static str]) {
-    let half = 0.45;
-    let b = Aabb::new(Vec3::new(at.x - half, at.y, at.z - half), Vec3::new(at.x + half, at.y + 0.8, at.z + half));
-    let owner_alive = w.get::<Health>(owner).is_some_and(|h| h.0 > 0.0);
-    let by = owner_alive.then_some(Who::Entity(owner));
-    let set = crate::behaviours::avoid_entity::species_mask(crate::behaviours::avoid_entity::Avoid::Named(allies));
-    let from = (at.x, at.z);
-    let victims: Vec<Entity> = w
-        .query::<(Entity, &Bounds, &SpeciesId, &Health)>()
-        .iter(w)
-        .filter(|(v, bb, s, h)| h.0 > 0.0 && *v != owner && bb.0.intersects(b) && !(owner_alive && set.contains(s.0)))
-        .map(|(v, ..)| v)
-        .collect();
-    let tick = w.resource::<Clock>().0;
-    for v in victims {
-        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, from: Some(from), by, direct: false });
-    }
-    let mut players: Vec<u32> = Vec::new();
-    w.resource::<Online>().for_near(at.x, at.z, 2.0, |pl| {
-        if crate::targeting::player_box(&pl).intersects(b) {
-            players.push(pl.id);
-        }
-    });
-    for id in players {
-        w.resource_mut::<PlayerState>().hurt(tick, id, 6.0, from, by);
-    }
 }

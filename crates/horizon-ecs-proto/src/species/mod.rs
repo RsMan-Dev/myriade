@@ -11,6 +11,10 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod lists;
+pub mod minecart;
+pub mod cushion;
+pub mod leash_knot;
+pub mod end_crystal;
 pub mod chicken;
 pub mod copper_golem;
 pub mod cow;
@@ -134,6 +138,16 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &dolphin::DEF,
     &axolotl::DEF,
     &armor_stand::DEF,
+    &cushion::DEF,
+    &leash_knot::DEF,
+    &end_crystal::DEF,
+    &minecart::RIDEABLE,
+    &minecart::CHEST,
+    &minecart::HOPPER,
+    &minecart::FURNACE,
+    &minecart::TNT,
+    &minecart::COMMAND_BLOCK,
+    &minecart::SPAWNER,
     &block_display::DEF,
     &item_display::DEF,
     &text_display::DEF,

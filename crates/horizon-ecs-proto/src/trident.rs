@@ -200,10 +200,12 @@ fn fly(world: &mut World) {
         after_move(world, e, reach, owner, vel);
     }
 }
+/// `0.99F` widened, as vanilla multiplies the velocity (`AbstractArrow.getWaterInertia`'s air counterpart).
+const INERTIA: f64 = 0.99_f32 as f64;
 /// The end of a flying tick: the age, the leaving of the owner, the inertia 0.99 and the gravity 0.05 of the velocity.
 fn after_move(world: &mut World, e: Entity, at: Vec3, owner: Option<Who>, vel: Vec3) {
     let owner_pos = owner_at(world, owner);
-    let v = Vec3::new(vel.x * 0.99, vel.y * 0.99 - 0.05, vel.z * 0.99);
+    let v = Vec3::new(vel.x * INERTIA, vel.y * INERTIA - 0.05, vel.z * INERTIA);
     world.entity_mut(e).insert((Pos(at), Vel(v)));
     if let Some(mut p) = world.get_mut::<Projectile>(e) {
         p.age += 1;

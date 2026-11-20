@@ -206,6 +206,7 @@ pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
 }
 
 pub mod avoid_entity;
+pub mod stand_pose;
 pub mod breath_air;
 pub mod stare_freeze;
 pub mod breed;
