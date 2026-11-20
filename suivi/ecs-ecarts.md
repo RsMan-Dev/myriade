@@ -35,3 +35,11 @@ tant que l'ecart reel n'est pas explique. A etudier : la fuite de l'ECS s'arrete
 `WallClimberNavigation.tick` : navigation finie et `pathToPosition` non nul (pose par tout `createPath` vers un bloc, jamais
 efface) -> tant que `!closerToCenterThan(position, largeur)` et que le Y le permet, `setWantedPosition(pathToPosition)` a chaque tick.
 Le vouloir-grimper vient donc de la derniere marche (la promenade, but 5 de l'araignee, sans cible), pas d'une cible. 0 reveil au repos.
+
+## Piglin : cause trouvee de l'ecart de fuite (jar : SetWalkTargetAwayFrom)
+Trace sur une graine, 1 piglin : meme depart (tick 22), `walk_away::start` tirait UN seul `land_random_pos_away` ; le jar boucle
+`for (i < 10) getPosAway(mob, 16, 7, pos)` et prend le premier non nul, avec `WalkTarget(pos, vitesse, 0)`. Sur 5 graines sur 39 l'ECS
+ne partait pas du tout (distance 6,8 = depart). Corriges d'apres le jar : dix essais, portee 16 (l'ECS avait 12), arret a 0 bloc
+(l'ECS 1). Moyenne sur 39 graines, 20 piglins : Mob 14,63 ; ECS 11,26 -> 13,3. Reste ~1,15 bloc (1 piglin : Mob 14,65 / ECS 14,0) :
+cause non trouvee ; candidats ecartes par le jar : vitesse (1.0), seuil de depart (8), rayon vertical (7). Non testes : poussee entre
+piglins serres (l'ECS perd 0,7 de 1 a 20 piglins, pas le Mob), relance de la fuite quand le Mob est a moins de 8 du repoussoir.

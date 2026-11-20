@@ -53,9 +53,11 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Away>(e).unwrap().0;
     let a = w.get::<Avoid>(e).copied().unwrap();
     let from = Vec3::new(a.at[0], a.at[1], a.at[2]);
-    match goals::land_random_pos_away(w, e, from, p.distance, 7) {
+    // Ten tries, the first spot found is taken (`SetWalkTargetAwayFrom`: `for (i < 10) getPosAway(mob, 16, 7, pos)`).
+    let r = (0..10).find_map(|_| goals::land_random_pos_away(w, e, from, p.distance, 7));
+    match r {
         Some(at) => {
-            go_to_at(w, e, at, p.speed, 1);
+            go_to_at(w, e, at, p.speed, 0);
             w.entity_mut(e).insert(Walking);
         }
         None => w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot)),

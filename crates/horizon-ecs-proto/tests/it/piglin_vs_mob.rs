@@ -94,7 +94,7 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
 /// Piglins two blocks from a lit soul campfire walk away from it: over 20 seeds the ECS mean distance after 60 ticks lies within two
 /// standard deviations of the Mob's (a single seed compares two noisy draws, the ECS one is 0.9 wide, the Mob's 0.5).
 #[test]
-#[ignore = "real gap from before the parking: Mob 14.56 (sd 0.48), ECS 11.30 (sd 0.96) over 20 seeds, same with the original code; see suivi/ecs-ecarts.md"]
+#[ignore = "gap left after the 10-tries and 16-block fixes: Mob 14.57 (sd 0.47), ECS 13.42 over 20 seeds; cause of the last 1.15 not found, see suivi/ecs-ecarts.md"]
 fn piglins_flee_a_soul_campfire_as_a_mob_does() {
     if skip() {
         return;
