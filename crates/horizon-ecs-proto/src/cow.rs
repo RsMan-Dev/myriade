@@ -1893,7 +1893,8 @@ pub(crate) fn pathfind(
                 crate::goals::PATH_NODES.fetch_add(p.nodes.len() as u64, std::sync::atomic::Ordering::Relaxed);
                 crate::goals::PATHS_FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 nav.path = Some(p);
-                nav.last_check = now;
+                // `PathNavigation.moveTo` sets `lastStuckCheck` before the tick of the navigation counts (the first tick of a path is `+1`).
+                nav.last_check = now.saturating_sub(1);
                 nav.last_pos = pos.0;
                 cmd.entity(e).remove::<NeedsPath>().insert((Following, Moving));
             }

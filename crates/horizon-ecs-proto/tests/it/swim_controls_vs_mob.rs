@@ -1,7 +1,7 @@
 //! The swim controls (`swim::Control`) against the `Mob`'s: a dolphin (`SmoothSwimmingMoveControl`, push at the mob's speed, breaching
 //! navigation), an axolotl (the same control, amphibious, no sinking) and a drowned (`DrownedMoveControl`: `WantsToSwim`). The route is imposed on
 //! both (the goals of the species are not what is measured); the legs run from the land into a pool and back, in and across the pool.
-//! `HORIZON_SPECIES=minecraft:dolphin` (or axolotl, drowned, guardian, elder_guardian, nautilus, zombie_nautilus).
+//! `HORIZON_SPECIES=minecraft:dolphin` (or axolotl, drowned, guardian, elder_guardian, nautilus, zombie_nautilus, cod, salmon, pufferfish, tropical_fish).
 use crate::common;
 use common::*;
 use horizon_core::geometry::Vec3;
@@ -91,6 +91,7 @@ fn legs(name: &str, drowned: bool, water_only: bool) -> [f64; 3] {
             }
             if std::env::var_os("TRACE3").is_some() && Some(k) == std::env::var("TRACE_K").ok().and_then(|v| v.parse::<usize>().ok()).or(Some(3)) && (std::env::var("TRACE_T").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1)..).contains(&t) && t <= std::env::var("TRACE_T").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1) + 7 {
                 let dd = h.world.get::<Drive>(e).unwrap();
+                { let mv = h.world.get::<horizon_ecs_proto::cow::MoveTo>(e).map(|m| (m.x, m.y, m.z, m.active)); eprintln!("   WANT MOB {:?} op {:?} done {} | ECS {:?} following {}", r.mobs[i].ai.mov.wanted, r.mobs[i].ai.mov.operation, r.mobs[i].ai.nav.is_done(), mv, h.world.get::<horizon_ecs_proto::cow::Following>(e).is_some()); }
                 eprintln!("t={t} MOB pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2} | ECS pos ({:.4},{:.4},{:.4}) v ({:.4},{:.4},{:.4}) speed {:.4} zza {:.4} yya {:.4} pitch {:.3} yaw {:.2}", a.x, a.y, a.z, r.mobs[i].velocity.x, r.mobs[i].velocity.y, r.mobs[i].velocity.z, r.mobs[i].ai.speed, r.mobs[i].ai.zza, r.mobs[i].ai.yya, r.mobs[i].head_pitch, r.mobs[i].yaw, b.x, b.y, b.z, h.world.get::<Vel>(e).unwrap().0.x, h.world.get::<Vel>(e).unwrap().0.y, h.world.get::<Vel>(e).unwrap().0.z, dd.speed, dd.zza, dd.yya, dd.pitch, h.world.get::<Yaw>(e).unwrap().0);
             }
             for (n, lim) in [20, 100, 300].into_iter().enumerate() {
@@ -122,6 +123,19 @@ fn guardians_swim_to_the_bit_as_their_mobs_do() {
     assert!(w == [0.0; 3], "{w:?}");
 }
 
+/// The pufferfish's box scales with its puff state (`Pufferfish.getScale`: 0.5, 0.7, 1.0); the ecs one keeps the base size, so the node is reached
+/// a tick later in the Mob (its `canMoveDirectly` reads the height): the port of the body size is not done (suivi/ecs-ecarts.md).
+#[test]
+#[ignore = "strict: the ecs pufferfish has no body size by puff state (not ported, ecart in suivi/ecs-ecarts.md)"]
+fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let _ = flat_pair();
+    let w = legs("fish", false, true);
+    assert!(w == [0.0; 3], "{w:?}");
+}
+
 #[test]
 fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their_mobs_do() {
     if !have_data() {
@@ -133,6 +147,8 @@ fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their
         // The axolotl has the dolphin's control (verified); the `Mob` axolotl moves by something other than the imposed path (no goal, no brain left:
         // cause not found), so no comparison is made for it.
         "minecraft:axolotl" => eprintln!("axolotl: not compared (the Mob axolotl does not follow the imposed route)"),
+        // The fish (`FishMoveControl`, `AbstractFish.travelInWater`): the legs inside the pool.
+        "minecraft:cod" | "minecraft:salmon" | "minecraft:tropical_fish" => to_the_bit(legs("fish", false, true)),
         "minecraft:drowned" => to_the_bit(legs("drowned", true, false)),
         "minecraft:guardian" | "minecraft:elder_guardian" => {
             let w = legs("guardian", false, true);
