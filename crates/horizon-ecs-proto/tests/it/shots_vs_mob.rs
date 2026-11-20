@@ -168,6 +168,7 @@ fn a_blaze_shoots_in_bursts_as_the_mob_s_does() {
     let ecs = shots_of_ecs("minecraft:blaze", Entry::new(&burst_shot::MODULE, 4, &burst_shot::Params::BLAZE), at, player, 5400);
     eprintln!("blaze: {} / {} shots, first ticks mob {:?} ecs {:?}", mob.len(), ecs.len(), mob.iter().take(4).map(|s| s.0).collect::<Vec<_>>(), ecs.iter().take(4).map(|s| s.0).collect::<Vec<_>>());
     assert!(mob.len() >= 60 && ecs.len() >= 60);
+    assert_eq!(mob[0].0, ecs[0].0, "the first shot at the same tick: mob {:?}, ecs {:?}", mob[0].0, ecs[0].0);
     assert_eq!(gaps(&mob)[..58], gaps(&ecs)[..58], "the same rhythm");
     // The aim: the mean direction is the line to the player's middle, the spread grows as the fourth root of the distance.
     let law = |s: &[(usize, Vec3, Vec3)]| {

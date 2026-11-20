@@ -268,7 +268,7 @@ fn the_drowned_throws_its_trident_as_a_mob_does() {
     assert!((m.len() as i64 - e.len() as i64).abs() <= 1, "mob {m:?}, ecs {e:?}");
 }
 
-/// The blaze's burst: three small fireballs per salve, the first at the same tick within the tolerance on both sides, the same count in 150
+/// The blaze's burst: three small fireballs per salve, at the same ticks on both sides, the same count in 150
 /// ticks; the `Charged` flag is up while it charges and down after the salve.
 #[test]
 fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
@@ -291,8 +291,9 @@ fn the_blaze_charges_and_shoots_a_burst_as_a_mob_does() {
     for i in 0..3 {
         assert_eq!(m[i] - ms.unwrap(), e[i] - es.unwrap(), "fireball {i}: mob {m:?} from {ms:?}, ecs {e:?} from {es:?}");
     }
-    close(&m, &e, 6, "fireballs");
-    assert_eq!(m.len(), e.len(), "mob {m:?}, ecs {e:?}");
+    // The goal starts and acts at the tick of the decision on both sides: the charge and the fireballs are at the SAME ticks.
+    assert_eq!(ms, es, "charge start: mob {ms:?}, ecs {es:?}");
+    assert_eq!(m, e, "fireballs: mob {m:?}, ecs {e:?}");
     assert_eq!(e.len(), 3, "three per salve: {e:?}");
     assert!(charged[..e[0] as usize].iter().any(|c| *c), "charged while charging");
     assert!(e[2] as usize + 100 >= 150 || !charged[e[2] as usize + 100..].iter().any(|c| *c), "not charged after the rest");

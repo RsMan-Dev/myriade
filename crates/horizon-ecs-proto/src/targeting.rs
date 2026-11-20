@@ -110,6 +110,13 @@ pub fn sight_range(range: f64, visibility: f64) -> f64 {
 /// The attacker takes `who` as its target (the goal `slot` holds it): the attack modules are told.
 pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
     t.seen = false;
+    // `Mob.sees` is read where it is used: a target taken after this tick's `sight_eval` is read now, not a tick late.
+    if let (Some(pos), Some(eye), Some(i)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Eye>(e).map(|x| x.0), info(w, t.who)) {
+        t.zblock = (pos.x.floor() as i32, (pos.y + eye).floor() as i32, pos.z.floor() as i32);
+        t.pblock = (i.pos.x.floor() as i32, i.eye.floor() as i32, i.pos.z.floor() as i32);
+        let mw = w.resource::<Level>().mw.0;
+        t.seen = mw.line_of_sight_for(Some(pos.y), Vec3::new(pos.x, pos.y + eye, pos.z), Vec3::new(i.pos.x, i.eye, i.pos.z));
+    }
     w.entity_mut(e).insert(t);
     // `StartAttacking` erases the memory of the unreachable: a new target starts afresh.
     if let Some(mut n) = w.get_mut::<crate::cow::Nav>(e) {
