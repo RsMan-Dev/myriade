@@ -23,3 +23,15 @@ quand l'index des objets est vide, jusqu'a l'apparition d'un objet (`Item` on_ad
 ## Enderman, araignee des cavernes : non modifies
 Enderman : 41-46 reveils/1000 ticks, tous `take_block` = la loi du jar (1 tirage sur 20 par demande, ~50) ; plancher, test <= 60.
 Araignee des cavernes : 0 reveil au repos ; son cout (souhait de grimper qui ne finit jamais) est du mouvement par tick, pas un reveil.
+
+## Piglin : fuite du feu de camp des ames, 20 graines (mesure)
+Moyennes de distance a 60 ticks sur 20 graines (20 piglins par graine) : Mob 14,56 (ecart-type 0,48) ; ECS avec le sommeil de
+nearest_target 11,25 (0,76) ; ECS sans sommeil 11,30 (0,96) ; ECS du code d'origine 11,30 (0,96, identique graine par graine
+a « sans sommeil »). Le sommeil est dans le bruit (difference des moyennes 0,05). L'ecart Mob/ECS de 3,3 blocs est ANTERIEUR : le
+test a graine unique passait par chance (limite 3). Remplace par une comparaison de moyennes a 2 ecarts-types du Mob, `#[ignore]`
+tant que l'ecart reel n'est pas explique. A etudier : la fuite de l'ECS s'arrete plus tot que celle du Mob.
+
+## Araignee des cavernes : d'ou vient le mouvement (jar)
+`WallClimberNavigation.tick` : navigation finie et `pathToPosition` non nul (pose par tout `createPath` vers un bloc, jamais
+efface) -> tant que `!closerToCenterThan(position, largeur)` et que le Y le permet, `setWantedPosition(pathToPosition)` a chaque tick.
+Le vouloir-grimper vient donc de la derniere marche (la promenade, but 5 de l'araignee, sans cible), pas d'une cible. 0 reveil au repos.
