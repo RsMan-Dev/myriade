@@ -23,3 +23,4 @@ guardian ## swims every tick (travel 27 %, reindex 16 %, arbitrate 14 % of 1 209
 elder_guardian ## swims every tick (travel 40 %, reindex 21 %, push 15 % of 3 327 per creature and tick): a mover, as the guardian
 happy_ghast ## flies all the time (arbitrate 26 %, travel 26 %, reindex 23 % of 4 978 per creature and tick): a mover, as the ghast
 sulfur_cube ## moves all the time (travel 41 %, reindex 17 %, push 16 % of 2 115 per creature and tick): a mover
+ender_dragon ## 9 259 instr per creature-tick (cow 108): the owner accepts it (2026-11-20: "a 9k instructions, le dragon est presque gratuit"); one dragon per world, flight in place (was 41 459)
