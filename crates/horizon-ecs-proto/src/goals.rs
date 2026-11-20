@@ -525,6 +525,54 @@ impl Online {
         }
         false
     }
+    /// The nearest player of the window (as `for_near`) that `pass(player, squared distance)` accepts: the one `for_near` would keep taking the first
+    /// of the smallest distance (order: bin by (z, x), then the bin's order). The bins are visited from the middle outwards, and the ones farther than the
+    /// best found are not visited: a crowd costs the players near the asker, not the whole window.
+    pub fn nearest_where(&self, x: f64, y: f64, z: f64, r: f64, mut pass: impl FnMut(Player, f64) -> bool) -> Option<u32> {
+        let best: std::cell::Cell<Option<(u32, f64, (i32, i32, usize))>> = std::cell::Cell::new(None);
+        let mut visit = |bx: i32, bz: i32, v: &Vec<u32>| {
+            for (i, &id) in v.iter().enumerate() {
+                let Some(p) = self.get(id) else { continue };
+                let d = (x - p.x).powi(2) + (y - p.y).powi(2) + (z - p.z).powi(2);
+                let key = (bz, bx, i);
+                if best.get().is_some_and(|b| d > b.1 || (d == b.1 && key > b.2)) {
+                    continue;
+                }
+                if pass(p, d) {
+                    best.set(Some((id, d, key)));
+                }
+            }
+        };
+        let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
+        if (i64::from(x1 - x0) + 1) * (i64::from(z1 - z0) + 1) > 2 * self.bins.len() as i64 {
+            for (&(bx, bz), v) in &self.bins {
+                if (x0..=x1).contains(&bx) && (z0..=z1).contains(&bz) {
+                    visit(bx, bz, v);
+                }
+            }
+            return best.get().map(|b| b.0);
+        }
+        let (cx, cz) = bin(x, z);
+        let last = (cx - x0).max(x1 - cx).max(cz - z0).max(z1 - cz);
+        for k in 0..=last {
+            if let Some(b) = best.get() {
+                // Every player of ring `k` is at least `k - 1` whole bins away.
+                let gap = f64::from((k - 1).max(0)) * 8.0;
+                if gap * gap > b.1 {
+                    break;
+                }
+            }
+            for bz in (cz - k).max(z0)..=(cz + k).min(z1) {
+                let edge = (bz - cz).abs() == k;
+                for bx in [cx - k, cx + k].into_iter().filter(|_| !edge).chain(if edge { (cx - k).max(x0)..=(cx + k).min(x1) } else { 1..=0 }) {
+                    if (x0..=x1).contains(&bx) && let Some(v) = self.bins.get(&(bx, bz)) {
+                        visit(bx, bz, v);
+                    }
+                }
+            }
+        }
+        best.get().map(|b| b.0)
+    }
     pub fn for_near(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Player)) {
         let ((x0, z0), (x1, z1)) = (bin(x - r, z - r), bin(x + r, z + r));
         // A wide window over few players (a ghast's 100 blocks, 625 bins, none occupied): the occupied bins are visited, in the same (z, x) order.

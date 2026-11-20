@@ -257,16 +257,14 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         let ps = w.resource::<crate::hostile::PlayerState>();
         // No player has an effect (the usual): the list is not asked per candidate.
         let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
-        let mut best: Option<(u32, f64)> = None;
-        w.resource::<Online>().for_near(pos.x, pos.z, range, |p| {
+        let best = w.resource::<Online>().nearest_where(pos.x, pos.y, pos.z, range, |p, d| {
             let reach = if any_effect {
                 let seen = if crate::effects::player_has(w, p.id, crate::effects::Kind::Invisibility) { INVISIBLE } else { 1.0 };
                 targeting::sight_range(range, ps.visibility(p.id) * seen)
             } else {
                 targeting::sight_range(range, ps.visibility(p.id))
             };
-            let d = d2(pos, Vec3::new(p.x, p.y, p.z));
-            if d <= reach * reach
+            d <= reach * reach
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
                 && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
                 && n.p.attach_reach.is_none_or(|m| {
@@ -277,13 +275,9 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 && ps.alive(p.id)
                 && !ps.creative(p.id)
                 && !ps.spectator(p.id)
-                && best.is_none_or(|b| d < b.1)
                 && mw.line_of_sight_for(Some(pos.y), from, Vec3::new(p.x, p.y + 1.62, p.z))
-            {
-                best = Some((p.id, d));
-            }
         });
-        found = best.map(|b| Who::Player(b.0));
+        found = best.map(Who::Player);
     } else if !n.mask.is_empty() && w.get_resource::<crate::goals::Carriers>().is_none_or(|c| n.mask.any_alive(&c.1.0)) {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
