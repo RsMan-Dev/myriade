@@ -246,7 +246,7 @@ fn finish(w: &mut World) {
 pub fn spawn_new_dragon(w: &mut World) -> Entity {
     use crate::dragon::{flight::{DragonRng, FlightHistory}, parts::Parts, phases};
     use horizon_core::random::{LegacyRandom, RandomSource};
-    let sp = *w.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the dragon's species");
+    let sp = *w.resource::<SpeciesTable>().0.iter().find(|s| s.name == crate::species::ENDER_DRAGON).expect("the dragon's species");
     let uid = crate::goals::next_uid();
     let seed = world_of(w).world_seed ^ uid as i64;
     let yaw = LegacyRandom::new(seed).next_float() * 360.0;

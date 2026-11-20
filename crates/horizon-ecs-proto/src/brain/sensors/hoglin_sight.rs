@@ -15,7 +15,7 @@ pub static SENSOR: Sensor = Sensor { name: "horizon:hoglin_sight", mems: &[&PIGL
 fn scan(w: &mut World, e: Entity, _: &Ctx) {
     let table = w.resource::<SpeciesTable>().0.clone();
     let id = |name: &str| table.iter().find(|s| s.name == name).map(|s| s.id);
-    let (piglin, hoglin) = (id("minecraft:piglin"), id("minecraft:hoglin"));
+    let (piglin, hoglin) = (id(crate::species::PIGLIN), id(crate::species::HOGLIN));
     let adult = |w: &World, who: Who, sp: Option<u8>| !matches!(who, Who::Player(_)) && info(w, who).is_some_and(|i| !i.baby && Some(i.species) == sp);
     let piglins = find_all(w, e, |w, who| adult(w, who, piglin)).len();
     let hoglins = find_all(w, e, |w, who| adult(w, who, hoglin));

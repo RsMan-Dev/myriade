@@ -44,7 +44,7 @@ fn on_hit_target(w: &mut World, e: Entity, target: Entity) {
     if w.get::<crate::cow::GrowAt>(e).is_some() || !crate::brain::sensors::hoglin_sight::piglins_outnumber(w, e) {
         return;
     }
-    let piglin = w.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:piglin").map(|s| s.id);
+    let piglin = w.resource::<SpeciesTable>().0.iter().find(|s| s.name == crate::species::PIGLIN).map(|s| s.id);
     if piglin.is_none() || crate::targeting::info(w, Who::Entity(target)).map(|i| i.species) != piglin {
         return;
     }

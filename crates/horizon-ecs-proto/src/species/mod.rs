@@ -536,6 +536,11 @@ fn apply(src: &str, species: &str, changes: &[Change], list: &mut Vec<Entry>, ta
     Ok(())
 }
 
+/// The species a behaviour of another is defined against (the hoglin's headbutt and sight, the end fight's dragon): their names are
+/// configuration, kept here (the framework outside `species/` never types a species name).
+pub const PIGLIN: &str = "minecraft:piglin";
+pub const HOGLIN: &str = "minecraft:hoglin";
+pub const ENDER_DRAGON: &str = "minecraft:ender_dragon";
 static EVERY_MODULE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Inscribes the systems of EVERY registered module, carried or not (before the first `registry()`): what the tests of a module
 /// that inject their own configuration need; `tests/common` does it for every integration test.
