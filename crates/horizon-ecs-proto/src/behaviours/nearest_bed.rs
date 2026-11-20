@@ -62,3 +62,57 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
 }
 
 pub static SENSOR: Sensor = Sensor { name: "nearest_bed", scan, ..Sensor::DEFAULT };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cow::{spawn_species, Herd, SpeciesTable};
+
+    static NEAREST: MemKey = MemKey::new("test:nearest_bed", Shape::Block);
+    static CANDIDATE: MemKey = MemKey::new("test:bed_candidate", Shape::Block);
+    static PARAMS: Params = Params { nearest: &NEAREST, candidate: &CANDIDATE };
+
+    /// The latency of the `Mob` (`sense_bed`): a bed tried at `now + draw(0..20)` is not tried again before 40 ticks more, and the entry
+    /// leaves the cache at the first scan after that. The draw is imposed: the entity's `Rng` is set, and the same generator gives the
+    /// expected value.
+    #[test]
+    fn a_tried_bed_is_cached_for_40_ticks_after_the_drawn_start() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        }
+        let mut h = Herd::with_slab(200, false, false);
+        h.set_block_state(6, 1, 0, "minecraft:red_bed", &[("part", "head")]);
+        h.tick();
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
+        let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
+        let now0 = now_of(&h.world, e);
+        h.world.entity_mut(e).insert(GrowAt(now0 + 24000));
+        let ctx = Ctx { id: 0, nth: 0, params: &PARAMS };
+        let seed = 0x9E37_79B9_7F4A_7C15u64;
+        let draw = |s: u64| i64::from(Rng(s).next_u32() % 20);
+        h.world.entity_mut(e).insert(Rng(seed));
+        let now = now_of(&h.world, e) as i64;
+        scan(&mut h.world, e, &ctx);
+        let cache = h.world.get::<BedCache>(e).unwrap().0.clone();
+        assert_eq!(cache, vec![([6, 1, 0], now + draw(seed) + 40)], "the bed is cached until now + draw + 40");
+        let until = cache[0].1;
+        // Within the window the bed is skipped: no new entry, the cache is untouched.
+        scan(&mut h.world, e, &ctx);
+        assert_eq!(h.world.get::<BedCache>(e).unwrap().0, cache, "a cached bed is not tried again");
+        // After the window (with the next imposed draw) the entry is dropped.
+        while (now_of(&h.world, e) as i64) < until + 20 {
+            h.tick();
+        }
+        h.world.get_mut::<Rng>(e).unwrap().0 = seed;
+        let later = now_of(&h.world, e) as i64;
+        assert!(later + draw(seed) >= until, "the imposed draw puts the scan after the expiry");
+        let homes_cached = h.world.get::<BedCache>(e).unwrap().0.len();
+        assert_eq!(homes_cached, 1);
+        h.set_block(6, 1, 0, "minecraft:air");
+        h.tick();
+        scan(&mut h.world, e, &ctx);
+        assert!(h.world.get::<BedCache>(e).unwrap().0.is_empty(), "an expired entry leaves the cache at the first scan after it");
+    }
+}
