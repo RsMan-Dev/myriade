@@ -6,7 +6,9 @@ use super::parts::{part_box, Parts};
 use super::perch;
 use super::phases::{set_phase, PhaseId};
 use crate::area::{creature_xz, creatures_in, hurt_creature, hurt_player, player_xz, players_in, push_creature, push_player};
-use crate::cow::{Cause, Clock, Health, Pos, Rng, Vel};
+use super::flight::DragonRng;
+use crate::cow::{Cause, Clock, Health, Pos, Vel};
+use horizon_core::random::RandomSource;
 use crate::explosion::blast_damage;
 use crate::goals::{Ev, Events};
 use crate::hostile::PlayerState;
@@ -45,6 +47,16 @@ pub struct DragonHurt {
     pub last: f32,
     pub time: i32,
 }
+
+/// `lastHurtByPlayer`: the player whose hit landed last, and the dragon's tick of it (credited if the kill follows within 100 ticks).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct HurtByPlayer {
+    pub player: u32,
+    pub tick: u32,
+}
+
+/// The kill credit window (`d.ticks - hit <= 100`).
+pub const CREDIT_TICKS: u32 = 100;
 
 /// A hit that reached `reallyHurt` (the `PartHit` of the spec). The fight (L5) reads it.
 #[derive(Clone, Copy, Debug)]
@@ -117,6 +129,13 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = after;
     }
+    let ticks = w.get::<super::flight::Flight>(e).map_or(0, |f| f.ticks);
+    if let Some(Who::Player(player)) = b.by {
+        w.entity_mut(e).insert(HurtByPlayer { player, tick: ticks });
+    }
+    if after <= 0.0 || phase_of(w, e) == DYING {
+        credit(w, e, b, ticks);
+    }
     w.entity_mut(e).insert(DragonHurt {
         window: if window { clock.window } else { HURT_INVULNERABLE },
         last: damage,
@@ -143,27 +162,35 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
     Hurt::Landed { full }
 }
 
+/// The killing blow (`!was_down && down()`): the cause is kept for the fight, and the last player to hurt it within 100 ticks is credited.
+fn credit(w: &mut World, e: Entity, b: Blow, ticks: u32) {
+    if let Some(mut f) = w.get_resource_mut::<super::fight::EndFight>() {
+        f.last_blow = Some(b.cause);
+    }
+    let Some(h) = w.get::<HurtByPlayer>(e).copied().filter(|h| ticks - h.tick <= CREDIT_TICKS) else { return };
+    let by_player = b.by.is_some();
+    if let Some(mut ev) = w.get_resource_mut::<super::fight::FightEvents>() {
+        ev.credit.push(super::fight::KillCredit { by: h.player, last_blow: b.cause, by_player });
+    }
+}
+
 /// `EnderDragon.knockBack`: nothing while perched; else the velocity is halved and pushed `power` away from `(xd, zd)` (the hit
 /// minus the dragon). A zero direction is redrawn from the dragon's own stream.
 fn knockback(w: &mut World, e: Entity, power: f64, mut xd: f64, mut zd: f64) {
     if is_sitting(phase_of(w, e)) || power <= 0.0 {
         return;
     }
-    let Some(mut rng) = w.get_mut::<Rng>(e) else { return };
-    while xd * xd + zd * zd < f64::from(1.0e-5_f32) {
-        xd = (next(&mut rng) - next(&mut rng)) * 0.01;
-        zd = (next(&mut rng) - next(&mut rng)) * 0.01;
+    if let Some(mut rng) = w.get_mut::<DragonRng>(e) {
+        while xd * xd + zd * zd < f64::from(1.0e-5_f32) {
+            xd = (rng.0.next_double() - rng.0.next_double()) * 0.01;
+            zd = (rng.0.next_double() - rng.0.next_double()) * 0.01;
+        }
     }
-    drop(rng);
     let len = (xd * xd + zd * zd).sqrt();
     let (kx, kz) = (xd / len * power, zd / len * power);
     if let Some(mut v) = w.get_mut::<Vel>(e) {
         v.0 = Vec3::new(v.0.x / 2.0 - kx, v.0.y, v.0.z / 2.0 - kz);
     }
-}
-
-fn next(rng: &mut Rng) -> f64 {
-    rng.next_f64()
 }
 
 /// `ServerExplosion.hurtEntities` on the dragon: the whole body (reported as the body part) and then each part in the blast

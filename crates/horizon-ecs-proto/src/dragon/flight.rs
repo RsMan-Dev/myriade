@@ -22,6 +22,15 @@ pub struct DragonRng(pub LegacyRandom, pub LegacyRandom);
 #[component(storage = "SparseSet")]
 pub struct NoAi;
 
+/// `Mob.setNoAi`: a marker, so only the dragons that have it pay for it.
+pub fn set_no_ai(w: &mut World, e: Entity, on: bool) {
+    if on {
+        w.entity_mut(e).insert(NoAi);
+    } else {
+        w.entity_mut(e).remove::<NoAi>();
+    }
+}
+
 /// A sound and its volume.
 #[derive(Clone, Copy, Debug)]
 pub struct Snd {
@@ -223,9 +232,13 @@ pub fn steer(order: &FlyOrder, f: &Flight, pos: &mut Vec3, vel: &mut Vec3, yaw: 
 /// One tick of a dragon (`tick_dragon`, D:2677): the single wake of its flight. Its random stream is observable every tick (ambient
 /// roll, scan roll), so no tick can be skipped: one wake per tick per dragon is the floor, and everything else rides on it.
 pub fn tick(w: &mut World, e: Entity) {
-    let Some(mut f) = w.entity_mut(e).take::<Flight>() else { return };
+    let Some(mut f) = w.get_entity_mut(e).ok().and_then(|mut x| x.take::<Flight>()) else { return };
     f.ticks += 1;
     w.entity_mut(e).insert(f);
+    if let Some(mut c) = w.get_mut::<hurt::DragonHurt>(e) {
+        c.time = (c.time - 1).max(0);
+        c.window = (c.window - 1).max(0);
+    }
     if w.get::<Health>(e).is_some_and(|h| h.0 <= 0.0) {
         death::tick(w, e);
         return;
@@ -257,6 +270,7 @@ pub fn tick(w: &mut World, e: Entity) {
     steer_sys(w, e);
     parts::place(w, e);
     hurt::contacts(w, e);
+    super::walls::check(w, e);
 }
 
 /// `checkCrystals`: one health every tenth tick while a crystal is the nearest one, up to the maximum.
@@ -298,6 +312,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((Health(data::MAX_HEALTH), crate::cow::MaxHealth(data::MAX_HEALTH)));
     w.init_resource::<crate::dragon::fight::EndFight>();
     w.init_resource::<crate::dragon::fight::FightEvents>();
+    w.init_resource::<crate::dragon::hurt::PartHits>();
     w.entity_mut(e).insert((phases::PhaseId(crate::species::ender_dragon::START_PHASE), phases::PhaseData::default()));
     if w.get_resource::<nodes::FlightNodes>().is_none() {
         let mw = crate::blocks::world_of(w);

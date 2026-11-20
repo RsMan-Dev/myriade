@@ -127,6 +127,7 @@ pub fn hurt(w: &mut World, e: Entity, blow: Blow) -> bool {
         explode_at(w, at, blow.by);
     }
     w.resource_mut::<CrystalEvents>().0.push(Gone { at, by: blow.by });
+    tell_fight(w, e, at, blow.by);
     true
 }
 
@@ -135,6 +136,14 @@ pub fn kill(w: &mut World, e: Entity) {
     let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return };
     w.despawn(e);
     w.resource_mut::<CrystalEvents>().0.push(Gone { at, by: None });
+    tell_fight(w, e, at, None);
+}
+
+/// A fight in this world hears of every crystal that goes (`EnderDragonFight.onCrystalDestroyed`), whoever removed it.
+fn tell_fight(w: &mut World, e: Entity, at: Vec3, by: Option<Who>) {
+    if w.contains_resource::<crate::dragon::fight::EndFight>() {
+        crate::dragon::crystals::gone(w, e, at, by.and_then(|b| if let Who::Player(p) = b { Some(p) } else { None }));
+    }
 }
 
 fn explode_at(w: &mut World, at: Vec3, by: Option<Who>) {

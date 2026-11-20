@@ -71,6 +71,5 @@ pub fn burst(w: &mut World, at: Vec3) -> Entity {
         }
     }
     let origin = burst_origin(feet, &targets);
-    let cloud: Cloud = CLOUD.cloud(origin);
-    breath::spawn(w, cloud)
+    crate::breath_cloud::spawn(w, CLOUD, origin)
 }

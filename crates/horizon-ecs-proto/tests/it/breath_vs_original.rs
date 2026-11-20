@@ -31,3 +31,22 @@ fn a_breath_sleeps_for_its_wait_then_grows_and_goes_at_its_end() {
     h.tick();
     assert!(h.world.get_entity(e).is_err(), "gone at WAIT + duration, tick 220");
 }
+
+#[test]
+fn no_cloud_means_no_visit_and_a_sleeping_one_none_either() {
+    use horizon_ecs_proto::breath_cloud::CloudVisits;
+    let visits = |h: &Herd| h.world.get_resource::<CloudVisits>().copied().unwrap_or_default();
+    let mut h = Herd::with_slab(16, true, false);
+    for _ in 0..5 {
+        h.tick();
+    }
+    assert_eq!(visits(&h), CloudVisits(0));
+    let spec = CloudSpec { radius: 5.0, grown: 8.0, duration: 200, amplifier: 0 };
+    breath_cloud::spawn(&mut h.world, spec, [0.5, 64.0, 0.5]);
+    for _ in 0..(WAIT - 1) {
+        h.tick();
+    }
+    assert_eq!(visits(&h), CloudVisits(0), "asleep: not visited");
+    h.tick();
+    assert_eq!(visits(&h), CloudVisits(1), "live from tick WAIT: one visit");
+}

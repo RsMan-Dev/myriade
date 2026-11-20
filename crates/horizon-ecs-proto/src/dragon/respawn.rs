@@ -1,11 +1,11 @@
 //! The dragon's respawn (`tick_respawn` D:4130-4250, `rebuild_spike` D:4402-4512, `finish_respawn` D:4581, `abort_respawn` D:4640).
 //! The stages run on the own time of the first respawn crystal: one re-arm per tick while `respawn` is set, nothing otherwise.
-//! `try_respawn` (the choice of the four portal crystals, D:4252) is not here: its caller passes them to `start`.
+//! `try_respawn` (the choice of the four portal crystals, D:4252) asks `start`.
 use crate::blocks::{set_state, set_state_id, state_id, resolve, world_of};
 use crate::cow::*;
 use crate::dragon::crystals::{Beam, EndCrystal, Shielded};
 use crate::dragon::fight::{EndFight, RespawnStage};
-use crate::explosion::explode;
+use crate::explosion::{explode, explode_with};
 use crate::goals::Events;
 use crate::projectile::Blast;
 use bevy_ecs::prelude::*;
@@ -23,6 +23,49 @@ pub fn start(w: &mut World, portal: Vec<Entity>) {
         f.respawn_crystals = portal;
     }
     after(w, timer, 1, tick);
+}
+
+/// `try_respawn` (D:4252): after a kill, with no respawn running, one crystal (or more) in the cube on each of the four sides of the
+/// exit portal, three blocks out and one up, begins the respawn: the podium goes back to end stone and inactive. False when any
+/// side has none. The caller asks it when a crystal is placed there, never per tick.
+pub fn try_respawn(w: &mut World) -> bool {
+    {
+        let f = w.resource::<EndFight>();
+        if !f.killed || f.respawn.is_some() {
+            return false;
+        }
+    }
+    if w.resource::<EndFight>().exit_portal.is_none() {
+        crate::dragon::portal::activate_exit_portal(w);
+    }
+    let Some(origin) = w.resource::<EndFight>().exit_portal else { return false };
+    let mut found = Vec::new();
+    let mut q = w.query_filtered::<(Entity, &Pos), Or<(With<EndCrystal>, With<crate::end_crystal::EndCrystal>)>>();
+    let all: Vec<(Entity, Vec3)> = q.iter(w).map(|(e, p)| (e, p.0)).collect();
+    for d in [[0, -1], [0, 1], [-1, 0], [1, 0]] {
+        let lo = Vec3::new(f64::from(origin[0] + d[0] * 3), f64::from(origin[1] + 1), f64::from(origin[2] + d[1] * 3));
+        let cell = horizon_core::geometry::Aabb::new(lo, Vec3::new(lo.x + 1.0, lo.y + 1.0, lo.z + 1.0));
+        let hits: Vec<Entity> = all.iter().filter(|(_, p)| crate::dragon::crystals::bounds(*p).intersects(cell)).map(|(e, _)| *e).collect();
+        if hits.is_empty() {
+            return false;
+        }
+        found.extend(hits);
+    }
+    let mw = world_of(w);
+    let ids = (resolve(mw, "minecraft:bedrock", &[]), resolve(mw, "minecraft:end_portal", &[]));
+    for y in origin[1] - 1..=origin[1] + 3 {
+        for z in origin[2] - 3..=origin[2] + 3 {
+            for x in origin[0] - 3..=origin[0] + 3 {
+                let id = state_id(mw, [x, y, z]);
+                if Some(id) == ids.0 || Some(id) == ids.1 {
+                    set_state(w, [x, y, z], "minecraft:end_stone", &[]);
+                }
+            }
+        }
+    }
+    crate::dragon::portal::place_podium(w, origin, false);
+    start(w, found);
+    true
 }
 
 fn set_stage(w: &mut World, s: RespawnStage) {
@@ -89,16 +132,14 @@ fn tick(w: &mut World, c: Entity) {
         }
         RespawnStage::Pillars => {
             let (start, end) = (time % 40 == 0, time % 40 == 39);
-            if !(start || end) {
-                return;
-            }
-            let seed = crate::blocks::world_of(w).world_seed;
-            let spikes = spikes_for_seed(seed);
-            match spikes.get((time / 40) as usize) {
-                Some(spike) if start => set_beams(w, Some([spike.center_x, spike.height + 1, spike.center_z])),
-                Some(spike) => rebuild(w, spike),
-                None if start => set_stage(w, RespawnStage::Summoning),
-                None => {}
+            if start || end {
+                let spikes = spikes_for_seed(crate::blocks::world_of(w).world_seed);
+                match spikes.get((time / 40) as usize) {
+                    Some(spike) if start => set_beams(w, Some([spike.center_x, spike.height + 1, spike.center_z])),
+                    Some(spike) => rebuild(w, spike),
+                    None if start => set_stage(w, RespawnStage::Summoning),
+                    None => {}
+                }
             }
         }
         RespawnStage::Summoning => {
@@ -143,6 +184,9 @@ fn rebuild(w: &mut World, spike: &EndSpike) {
             }
         }
     }
+    if spike.guarded {
+        pillar_bars(w, spike);
+    }
     let crystal = Vec3::new(f64::from(cx) + 0.5, f64::from(h + 1), f64::from(cz) + 0.5);
     let e = crate::dragon::crystals::spawn(w, crystal, true);
     w.entity_mut(e).insert((Shielded, Beam(CENTER)));
@@ -150,17 +194,38 @@ fn rebuild(w: &mut World, spike: &EndSpike) {
     set_state(w, [cx, h + 1, cz], "minecraft:fire", &[]);
 }
 
-/// The respawn is over (`finish_respawn`): beams and rebuilt crystals go, the portal crystals blow up, and the new dragon is summoned.
+/// The cage of a guarded spike (`EndSpikeFeature`'s iron bars): a ring five wide and a roof, four high from the top, each bar joined
+/// to its neighbours north, south, west and east as the edge of the cage lies.
+fn pillar_bars(w: &mut World, spike: &EndSpike) {
+    for dx in -2i32..=2 {
+        for dz in -2i32..=2 {
+            for dy in 0..=3 {
+                let top = dy == 3;
+                if !(dx.abs() == 2 || dz.abs() == 2 || top) {
+                    continue;
+                }
+                let (x_edge, z_edge) = (dx.abs() == 2 || top, dz.abs() == 2 || top);
+                let sides = [x_edge && dz != -2, x_edge && dz != 2, z_edge && dx != -2, z_edge && dx != 2];
+                let props: Vec<(&str, &str)> = ["north", "south", "west", "east"].into_iter().zip(sides).map(|(k, on)| (k, if on { "true" } else { "false" })).collect();
+                if let Some(id) = resolve(world_of(w), "minecraft:iron_bars", &props) {
+                    set_state_id(w, [spike.center_x + dx, spike.height + dy, spike.center_z + dz], id);
+                }
+            }
+        }
+    }
+}
+
+/// The respawn is over (`finish_respawn`): beams go, the spike crystals are unshielded (`reset_spike_crystals`), the portal crystals blow up, and the new dragon is summoned.
 fn finish(w: &mut World) {
     set_beams(w, None);
-    let shielded: Vec<Entity> = {
-        let mut q = w.query_filtered::<Entity, (With<Shielded>, With<EndCrystal>)>();
-        q.iter(w).collect()
+    let spikes = spikes_for_seed(world_of(w).world_seed);
+    let on_spike: Vec<Entity> = {
+        let mut q = w.query_filtered::<(Entity, &Pos), With<EndCrystal>>();
+        let on = |p: Vec3| spikes.iter().any(|s| (p.x - f64::from(s.center_x) - 0.5).abs() <= f64::from(s.radius) && (p.z - f64::from(s.center_z) - 0.5).abs() <= f64::from(s.radius) && p.y >= f64::from(s.height));
+        q.iter(w).filter(|(_, p)| on(p.0)).map(|(e, _)| e).collect()
     };
-    for e in shielded {
-        w.despawn(e);
-        let f = w.resource_mut::<EndFight>().into_inner();
-        f.crystals_alive = f.crystals_alive.saturating_sub(1);
+    for e in on_spike {
+        w.entity_mut(e).remove::<(Shielded, Beam)>();
     }
     let list = {
         let f = w.resource_mut::<EndFight>().into_inner();
@@ -171,7 +236,7 @@ fn finish(w: &mut World) {
     for c in list {
         let Some(at) = w.get::<Pos>(c).map(|p| p.0) else { continue };
         w.despawn(c);
-        explode(w, Blast { at, radius: 6.0, fire: false, owner: None, source: None });
+        explode_with(w, Blast { at, radius: 6.0, fire: false, owner: None, source: None }, false);
     }
     spawn_new_dragon(w);
 }

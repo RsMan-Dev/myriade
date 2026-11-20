@@ -65,7 +65,7 @@ fn flight_matches_horizon_to_the_bit() {
     let golden = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("golden {path} missing (the reconciler writes it): {e}"));
     let ours = ours();
     if let Some(p) = std::env::var_os("HORIZON_DRAGON_DUMP") {
-        std::fs::write(p, ours.join("\n")).unwrap();
+        std::fs::write(std::path::Path::new(&p).join("flight.txt"), ours.join("\n")).unwrap();
     }
     let want: Vec<&str> = golden.trim_end().lines().collect();
     for (i, (a, b)) in ours.iter().zip(&want).enumerate() {

@@ -1,0 +1,872 @@
+started Some((Start, 0))
+respawn 0 Some((Preparing, 0)) crystals4 dragonfalse
+respawn 1 Some((Preparing, 1)) crystals4 dragonfalse
+respawn 2 Some((Preparing, 2)) crystals4 dragonfalse
+respawn 3 Some((Preparing, 3)) crystals4 dragonfalse
+respawn 4 Some((Preparing, 4)) crystals4 dragonfalse
+respawn 5 Some((Preparing, 5)) crystals4 dragonfalse
+respawn 6 Some((Preparing, 6)) crystals4 dragonfalse
+respawn 7 Some((Preparing, 7)) crystals4 dragonfalse
+respawn 8 Some((Preparing, 8)) crystals4 dragonfalse
+respawn 9 Some((Preparing, 9)) crystals4 dragonfalse
+respawn 10 Some((Preparing, 10)) crystals4 dragonfalse
+respawn 11 Some((Preparing, 11)) crystals4 dragonfalse
+respawn 12 Some((Preparing, 12)) crystals4 dragonfalse
+respawn 13 Some((Preparing, 13)) crystals4 dragonfalse
+respawn 14 Some((Preparing, 14)) crystals4 dragonfalse
+respawn 15 Some((Preparing, 15)) crystals4 dragonfalse
+respawn 16 Some((Preparing, 16)) crystals4 dragonfalse
+respawn 17 Some((Preparing, 17)) crystals4 dragonfalse
+respawn 18 Some((Preparing, 18)) crystals4 dragonfalse
+respawn 19 Some((Preparing, 19)) crystals4 dragonfalse
+respawn 20 Some((Preparing, 20)) crystals4 dragonfalse
+respawn 21 Some((Preparing, 21)) crystals4 dragonfalse
+respawn 22 Some((Preparing, 22)) crystals4 dragonfalse
+respawn 23 Some((Preparing, 23)) crystals4 dragonfalse
+respawn 24 Some((Preparing, 24)) crystals4 dragonfalse
+respawn 25 Some((Preparing, 25)) crystals4 dragonfalse
+respawn 26 Some((Preparing, 26)) crystals4 dragonfalse
+respawn 27 Some((Preparing, 27)) crystals4 dragonfalse
+respawn 28 Some((Preparing, 28)) crystals4 dragonfalse
+respawn 29 Some((Preparing, 29)) crystals4 dragonfalse
+respawn 30 Some((Preparing, 30)) crystals4 dragonfalse
+respawn 31 Some((Preparing, 31)) crystals4 dragonfalse
+respawn 32 Some((Preparing, 32)) crystals4 dragonfalse
+respawn 33 Some((Preparing, 33)) crystals4 dragonfalse
+respawn 34 Some((Preparing, 34)) crystals4 dragonfalse
+respawn 35 Some((Preparing, 35)) crystals4 dragonfalse
+respawn 36 Some((Preparing, 36)) crystals4 dragonfalse
+respawn 37 Some((Preparing, 37)) crystals4 dragonfalse
+respawn 38 Some((Preparing, 38)) crystals4 dragonfalse
+respawn 39 Some((Preparing, 39)) crystals4 dragonfalse
+respawn 40 Some((Preparing, 40)) crystals4 dragonfalse
+respawn 41 Some((Preparing, 41)) crystals4 dragonfalse
+respawn 42 Some((Preparing, 42)) crystals4 dragonfalse
+respawn 43 Some((Preparing, 43)) crystals4 dragonfalse
+respawn 44 Some((Preparing, 44)) crystals4 dragonfalse
+respawn 45 Some((Preparing, 45)) crystals4 dragonfalse
+respawn 46 Some((Preparing, 46)) crystals4 dragonfalse
+respawn 47 Some((Preparing, 47)) crystals4 dragonfalse
+respawn 48 Some((Preparing, 48)) crystals4 dragonfalse
+respawn 49 Some((Preparing, 49)) crystals4 dragonfalse
+respawn 50 Some((Preparing, 50)) crystals4 dragonfalse
+respawn 51 Some((Preparing, 51)) crystals4 dragonfalse
+respawn 52 Some((Preparing, 52)) crystals4 dragonfalse
+respawn 53 Some((Preparing, 53)) crystals4 dragonfalse
+respawn 54 Some((Preparing, 54)) crystals4 dragonfalse
+respawn 55 Some((Preparing, 55)) crystals4 dragonfalse
+respawn 56 Some((Preparing, 56)) crystals4 dragonfalse
+respawn 57 Some((Preparing, 57)) crystals4 dragonfalse
+respawn 58 Some((Preparing, 58)) crystals4 dragonfalse
+respawn 59 Some((Preparing, 59)) crystals4 dragonfalse
+respawn 60 Some((Preparing, 60)) crystals4 dragonfalse
+respawn 61 Some((Preparing, 61)) crystals4 dragonfalse
+respawn 62 Some((Preparing, 62)) crystals4 dragonfalse
+respawn 63 Some((Preparing, 63)) crystals4 dragonfalse
+respawn 64 Some((Preparing, 64)) crystals4 dragonfalse
+respawn 65 Some((Preparing, 65)) crystals4 dragonfalse
+respawn 66 Some((Preparing, 66)) crystals4 dragonfalse
+respawn 67 Some((Preparing, 67)) crystals4 dragonfalse
+respawn 68 Some((Preparing, 68)) crystals4 dragonfalse
+respawn 69 Some((Preparing, 69)) crystals4 dragonfalse
+respawn 70 Some((Preparing, 70)) crystals4 dragonfalse
+respawn 71 Some((Preparing, 71)) crystals4 dragonfalse
+respawn 72 Some((Preparing, 72)) crystals4 dragonfalse
+respawn 73 Some((Preparing, 73)) crystals4 dragonfalse
+respawn 74 Some((Preparing, 74)) crystals4 dragonfalse
+respawn 75 Some((Preparing, 75)) crystals4 dragonfalse
+respawn 76 Some((Preparing, 76)) crystals4 dragonfalse
+respawn 77 Some((Preparing, 77)) crystals4 dragonfalse
+respawn 78 Some((Preparing, 78)) crystals4 dragonfalse
+respawn 79 Some((Preparing, 79)) crystals4 dragonfalse
+respawn 80 Some((Preparing, 80)) crystals4 dragonfalse
+respawn 81 Some((Preparing, 81)) crystals4 dragonfalse
+respawn 82 Some((Preparing, 82)) crystals4 dragonfalse
+respawn 83 Some((Preparing, 83)) crystals4 dragonfalse
+respawn 84 Some((Preparing, 84)) crystals4 dragonfalse
+respawn 85 Some((Preparing, 85)) crystals4 dragonfalse
+respawn 86 Some((Preparing, 86)) crystals4 dragonfalse
+respawn 87 Some((Preparing, 87)) crystals4 dragonfalse
+respawn 88 Some((Preparing, 88)) crystals4 dragonfalse
+respawn 89 Some((Preparing, 89)) crystals4 dragonfalse
+respawn 90 Some((Preparing, 90)) crystals4 dragonfalse
+respawn 91 Some((Preparing, 91)) crystals4 dragonfalse
+respawn 92 Some((Preparing, 92)) crystals4 dragonfalse
+respawn 93 Some((Preparing, 93)) crystals4 dragonfalse
+respawn 94 Some((Preparing, 94)) crystals4 dragonfalse
+respawn 95 Some((Preparing, 95)) crystals4 dragonfalse
+respawn 96 Some((Preparing, 96)) crystals4 dragonfalse
+respawn 97 Some((Preparing, 97)) crystals4 dragonfalse
+respawn 98 Some((Preparing, 98)) crystals4 dragonfalse
+respawn 99 Some((Preparing, 99)) crystals4 dragonfalse
+respawn 100 Some((Preparing, 100)) crystals4 dragonfalse
+respawn 101 Some((Pillars, 0)) crystals4 dragonfalse
+respawn 102 Some((Pillars, 1)) crystals4 dragonfalse
+respawn 103 Some((Pillars, 2)) crystals4 dragonfalse
+respawn 104 Some((Pillars, 3)) crystals4 dragonfalse
+respawn 105 Some((Pillars, 4)) crystals4 dragonfalse
+respawn 106 Some((Pillars, 5)) crystals4 dragonfalse
+respawn 107 Some((Pillars, 6)) crystals4 dragonfalse
+respawn 108 Some((Pillars, 7)) crystals4 dragonfalse
+respawn 109 Some((Pillars, 8)) crystals4 dragonfalse
+respawn 110 Some((Pillars, 9)) crystals4 dragonfalse
+respawn 111 Some((Pillars, 10)) crystals4 dragonfalse
+respawn 112 Some((Pillars, 11)) crystals4 dragonfalse
+respawn 113 Some((Pillars, 12)) crystals4 dragonfalse
+respawn 114 Some((Pillars, 13)) crystals4 dragonfalse
+respawn 115 Some((Pillars, 14)) crystals4 dragonfalse
+respawn 116 Some((Pillars, 15)) crystals4 dragonfalse
+respawn 117 Some((Pillars, 16)) crystals4 dragonfalse
+respawn 118 Some((Pillars, 17)) crystals4 dragonfalse
+respawn 119 Some((Pillars, 18)) crystals4 dragonfalse
+respawn 120 Some((Pillars, 19)) crystals4 dragonfalse
+respawn 121 Some((Pillars, 20)) crystals4 dragonfalse
+respawn 122 Some((Pillars, 21)) crystals4 dragonfalse
+respawn 123 Some((Pillars, 22)) crystals4 dragonfalse
+respawn 124 Some((Pillars, 23)) crystals4 dragonfalse
+respawn 125 Some((Pillars, 24)) crystals4 dragonfalse
+respawn 126 Some((Pillars, 25)) crystals4 dragonfalse
+respawn 127 Some((Pillars, 26)) crystals4 dragonfalse
+respawn 128 Some((Pillars, 27)) crystals4 dragonfalse
+respawn 129 Some((Pillars, 28)) crystals4 dragonfalse
+respawn 130 Some((Pillars, 29)) crystals4 dragonfalse
+respawn 131 Some((Pillars, 30)) crystals4 dragonfalse
+respawn 132 Some((Pillars, 31)) crystals4 dragonfalse
+respawn 133 Some((Pillars, 32)) crystals4 dragonfalse
+respawn 134 Some((Pillars, 33)) crystals4 dragonfalse
+respawn 135 Some((Pillars, 34)) crystals4 dragonfalse
+respawn 136 Some((Pillars, 35)) crystals4 dragonfalse
+respawn 137 Some((Pillars, 36)) crystals4 dragonfalse
+respawn 138 Some((Pillars, 37)) crystals4 dragonfalse
+respawn 139 Some((Pillars, 38)) crystals4 dragonfalse
+respawn 140 Some((Pillars, 39)) crystals4 dragonfalse
+respawn 141 Some((Pillars, 40)) crystals5 dragonfalse
+respawn 142 Some((Pillars, 41)) crystals5 dragonfalse
+respawn 143 Some((Pillars, 42)) crystals5 dragonfalse
+respawn 144 Some((Pillars, 43)) crystals5 dragonfalse
+respawn 145 Some((Pillars, 44)) crystals5 dragonfalse
+respawn 146 Some((Pillars, 45)) crystals5 dragonfalse
+respawn 147 Some((Pillars, 46)) crystals5 dragonfalse
+respawn 148 Some((Pillars, 47)) crystals5 dragonfalse
+respawn 149 Some((Pillars, 48)) crystals5 dragonfalse
+respawn 150 Some((Pillars, 49)) crystals5 dragonfalse
+respawn 151 Some((Pillars, 50)) crystals5 dragonfalse
+respawn 152 Some((Pillars, 51)) crystals5 dragonfalse
+respawn 153 Some((Pillars, 52)) crystals5 dragonfalse
+respawn 154 Some((Pillars, 53)) crystals5 dragonfalse
+respawn 155 Some((Pillars, 54)) crystals5 dragonfalse
+respawn 156 Some((Pillars, 55)) crystals5 dragonfalse
+respawn 157 Some((Pillars, 56)) crystals5 dragonfalse
+respawn 158 Some((Pillars, 57)) crystals5 dragonfalse
+respawn 159 Some((Pillars, 58)) crystals5 dragonfalse
+respawn 160 Some((Pillars, 59)) crystals5 dragonfalse
+respawn 161 Some((Pillars, 60)) crystals5 dragonfalse
+respawn 162 Some((Pillars, 61)) crystals5 dragonfalse
+respawn 163 Some((Pillars, 62)) crystals5 dragonfalse
+respawn 164 Some((Pillars, 63)) crystals5 dragonfalse
+respawn 165 Some((Pillars, 64)) crystals5 dragonfalse
+respawn 166 Some((Pillars, 65)) crystals5 dragonfalse
+respawn 167 Some((Pillars, 66)) crystals5 dragonfalse
+respawn 168 Some((Pillars, 67)) crystals5 dragonfalse
+respawn 169 Some((Pillars, 68)) crystals5 dragonfalse
+respawn 170 Some((Pillars, 69)) crystals5 dragonfalse
+respawn 171 Some((Pillars, 70)) crystals5 dragonfalse
+respawn 172 Some((Pillars, 71)) crystals5 dragonfalse
+respawn 173 Some((Pillars, 72)) crystals5 dragonfalse
+respawn 174 Some((Pillars, 73)) crystals5 dragonfalse
+respawn 175 Some((Pillars, 74)) crystals5 dragonfalse
+respawn 176 Some((Pillars, 75)) crystals5 dragonfalse
+respawn 177 Some((Pillars, 76)) crystals5 dragonfalse
+respawn 178 Some((Pillars, 77)) crystals5 dragonfalse
+respawn 179 Some((Pillars, 78)) crystals5 dragonfalse
+respawn 180 Some((Pillars, 79)) crystals5 dragonfalse
+respawn 181 Some((Pillars, 80)) crystals6 dragonfalse
+respawn 182 Some((Pillars, 81)) crystals6 dragonfalse
+respawn 183 Some((Pillars, 82)) crystals6 dragonfalse
+respawn 184 Some((Pillars, 83)) crystals6 dragonfalse
+respawn 185 Some((Pillars, 84)) crystals6 dragonfalse
+respawn 186 Some((Pillars, 85)) crystals6 dragonfalse
+respawn 187 Some((Pillars, 86)) crystals6 dragonfalse
+respawn 188 Some((Pillars, 87)) crystals6 dragonfalse
+respawn 189 Some((Pillars, 88)) crystals6 dragonfalse
+respawn 190 Some((Pillars, 89)) crystals6 dragonfalse
+respawn 191 Some((Pillars, 90)) crystals6 dragonfalse
+respawn 192 Some((Pillars, 91)) crystals6 dragonfalse
+respawn 193 Some((Pillars, 92)) crystals6 dragonfalse
+respawn 194 Some((Pillars, 93)) crystals6 dragonfalse
+respawn 195 Some((Pillars, 94)) crystals6 dragonfalse
+respawn 196 Some((Pillars, 95)) crystals6 dragonfalse
+respawn 197 Some((Pillars, 96)) crystals6 dragonfalse
+respawn 198 Some((Pillars, 97)) crystals6 dragonfalse
+respawn 199 Some((Pillars, 98)) crystals6 dragonfalse
+respawn 200 Some((Pillars, 99)) crystals6 dragonfalse
+respawn 201 Some((Pillars, 100)) crystals6 dragonfalse
+respawn 202 Some((Pillars, 101)) crystals6 dragonfalse
+respawn 203 Some((Pillars, 102)) crystals6 dragonfalse
+respawn 204 Some((Pillars, 103)) crystals6 dragonfalse
+respawn 205 Some((Pillars, 104)) crystals6 dragonfalse
+respawn 206 Some((Pillars, 105)) crystals6 dragonfalse
+respawn 207 Some((Pillars, 106)) crystals6 dragonfalse
+respawn 208 Some((Pillars, 107)) crystals6 dragonfalse
+respawn 209 Some((Pillars, 108)) crystals6 dragonfalse
+respawn 210 Some((Pillars, 109)) crystals6 dragonfalse
+respawn 211 Some((Pillars, 110)) crystals6 dragonfalse
+respawn 212 Some((Pillars, 111)) crystals6 dragonfalse
+respawn 213 Some((Pillars, 112)) crystals6 dragonfalse
+respawn 214 Some((Pillars, 113)) crystals6 dragonfalse
+respawn 215 Some((Pillars, 114)) crystals6 dragonfalse
+respawn 216 Some((Pillars, 115)) crystals6 dragonfalse
+respawn 217 Some((Pillars, 116)) crystals6 dragonfalse
+respawn 218 Some((Pillars, 117)) crystals6 dragonfalse
+respawn 219 Some((Pillars, 118)) crystals6 dragonfalse
+respawn 220 Some((Pillars, 119)) crystals6 dragonfalse
+respawn 221 Some((Pillars, 120)) crystals7 dragonfalse
+respawn 222 Some((Pillars, 121)) crystals7 dragonfalse
+respawn 223 Some((Pillars, 122)) crystals7 dragonfalse
+respawn 224 Some((Pillars, 123)) crystals7 dragonfalse
+respawn 225 Some((Pillars, 124)) crystals7 dragonfalse
+respawn 226 Some((Pillars, 125)) crystals7 dragonfalse
+respawn 227 Some((Pillars, 126)) crystals7 dragonfalse
+respawn 228 Some((Pillars, 127)) crystals7 dragonfalse
+respawn 229 Some((Pillars, 128)) crystals7 dragonfalse
+respawn 230 Some((Pillars, 129)) crystals7 dragonfalse
+respawn 231 Some((Pillars, 130)) crystals7 dragonfalse
+respawn 232 Some((Pillars, 131)) crystals7 dragonfalse
+respawn 233 Some((Pillars, 132)) crystals7 dragonfalse
+respawn 234 Some((Pillars, 133)) crystals7 dragonfalse
+respawn 235 Some((Pillars, 134)) crystals7 dragonfalse
+respawn 236 Some((Pillars, 135)) crystals7 dragonfalse
+respawn 237 Some((Pillars, 136)) crystals7 dragonfalse
+respawn 238 Some((Pillars, 137)) crystals7 dragonfalse
+respawn 239 Some((Pillars, 138)) crystals7 dragonfalse
+respawn 240 Some((Pillars, 139)) crystals7 dragonfalse
+respawn 241 Some((Pillars, 140)) crystals7 dragonfalse
+respawn 242 Some((Pillars, 141)) crystals7 dragonfalse
+respawn 243 Some((Pillars, 142)) crystals7 dragonfalse
+respawn 244 Some((Pillars, 143)) crystals7 dragonfalse
+respawn 245 Some((Pillars, 144)) crystals7 dragonfalse
+respawn 246 Some((Pillars, 145)) crystals7 dragonfalse
+respawn 247 Some((Pillars, 146)) crystals7 dragonfalse
+respawn 248 Some((Pillars, 147)) crystals7 dragonfalse
+respawn 249 Some((Pillars, 148)) crystals7 dragonfalse
+respawn 250 Some((Pillars, 149)) crystals7 dragonfalse
+respawn 251 Some((Pillars, 150)) crystals7 dragonfalse
+respawn 252 Some((Pillars, 151)) crystals7 dragonfalse
+respawn 253 Some((Pillars, 152)) crystals7 dragonfalse
+respawn 254 Some((Pillars, 153)) crystals7 dragonfalse
+respawn 255 Some((Pillars, 154)) crystals7 dragonfalse
+respawn 256 Some((Pillars, 155)) crystals7 dragonfalse
+respawn 257 Some((Pillars, 156)) crystals7 dragonfalse
+respawn 258 Some((Pillars, 157)) crystals7 dragonfalse
+respawn 259 Some((Pillars, 158)) crystals7 dragonfalse
+respawn 260 Some((Pillars, 159)) crystals7 dragonfalse
+respawn 261 Some((Pillars, 160)) crystals8 dragonfalse
+respawn 262 Some((Pillars, 161)) crystals8 dragonfalse
+respawn 263 Some((Pillars, 162)) crystals8 dragonfalse
+respawn 264 Some((Pillars, 163)) crystals8 dragonfalse
+respawn 265 Some((Pillars, 164)) crystals8 dragonfalse
+respawn 266 Some((Pillars, 165)) crystals8 dragonfalse
+respawn 267 Some((Pillars, 166)) crystals8 dragonfalse
+respawn 268 Some((Pillars, 167)) crystals8 dragonfalse
+respawn 269 Some((Pillars, 168)) crystals8 dragonfalse
+respawn 270 Some((Pillars, 169)) crystals8 dragonfalse
+respawn 271 Some((Pillars, 170)) crystals8 dragonfalse
+respawn 272 Some((Pillars, 171)) crystals8 dragonfalse
+respawn 273 Some((Pillars, 172)) crystals8 dragonfalse
+respawn 274 Some((Pillars, 173)) crystals8 dragonfalse
+respawn 275 Some((Pillars, 174)) crystals8 dragonfalse
+respawn 276 Some((Pillars, 175)) crystals8 dragonfalse
+respawn 277 Some((Pillars, 176)) crystals8 dragonfalse
+respawn 278 Some((Pillars, 177)) crystals8 dragonfalse
+respawn 279 Some((Pillars, 178)) crystals8 dragonfalse
+respawn 280 Some((Pillars, 179)) crystals8 dragonfalse
+respawn 281 Some((Pillars, 180)) crystals8 dragonfalse
+respawn 282 Some((Pillars, 181)) crystals8 dragonfalse
+respawn 283 Some((Pillars, 182)) crystals8 dragonfalse
+respawn 284 Some((Pillars, 183)) crystals8 dragonfalse
+respawn 285 Some((Pillars, 184)) crystals8 dragonfalse
+respawn 286 Some((Pillars, 185)) crystals8 dragonfalse
+respawn 287 Some((Pillars, 186)) crystals8 dragonfalse
+respawn 288 Some((Pillars, 187)) crystals8 dragonfalse
+respawn 289 Some((Pillars, 188)) crystals8 dragonfalse
+respawn 290 Some((Pillars, 189)) crystals8 dragonfalse
+respawn 291 Some((Pillars, 190)) crystals8 dragonfalse
+respawn 292 Some((Pillars, 191)) crystals8 dragonfalse
+respawn 293 Some((Pillars, 192)) crystals8 dragonfalse
+respawn 294 Some((Pillars, 193)) crystals8 dragonfalse
+respawn 295 Some((Pillars, 194)) crystals8 dragonfalse
+respawn 296 Some((Pillars, 195)) crystals8 dragonfalse
+respawn 297 Some((Pillars, 196)) crystals8 dragonfalse
+respawn 298 Some((Pillars, 197)) crystals8 dragonfalse
+respawn 299 Some((Pillars, 198)) crystals8 dragonfalse
+respawn 300 Some((Pillars, 199)) crystals8 dragonfalse
+respawn 301 Some((Pillars, 200)) crystals9 dragonfalse
+respawn 302 Some((Pillars, 201)) crystals9 dragonfalse
+respawn 303 Some((Pillars, 202)) crystals9 dragonfalse
+respawn 304 Some((Pillars, 203)) crystals9 dragonfalse
+respawn 305 Some((Pillars, 204)) crystals9 dragonfalse
+respawn 306 Some((Pillars, 205)) crystals9 dragonfalse
+respawn 307 Some((Pillars, 206)) crystals9 dragonfalse
+respawn 308 Some((Pillars, 207)) crystals9 dragonfalse
+respawn 309 Some((Pillars, 208)) crystals9 dragonfalse
+respawn 310 Some((Pillars, 209)) crystals9 dragonfalse
+respawn 311 Some((Pillars, 210)) crystals9 dragonfalse
+respawn 312 Some((Pillars, 211)) crystals9 dragonfalse
+respawn 313 Some((Pillars, 212)) crystals9 dragonfalse
+respawn 314 Some((Pillars, 213)) crystals9 dragonfalse
+respawn 315 Some((Pillars, 214)) crystals9 dragonfalse
+respawn 316 Some((Pillars, 215)) crystals9 dragonfalse
+respawn 317 Some((Pillars, 216)) crystals9 dragonfalse
+respawn 318 Some((Pillars, 217)) crystals9 dragonfalse
+respawn 319 Some((Pillars, 218)) crystals9 dragonfalse
+respawn 320 Some((Pillars, 219)) crystals9 dragonfalse
+respawn 321 Some((Pillars, 220)) crystals9 dragonfalse
+respawn 322 Some((Pillars, 221)) crystals9 dragonfalse
+respawn 323 Some((Pillars, 222)) crystals9 dragonfalse
+respawn 324 Some((Pillars, 223)) crystals9 dragonfalse
+respawn 325 Some((Pillars, 224)) crystals9 dragonfalse
+respawn 326 Some((Pillars, 225)) crystals9 dragonfalse
+respawn 327 Some((Pillars, 226)) crystals9 dragonfalse
+respawn 328 Some((Pillars, 227)) crystals9 dragonfalse
+respawn 329 Some((Pillars, 228)) crystals9 dragonfalse
+respawn 330 Some((Pillars, 229)) crystals9 dragonfalse
+respawn 331 Some((Pillars, 230)) crystals9 dragonfalse
+respawn 332 Some((Pillars, 231)) crystals9 dragonfalse
+respawn 333 Some((Pillars, 232)) crystals9 dragonfalse
+respawn 334 Some((Pillars, 233)) crystals9 dragonfalse
+respawn 335 Some((Pillars, 234)) crystals9 dragonfalse
+respawn 336 Some((Pillars, 235)) crystals9 dragonfalse
+respawn 337 Some((Pillars, 236)) crystals9 dragonfalse
+respawn 338 Some((Pillars, 237)) crystals9 dragonfalse
+respawn 339 Some((Pillars, 238)) crystals9 dragonfalse
+respawn 340 Some((Pillars, 239)) crystals9 dragonfalse
+respawn 341 Some((Pillars, 240)) crystals10 dragonfalse
+respawn 342 Some((Pillars, 241)) crystals10 dragonfalse
+respawn 343 Some((Pillars, 242)) crystals10 dragonfalse
+respawn 344 Some((Pillars, 243)) crystals10 dragonfalse
+respawn 345 Some((Pillars, 244)) crystals10 dragonfalse
+respawn 346 Some((Pillars, 245)) crystals10 dragonfalse
+respawn 347 Some((Pillars, 246)) crystals10 dragonfalse
+respawn 348 Some((Pillars, 247)) crystals10 dragonfalse
+respawn 349 Some((Pillars, 248)) crystals10 dragonfalse
+respawn 350 Some((Pillars, 249)) crystals10 dragonfalse
+respawn 351 Some((Pillars, 250)) crystals10 dragonfalse
+respawn 352 Some((Pillars, 251)) crystals10 dragonfalse
+respawn 353 Some((Pillars, 252)) crystals10 dragonfalse
+respawn 354 Some((Pillars, 253)) crystals10 dragonfalse
+respawn 355 Some((Pillars, 254)) crystals10 dragonfalse
+respawn 356 Some((Pillars, 255)) crystals10 dragonfalse
+respawn 357 Some((Pillars, 256)) crystals10 dragonfalse
+respawn 358 Some((Pillars, 257)) crystals10 dragonfalse
+respawn 359 Some((Pillars, 258)) crystals10 dragonfalse
+respawn 360 Some((Pillars, 259)) crystals10 dragonfalse
+respawn 361 Some((Pillars, 260)) crystals10 dragonfalse
+respawn 362 Some((Pillars, 261)) crystals10 dragonfalse
+respawn 363 Some((Pillars, 262)) crystals10 dragonfalse
+respawn 364 Some((Pillars, 263)) crystals10 dragonfalse
+respawn 365 Some((Pillars, 264)) crystals10 dragonfalse
+respawn 366 Some((Pillars, 265)) crystals10 dragonfalse
+respawn 367 Some((Pillars, 266)) crystals10 dragonfalse
+respawn 368 Some((Pillars, 267)) crystals10 dragonfalse
+respawn 369 Some((Pillars, 268)) crystals10 dragonfalse
+respawn 370 Some((Pillars, 269)) crystals10 dragonfalse
+respawn 371 Some((Pillars, 270)) crystals10 dragonfalse
+respawn 372 Some((Pillars, 271)) crystals10 dragonfalse
+respawn 373 Some((Pillars, 272)) crystals10 dragonfalse
+respawn 374 Some((Pillars, 273)) crystals10 dragonfalse
+respawn 375 Some((Pillars, 274)) crystals10 dragonfalse
+respawn 376 Some((Pillars, 275)) crystals10 dragonfalse
+respawn 377 Some((Pillars, 276)) crystals10 dragonfalse
+respawn 378 Some((Pillars, 277)) crystals10 dragonfalse
+respawn 379 Some((Pillars, 278)) crystals10 dragonfalse
+respawn 380 Some((Pillars, 279)) crystals10 dragonfalse
+respawn 381 Some((Pillars, 280)) crystals11 dragonfalse
+respawn 382 Some((Pillars, 281)) crystals11 dragonfalse
+respawn 383 Some((Pillars, 282)) crystals11 dragonfalse
+respawn 384 Some((Pillars, 283)) crystals11 dragonfalse
+respawn 385 Some((Pillars, 284)) crystals11 dragonfalse
+respawn 386 Some((Pillars, 285)) crystals11 dragonfalse
+respawn 387 Some((Pillars, 286)) crystals11 dragonfalse
+respawn 388 Some((Pillars, 287)) crystals11 dragonfalse
+respawn 389 Some((Pillars, 288)) crystals11 dragonfalse
+respawn 390 Some((Pillars, 289)) crystals11 dragonfalse
+respawn 391 Some((Pillars, 290)) crystals11 dragonfalse
+respawn 392 Some((Pillars, 291)) crystals11 dragonfalse
+respawn 393 Some((Pillars, 292)) crystals11 dragonfalse
+respawn 394 Some((Pillars, 293)) crystals11 dragonfalse
+respawn 395 Some((Pillars, 294)) crystals11 dragonfalse
+respawn 396 Some((Pillars, 295)) crystals11 dragonfalse
+respawn 397 Some((Pillars, 296)) crystals11 dragonfalse
+respawn 398 Some((Pillars, 297)) crystals11 dragonfalse
+respawn 399 Some((Pillars, 298)) crystals11 dragonfalse
+respawn 400 Some((Pillars, 299)) crystals11 dragonfalse
+respawn 401 Some((Pillars, 300)) crystals11 dragonfalse
+respawn 402 Some((Pillars, 301)) crystals11 dragonfalse
+respawn 403 Some((Pillars, 302)) crystals11 dragonfalse
+respawn 404 Some((Pillars, 303)) crystals11 dragonfalse
+respawn 405 Some((Pillars, 304)) crystals11 dragonfalse
+respawn 406 Some((Pillars, 305)) crystals11 dragonfalse
+respawn 407 Some((Pillars, 306)) crystals11 dragonfalse
+respawn 408 Some((Pillars, 307)) crystals11 dragonfalse
+respawn 409 Some((Pillars, 308)) crystals11 dragonfalse
+respawn 410 Some((Pillars, 309)) crystals11 dragonfalse
+respawn 411 Some((Pillars, 310)) crystals11 dragonfalse
+respawn 412 Some((Pillars, 311)) crystals11 dragonfalse
+respawn 413 Some((Pillars, 312)) crystals11 dragonfalse
+respawn 414 Some((Pillars, 313)) crystals11 dragonfalse
+respawn 415 Some((Pillars, 314)) crystals11 dragonfalse
+respawn 416 Some((Pillars, 315)) crystals11 dragonfalse
+respawn 417 Some((Pillars, 316)) crystals11 dragonfalse
+respawn 418 Some((Pillars, 317)) crystals11 dragonfalse
+respawn 419 Some((Pillars, 318)) crystals11 dragonfalse
+respawn 420 Some((Pillars, 319)) crystals11 dragonfalse
+respawn 421 Some((Pillars, 320)) crystals12 dragonfalse
+respawn 422 Some((Pillars, 321)) crystals12 dragonfalse
+respawn 423 Some((Pillars, 322)) crystals12 dragonfalse
+respawn 424 Some((Pillars, 323)) crystals12 dragonfalse
+respawn 425 Some((Pillars, 324)) crystals12 dragonfalse
+respawn 426 Some((Pillars, 325)) crystals12 dragonfalse
+respawn 427 Some((Pillars, 326)) crystals12 dragonfalse
+respawn 428 Some((Pillars, 327)) crystals12 dragonfalse
+respawn 429 Some((Pillars, 328)) crystals12 dragonfalse
+respawn 430 Some((Pillars, 329)) crystals12 dragonfalse
+respawn 431 Some((Pillars, 330)) crystals12 dragonfalse
+respawn 432 Some((Pillars, 331)) crystals12 dragonfalse
+respawn 433 Some((Pillars, 332)) crystals12 dragonfalse
+respawn 434 Some((Pillars, 333)) crystals12 dragonfalse
+respawn 435 Some((Pillars, 334)) crystals12 dragonfalse
+respawn 436 Some((Pillars, 335)) crystals12 dragonfalse
+respawn 437 Some((Pillars, 336)) crystals12 dragonfalse
+respawn 438 Some((Pillars, 337)) crystals12 dragonfalse
+respawn 439 Some((Pillars, 338)) crystals12 dragonfalse
+respawn 440 Some((Pillars, 339)) crystals12 dragonfalse
+respawn 441 Some((Pillars, 340)) crystals12 dragonfalse
+respawn 442 Some((Pillars, 341)) crystals12 dragonfalse
+respawn 443 Some((Pillars, 342)) crystals12 dragonfalse
+respawn 444 Some((Pillars, 343)) crystals12 dragonfalse
+respawn 445 Some((Pillars, 344)) crystals12 dragonfalse
+respawn 446 Some((Pillars, 345)) crystals12 dragonfalse
+respawn 447 Some((Pillars, 346)) crystals12 dragonfalse
+respawn 448 Some((Pillars, 347)) crystals12 dragonfalse
+respawn 449 Some((Pillars, 348)) crystals12 dragonfalse
+respawn 450 Some((Pillars, 349)) crystals12 dragonfalse
+respawn 451 Some((Pillars, 350)) crystals12 dragonfalse
+respawn 452 Some((Pillars, 351)) crystals12 dragonfalse
+respawn 453 Some((Pillars, 352)) crystals12 dragonfalse
+respawn 454 Some((Pillars, 353)) crystals12 dragonfalse
+respawn 455 Some((Pillars, 354)) crystals12 dragonfalse
+respawn 456 Some((Pillars, 355)) crystals12 dragonfalse
+respawn 457 Some((Pillars, 356)) crystals12 dragonfalse
+respawn 458 Some((Pillars, 357)) crystals12 dragonfalse
+respawn 459 Some((Pillars, 358)) crystals12 dragonfalse
+respawn 460 Some((Pillars, 359)) crystals12 dragonfalse
+respawn 461 Some((Pillars, 360)) crystals13 dragonfalse
+respawn 462 Some((Pillars, 361)) crystals13 dragonfalse
+respawn 463 Some((Pillars, 362)) crystals13 dragonfalse
+respawn 464 Some((Pillars, 363)) crystals13 dragonfalse
+respawn 465 Some((Pillars, 364)) crystals13 dragonfalse
+respawn 466 Some((Pillars, 365)) crystals13 dragonfalse
+respawn 467 Some((Pillars, 366)) crystals13 dragonfalse
+respawn 468 Some((Pillars, 367)) crystals13 dragonfalse
+respawn 469 Some((Pillars, 368)) crystals13 dragonfalse
+respawn 470 Some((Pillars, 369)) crystals13 dragonfalse
+respawn 471 Some((Pillars, 370)) crystals13 dragonfalse
+respawn 472 Some((Pillars, 371)) crystals13 dragonfalse
+respawn 473 Some((Pillars, 372)) crystals13 dragonfalse
+respawn 474 Some((Pillars, 373)) crystals13 dragonfalse
+respawn 475 Some((Pillars, 374)) crystals13 dragonfalse
+respawn 476 Some((Pillars, 375)) crystals13 dragonfalse
+respawn 477 Some((Pillars, 376)) crystals13 dragonfalse
+respawn 478 Some((Pillars, 377)) crystals13 dragonfalse
+respawn 479 Some((Pillars, 378)) crystals13 dragonfalse
+respawn 480 Some((Pillars, 379)) crystals13 dragonfalse
+respawn 481 Some((Pillars, 380)) crystals13 dragonfalse
+respawn 482 Some((Pillars, 381)) crystals13 dragonfalse
+respawn 483 Some((Pillars, 382)) crystals13 dragonfalse
+respawn 484 Some((Pillars, 383)) crystals13 dragonfalse
+respawn 485 Some((Pillars, 384)) crystals13 dragonfalse
+respawn 486 Some((Pillars, 385)) crystals13 dragonfalse
+respawn 487 Some((Pillars, 386)) crystals13 dragonfalse
+respawn 488 Some((Pillars, 387)) crystals13 dragonfalse
+respawn 489 Some((Pillars, 388)) crystals13 dragonfalse
+respawn 490 Some((Pillars, 389)) crystals13 dragonfalse
+respawn 491 Some((Pillars, 390)) crystals13 dragonfalse
+respawn 492 Some((Pillars, 391)) crystals13 dragonfalse
+respawn 493 Some((Pillars, 392)) crystals13 dragonfalse
+respawn 494 Some((Pillars, 393)) crystals13 dragonfalse
+respawn 495 Some((Pillars, 394)) crystals13 dragonfalse
+respawn 496 Some((Pillars, 395)) crystals13 dragonfalse
+respawn 497 Some((Pillars, 396)) crystals13 dragonfalse
+respawn 498 Some((Pillars, 397)) crystals13 dragonfalse
+respawn 499 Some((Pillars, 398)) crystals13 dragonfalse
+respawn 500 Some((Pillars, 399)) crystals13 dragonfalse
+respawn 501 Some((Pillars, 400)) crystals14 dragonfalse
+respawn 502 Some((Summoning, 0)) crystals14 dragonfalse
+respawn 503 Some((Summoning, 1)) crystals14 dragonfalse
+respawn 504 Some((Summoning, 2)) crystals14 dragonfalse
+respawn 505 Some((Summoning, 3)) crystals14 dragonfalse
+respawn 506 Some((Summoning, 4)) crystals14 dragonfalse
+respawn 507 Some((Summoning, 5)) crystals14 dragonfalse
+respawn 508 Some((Summoning, 6)) crystals14 dragonfalse
+respawn 509 Some((Summoning, 7)) crystals14 dragonfalse
+respawn 510 Some((Summoning, 8)) crystals14 dragonfalse
+respawn 511 Some((Summoning, 9)) crystals14 dragonfalse
+respawn 512 Some((Summoning, 10)) crystals14 dragonfalse
+respawn 513 Some((Summoning, 11)) crystals14 dragonfalse
+respawn 514 Some((Summoning, 12)) crystals14 dragonfalse
+respawn 515 Some((Summoning, 13)) crystals14 dragonfalse
+respawn 516 Some((Summoning, 14)) crystals14 dragonfalse
+respawn 517 Some((Summoning, 15)) crystals14 dragonfalse
+respawn 518 Some((Summoning, 16)) crystals14 dragonfalse
+respawn 519 Some((Summoning, 17)) crystals14 dragonfalse
+respawn 520 Some((Summoning, 18)) crystals14 dragonfalse
+respawn 521 Some((Summoning, 19)) crystals14 dragonfalse
+respawn 522 Some((Summoning, 20)) crystals14 dragonfalse
+respawn 523 Some((Summoning, 21)) crystals14 dragonfalse
+respawn 524 Some((Summoning, 22)) crystals14 dragonfalse
+respawn 525 Some((Summoning, 23)) crystals14 dragonfalse
+respawn 526 Some((Summoning, 24)) crystals14 dragonfalse
+respawn 527 Some((Summoning, 25)) crystals14 dragonfalse
+respawn 528 Some((Summoning, 26)) crystals14 dragonfalse
+respawn 529 Some((Summoning, 27)) crystals14 dragonfalse
+respawn 530 Some((Summoning, 28)) crystals14 dragonfalse
+respawn 531 Some((Summoning, 29)) crystals14 dragonfalse
+respawn 532 Some((Summoning, 30)) crystals14 dragonfalse
+respawn 533 Some((Summoning, 31)) crystals14 dragonfalse
+respawn 534 Some((Summoning, 32)) crystals14 dragonfalse
+respawn 535 Some((Summoning, 33)) crystals14 dragonfalse
+respawn 536 Some((Summoning, 34)) crystals14 dragonfalse
+respawn 537 Some((Summoning, 35)) crystals14 dragonfalse
+respawn 538 Some((Summoning, 36)) crystals14 dragonfalse
+respawn 539 Some((Summoning, 37)) crystals14 dragonfalse
+respawn 540 Some((Summoning, 38)) crystals14 dragonfalse
+respawn 541 Some((Summoning, 39)) crystals14 dragonfalse
+respawn 542 Some((Summoning, 40)) crystals14 dragonfalse
+respawn 543 Some((Summoning, 41)) crystals14 dragonfalse
+respawn 544 Some((Summoning, 42)) crystals14 dragonfalse
+respawn 545 Some((Summoning, 43)) crystals14 dragonfalse
+respawn 546 Some((Summoning, 44)) crystals14 dragonfalse
+respawn 547 Some((Summoning, 45)) crystals14 dragonfalse
+respawn 548 Some((Summoning, 46)) crystals14 dragonfalse
+respawn 549 Some((Summoning, 47)) crystals14 dragonfalse
+respawn 550 Some((Summoning, 48)) crystals14 dragonfalse
+respawn 551 Some((Summoning, 49)) crystals14 dragonfalse
+respawn 552 Some((Summoning, 50)) crystals14 dragonfalse
+respawn 553 Some((Summoning, 51)) crystals14 dragonfalse
+respawn 554 Some((Summoning, 52)) crystals14 dragonfalse
+respawn 555 Some((Summoning, 53)) crystals14 dragonfalse
+respawn 556 Some((Summoning, 54)) crystals14 dragonfalse
+respawn 557 Some((Summoning, 55)) crystals14 dragonfalse
+respawn 558 Some((Summoning, 56)) crystals14 dragonfalse
+respawn 559 Some((Summoning, 57)) crystals14 dragonfalse
+respawn 560 Some((Summoning, 58)) crystals14 dragonfalse
+respawn 561 Some((Summoning, 59)) crystals14 dragonfalse
+respawn 562 Some((Summoning, 60)) crystals14 dragonfalse
+respawn 563 Some((Summoning, 61)) crystals14 dragonfalse
+respawn 564 Some((Summoning, 62)) crystals14 dragonfalse
+respawn 565 Some((Summoning, 63)) crystals14 dragonfalse
+respawn 566 Some((Summoning, 64)) crystals14 dragonfalse
+respawn 567 Some((Summoning, 65)) crystals14 dragonfalse
+respawn 568 Some((Summoning, 66)) crystals14 dragonfalse
+respawn 569 Some((Summoning, 67)) crystals14 dragonfalse
+respawn 570 Some((Summoning, 68)) crystals14 dragonfalse
+respawn 571 Some((Summoning, 69)) crystals14 dragonfalse
+respawn 572 Some((Summoning, 70)) crystals14 dragonfalse
+respawn 573 Some((Summoning, 71)) crystals14 dragonfalse
+respawn 574 Some((Summoning, 72)) crystals14 dragonfalse
+respawn 575 Some((Summoning, 73)) crystals14 dragonfalse
+respawn 576 Some((Summoning, 74)) crystals14 dragonfalse
+respawn 577 Some((Summoning, 75)) crystals14 dragonfalse
+respawn 578 Some((Summoning, 76)) crystals14 dragonfalse
+respawn 579 Some((Summoning, 77)) crystals14 dragonfalse
+respawn 580 Some((Summoning, 78)) crystals14 dragonfalse
+respawn 581 Some((Summoning, 79)) crystals14 dragonfalse
+respawn 582 Some((Summoning, 80)) crystals14 dragonfalse
+respawn 583 Some((Summoning, 81)) crystals14 dragonfalse
+respawn 584 Some((Summoning, 82)) crystals14 dragonfalse
+respawn 585 Some((Summoning, 83)) crystals14 dragonfalse
+respawn 586 Some((Summoning, 84)) crystals14 dragonfalse
+respawn 587 Some((Summoning, 85)) crystals14 dragonfalse
+respawn 588 Some((Summoning, 86)) crystals14 dragonfalse
+respawn 589 Some((Summoning, 87)) crystals14 dragonfalse
+respawn 590 Some((Summoning, 88)) crystals14 dragonfalse
+respawn 591 Some((Summoning, 89)) crystals14 dragonfalse
+respawn 592 Some((Summoning, 90)) crystals14 dragonfalse
+respawn 593 Some((Summoning, 91)) crystals14 dragonfalse
+respawn 594 Some((Summoning, 92)) crystals14 dragonfalse
+respawn 595 Some((Summoning, 93)) crystals14 dragonfalse
+respawn 596 Some((Summoning, 94)) crystals14 dragonfalse
+respawn 597 Some((Summoning, 95)) crystals14 dragonfalse
+respawn 598 Some((Summoning, 96)) crystals14 dragonfalse
+respawn 599 Some((Summoning, 97)) crystals14 dragonfalse
+respawn 600 Some((Summoning, 98)) crystals14 dragonfalse
+respawn 601 Some((Summoning, 99)) crystals14 dragonfalse
+respawn 602 Some((Summoning, 100)) crystals14 dragonfalse
+respawn 603 None crystals10 dragontrue
+respawn 604 None crystals10 dragontrue
+respawn 605 None crystals10 dragontrue
+respawn 606 None crystals10 dragontrue
+respawn 607 None crystals10 dragontrue
+respawn 608 None crystals10 dragontrue
+respawn 609 None crystals10 dragontrue
+respawn 610 None crystals10 dragontrue
+respawn 611 None crystals10 dragontrue
+respawn 612 None crystals10 dragontrue
+respawn 613 None crystals10 dragontrue
+respawn 614 None crystals10 dragontrue
+respawn 615 None crystals10 dragontrue
+respawn 616 None crystals10 dragontrue
+respawn 617 None crystals10 dragontrue
+respawn 618 None crystals10 dragontrue
+respawn 619 None crystals10 dragontrue
+respawn 620 None crystals10 dragontrue
+respawn 621 None crystals10 dragontrue
+respawn 622 None crystals10 dragontrue
+respawn 623 None crystals10 dragontrue
+respawn 624 None crystals10 dragontrue
+respawn 625 None crystals10 dragontrue
+respawn 626 None crystals10 dragontrue
+respawn 627 None crystals10 dragontrue
+respawn 628 None crystals10 dragontrue
+respawn 629 None crystals10 dragontrue
+respawn 630 None crystals10 dragontrue
+respawn 631 None crystals10 dragontrue
+respawn 632 None crystals10 dragontrue
+respawn 633 None crystals10 dragontrue
+respawn 634 None crystals10 dragontrue
+respawn 635 None crystals10 dragontrue
+respawn 636 None crystals10 dragontrue
+respawn 637 None crystals10 dragontrue
+respawn 638 None crystals10 dragontrue
+respawn 639 None crystals10 dragontrue
+respawn 640 None crystals10 dragontrue
+respawn 641 None crystals10 dragontrue
+respawn 642 None crystals10 dragontrue
+respawn 643 None crystals10 dragontrue
+respawn 644 None crystals10 dragontrue
+respawn 645 None crystals10 dragontrue
+respawn 646 None crystals10 dragontrue
+respawn 647 None crystals10 dragontrue
+respawn 648 None crystals10 dragontrue
+respawn 649 None crystals10 dragontrue
+respawn 650 None crystals10 dragontrue
+respawn 651 None crystals10 dragontrue
+respawn 652 None crystals10 dragontrue
+respawn 653 None crystals10 dragontrue
+respawn 654 None crystals10 dragontrue
+respawn 655 None crystals10 dragontrue
+respawn 656 None crystals10 dragontrue
+respawn 657 None crystals10 dragontrue
+respawn 658 None crystals10 dragontrue
+respawn 659 None crystals10 dragontrue
+respawn 660 None crystals10 dragontrue
+respawn 661 None crystals10 dragontrue
+respawn 662 None crystals10 dragontrue
+respawn 663 None crystals10 dragontrue
+respawn 664 None crystals10 dragontrue
+respawn 665 None crystals10 dragontrue
+respawn 666 None crystals10 dragontrue
+respawn 667 None crystals10 dragontrue
+respawn 668 None crystals10 dragontrue
+respawn 669 None crystals10 dragontrue
+respawn 670 None crystals10 dragontrue
+respawn 671 None crystals10 dragontrue
+respawn 672 None crystals10 dragontrue
+respawn 673 None crystals10 dragontrue
+respawn 674 None crystals10 dragontrue
+respawn 675 None crystals10 dragontrue
+respawn 676 None crystals10 dragontrue
+respawn 677 None crystals10 dragontrue
+respawn 678 None crystals10 dragontrue
+respawn 679 None crystals10 dragontrue
+respawn 680 None crystals10 dragontrue
+respawn 681 None crystals10 dragontrue
+respawn 682 None crystals10 dragontrue
+respawn 683 None crystals10 dragontrue
+respawn 684 None crystals10 dragontrue
+respawn 685 None crystals10 dragontrue
+respawn 686 None crystals10 dragontrue
+respawn 687 None crystals10 dragontrue
+respawn 688 None crystals10 dragontrue
+respawn 689 None crystals10 dragontrue
+respawn 690 None crystals10 dragontrue
+respawn 691 None crystals10 dragontrue
+respawn 692 None crystals10 dragontrue
+respawn 693 None crystals10 dragontrue
+respawn 694 None crystals10 dragontrue
+respawn 695 None crystals10 dragontrue
+respawn 696 None crystals10 dragontrue
+respawn 697 None crystals10 dragontrue
+respawn 698 None crystals10 dragontrue
+respawn 699 None crystals10 dragontrue
+respawn 700 None crystals10 dragontrue
+respawn 701 None crystals10 dragontrue
+respawn 702 None crystals10 dragontrue
+respawn 703 None crystals10 dragontrue
+respawn 704 None crystals10 dragontrue
+respawn 705 None crystals10 dragontrue
+respawn 706 None crystals10 dragontrue
+respawn 707 None crystals10 dragontrue
+respawn 708 None crystals10 dragontrue
+respawn 709 None crystals10 dragontrue
+respawn 710 None crystals10 dragontrue
+respawn 711 None crystals10 dragontrue
+respawn 712 None crystals10 dragontrue
+respawn 713 None crystals10 dragontrue
+respawn 714 None crystals10 dragontrue
+respawn 715 None crystals10 dragontrue
+respawn 716 None crystals10 dragontrue
+respawn 717 None crystals10 dragontrue
+respawn 718 None crystals10 dragontrue
+respawn 719 None crystals10 dragontrue
+respawn 720 None crystals10 dragontrue
+respawn 721 None crystals10 dragontrue
+respawn 722 None crystals10 dragontrue
+respawn 723 None crystals10 dragontrue
+respawn 724 None crystals10 dragontrue
+respawn 725 None crystals10 dragontrue
+respawn 726 None crystals10 dragontrue
+respawn 727 None crystals10 dragontrue
+respawn 728 None crystals10 dragontrue
+respawn 729 None crystals10 dragontrue
+respawn 730 None crystals10 dragontrue
+respawn 731 None crystals10 dragontrue
+respawn 732 None crystals10 dragontrue
+respawn 733 None crystals10 dragontrue
+respawn 734 None crystals10 dragontrue
+respawn 735 None crystals10 dragontrue
+respawn 736 None crystals10 dragontrue
+respawn 737 None crystals10 dragontrue
+respawn 738 None crystals10 dragontrue
+respawn 739 None crystals10 dragontrue
+respawn 740 None crystals10 dragontrue
+respawn 741 None crystals10 dragontrue
+respawn 742 None crystals10 dragontrue
+respawn 743 None crystals10 dragontrue
+respawn 744 None crystals10 dragontrue
+respawn 745 None crystals10 dragontrue
+respawn 746 None crystals10 dragontrue
+respawn 747 None crystals10 dragontrue
+respawn 748 None crystals10 dragontrue
+respawn 749 None crystals10 dragontrue
+respawn 750 None crystals10 dragontrue
+respawn 751 None crystals10 dragontrue
+respawn 752 None crystals10 dragontrue
+respawn 753 None crystals10 dragontrue
+respawn 754 None crystals10 dragontrue
+respawn 755 None crystals10 dragontrue
+respawn 756 None crystals10 dragontrue
+respawn 757 None crystals10 dragontrue
+respawn 758 None crystals10 dragontrue
+respawn 759 None crystals10 dragontrue
+respawn 760 None crystals10 dragontrue
+respawn 761 None crystals10 dragontrue
+respawn 762 None crystals10 dragontrue
+respawn 763 None crystals10 dragontrue
+respawn 764 None crystals10 dragontrue
+respawn 765 None crystals10 dragontrue
+respawn 766 None crystals10 dragontrue
+respawn 767 None crystals10 dragontrue
+respawn 768 None crystals10 dragontrue
+respawn 769 None crystals10 dragontrue
+respawn 770 None crystals10 dragontrue
+respawn 771 None crystals10 dragontrue
+respawn 772 None crystals10 dragontrue
+respawn 773 None crystals10 dragontrue
+respawn 774 None crystals10 dragontrue
+respawn 775 None crystals10 dragontrue
+respawn 776 None crystals10 dragontrue
+respawn 777 None crystals10 dragontrue
+respawn 778 None crystals10 dragontrue
+respawn 779 None crystals10 dragontrue
+respawn 780 None crystals10 dragontrue
+respawn 781 None crystals10 dragontrue
+respawn 782 None crystals10 dragontrue
+respawn 783 None crystals10 dragontrue
+respawn 784 None crystals10 dragontrue
+respawn 785 None crystals10 dragontrue
+respawn 786 None crystals10 dragontrue
+respawn 787 None crystals10 dragontrue
+respawn 788 None crystals10 dragontrue
+respawn 789 None crystals10 dragontrue
+respawn 790 None crystals10 dragontrue
+respawn 791 None crystals10 dragontrue
+respawn 792 None crystals10 dragontrue
+respawn 793 None crystals10 dragontrue
+respawn 794 None crystals10 dragontrue
+respawn 795 None crystals10 dragontrue
+respawn 796 None crystals10 dragontrue
+respawn 797 None crystals10 dragontrue
+respawn 798 None crystals10 dragontrue
+respawn 799 None crystals10 dragontrue
+spike 0 obsidian5358 bars0
+spike 1 obsidian3367 bars0
+spike 2 obsidian1659 bars73
+spike 3 obsidian5529 bars0
+spike 4 obsidian3145 bars0
+spike 5 obsidian9167 bars0
+spike 6 obsidian1596 bars0
+spike 7 obsidian1722 bars73
+spike 8 obsidian3256 bars0
+spike 9 obsidian5700 bars0
+blk -1 60 -3 minecraft:end_stone
+blk 0 60 -3 minecraft:end_stone
+blk 1 60 -3 minecraft:end_stone
+blk -2 60 -2 minecraft:end_stone
+blk -1 60 -2 minecraft:bedrock
+blk 0 60 -2 minecraft:bedrock
+blk 1 60 -2 minecraft:bedrock
+blk 2 60 -2 minecraft:end_stone
+blk -3 60 -1 minecraft:end_stone
+blk -2 60 -1 minecraft:bedrock
+blk -1 60 -1 minecraft:bedrock
+blk 0 60 -1 minecraft:bedrock
+blk 1 60 -1 minecraft:bedrock
+blk 2 60 -1 minecraft:bedrock
+blk 3 60 -1 minecraft:end_stone
+blk -3 60 0 minecraft:end_stone
+blk -2 60 0 minecraft:bedrock
+blk -1 60 0 minecraft:bedrock
+blk 0 60 0 minecraft:bedrock
+blk 1 60 0 minecraft:bedrock
+blk 2 60 0 minecraft:bedrock
+blk 3 60 0 minecraft:end_stone
+blk -3 60 1 minecraft:end_stone
+blk -2 60 1 minecraft:bedrock
+blk -1 60 1 minecraft:bedrock
+blk 0 60 1 minecraft:bedrock
+blk 1 60 1 minecraft:bedrock
+blk 2 60 1 minecraft:bedrock
+blk 3 60 1 minecraft:end_stone
+blk -2 60 2 minecraft:end_stone
+blk -1 60 2 minecraft:bedrock
+blk 0 60 2 minecraft:bedrock
+blk 1 60 2 minecraft:bedrock
+blk 2 60 2 minecraft:end_stone
+blk -1 60 3 minecraft:end_stone
+blk 0 60 3 minecraft:end_stone
+blk 1 60 3 minecraft:end_stone
+blk -1 61 -3 minecraft:bedrock
+blk 0 61 -3 minecraft:bedrock
+blk 1 61 -3 minecraft:bedrock
+blk -2 61 -2 minecraft:bedrock
+blk 2 61 -2 minecraft:bedrock
+blk -3 61 -1 minecraft:bedrock
+blk 3 61 -1 minecraft:bedrock
+blk -3 61 0 minecraft:bedrock
+blk 0 61 0 minecraft:bedrock
+blk 3 61 0 minecraft:bedrock
+blk -3 61 1 minecraft:bedrock
+blk 3 61 1 minecraft:bedrock
+blk -2 61 2 minecraft:bedrock
+blk 2 61 2 minecraft:bedrock
+blk -1 61 3 minecraft:bedrock
+blk 0 61 3 minecraft:bedrock
+blk 1 61 3 minecraft:bedrock
+blk 0 62 0 minecraft:bedrock
+blk 0 63 -1 minecraft:wall_torch
+blk -1 63 0 minecraft:wall_torch
+blk 0 63 0 minecraft:bedrock
+blk 1 63 0 minecraft:wall_torch
+blk 0 63 1 minecraft:wall_torch
+blk 0 64 0 minecraft:bedrock

@@ -239,7 +239,7 @@ impl PhaseDef for Strafe {
         if let Some(pp) = s.player.and_then(|q| fight::player_pos(w, q)) {
             let here = pos(w, e);
             let crystals = fight::alive_crystals(w);
-            let (p, t) = fly(w, e, |g, rng| nodes::strafe_begin(g, crystals, pp, here, rng));
+            let (p, t) = fly(w, e, |g, rng| nodes::strafe_begin(g, crystals, here, pp, rng));
             s.path = p;
             s.target = t;
         }

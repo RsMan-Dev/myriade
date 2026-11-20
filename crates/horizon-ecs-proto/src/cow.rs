@@ -1617,6 +1617,7 @@ pub fn schedule() -> Schedule {
     // this tick's physics, as a mob's hurt precedes its tick.
     s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
+    s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
     s.add_systems(crate::spawning::step.after(crate::goals::online_events).before(player_near));
@@ -3550,6 +3551,7 @@ pub(crate) fn due(
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
     mut events: ResMut<crate::goals::Events>,
+    fight: Option<ResMut<crate::dragon::fight::FightEvents>>,
     mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
@@ -3559,6 +3561,9 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    if let Some(mut f) = fight {
+        f.swap();
+    }
     wheel.advance(clock.0);
     for id in std::mem::take(&mut players.gaze_dirty) {
         events.gaze_changed.push(id);

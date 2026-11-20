@@ -15,3 +15,4 @@ pub mod phases;
 pub mod portal;
 pub mod respawn;
 pub mod save;
+pub mod walls;

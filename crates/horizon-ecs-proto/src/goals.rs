@@ -630,7 +630,7 @@ impl<T: Copy> Ev<T> {
     pub fn is_empty(&self) -> bool {
         self.prev.is_empty()
     }
-    fn swap(&mut self) {
+    pub(crate) fn swap(&mut self) {
         std::mem::swap(&mut self.prev, &mut self.cur);
         self.cur.clear();
     }

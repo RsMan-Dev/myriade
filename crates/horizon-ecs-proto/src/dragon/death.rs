@@ -43,7 +43,11 @@ pub fn tick(w: &mut World, e: Entity) {
         w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z].map(|v| v.floor() as i32), 0);
     }
     w.entity_mut(e).insert(rng);
-    w.get_mut::<Pos>(e).unwrap().0.y += f64::from(0.1_f32);
+    let rise = f64::from(0.1_f32);
+    w.get_mut::<Pos>(e).unwrap().0.y += rise;
+    if let Some(mut parts) = w.get_mut::<super::parts::Parts>(e) {
+        parts.0.iter_mut().for_each(|p| p.pos[1] += rise);
+    }
     if t < DEATH_TICKS {
         return;
     }

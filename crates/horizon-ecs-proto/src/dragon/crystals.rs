@@ -53,12 +53,12 @@ pub fn destroy(w: &mut World, e: Entity, by: Option<u32>, direct: bool) {
     if direct {
         explode(w, Blast { at, radius: 6.0, fire: false, owner: by.map(Who::Player), source: None });
     }
-    crystal_destroyed(w, e, at, by);
+    gone(w, e, at, by);
 }
 
 /// The crystal is gone (`crystal_destroyed`): a respawn crystal aborts the respawn, a spike crystal leaves the count. The dragon
 /// loses its nearest crystal once it was that one, and takes the blast's 10 points; the strafe follows.
-fn crystal_destroyed(w: &mut World, e: Entity, at: Vec3, by: Option<u32>) {
+pub fn gone(w: &mut World, e: Entity, at: Vec3, by: Option<u32>) {
     let respawn_crystal = w.resource::<EndFight>().respawn_crystals.contains(&e);
     if respawn_crystal {
         crate::dragon::respawn::abort(w);

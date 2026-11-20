@@ -57,12 +57,32 @@ pub struct DragonKilled {
     pub last_blow: Option<Cause>,
 }
 
+/// The kill is credited (`credit_dragon_kill`, `LivingEntity.die`'s `awardKillScore`): the player who hurt the dragon within the last
+/// 100 ticks, and the blow that took it down. The game awards the statistic, the score and the advancement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KillCredit {
+    pub by: u32,
+    pub last_blow: Cause,
+    pub by_player: bool,
+}
+
 /// The fight's outgoing events, read by the game once per tick; each is pushed by the one module that owns it.
 #[derive(Resource, Default)]
 pub struct FightEvents {
     pub crystal_destroyed: Ev<CrystalDestroyed>,
     pub players: Ev<FightPlayersChanged>,
     pub killed: Ev<DragonKilled>,
+    pub credit: Ev<KillCredit>,
+}
+
+impl FightEvents {
+    /// Once per tick, with the other events (`cow::due`): what was pushed becomes readable at the next tick.
+    pub fn swap(&mut self) {
+        self.crystal_destroyed.swap();
+        self.players.swap();
+        self.killed.swap();
+        self.credit.swap();
+    }
 }
 
 /// `Collections.shuffle` of the gateways 0..20 with the seeded `LegacyRandom` (`load_fight`).

@@ -67,12 +67,14 @@ pub fn place_gateway(w: &mut World, origin: [i32; 3]) {
     }
 }
 
-/// The egg on the first kill: on the highest solid block of the column (0, 0), plus one.
+/// The egg on the first kill: on the highest solid block of the column (0, 0), plus one. The podium's bedrock pillar (four high from
+/// the portal's floor) is queued, not yet in the world: it counts as the top (Horizon reads the heightmap after placing it).
 pub fn place_egg(w: &mut World) {
+    let pillar = w.resource::<EndFight>().exit_portal.unwrap_or([0, 61, 0])[1] + 4;
     let mw = world_of(w);
     let y = (0..256).rev().find(|&y| {
         let f = mw.facts.get(mw.world.block(0, y, 0));
         f.full_collision || f.legacy_solid
     });
-    set_state(w, [0, y.map_or(64, |y| y + 1), 0], "minecraft:dragon_egg", &[]);
+    set_state(w, [0, y.map_or(64, |y| y + 1).max(pillar), 0], "minecraft:dragon_egg", &[]);
 }
