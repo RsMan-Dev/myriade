@@ -1,5 +1,6 @@
 //! Counting copy of Horizon's `Finder` (walk evaluator included), to be reduced. See suivi/ecs-portage/relais/chemin-partage.md.
 use crate::IFloor as _;
+use horizon_world::registry::BlockStateId;
 use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType, PATH_TYPES}};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::fast_hash::FxHashMap;
@@ -153,11 +154,82 @@ pub fn neighbourhood_may_answer(w: &MobWorld, x: i32, y: i32, z: i32, some: &mut
     }
     false
 }
+// ---- the block batch ----------------------------------------------------------------------------------------
+/// While a `BlockBatch` guard lives, the block states the searches read are kept in a direct table (the world does not change inside a batch:
+/// one decision of one creature runs many searches over the same cells). One read of the world is some 220 instructions, a hit about 15.
+struct BatchTab {
+    depth: u32,
+    stamp: u32,
+    tab: Vec<(u64, i32, u32, u32)>,
+}
+thread_local! {
+    static BATCH: std::cell::UnsafeCell<BatchTab> = const { std::cell::UnsafeCell::new(BatchTab { depth: 0, stamp: 0, tab: Vec::new() }) };
+}
+const BATCH_BITS: u32 = 13;
+/// Holds the block table open (see above); drop it before anything changes a block.
+pub struct BlockBatch;
+impl BlockBatch {
+    pub fn begin() -> Self {
+        BATCH.with(|b| {
+            // SAFETY: thread local, no reference is kept across calls.
+            let b = unsafe { &mut *b.get() };
+            if b.depth == 0 {
+                if b.tab.is_empty() {
+                    b.tab = vec![(0, 0, 0, 0); 1 << BATCH_BITS];
+                }
+                // What the searches of the last batch kept is of another moment of the world.
+                TLS_BUFFERS.with(|c| {
+                    if let Ok(mut buf) = c.try_borrow_mut() {
+                        buf.clear();
+                    }
+                });
+                b.stamp = b.stamp.wrapping_add(1);
+                if b.stamp == 0 {
+                    b.tab.iter_mut().for_each(|e| e.2 = 0);
+                    b.stamp = 1;
+                }
+            }
+            b.depth += 1;
+        });
+        BlockBatch
+    }
+}
+impl Drop for BlockBatch {
+    fn drop(&mut self) {
+        // SAFETY: as in `begin`.
+        BATCH.with(|b| unsafe { (*b.get()).depth -= 1 });
+    }
+}
+fn batch_open() -> bool {
+    // SAFETY: as in `BlockBatch::begin`.
+    BATCH.with(|b| unsafe { (*b.get()).depth > 0 })
+}
+/// `w.world.block(x, y, z)`, through the batch table when one is open.
+#[inline(always)]
+fn block_at(w: &MobWorld, x: i32, y: i32, z: i32) -> BlockStateId {
+    BATCH.with(|b| {
+        // SAFETY: as in `begin`.
+        let b = unsafe { &mut *b.get() };
+        if b.depth == 0 {
+            return w.world.block(x, y, z);
+        }
+        let kxz = (x as u32 as u64) | ((z as u32 as u64) << 32);
+        let i = ((kxz ^ (y as u32 as u64).wrapping_mul(0x9E37_79B9)).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (64 - BATCH_BITS)) as usize;
+        let e = &mut b.tab[i];
+        if e.2 == b.stamp && e.0 == kxz && e.1 == y {
+            return BlockStateId(e.3);
+        }
+        let id = w.world.block(x, y, z);
+        *e = (kxz, y, b.stamp, id.0);
+        id
+    })
+}
+
 pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
     bump(12);
     w.world.cached_path_type(BlockPos::new(x, y, z), || {
         bump(13);
-        let state = w.world.block(x, y, z);
+        let state = block_at(w, x, y, z);
         w.mob_hooks
             .and_then(|hooks| hooks.block_path_type(state, [x, y, z]))
             .unwrap_or_else(|| w.data.path_type(state))
@@ -245,7 +317,7 @@ pub fn check_neighbours(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType) -> Pa
 pub fn floor_level(w: &MobWorld, x: i32, y: i32, z: i32) -> f64 {
     let below = y.saturating_sub(1);
     bump(14);
-    f64::from(below) + f64::from(w.data.state(w.world.block(x, below, z)).top)
+    f64::from(below) + f64::from(w.data.state(block_at(w, x, below, z)).top)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -304,6 +376,8 @@ pub struct FinderBuffers {
     pub types: FxHashMap<(i32, i32, i32), PathType>,
     pub statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     pub collisions: FxHashMap<[u64; 6], bool>,
+    /// What the kept `types`/`statics`/`collisions` were made for (a block batch keeps them from one search to the next; 0: nothing kept).
+    pub sig: u64,
 }
 
 impl FinderBuffers {
@@ -317,6 +391,7 @@ impl FinderBuffers {
             types: FxHashMap::default(),
             statics: std::cell::RefCell::new(FxHashMap::default()),
             collisions: FxHashMap::default(),
+            sig: 0,
         }
     }
 
@@ -327,6 +402,7 @@ impl FinderBuffers {
         self.types.clear();
         self.statics.borrow_mut().clear();
         self.collisions.clear();
+        self.sig = 0;
     }
 }
 
@@ -378,6 +454,8 @@ pub struct Finder<'a, 'w> {
     collisions: FxHashMap<[u64; 6], bool>,
     use_layer: bool,
     occ: Option<&'static crate::occupancy::Occupancy>,
+    visited: i32,
+    sig: u64,
     saw_rail: std::cell::Cell<bool>,
     profile: u64,
     entity_width: i32,
@@ -393,9 +471,12 @@ impl<'a, 'w> Drop for Finder<'a, 'w> {
                 self.nodes.clear();
                 self.index.clear();
                 self.heap.clear();
-                self.types.clear();
-                self.statics.borrow_mut().clear();
-                self.collisions.clear();
+                if self.sig == 0 {
+                    self.types.clear();
+                    self.statics.borrow_mut().clear();
+                    self.collisions.clear();
+                }
+                buf.sig = self.sig;
                 buf.nodes = std::mem::take(&mut self.nodes);
                 buf.index = std::mem::take(&mut self.index);
                 buf.heap = std::mem::take(&mut self.heap);
@@ -436,9 +517,25 @@ impl<'a, 'w> Finder<'a, 'w> {
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
         let _g = sec(0);
         adjacent_reset();
-        let (nodes, index, heap, mut grid, mut stamp, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
+        LAYER.with(|l| {
+            let e = LAYER_EPOCH.load(std::sync::atomic::Ordering::Acquire);
+            let mut l = l.borrow_mut();
+            if l.epoch != e {
+                l.map.clear();
+                l.pmap.clear();
+                l.epoch = e;
+            }
+        });
+        let batch = batch_open();
+        let (nodes, index, heap, mut grid, mut stamp, mut types, mut statics, mut collisions, kept_sig) = TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
-                buf.clear();
+                if batch {
+                    buf.nodes.clear();
+                    buf.index.clear();
+                    buf.heap.clear();
+                } else {
+                    buf.clear();
+                }
                 (
                     std::mem::take(&mut buf.nodes),
                     std::mem::take(&mut buf.index),
@@ -448,6 +545,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     std::mem::take(&mut buf.types),
                     std::mem::take(&mut buf.statics),
                     std::mem::take(&mut buf.collisions),
+                    buf.sig,
                 )
             } else {
                 (
@@ -459,6 +557,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     FxHashMap::default(),
                     std::cell::RefCell::new(FxHashMap::default()),
                     FxHashMap::default(),
+                    0,
                 )
             }
         });
@@ -503,7 +602,20 @@ impl<'a, 'w> Finder<'a, 'w> {
                 MALUS_CACHE.with(|c| *c.borrow_mut() = Some(ProfileCache { key: (key.0, key.1, key.2, key.3, mob.malus), hash: profile, mt }));
             }
         }
+        // In a batch the answers of the search before are kept when it was made for the same mob at the same place.
+        let sig = if batch {
+            let q = mob.position;
+            profile ^ u64::from(amph).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ q.x.to_bits().rotate_left(7) ^ q.y.to_bits().rotate_left(19) ^ q.z.to_bits().rotate_left(31) ^ u64::from(mob.in_water) << 1 | 1
+        } else {
+            0
+        };
+        if sig == 0 || sig != kept_sig {
+            types.clear();
+            statics.get_mut().clear();
+            collisions.clear();
+        }
         Self {
+            sig,
             w,
             mob,
             eval,
@@ -529,6 +641,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             collisions,
             use_layer,
             occ: None,
+            visited: 0,
             saw_rail: std::cell::Cell::new(false),
             profile,
             entity_width: (mob.width + 1.0).ifloor(),
@@ -551,22 +664,22 @@ impl<'a, 'w> Finder<'a, 'w> {
     // --- world access -------------------------------------------------
     fn state(&self, x: i32, y: i32, z: i32) -> data::StateData {
         bump(15);
-        self.w.data.state(self.w.world.block(x, y, z))
+        self.w.data.state(block_at(self.w, x, y, z))
     }
     fn pathfindable(&self, x: i32, y: i32, z: i32, kind: PathComputationType) -> bool {
         bump(15);
-        self.w.data.pathfindable(self.w.world.block(x, y, z), kind)
+        self.w.data.pathfindable(block_at(self.w, x, y, z), kind)
     }
     fn type_from_state(&self, x: i32, y: i32, z: i32) -> PathType {
         path_type_from_state(self.w, x, y, z)
     }
     fn fluid(&self, x: i32, y: i32, z: i32) -> Fluid {
         bump(15);
-        self.w.facts.get(self.w.world.block(x, y, z)).fluid
+        self.w.facts.get(block_at(self.w, x, y, z)).fluid
     }
     fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
         bump(15);
-        self.w.facts.is_air(self.w.world.block(x, y, z))
+        self.w.facts.is_air(block_at(self.w, x, y, z))
     }
     /// The layer's section of a cell: from the per-search table when it is within reach of the mob, else from the layer.
     #[inline(always)]
@@ -1814,6 +1927,9 @@ impl<'a, 'w> Finder<'a, 'w> {
     #[inline(always)]
     fn best_h(&self, n: u32, targets: &mut [Target]) -> f32 {
         let _g = sec(15);
+        if targets.is_empty() {
+            return 0.0;
+        }
         let mut best = f32::MAX;
         let node = &self.nodes[n as usize];
         for t in targets.iter_mut() {
@@ -1829,6 +1945,23 @@ impl<'a, 'w> Finder<'a, 'w> {
     /// PathFinder.findPath over several target positions.
     pub fn find(
         mut self,
+        positions: &[[i32; 3]],
+        max_path_length: f32,
+        reach_range: i32,
+        max_visited: i32,
+    ) -> Option<Path> {
+        self.find_in(positions, max_path_length, reach_range, max_visited)
+    }
+    /// Every cell a search from the start expands within `max_path_length` (no target: a flood), with whether it ran to its end
+    /// (`false`: it hit `max_visited`, the answer then depends on the target and the caller searches per target).
+    pub fn flood(mut self, max_path_length: f32, max_visited: i32) -> Option<(Vec<[i32; 3]>, bool)> {
+        self.find_in(&[], max_path_length, 0, max_visited);
+        let complete = self.visited < max_visited;
+        let cells = self.nodes.iter().filter(|n| n.closed).map(|n| [n.x, n.y, n.z]).collect();
+        Some((cells, complete))
+    }
+    fn find_in(
+        &mut self,
         positions: &[[i32; 3]],
         max_path_length: f32,
         reach_range: i32,
@@ -1870,6 +2003,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         };
         while !self.heap.is_empty() {
             count += 1;
+            self.visited = count;
             if count >= max_visited {
                 break;
             }
@@ -2051,14 +2185,20 @@ impl Small {
 /// `path_type_static` of a cell does not depend on the mob: one byte per block (0 unknown, else 1 + the type), filled the first
 /// time a search asks, shared by every search, dropped around a change (`layer_changed`). 4096 bytes a section.
 /// The herd's navigation uses this search instead of Horizon's `Finder` (bench option `OWN`).
-pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 pub static LAYER_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 /// `stat`: 0 unknown, else 1 + the type; `top`: 0xFF unknown, else the collision top of the block in sixteenths (0xFE: not a multiple of 1/16, read the block).
 pub struct Sect {
     stat: [u8; 4096],
     top: [u8; 4096],
 }
+/// Bumped at every block change: each thread's layer forgets what it knew when it sees a newer epoch (the layer is per thread, a change is seen by all).
+pub static LAYER_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub fn layer_bump() {
+    LAYER_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Release);
+}
 pub struct Layer {
+    epoch: u64,
     map: FxHashMap<u64, Box<Sect>>,
     /// By (profile, section): the type a mob of that profile gives a cell (`path_type_of_mob`), one byte a block like `stat`.
     pmap: FxHashMap<(u64, u64), Box<[u8; 4096]>>,
@@ -2066,7 +2206,7 @@ pub struct Layer {
     profiles: Vec<(u64, i32, i32)>,
 }
 thread_local! {
-    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
+    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { epoch: 0, map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
 }
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
     (((x >> 4) as u64) & 0x1F_FFFF) | ((((z >> 4) as u64) & 0x1F_FFFF) << 21) | ((((y >> 4) as u64) & 0x1F_FFFF) << 42)

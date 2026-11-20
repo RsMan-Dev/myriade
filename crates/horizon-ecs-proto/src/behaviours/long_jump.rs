@@ -62,6 +62,8 @@ pub struct LongJumpState {
 #[derive(Component, Clone, Debug, Default)]
 pub struct Leap {
     candidates: Vec<([i32; 3], i32)>,
+    /// The sum of the candidates' weights, kept as they are drawn.
+    total: i32,
     not_preferred: Vec<([i32; 3], i32)>,
     wanting_preferred: bool,
     initial: Option<Vec3>,
@@ -225,8 +227,10 @@ fn level_mw(w: &World) -> &'static MobWorld<'static> {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let Some(st) = w.get::<LongJumpState>(e).copied() else { return };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    let cands = candidates(block_of(pos), st.p.width, st.p.height);
     let mut leap = Leap {
-        candidates: candidates(block_of(pos), st.p.width, st.p.height),
+        total: cands.iter().map(|c| c.1).sum(),
+        candidates: cands,
         tries: FIND_JUMP_TRIES,
         initial: Some(pos),
         ..Leap::default()
@@ -330,6 +334,8 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     let Some(p) = w.get::<LongJumpState>(e).map(|s| s.p) else { return };
     let mw = level_mw(w);
     crate::pathsearch::adjacent_reset();
+    // The ~40 candidates of one pick read the same cells; the world does not change inside it.
+    let _batch = crate::pathsearch::BlockBatch::begin();
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     while !leap.candidates.is_empty() {
         let Some((target, _)) = next_candidate(w, e, leap, &p, mw) else { continue };
@@ -401,7 +407,7 @@ fn next_candidate(w: &mut World, e: Entity, leap: &mut Leap, p: &Params, mw: &Mo
 
 /// `WeightedRandom.getRandomItem` sur les candidates, retirée une fois tirée (hasard de l'animal : repli).
 fn draw(w: &mut World, e: Entity, leap: &mut Leap) -> Option<([i32; 3], i32)> {
-    let total: i32 = leap.candidates.iter().map(|c| c.1).sum();
+    let total = leap.total;
     if total == 0 {
         return None;
     }
@@ -410,7 +416,9 @@ fn draw(w: &mut World, e: Entity, leap: &mut Leap) -> Option<([i32; 3], i32)> {
         pick -= c.1;
         pick < 0
     })?;
-    Some(leap.candidates.remove(i))
+    let c = leap.candidates.remove(i);
+    leap.total -= c.1;
+    Some(c)
 }
 
 /// `FrogAi.isAcceptableLandingSpot` : pas de fluide dans les trois cases, une case préférée (ou au-dessus), une trappe, sinon

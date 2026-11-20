@@ -52,7 +52,7 @@ pub struct Bounds(pub Aabb);
 pub struct Anchor(pub [i32; 3]);
 /// The column of the spatial index the cow is listed in (`u32::MAX`: not yet).
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Cell(pub u32);
+pub struct Cell(pub u32, pub [i32; 8], pub u32);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Contact {
     pub on_ground: bool,
@@ -348,6 +348,8 @@ pub struct Hazards {
     pool: Vec<Vec<(i32, u8)>>,
     /// The cells that hold a turtle egg (what the egg hunters look for): a search that has none in its zone does not walk it.
     eggs: std::collections::BTreeSet<[i32; 3]>,
+    /// Bumped by each `set`: what an entity read of the columns is valid while it holds.
+    version: u32,
 }
 const EGG: &str = "minecraft:turtle_egg";
 fn hazard_bit(name: &str) -> u8 {
@@ -365,7 +367,7 @@ impl Hazards {
     pub fn build(level: &Level) -> Self {
         let mw = level.mw.0;
         let (origin, width) = (-level.half, (2 * level.half + 1) as usize);
-        let mut h = Self { origin, width, cols: vec![0; width * width], pool: Vec::new(), eggs: Default::default() };
+        let mut h = Self { origin, width, cols: vec![0; width * width], pool: Vec::new(), eggs: Default::default(), version: 0 };
         for x in 0..width {
             for z in 0..width {
                 for y in -2..=BUILD_TOP {
@@ -392,6 +394,7 @@ impl Hazards {
     }
     /// The block at (x, y, z) now has these hazard bits (0: none), at any height.
     pub fn set(&mut self, x: i32, y: i32, z: i32, bit: u8) {
+        self.version = self.version.wrapping_add(1);
         let (cx, cz) = (x - self.origin, z - self.origin);
         if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
             return;
@@ -412,17 +415,30 @@ impl Hazards {
     }
     /// The hazards of the columns a box covers, at the heights it covers (a block more each way).
     pub fn of_box(&self, b: &Aabb) -> u8 {
+        self.bits_of(&self.key_of(b))
+    }
+    /// What `of_box` reads of a box: the columns (clamped to the grid) and the two height ranges.
+    #[inline]
+    fn key_of(&self, b: &Aabb) -> [i32; 8] {
         let (mn, mx) = (b.min_position(), b.max_position());
         let e = 1.0e-7;
         // Fluids have a surface below the top of their block and flow: they are looked at a block wider (the real
         // test is `fluids`); fire, cactus and snow are the blocks the box overlaps.
-        let (y0, y1) = (mn.y.ifloor() - 1, (mx.y - e).ifloor() + 1);
-        let (x0, x1) = ((mn.y + 0.001).ifloor(), (mx.y - 0.001).ifloor());
-        let mut bits = 0;
-        // The columns inside the grid, clamped once (the loops then need no bounds test); an empty column costs one read.
         let w = self.width as i32;
-        let (xa, xb) = (mn.x.ifloor().saturating_sub(self.origin).max(0), (mx.x - e).ifloor().saturating_sub(self.origin).min(w - 1));
-        let (za, zb) = (mn.z.ifloor().saturating_sub(self.origin).max(0), (mx.z - e).ifloor().saturating_sub(self.origin).min(w - 1));
+        [
+            mn.x.ifloor().saturating_sub(self.origin).max(0),
+            (mx.x - e).ifloor().saturating_sub(self.origin).min(w - 1),
+            mn.z.ifloor().saturating_sub(self.origin).max(0),
+            (mx.z - e).ifloor().saturating_sub(self.origin).min(w - 1),
+            mn.y.ifloor() - 1,
+            (mx.y - e).ifloor() + 1,
+            (mn.y + 0.001).ifloor(),
+            (mx.y - 0.001).ifloor(),
+        ]
+    }
+    fn bits_of(&self, k: &[i32; 8]) -> u8 {
+        let [xa, xb, za, zb, y0, y1, x0, x1] = *k;
+        let mut bits = 0;
         for cx in xa..=xb {
             for cz in za..=zb {
                 let c = self.cols[cz as usize * self.width + cx as usize];
@@ -437,6 +453,18 @@ impl Hazards {
             }
         }
         bits
+    }
+    /// `of_box` for an entity that keeps what it read last (`key`, `version`) and its hazard bits then (`prev`): nothing is read again while the
+    /// box covers the same columns and heights and no hazard block changed.
+    #[inline]
+    pub fn of_box_kept(&self, b: &Aabb, cell: &mut Cell, prev: u8) -> u8 {
+        let k = self.key_of(b);
+        if cell.1 == k && cell.2 == self.version {
+            return prev;
+        }
+        cell.1 = k;
+        cell.2 = self.version;
+        self.bits_of(&k)
     }
 }
 /// The top of what the bench worlds generate (the patches reach y = 3).
@@ -784,7 +812,9 @@ impl Index {
         (bz.saturating_sub(1)..=(bz + 1).min(n - 1)).any(|z| (bx.saturating_sub(1)..=(bx + 1).min(n - 1)).any(|x| w.counts[z * n + x] > 0))
     }
     pub(crate) fn column(&self, x: f64) -> i64 {
-        ((x - self.origin) / CELL).floor() as i64
+        let v = (x - self.origin) / CELL;
+        let i = v as i64;
+        i.saturating_sub(i64::from(v < i as f64))
     }
     pub fn cell_of(&self, x: f64, z: f64) -> u32 {
         let cx = self.column(x).clamp(0, self.width as i64 - 1) as usize;
@@ -1410,7 +1440,7 @@ pub fn transform_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
 }
 /// `Solid`: a box in the spatial index (what the pushes, the searches and the targeting see).
 pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
-    (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX))
+    (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX, [i32::MIN; 8], u32::MAX))
 }
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
@@ -1825,7 +1855,7 @@ pub(crate) fn pathfind(
                 nav.searches += 1;
                 crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if crate::pathsearch::USE_OWN.load(std::sync::atomic::Ordering::Relaxed) {
-                    crate::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
+                    crate::pathsearch::Finder::new(mw, &pm, Evaluator::Walk).with_occ(level.occ).find(&[target], max_len, nav.reach, max_visited)
                 } else {
                     Finder::new(mw, &pm, Evaluator::Walk).find(&[target], max_len, nav.reach, max_visited)
                 }
@@ -2629,7 +2659,7 @@ pub(crate) fn reindex(
             idx.crossed.push((e, cell));
         }
         idx.set_box(e, cell, (mn.x, mn.z), (mx.x, mx.z));
-        let bits = hazards.of_box(&b.0);
+        let bits = hazards.of_box_kept(&b.0, c.bypass_change_detection(), hz.map_or(0, |h| h.0));
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
         if fluid && !in_fluid {
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
@@ -2960,6 +2990,7 @@ pub(crate) fn block_changes(
             let _ = world.set(x, y, z, state);
             level.occ.changed(&*world, level.mw.0.collision, x, y, z);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+            crate::pathsearch::layer_bump();
             // The real light engine: the sky above a column changed with the block.
             horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);
         }
