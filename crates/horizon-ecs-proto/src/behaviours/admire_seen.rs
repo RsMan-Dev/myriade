@@ -45,6 +45,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     tick: Some(tick),
+    after_change: Some(after_change),
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -66,6 +67,15 @@ fn arm(w: &mut World, e: Entity, _: Inst) {
     } else if equipped(w, e, Slot::Off) != 0 {
         end(w, e, &MODULE);
     }
+}
+/// The goal ended while a wanted item still lies there: it is asked again (after the `walk_off` if one began), as the Mob's selector does every tick.
+fn after_change(w: &mut World, e: Entity, c: Change) {
+    if c != Change::Ended || w.get::<SeenParams>(e).is_none() {
+        return;
+    }
+    let now = now_of(w, e);
+    let wait = w.get::<WalkOff>(e).map_or(1, |x| x.until.saturating_sub(now).max(1));
+    arm_module(w, e, &MODULE, wait as i32);
 }
 /// The nearest wanted item in reach and in sight, with its squared distance.
 fn nearest_wanted(w: &World, e: Entity, p: &Params) -> Option<(Entity, f64)> {
