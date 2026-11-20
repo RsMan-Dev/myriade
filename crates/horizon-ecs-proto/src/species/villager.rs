@@ -57,7 +57,7 @@ static CORE: &[BEntry] = &[
     BEntry { behaviour: &interact_with_door::BEHAVIOUR, activity: "core", priority: 0, params: &interact_with_door::Params::DEFAULT, needs: &[], duration: None, kids: &[] },
     BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
     BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: None, kids: &[] },
-    BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 0, params: &panic::Params { speed: 0.75 }, needs: &[], duration: Some((60, 60)), kids: &[] },
+    BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 0, params: &panic::Params { speed: 0.75, threat: None }, needs: &[], duration: Some((60, 60)), kids: &[] },
     BEntry { behaviour: &sleep_in_bed::BEHAVIOUR, activity: "rest", priority: 0, params: &sleep_in_bed::Params::DEFAULT, needs: &[(&NEAREST_BED, Need::Present)], duration: None, kids: &[] },
     BEntry { behaviour: &run_one::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[], duration: None, kids: IDLE_KIDS },
     BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },

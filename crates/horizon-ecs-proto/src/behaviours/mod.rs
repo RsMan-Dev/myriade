@@ -553,7 +553,6 @@ pub mod look_at_held;
 pub mod nearby_babies;
 pub mod nearest_bed;
 pub mod nearest_poi;
-pub mod panic_flee;
 pub mod peek;
 pub mod phase_shield;
 pub mod play_tag;
