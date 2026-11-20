@@ -158,10 +158,10 @@ fn target(w: &World, e: Entity) -> Option<Vec3> {
 
 /// Lance `f` avec le graphe de vol et l'aléa propre du dragon (`flight::DragonRng`, `d.random` de Horizon).
 fn fly<T>(w: &mut World, e: Entity, f: impl FnOnce(&FlightNodes, &mut LegacyRandom) -> T) -> T {
-    let mut r = w.entity_mut(e).take::<DragonRng>().expect("dragon rng");
-    let out = f(w.resource::<FlightNodes>(), &mut r.0);
-    w.entity_mut(e).insert(r);
-    out
+    w.resource_scope::<FlightNodes, _>(|w, g| {
+        let mut r = w.get_mut::<DragonRng>(e).expect("dragon rng");
+        f(&g, &mut r.0)
+    })
 }
 
 /// Le chemin de l'anneau d'attente, depuis le nœud le plus proche.

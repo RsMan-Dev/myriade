@@ -978,7 +978,7 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 
 
 /// Whether some entity holds a component of SparseSet storage: two lookups, no query.
-fn sparse_any<C: Component>(world: &World) -> bool {
+pub(crate) fn sparse_any<C: Component>(world: &World) -> bool {
     world.component_id::<C>().and_then(|id| world.storages().sparse_sets.get(id)).is_some_and(|s| !s.is_empty())
 }
 /// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one

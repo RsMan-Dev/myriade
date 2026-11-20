@@ -144,6 +144,9 @@ fn nearest_hit(world: &World, e: Entity, from: Vec3, reach: Vec3, owner: Option<
 /// One tick of every trident in flight, in the jar's order: the Loyalty return, else the move (the nearest of the first block and
 /// the first creature or player on the path), a blow (once), a reverse or a stick, then the inertia and the gravity after the move.
 fn fly(world: &mut World) {
+    if !crate::goals::sparse_any::<TridentFlying>(world) {
+        return;
+    }
     let flying: Vec<Entity> = world.query_filtered::<Entity, With<TridentFlying>>().iter(world).collect();
     for e in flying {
         let Some(t) = world.get::<Trident>(e) else { continue };
