@@ -27,6 +27,9 @@ fn scene(at: Vec3) -> (MobRef, Herd, usize, Entity) {
     h.tick();
     let i = r.add(at);
     r.mobs[i].extra.flag = true;
+    // Spawning, hatching and loading always set a home (`homePos`); a Mob without one is at home wherever it stands, which sends its
+    // go-home goal wandering and keeps it from ever staying on the spot.
+    r.mobs[i].extra.home = Some([at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32]);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let e = spawn_species(&mut h.world, &sp, at.x, at.z, 92);
