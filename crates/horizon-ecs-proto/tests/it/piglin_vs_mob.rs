@@ -92,6 +92,41 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
     assert!((m - c).abs() <= 10, "the first arrow flies at about the same tick: Mob {m}, ECS {c}");
 }
 
+/// A crossbowed piglin three blocks from a player who stands still backs away as a Mob does: over 40 ticks the distance grows on both
+/// sides, the piglin's head turns to the player, and the final distances agree within half a block.
+#[test]
+fn a_piglin_backs_away_from_a_close_player_as_a_mob_does() {
+    if skip() {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    let i = mob_piglin(&mut r, 0.5, 0.5, 9);
+    r.mobs[i].extra.set_slot_id(horizon_items::equipment::MAINHAND, Some(Arc::from("minecraft:crossbow")));
+    let e = ecs_piglin(&mut h, 0.5, 0.5, 9);
+    equipment::set_slot(&mut h.world, e, Slot::Main, horizon_ecs_proto::items::item_id("minecraft:crossbow"));
+    h.set_players(vec![(3.5, 0.5)]);
+    h.set_online(&[(3.5, 0.5)]);
+    let pv: PlayerView = player_view(Vec3::new(3.5, 1.0, 0.5), None);
+    let p = Vec3::new(3.5, 1.0, 0.5);
+    let start = xz(Vec3::new(0.5, 1.0, 0.5), p);
+    for _ in 0..40 {
+        r.step(Some(&pv));
+        h.tick();
+    }
+    let ecs_pos = h.world.get::<Pos>(e).unwrap().0;
+    let (dm, de) = (xz(r.mobs[i].position, p), xz(ecs_pos, p));
+    eprintln!("backing off: start {start:.2}, mob {dm:.2}, ecs {de:.2}");
+    assert!(dm > start + 0.5 && de > start + 0.5, "both back away: Mob {dm}, ECS {de}, from {start}");
+    assert!((dm - de).abs() <= 0.5, "the final distances agree: Mob {dm}, ECS {de}");
+    // The head faces the player: the yaw of the direction from the piglin to the player (`atan2` less a quarter turn).
+    let face = |at: Vec3| (p.z - at.z).atan2(p.x - at.x).to_degrees() - 90.0;
+    let turned = |a: f64, b: f64| ((a - b + 540.0).rem_euclid(360.0) - 180.0).abs();
+    let (hm, he) = (f64::from(r.mobs[i].head_yaw), f64::from(h.world.get::<horizon_ecs_proto::goals::Head>(e).unwrap().yaw));
+    let (wm, we) = (face(r.mobs[i].position), face(ecs_pos));
+    assert!(turned(hm, wm) < 15.0 && turned(he, we) < 15.0, "the heads face the player: Mob {hm} want {wm}, ECS {he} want {we}");
+}
+
 /// Piglins two blocks from a lit soul campfire walk away from it: over 20 seeds the ECS mean distance after 60 ticks lies within two
 /// standard deviations of the Mob's (a single seed compares two noisy draws, the ECS one is 0.9 wide, the Mob's 0.5).
 #[test]
@@ -176,4 +211,88 @@ fn walk_away_starts_only_within_eight_blocks_of_the_point() {
     }
     // A flight would take it 8 blocks further out; a stroll wanders a few.
     assert!(mean(&md) < 4.0 && mean(&ed) < 4.0, "neither flees: Mob {:.2}, ECS {:.2} blocks further out", mean(&md), mean(&ed));
+}
+
+/// A piglin hunting a player six blocks away, a stone wall between them with one gap, a wooden door: the piglin walks through the door, and
+/// the door opens then shuts behind it on both sides, the ticks of each within 5 (the draws differ).
+#[test]
+fn a_piglin_opens_the_door_on_its_path_as_a_mob_does() {
+    if skip() {
+        return;
+    }
+    const LOWER: &[(&str, &str)] = &[("open", "false"), ("half", "lower"), ("facing", "east")];
+    const UPPER: &[(&str, &str)] = &[("open", "false"), ("half", "upper"), ("facing", "east")];
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    for z in -4..=4 {
+        for y in [1, 2] {
+            if z != 0 {
+                r.set_block(2, y, z, "minecraft:stone");
+                h.set_block(2, y, z, "minecraft:stone");
+            }
+        }
+    }
+    for (y, props) in [(1, LOWER), (2, UPPER)] {
+        r.set_block_props(2, y, 0, "minecraft:oak_door", props);
+        h.set_block_state(2, y, 0, "minecraft:oak_door", props);
+    }
+    r.apply_block_events();
+    mob_piglin(&mut r, 0.5, 0.5, 11);
+    ecs_piglin(&mut h, 0.5, 0.5, 11);
+    h.set_players(vec![(6.5, 0.5)]);
+    h.set_online(&[(6.5, 0.5)]);
+    let pv: PlayerView = player_view(Vec3::new(6.5, 1.0, 0.5), None);
+    let (mut mob_open, mut ecs_open, mut mob_shut, mut ecs_shut) = (None, None, None, None);
+    for t in 1..=300i64 {
+        r.step(Some(&pv));
+        r.apply_block_events();
+        h.tick();
+        let mob_is_open = r.w.prop(2, 1, 0, "open") == Some("true");
+        let ecs_is_open = h.world.resource::<Level>().mw.0.prop(2, 1, 0, "open") == Some("true");
+        if mob_open.is_none() && mob_is_open {
+            mob_open = Some(t);
+        }
+        if ecs_open.is_none() && ecs_is_open {
+            ecs_open = Some(t);
+        }
+        if mob_open.is_some() && mob_shut.is_none() && !mob_is_open {
+            mob_shut = Some(t);
+        }
+        if ecs_open.is_some() && ecs_shut.is_none() && !ecs_is_open {
+            ecs_shut = Some(t);
+        }
+    }
+    let (mo, eo) = (mob_open.expect("the Mob piglin opens the door"), ecs_open.expect("the ECS piglin opens the door"));
+    let (ms, es) = (mob_shut.expect("the Mob's door shuts behind it"), ecs_shut.expect("the ECS door shuts behind it"));
+    eprintln!("piglin door: open mob {mo} ecs {eo}; shut mob {ms} ecs {es}");
+    assert!((mo - eo).abs() <= 5, "the door opens within 5 ticks on both sides (mob {mo}, ecs {eo})");
+    assert!((ms - es).abs() <= 5, "the door shuts within 5 ticks on both sides (mob {ms}, ecs {es})");
+}
+
+/// A piglin with an empty off hand walks to gold on the ground 5 blocks away within 5 ticks; gold 12 blocks away is out of reach
+/// and starts no walk (the goal gives up at 9 blocks, and never starts at 14).
+#[test]
+fn a_piglin_walks_to_the_gold_it_sees_on_the_ground() {
+    if skip() {
+        return;
+    }
+    let mut near = Herd::with_slab(60, true, false);
+    let e = ecs_piglin(&mut near, 0.5, 0.5, 11);
+    horizon_ecs_proto::item::drop_item(&mut near.world, horizon_client_lib::items::ItemStack::new("minecraft:gold_ingot", 1), Vec3::new(5.5, 1.0, 0.5), Vec3::ZERO, 0);
+    near.world.flush();
+    let d0 = xz(near.world.get::<Pos>(e).unwrap().0, Vec3::new(5.5, 1.0, 0.5));
+    for _ in 0..5 {
+        near.tick();
+    }
+    let d5 = xz(near.world.get::<Pos>(e).unwrap().0, Vec3::new(5.5, 1.0, 0.5));
+    assert!(d5 < d0 - 0.5, "the piglin walks toward the gold within 5 ticks: {d0:.2} -> {d5:.2}");
+
+    let mut far = Herd::with_slab(60, true, false);
+    let f = ecs_piglin(&mut far, 0.5, 0.5, 12);
+    horizon_ecs_proto::item::drop_item(&mut far.world, horizon_client_lib::items::ItemStack::new("minecraft:gold_ingot", 1), Vec3::new(12.5, 1.0, 0.5), Vec3::ZERO, 0);
+    far.world.flush();
+    for _ in 0..60 {
+        far.tick();
+        assert!(far.world.get::<horizon_ecs_proto::behaviours::admire_seen::SeenAdmire>(f).is_none(), "no walk to the gold 12 blocks away");
+    }
 }

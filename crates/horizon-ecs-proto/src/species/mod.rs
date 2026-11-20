@@ -742,7 +742,7 @@ mod tests {
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("animal_panic", 0), ("breed", 1), ("tempt", 2), ("charge_attack", 3), ("fish_swim", 4)]),
         ("minecraft:zombie_nautilus", &[("tempt", 1), ("charge_attack", 2), ("fish_swim", 3)]),
-        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("interact_with_door", 0), ("admire", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_bow", 3), ("spear_use", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
+        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("interact_with_door", 0), ("admire", 1), ("admire_seen", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_bow", 3), ("back_up_if_too_close", 3), ("spear_use", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
         ("minecraft:shulker", &[("hurt_by", 1), ("nearest_target", 2), ("look_at_player", 1), ("homing_shot", 4), ("peek", 7), ("random_look", 8), ("teleport_on", 0)]),
         ("minecraft:sulfur_cube", &[("bounce_drag", 0), ("float", 1), ("swallow_item", 2), ("burn_on_touch", 2), ("push_on_touch", 2), ("tempt", 3), ("item_seek", 3)]),
         ("minecraft:villager", &[]),

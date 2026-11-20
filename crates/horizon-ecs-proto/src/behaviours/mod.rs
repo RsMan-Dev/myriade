@@ -318,6 +318,7 @@ pub mod turtle_travel;
 pub mod turtle_stroll;
 pub mod lay_egg;
 pub mod spear_use;
+pub mod back_up_if_too_close;
 pub mod turtle_go_home;
 pub mod snow_trail;
 pub mod beg;
@@ -365,6 +366,7 @@ pub mod equip_source;
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
     &admire::MODULE,
+    &admire_seen::MODULE,
     &crate::dragon::flight::MODULE,
     &vibration_listen::MODULE,
     &block_breaker::MODULE,
@@ -503,6 +505,7 @@ pub static TABLE: &[&Module] = &[
     &turtle_stroll::MODULE,
     &lay_egg::MODULE,
     &spear_use::MODULE,
+    &back_up_if_too_close::MODULE,
     &turtle_go_home::MODULE,
     &snow_trail::MODULE,
     &beg::MODULE,
@@ -563,6 +566,7 @@ pub static TABLE: &[&Module] = &[
 ];
 pub mod act_phase;
 pub mod admire;
+pub mod admire_seen;
 pub mod attached_face;
 pub mod bed;
 pub mod bell_heard;

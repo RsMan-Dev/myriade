@@ -355,3 +355,28 @@ fn a_repellent_pacifies_a_hoglin_that_is_already_attacking_as_a_mob_does() {
     let (m, c) = (mob_drop.expect("the Mob drops its target"), ecs_drop.expect("the ecs drops its target"));
     assert!((m - c).abs() <= 21, "the target is dropped within a scan period of each other (mob {m}, ecs {c})");
 }
+
+/// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, true)` in the idle activity: an adult hoglin at rest five blocks from a warped
+/// fungus walks away from it on both sides, and ends more than 8 blocks from it, the two distances within 3 blocks (the draws differ).
+#[test]
+fn a_hoglin_walks_away_from_a_repellent_as_a_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let mut r = MobRef::new(60, false);
+    let mut h = Herd::with_slab(60, true, false);
+    let c = Vec3::new(0.5, 1.0, 0.5);
+    r.set_block(0, 1, 0, "minecraft:warped_fungus");
+    r.apply_block_events();
+    h.set_block(0, 1, 0, "minecraft:warped_fungus");
+    let i = r.add_kind(Vec3::new(5.5, 1.0, 0.5), mob_kind("minecraft:hoglin"));
+    let e = ecs_of(&mut h, "minecraft:hoglin", 5.5, 0.5, 5);
+    for _ in 0..100 {
+        r.step(None);
+        h.tick();
+    }
+    let (md, ed) = (xz(r.mobs[i].position, c), xz(h.world.get::<Pos>(e).unwrap().0, c));
+    eprintln!("repellent walk away: mob {md:.2}, ecs {ed:.2}");
+    assert!(md > 8.0 && ed > 8.0, "both walk away from the repellent (mob {md:.2}, ecs {ed:.2})");
+    assert!((md - ed).abs() <= 3.0, "the distances match within 3 blocks (mob {md:.2}, ecs {ed:.2})");
+}
