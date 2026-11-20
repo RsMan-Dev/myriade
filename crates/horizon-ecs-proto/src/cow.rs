@@ -2408,7 +2408,8 @@ pub(crate) fn travel(
             // Not commutative across threads: the entity takes the last row of the table it lands in (or the swap of a sparse set), and the
             // systems that walk it see that order. A parallel visit therefore sorts by emitter; the sequential visit is already in order, and
             // the ordered buffer costs a queue per entity (measured: zombie chase clear +10k instr per tick).
-            if cfg.parallel {
+            // The path budget takes "the first of the queue in the table order": it needs the same order as the parallel run, so it is ordered too.
+            if cfg.parallel || cfg.path_budget > 0 {
                 par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Moving>();
                 });
