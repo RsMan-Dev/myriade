@@ -190,6 +190,7 @@ fn breed_run(
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
+    let mut births: Vec<(Entity, Entity)> = Vec::new();
     for ((e, pos, mut look, looking, following, asked), mut b, data, love, phase) in &mut q {
         let now = clock.of(e);
         let partner_now = clock.of(b.partner);
@@ -214,10 +215,15 @@ fn breed_run(
         let love_time = if now >= first { (now - first) / 2 + 1 } else { 0 };
         if selector(now) && love_time >= data.delay / 2 && d < 9.0 {
             let partner = b.partner;
-            cmd.queue(move |w: &mut World| birth(w, e, partner));
+            births.push((e, partner));
         } else if love_time > data.delay {
             reqs.0.push(Req::End(e, data.slot));
         }
+    }
+    // The births in an order of the entities, not of the table rows (the entities of the babies depend on it, and the table rows differ between the sequential and the parallel run).
+    births.sort_unstable_by(|a, b| b.cmp(a));
+    for (e, partner) in births {
+        cmd.queue(move |w: &mut World| birth(w, e, partner));
     }
 }
 /// `BreedGoal.tick`'s end: the goal checks that it still runs and that love lasts, makes the birth and ends both goals.

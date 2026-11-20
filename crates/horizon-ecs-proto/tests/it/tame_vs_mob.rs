@@ -116,10 +116,10 @@ fn a_standing_wolf_follows_its_owner_and_a_sitting_one_stays() {
     assert!(m.x < 2.0 && e.x < 2.0, "a sitting wolf follows: mob {m:?}, ecs {e:?}");
 }
 
-/// An owner 15 blocks away is past the teleport distance (12): the wolf is next to it at tick 1 on the `Mob` side, at tick 2 in the ECS (the same
-/// one-tick selector offset as the frog's tongue, `suivi/ecs-ecarts.md`); the later 200-tick gap (2.23 / 3.78) is the stroll's own draws.
+/// An owner 15 blocks away is past the teleport distance (12): the wolf is next to it at tick 1 on both sides (the goal starts and acts at the same
+/// tick, `GoalSelector.tick`); the later 200-tick gap (2.23 / 3.78) is the stroll's own draws.
 #[test]
-fn the_teleport_to_the_owner_comes_one_tick_apart() {
+fn the_teleport_to_the_owner_is_at_the_same_tick_as_the_mob() {
     if skip() {
         return;
     }
@@ -135,7 +135,35 @@ fn the_teleport_to_the_owner_comes_one_tick_apart() {
             when_e = Some(t);
         }
     }
-    assert_eq!((when_m, when_e), (Some(1), Some(2)), "tick under 3.5 blocks: Mob, ECS");
+    assert_eq!((when_m, when_e), (Some(1), Some(1)), "tick under 3.5 blocks: Mob, ECS");
+}
+
+/// The jar (`GoalSelector.tick`): a goal that starts acts at the SAME tick (`start()` then `tickRunningGoals`). Observed on the ECS side only, with the
+/// goal as a vehicle (follow-owner: its first effect is the teleport to an owner 15 blocks away): the tick where the goal is running and the tick
+/// where its first effect shows must be the same, and the `Mob`'s teleport is that tick.
+#[test]
+fn a_goal_acts_at_the_tick_it_starts() {
+    if skip() {
+        return;
+    }
+    let mut p = pair(Vec3::new(15.5, 1.0, 0.5));
+    let (mut started, mut acted, mut mob_acted) = (None, None, None);
+    for t in 1..=10 {
+        p.step();
+        let (m, e) = p.dist();
+        if started.is_none() && p.h.world.get::<GoalSet>(p.ecs).unwrap().is_running(&horizon_ecs_proto::behaviours::follow_owner::MODULE) {
+            started = Some(t);
+        }
+        if acted.is_none() && e < 3.5 {
+            acted = Some(t);
+        }
+        if mob_acted.is_none() && m < 3.5 {
+            mob_acted = Some(t);
+        }
+    }
+    eprintln!("follow_owner: ECS running at tick {started:?}, first effect at {acted:?}; Mob first effect at {mob_acted:?}");
+    assert_eq!((started, acted), (started, started), "the goal acts at the tick it starts");
+    assert_eq!(acted, mob_acted, "the same tick as the Mob");
 }
 
 /// An owner 40 blocks away: the wolf teleports to it (12 blocks and more), within a few ticks, and ends within 4 blocks of it.

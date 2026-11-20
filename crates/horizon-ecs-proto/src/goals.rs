@@ -586,15 +586,30 @@ pub fn insert_resources(world: &mut World) {
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
     s.add_systems(player_watch.after(online_events).before(player_near));
-    s.add_systems((entered_events, arbitrate, look_control).chain().before(pathfind));
-    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage).before(GoalSlot(0)));
+    s.add_systems((entered_events, arbitrate).chain().before(pathfind));
+    s.add_systems((arbitrate_end, look_control).chain().after(arbitrate).before(pathfind));
+    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage));
     let modules = &crate::species::registry().modules;
+    // `Mob.serverAiStep` ticks the target selector, then the goal selector: the target selectors (`TARGET`) run before the
+    // starts of the tick, the others after them, so a goal's `canUse` sees the target of its own tick. Each class keeps the registry order.
+    let mut last = [None, None];
     for i in 0..modules.len() {
         let slot = GoalSlot(i as u8);
-        s.configure_sets(slot.after(online_events).after(entered_events).before(arbitrate).before(pathfind));
-        if i > 0 {
+        let goal = modules[i].flags & TARGET == 0;
+        s.configure_sets(slot.after(online_events).after(entered_events).after(crate::targeting::target_continue).before(pathfind));
+        if goal {
+            s.configure_sets(slot.after(arbitrate).before(arbitrate_end));
+        } else {
+            s.configure_sets(slot.before(arbitrate));
+        }
+        // The registry order within a class, and after the target slot just before it (the only cross-class order the split keeps).
+        if let Some(prev) = last[goal as usize] {
+            s.configure_sets(slot.after(GoalSlot(prev)));
+        }
+        if goal && i > 0 && modules[i - 1].flags & TARGET != 0 {
             s.configure_sets(slot.after(GoalSlot(i as u8 - 1)));
         }
+        last[goal as usize] = Some(i as u8);
         // A module no resolved species carries has no systems in the schedule: it costs nothing (`Registry::carried`).
         if crate::species::registry().carried(i) && modules[i].tick.is_none() {
             (modules[i].systems)(s, slot);
@@ -981,40 +996,63 @@ where
 }
 
 // ---- the selector: start and stop, with the locks -------------------------------------------------------------
+/// The selector's first step of the tick (`GoalSelector.tick`: the goals that start do so BEFORE the running goals are ticked, so a goal acts at the
+/// tick it starts): the deadlines that came up and the starts asked (`Req::Start`, `Req::Arm`); the other requests wait for `arbitrate_end`.
 pub(crate) fn arbitrate(world: &mut World) {
     crate::farm::on_grown(world);
-    tick_modules(world);
-    world.resource_mut::<CellMoves>().0.clear();
     let fired = std::mem::take(&mut world.resource_mut::<Fired>().0);
     let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
     for (e, slot) in fired {
         timer_fired(world, e, slot);
     }
+    let mut rest = Vec::new();
     for r in reqs {
         match r {
-            // An animal entering the active zone: its modules arm their deadlines.
-            Req::Arm(e) => {
-                if world.resource::<LazyLook>().enabled
-                    && let Some(mut h) = world.get_mut::<Head>(e)
-                {
-                    // A head that was not simulated starts from the body's heading.
-                    h.yaw = f32::NAN;
-                }
-                arm_timers(world, e);
-            }
-            Req::Call(e, f) => f(world, e),
-            // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
-            // heard at the next such tick (the same as the next one at most).
-            Req::Start(e, k) => {
-                let now = crate::cow::now_of(world, e);
-                if now > 1 && (now + phase_of(world, e)) % 2 == 1 {
-                    arm(world, e, k, 1);
-                } else {
-                    start_goal(world, e, k);
-                }
-            }
-            Req::End(e, k) => end_goal(world, e, k),
+            Req::Start(..) => apply(world, r),
+            other => rest.push(other),
         }
+    }
+    if !rest.is_empty() {
+        let mut q = world.resource_mut::<Requests>();
+        rest.append(&mut q.0);
+        q.0 = rest;
+    }
+}
+/// The selector's second step, after the running goals' systems: the module ticks, then the requests those systems and the events pushed (calls of a
+/// goal's step, ends, starts).
+pub(crate) fn arbitrate_end(world: &mut World) {
+    tick_modules(world);
+    // The column changes the slots just read.
+    world.resource_mut::<CellMoves>().0.clear();
+    let reqs = std::mem::take(&mut world.resource_mut::<Requests>().0);
+    for r in reqs {
+        apply(world, r);
+    }
+}
+fn apply(world: &mut World, r: Req) {
+    match r {
+        // An animal entering the active zone: its modules arm their deadlines.
+        Req::Arm(e) => {
+            if world.resource::<LazyLook>().enabled
+                && let Some(mut h) = world.get_mut::<Head>(e)
+            {
+                // A head that was not simulated starts from the body's heading.
+                h.yaw = f32::NAN;
+            }
+            arm_timers(world, e);
+        }
+        Req::Call(e, f) => f(world, e),
+        // The goal selector asks `canUse` only on the ticks where tick + id is even: an event that wakes a goal is
+        // heard at the next such tick (the same as the next one at most).
+        Req::Start(e, k) => {
+            let now = crate::cow::now_of(world, e);
+            if now > 1 && (now + phase_of(world, e)) % 2 == 1 {
+                arm(world, e, k, 1);
+            } else {
+                start_goal(world, e, k);
+            }
+        }
+        Req::End(e, k) => end_goal(world, e, k),
     }
 }
 /// The module and instance of a slot, if the animal still has the selector and the slot.

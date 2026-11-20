@@ -97,11 +97,10 @@ fn a_pregnant_frog_lays_beside_the_water_as_the_mob_does() {
     assert!(laid[1].len() + 2 >= laid[0].len(), "ECS frogs lay as many: {} vs {}", laid[1].len(), laid[0].len());
 }
 
-#[test]
-fn a_frog_eats_a_small_slime_as_the_mob_does() {
-    if skip() {
-        return;
-    }
+type Scene = ([[Option<i32>; 4]; 2], [[Option<i32>; 4]; 2], [Option<i32>; 4]);
+/// Four frogs with a small slime 5 blocks away, a first scan at tick 1: the ticks of the first bite and of the end of the tongue (Mob, ECS), and the
+/// tick the ECS tongue goal starts.
+fn frog_slime_scene() -> Scene {
     let (mut r, mut h) = flat_pair();
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let slime = *table.iter().find(|s| s.name == "minecraft:slime").expect("slime registered");
@@ -127,6 +126,7 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
     }
     let mut eaten = [[None; 4], [None; 4]];
     let mut ended = [[None; 4], [None; 4]];
+    let mut started = [None; 4];
     for t in 1..=400 {
         r.step(None);
         h.tick();
@@ -141,6 +141,9 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
                 eaten[1][k] = Some(t);
             }
             let (i, e, _, _) = pairs[k];
+            if started[k].is_none() && h.world.get::<horizon_ecs_proto::behaviours::shoot_tongue::Shooting>(e).is_some() {
+                started[k] = Some(t);
+            }
             if eaten[0][k].is_some() && ended[0][k].is_none() && r.mobs[i].extra.frog.tongue_target.is_none() {
                 ended[0][k] = Some(t);
             }
@@ -149,15 +152,31 @@ fn a_frog_eats_a_small_slime_as_the_mob_does() {
             }
         }
     }
-    eprintln!("eaten at Mob {:?} ECS {:?}; tongue over at Mob {:?} ECS {:?}", eaten[0], eaten[1], ended[0], ended[1]);
+    (eaten, ended, started)
+}
+/// `Brain.tick` (scan: `StartAttacking` sets the target), then `FrogAi.updateActivity` (javap: `Frog.customServerAiStep` calls the brain, then the
+/// activity) puts the tongue activity on AFTER the brain tick, so `ShootTongue` starts at the next tick and acts at once (`tickEachRunningBehavior`):
+/// with the first scan at tick 1 the ECS tongue starts at tick 2, and every frog bites at the same tick.
+#[test]
+fn a_frog_eats_a_small_slime_one_tick_after_the_scan_as_the_jar_has_it() {
+    if skip() {
+        return;
+    }
+    let (eaten, _, started) = frog_slime_scene();
+    eprintln!("eaten at Mob {:?} ECS {:?}; ECS tongue started at {started:?}", eaten[0], eaten[1]);
     assert!(eaten[0].iter().all(Option::is_some), "witness: the Mob frogs eat: {:?}", eaten[0]);
-    // The scene is the same and the draws are imposed (the sensor's first scan at tick 1, still prey): the bite comes at the same tick on both
-    // sides, except for one tick the `Mob` is late by: vanilla's `StartAttacking` (idle activity) sets the target in the tick of the scan and
-    // `ShootTongue` (tongue activity, chosen by `FrogAi.updateActivity` after the brain tick) starts at the next one; the `Mob` starts it one
-    // tick after that (`suivi/ecs-ecarts.md`). Every frog: ECS + 1 == Mob.
-    let late: Vec<_> = eaten[1].iter().map(|x| x.map(|t| t + 1)).collect();
-    assert_eq!(eaten[0].to_vec(), late, "tick of the first bite: Mob, ECS + 1");
-    // The end of the tongue (the goal stops): the same tick on both sides, up to the same start tick.
-    let late: Vec<_> = ended[1].iter().map(|x| x.map(|t| t + 1)).collect();
-    assert_eq!(ended[0].to_vec(), late, "tick the tongue is over: Mob, ECS + 1");
+    assert!(started.iter().all(|s| *s == Some(2)), "scan at tick 1, tongue at tick 2: {started:?}");
+    assert!(eaten[1].iter().all(Option::is_some) && eaten[1].iter().all(|e| *e == eaten[1][0]), "the ECS frogs bite together: {:?}", eaten[1]);
+}
+/// The scene is the same and the draws are imposed, so the bite should come at the same tick on both sides, but the `Mob` starts `ShootTongue` one
+/// tick after the jar (`suivi/ecs-ecarts.md`): ECS + 1 == Mob. Strict equality kept, until the `Mob` is corrected.
+#[test]
+#[ignore = "OPEN: the Mob frog starts ShootTongue one tick after the jar (Brain.tick, then FrogAi.updateActivity; the next tick starts the tongue); the ECS is the jar's"]
+fn a_frog_eats_a_small_slime_at_the_same_tick_as_the_mob() {
+    if skip() {
+        return;
+    }
+    let (eaten, ended, _) = frog_slime_scene();
+    assert_eq!(eaten[0], eaten[1], "tick of the first bite: Mob, ECS");
+    assert_eq!(ended[0], ended[1], "tick the tongue is over: Mob, ECS");
 }
