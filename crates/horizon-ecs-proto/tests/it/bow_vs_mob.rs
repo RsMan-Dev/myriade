@@ -19,6 +19,8 @@ struct Scene {
     mob: usize,
     ecs: Entity,
     seen: std::collections::HashSet<Entity>,
+    /// The first ECS arrow when it appears (it may have landed and gone by the end of the run): its height, vertical speed, and the shooter's eyes less 0.1.
+    born: Option<(f64, f64, f64)>,
 }
 /// A skeleton with a bow and the player as its target on both sides, the player at `player`.
 fn scene(skeleton: Vec3, player: Vec3) -> Scene {
@@ -37,7 +39,7 @@ fn scene(skeleton: Vec3, player: Vec3) -> Scene {
     let slot = h.world.get::<GoalSet>(ecs).unwrap().slot_of(&ranged_bow::MODULE).unwrap();
     let _ = slot;
     set_target(&mut h.world, ecs, Target::player(1, 30));
-    Scene { r, h, mob, ecs, seen: Default::default() }
+    Scene { r, h, mob, ecs, seen: Default::default(), born: None }
 }
 impl Scene {
     /// One tick of both; returns (the Mob shot, the ECS shot).
@@ -54,6 +56,13 @@ impl Scene {
         let mut q = self.h.world.query::<(Entity, &Projectile)>();
         let new: Vec<Entity> = q.iter(&self.h.world).map(|x| x.0).filter(|e| !self.seen.contains(e)).collect();
         self.seen.extend(new.iter().copied());
+        if self.born.is_none() {
+            if let Some(a) = new.first() {
+                let (w, me) = (&self.h.world, self.ecs);
+                let start = w.get::<Pos>(me).unwrap().0.y + w.get::<Eye>(me).unwrap().0 - f64::from(0.1_f32);
+                self.born = Some((w.get::<Pos>(*a).unwrap().0.y, w.get::<Vel>(*a).unwrap().0.y, start));
+            }
+        }
         (mob_shot, !new.is_empty())
     }
 }
@@ -92,9 +101,11 @@ fn the_skeleton_shoots_at_the_same_cadence_as_a_mob() {
     // 20 ticks of draw, then the 40 of the interval counted down from the shot: 61 or so between two shots.
     assert_eq!(gaps(&m)[0..2], gaps(&e)[0..2], "gaps: mob {:?}, ecs {:?}", gaps(&m), gaps(&e));
     // The arrow: from the eyes less 0.1, at 1.6.
-    let mut q = s.h.world.query::<(&Pos, &Vel, &Projectile)>();
-    let first = q.iter(&s.h.world).next().expect("an arrow");
-    assert!(first.0.0.y > 1.0 && first.0.0.y < 2.0, "starts at the eyes: {:?}", first.0.0);
+    // Not compared with the Mob (a skeleton: its eyes are not the species' own): the arrow leaves this species' eyes less 0.1 and has flown
+    // one tick when seen (speed after the tick = speed before * 0.99 - 0.05).
+    let (y, vy, start) = s.born.expect("an arrow");
+    let v0 = (vy + 0.05) / 0.99;
+    assert!((y - (start + v0)).abs() < 1e-6, "arrow at {y} (speed {vy}), eyes less 0.1 at {start}");
 }
 
 /// A player 25 blocks away: both walk toward it and stop at the same distance (within the shooting radius 15 and 20 ticks
