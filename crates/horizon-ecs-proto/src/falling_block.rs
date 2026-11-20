@@ -2,9 +2,9 @@
 //! the drag 0.98 on every axis: the body of `tnt.rs`), and lands on the tick its move ends on the ground: it becomes a block again where it
 //! stands when that cell can be replaced and has no free cell under it, else it breaks and drops its item. It is visited only while it falls: once
 //! landed it is gone, and the block it placed rests as any block does.
-//! Not ported: the can-survive test of the block (every block here survives), the waterlogged and concrete-powder cases, the damage a block
-//! that falls far does to creatures, the cobweb and bubble-column pushes, the block entity's data, the 600-tick and the build-height limits
-//! (the generic fall under the world removes an object that left it), the `cancelDrop` and `dropItem` flags (a drop is always made).
+//! Ported: the 600-tick limit (a deadline), the concrete powder that lands in water. Not ported: the can-survive test of the block (every block
+//! survives), the powder that is hit in water by a fast fall, the damage a block that falls far does to creatures, the cobweb and bubble-column
+//! pushes, the block entity's data, the build-height limit (the generic fall under the world removes an object that left it), the `cancelDrop` and `dropItem` flags (a drop is always made).
 use crate::cow::*;
 use crate::item::drop_item;
 use crate::tnt::SIZE;
@@ -29,7 +29,22 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
     }
     let at = Vec3::new(f64::from(cell[0]) + 0.5, f64::from(cell[1]) + f64::from((1.0 - SIZE) / 2.0), f64::from(cell[2]) + 0.5);
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
-    w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), FallingBlock { state, drop }, Moving)).id()
+    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), FallingBlock { state, drop }, Moving)).id();
+    after(w, e, LIMIT + 1, expire);
+    e
+}
+
+/// `FallingBlockEntity.tick`: a block still in the air after 600 ticks is removed, and drops its item.
+pub const LIMIT: i32 = 600;
+fn expire(w: &mut World, e: Entity) {
+    if w.get::<Contact>(e).is_none_or(|c| c.on_ground) {
+        return;
+    }
+    let (Some(b), Some(at)) = (w.get::<FallingBlock>(e).cloned(), w.get::<Pos>(e).map(|p| p.0)) else { return };
+    w.entity_mut(e).despawn();
+    if let Some(item) = b.drop {
+        drop_item(w, item, at, Vec3::ZERO, 10);
+    }
 }
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
@@ -46,8 +61,15 @@ fn lands(w: &mut World) {
         let (here, below) = (mw.world.block(cell[0], cell[1], cell[2]), mw.world.block(cell[0], cell[1] - 1, cell[2]));
         let free = |s| mw.facts.is_air(s) || mw.facts.get(s).replaceable;
         w.entity_mut(e).despawn();
+        // `ConcretePowderBlock`: powder that lands in water sets as its concrete.
+        let state = match &*mw.facts.get(b.state).name {
+            n if n.ends_with("_concrete_powder") && mw.facts.get(here).fluid == horizon_client_lib::blocks::Fluid::Water => {
+                crate::blocks::resolve(mw, &n.replace("_powder", ""), &[]).unwrap_or(b.state)
+            }
+            _ => b.state,
+        };
         if free(here) && !free(below) {
-            crate::blocks::set_state_id(w, cell, b.state);
+            crate::blocks::set_state_id(w, cell, state);
         } else if let Some(item) = b.drop {
             drop_item(w, item, at, Vec3::ZERO, 10);
         }
