@@ -81,7 +81,7 @@ fn drop_now(w: &mut World, e: Entity) {
     }
     let mut events = w.resource_mut::<Events>();
     events.host.level_event(SPAWN_EVENT, at, 1);
-    events.host.game_event("minecraft:entity_place", p);
+    events.host.game_event("minecraft:entity_place", [p.x, p.y, p.z]);
 }
 
 /// The projectile items of vanilla (`ProjectileItem` implementers): flight, power, uncertainty and the dispense event they set.
@@ -125,7 +125,7 @@ fn particles(w: &mut World, e: Entity) {
 fn arm_particles(w: &mut World, e: Entity) {
     let Some((_, drop_at, local)) = live(w, e) else { return };
     let wait = PARTICLES_EVERY - w.resource::<Clock>().0 % PARTICLES_EVERY;
-    if local + wait < drop_at {
+    if u64::from(local) + wait < u64::from(drop_at) {
         after(w, e, wait as i32, particles);
     }
 }

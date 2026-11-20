@@ -61,3 +61,16 @@ pub mod equipment_drop;
 pub mod equipment_break;
 pub mod goals_more;
 pub mod pocket;
+pub mod block_events;
+pub mod fangs;
+pub mod eye;
+// pub mod breath_cloud; // dragon
+// pub mod dragon; // en cours
+pub mod lightning;
+pub mod ominous_spawner;
+pub mod passive;
+pub mod hanging;
+pub mod stand;
+pub mod tnt;
+pub mod boat;
+pub mod projectile_more;

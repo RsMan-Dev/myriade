@@ -19,6 +19,14 @@ pub enum HostEvent {
     BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
     PushPlayer { player: u32, velocity: [f64; 3] },
     ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
+    /// An area effect cloud appeared (`radius`, `duration` in ticks).
+    Cloud { at: [f64; 3], radius: f32, duration: i32 },
+    /// A world event (`LevelEvent`: sound and particle codes played by the client).
+    LevelEvent { event: i32, at: [i32; 3], data: i32 },
+    /// A game event (vibration source), by name.
+    GameEvent { name: &'static str, at: [f64; 3] },
+    /// Experience dropped as orbs.
+    Xp { at: [f64; 3], amount: u32 },
 }
 
 #[derive(Default)]
@@ -57,6 +65,18 @@ impl HostOut {
     /// `MobEvent::ParrotToShoulder`: the host puts the creature on the player's shoulder and removes it.
     pub fn shoulder(&mut self, parrot: bevy_ecs::entity::Entity, player: u32) {
         self.out.push(HostEvent::ParrotToShoulder { parrot, player });
+    }
+    pub fn cloud(&mut self, at: [f64; 3], radius: f32, duration: i32) {
+        self.out.push(HostEvent::Cloud { at, radius, duration });
+    }
+    pub fn level_event(&mut self, event: i32, at: [i32; 3], data: i32) {
+        self.out.push(HostEvent::LevelEvent { event, at, data });
+    }
+    pub fn game_event(&mut self, name: &'static str, at: [f64; 3]) {
+        self.out.push(HostEvent::GameEvent { name, at });
+    }
+    pub fn xp(&mut self, at: [f64; 3], amount: u32) {
+        self.out.push(HostEvent::Xp { at, amount });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

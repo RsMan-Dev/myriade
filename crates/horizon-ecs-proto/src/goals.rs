@@ -572,6 +572,8 @@ pub fn insert_resources(world: &mut World) {
     crate::brain::insert_resources(world);
     crate::item::insert_resources(world);
     crate::orb::insert_resources(world);
+    crate::hanging::insert_resources(world);
+    world.insert_resource(crate::block_events::BlockEvents::default());
     crate::poi::insert_resources(world);
     crate::explosion::insert_resources(world);
     crate::tame::insert_resources(world);

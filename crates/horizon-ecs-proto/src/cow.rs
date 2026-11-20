@@ -42,6 +42,8 @@ pub struct Body {
     pub object: bool,
     /// With `object`: the motion of an experience orb (`ExperienceOrb.tick`) instead of an item's.
     pub orb: bool,
+    /// A primed TNT's motion (`PrimedTnt.tick`, `tnt.rs`).
+    pub tnt: bool,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -325,6 +327,8 @@ pub enum Cause {
     Wither,
     /// An explosion (`explosion.rs`).
     Blast,
+    /// `DamageTypes.LIGHTNING_BOLT`.
+    Lightning,
 }
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
 #[derive(Resource, Default)]
@@ -1444,7 +1448,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, lava_walker: sp.lava_walker },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -1620,6 +1624,7 @@ pub fn schedule() -> Schedule {
     crate::brain::register(&mut s);
     crate::item::register(&mut s);
     crate::orb::register(&mut s);
+    crate::hanging::register(&mut s);
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
@@ -2220,6 +2225,9 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
 /// walks (`Drive`) is accelerated as a creature is, before the move.
 #[allow(clippy::too_many_arguments)]
 fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+    if body.tnt {
+        return crate::tnt::travel_tnt(level, pos, vel, c, body, bounds, fall_damage);
+    }
     if body.orb {
         return travel_orb(level, pos, vel, c, d, body, bounds, fs, fall_damage);
     }
@@ -2969,6 +2977,7 @@ pub(crate) fn block_changes(
     mut sun: ResMut<crate::hostile::SunDirty>,
     mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut dirty: Option<ResMut<crate::spawning::DirtyColumns>>,
+    mut block_events: Option<ResMut<crate::block_events::BlockEvents>>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -2998,6 +3007,9 @@ pub(crate) fn block_changes(
             hazards.eggs.insert([x, y, z]);
         }
         seen.0.push((x, y, z));
+        if let Some(b) = block_events.as_mut() {
+            b.changed.push([x, y, z]);
+        }
         if let Some(d) = dirty.as_mut() {
             d.0.push((x, z));
         }

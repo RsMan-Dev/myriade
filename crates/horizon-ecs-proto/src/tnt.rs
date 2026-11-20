@@ -22,7 +22,7 @@ pub struct Primed {
 
 /// Primes a TNT at `at` with velocity `vel`, its fuse `fuse` ticks long (`PrimedTnt`'s constructor; the random short fuse is the caller's).
 pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -> Entity {
-    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: false, orb: false, tnt: true };
+    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
     let e = w
         .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, Moving))
         .id();

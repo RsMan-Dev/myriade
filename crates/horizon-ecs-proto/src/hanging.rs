@@ -199,5 +199,5 @@ pub fn insert_resources(w: &mut World) {
     w.insert_resource(AttachIndex::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(attached_wake);
+    s.add_systems((attached_wake.after(crate::cow::block_changes), crate::block_events::drain_block_events.after(attached_wake)));
 }
