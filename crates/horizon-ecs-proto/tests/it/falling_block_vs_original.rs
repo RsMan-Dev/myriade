@@ -124,3 +124,32 @@ fn concrete_powder_landing_in_water_sets_as_concrete() {
     assert!(placed.contains(&concrete), "concrete where the powder landed: {placed:?}");
     assert!(!placed.contains(&powder), "no powder left");
 }
+
+/// The golden of Horizon's own falling block (`falling_golden_tests.rs` in `horizon-client`, 9 blocks onto a floor): the ECS block is at the
+/// same height after every tick, and lands on the same tick.
+#[test]
+fn a_falling_block_follows_horizons_own_golden_tick_by_tick() {
+    if !have_data() {
+        return;
+    }
+    let golden = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/falling_free_fall.txt")).expect("the golden of Horizon's falling block");
+    let mut h = Herd::with_slab(16, true, false);
+    let top = floor_under(&h, 0, 0, 40);
+    let sand = stone(&h);
+    let e = fall(&mut h.world, [0, top + 9, 0], sand, None);
+    let y0 = f64::from(top) + 9.0;
+    h.world.get_mut::<Pos>(e).unwrap().0.y = y0;
+    h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(horizon_core::geometry::Vec3::new(0.5, y0, 0.5), 0.98, 0.98);
+    for line in golden.lines() {
+        h.tick();
+        let mut it = line.split(' ');
+        let (t, y) = (it.next().unwrap(), it.next().unwrap());
+        if y == "landed" {
+            assert!(h.world.get_entity(e).is_err(), "it lands on tick {t}");
+        } else {
+            let at = h.world.get::<Pos>(e).unwrap_or_else(|| panic!("landed before tick {t}")).0.y;
+            let want = y.parse::<f64>().unwrap() - 61.0 + f64::from(top);
+            assert!((at - want).abs() < 1e-9, "tick {t}: ecs {at}, Horizon {want}");
+        }
+    }
+}
