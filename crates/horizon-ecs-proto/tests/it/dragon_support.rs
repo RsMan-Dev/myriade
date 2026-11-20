@@ -44,8 +44,20 @@ pub fn herd() -> Herd {
 pub fn herd_of(half: i32) -> Herd {
     let mut h = Herd::with_slab(half, false, false);
     h.world.insert_resource(FlightNodes::build(&LAYOUT, |_, _| GROUND));
+    lay_ground(&mut h);
     h.world.resource_mut::<Online>().set(Player { id: PLAYER_ID, x: PLAYER.0, y: PLAYER.1, z: PLAYER.2, ..Default::default() });
     h
+}
+
+/// The generator's ground: a stone floor at GROUND - 1 (the slab's own surface is at y = 0), laid at the first step, with the
+/// podium's block in bedrock as in the End (the dragon does not break it).
+pub fn lay_ground(h: &mut Herd) {
+    for x in -90..=90 {
+        for z in -90..=90 {
+            horizon_ecs_proto::blocks::set_state(&mut h.world, [x, GROUND - 1, z], "minecraft:stone", &[]);
+        }
+    }
+    horizon_ecs_proto::blocks::set_state(&mut h.world, [0, GROUND - 1, 0], "minecraft:bedrock", &[]);
 }
 
 /// The dragon at (0.5, 80, 0.5), yaw 0, the golden's seed, in `phase` (its `begin` run) with `health`.
@@ -108,7 +120,7 @@ pub fn blocks(h: &Herd, gateway: [i32; 3]) -> Vec<String> {
             for z in lo[2]..=hi[2] {
                 for x in lo[0]..=hi[0] {
                     let name = mw.registry.state(state_id(mw, [x, y, z])).map_or("?", |s| s.name.as_str());
-                    if name != "minecraft:air" && !(name == "minecraft:stone" && y <= GROUND) {
+                    if name != "minecraft:air" && !(name == "minecraft:stone" && y <= GROUND) && !(name == "minecraft:bedrock" && [x, y, z] == [0, GROUND - 1, 0]) {
                         out.push(format!("blk {x} {y} {z} {name}"));
                     }
                 }

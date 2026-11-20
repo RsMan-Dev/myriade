@@ -182,3 +182,29 @@ fn a_dying_dragon_refuses_blows_and_dies_in_200_ticks() {
     }
     panic!("the dying dragon never ended: death time {:?}", h.world.get::<DeathTime>(e).map(|d| d.0));
 }
+
+#[test]
+fn a_crystal_gone_leaves_the_count_and_a_portal_crystal_aborts_the_respawn() {
+    if !crate::common::have_data() {
+        return;
+    }
+    use horizon_ecs_proto::dragon::crystals;
+    let mut h = fight_herd();
+    let a = crystals::spawn(&mut h.world, Vec3::new(30.5, 70.0, 0.5), false);
+    h.world.resource_mut::<EndFight>().crystals_alive = 2;
+    crystals::destroy(&mut h.world, a, None, false);
+    assert_eq!(h.world.resource::<EndFight>().crystals_alive, 1, "a spike crystal leaves the count");
+    h.tick();
+    assert_eq!(h.world.resource::<FightEvents>().crystal_destroyed.iter().count(), 1, "the fight is told, one tick later");
+    h.world.resource_mut::<EndFight>().exit_portal = Some([0, 64, 0]);
+    h.world.resource_mut::<EndFight>().killed = true;
+    for d in [[0, -1], [0, 1], [-1, 0], [1, 0]] {
+        crystals::spawn(&mut h.world, Vec3::new(f64::from(d[0] * 3) + 0.5, 65.0, f64::from(d[1] * 3) + 0.5), false);
+    }
+    assert!(horizon_ecs_proto::dragon::respawn::try_respawn(&mut h.world));
+    h.world.resource_mut::<EndFight>().crystals_alive = 1;
+    let portal = h.world.resource::<EndFight>().respawn_crystals[0];
+    crystals::destroy(&mut h.world, portal, None, false);
+    assert!(h.world.resource::<EndFight>().respawn.is_none(), "losing a portal crystal aborts the respawn");
+    assert_eq!(h.world.resource::<EndFight>().crystals_alive, 1, "a portal crystal is not in the count");
+}

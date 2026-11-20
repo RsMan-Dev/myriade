@@ -866,7 +866,6 @@ blk 1 61 3 minecraft:bedrock
 blk 0 62 0 minecraft:bedrock
 blk 0 63 -1 minecraft:wall_torch
 blk -1 63 0 minecraft:wall_torch
-blk 0 63 0 minecraft:bedrock
 blk 1 63 0 minecraft:wall_torch
 blk 0 63 1 minecraft:wall_torch
 blk 0 64 0 minecraft:bedrock

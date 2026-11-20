@@ -55,6 +55,9 @@ fn flat_game(test: impl FnOnce(&mut Game<'_>)) {
             g.world.set(x, GROUND - 1, z, stone).unwrap();
         }
     }
+    // The podium's own block is bedrock, as in the End: the dragon does not break it, so the heightmap at (0, 0) stays at GROUND.
+    let bedrock = g.pack.assets.registry.default_state("minecraft:bedrock").unwrap();
+    g.world.set(0, GROUND - 1, 0, bedrock).unwrap();
     test(&mut g);
 }
 
@@ -205,6 +208,10 @@ fn lines_hurt(g: &mut Game<'_>) -> String {
 
 /// What the game ticks each tick for the fight (`tick_end` and the projectile pass): the dragon, the breath clouds, the fireballs.
 fn world_tick(g: &mut Game<'_>) {
+    // ServerPlayer.tick: the player's invulnerability window counts down (else only its first hit would land).
+    if let Some(p) = g.player.as_mut() {
+        p.health.advance_clock();
+    }
     g.tick_dragon();
     g.tick_breath();
     g.tick_projectiles_now().unwrap();
@@ -243,6 +250,16 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
     let mut rng = String::new();
     let fp: Vec<String> = g.fight_players().iter().map(|p| format!("{:?}/{}/{}", p.who, p.enemy(), bits(p.position))).collect();
     let _ = writeln!(rng, "diag difficulty {} players {}", g.ui.difficulty, fp.join(";"));
+    // An earlier scenario of this same game may have broken the ground under the podium: the combat starts on a whole slab.
+    let stone = g.pack.assets.registry.default_state("minecraft:stone").unwrap();
+    for x in -90..=90 {
+        for z in -90..=90 {
+            g.world.set(x, GROUND - 1, z, stone).unwrap();
+        }
+    }
+    // The podium's own block is bedrock, as in the End: the dragon does not break it, so the heightmap at (0, 0) stays at GROUND.
+    let bedrock = g.pack.assets.registry.default_state("minecraft:bedrock").unwrap();
+    g.world.set(0, GROUND - 1, 0, bedrock).unwrap();
     put_player(g);
     let me = Vec3::new(PLAYER.0, PLAYER.1, PLAYER.2);
     for (name, ticks) in [("strafe", 700), ("charge", 80), ("perch", 1900)] {
@@ -251,6 +268,7 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
             "charge" => 8,
             _ => 2,
         };
+        put_player(g);
         fresh(g, phase, 200.0);
         let d = g.dragon.as_mut().unwrap();
         match name {
@@ -264,7 +282,7 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
         for t in 0..ticks {
             world_tick(g);
             let _ = writeln!(out, "{}", frame(g, name, t));
-            let _ = writeln!(rng, "{name} {t} {:012x}", g.dragon.as_ref().map_or(0, |d| d.random.state()));
+            let _ = writeln!(rng, "{name} {t} {:012x} ph{} tg {} pa {} ac{}", g.dragon.as_ref().map_or(0, |d| d.random.state()), g.player.as_ref().map_or(0.0, |p| p.health.health()), g.dragon.as_ref().and_then(|d| d.phase.target()).map_or("-".to_string(), bits), match g.dragon.as_ref().map(|d| &d.phase) { Some(Phase::LandingApproach { path: Some(p), .. }) => format!("{:?}", p.0.nodes), _ => String::new() }, g.fight.alive_crystals);
         }
         g.creatures.projectiles.clear();
         g.breath_clouds.clear();
@@ -285,7 +303,7 @@ fn lines_blocks(g: &Game<'_>, gateway: [i32; 3]) -> Vec<String> {
             for z in lo[2]..=hi[2] {
                 for x in lo[0]..=hi[0] {
                     let name = &g.res.facts().get(g.world.block(x, y, z)).name;
-                    if &**name != "minecraft:air" && !(&**name == "minecraft:stone" && y <= GROUND) {
+                    if &**name != "minecraft:air" && !(&**name == "minecraft:stone" && y <= GROUND) && !(&**name == "minecraft:bedrock" && (x, y, z) == (0, GROUND - 1, 0)) {
                         out.push(format!("blk {x} {y} {z} {name}"));
                     }
                 }

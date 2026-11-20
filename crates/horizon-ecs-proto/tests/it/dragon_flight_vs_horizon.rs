@@ -43,10 +43,11 @@ fn ours() -> Vec<String> {
     // The Holding dragon from (0.5, 80, 0.5), seed 5, 300 ticks of the real schedule: position and yaw bits and the phase, per tick.
     let mut h = Herd::with_slab(40, false, false);
     h.world.insert_resource(FlightNodes::build(&LAYOUT, |_, _| GROUND));
+    crate::dragon_support::lay_ground(&mut h);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the dragon's species");
     let e = spawn_armed(&mut h.world, &sp, 0.5, 0.5, 7);
-    h.world.entity_mut(e).insert((Pos(Vec3::new(0.5, 80.0, 0.5)), Yaw(0.0), DragonRng(LegacyRandom::new(5), LegacyRandom::new(9)), FlightHistory::new(80.0, 0.0)));
+    h.world.entity_mut(e).insert((Pos(Vec3::new(0.5, 80.0, 0.5)), Yaw(0.0), DragonRng(LegacyRandom::new(5), LegacyRandom::new(9)), FlightHistory::new(80.0, 0.0), horizon_ecs_proto::dragon::parts::Parts::default()));
     phases::set_phase(&mut h.world, e, phases::HOLDING);
     for t in 0..300 {
         h.tick();

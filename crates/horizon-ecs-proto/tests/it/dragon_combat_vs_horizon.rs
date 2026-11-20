@@ -22,9 +22,9 @@ fn frame(h: &mut Herd, e: Entity, name: &str, t: usize) -> String {
         .query::<(Entity, &Cloud, Has<Flame>, Has<horizon_ecs_proto::breath_cloud::Live>)>()
         .iter(w)
         .map(|(id, c, flame, live)| {
-            // A cloud asleep in its wait does not count its age (`breath_cloud`): it is the ticks since it was first seen.
+            // A cloud asleep in its wait does not count its age (`breath_cloud`): it is the ticks since it was first seen, counting the tick it was born in for a dragon flame (made in `tick_dragon`, then aged by `tick_breath` the same tick; a fireball cloud is made after it).
             let born = BORN.with(|b| *b.borrow_mut().entry(id).or_insert(t));
-            let age = if live { c.age } else { (t - born) as i32 };
+            let age = if live { c.age } else { (t - born) as i32 + i32::from(flame) };
             let y = if flame { format!("{:016x}", c.at[1].to_bits()) } else { "~".to_string() };
             format!("{:016x}/{y}/{:016x}/{:08x}/{}/{}", c.at[0].to_bits(), c.at[2].to_bits(), c.radius.to_bits(), age, c.victims.len())
         })
@@ -54,7 +54,7 @@ fn strafe_charge_and_perch_match_horizon() {
         for t in 0..ticks {
             h.tick();
             out.push(frame(&mut h, e, name, t));
-            rng.push(format!("{name} {t} {:012x}", h.world.get::<horizon_ecs_proto::dragon::flight::DragonRng>(e).unwrap().0.state()));
+            rng.push(format!("{name} {t} {:012x} ph{} tg {} pa {} ac{}", h.world.get::<horizon_ecs_proto::dragon::flight::DragonRng>(e).unwrap().0.state(), h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().health_of(PLAYER_ID), h.world.get::<horizon_ecs_proto::dragon::phases::PhaseData>(e).and_then(|d| d.0.target).map_or("-".to_string(), bits), h.world.get::<horizon_ecs_proto::dragon::phases::PhaseData>(e).and_then(|d| d.0.path.as_ref().map(|p| format!("{:?}", p.nodes))).unwrap_or_default(), h.world.resource::<horizon_ecs_proto::dragon::fight::EndFight>().crystals_alive));
         }
     }
     if let Some(dir) = std::env::var_os("HORIZON_DRAGON_DUMP") {
