@@ -40,9 +40,7 @@ fn fang_box(at: Vec3) -> Aabb {
     Aabb::new(Vec3::new(at.x - h, at.y, at.z - h), Vec3::new(at.x + h, at.y + 0.8, at.z + h))
 }
 
-fn is_illager(name: &str) -> bool {
-    matches!(name, "minecraft:evoker" | "minecraft:illusioner" | "minecraft:pillager" | "minecraft:vindicator")
-}
+use crate::species::lists::{is_illager, is_vex};
 
 /// `EvokerFangs.dealDamageTo` for a creature: no owner present hurts everyone; with one, an illager owner spares the illagers and
 /// the vexes whose owner is an illager (`isAlliedTo`, no teams in the ECS). Players are never allied here (no teams).
@@ -55,7 +53,7 @@ fn allied(w: &World, owner: Option<Entity>, target: Entity) -> bool {
     if is_illager(name) {
         return true;
     }
-    name == "minecraft:vex" && w.get::<Owner>(target).and_then(|o| o.0).is_some_and(|who| matches!(who, Who::Entity(r) if is_illager(species_name(w, r))))
+    is_vex(name) && w.get::<Owner>(target).and_then(|o| o.0).is_some_and(|who| matches!(who, Who::Entity(r) if is_illager(species_name(w, r))))
 }
 
 /// The bite (`warmup == -8`): 6 of indirect magic (the owner still there) or of magic (no owner) to each living creature and

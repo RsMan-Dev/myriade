@@ -35,15 +35,15 @@ fn wants(w: &World, e: Entity, now: u64) -> bool {
 
 /// `LEGACY_IRON_GOLEM` : un sol qui n'est ni cactus, ni verre, ni feuilles, etc.
 fn floor_ok(name: &str) -> bool {
-    !matches!(
+    name != crate::species::lists::TNT
+        && !matches!(
         name,
         "minecraft:cobweb"
             | "minecraft:cactus"
             | "minecraft:glass_pane"
             | "minecraft:conduit"
             | "minecraft:ice"
-            | "minecraft:tnt"
-            | "minecraft:glowstone"
+                        | "minecraft:glowstone"
             | "minecraft:beacon"
             | "minecraft:sea_lantern"
             | "minecraft:frosted_ice"

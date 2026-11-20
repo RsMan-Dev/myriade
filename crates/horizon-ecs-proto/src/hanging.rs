@@ -27,9 +27,9 @@ pub struct Kind {
     pub break_sound: &'static str,
 }
 pub const KINDS: &[Kind] = &[
-    Kind { item: "minecraft:item_frame", break_sound: "entity.item_frame.break" },
-    Kind { item: "minecraft:glow_item_frame", break_sound: "entity.item_frame.break" },
-    Kind { item: "minecraft:painting", break_sound: "entity.painting.break" },
+    Kind { item: crate::species::lists::ITEM_FRAME, break_sound: "entity.item_frame.break" },
+    Kind { item: crate::species::lists::GLOW_ITEM_FRAME, break_sound: "entity.item_frame.break" },
+    Kind { item: crate::species::lists::PAINTING, break_sound: "entity.painting.break" },
 ];
 
 /// A hanging entity: the cell it occupies, the face it hangs on (`Direction.get3DDataValue`: down 0, up 1, north 2, south 3,
@@ -121,10 +121,11 @@ pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>
     w.resource_mut::<AttachIndex>().0.entry(support(pos, face)).or_default().push(e);
     let overlapped = overlapping(w, e);
     if !overlapped.is_empty() {
-        arm(w, e);
+        // The older ones first: vanilla ticks entities in the order they were added, so the older breaks and the newer then stays.
         for o in overlapped {
             arm(w, o);
         }
+        arm(w, e);
     }
     e
 }

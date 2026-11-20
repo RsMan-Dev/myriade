@@ -100,7 +100,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let mut ids = Vec::new();
     for (i, sp) in crate::species::registry().species.iter().enumerate() {
         let named = p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name));
-        let hostile = p.hostile && crate::cow::mob_kind(sp.name).category == "monster";
+        let hostile = p.hostile && crate::cow::is_monster(sp.name);
         if (named || p.any || hostile) && !p.except.contains(&sp.name) {
             ids.push(i);
         }

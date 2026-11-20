@@ -67,9 +67,10 @@ fn an_intact_frame_is_still_there_after_a_thousand_ticks() {
     assert!(h.world.get_entity(e).is_ok());
 }
 
-/// Two frames in one cell on one face: each is checked on the 101st tick after the birth of the second, and both break there.
+/// Two frames in one cell on one face: both are checked on the 101st tick after the birth. The first checked breaks (`discard` leaves the
+/// entity lookup at once, jar `BlockAttachedEntity.tick`), so the second no longer overlaps anything and stays.
 #[test]
-fn two_frames_in_one_cell_both_break_on_the_101st_tick() {
+fn two_frames_in_one_cell_the_first_breaks_on_the_101st_tick_and_the_second_stays() {
     if !have_data() {
         return;
     }
@@ -80,9 +81,10 @@ fn two_frames_in_one_cell_both_break_on_the_101st_tick() {
     let mut broke_at = None;
     while broke_at.is_none() && clock(&h) < born + 300 {
         h.tick();
-        if h.world.get_entity(a).is_err() && h.world.get_entity(b).is_err() {
+        if h.world.get_entity(a).is_err() {
             broke_at = Some(clock(&h));
         }
     }
     assert_eq!(broke_at.map(|t| t - born), Some(101));
+    assert!(h.world.get_entity(b).is_ok(), "the second frame stays once the first is gone");
 }

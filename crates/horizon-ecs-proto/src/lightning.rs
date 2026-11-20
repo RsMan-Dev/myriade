@@ -171,19 +171,15 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
     }
     for (t, pos) in struck {
         let name = w.get::<SpeciesId>(t).and_then(|s| w.resource::<SpeciesTable>().0.get(s.0 as usize).map(|s| s.name));
-        let outcome = match name {
-            Some("minecraft:pig") if !peaceful => Some("minecraft:zombified_piglin"),
-            Some("minecraft:villager") if !peaceful => Some("minecraft:witch"),
-            _ => None,
-        };
-        if let Some(into) = outcome {
-            let keep = crate::conversion::ConvertKeep::NONE;
-            if crate::conversion::convert(w, t, into, keep).is_some() {
+        use crate::species::lists::{struck as kind_of, Struck};
+        let what = name.map_or(Struck::Plain, kind_of);
+        if let Struck::Converts(into) = what {
+            if !peaceful && crate::conversion::convert(w, t, into, crate::conversion::ConvertKeep::NONE).is_some() {
                 continue;
             }
         }
-        match name {
-            Some("minecraft:mooshroom") => {
+        match what {
+            Struck::Flips => {
                 if flip_once(w, bolt, t) {
                     if let Some(mut v) = w.get_mut::<crate::behaviours::variant::Variant>(t) {
                         v.0 = 1 - v.0.min(1);
@@ -192,11 +188,11 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
                 }
                 continue;
             }
-            Some("minecraft:turtle") => {
+            Struck::Dies => {
                 w.resource_mut::<DamageQueue>().add(t, f32::MAX, Cause::Lightning);
                 continue;
             }
-            Some("minecraft:creeper") => {
+            Struck::Charges => {
                 w.entity_mut(t).insert(crate::explosion::Charged);
             }
             _ => {}

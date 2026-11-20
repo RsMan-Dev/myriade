@@ -37,7 +37,7 @@ fn thrown_and_shot_kinds_fly_as_the_mob_s_do() {
     ];
     for (k, (kind, flight)) in kinds.into_iter().enumerate() {
         let (r, mut h) = flat_pair();
-        let (at, v) = (Vec3::new(0.5, 1.9, 0.5), Vec3::new(0.5, 0.25, -0.1));
+        let (at, v) = (Vec3::new(0.5, 1.9, 0.5), Vec3::new(0.5, -0.25, -0.1));
         let mut m = Projectile::new(kind, at, None);
         m.velocity = v;
         let e = launch(&mut h.world, flight, at, v, None);

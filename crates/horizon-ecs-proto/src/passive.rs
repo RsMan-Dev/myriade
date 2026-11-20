@@ -6,7 +6,8 @@ use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::nbt::{Compound, Tag};
 
-pub const DISPLAYS: [&str; 3] = ["minecraft:block_display", "minecraft:item_display", "minecraft:text_display"];
+pub use crate::species::lists::DISPLAYS;
+use crate::species::lists::{BLOCK_DISPLAY, INTERACTION, ITEM_DISPLAY, TEXT_DISPLAY};
 const INTERACTION_KEYS: [&str; 5] = ["width", "height", "response", "attack", "interaction"];
 
 /// The compound of the entity as Horizon keeps it (`persist.raw`): the state the ECS does not read.
@@ -130,7 +131,7 @@ fn display_fields(src: &Tag, kind: &str) -> Vec<(&'static str, Option<Tag>)> {
         ("glow_color_override", Some(Tag::Int(int(src, "glow_color_override", -1)))),
     ];
     match kind {
-        "minecraft:text_display" => {
+        TEXT_DISPLAY => {
             let text = src
                 .get("text")
                 .filter(|v| match v {
@@ -152,10 +153,10 @@ fn display_fields(src: &Tag, kind: &str) -> Vec<(&'static str, Option<Tag>)> {
                 ("default_background", Some(Tag::Byte(i8::from(flag(src, "default_background"))))),
             ]);
         }
-        "minecraft:block_display" => {
+        BLOCK_DISPLAY => {
             f.push(("block_state", Some(src.get("block_state").cloned().unwrap_or_else(|| Tag::String("minecraft:air".into())))));
         }
-        "minecraft:item_display" => {
+        ITEM_DISPLAY => {
             let context = named(
                 src.get("item_display"),
                 "none",
@@ -175,7 +176,7 @@ pub fn spawn(w: &mut World, kind: &str, at: Vec3, mut tag: Tag) -> Entity {
     if let Tag::Compound(c) = &mut tag {
         c.entry("id".into()).or_insert_with(|| Tag::String(kind.into()));
     }
-    let interact = (kind == "minecraft:interaction").then(|| Interact::load(&tag));
+    let interact = (kind == INTERACTION).then(|| Interact::load(&tag));
     if let (Some(_), Tag::Compound(c)) = (&interact, &mut tag) {
         for key in INTERACTION_KEYS {
             c.remove(&key.into());

@@ -10,6 +10,7 @@ use crate::behaviours::{self, Cap, Entry, Module, Pred};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+pub mod lists;
 pub mod chicken;
 pub mod copper_golem;
 pub mod cow;
