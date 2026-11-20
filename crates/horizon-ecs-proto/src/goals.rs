@@ -764,6 +764,12 @@ pub fn wake(w: &mut World, e: Entity, m: &'static Module) {
         w.resource_mut::<Requests>().0.push(Req::Start(e, s));
     }
 }
+/// The goal of this slot waits for its flags to free, then starts (the selector's own pending mark).
+pub(crate) fn pend(w: &mut World, e: Entity, slot: u8) {
+    if let Some(mut g) = w.get_mut::<GoalSet>(e) {
+        g.pending |= 1 << slot;
+    }
+}
 /// Asks the selector to end the module's first entry.
 pub fn end(w: &mut World, e: Entity, m: &'static Module) {
     if let Some(s) = slot_of(w, e, m) {

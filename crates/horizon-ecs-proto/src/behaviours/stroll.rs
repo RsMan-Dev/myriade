@@ -66,6 +66,16 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
         s.plain = p.water_avoiding;
     }
 }
+/// `RandomStrollGoal.trigger`: the next ask of the goal picks a spot without the wait; a walk under way keeps the flag for its end.
+pub fn trigger(w: &mut World, e: Entity) {
+    let Some(mut s) = w.get_mut::<Stroll>(e) else { return };
+    s.force = true;
+    let walking = s.walking;
+    drop(s);
+    if !walking {
+        wake(w, e, &MODULE);
+    }
+}
 /// Arms the next attempt, unless one is armed.
 pub fn arm_now(w: &mut World, e: Entity) {
     let mut s = *w.get::<Stroll>(e).unwrap();
@@ -77,8 +87,13 @@ pub fn arm_now(w: &mut World, e: Entity) {
     s.scheduled = true;
     *w.get_mut::<Stroll>(e).unwrap() = s;
 }
-fn blocked(w: &mut World, e: Entity, _: Inst) {
-    arm_now(w, e);
+fn blocked(w: &mut World, e: Entity, inst: Inst) {
+    // A forced attempt waits for its flags (`canUse` is not asked while another goal holds them), without the wait.
+    if w.get::<Stroll>(e).is_some_and(|s| s.force) {
+        pend(w, e, inst.slot);
+    } else {
+        arm_now(w, e);
+    }
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     let now = crate::cow::now_of(w, e);
@@ -108,10 +123,17 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
         }
     };
+    if ok {
+        s.force = false;
+    }
     w.get_mut::<Rng>(e).unwrap().0 = r.0;
     *w.get_mut::<Stroll>(e).unwrap() = s;
     if !ok {
-        arm_now(w, e);
+        if s.force {
+            wake(w, e, &MODULE);
+        } else {
+            arm_now(w, e);
+        }
     }
     ok
 }
@@ -122,7 +144,14 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(NeedsPath);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.get_mut::<Stroll>(e).unwrap().walking = false;
+    let s = w.get_mut::<Stroll>(e).map(|mut s| {
+        s.walking = false;
+        s.force
+    });
     stop_nav(w, e);
-    arm_now(w, e);
+    if s == Some(true) {
+        wake(w, e, &MODULE);
+    } else {
+        arm_now(w, e);
+    }
 }

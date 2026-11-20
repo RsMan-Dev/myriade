@@ -120,6 +120,8 @@ pub struct Stroll {
     pub interval: i32,
     /// The chance of a plain spot instead of a land one (`WaterAvoidingRandomStrollGoal.probability`: 0.001; the snow golem's 1.0000001e-5).
     pub plain: f32,
+    /// `RandomStrollGoal.forceTrigger`: the next ask skips the wait and the chance, until a spot is picked.
+    pub force: bool,
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rng(pub u64);
@@ -1478,7 +1480,7 @@ pub fn locomotion_bundle(sp: &Species, yaw: f32) -> impl Bundle {
         Drive::default(),
         MoveTo::default(),
         Nav::default(),
-        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60, plain: 0.001 },
+        Stroll { walking: false, scheduled: false, tx: 0.0, tz: 0.0, ty: 1, horizontal_range: 10, vertical_range: 7, interval: 60, plain: 0.001, force: false },
         sp.walk,
         NavParams {
             malus: sp.malus,

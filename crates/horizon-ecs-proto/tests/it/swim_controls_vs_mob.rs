@@ -432,3 +432,59 @@ fn two_guardians_look_at_each_other_as_often_as_their_mobs_do() {
     let ratio = f64::from(ecs) / f64::from(mob);
     assert!((0.7..1.4).contains(&ratio), "share of looking ticks: mob {mob}, ecs {ecs}");
 }
+
+// ---- the stroll a blow forces (`Guardian.hurtServer` calls `randomStrollGoal.trigger()` at every blow, a refused one too) ---------------------
+
+/// The jar's rule: after a blow, the guardian's next stroll ask picks its spot without the wait (2 ticks at most, the selector's cadence).
+#[test]
+fn a_blow_starts_the_guardian_s_stroll_at_its_next_ask() {
+    if !is_guardian() {
+        return;
+    }
+    let (mut r, mut h, _i, e) = guardian_pair(3200);
+    h.set_online(&[(-6.5, 1.5)]);
+    for _ in 0..4 {
+        r.step(None);
+        h.tick();
+    }
+    assert!(!h.world.get::<Stroll>(e).unwrap().walking, "no walk before the blow");
+    let hit_at = h.world.resource::<Clock>().of(e);
+    h.hit_by(e, 3.0, 1);
+    let mut started = None;
+    for _ in 0..4 {
+        r.step(None);
+        h.tick();
+        if started.is_none() && h.world.get::<Stroll>(e).unwrap().walking {
+            started = Some(h.world.resource::<Clock>().of(e) - hit_at);
+        }
+    }
+    assert!(started.is_some_and(|t| (1..=2).contains(&t)), "the walk started at {started:?} ticks after the blow");
+}
+/// The same rule against the `Mob`, which does not call `trigger()` at a blow (`Guardian.hurtServer`, octet 64 to 75): the strict test.
+#[test]
+#[ignore = "Mob fautif : pas de trigger() au coup reçu, jar Guardian.hurtServer"]
+fn a_blow_starts_the_guardian_s_stroll_as_its_mob_does() {
+    if !is_guardian() {
+        return;
+    }
+    let (mut r, mut h, i, e) = guardian_pair(3200);
+    h.set_online(&[(-6.5, 1.5)]);
+    for _ in 0..4 {
+        r.step(None);
+        h.tick();
+    }
+    r.hit(i, 3.0, [-6.5, 1.0, 1.5]);
+    h.hit_by(e, 3.0, 1);
+    let (mut mob_at, mut ecs_at) = (None, None);
+    for t in 1..=4 {
+        r.step(None);
+        h.tick();
+        if mob_at.is_none() && r.names(i).contains(&"Stroll") {
+            mob_at = Some(t);
+        }
+        if ecs_at.is_none() && h.world.get::<Stroll>(e).unwrap().walking {
+            ecs_at = Some(t);
+        }
+    }
+    assert_eq!(mob_at, ecs_at);
+}

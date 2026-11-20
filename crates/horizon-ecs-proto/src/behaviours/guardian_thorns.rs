@@ -19,8 +19,10 @@ pub static MODULE: Module = Module { name: "guardian_thorns", flags: 0, equip, c
 fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Spiky);
 }
-/// The thorns of a blow aimed at a still guardian: only a living direct cause (`Cause::Entity`, `direct`) that is not `#avoids_guardian_thorns`.
+/// The thorns of a blow aimed at a still guardian (and the forced stroll of every blow): only a living direct cause (`Cause::Entity`, `direct`) that is not `#avoids_guardian_thorns`.
 pub fn blow(w: &mut World, e: Entity, by: Option<Who>, direct: bool, cause: Cause) {
+    // `Guardian.hurtServer`: `randomStrollGoal.trigger()` at every blow, before the spikes' own test and whatever the guards decide.
+    crate::behaviours::stroll::trigger(w, e);
     if w.get::<Drive>(e).is_some_and(|d| d.moving) || !direct || cause != Cause::Entity {
         return;
     }
