@@ -56,11 +56,12 @@ fn good(w: &World, blocks: i32, t: [f64; 3]) -> bool {
     }
     let mw = w.resource::<Level>().mw.0;
     let at = [t[0].ifloor(), t[1].ifloor(), t[2].ifloor()];
-    if !mw.facts.is_air(mw.world.block(at[0], at[1], at[2])) {
+    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
+    if !mw.facts.is_air(cursor.block(at[0], at[1], at[2])) {
         return false;
     }
     [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].into_iter().any(|d| {
-        (1..blocks).any(|i| !mw.facts.is_air(mw.world.block(at[0] + d[0] * i, at[1] + d[1] * i, at[2] + d[2] * i)))
+        (1..blocks).any(|i| !mw.facts.is_air(cursor.block(at[0] + d[0] * i, at[1] + d[1] * i, at[2] + d[2] * i)))
     })
 }
 /// `getSuitableFlyToPosition`: the first of 64 random points within 16 blocks that is `good`; failing that, the last point drawn.

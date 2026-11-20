@@ -378,10 +378,11 @@ impl Hazards {
             version: 0,
             block_count: vec![0; width.div_ceil(16).pow(2)],
         };
+        let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
         for x in 0..width {
             for z in 0..width {
                 for y in -2..=BUILD_TOP {
-                    let name = &mw.facts.get(mw.world.block(x as i32 + origin, y, z as i32 + origin)).name;
+                    let name = &mw.facts.get(cursor.block(x as i32 + origin, y, z as i32 + origin)).name;
                     if &**name == EGG {
                         h.eggs.insert([x as i32 + origin, y, z as i32 + origin]);
                     }
@@ -568,6 +569,31 @@ mod hazards_tests {
             }
         }
         want == h.block_count
+    }
+
+    #[inline(never)]
+    fn bench_hazards_new(h: &Hazards, boxes: &[Aabb]) -> u32 {
+        boxes.iter().map(|b| u32::from(h.of_box(b))).sum()
+    }
+    #[inline(never)]
+    fn bench_hazards_ref(h: &Hazards, boxes: &[Aabb]) -> u32 {
+        boxes.iter().map(|b| u32::from(bits_ref(h, b))).sum()
+    }
+    /// The sparse world of a ghast arena: callgrind with `--toggle-collect=*bench_hazards_new*` then `*bench_hazards_ref*`.
+    #[test]
+    #[ignore = "bench"]
+    fn hazards_bench() {
+        let (origin, width) = (-100, 201);
+        let mut rng = Rng(0x1234_5678_9ABC_DEF1);
+        let mut h = empty(origin, width);
+        for _ in 0..60 {
+            let (x, z) = (origin + rng.next_int(width as i32), origin + rng.next_int(width as i32));
+            h.set(x, rng.next_int(4), z, KINDS[1 + rng.next_int(5) as usize]);
+        }
+        let boxes: Vec<Aabb> = (0..20_000)
+            .map(|_| box_at(Vec3::new(f64::from(origin) + rng.next_f64() * 200.0, rng.next_f64() * 8.0, f64::from(origin) + rng.next_f64() * 200.0), 4.0, 4.0))
+            .collect();
+        assert_eq!(bench_hazards_new(&h, &boxes), bench_hazards_ref(&h, &boxes));
     }
 
     #[test]

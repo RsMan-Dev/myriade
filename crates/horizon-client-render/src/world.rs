@@ -1102,6 +1102,43 @@ mod cursor_tests {
         }
     }
 
+    #[inline(never)]
+    fn bench_block_world(w: &World, pts: &[[i32; 3]]) -> u64 {
+        pts.iter().map(|p| u64::from(w.block(p[0], p[1], p[2]).0)).sum()
+    }
+    #[inline(never)]
+    fn bench_block_cursor(w: &World, pts: &[[i32; 3]]) -> u64 {
+        let mut c = BlockCursor::new(w);
+        pts.iter().map(|p| u64::from(c.block(p[0], p[1], p[2]).0)).sum()
+    }
+    /// Rays of 0.3-block steps (what an explosion or a line of sight reads): `--toggle-collect=*bench_block_*`.
+    #[test]
+    #[ignore = "bench"]
+    fn cursor_bench() {
+        let mut w = World::new(BlockStateId(0), 0);
+        for x in -2..2 {
+            for z in -2..2 {
+                w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        for i in 0..4000 {
+            w.set(i % 60 - 30, i / 60 % 40, i * 7 % 60 - 30, BlockStateId(3)).unwrap();
+        }
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        let mut pts = Vec::new();
+        for _ in 0..1000 {
+            let mut p = [(rng.draw() % 40) as f64 - 20.0, (rng.draw() % 30) as f64, (rng.draw() % 40) as f64 - 20.0];
+            let d = [(rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0];
+            for _ in 0..20 {
+                pts.push([p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32]);
+                for k in 0..3 {
+                    p[k] += d[k] * 0.3;
+                }
+            }
+        }
+        assert_eq!(bench_block_world(&w, &pts), bench_block_cursor(&w, &pts));
+    }
+
     #[test]
     fn cursor_equals_world_block() {
         let mut w = World::new(BlockStateId(0), 0);
