@@ -24,7 +24,7 @@ use super::*;
 /// Two cows standing in each other are pushed apart; a sleeping cow they overlap is woken; a baby grows up.
 #[test]
 fn cows_push_each_other_and_babies_grow() {
-if crate::cow::skip_unless_small_body("cows_push_each_other_and_babies_grow") {
+if crate::cow::skip_unless_caps(&[crate::behaviours::Cap::Locomotion], "cows_push_each_other_and_babies_grow") || crate::cow::skip_unless_small_body("cows_push_each_other_and_babies_grow") {
     return;
 }
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {

@@ -237,16 +237,27 @@ fn a_piglin_opens_the_door_on_its_path_as_a_mob_does() {
         h.set_block_state(2, y, 0, "minecraft:oak_door", props);
     }
     r.apply_block_events();
-    mob_piglin(&mut r, 0.5, 0.5, 11);
-    ecs_piglin(&mut h, 0.5, 0.5, 11);
-    h.set_players(vec![(6.5, 0.5)]);
-    h.set_online(&[(6.5, 0.5)]);
-    let pv: PlayerView = player_view(Vec3::new(6.5, 1.0, 0.5), None);
+    let mi = mob_piglin(&mut r, 0.5, 0.5, 11);
+    let ee = ecs_piglin(&mut h, 0.5, 0.5, 11);
+    h.set_players(vec![(12.5, 0.5)]);
+    h.set_online(&[(12.5, 0.5)]);
+    // Both hunt the player: the wall hides it, so the target is given (what the Mob would draw after a stroll is not under test).
+    r.mobs[mi].ai.target = Some(horizon_client_lib::mobs::Who::Player);
+    horizon_ecs_proto::targeting::set_target(&mut h.world, ee, horizon_ecs_proto::targeting::Target::player(1, 60));
+    let pv: PlayerView = player_view(Vec3::new(12.5, 1.0, 0.5), None);
     let (mut mob_open, mut ecs_open, mut mob_shut, mut ecs_shut) = (None, None, None, None);
+    let (mut mob_move, mut ecs_move) = (None, None);
     for t in 1..=300i64 {
         r.step(Some(&pv));
         r.apply_block_events();
         h.tick();
+        // The chase starts at a drawn tick on each side: the ticks are counted from the first step.
+        if mob_move.is_none() && r.mobs[mi].position.x > 0.55 {
+            mob_move = Some(t);
+        }
+        if ecs_move.is_none() && h.world.get::<Pos>(ee).unwrap().0.x > 0.55 {
+            ecs_move = Some(t);
+        }
         let mob_is_open = r.w.prop(2, 1, 0, "open") == Some("true");
         let ecs_is_open = h.world.resource::<Level>().mw.0.prop(2, 1, 0, "open") == Some("true");
         if mob_open.is_none() && mob_is_open {
@@ -263,10 +274,15 @@ fn a_piglin_opens_the_door_on_its_path_as_a_mob_does() {
         }
     }
     let (mo, eo) = (mob_open.expect("the Mob piglin opens the door"), ecs_open.expect("the ECS piglin opens the door"));
-    let (ms, es) = (mob_shut.expect("the Mob's door shuts behind it"), ecs_shut.expect("the ECS door shuts behind it"));
-    eprintln!("piglin door: open mob {mo} ecs {eo}; shut mob {ms} ecs {es}");
-    assert!((mo - eo).abs() <= 5, "the door opens within 5 ticks on both sides (mob {mo}, ecs {eo})");
-    assert!((ms - es).abs() <= 5, "the door shuts within 5 ticks on both sides (mob {ms}, ecs {es})");
+    let (mm, em) = (mob_move.expect("the Mob piglin walks"), ecs_move.expect("the ECS piglin walks"));
+    eprintln!("piglin door: first step mob {mm} ecs {em}; open mob {mo} ecs {eo}; shut mob {mob_shut:?} ecs {ecs_shut:?}");
+    assert!(((mo - mm) - (eo - em)).abs() <= 5, "the door opens within 5 ticks of the first step on both sides (mob {}, ecs {})", mo - mm, eo - em);
+    // `InteractWithDoor` closes a door only while the piglin is within 3 blocks of it and not on its step: a piglin that crosses at its
+    // pace may leave it open (the Mob's does here), so the closing is compared as it comes: both close it, within 5 ticks, or neither.
+    assert_eq!(mob_shut.is_some(), ecs_shut.is_some(), "the door shuts on both sides or on neither (mob {mob_shut:?}, ecs {ecs_shut:?})");
+    if let (Some(ms), Some(es)) = (mob_shut, ecs_shut) {
+        assert!((ms - es).abs() <= 5, "the door shuts within 5 ticks on both sides (mob {ms}, ecs {es})");
+    }
 }
 
 /// A piglin with an empty off hand walks to gold on the ground 5 blocks away within 5 ticks; gold 12 blocks away is out of reach

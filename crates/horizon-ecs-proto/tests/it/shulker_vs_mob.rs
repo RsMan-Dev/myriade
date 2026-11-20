@@ -40,17 +40,15 @@ fn the_shulker_opens_and_fires_as_a_mob_does() {
     let (mut r, mut h, mob, ecs) = scene();
     let view = player_view(Vec3::new(12.5, 1.0, 0.5), None);
     let (mut mob_shots, mut ecs_shots, mut seen) = (Vec::new(), Vec::new(), std::collections::HashSet::new());
-    // The ECS answers a target one tick after the Mob (the request of the target service is read on the next tick): the lids are
-    // compared with that shift.
-    let (mut worst_lid, mut prev_mob_lid) = (0.0_f32, 0.0_f32);
+    // Both answer the target on the same tick (measured: the lids are equal tick by tick).
+    let mut worst_lid = 0.0_f32;
     for t in 1..=200i64 {
         let from = r.events.len();
         r.step(Some(&view));
         h.tick();
         let mob_lid = peek_height_scale(&r.mobs[mob]).map_or(0.0, |s| s - 1.0);
         let ecs_lid = h.world.get::<Attached>(ecs).unwrap().eased;
-        worst_lid = worst_lid.max((prev_mob_lid - ecs_lid).abs());
-        prev_mob_lid = mob_lid;
+        worst_lid = worst_lid.max((mob_lid - ecs_lid).abs());
         if r.events[from..].iter().any(|e| matches!(e, MobEvent::Sound(n, ..) if *n == "entity.shulker.shoot")) {
             mob_shots.push(t);
         }

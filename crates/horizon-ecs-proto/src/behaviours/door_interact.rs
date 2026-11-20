@@ -80,6 +80,14 @@ pub fn set_open_at(w: &mut World, p: [i32; 3], open: bool) {
     if let Some(id) = with_open(w, p, open) {
         blocks::set_state_id(w, p, id);
     }
+    // `DoorBlock.updateShape`: the other half of the door takes the same `open` (the game's `set_door_open` writes both halves).
+    let up = blocks::property(blocks::world_of(w), p, "half").as_deref() == Some("lower");
+    let other = [p[0], p[1] + if up { 1 } else { -1 }, p[2]];
+    if is_door(w, other)
+        && let Some(id) = with_open(w, other, open)
+    {
+        blocks::set_state_id(w, other, id);
+    }
 }
 /// `DoorInteractGoal.setOpen`.
 pub fn set_open(w: &mut World, e: Entity, open: bool) {

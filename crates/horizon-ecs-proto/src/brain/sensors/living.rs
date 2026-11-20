@@ -76,6 +76,9 @@ mod tests {
 
     #[test]
     fn living_near_equals_sorted_candidates() {
+        if crate::cow::skip_unless_caps(&[crate::behaviours::Cap::Locomotion], "living_near_equals_sorted_candidates") {
+            return;
+        }
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }

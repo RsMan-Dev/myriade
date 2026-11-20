@@ -31,6 +31,8 @@ pub static MODULE: Module = Module {
     name: "back_up_if_too_close",
     flags: 0,
     equip,
+    resources,
+    fired,
     can_use,
     start,
     stop,
@@ -40,6 +42,23 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(BackUp { p: params::<Params>(p), slot: inst.slot, walkable: None });
+}
+/// A new target asks the goal at once; `fired` then asks again at every tick while the animal has a target (the `Mob` asks
+/// the behaviour at every tick of its brain).
+fn resources(w: &mut World) {
+    w.resource_mut::<targeting::TargetWatchers>().0.push(|w, e| {
+        if let Some(b) = w.get::<BackUp>(e) {
+            let slot = b.slot;
+            crate::goals::arm(w, e, slot, 1);
+        }
+    });
+}
+fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
+    if w.get::<Target>(e).is_none() {
+        return false;
+    }
+    crate::goals::arm(w, e, inst.slot, 1);
+    true
 }
 /// The target is in sight and closer than `range` blocks (`closer_than` of the target's feet, `Mob.sees`).
 fn too_close(p: &Params, pos: Vec3, t: &Target, i: &targeting::Info) -> bool {
@@ -56,6 +75,11 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Backing>();
+    // `MoveControl.update` takes the strafe back each tick: the last forward input does not outlast the goal.
+    if let Some(mut d) = w.get_mut::<Drive>(e) {
+        d.zza = 0.0;
+        d.xxa = 0.0;
+    }
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it.
 fn tick(w: &mut World) {
