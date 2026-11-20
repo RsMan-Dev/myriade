@@ -90,7 +90,6 @@ pub mod breath_cloud;
 pub mod end_crystal;
 pub mod dragon;
 pub mod lightning;
-pub mod end_crystal;
 pub mod falling_block;
 pub mod firework;
 pub mod minecart;

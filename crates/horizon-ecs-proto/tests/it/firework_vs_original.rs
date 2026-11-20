@@ -53,7 +53,7 @@ fn creature_at(h: &mut Herd, feet: Vec3) -> Entity {
                 Vec3::new(feet.x - 0.125, feet.y, feet.z - 0.125),
                 Vec3::new(feet.x + 0.125, feet.y + 0.25, feet.z + 0.125),
             )),
-            Cell(u32::MAX),
+            Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
             Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
             FluidState::default(),
             Health(6.0),
