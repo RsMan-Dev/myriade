@@ -50,8 +50,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
 fn tick(w: &mut World) {
     tick_state(w, moved);
 }
-fn moved(moves: Res<CellMoves>, q: Query<(), With<Gear>>, mut reqs: ResMut<Requests>) {
-    if moves.0.is_empty() || q.is_empty() {
+fn moved(moves: Res<CellMoves>, items: Res<item::ItemIndex>, q: Query<(), With<Gear>>, mut reqs: ResMut<Requests>) {
+    // Without a dropped item in the world no look can find anything: no request per cell move (the chase of a crowd moves cells all the time).
+    if moves.0.is_empty() || items.is_empty() || q.is_empty() {
         return;
     }
     for &e in &moves.0 {

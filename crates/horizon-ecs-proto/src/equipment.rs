@@ -46,6 +46,11 @@ pub fn set_slot(w: &mut World, e: Entity, slot: Slot, item: u32) -> u32 {
         Slot::Main | Slot::Off => {}
     }
     w.resource_mut::<Events>().equipment_changed.push(e);
+    // The goals that depend on what is held (admire, crossbow, melee) are asked again at the next tick, by the same list as the entered ones
+    // (no read of the events in a system that runs every tick).
+    if w.get::<crate::goals::GoalSet>(e).is_some() {
+        w.resource_mut::<crate::goals::Entered>().0.push(e);
+    }
     old
 }
 /// `LivingEntity.setItemSlot` of the slot left empty; what it held.

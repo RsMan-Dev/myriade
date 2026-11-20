@@ -24,20 +24,18 @@ impl Params {
 }
 
 /// One tick of the steer: the first rider's input moves the flier; a passenger's input is ignored.
-pub fn drive(q: &mut Query<(&Mount, &Yaw, &mut Vel, &Params), (With<FlyingSteer>, With<crate::mount::Ridden>)>) {
-    for (mount, yaw, mut vel, p) in q {
-        if mount.rider.is_none() {
-            continue;
-        }
-        let input = mount.input;
-        let rad = f64::from(yaw.0).to_radians();
-        let (sin, cos) = (rad.sin(), rad.cos());
-        let forward = f64::from(input.forward);
-        let strafe = f64::from(input.strafe);
-        vel.0.x = (-sin * forward + cos * strafe) * p.speed;
-        vel.0.z = (cos * forward + sin * strafe) * p.speed;
-        vel.0.y = if input.jump > 0.0 { p.climb } else { -p.sink };
+pub fn drive_one(mount: &Mount, yaw: &Yaw, vel: &mut Vel, p: &Params) {
+    if mount.rider.is_none() {
+        return;
     }
+    let input = mount.input;
+    let rad = f64::from(yaw.0).to_radians();
+    let (sin, cos) = (rad.sin(), rad.cos());
+    let forward = f64::from(input.forward);
+    let strafe = f64::from(input.strafe);
+    vel.0.x = (-sin * forward + cos * strafe) * p.speed;
+    vel.0.z = (cos * forward + sin * strafe) * p.speed;
+    vel.0.y = if input.jump > 0.0 { p.climb } else { -p.sink };
 }
 
 /// The rule that makes a mount fly under its rider's steer, with the species' constants.

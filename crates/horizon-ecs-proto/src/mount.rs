@@ -292,8 +292,7 @@ fn creature_steer(w: &mut World, mount: Entity) {
 #[allow(clippy::type_complexity)]
 fn ridden_drive(
     clock: Res<Clock>,
-    mut fliers: Query<(&Mount, &Yaw, &mut Vel, &crate::behaviours::fly_steer::Params), (With<crate::behaviours::fly_steer::FlyingSteer>, With<Ridden>)>,
-    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), (With<Ridden>, Without<crate::behaviours::fly_steer::FlyingSteer>)>,
+    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::fly_steer::Params>), With<Ridden>>,
     targets: Query<(), With<crate::targeting::Target>>,
     level: Res<Level>,
     on: Res<Online>,
@@ -303,8 +302,12 @@ fn ridden_drive(
 ) {
     // The lead (no system of its own: this one runs every tick anyway).
     crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
-    crate::behaviours::fly_steer::drive(&mut fliers);
-    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture) in &mut q {
+    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture, flier) in &mut q {
+        // A flying mount (`FlyingSteer`: its `Params` are the steer's constants) takes `fly_steer`'s drive instead of this one.
+        if let Some(p) = flier {
+            crate::behaviours::fly_steer::drive_one(&m, &yaw, &mut vel, p);
+            continue;
+        }
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();
             continue;

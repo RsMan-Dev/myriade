@@ -796,12 +796,10 @@ pub fn arm_all(world: &mut World) {
         arm_timers(world, e);
     }
 }
-fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>, ev: Res<Events>, q: Query<(), With<GoalSet>>) {
+fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
     if !en.0.is_empty() {
         reqs.0.extend(std::mem::take(&mut en.0).into_iter().map(Req::Arm));
     }
-    // A slot of the equipment changed: the goals that depend on what is held (admire, crossbow, melee) are asked again.
-    reqs.0.extend(ev.equipment_changed.iter().filter(|&e| q.contains(e)).map(Req::Arm));
 }
 /// The player events of the tick: the lazy look wakes the animals a player now watches, the list of the players is
 /// given to the other systems; the modules read `Online::seen` for their own wake-ups (a player takes an item...).
