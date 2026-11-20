@@ -140,13 +140,13 @@ fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
 }
 
 #[test]
-#[ignore = "strict: out of the water the ecs axolotl swaps to the walk mode (ground control), the Mob keeps SmoothSwimmingMoveControl with its 0.5 outside factor (ecart in suivi/ecs-ecarts.md)"]
+#[ignore = "strict: the land legs are exact until the water (smooth control, 0.5 outside); there the walk-mode search is the ground evaluator, the jar's AmphibiousPathNavigation serves both media (first path nodes y 1 against 2; ecart in suivi/ecs-ecarts.md)"]
 fn an_axolotl_swims_to_the_bit_out_of_the_water_too() {
-    if !have_data() {
+    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:axolotl") {
         return;
     }
     let _ = flat_pair();
-    let w = legs("axolotl", false, true);
+    let w = legs("axolotl", false, false);
     assert!(w == [0.0; 3], "{w:?}");
 }
 

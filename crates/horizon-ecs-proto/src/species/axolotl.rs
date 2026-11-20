@@ -37,7 +37,7 @@ const TEMPT_WET: follow_temptation::Params = follow_temptation::Params { speed: 
 pub static DEF: Def = Def {
     name: "minecraft:axolotl",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
-    locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)), (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.1, outside: 0.5, gravity: false }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))],
+    locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { smooth_land: Some((10.0, 0.5)), ..walk::Params::DEFAULT })), (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.1, outside: 0.5, gravity: false }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))],
     rules: &[RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, ..breed::Params::DEFAULT })],
     brain: BrainDef {
         sensors: &[
