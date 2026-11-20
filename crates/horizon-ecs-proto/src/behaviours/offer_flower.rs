@@ -77,9 +77,10 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     best.is_some()
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    // The `Mob`'s goal ticks every other game tick: `reducedTickDelay(400)` of them last 400 game ticks.
+    // The `Mob`'s goal ticks every other game tick: `reducedTickDelay(400)` of them last 400 game ticks. The tick that starts the goal also
+    // runs it once (measured: 399 observed with `left: n`), so one more is counted for the hold to last the full `n` ticks.
     let n = w.get::<Offer>(e).unwrap().p.ticks;
-    w.entity_mut(e).insert(Offering { left: n });
+    w.entity_mut(e).insert(Offering { left: n + 1 });
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Offering>();

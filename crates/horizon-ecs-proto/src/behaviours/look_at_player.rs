@@ -9,11 +9,14 @@ use horizon_core::geometry::Vec3;
 pub struct Params {
     pub range: f64,
     pub period: i32,
-    /// Empty: players. Else: the nearest creature of these species (not itself) in the box inflated by (range, 3, range).
+    /// Empty: players. Else: the nearest creature of these species (not itself) in the box inflated by (range, 3, range). `ALL`: every
+    /// creature that lives (`LookAtPlayerGoal(Mob.class, range)`).
     pub species: &'static [&'static str],
 }
 impl Params {
     pub const DEFAULT: Self = Self { range: 6.0, period: 50, species: &[] };
+    /// The species list that stands for every creature (`Mob.class`).
+    pub const ALL: &'static [&'static str] = &["*"];
 }
 /// `LookAtPlayerGoal`'s range and ask period; `armed`: its deadline is in the wheel; `pick`: the player `can_use` chose.
 #[derive(Component, Clone, Copy, Debug)]
@@ -59,7 +62,8 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    let species = SpeciesSet::of(p.species.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize));
+    let reg = crate::species::registry();
+    let species = if p.species == Params::ALL { SpeciesSet::of(0..reg.species.len()) } else { SpeciesSet::of(p.species.iter().filter_map(|n| reg.id(n)).map(|i| i as usize)) };
     let g = Glance { range: p.range, period: p.period, armed: false, slot: inst.slot, pick: Who::Player(0), species };
     if inst.nth == 0 {
         w.entity_mut(e).insert(g);
@@ -136,7 +140,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         let Some(area) = w.get::<Bounds>(e).map(|b| b.0.inflate(Vec3::new(g.range, 3.0, g.range))) else { return false };
         w.resource::<Index>().for_radius(pos.x, pos.z, g.range, |c| {
             let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-            if c == e || !g.species.contains(cs.0) || d2(pos, cp.0) > reach * reach || !w.get::<Bounds>(c).is_some_and(|b| b.0.intersects(area)) {
+            if c == e || !g.species.contains(cs.0) || w.get::<Health>(c).is_none() || d2(pos, cp.0) > reach * reach || !w.get::<Bounds>(c).is_some_and(|b| b.0.intersects(area)) {
                 return;
             }
             let ceye = w.get::<Eye>(c).map_or(1.0, |l| l.0);

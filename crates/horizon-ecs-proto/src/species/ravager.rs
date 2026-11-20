@@ -16,6 +16,7 @@ pub static DEF: Def = Def {
     ],
     goals: &[
         Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::pathfind_to_raid::MODULE, 3, &crate::behaviours::pathfind_to_raid::Params::DEFAULT),
         Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
         Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
         Entry::new(&crate::behaviours::celebration::MODULE, 5, &()),
@@ -33,6 +34,7 @@ pub static DEF: Def = Def {
         Entry::new(&melee::MODULE, 4, &melee::Params { speed: 1.0, follow_unseen: true, ..melee::Params::DEFAULT }),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.4, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
         // `Ravager.getAmbientSound` = `RAVAGER_AMBIENT`, interval 80 (`Mob.getAmbientSoundInterval`); the game draws `nextInt(1000) < time`
         // each tick from -80 (median about 117 ticks, nearly all before 200): approximated by a uniform draw in 80..=200.
         Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.ravager.ambient"], min: 80, max: 200 }),

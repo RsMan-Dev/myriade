@@ -12,6 +12,7 @@ pub static DEF: Def = Def {
         Entry::new(&hurt_by::MODULE, 2, &hurt_by::Params::DEFAULT),
         // `golem_prey`: the monsters but the creeper, not seen needed, one ask in 5.
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { hostile: true, except: &["minecraft:creeper"], must_see: false, interval: 5, ..nearest_target::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::reset_universal_anger::MODULE, 4, &crate::behaviours::reset_universal_anger::Params::DEFAULT),
     ],
     goals: &[
         Entry::new(&crate::behaviours::offer_flower::MODULE, 5, &crate::behaviours::offer_flower::Params { candidates: &["minecraft:villager", "minecraft:copper_golem"], ..crate::behaviours::offer_flower::Params::DEFAULT }),

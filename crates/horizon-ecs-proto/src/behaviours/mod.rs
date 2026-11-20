@@ -560,6 +560,8 @@ pub static TABLE: &[&Module] = &[
     &raider_open_door::MODULE,
     &interact_with_door::MODULE,
     &hold_ground_attack::MODULE,
+    &drink_item::MODULE,
+    &wander_to_position::MODULE,
 ];
 pub mod act_phase;
 pub mod admire;
@@ -589,6 +591,8 @@ pub mod golem_recent;
 pub mod summon_defender;
 pub mod celebration;
 pub mod long_distance_patrol;
+pub mod drink_item;
+pub mod wander_to_position;
 pub mod move_through_village;
 pub mod obtain_banner;
 pub mod offer_flower;

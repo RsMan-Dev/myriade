@@ -102,7 +102,10 @@ fn a_village_nobody_holds_is_seen_by_the_registry_and_not_by_the_villagers_memor
     }
     let (e, m) = (ecs_run(false), mob_run(false));
     eprintln!("the village held by nobody: ecs {e:?}\n                            mob {m:?}");
-    assert!(e.reached_at.is_some(), "{e:?}");
+    // Jar: `MoveBackToVillageGoal.canUse` is false once `isVillage(pos)` (within 2 sections of the village, `findSectionClosestToVillage(.., 2)`),
+    // so the registry's golem is pulled only up to that range (about 23 blocks from the bell here, not the 20 of the villagers' case) and stays.
+    assert!(e.nearest < 32.0 && e.inside > 0.8, "{e:?}");
+    assert!(e.nearest < m.nearest - 10.0, "the Mob's golem does not see the village: ecs {e:?}, mob {m:?}");
 }
 
 /// The return time is a random walk (the golem is 3 sections away, the pull toward the village reaches 2): one seed proves nothing. The law of
