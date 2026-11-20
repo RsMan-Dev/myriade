@@ -586,6 +586,8 @@ pub fn insert_resources(world: &mut World) {
     crate::brain::insert_resources(world);
     crate::item::insert_resources(world);
     crate::orb::insert_resources(world);
+    crate::hanging::insert_resources(world);
+    world.insert_resource(crate::block_events::BlockEvents::default());
     crate::poi::insert_resources(world);
     crate::explosion::insert_resources(world);
     crate::tame::insert_resources(world);
@@ -642,7 +644,7 @@ impl<T: Copy> Ev<T> {
     pub fn is_empty(&self) -> bool {
         self.prev.is_empty()
     }
-    fn swap(&mut self) {
+    pub(crate) fn swap(&mut self) {
         std::mem::swap(&mut self.prev, &mut self.cur);
         self.cur.clear();
     }

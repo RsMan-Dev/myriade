@@ -65,6 +65,9 @@ pub mod phantom;
 pub mod armadillo;
 pub mod creeper;
 pub mod endermite;
+pub mod ender_dragon;
+pub mod end_crystal;
+pub mod dragon_fireball;
 pub mod enderman;
 pub mod giant;
 pub mod mannequin;
@@ -105,7 +108,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &ocelot::DEF, &llama::DEF,
     &armadillo::DEF,
     &creeper::DEF,
-    &endermite::DEF,
+    &endermite::DEF, &ender_dragon::DEF, &end_crystal::DEF, &dragon_fireball::DEF,
     &enderman::DEF,
     &silverfish::DEF,
     &piglin_brute::DEF,
@@ -132,6 +135,20 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &bee::DEF,
     &dolphin::DEF,
     &axolotl::DEF,
+    &armor_stand::DEF,
+    &block_display::DEF,
+    &item_display::DEF,
+    &text_display::DEF,
+    &interaction::DEF,
+    &marker::DEF,
+    &item_frame::DEF,
+    &glow_item_frame::DEF,
+    &painting::DEF,
+    &tnt::DEF,
+    &egg::DEF,
+    &ender_pearl::DEF,
+    &experience_bottle::DEF,
+    &wind_charge::DEF,
     // sniffer, creaking and breeze are not delivered (rest cost 9 847, 12 484: `ecs/brain-sleep`); code and tests kept, see suivi/ecs-portage/reste/ETAT.md
     &drowned::DEF,
     &spider::DEF,
@@ -213,7 +230,7 @@ pub struct Def {
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
-const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body)];
+const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
     pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
@@ -779,6 +796,20 @@ mod tests {
         assert!(e.contains("mod:big") && e.contains("33") && e.contains("32"), "{e}");
     }
 }
+pub mod armor_stand;
+pub mod block_display;
+pub mod item_display;
+pub mod text_display;
+pub mod interaction;
+pub mod marker;
+pub mod item_frame;
+pub mod glow_item_frame;
+pub mod painting;
+pub mod tnt;
+pub mod egg;
+pub mod ender_pearl;
+pub mod experience_bottle;
+pub mod wind_charge;
 pub mod piglin;
 pub mod shulker;
 pub mod sulfur_cube;

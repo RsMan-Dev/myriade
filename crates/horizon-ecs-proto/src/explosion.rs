@@ -128,6 +128,10 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
     }
 }
 pub fn explode(w: &mut World, b: Blast) {
+    explode_with(w, b, true);
+}
+/// `explode` with `blocks` false for `ExplosionInteraction.NONE` / `BlockInteraction.KEEP`: the creatures are hurt, the blocks stay.
+pub fn explode_with(w: &mut World, b: Blast, blocks: bool) {
     if b.radius < 1.0e-5 {
         return;
     }
@@ -179,7 +183,7 @@ pub fn explode(w: &mut World, b: Blast) {
         w.resource_scope(|_, mut ps: Mut<crate::hostile::PlayerState>| ps.hurt(tick, id, amount, (b.at.x, b.at.z), by));
     }
     // The blocks.
-    if mob_griefing(w) {
+    if blocks && mob_griefing(w) {
         let blocks = exploded_positions(w, b.at, b.radius);
         let mw = level.mw.0;
         for p in &blocks {

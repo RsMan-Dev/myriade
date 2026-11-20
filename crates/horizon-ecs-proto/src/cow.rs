@@ -43,6 +43,8 @@ pub struct Body {
     pub object: bool,
     /// With `object`: the motion of an experience orb (`ExperienceOrb.tick`) instead of an item's.
     pub orb: bool,
+    /// A primed TNT's motion (`PrimedTnt.tick`, `tnt.rs`).
+    pub tnt: bool,
 }
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -326,6 +328,8 @@ pub enum Cause {
     Wither,
     /// An explosion (`explosion.rs`).
     Blast,
+    /// `DamageTypes.LIGHTNING_BOLT`.
+    Lightning,
 }
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
 #[derive(Resource, Default)]
@@ -1244,7 +1248,8 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
-        let kind = Arc::new(types.types[name].clone());
+        // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
+        let kind = Arc::new(types.types.get(name).unwrap_or(&types.types["minecraft:cow"]).clone());
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
         table.push(Species {
             id: i as u8,
@@ -1475,7 +1480,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, lava_walker: sp.lava_walker },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
         crate::targeting::Eye(sp.eye_height),
@@ -1643,6 +1648,7 @@ pub fn schedule() -> Schedule {
     // this tick's physics, as a mob's hurt precedes its tick.
     s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
+    s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
     s.add_systems(crate::spawning::step.after(crate::goals::online_events).before(player_near));
@@ -1651,6 +1657,7 @@ pub fn schedule() -> Schedule {
     crate::brain::register(&mut s);
     crate::item::register(&mut s);
     crate::orb::register(&mut s);
+    crate::hanging::register(&mut s);
     crate::poi::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
@@ -2252,6 +2259,9 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
 /// walks (`Drive`) is accelerated as a creature is, before the move.
 #[allow(clippy::too_many_arguments)]
 fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+    if body.tnt {
+        return crate::tnt::travel_tnt(level, pos, vel, c, body, bounds, fall_damage);
+    }
     if body.orb {
         return travel_orb(level, pos, vel, c, d, body, bounds, fs, fall_damage);
     }
@@ -3001,6 +3011,7 @@ pub(crate) fn block_changes(
     mut sun: ResMut<crate::hostile::SunDirty>,
     mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut dirty: Option<ResMut<crate::spawning::DirtyColumns>>,
+    mut block_events: Option<ResMut<crate::block_events::BlockEvents>>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -3031,6 +3042,9 @@ pub(crate) fn block_changes(
             hazards.eggs.insert([x, y, z]);
         }
         seen.0.push((x, y, z));
+        if let Some(b) = block_events.as_mut() {
+            b.changed.push([x, y, z]);
+        }
         if let Some(d) = dirty.as_mut() {
             d.0.push((x, z));
         }
@@ -3574,6 +3588,7 @@ pub(crate) fn due(
     mut fired: ResMut<crate::goals::Fired>,
     mut grown: ResMut<crate::farm::Grown>,
     mut events: ResMut<crate::goals::Events>,
+    fight: Option<ResMut<crate::dragon::fight::FightEvents>>,
     mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
     mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
@@ -3583,6 +3598,9 @@ pub(crate) fn due(
 ) {
     clock.0 += 1;
     events.swap();
+    if let Some(mut f) = fight {
+        f.swap();
+    }
     wheel.advance(clock.0);
     for id in std::mem::take(&mut players.gaze_dirty) {
         events.gaze_changed.push(id);
