@@ -1,19 +1,19 @@
 //! `Turtle` (`mobs/turtle.rs:28-56`), amphibious (`AmphibiousPathNavigation`, `TurtleMoveControl` in both media, `travelInWater` at 0.1: the
 //! swim mode with its amphibious parameters, the only mode it declares; its walk preference is water and sand, `WalkValue::Turtle`): tempted by seagrass (the tag `turtle_food`), going to the water, travelling in the water, looking at
 //! players, strolling in the water. Left out, waiting for their parameter or module: the panic that looks for water (`looking_for_water`
-//! is not a parameter of `panic`), the breeding that lays an egg (`breed` has no egg variant), (`turtle_lay_egg` and `turtle_go_home` are in).
+//! is not a parameter of `panic`), the breeding that lays an egg (`breed` has no egg variant), (`lay_egg` and `turtle_go_home` are in).
 //! The water malus, the door maluses and the amphibious navigation have no field in `Def`: not in this file.
 use super::Def;
 use crate::locomotion::{swim, Medium};
-use crate::behaviours::{Cap, panic, look_at_player, tempt, turtle_go_home, turtle_go_to_water, turtle_lay_egg, turtle_stroll, turtle_travel, Entry};
+use crate::behaviours::{Cap, panic, look_at_player, tempt, turtle_go_home, turtle_go_to_water, lay_egg, turtle_stroll, turtle_travel, Entry};
 
 pub static DEF: Def = Def {
     name: "minecraft:turtle",
     reference: None,
     goals: &[
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.2, water: Some(7), ..panic::Params::DEFAULT }),
-        // attend : breed à oeuf (priorité 1, avant turtle_lay_egg). breed.rs:198 `birth` pose un bébé vivant sur place : DOUTE, non porté.
-        Entry::new(&turtle_lay_egg::MODULE, 1, &turtle_lay_egg::Params::DEFAULT),
+        // attend : breed à oeuf (priorité 1, avant lay_egg). breed.rs:198 `birth` pose un bébé vivant sur place : DOUTE, non porté.
+        Entry::new(&lay_egg::MODULE, 1, &lay_egg::Params { radius: 9.0, dig_ticks: 200, floor: "minecraft:sand", name: "minecraft:turtle_egg", states: &[&[("eggs","1")], &[("eggs","2")], &[("eggs","3")], &[("eggs","4")]], sound: Some(("entity.turtle.lay_egg", 0.3)), ..lay_egg::Params::DEFAULT }),
         Entry::new(&tempt::MODULE, 2, &tempt::Params { speed: 1.1, items: &["minecraft:seagrass"], ..tempt::Params::DEFAULT }),
         Entry::new(&turtle_go_to_water::MODULE, 3, &turtle_go_to_water::Params::DEFAULT),
         Entry::new(&turtle_go_home::MODULE, 4, &turtle_go_home::Params::DEFAULT),

@@ -152,7 +152,7 @@ mod tests {
         erase(&mut h.world, e, &VISIBLE_MOBS);
         scan_any(&mut h.world, e, &ctx(&TAG));
         assert_eq!(nearest(&h, e), Some(Who::Entity(pig)), "sans liste, la mémoire garde sa valeur");
-        h.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<crate::goals::Online>().set(crate::goals::Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         visible(&mut h, e, vec![Who::Player(1)]);
         scan_any(&mut h.world, e, &ctx(&TAG));
         assert_eq!(nearest(&h, e), None, "un joueur n'est jamais un adulte suivi");

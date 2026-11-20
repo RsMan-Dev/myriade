@@ -50,7 +50,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &sniff::FINISHED_DIGGING_B, activity: "dig", priority: 0, params: &SNIFF, needs: &[], duration: Some((40, 40)), kids: &[] },
             BEntry { behaviour: &make_love::BEHAVIOUR, activity: "idle", priority: 0, params: &MAKE_LOVE, needs: &[(&VISIBLE_MOBS, Need::Present), (&BREED_TARGET, Need::Absent), (&IS_PANICKING, Need::Absent)], duration: Some((110, 110)), kids: &[] },
             BEntry { behaviour: &sniff::SEARCHING_B, activity: "sniff", priority: 0, params: &SNIFF, needs: &[], duration: Some((600, 600)), kids: &[] },
-            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 1, params: &panic::Params { speed: 2.0 }, needs: &[], duration: Some((100, 120)), kids: &[] },
+            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 1, params: &panic::Params { speed: 2.0, threat: None }, needs: &[], duration: Some((100, 120)), kids: &[] },
             BEntry { behaviour: &follow_temptation::BEHAVIOUR, activity: "idle", priority: 1, params: &TEMPT, needs: &[(&TEMPTING_PLAYER, Need::Present), (&TEMPTATION_COOLDOWN_TICKS, Need::Absent), (&BREED_TARGET, Need::Absent), (&IS_PANICKING, Need::Absent)], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((500, 700)), kids: &[] },
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },

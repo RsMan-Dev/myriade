@@ -331,7 +331,7 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
     for name in ["minecraft:goat", "minecraft:frog", "minecraft:camel", "minecraft:camel_husk", "minecraft:nautilus", "minecraft:llama", "minecraft:dolphin"] {
         let mut h = Herd::with_slab(24, false, false);
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 31, 3);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for _ in 0..60 {
             h.tick();
         }
@@ -356,4 +356,102 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
     assert!(h.world.get_entity(e).is_ok(), "the dolphin survived 600 ticks under the surface");
     eprintln!("dolphin: best air in 600 ticks {best} (started at 120)");
     assert!(best > 250, "breath_air takes the dolphin up to breathe: best air {best}");
+}
+
+/// 300 goats on a walled slab (the 33 blocks of the farm test), 800 ticks: the share of the animals that left the slab (over the wall, or
+/// below the world) is the `Mob`'s. Law over 300 animals and 3 repeats per side.
+#[test]
+fn goats_leave_the_walled_slab_as_often_as_the_mob() {
+    if !on() {
+        return;
+    }
+    let cnt: usize = std::env::var("GOATS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+    let side = 18_i32;
+    let half = 33_i32;
+    let (mut out_m, mut out_e, mut n) = (0usize, 0usize, 0usize);
+    for rep in 0..3_usize {
+        let mut r = MobRef::new(half, false);
+        let mut h = Herd::with_slab(half, false, false);
+        let view = player_view(Vec3::new(0.0, 1.0, 0.0), None);
+        let mut ids = Vec::new();
+        let mut es = Vec::new();
+        for k in 0..cnt {
+            let j = rep * 300 + k + 1;
+            let at = Vec3::new(-f64::from(side) * 3.0 / 2.0 + f64::from(k as i32 % side) * 3.0 + 0.5, 1.0, -f64::from(side) * 3.0 / 2.0 + f64::from(k as i32 / side) * 3.0 + 0.5);
+            ids.push(mob_add(&mut r, mob_kind("minecraft:goat"), at, j));
+            r.mobs[ids[k]].ai.no_action_time = 0;
+            es.push(ecs_named(&mut h, "minecraft:goat", None, at.x, at.z, 30_000 + j as u64, u64::from(far_id(j))));
+        }
+        let (s0m, s0e): (Vec<Vec3>, Vec<Vec3>) = (ids.iter().map(|&i| r.mobs[i].position).collect(), es.iter().map(|&e| h.world.get::<Pos>(e).unwrap().0).collect());
+        let (mut nearm, mut neare, mut airm, mut aire) = (vec![false; cnt], vec![false; cnt], vec![false; cnt], vec![false; cnt]);
+        let hw = f64::from(half) - 3.0;
+        for t in 0..800 {
+            r.step(Some(&view));
+            h.tick();
+            for k in 0..cnt {
+                let pm = r.mobs[ids[k]].position;
+                nearm[k] |= pm.x.abs() > hw || pm.z.abs() > hw;
+                airm[k] |= t > 5 && !r.mobs[ids[k]].on_ground;
+                if let Some(p) = h.world.get::<Pos>(es[k]) {
+                    neare[k] |= p.0.x.abs() > hw || p.0.z.abs() > hw;
+                }
+                aire[k] |= h.world.get::<horizon_ecs_proto::behaviours::long_jump::Airborne>(es[k]).is_some();
+            }
+        }
+        let mean = |a: Vec<f64>| a.iter().sum::<f64>() / a.len() as f64;
+        eprintln!("mean displacement: Mob {:.1} ecs {:.1}; Mob ram cooldown >0 on {} animals", mean(ids.iter().enumerate().map(|(k, &i)| xz(r.mobs[i].position, s0m[k])).collect()), mean(es.iter().enumerate().map(|(k, &e)| xz(h.world.get::<Pos>(e).map_or(s0e[k], |p| p.0), s0e[k])).collect()), ids.iter().filter(|&&i| r.mobs[i].extra.memories.iter().any(|m| m.0 == "ram_cooldown_ticks")).count());
+        let c = |v: &[bool]| v.iter().filter(|&&b| b).count();
+        eprintln!("rep {rep}: reached within 3 of the wall Mob {} ecs {}; airborne at least once Mob {} ecs(leaps) {}", c(&nearm), c(&neare), c(&airm), c(&aire));
+        let hf = f64::from(half);
+        let outside = |p: Vec3| !(p.x.abs() < hf && p.z.abs() < hf && p.y > 0.99 && p.y < 1.2);
+        out_m += ids.iter().filter(|&&i| outside(r.mobs[i].position)).count();
+        out_e += es.iter().filter(|&&e| h.world.get::<Pos>(e).is_none_or(|p| outside(p.0))).count();
+        n += cnt;
+    }
+    eprintln!("goats out of the slab after 800 ticks: Mob {out_m}/{n}, ecs {out_e}/{n}");
+    // Measured with a player near (the Mob's stroll stops at `no_action_time` 100): Mob 90/900, ecs 83/900. Like the Mob: within 4 points (about 3 sd of the difference).
+    assert!(out_e.abs_diff(out_m) * 100 <= 4 * n, "ecs goats leave the slab {out_e}/{n} against the Mob's {out_m}/{n}");
+}
+
+/// A goat 1.5 blocks from the wall (top at y 3, not walkable), the ram on cooldown on both sides (a leap needs it): does each leap onto the wall?
+/// `reps` animals, 1500 ticks, in a row along the wall; counts the animals that were airborne at least once (the Mob: not on the ground; the ecs: `Airborne`).
+#[test]
+fn goats_beside_a_wall_leap_when_the_ram_cools_down() {
+    if !on() {
+        return;
+    }
+    let (mut jm, mut je, mut other_air) = (0usize, 0usize, 0usize);
+    let n = 12;
+    for j in 0..n {
+        // (the Mob's stroll is off when `no_action_time` is 100 or more: a player stands near, and the counter starts at 0)
+        let mut r = MobRef::new(24, false);
+        let mut h = Herd::with_slab(24, false, false);
+        let i = mob_add(&mut r, mob_kind("minecraft:goat"), Vec3::new(22.5, 1.0, 0.5), j + 1);
+        r.mobs[i].ai.no_action_time = 0;
+        let view = player_view(Vec3::new(0.0, 1.0, 0.0), None);
+        r.mobs[i].extra.memories.push(("ram_cooldown_ticks", 1400, i64::MAX));
+        let e = ecs_named(&mut h, "minecraft:goat", None, 22.5, 0.5, 40_000 + j as u64, u64::from(far_id(j + 1)));
+        let now = h.world.resource::<Clock>().0;
+        h.world.get_mut::<horizon_ecs_proto::behaviours::ram::RamCooldown>(e).unwrap().0 = now + 1400;
+        let (mut am, mut ae, mut ee, mut am0, mut ae0) = (false, false, false, false, false);
+        for t in 0..1500 {
+            r.step(Some(&view));
+            h.tick();
+            if t > 5 {
+                am |= !r.mobs[i].on_ground;
+                let air = h.world.get::<horizon_ecs_proto::behaviours::long_jump::Airborne>(e).is_some();
+                ae |= air;
+                let odd = !air && h.world.get::<Contact>(e).is_some_and(|c| !c.on_ground);
+                if odd && !ee { eprintln!("ecs #{j} airborne without Airborne at t={t} pos {:?}", h.world.get::<Pos>(e).map(|p| p.0)); }
+                ee |= odd;
+                if air && !ae0 { ae0 = true; eprintln!("ecs #{j} first leap t={t}"); }
+                if !r.mobs[i].on_ground && !am0 { am0 = true; eprintln!("mob #{j} first air t={t} pos {:?}", r.mobs[i].position); }
+            }
+        }
+        jm += usize::from(am);
+        je += usize::from(ae);
+        other_air += usize::from(ee);
+    }
+    eprintln!("goats beside the wall, ram cooling 1400 ticks: leaped Mob {jm}/{n}, ecs {je}/{n}; ecs airborne without a leap {other_air}/{n} (falls from the wall top)");
+    assert!(jm > 0 && je > 0, "a goat beside a wall leaps onto it while the ram cools down: Mob {jm}/{n}, ecs {je}/{n}");
 }

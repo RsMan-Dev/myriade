@@ -12,7 +12,7 @@ pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
     float::{Buoyancy, Floating},
     follow_parent::{Babies, FollowParent, Mother, Trailing, adopt, make_baby},
-    look_at_player::{Glance, Glancing},
+    look_at_player::Glancing,
     panic::{Hurts, Panic, Panicking, hurt, ignite},
     random_look::{Scan, Scanning},
     tempt::{Tempt, Tempting, Tempts},
@@ -123,6 +123,10 @@ impl GoalSet {
         for j in 0..MAX_ENTRIES as u8 {
             if stopped >> j & 1 == 1 {
                 self.stop(j);
+                // A goal that is polled every tick (`retry_on_end`) and that a stronger one preempted is asked again when that one ends.
+                if self.entries[j as usize].module.retry_on_end {
+                    self.pending |= 1 << j;
+                }
             }
         }
         for b in 0..4 {
@@ -146,60 +150,13 @@ impl GoalSet {
     }
 }
 
-pub const WHEAT: u32 = 1;
-pub const CARROT: u32 = 2;
-pub const POTATO: u32 = 3;
-pub const BEETROOT: u32 = 4;
-pub const CARROT_ON_A_STICK: u32 = 5;
-pub const WHEAT_SEEDS: u32 = 6;
-pub const BEETROOT_SEEDS: u32 = 7;
-pub const MELON_SEEDS: u32 = 8;
-pub const PUMPKIN_SEEDS: u32 = 9;
-pub const SHEARS: u32 = 10;
-pub const BONE: u32 = 11;
-pub const LEAD: u32 = 12;
-pub const WARPED_FUNGUS_ON_A_STICK: u32 = 13;
-/// A set of item ids (any number, any value: Horizon's registry has thousands), shared between the entities that have the same one:
-/// a sorted list searched by bisection. Nothing is copied per entity.
-#[derive(Clone, Copy, Debug)]
-pub struct ItemSet(&'static [u32]);
-static ITEM_SETS: std::sync::Mutex<Vec<&'static [u32]>> = std::sync::Mutex::new(Vec::new());
-impl ItemSet {
-    pub fn of(ids: impl IntoIterator<Item = u32>) -> Self {
-        let mut v: Vec<u32> = ids.into_iter().collect();
-        v.sort_unstable();
-        v.dedup();
-        let mut sets = ITEM_SETS.lock().unwrap();
-        if let Some(s) = sets.iter().find(|s| **s == v.as_slice()) {
-            return Self(s);
-        }
-        let s: &'static [u32] = Box::leak(v.into_boxed_slice());
-        sets.push(s);
-        Self(s)
-    }
-    pub fn contains(self, id: u32) -> bool {
-        self.0.binary_search(&id).is_ok()
-    }
+pub use crate::items::item_id;
+macro_rules! item_fns {
+    ($($f:ident => $n:literal),* $(,)?) => { $(pub fn $f() -> u32 { item_id($n) })* };
 }
-/// The id of an item the players of the bench hold, from its name.
-pub fn item_id(name: &str) -> u32 {
-    match name {
-        "minecraft:wheat" => WHEAT,
-        "minecraft:carrot" => CARROT,
-        "minecraft:potato" => POTATO,
-        "minecraft:beetroot" => BEETROOT,
-        "minecraft:carrot_on_a_stick" => CARROT_ON_A_STICK,
-        "minecraft:wheat_seeds" => WHEAT_SEEDS,
-        "minecraft:beetroot_seeds" => BEETROOT_SEEDS,
-        "minecraft:melon_seeds" => MELON_SEEDS,
-        "minecraft:pumpkin_seeds" => PUMPKIN_SEEDS,
-        "minecraft:shears" => SHEARS,
-        "minecraft:bone" => BONE,
-        "minecraft:lead" => LEAD,
-        "minecraft:warped_fungus_on_a_stick" => WARPED_FUNGUS_ON_A_STICK,
-        _ => 0,
-    }
-}
+item_fns!(wheat => "minecraft:wheat", carrot => "minecraft:carrot", potato => "minecraft:potato", beetroot => "minecraft:beetroot", carrot_on_a_stick => "minecraft:carrot_on_a_stick",
+    wheat_seeds => "minecraft:wheat_seeds", beetroot_seeds => "minecraft:beetroot_seeds", melon_seeds => "minecraft:melon_seeds", pumpkin_seeds => "minecraft:pumpkin_seeds",
+    shears => "minecraft:shears", bone => "minecraft:bone", lead => "minecraft:lead", warped_fungus_on_a_stick => "minecraft:warped_fungus_on_a_stick", saddle => "minecraft:saddle", trident => "minecraft:trident", crossbow => "minecraft:crossbow");
 /// The phase of the goal selector of the entity: it asks `canUse` on the ticks where tick + phase is even (the id of
 /// a `Mob`). By default the animal's `Uid`.
 #[derive(Component, Clone, Copy, Debug)]
@@ -401,6 +358,8 @@ pub struct Equipment {
     pub feet: u32,
     pub main: u32,
     pub off: u32,
+    pub body: u32,
+    pub saddle: u32,
 }
 /// The whole stack held in the main hand (`LivingEntity.getMainHandItem`), when an item of the ground was picked up or put there; `Equipment.main`
 /// mirrors its item id for the goals that read ids.
@@ -420,7 +379,7 @@ pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<horizon_client_lib:
 pub fn main_hand(w: &World, e: Entity) -> Option<&horizon_client_lib::items::ItemStack> {
     w.get::<HandStack>(e)?.0.as_ref()
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     Head,
     Chest,
@@ -428,6 +387,9 @@ pub enum Slot {
     Feet,
     Main,
     Off,
+    /// The body slot of a mount or a wolf (horse armor, wolf armor, carpet) and the saddle.
+    Body,
+    Saddle,
 }
 /// The item in a slot of the entity (0 when it has none or no equipment at all).
 pub fn equipped(w: &World, e: Entity, slot: Slot) -> u32 {
@@ -438,9 +400,11 @@ pub fn equipped(w: &World, e: Entity, slot: Slot) -> u32 {
         Slot::Feet => q.feet,
         Slot::Main => q.main,
         Slot::Off => q.off,
+        Slot::Body => q.body,
+        Slot::Saddle => q.saddle,
     })
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Player {
     pub id: u32,
     pub x: f64,
@@ -448,15 +412,19 @@ pub struct Player {
     pub z: f64,
     pub main: u32,
     pub off: u32,
+    /// The armor worn (0: nothing).
+    pub head: u32,
+    pub chest: u32,
+    pub legs: u32,
+    pub feet: u32,
 }
 impl Player {
     pub fn holds(&self, item: u32) -> bool {
         item != 0 && (self.main == item || self.off == item)
     }
-    /// Whether a hand holds one of the items of the mask (a bit per item id).
-    pub fn holds_any(&self, items: ItemSet) -> bool {
-        let has = |i: u32| i != 0 && items.contains(i);
-        has(self.main) || has(self.off)
+    /// Whether a hand holds one of the items of the set.
+    pub fn holds_any(&self, items: crate::items::ItemSet) -> bool {
+        items.contains(self.main) || items.contains(self.off)
     }
     pub fn eye(&self) -> f64 {
         self.y + 1.62
@@ -665,6 +633,9 @@ impl<T: Copy> Ev<T> {
 /// `Grown` keep their older form). Written by the framework's systems; a new kind is one field and one line in `swap`.
 #[derive(Resource, Default)]
 pub struct Events {
+    /// Outputs toward the host (block writes, sounds, particles): a field here and not a resource of its own, because one more
+    /// resource moves the cost of the solicited scenes (+6,6 % measured at 14 448 against 13 544 on the cow).
+    pub host: crate::host_out::HostOut,
     /// `Burning` was set (from not burning).
     pub ignited: Ev,
     /// `Burning` ended (water, or the fire burnt out).
@@ -711,6 +682,14 @@ pub struct Events {
     pub vehicle_moved: Ev<u32>,
     /// A parent took `Carrying` (a pregnancy, `breed`).
     pub carrying: Ev,
+    /// A slot of `Equipment` changed (`equipment::set_slot`).
+    pub equipment_changed: Ev,
+    /// A vibration happened (`cow::apply_damage`, `projectile.rs` at impact, the host's pushes): read by `vibration_listen`.
+    pub vibration: Ev<crate::behaviours::vibration_listen::Vibration>,
+    /// A creature touched another (`touch.rs`): (the toucher, the other).
+    pub touched: Ev<(Entity, Entity)>,
+    /// A toucher touched an item on the ground (`touch.rs`): (the toucher, the item).
+    pub item_touched: Ev<(Entity, Entity)>,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -742,10 +721,18 @@ impl Events {
         self.unleashed.swap();
         self.vehicle_moved.swap();
         self.carrying.swap();
+        self.equipment_changed.swap();
+        self.vibration.swap();
+        self.touched.swap();
+        self.item_touched.swap();
     }
 }
 
 // ---- the wheel and the helpers the modules use --------------------------------------------------------------
+/// One draw of the entity's own generator against the probability `p`.
+pub(crate) fn chance(w: &mut World, e: Entity, p: f64) -> bool {
+    with_rng(w, e, |r| r.next_f64() < p)
+}
 pub(crate) fn with_rng<T>(w: &mut World, e: Entity, f: impl FnOnce(&mut Rng) -> T) -> T {
     f(&mut w.get_mut::<Rng>(e).unwrap())
 }
@@ -920,15 +907,36 @@ pub fn path_ended(e: Entity, g: &GoalSet, reqs: &mut Requests) {
 }
 
 
+/// Whether some entity holds a component of SparseSet storage: two lookups, no query.
+fn sparse_any<C: Component>(world: &World) -> bool {
+    world.component_id::<C>().and_then(|id| world.storages().sparse_sets.get(id)).is_some_and(|s| !s.is_empty())
+}
 /// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one
 /// test per module and tick, no system and no run condition in the schedule.
 fn tick_modules(world: &mut World) {
     static TICKS: std::sync::OnceLock<Vec<(usize, fn(&mut World))>> = std::sync::OnceLock::new();
     let ticks = TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect());
-    for &(i, t) in ticks {
-        if world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) {
+    // One look at the counters for all the modules (a bit per tick of the list), not one resource lookup per module.
+    let live = {
+        let c = &world.resource::<Carriers>().0;
+        let mut m = 0u128;
+        for (j, &(i, _)) in ticks.iter().enumerate().take(128) {
+            m |= u128::from(c.get(i).is_some_and(|n| *n > 0)) << j;
+        }
+        m
+    };
+    for (j, &(i, t)) in ticks.iter().enumerate() {
+        let on = if j < 128 { live >> j & 1 == 1 } else { world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) };
+        if on {
             t(world);
         }
+    }
+    if sparse_any::<crate::behaviours::homing_projectile::Homing>(world) {
+        crate::behaviours::homing_projectile::tick(world);
+    }
+    // The touches: looked at only while some creature carries a `Toucher` (no system in the schedule).
+    if sparse_any::<crate::touch::Toucher>(world) {
+        tick_state(world, crate::touch::touch_events);
     }
 }
 /// The entities that match a filter, through a query state kept in the world (one per filter): building a `QueryState` each tick costs thousands of
@@ -1338,6 +1346,14 @@ pub fn impulse(w: &mut World, e: Entity, dv: Vec3) {
 pub fn mob_griefing(w: &World) -> bool {
     w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_griefing)
 }
+/// The places an animal cannot live in (the dimension of `piglins_zombify`, a drowned out of water): a predicate the level
+/// configures. Absent: no place is unsafe.
+#[derive(Resource, Clone, Copy)]
+pub struct UnsafePlace(pub fn(&World, Entity) -> bool);
+/// Whether `e` stands in a place the configured `UnsafePlace` names.
+pub fn in_unsafe_place(w: &World, e: Entity) -> bool {
+    w.get_resource::<UnsafePlace>().is_some_and(|p| (p.0)(w, e))
+}
 pub(crate) fn stop_nav(w: &mut World, e: Entity) {
     let e = crate::mount::nav_owner(w, e);
     if let Some(mut n) = w.get_mut::<Nav>(e) {
@@ -1382,7 +1398,7 @@ mod tests {
 
     /// The item that tempts the species of the process (`HORIZON_SPECIES`).
     fn item() -> u32 {
-        last_tempt().items.iter().map(|n| item_id(n)).min().unwrap()
+        last_tempt().items.iter().map(|n| item_id(n)).find(|&i| i != 0).unwrap()
     }
     fn last_tempt() -> &'static tempt::Params {
         let n = species().goals.entries.iter().filter(|e| std::ptr::eq(e.module, &tempt::MODULE)).count();
@@ -1396,8 +1412,11 @@ mod tests {
     }
     /// Marks the animal's ask timers as armed (or not), so that none is armed by itself (or all are, by `arm_all`).
     fn set_timers(h: &mut Herd, e: Entity, armed: bool) {
-        if let Some(mut g) = h.world.get_mut::<Glance>(e) {
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance>(e) {
             g.armed = armed;
+        }
+        if let Some(mut g) = h.world.get_mut::<look_at_player::Glance2>(e) {
+            g.0.armed = armed;
         }
         if let Some(mut s) = h.world.get_mut::<Scan>(e) {
             s.armed = armed;
@@ -1420,7 +1439,7 @@ mod tests {
         e
     }
     fn player(h: &mut Herd, id: u32, x: f64, z: f64, item: u32) {
-        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: item, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: item, off: 0, ..Default::default() });
     }
     fn ticks(h: &mut Herd, n: usize) {
         for _ in 0..n {
@@ -1783,3 +1802,5 @@ mod tests {
 pub fn online_events_for_bench(world: &mut World) {
     world.run_system_cached(online_events).unwrap();
 }
+
+pub use crate::goals_more::*;

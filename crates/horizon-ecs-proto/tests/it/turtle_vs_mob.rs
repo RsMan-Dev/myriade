@@ -7,7 +7,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::*, goals::{go_to_at, GoalSet}};
 
 fn turtle() -> bool {
-    species().name == "minecraft:turtle"
+    process_species_name() == "minecraft:turtle"
 }
 /// A pool of water 12 x 25 blocks, 3 deep, on the floor of the slab (x -12..=-1), in both worlds.
 fn pools() -> (MobRef, Herd) {

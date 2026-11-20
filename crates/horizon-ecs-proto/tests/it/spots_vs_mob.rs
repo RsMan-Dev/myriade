@@ -170,7 +170,7 @@ fn the_default_picker_of_a_swimmer_has_the_laws_of_the_mob() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:cod" {
+    if process_species_name() != "minecraft:cod" {
         return;
     }
     let (mut r, mut h) = flat_pair();

@@ -11,5 +11,6 @@ pub static DEF: Def = Def {
         Change::Add(Section::Goals, Entry::new(&ram::MODULE, 2, &ram::Params::DEFAULT)),
         Change::Add(Section::Goals, Entry::new(&long_jump::MODULE, 2, &long_jump::Params { cooldown: (600, 1200), width: 5, height: 5, preferred: None, swim_rules: false, gated_by_ram: true, ..long_jump::Params::DEFAULT })),
     ],
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:bucket", to: "minecraft:milk_bucket", adult_only: true, takes_creature: false })],
     ..Def::EMPTY
 };

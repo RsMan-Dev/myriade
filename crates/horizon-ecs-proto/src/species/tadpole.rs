@@ -18,7 +18,7 @@ pub static DEF: Def = Def {
         pick: &["idle"],
         initial: &[],
         behaviours: &[
-            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 0, params: &panic::Params { speed: 2.0 }, needs: &[], duration: Some((100, 120)), kids: &[] },
+            BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 0, params: &panic::Params { speed: 2.0, threat: None }, needs: &[], duration: Some((100, 120)), kids: &[] },
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
             BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 0, params: &look_at_player_sometimes::Params { range_sqr: 36.0, min: 30, spread: 31, players_only: true }, needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
@@ -33,5 +33,6 @@ pub static DEF: Def = Def {
             },
         ],
     },
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tadpole_bucket", adult_only: false, takes_creature: true })],
     ..Def::EMPTY
 };

@@ -7,7 +7,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::fish_swim, cow::*, goals::*};
 
 fn cod() -> bool {
-    species().name == "minecraft:cod"
+    process_species_name() == "minecraft:cod"
 }
 /// A pool of water 33 x 33 blocks and 4 deep on the floor of the slab, in both worlds.
 fn pools() -> (MobRef, Herd) {

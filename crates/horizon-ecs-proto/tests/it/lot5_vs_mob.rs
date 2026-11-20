@@ -237,7 +237,7 @@ fn slime_hunts_the_player_at_contact_range() {
         let at = Vec3::new(8.5, 1.0, 0.5);
         let view = player_view(at, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
         for _ in 0..300 {
             r.step(Some(&view));
             h.tick();
@@ -272,7 +272,7 @@ fn polar_bear_defends_its_cub() {
             let at = Vec3::new(7.5, 1.0, 0.5);
             let view = player_view(at, None);
             ps_immortal(&mut h);
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
             let (mut tm, mut te) = (None, None);
             for t in 0..400 {
                 r.step(Some(&view));
@@ -318,7 +318,7 @@ fn the_species_of_the_configuration_wave_start_and_run() {
         let at = Vec3::new(6.5, 1.0, 0.5);
         let view = player_view(at, None);
         ps_immortal(&mut h);
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
         let (mut mg, mut eg) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
         for _ in 0..600 {
             r.step(Some(&view));

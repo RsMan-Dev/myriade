@@ -9,7 +9,7 @@ use horizon_ecs_proto::behaviours::bat_flutter::{self, Flutter, Hanging};
 use horizon_ecs_proto::{cow::*, goals::*};
 
 fn bat() -> bool {
-    species().name == "minecraft:bat"
+    process_species_name() == "minecraft:bat"
 }
 /// Woken before the `Mob`'s step: it is steered in that tick.
 fn wake_now(w: &mut World, e: Entity) {
@@ -129,7 +129,7 @@ fn a_hanging_bat_is_woken_by_a_player_coming_near() {
     }
     assert!(h.world.get::<Hanging>(near).is_some() && h.world.get::<Hanging>(far).is_some(), "bats hang at birth");
     assert!(h.world.get::<Moving>(near).is_none(), "a hanging bat is not moving");
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 10.0, z: 3.5, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 10.0, z: 3.5, main: 0, off: 0, ..Default::default() });
     for _ in 0..3 {
         h.tick();
     }

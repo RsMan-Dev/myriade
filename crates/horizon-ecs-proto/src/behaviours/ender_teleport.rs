@@ -47,7 +47,7 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 }
 /// `Enderman.hurtServer`: a hurt with no creature behind it teleports unless one chance in ten.
 fn damaged(w: &mut World, e: Entity, _: Inst, d: &Damaged) {
-    if d.attacker.is_none() && crate::goals::with_rng(w, e, |r| r.next_int(10)) != 0 {
+    if !matches!(d.who, Some(crate::targeting::Who::Entity(_))) && crate::goals::with_rng(w, e, |r| r.next_int(10)) != 0 {
         random(w, e);
     }
 }

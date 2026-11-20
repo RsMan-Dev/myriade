@@ -43,7 +43,7 @@ fn trace_tempt_paths() {
     for t in 1..=200_i64 {
         let (x, z) = player_at(t);
         p = player_view(Vec3::new(x, 1.0, z), Some(name));
-        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z, main: item, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z, main: item, off: 0, ..Default::default() });
         r.step(Some(&p));
         h.tick();
         let (f1, a1, s1) = (FINDER_CALLS.load(Relaxed), ASKS[2].load(Relaxed), FINDS.load(Relaxed));
@@ -102,7 +102,7 @@ fn trace_tempt_crowd() {
     }
     h.tick();
     let p = player_view(Vec3::new(0.0, 1.0, 0.0), Some(name));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0, ..Default::default() });
     let (f0, s0) = (FINDER_CALLS.load(Relaxed), FINDS.load(Relaxed));
     let mut per_tick = (Vec::new(), Vec::new());
     for t in 1..=300 {
@@ -145,7 +145,7 @@ fn trace_tempt_crowd_by_cow() {
     }
     h.tick();
     let p = player_view(Vec3::new(0.0, 1.0, 0.0), Some(name));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0, ..Default::default() });
     let mut at60 = (Vec::new(), Vec::new());
     for t in 1..=300 {
         r.step(Some(&p));
@@ -190,7 +190,7 @@ fn trace_tempt_crowd_worst_cow() {
         cows.push(ecs_cow(&mut h, x, 1.0, z, 600 + u64::from(k as u32)));
     }
     h.tick();
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: item, off: 0, ..Default::default() });
     let mut log: Vec<Vec<(u32, f64, bool, usize, bool, bool, bool)>> = vec![Vec::new(); cows.len()];
     for _ in 1..=300 {
         h.tick();

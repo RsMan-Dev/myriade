@@ -13,7 +13,7 @@ fn a_leap_with_discarded_friction_flies_as_a_mob_does() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:frog" {
+    if process_species_name() != "minecraft:frog" {
         return;
     }
     let leaps = [(0.5, 1.0, 0.5, 0.25, 0.7, 0.1), (-3.5, 1.0, 2.5, -0.2, 0.55, 0.3), (2.5, 1.0, -4.5, 0.05, 0.62, -0.28), (-6.5, 1.0, -6.5, 0.3, 0.8, 0.3)];

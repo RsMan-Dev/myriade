@@ -101,7 +101,7 @@ impl ItemIndex {
 fn cell_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
-fn box_at(p: Vec3) -> Aabb {
+pub(crate) fn box_at(p: Vec3) -> Aabb {
     let h = SIZE / 2.0;
     Aabb::new(Vec3::new(p.x - h, p.y, p.z - h), Vec3::new(p.x + h, p.y + SIZE, p.z + h))
 }
@@ -134,6 +134,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
             Vel(velocity),
             crate::goals::Uid(crate::goals::next_uid()),
             OwnTime,
+            PushFree,
             Body { width: SIZE as f32, height: SIZE as f32, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: true, orb: false, lava_walker: false },
             Bounds(box_at(at)),
             Cell(u32::MAX),
@@ -391,4 +392,10 @@ pub fn drop_main_hand(world: &mut World, e: Entity, random: &mut impl horizon_co
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
     crate::goals::set_main_hand(world, e, None);
     Some(spawn_at_location(world, stack, Vec3::new(at.x, at.y + eye - 0.3, at.z), random))
+}
+
+/// The registry name of the item of the stack on the ground (`item::kind_of`), for the goals that list items by name.
+pub fn kind_of(world: &World, item: Entity) -> Option<&'static str> {
+    let it = world.get::<Item>(item)?;
+    crate::items::item_name(crate::items::item_id(&it.stack.item))
 }

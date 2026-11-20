@@ -93,7 +93,7 @@ mod tests {
         e
     }
     fn player(h: &mut Herd, x: f64) {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     }
     fn tempt(h: &mut Herd, e: Entity) {
         set(&mut h.world, e, &TEMPTING_PLAYER, MemValue::Who(Who::Player(1)), None);

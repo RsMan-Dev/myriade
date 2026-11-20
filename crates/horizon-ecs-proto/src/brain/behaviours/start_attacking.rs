@@ -124,7 +124,7 @@ mod tests {
         brain_step(&mut h.world);
     }
     fn player(h: &mut Herd, id: u32, x: f64) {
-        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z: 0.5, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     }
 
     /// A creature that hurt it becomes its attack target, in the memory and in the targeting service; before the hurt, nothing.

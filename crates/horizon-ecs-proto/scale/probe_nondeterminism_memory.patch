@@ -1,0 +1,227 @@
+diff --git a/crates/horizon-ecs-proto/src/cow.rs b/crates/horizon-ecs-proto/src/cow.rs
+index 92f56b4b12..588dd4d722 100644
+--- a/crates/horizon-ecs-proto/src/cow.rs
++++ b/crates/horizon-ecs-proto/src/cow.rs
+@@ -202,6 +202,7 @@ pub struct AirLow;
+ /// Ask `wall_check` to look whether the cow's head is in a block (a spawn, a teleport, a growth: the events that
+ /// can put a box into blocks).
+ #[derive(Component, Clone, Copy, Debug)]
++#[component(storage = "SparseSet")]
+ pub struct Recheck;
+ /// The head of the cow is in a suffocating block: it hurts every tick until that stops.
+ #[derive(Component, Clone, Copy, Debug)]
+@@ -1257,6 +1258,7 @@ pub fn schedule() -> Schedule {
+     // this tick's physics, as a mob's hurt precedes its tick.
+     s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, pathfind, follow, path_ended, move_control, fluid_update, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+     s.add_systems(cramming.after(apply_pushes));
++    s.add_systems(probe_sort_queues.after(travel).before(ordered_pass));
+     crate::goals::register(&mut s);
+     crate::farm::register(&mut s);
+     crate::projectile::register(&mut s);
+@@ -1530,7 +1532,7 @@ pub(crate) fn pathfind(
+             }
+         });
+     };
+-    if cfg.parallel {
++    if cfg.parallel && par_on("pathfind") {
+         q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u)| one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u));
+     } else {
+         for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u) in &mut q {
+@@ -1607,7 +1609,7 @@ pub(crate) fn follow(
+             });
+         }
+     };
+-    if cfg.parallel {
++    if cfg.parallel && par_on("follow") {
+         q.par_iter_mut().for_each(|(e, p, b, mut d, mut s, mut n, mut m)| one(e, p, b, &mut d, &mut s, &mut n, &mut m));
+     } else {
+         for (e, p, b, mut d, mut s, mut n, mut m) in &mut q {
+@@ -1745,7 +1747,7 @@ fn stands_in_low_block(level: &Level, pos: &Pos) -> bool {
+ }
+ pub(crate) fn move_control(cfg: Res<Config>, level: Res<Level>, mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FluidState), (Or<(With<Following>, With<crate::locomotion::climb::Climbing>)>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>) {
+     let landed = |c: &Contact, f: &FluidState| c.on_ground || f.in_water || f.in_lava;
+-    if cfg.parallel {
++    if cfg.parallel && par_on("move_control") {
+         q.par_iter_mut().for_each(|(p, mut y, mut m, mut d, b, c, f)| move_control_one(&level, p, &mut y, &mut m, &mut d, b, landed(c, f)));
+     } else {
+         for (p, mut y, mut m, mut d, b, c, f) in &mut q {
+@@ -2025,6 +2027,7 @@ pub(crate) fn travel(
+     cfg: Res<Config>,
+     level: Res<Level>,
+     par: ParallelCommands,
++    mut commands: Commands,
+     mut q: Query<
+         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>),
+         (With<Moving>, Without<Overlapping>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
+@@ -2060,18 +2063,29 @@ pub(crate) fn travel(
+         }
+         // At rest and not following a path: the physics of the cow goes inactive until something moves it.
+         if rest && !following {
+-            par.command_scope(|mut cmd| {
+-                cmd.entity(e).remove::<Moving>();
+-            });
++            if probe_sortcmd() {
++                PROBE_REMOVE.lock().unwrap().push(e);
++            } else {
++                par.command_scope(|mut cmd| {
++                    cmd.entity(e).remove::<Moving>();
++                });
++            }
+         }
+     };
+-    if cfg.parallel {
++    if cfg.parallel && par_on("travel") {
+         q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m));
+     } else {
+         for (e, p, v, y, c, d, b, bb, fs, f, j, i, m) in &mut q {
+             one(e, p, v, y, c, d, b, bb, fs, f, j, i, m);
+         }
+     }
++    if probe_sortcmd() {
++        let mut v = std::mem::take(&mut *PROBE_REMOVE.lock().unwrap());
++        v.sort();
++        for e in v {
++            commands.entity(e).remove::<Moving>();
++        }
++    }
+ }
+ 
+ /// `Entity.updateFluidInteraction` (Horizon's real fluid heights and currents), only for the cows whose box overlaps
+@@ -2100,7 +2114,7 @@ pub(crate) fn fluid_update(
+             c.fall_distance = 0.0;
+         }
+     };
+-    if cfg.parallel {
++    if cfg.parallel && par_on("fluid_update") {
+         q.par_iter_mut().for_each(|(p, b, mut v, mut fs, mut c, i)| one(p, b, &mut v, &mut fs, &mut c, i));
+     } else {
+         for (p, b, mut v, mut fs, mut c, i) in &mut q {
+@@ -2548,6 +2562,7 @@ fn push(
+     ordered: Query<(), With<Overlapping>>,
+     touching: Query<(), With<Touching>>,
+     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>)>,
++    mut commands: Commands,
+ ) {
+     // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
+     let is_object = |e: Entity| objects.get(e).is_ok_and(|b| b.object);
+@@ -2601,6 +2616,9 @@ fn push(
+                 });
+             }
+             if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
++                if probe_sortcmd() {
++                    PROBE_PUSH.lock().unwrap().push((o, e, xa, za, asleep));
++                } else {
+                 par.command_scope(|mut cmd| {
+                     // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
+                     if asleep {
+@@ -2609,6 +2627,7 @@ fn push(
+                         cmd.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
+                     }
+                 });
++                }
+             }
+         });
+         if cfg.keep_touching {
+@@ -2638,19 +2657,39 @@ fn push(
+         if dv != (0.0, 0.0) {
+             v.0 = Vec3::new(v.0.x + dv.0, v.0.y, v.0.z + dv.1);
+             if !moving {
++                if probe_sortcmd() {
++                    PROBE_MOVING.lock().unwrap().push(e);
++                } else {
+                 par.command_scope(|mut cmd| {
+                     cmd.entity(e).insert(Moving);
+                 });
++                }
+             }
+         }
+     };
+-    if cfg.parallel {
++    if cfg.parallel && par_on("push") {
+         movers.par_iter_mut().for_each(|(e, b, mut v, m, t)| one(e, b, &mut v, m, t));
+     } else {
+         for (e, b, mut v, m, t) in &mut movers {
+             one(e, b, &mut v, m, t);
+         }
+     }
++    if probe_sortcmd() {
++        let mut pushes = std::mem::take(&mut *PROBE_PUSH.lock().unwrap());
++        pushes.sort_by_key(|p| (p.0, p.1));
++        for (o, _, xa, za, asleep) in pushes {
++            if asleep {
++                commands.entity(o).insert(PushIn(Vec3::new(xa, 0.0, za)));
++            } else {
++                commands.entity(o).insert((PushIn(Vec3::new(xa, 0.0, za)), Moving));
++            }
++        }
++        let mut moving = std::mem::take(&mut *PROBE_MOVING.lock().unwrap());
++        moving.sort();
++        for e in moving {
++            commands.entity(e).insert(Moving);
++        }
++    }
+ }
+ /// How near (blocks) another animal must come for an animal to stay in the ordered pass: a little more than the largest
+ /// step of an animal in a tick.
+@@ -2917,7 +2956,7 @@ pub(crate) fn ordered_pass(
+         };
+         stats.sizes[bucket] += 1;
+     }
+-    let effects: Vec<Vec<Effect>> = if cfg.parallel && islands.len() > 1 {
++    let effects: Vec<Vec<Effect>> = if cfg.parallel && par_on("islands") && islands.len() > 1 {
+         let pool = bevy_tasks::ComputeTaskPool::get();
+         let (level, table, idx, q, marked, moving_now) = (&*level, &*table, &*idx, &q, &marked, &moving_now);
+         pool.scope(|s| {
+@@ -3907,3 +3946,35 @@ pub fn moving_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::li
+         world.commands().entity(ctx.entity).insert(crate::orb::OrbAwake);
+     }
+ }
++
++/// PROBE (not committed): `PAR_ONLY=a,b` lets only the named systems use the pool (unset: all; empty string: none).
++pub fn par_on(name: &str) -> bool {
++    static SET: std::sync::OnceLock<Option<Vec<String>>> = std::sync::OnceLock::new();
++    SET.get_or_init(|| std::env::var("PAR_ONLY").ok().map(|v| v.split(',').map(str::to_string).collect())).as_ref().is_none_or(|l| l.iter().any(|x| x == name))
++}
++
++/// PROBE: `SORT=a,b` puts the lists that parallel systems fill through `ParallelCommands` in entity order after the sync point:
++/// `landed`, `left_ground` (events), `damage` (the queue).
++fn probe_sort_queues(mut ev: ResMut<crate::goals::Events>, mut q: ResMut<DamageQueue>) {
++    static SET: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
++    let set = SET.get_or_init(|| std::env::var("SORT").map(|v| v.split(',').map(str::to_string).collect()).unwrap_or_default());
++    if set.iter().any(|x| x == "landed") {
++        ev.landed.probe_sort();
++    }
++    if set.iter().any(|x| x == "left_ground") {
++        ev.left_ground.probe_sort();
++    }
++    if set.iter().any(|x| x == "damage") {
++        q.0.sort_by_key(|h| h.target);
++    }
++}
++
++static PROBE_REMOVE: std::sync::Mutex<Vec<Entity>> = std::sync::Mutex::new(Vec::new());
++/// PROBE: `SORTCMD=1`: travel's `remove::<Moving>` go through a list sorted by entity, applied by an ordinary `Commands`.
++fn probe_sortcmd() -> bool {
++    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ON.get_or_init(|| std::env::var_os("SORTCMD").is_some())
++}
++
++static PROBE_PUSH: std::sync::Mutex<Vec<(Entity, Entity, f64, f64, bool)>> = std::sync::Mutex::new(Vec::new());
++static PROBE_MOVING: std::sync::Mutex<Vec<Entity>> = std::sync::Mutex::new(Vec::new());
+diff --git a/crates/horizon-ecs-proto/src/goals.rs b/crates/horizon-ecs-proto/src/goals.rs
+index 4c44e47247..c13a54f7f8 100644
+--- a/crates/horizon-ecs-proto/src/goals.rs
++++ b/crates/horizon-ecs-proto/src/goals.rs
+@@ -611,6 +611,12 @@ impl<T> Default for Ev<T> {
+         Self { cur: Vec::new(), prev: Vec::new() }
+     }
+ }
++impl<T: Copy + Ord> Ev<T> {
++    /// PROBE: the events of this tick in entity order.
++    pub fn probe_sort(&mut self) {
++        self.cur.sort();
++    }
++}
+ impl<T: Copy> Ev<T> {
+     pub fn push(&mut self, e: T) {
+         self.cur.push(e);

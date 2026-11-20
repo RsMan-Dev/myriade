@@ -215,7 +215,7 @@ fn a_higher_priority_instance_takes_the_target_over() {
     }
     // One player far from everyone but within sight range of nobody: it walks to the middle of the zombies' row.
     let (mut mob, mut ecs): (Vec<Option<i64>>, Vec<Option<i64>>) = (vec![None; 20], vec![None; 20]);
-    w.h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    w.h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let view = player_view(Vec3::new(0.5, 1.0, 0.5), None);
     for t in 1..=150i64 {
         w.step(Some(&view));
@@ -250,7 +250,7 @@ fn a_creature_that_hits_a_zombie_becomes_its_target_and_alerts_the_others() {
     let (hm, he) = w.zombie(Vec3::new(52.5, 1.0, 2.5), 5);
     // A pig, which the zombies' cow instance does not take: the idle zombies have no target before the hit.
     let (qm, qe) = w.creature(Vec3::new(52.5, 1.0, -1.5), 6, "minecraft:pig");
-    w.h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    w.h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let view = player_view(Vec3::new(0.5, 1.0, 0.5), None);
     for _ in 0..150 {
         w.step(Some(&view));

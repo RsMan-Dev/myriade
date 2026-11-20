@@ -133,7 +133,8 @@ fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
 /// mount needs its saddle: without it nobody takes the seat).
 fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let Some(m) = w.get::<Mount>(e) else { return false };
-    if i.item == LEAD || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {
+    // A saddle or a body armor in hand is for `equipment::EQUIP`, a lead for `leash::LEASH`.
+    if matches!(crate::items::worn_in(i.item), Some(Slot::Saddle | Slot::Body)) || i.item == lead() || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {
         return false;
     }
     let _ = i.item;
@@ -291,7 +292,7 @@ fn creature_steer(w: &mut World, mount: Entity) {
 #[allow(clippy::type_complexity)]
 fn ridden_drive(
     clock: Res<Clock>,
-    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>), With<Ridden>>,
+    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::fly_steer::Params>), With<Ridden>>,
     targets: Query<(), With<crate::targeting::Target>>,
     level: Res<Level>,
     on: Res<Online>,
@@ -301,7 +302,12 @@ fn ridden_drive(
 ) {
     // The lead (no system of its own: this one runs every tick anyway).
     crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
-    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture) in &mut q {
+    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture, flier) in &mut q {
+        // A flying mount (`FlyingSteer`: its `Params` are the steer's constants) takes `fly_steer`'s drive instead of this one.
+        if let Some(p) = flier {
+            crate::behaviours::fly_steer::drive_one(&m, &yaw, &mut vel, p);
+            continue;
+        }
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();
             continue;
@@ -446,4 +452,9 @@ pub(crate) fn seats(
             }
         }
     }
+}
+
+/// `Entity.ejectPassengers`: every rider gets off, the first seat then the second.
+pub fn eject_passengers(w: &mut World, mount: Entity) {
+    while dismount(w, mount).is_some() {}
 }

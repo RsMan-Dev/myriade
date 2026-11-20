@@ -13,10 +13,19 @@ pub struct Params {
     pub interval_baby: Option<i32>,
     /// `MeleeAttackGoal(speed, true)`: follows its target even when it does not see it, and goes on after its path ends (zoglin, panda).
     pub follow_unseen: bool,
+    /// `SpiderAttackGoal.canContinue`: in light (`brightness >= BRIGHT`) the goal gives up, with one chance in `n` per tick, and drops the target.
+    pub quit_in_light: Option<i32>,
+    /// `StopAttackingIfTargetInvalid` (the hoglin's brain): the target is forgotten once no path has reached it for this many ticks (200).
+    pub forget_unreachable: Option<i32>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 20, interval_baby: None, follow_unseen: false, quit_in_light: None, forget_unreachable: None };
 }
+/// The light at which a goal that fears light stops (`brightness >= 0.5`: the same threshold as `horizon:dark_enough`, which is its opposite).
+pub const BRIGHT: f32 = 0.5;
+/// The melee goal gives up in light: one chance in `.0` per tick (carried only by the creatures whose `Params.quit_in_light` is set).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct QuitsInLight(pub i32);
 
 pub static MODULE: Module = Module {
     name: "melee",
@@ -49,6 +58,10 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     a.interval = p.interval;
     a.interval_baby = p.interval_baby;
     a.follow_unseen = p.follow_unseen;
+    a.forget_unreachable = p.forget_unreachable;
+    if let Some(n) = p.quit_in_light {
+        w.entity_mut(e).insert(QuitsInLight(n));
+    }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(hostile::melee_run.in_set(slot));
@@ -89,4 +102,49 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     hostile::stop_melee(w, e);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cow::{species, spawn_species, Herd, Level, Pos};
+    use crate::species::Config;
+    use crate::targeting::{set_target, Eye, Who};
+
+    /// `SpiderAttackGoal.canContinue`: in light the goal gives up (here one chance in 1) and the target goes; without the option, or at night,
+    /// the same attacker keeps its target. The light is set by the day flag of the world and read back at the attacker's eyes.
+    #[test]
+    fn the_goal_gives_up_in_light_only_with_the_option() {
+        if crate::cow::skip_unless_walker("melee quit in light") {
+            return;
+        }
+        static QUITS: Params = Params { quit_in_light: Some(1), follow_unseen: true, ..Params::DEFAULT };
+        static KEEPS: Params = Params { follow_unseen: true, ..Params::DEFAULT };
+        for day in [true, false] {
+            for (p, option) in [(&KEEPS, false), (&QUITS, true)] {
+                let mut h = Herd::with_slab(60, true, false);
+                h.set_daylight(day);
+                let mut sp = *species();
+                let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
+                sp.goals = Config { entries };
+                let mut prey_sp = sp;
+                prey_sp.goals = Config { entries: &[] };
+                let attacker = spawn_species(&mut h.world, &sp, 0.5, 0.5, 61);
+                let prey = spawn_species(&mut h.world, &prey_sp, 4.5, 0.5, 62);
+                for _ in 0..5 {
+                    h.tick();
+                }
+                let (pos, eye) = (h.world.get::<Pos>(attacker).unwrap().0, h.world.get::<Eye>(attacker).unwrap().0);
+                let bright = h.world.resource::<Level>().mw.0.brightness(pos.x.floor() as i32, (pos.y + eye).floor() as i32, pos.z.floor() as i32) >= BRIGHT;
+                assert_eq!(bright, day, "the world's light is the one asked for");
+                set_target(&mut h.world, attacker, crate::targeting::Target::new(Who::Entity(prey), 200, u8::MAX));
+                h.world.resource_mut::<Requests>().0.push(Req::Start(attacker, 0));
+                for _ in 0..30 {
+                    h.tick();
+                }
+                let kept = h.world.get::<crate::targeting::Target>(attacker).is_some();
+                assert_eq!(kept, !(option && day), "day {day}, option {option}: the target is kept");
+            }
+        }
+    }
 }

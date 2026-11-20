@@ -24,6 +24,6 @@ pub static DEF: Def = Def {
         Entry::new(&posture::MODULE, 255, &posture::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
-    rules: &[RuleEntry::new(&RIDE, &RideParams::CAMEL), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT)],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::CAMEL), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
     ..Def::EMPTY
 };

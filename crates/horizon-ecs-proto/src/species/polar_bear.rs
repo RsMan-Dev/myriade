@@ -2,12 +2,16 @@
 //! Les cibles : une cible joueur (la moitié de la portée) quand un ourson est proche (`polar_bear:cub_nearby`), jamais pour un
 //! ourson ; un joueur en colère (`neutral:angry`, sans le but qui pose la colère : aucun dans l'ours) ; le renard quand l'ours
 //! n'est pas un ourson. Paniques : un ourson fuit toute cause, un adulte les causes d'environnement seulement.
-//! DOUTES : la variante de `melee` (se dresser, grogner : `check_and_perform_attack`) n'est pas portée ; `hurt_by` n'alerte
-//! pas (le `Mob` alerte les adultes quand un ourson est frappé, `goals.rs:2067`) ; la portée de chemin (`.reach()`) des
+//! DOUTES : la variante de `melee` (se dresser, grogner : `check_and_perform_attack`) n'est pas portée ; `hurt_by` alerte
+//! les adultes quand un ourson est frappé (`alert_if_baby`, `goals.rs:2067`) ; la portée de chemin (`.reach()`) des
 //! trois cibles n'existe pas dans `nearest_target` ; l'entrée de l'ourson est lue au démarrage seulement (`Entry::when`).
 use super::Def;
 use crate::behaviours::{neutral_anger, float, follow_parent, hurt_by, look_at_player, melee, nearest_target, panic, random_look, stroll, Cond, Entry};
 
+/// `PolarBearHurtByTargetGoal.alertOther`: adults only.
+fn is_adult(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
+    w.get::<crate::cow::GrowAt>(e).is_none()
+}
 static BABY: Cond = Cond::Is("horizon:is_baby");
 static NOT_BABY: Cond = Cond::Not(&Cond::Is("horizon:is_baby"));
 static ADULT_CUB_NEAR: Cond = Cond::All(&[Cond::Not(&Cond::Is("horizon:is_baby")), Cond::Is("polar_bear:cub_nearby")]);
@@ -17,7 +21,7 @@ pub static DEF: Def = Def {
     name: "minecraft:polar_bear",
     targets: &[
         Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
-        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT),
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert_if_baby: true, alert_when: Some(is_adult), ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { players: true, follow_scale: 0.5, interval: 20, ..nearest_target::Params::DEFAULT }).when(&ADULT_CUB_NEAR),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::PLAYER).when(&ANGRY),
         Entry::new(&nearest_target::MODULE, 4, &nearest_target::Params { types: &["minecraft:fox"], interval: 10, ..nearest_target::Params::DEFAULT }).when(&NOT_BABY),

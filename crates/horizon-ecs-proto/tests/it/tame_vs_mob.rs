@@ -38,7 +38,7 @@ fn pair(owner_at: Vec3) -> Pair {
     r.mobs[i].extra.owner = Some(UUID);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: owner_at.x, y: owner_at.y, z: owner_at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: owner_at.x, y: owner_at.y, z: owner_at.z, main: 0, off: 0, ..Default::default() });
     horizon_ecs_proto::tame::tame(&mut h.world, e, Who::Player(1), 40.0);
     horizon_ecs_proto::tame::order_sit(&mut h.world, e, false);
     Pair { r, h, mob: i, ecs: e, owner_at }
@@ -68,7 +68,7 @@ fn a_bone_tames_one_wild_wolf_in_three_and_the_owner_orders_it_to_sit() {
     let mut last = None;
     for k in 0..300 {
         let e = spawn_species(&mut h.world, species(), 0.5 + (k % 50) as f64, 0.5 + (k / 50) as f64, 11 + k as u64);
-        let handled = interact(&mut h.world, e, &Interaction { player: 1, item: BONE });
+        let handled = interact(&mut h.world, e, &Interaction { player: 1, item: bone() });
         assert!(handled);
         if h.world.get::<Owner>(e).unwrap().0 == Some(Who::Player(1)) {
             tamed += 1;
@@ -108,7 +108,7 @@ fn a_standing_wolf_follows_its_owner_and_a_sitting_one_stays() {
     q.r.mobs[q.mob].extra.sitting = true;
     horizon_ecs_proto::tame::order_sit(&mut q.h.world, q.ecs, true);
     q.owner_at = Vec3::new(25.5, 1.0, 0.5);
-    q.h.world.resource_mut::<Online>().set(Player { id: 1, x: 25.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    q.h.world.resource_mut::<Online>().set(Player { id: 1, x: 25.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     for _ in 0..100 {
         q.step();
     }
@@ -219,7 +219,7 @@ fn a_wolf_does_not_attack_its_owner() {
     // The owner is near: a far owner makes the wolf (hurt, not panicking: its panic is environmental only, as the `Mob`'s) teleport to it before
     // its melee goal starts (a 20-tick grid), which takes it out of the stranger's range and drops the target.
     let mut q = pair(Vec3::new(4.5, 1.0, 0.5));
-    q.h.world.resource_mut::<Online>().set(Player { id: 2, x: 2.5, y: 1.0, z: 0.5, main: 0, off: 0 });
+    q.h.world.resource_mut::<Online>().set(Player { id: 2, x: 2.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     q.h.hit_by(q.ecs, 1.0, 2);
     for _ in 0..10 {
         q.h.tick();

@@ -165,9 +165,9 @@ pub fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 pub fn tempt_item() -> (u32, &'static str) {
     match species().name {
-        "minecraft:pig" => (CARROT, "minecraft:carrot"),
-        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
-        _ => (WHEAT, "minecraft:wheat"),
+        "minecraft:pig" => (carrot(), "minecraft:carrot"),
+        "minecraft:chicken" => (wheat_seeds(), "minecraft:wheat_seeds"),
+        _ => (wheat(), "minecraft:wheat"),
     }
 }
 pub fn have_data() -> bool {
@@ -208,6 +208,16 @@ impl MobRef {
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
     }
+    /// A block with properties over its default state (a bed's head, an open door).
+    pub fn set_block_props(&self, x: i32, y: i32, z: i32, name: &str, props: &[(&str, &str)]) {
+        let Some(state) = horizon_ecs_proto::blocks::resolve(self.w, name, props) else { return };
+        // SAFETY: as in `set_block`.
+        unsafe {
+            let world = &mut *self.level.blocks.0;
+            let _ = world.set(x, y, z, state);
+            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+        }
+    }
     /// Applies to the `Mob` world the block changes the mobs asked for since the last call.
     pub fn apply_block_events(&mut self) {
         let fresh: Vec<(i32, i32, i32, &'static str)> = self.events[self.applied..]
@@ -218,9 +228,32 @@ impl MobRef {
                 _ => None,
             })
             .collect();
+        // The doors the mobs opened or closed (`MobEvent::SetDoorOpen`, which the game's world applies): both halves take the `open` property.
+        let doors: Vec<([i32; 3], bool)> = self.events[self.applied..]
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::SetDoorOpen { pos, open } => Some((*pos, *open)),
+                _ => None,
+            })
+            .collect();
         self.applied = self.events.len();
         for (x, y, z, n) in fresh {
             self.set_block(x, y, z, n);
+        }
+        for (p, open) in doors {
+            for y in [p[1] - 1, p[1], p[1] + 1] {
+                let name = self.w.block_name(p[0], y, p[2]).to_string();
+                if !name.ends_with("_door") {
+                    continue;
+                }
+                let Some(state) = self.w.registry.state(self.w.world.block(p[0], y, p[2])) else { continue };
+                let mut props: Vec<(String, String)> = state.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                for kv in props.iter_mut().filter(|kv| kv.0 == "open") {
+                    kv.1 = open.to_string();
+                }
+                let refs: Vec<(&str, &str)> = props.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                self.set_block_props(p[0], y, p[2], &name, &refs);
+            }
         }
     }
 }

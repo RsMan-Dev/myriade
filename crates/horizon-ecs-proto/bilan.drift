@@ -366,3 +366,111 @@ audit-fixes 510f5bde3f|zone far ring (cow, 6, 10)|ecs|-0.4|0.3
 audit-fixes 510f5bde3f|items at rest (slope per stack, 500 to 2000)|ecs|27|28
 audit-fixes 510f5bde3f|schedule at rest (empty world, per tick)|ecs|127264|127386
 dated 2026-11-19|solicited lines re-based (new definition: species food, mean of six variants; PlayerEffects lazy)
+port-abeille + head-fixes + HostOut|cow idle|ecs|1063|1064
+port-abeille + head-fixes + HostOut|cow idle|ecs-eager|1292|1294
+port-abeille + head-fixes + HostOut|cow active(1000 players, no solicitation)|ecs|5572|5592
+port-abeille + head-fixes + HostOut|cow active(1000 players, no solicitation)|ecs-eager|5410|5415
+port-abeille + head-fixes + HostOut|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13520|13543
+port-abeille + head-fixes + HostOut|pig idle|ecs-eager|364|367
+port-abeille + head-fixes + HostOut|pig active(1000 players, no solicitation)|ecs|5079|5102
+port-abeille + head-fixes + HostOut|pig active(1000 players, no solicitation)|ecs-eager|4861|4866
+port-abeille + head-fixes + HostOut|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14157|14186
+port-abeille + head-fixes + HostOut|sheep idle|ecs-eager|676|678
+port-abeille + head-fixes + HostOut|sheep active(1000 players, no solicitation)|ecs|5426|5450
+port-abeille + head-fixes + HostOut|sheep active(1000 players, no solicitation)|ecs-eager|5278|5282
+port-abeille + head-fixes + HostOut|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14660|14688
+port-abeille + head-fixes + HostOut|chicken idle|ecs-eager|213|215
+port-abeille + head-fixes + HostOut|chicken active(1000 players, no solicitation)|ecs|3716|3742
+port-abeille + head-fixes + HostOut|chicken active(1000 players, no solicitation)|ecs-eager|3603|3605
+port-abeille + head-fixes + HostOut|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8111|8138
+port-abeille + head-fixes + HostOut|zombie idle|ecs|104|105
+port-abeille + head-fixes + HostOut|zombie idle|ecs-eager|298|300
+port-abeille + head-fixes + HostOut|zombie active(1000 players, no solicitation)|ecs|10073|10101
+port-abeille + head-fixes + HostOut|zombie active(1000 players, no solicitation)|ecs-eager|10026|10028
+port-abeille + head-fixes + HostOut|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5657|5681
+port-abeille + head-fixes + HostOut|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7226|7250
+port-abeille + head-fixes + HostOut|crowd 0.5 (cow, 2000, 0 player)|batch|6579|6584
+port-abeille + head-fixes + HostOut|crowd 0.8 (cow, 2000, 0 player)|batch|5719|5724
+port-abeille + head-fixes + HostOut|zone near ring (cow, 6, 10)|ecs|2947.2|2951.0
+port-abeille + head-fixes + HostOut|zone mid ring (cow, 6, 10)|ecs|33.9|34.0
+port-abeille + head-fixes + HostOut|zone far ring (cow, 6, 10)|ecs|0.0|-0.6
+port-abeille + head-fixes + HostOut|schedule at rest (empty world, per tick)|ecs|125922|126074
+merge ecs/shot-ends f7cc5756fe|cow idle|ecs|1064|766
+merge ecs/shot-ends f7cc5756fe|cow idle|ecs-eager|1294|974
+merge ecs/shot-ends f7cc5756fe|cow active(1000 players, no solicitation)|ecs|5592|4343
+merge ecs/shot-ends f7cc5756fe|cow active(1000 players, no solicitation)|ecs-eager|5415|4193
+merge ecs/shot-ends f7cc5756fe|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|13543|8053
+merge ecs/shot-ends f7cc5756fe|pig idle|ecs|195|140
+merge ecs/shot-ends f7cc5756fe|pig idle|ecs-eager|367|346
+merge ecs/shot-ends f7cc5756fe|pig active(1000 players, no solicitation)|ecs|5102|4045
+merge ecs/shot-ends f7cc5756fe|pig active(1000 players, no solicitation)|ecs-eager|4866|3859
+merge ecs/shot-ends f7cc5756fe|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14186|8212
+merge ecs/shot-ends f7cc5756fe|sheep idle|ecs|489|328
+merge ecs/shot-ends f7cc5756fe|sheep idle|ecs-eager|678|525
+merge ecs/shot-ends f7cc5756fe|sheep active(1000 players, no solicitation)|ecs|5450|4292
+merge ecs/shot-ends f7cc5756fe|sheep active(1000 players, no solicitation)|ecs-eager|5282|4124
+merge ecs/shot-ends f7cc5756fe|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|14688|8375
+merge ecs/shot-ends f7cc5756fe|chicken idle|ecs|36|34
+merge ecs/shot-ends f7cc5756fe|chicken idle|ecs-eager|215|214
+merge ecs/shot-ends f7cc5756fe|chicken active(1000 players, no solicitation)|ecs|3742|3228
+merge ecs/shot-ends f7cc5756fe|chicken active(1000 players, no solicitation)|ecs-eager|3605|3083
+merge ecs/shot-ends f7cc5756fe|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8138|5401
+merge ecs/shot-ends f7cc5756fe|zombie idle|ecs|105|86
+merge ecs/shot-ends f7cc5756fe|zombie idle|ecs-eager|300|272
+merge ecs/shot-ends f7cc5756fe|zombie active(1000 players, no solicitation)|ecs|10101|9439
+merge ecs/shot-ends f7cc5756fe|zombie active(1000 players, no solicitation)|ecs-eager|10028|9321
+merge ecs/shot-ends f7cc5756fe|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5681|5464
+merge ecs/shot-ends f7cc5756fe|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|7250|6717
+merge ecs/shot-ends f7cc5756fe|crowd 0.5 (cow, 2000, 0 player)|batch|6584|4398
+merge ecs/shot-ends f7cc5756fe|crowd 0.5 (cow, 2000, 0 player)|ordered|19593|17887
+merge ecs/shot-ends f7cc5756fe|crowd 0.8 (cow, 2000, 0 player)|batch|5724|3835
+merge ecs/shot-ends f7cc5756fe|crowd 0.8 (cow, 2000, 0 player)|ordered|13784|12065
+merge ecs/shot-ends f7cc5756fe|zone near ring (cow, 6, 10)|ecs|2951.0|2322.6
+merge ecs/shot-ends f7cc5756fe|zone mid ring (cow, 6, 10)|ecs|34.0|33.9
+merge ecs/shot-ends f7cc5756fe|zone far ring (cow, 6, 10)|ecs|-0.6|-0.0
+merge ecs/shot-ends f7cc5756fe|items at rest (slope per stack, 500 to 2000)|ecs|29|7
+merge ecs/shot-ends f7cc5756fe|schedule at rest (empty world, per tick)|ecs|126074|126891
+merge ecs/port-tirs f5ce6800be|cow idle|ecs-eager|974|975
+merge ecs/port-tirs f5ce6800be|cow active(1000 players, no solicitation)|ecs|4343|4340
+merge ecs/port-tirs f5ce6800be|cow active(1000 players, no solicitation)|ecs-eager|4193|4194
+merge ecs/port-tirs f5ce6800be|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8053|8054
+merge ecs/port-tirs f5ce6800be|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8212|8211
+merge ecs/port-tirs f5ce6800be|sheep active(1000 players, no solicitation)|ecs-eager|4124|4125
+merge ecs/port-tirs f5ce6800be|chicken idle|ecs|34|35
+merge ecs/port-tirs f5ce6800be|chicken active(1000 players, no solicitation)|ecs-eager|3083|3084
+merge ecs/port-tirs f5ce6800be|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|5401|5400
+merge ecs/port-tirs f5ce6800be|zombie idle|ecs-eager|272|273
+merge ecs/port-tirs f5ce6800be|zombie active(1000 players, no solicitation)|ecs|9439|9433
+merge ecs/port-tirs f5ce6800be|zombie active(1000 players, no solicitation)|ecs-eager|9321|9324
+merge ecs/port-tirs f5ce6800be|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5464|5465
+merge ecs/port-tirs f5ce6800be|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6717|6715
+merge ecs/port-tirs f5ce6800be|zone near ring (cow, 6, 10)|ecs|2322.6|2322.7
+merge ecs/port-tirs f5ce6800be|zone far ring (cow, 6, 10)|ecs|-0.0|0.0
+merge ecs/port-tirs f5ce6800be|items at rest (slope per stack, 500 to 2000)|ecs|7|8
+merge ecs/port-tirs f5ce6800be|schedule at rest (empty world, per tick)|ecs|126891|127650
+merge ecs/port-allay b957baa588|cow idle|ecs|766|767
+merge ecs/port-allay b957baa588|cow active(1000 players, no solicitation)|ecs|4340|4352
+merge ecs/port-allay b957baa588|cow active(1000 players, no solicitation)|ecs-eager|4194|4201
+merge ecs/port-allay b957baa588|cow solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8054|8061
+merge ecs/port-allay b957baa588|pig active(1000 players, no solicitation)|ecs|4045|4057
+merge ecs/port-allay b957baa588|pig active(1000 players, no solicitation)|ecs-eager|3859|3866
+merge ecs/port-allay b957baa588|pig solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8211|8220
+merge ecs/port-allay b957baa588|sheep idle|ecs|328|329
+merge ecs/port-allay b957baa588|sheep idle|ecs-eager|525|526
+merge ecs/port-allay b957baa588|sheep active(1000 players, no solicitation)|ecs|4292|4303
+merge ecs/port-allay b957baa588|sheep active(1000 players, no solicitation)|ecs-eager|4125|4132
+merge ecs/port-allay b957baa588|sheep solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|8375|8384
+merge ecs/port-allay b957baa588|chicken idle|ecs-eager|214|215
+merge ecs/port-allay b957baa588|chicken active(1000 players, no solicitation)|ecs|3228|3238
+merge ecs/port-allay b957baa588|chicken active(1000 players, no solicitation)|ecs-eager|3084|3091
+merge ecs/port-allay b957baa588|chicken solicited(50 players, 30% hold, 20 hurt, 20 love)|ecs|5400|5407
+merge ecs/port-allay b957baa588|zombie active(1000 players, no solicitation)|ecs|9433|9443
+merge ecs/port-allay b957baa588|zombie active(1000 players, no solicitation)|ecs-eager|9324|9332
+merge ecs/port-allay b957baa588|zombie chase clear (1024, spacing 6, 1024 players)|ecs|5465|5467
+merge ecs/port-allay b957baa588|zombie chase crowded (2000, spacing 2, 1000 players)|ecs|6715|6720
+merge ecs/port-allay b957baa588|crowd 0.5 (cow, 2000, 0 player)|batch|4398|4400
+merge ecs/port-allay b957baa588|crowd 0.5 (cow, 2000, 0 player)|ordered|17887|17889
+merge ecs/port-allay b957baa588|crowd 0.8 (cow, 2000, 0 player)|batch|3835|3837
+merge ecs/port-allay b957baa588|crowd 0.8 (cow, 2000, 0 player)|ordered|12065|12066
+merge ecs/port-allay b957baa588|zone near ring (cow, 6, 10)|ecs|2322.7|2324.2
+merge ecs/port-allay b957baa588|schedule at rest (empty world, per tick)|ecs|127650|128007

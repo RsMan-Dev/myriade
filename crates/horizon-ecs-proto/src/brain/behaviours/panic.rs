@@ -7,10 +7,12 @@ use crate::goals::stop_nav;
 #[derive(Clone, Copy)]
 pub struct Params {
     pub speed: f32,
+    /// A memory whose presence also makes it panic (the villager's `panic_condition` is `HURT_BY` or a threat in memory).
+    pub threat: Option<&'static MemKey>,
 }
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:animal_panic", mems: &[&HURT_BY, &IS_PANICKING, &WALK_TARGET], can_start, start, tick, stop, ..Behaviour::DEFAULT };
-fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    matches!(get(w, e, &HURT_BY), Some(MemValue::Bool(true))) || present(w, e, &IS_PANICKING)
+fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
+    matches!(get(w, e, &HURT_BY), Some(MemValue::Bool(true))) || present(w, e, &IS_PANICKING) || c.get::<Params>().threat.is_some_and(|t| present(w, e, t))
 }
 fn start(w: &mut World, e: Entity, _: &Ctx) {
     set(w, e, &IS_PANICKING, MemValue::Bool(true), None);

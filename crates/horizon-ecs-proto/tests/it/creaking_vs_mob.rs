@@ -59,7 +59,7 @@ fn ecs_run(j: usize, start: Vec3, player: Vec3, ticks: i64, looks: &dyn Fn(i64) 
     let mut tr = Trace::default();
     let mut seen = 0;
     for t in 1..=ticks {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         h.world.resource_mut::<PlayerState>().set_gaze(1, gaze(player, start, looks(t)));
         h.tick();
         tr.roused.push(stare_freeze::is_roused(&h.world, e));

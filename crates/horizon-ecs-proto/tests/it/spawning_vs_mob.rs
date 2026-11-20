@@ -9,7 +9,7 @@ fn have() -> bool {
     std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
 }
 fn player(h: &mut Herd, id: u32, x: f64, z: f64) {
-    h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: 0, off: 0, ..Default::default() });
 }
 fn by_name(h: &mut Herd) -> BTreeMap<String, usize> {
     let table = species_table();
@@ -584,7 +584,7 @@ fn category_name(i: usize) -> &'static str {
 fn fill_law(kind: horizon_ecs_proto::spawning::Kind, biome: &str, at: [f64; 3], ticks: usize, seeds: i64) -> (f64, BTreeMap<String, (f64, f64)>) {
     let mut h = Herd::with_spawn_world_kind(176, true, kind);
     h.set_daylight(false);
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at[0], y: at[1], z: at[2], main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at[0], y: at[1], z: at[2], main: 0, off: 0, ..Default::default() });
     h.tick();
     let mw = h.world.resource::<Level>().mw.0;
     h.enable_spawning(biome, 1);

@@ -99,7 +99,7 @@ mod tests {
         e
     }
     fn player(h: &mut Herd, id: u32, x: f64, z: f64) {
-        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id, x, y: 1.0, z, main: 0, off: 0, ..Default::default() });
     }
     fn known(h: &Herd, e: Entity) -> Option<Vec<Who>> {
         match get(&h.world, e, &NEAREST_PLAYERS) {

@@ -128,9 +128,9 @@ fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
 /// The item that tempts the species of the run (`HORIZON_SPECIES`): its id and its name.
 fn tempt_item() -> (u32, &'static str) {
     match species().name {
-        "minecraft:pig" => (CARROT, "minecraft:carrot"),
-        "minecraft:chicken" => (WHEAT_SEEDS, "minecraft:wheat_seeds"),
-        _ => (WHEAT, "minecraft:wheat"),
+        "minecraft:pig" => (carrot(), "minecraft:carrot"),
+        "minecraft:chicken" => (wheat_seeds(), "minecraft:wheat_seeds"),
+        _ => (wheat(), "minecraft:wheat"),
     }
 }
 fn have_data() -> bool {
@@ -314,7 +314,7 @@ fn wheat_tempts_as_it_does_a_mob() {
     // Player 9.5 blocks from the first cow, 10.5 blocks from the second.
     let at = Vec3::new(-1.0, 1.0, 0.5);
     let mut p = player_view(at, Some(tempt_item().1));
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     for _ in 0..6 {
         r.step(Some(&p));
         h.tick();
@@ -342,13 +342,13 @@ fn wheat_tempts_as_it_does_a_mob() {
     assert!((md - cd).abs() < 0.8, "stop distance");
     // Wheat away for 4 ticks, then back: the ticks until the goal runs again.
     p.main_hand = None;
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: 0, off: 0, ..Default::default() });
     for _ in 0..4 {
         r.step(Some(&p));
         h.tick();
     }
     p.main_hand = Some(tempt_item().1.into());
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: tempt_item().0, off: 0, ..Default::default() });
     let (mut mc, mut cc) = (None, None);
     for t in 1..=200 {
         r.step(Some(&p));
@@ -473,7 +473,7 @@ fn looking_goals_start_as_often_as_a_mob_s() {
             cows.push((r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 700 + cows.len() as u64)));
         }
     }
-    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0 });
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0, ..Default::default() });
     arm_all(&mut h.world);
     let p = player_view(Vec3::new(0.0, 1.0, 0.0), None);
     let mut seen = vec![[false; 4]; cows.len()];
@@ -841,6 +841,21 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
             }
         }
         r.step(None);
+        // The `Mob`'s own draw of RandomLookAround (one chance in 50, priority 10: it replaces a stroll of a panda, 14) is imposed on the ecs
+        // animal as the spot is: at the tick the `Mob` starts it.
+        for &k in &begun {
+            let e = cows[k].1;
+            if r.names(cows[k].0).contains(&"RandomLookAround")
+                && let Some(slot) = horizon_ecs_proto::goals::slot_of(&h.world, e, &horizon_ecs_proto::behaviours::random_look::MODULE)
+            {
+                horizon_ecs_proto::goals::force_start(&mut h.world, e, slot);
+            } else if let Some(slot) = horizon_ecs_proto::goals::slot_of(&h.world, e, &horizon_ecs_proto::behaviours::random_look::MODULE)
+                && h.world.get::<horizon_ecs_proto::goals::GoalSet>(e).is_some_and(|g| g.is_running(&horizon_ecs_proto::behaviours::random_look::MODULE))
+            {
+                // The `Mob` ended it: so does the ecs animal.
+                h.world.resource_mut::<horizon_ecs_proto::goals::Requests>().0.push(horizon_ecs_proto::goals::Req::End(e, slot));
+            }
+        }
         h.tick();
         for &k in &begun {
             let (s, _) = start[k].unwrap();
@@ -858,6 +873,95 @@ fn a_stroll_follows_the_mob_s_trajectory_when_the_spot_is_imposed() {
     let line: Vec<String> = [2, 10, 30, 60].iter().map(|&n| format!("+{n}: {}/{} within 0.1", close(n), apart[n].len())).collect();
     eprintln!("stroll with the mob's spot: {}", line.join(" | "));
     assert!(close(30) * 10 >= apart[30].len() * 8, "{line:?}");
+}
+
+/// A look goal that holds the MOVE flag against a walk goal of the same animal (the panda's RandomLookAround 10 over its stroll 14) stops that
+/// walk whether or not a player sees the animal (the lazy look leaves out the orientation only): the share of ticks spent looking around
+/// is the `Mob`'s (law over 40 animals and 1200 ticks, nobody there).
+#[test]
+fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
+    use horizon_ecs_proto::{behaviours::random_look, goals::MOVE};
+    if horizon_ecs_proto::cow::skip_unless_walker("the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees") {
+        return;
+    }
+    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| horizon_ecs_proto::species::PROCESS_DEFAULT.into());
+    let entries = horizon_ecs_proto::species::config(&name).entries;
+    let look = entries.iter().find(|e| std::ptr::eq(e.module, &random_look::MODULE)).map(|e| e.priority);
+    let stopped = look.and_then(|l| entries.iter().find(|e| e.module.flags & MOVE != 0 && e.priority > l).map(|e| e.module.name));
+    if stopped.is_none() || !have_data() {
+        eprintln!("SKIP: {name}: no goal holding MOVE has a larger priority number than the random look {look:?}: it stops nothing");
+        return;
+    }
+    // 4 repeats: other ids for the Mob (dummies first: its seed comes from its id), other seeds for the ecs animals.
+    let (mut mob_runs, mut ecs_runs) = (Vec::new(), Vec::new());
+    // Episodes of looking (lengths) and the gaps between them, per side.
+    let (mut dur_m, mut dur_e, mut gap_m, mut gap_e): (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) = Default::default();
+    for rep in 0..4_usize {
+        let (mut r, mut h) = flat_pair();
+        let spots: Vec<(f64, f64)> = (0..8).flat_map(|i| (0..5).map(move |j| (-14.5 + 4.0 * f64::from(i), -12.5 + 5.0 * f64::from(j)))).collect();
+        let dummies: Vec<usize> = (0..rep * 97).map(|_| r.add(Vec3::new(-18.5, 1.0, -18.5))).collect();
+        let mobs: Vec<usize> = spots.iter().map(|&(x, z)| r.add(Vec3::new(x, 1.0, z))).collect();
+        let cows: Vec<Entity> = spots.iter().enumerate().map(|(k, &(x, z))| ecs_cow(&mut h, x, 1.0, z, 900 + 1000 * rep as u64 + k as u64)).collect();
+        for &e in &cows {
+            h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+            horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
+        }
+        if r.mobs[mobs[0]].extra.warden.is_some() {
+            // The Mob decides by a brain (activities), with no goal selector: there is no RandomLookAround to compare with.
+            eprintln!("SKIP: {name}: the Mob is brain-driven, it has no RandomLookAround goal");
+            return;
+        }
+        let (mut mob_ticks, mut ecs_ticks) = (0_usize, 0_usize);
+        let (mut seen_m, mut seen_e) = (vec![Vec::new(); 40], vec![Vec::new(); 40]);
+        for _ in 0..1200 {
+            for &i in mobs.iter().chain(&dummies) {
+                r.mobs[i].ai.no_action_time = 0;
+            }
+            r.step(None);
+            h.tick();
+            for (k, &i) in mobs.iter().enumerate() {
+                seen_m[k].push(r.names(i).contains(&"RandomLookAround"));
+            }
+            for (k, &e) in cows.iter().enumerate() {
+                seen_e[k].push(h.world.get::<random_look::Scanning>(e).is_some());
+            }
+            mob_ticks += mobs.iter().filter(|&&i| r.names(i).contains(&"RandomLookAround")).count();
+            ecs_ticks += cows.iter().filter(|&&e| h.world.get::<random_look::Scanning>(e).is_some()).count();
+        }
+        eprintln!("rep {rep}: ticks looking around: Mob {mob_ticks}, ecs {ecs_ticks} (40 animals, 1200 ticks)");
+        // Complete episodes only (neither cut by the start nor by the end of the run).
+        let split = |v: &[bool], dur: &mut Vec<f64>, gap: &mut Vec<f64>| {
+            let mut edges = Vec::new();
+            for t in 1..v.len() {
+                if v[t] != v[t - 1] {
+                    edges.push((t, v[t]));
+                }
+            }
+            for w in edges.windows(2) {
+                let len = (w[1].0 - w[0].0) as f64;
+                if w[0].1 { dur.push(len) } else { gap.push(len) }
+            }
+        };
+        for k in 0..40 {
+            split(&seen_m[k], &mut dur_m, &mut gap_m);
+            split(&seen_e[k], &mut dur_e, &mut gap_e);
+        }
+        mob_runs.push(mob_ticks as f64);
+        ecs_runs.push(ecs_ticks as f64);
+    }
+    let sd = |v: &[f64]| {
+        let m = v.iter().sum::<f64>() / v.len() as f64;
+        (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (v.len() - 1) as f64).sqrt()
+    };
+    let (mm, me) = (mob_runs.iter().sum::<f64>() / 4.0, ecs_runs.iter().sum::<f64>() / 4.0);
+    eprintln!("mean over 4 repeats: Mob {mm:.0} (sd {:.0}), ecs {me:.0} (sd {:.0}); ratio {:.3}", sd(&mob_runs), sd(&ecs_runs), me / mm);
+    let ms = |v: &[f64]| {
+        let m = v.iter().sum::<f64>() / v.len().max(1) as f64;
+        (v.len(), m, (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len().max(2).saturating_sub(1) as f64).sqrt())
+    };
+    eprintln!("episodes (n, mean, sd): look Mob {:?} ecs {:?}; gap Mob {:?} ecs {:?}", ms(&dur_m), ms(&dur_e), ms(&gap_m), ms(&gap_e));
+    assert!(mm > 500.0, "the Mob hardly looks around: {mm}");
+    assert!(me >= mm * 0.85 && me <= mm * 1.18, "Mob {mm} ecs {me}");
 }
 
 /// Three cows in love: the `Mob` picks its partner (the first in its list), the ecs cow takes the same one
@@ -930,7 +1034,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         return;
     }
     let (mut r, mut h) = flat_pair();
-    if species().name != "minecraft:pig" {
+    if process_species_name() != "minecraft:pig" {
         return;
     }
     let mi = r.add(Vec3::new(-6.5, 1.0, 0.5));
@@ -941,7 +1045,7 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
     let mut t = 0;
     let mut set = |r: &mut Ref, h: &mut Herd, p: &mut PlayerView, held: Option<(&str, u32)>, ticks: usize, t: &mut i64, log: &mut Vec<(i64, bool, Option<u8>)>| {
         p.main_hand = held.map(|x| x.0.into());
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: 1.0, z: at.z, main: held.map_or(0, |x| x.1), off: 0, ..Default::default() });
         for _ in 0..ticks {
             r.step(Some(p));
             h.tick();
@@ -950,8 +1054,8 @@ fn a_pig_s_two_tempt_goals_have_their_own_calm_downs_as_a_mob_s() {
         }
     };
     let mut log = Vec::new();
-    let stick = Some(("minecraft:carrot_on_a_stick", CARROT_ON_A_STICK));
-    let carrot = Some(("minecraft:carrot", CARROT));
+    let stick = Some(("minecraft:carrot_on_a_stick", carrot_on_a_stick()));
+    let carrot = Some(("minecraft:carrot", carrot()));
     set(&mut r, &mut h, &mut p, stick, 10, &mut t, &mut log);
     let stopped_at = t;
     set(&mut r, &mut h, &mut p, None, 4, &mut t, &mut log);

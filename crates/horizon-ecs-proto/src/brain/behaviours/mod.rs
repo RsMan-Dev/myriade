@@ -24,3 +24,5 @@ pub mod forget_memory;
 pub mod find_liquid;
 pub mod sniff;
 pub mod look_at_player;
+pub mod walk_away;
+pub mod pacify;

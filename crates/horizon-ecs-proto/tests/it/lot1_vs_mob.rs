@@ -250,7 +250,7 @@ fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize
     let (mut ecs, mut et) = (Vec::new(), None);
     for t in 0..220 {
         if let Some(d) = at(t) {
-            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0 });
+            h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + d, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         }
         if t == 20 {
             horizon_ecs_proto::targeting::set_target(&mut h.world, e, horizon_ecs_proto::targeting::Target::player(1, 60));

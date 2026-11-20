@@ -91,7 +91,7 @@ fn ecs_run(j: usize, start: Vec3, _player: Vec3) -> Trace {
     let (mut from_at, mut peak) = ((0.0, 0.0), 0.0);
     let mut seen = std::collections::HashSet::new();
     for t in 1..=TICKS {
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0 });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
         h.tick();
         if h.world.get::<horizon_ecs_proto::targeting::Target>(e).is_some() && tr.target_at.is_none() {
             tr.target_at = Some(t);

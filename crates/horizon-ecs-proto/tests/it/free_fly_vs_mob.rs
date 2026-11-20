@@ -12,7 +12,7 @@ fn a_ghast_floats_as_a_mob_does_when_its_spot_is_imposed() {
         return;
     }
     let _ = flat_pair();
-    if species().name != "minecraft:ghast" {
+    if process_species_name() != "minecraft:ghast" {
         return;
     }
     let spots = [(-12.5, 8.5, -8.5), (3.5, 14.5, 7.5), (-4.5, 10.5, -3.5), (8.5, 12.5, 5.5), (0.5, 9.5, -7.5), (-10.5, 12.5, 4.5), (6.5, 20.5, -4.5), (-2.5, 6.5, -9.5)];

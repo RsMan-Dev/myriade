@@ -1,6 +1,6 @@
 //! `Slime` (size 1) as far as the frame has it: it moves by hops (`locomotion/hop.rs`, the cube's move control) and floats. Targets:
-//! the iron golem at 3 (`cube.rs:47`, `NearestTarget::species(IronGolem, true)`). `attend : nearest_target hauteur |dy| <= 4` : the
-//! nearest player at 1 (`cube.rs:37-44`, interval 10, only within 4 blocks of height: no field for it). Missing: the attack by
+//! the iron golem at 3 (`cube.rs:47`, `NearestTarget::species(IronGolem, true)`) and the nearest player at 1 (`cube.rs:37-44`, interval 10,
+//! only within 4 blocks of height: `max_dy`). Missing: the attack by
 //! contact and its facing (`CubeMobAttackGoal`), the size and its health, speed and damage, the split into smaller ones at the
 //! death, the squish, the landing particles and the sounds.
 use super::Def;
@@ -11,7 +11,7 @@ pub static DEF: Def = Def {
     name: "minecraft:slime",
     reference: None,
     targets: &[
-        Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, ..nearest_target::Params::PLAYER }),
+        Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, max_dy: Some(4.0), ..nearest_target::Params::PLAYER }),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT }),
     ],
     goals: &[

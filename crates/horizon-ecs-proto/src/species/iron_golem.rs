@@ -1,13 +1,17 @@
 //! `IronGolem.registerGoals` as far as the frame has the modules: the blow, closing in on the target, going back to the village and
 //! strolling in it (`village_walk`, on the registry of the points of interest), looking; the target of what hurt it. Missing: the offer of
 //! the flower to a child villager (`OfferFlowerGoal`: the villager's state), `DefendVillageTargetGoal` (the reputation a villager keeps of a
-//! player: its brain), the nearest hostile (`Enemy` but creepers), the anger, the walk toward a villager who wants a golem, the cracks.
+//! player: its brain), the player it is angry at (`angry_at_player`: no player predicate), the anger, the walk toward a villager who wants a golem, the cracks.
 use super::Def;
-use crate::behaviours::{hurt_by, look_at_player, melee, move_towards_target, random_look, village_walk, Entry};
+use crate::behaviours::{hurt_by, look_at_player, melee, move_towards_target, nearest_target, random_look, village_walk, Entry};
 
 pub static DEF: Def = Def {
     name: "minecraft:iron_golem",
-    targets: &[Entry::new(&hurt_by::MODULE, 2, &hurt_by::Params::DEFAULT)],
+    targets: &[
+        Entry::new(&hurt_by::MODULE, 2, &hurt_by::Params::DEFAULT),
+        // `golem_prey`: the monsters but the creeper, not seen needed, one ask in 5.
+        Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { hostile: true, except: &["minecraft:creeper"], must_see: false, interval: 5, ..nearest_target::Params::DEFAULT }),
+    ],
     goals: &[
         Entry::new(&melee::MODULE, 1, &melee::Params::DEFAULT),
         Entry::new(&move_towards_target::MODULE, 2, &move_towards_target::Params::DEFAULT),

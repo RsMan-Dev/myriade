@@ -11,9 +11,11 @@ use crate::targeting::{Target, Who};
 pub struct Params {
     pub base: i32,
     pub spread: i32,
+    /// Added to the movement speed while angry (a grown zombified piglin's `minecraft:attacking` modifier: 0.05).
+    pub boost: f64,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { base: 400, spread: 381 };
+    pub const DEFAULT: Self = Self { base: 400, spread: 381, boost: 0.0 };
 }
 
 /// `holding`: a target is held (no countdown). `until`: the end of the countdown after the loss. `at`: whom the anger is
@@ -26,6 +28,8 @@ pub struct Anger {
     pub until: u64,
     pub at: Option<Who>,
     pub at_player: bool,
+    /// The boost is on the speed.
+    pub boosted: bool,
 }
 /// The countdown runs: its marker. Absent while the target is held or when there is no anger.
 #[derive(Component, Clone, Copy, Debug)]
@@ -45,7 +49,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
-    w.entity_mut(e).insert(Anger { def, slot: inst.slot, holding: false, until: 0, at: None, at_player: false });
+    w.entity_mut(e).insert(Anger { def, slot: inst.slot, holding: false, until: 0, at: None, at_player: false, boosted: false });
 }
 /// A state module: nothing starts it.
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
@@ -65,6 +69,8 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
         let mut m = w.get_mut::<Anger>(e).unwrap();
         m.at = None;
         m.at_player = false;
+        drop(m);
+        set_boost(w, e, false);
     }
     false
 }
@@ -92,6 +98,7 @@ fn acquired(w: &mut World, e: Entity) {
     a.at = Some(who);
     a.at_player = matches!(who, Who::Player(_));
     drop(a);
+    set_boost(w, e, true);
     w.entity_mut(e).remove::<Angry>();
 }
 /// The target is lost: the countdown starts from `base + nextInt(spread)` ticks (one draw, the law of the Mob's last draw).
@@ -212,5 +219,17 @@ mod tests {
             h.tick();
         }
         assert!(is_angry(&h.world, e) && !angry_marker(&h, e), "the held target did not renew the anger past its countdown");
+    }
+}
+
+/// The anger's speed boost goes on (not for a baby) or off, once.
+fn set_boost(w: &mut World, e: Entity, on: bool) {
+    let Some(a) = w.get::<Anger>(e).copied() else { return };
+    if a.def.boost == 0.0 || a.boosted == on || (on && w.get::<crate::cow::GrowAt>(e).is_some()) {
+        return;
+    }
+    w.get_mut::<Anger>(e).unwrap().boosted = on;
+    if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+        b.speed += if on { a.def.boost } else { -a.def.boost };
     }
 }
