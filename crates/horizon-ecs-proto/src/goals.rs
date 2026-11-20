@@ -583,7 +583,7 @@ fn equip_goals(w: &mut World, e: Entity) {
 /// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
 /// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
 #[derive(Resource, Default)]
-pub struct Carriers(pub Vec<u32>, pub crate::cow::Census);
+pub struct Carriers(pub Vec<u32>, pub crate::cow::Census, pub u128);
 pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries: &[Entry], delta: i32) {
     let reg = crate::species::registry();
     let Some(mut c) = world.get_resource_mut::<Carriers>() else { return };
@@ -592,6 +592,11 @@ pub(crate) fn count_carriers(world: &mut bevy_ecs::world::DeferredWorld, entries
             && let Some(n) = c.0.get_mut(i)
         {
             *n = n.saturating_add_signed(delta);
+            // The modules that have a tick and a carrier, one bit each (their rank in the list of ticks): `tick_modules` reads this word only.
+            if let Some(j) = tick_pos(i).filter(|j| *j < 128) {
+                let on = u128::from(c.0[i] > 0) << j;
+                c.2 = c.2 & !(1 << j) | on;
+            }
         }
     }
 }
@@ -612,7 +617,7 @@ fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifec
 
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
-    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default()));
+    world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default(), 0));
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
@@ -1003,21 +1008,25 @@ pub(crate) fn sparse_any<C: Component>(world: &World) -> bool {
 }
 /// The ticks of the modules that have one (`Module::tick`), in the order of the registry, for those some live animal carries: one
 /// test per module and tick, no system and no run condition in the schedule.
-fn tick_modules(world: &mut World) {
+fn ticks_list() -> &'static [(usize, fn(&mut World))] {
     static TICKS: std::sync::OnceLock<Vec<(usize, fn(&mut World))>> = std::sync::OnceLock::new();
-    let ticks = TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect());
-    // One look at the counters for all the modules (a bit per tick of the list), not one resource lookup per module.
-    let live = {
-        let c = &world.resource::<Carriers>().0;
-        let mut m = 0u128;
-        for (j, &(i, _)) in ticks.iter().enumerate().take(128) {
-            m |= u128::from(c.get(i).is_some_and(|n| *n > 0)) << j;
-        }
-        m
-    };
-    for (j, &(i, t)) in ticks.iter().enumerate() {
-        let on = if j < 128 { live >> j & 1 == 1 } else { world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) };
-        if on {
+    TICKS.get_or_init(|| crate::species::registry().modules.iter().enumerate().filter_map(|(i, m)| m.tick.map(|t| (i, t))).collect())
+}
+/// The rank of module `i` among those that have a tick.
+fn tick_pos(i: usize) -> Option<usize> {
+    ticks_list().binary_search_by_key(&i, |t| t.0).ok()
+}
+fn tick_modules(world: &mut World) {
+    let ticks = ticks_list();
+    // The bits of the modules carried (kept by the hooks): one word, no walk of the list. Past 128 ticks the rest is looked at one by one.
+    let mut live = world.resource::<Carriers>().2;
+    while live != 0 {
+        let j = live.trailing_zeros() as usize;
+        live &= live - 1;
+        (ticks[j].1)(world);
+    }
+    for &(i, t) in ticks.iter().skip(128) {
+        if world.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0) {
             t(world);
         }
     }
