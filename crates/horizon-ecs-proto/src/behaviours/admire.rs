@@ -31,6 +31,7 @@ pub static MODULE: Module = Module {
     name: "admire",
     flags: MOVE | LOOK,
     equip,
+    arm,
     can_use,
     start,
     stop,
@@ -40,6 +41,12 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Admire(*params::<Params>(p)));
+}
+/// Asked again (the equipment changed, the animal entered the zone): the goal is tried one tick later.
+fn arm(w: &mut World, e: Entity, inst: Inst) {
+    if w.get::<Admire>(e).is_some() {
+        crate::goals::arm(w, e, inst.slot, 1);
+    }
 }
 /// `canUse`: the admired item is in the off hand, and no admiration is under way.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

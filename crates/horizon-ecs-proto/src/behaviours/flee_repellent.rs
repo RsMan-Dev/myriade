@@ -26,6 +26,7 @@ pub static MODULE: Module = Module {
     name: "flee_repellent",
     flags: 0,
     equip,
+    arm,
     can_use,
     start,
     requires: &[Cap::Body, Cap::Goals],
@@ -34,10 +35,18 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Flee(*params::<Params>(p)));
 }
-/// `canUse`: a repellent within reach.
+/// The sensor of the repellents runs every 20 ticks (`PiglinSpecificSensor`): the goal is asked at that cadence.
+fn arm(w: &mut World, e: Entity, _: Inst) {
+    arm_module(w, e, &MODULE, 20);
+}
+/// `canUse`: a repellent within reach; none: the next look is 20 ticks later.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let f = w.get::<Flee>(e).unwrap().0;
-    repellent_near(w, e, &f).is_some()
+    let found = repellent_near(w, e, &f).is_some();
+    if !found {
+        arm_module(w, e, &MODULE, 20);
+    }
+    found
 }
 /// The spot to keep away from is remembered, the walk away is requested, and this goal ends.
 fn start(w: &mut World, e: Entity, inst: Inst) {
@@ -49,6 +58,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
     }
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
+    arm_module(w, e, &MODULE, 20);
 }
 /// The point of the nearest repellent (a block of the list, or a creature of the list) within reach.
 /// Socle absent: `goals::repellent_near` reads the blocks of the level and the species of the creatures.

@@ -29,7 +29,7 @@ pub static DEF: Def = Def {
             ..flee_repellent::Params::DEFAULT
         }),
         // `crossbow_goal(1.0, 8.0)`: the bow module with a charge of 25 ticks and the fixed power of the crossbow (1.6).
-        Entry::new(&ranged_bow::MODULE, 3, &ranged_bow::Params { speed: 1.0, radius: 8.0, charge: 25, fixed_power: Some(1.6), ..ranged_bow::Params::DEFAULT }).when(&HOLDS_CROSSBOW),
+        Entry::new(&ranged_bow::MODULE, 3, &ranged_bow::Params { speed: 1.0, radius: 8.0, charge: 25, fixed_power: Some(1.6), crossbow: true, ..ranged_bow::Params::DEFAULT }).when(&HOLDS_CROSSBOW),
         Entry::new(&melee::MODULE, 3, &melee::Params { interval: 20, ..melee::Params::DEFAULT }).when(&NO_CROSSBOW),
         Entry::new(&go_to_wanted::MODULE, 4, &go_to_wanted::Params { items: &["minecraft:gold_ingot"], ..go_to_wanted::Params::DEFAULT }),
         Entry::new(&celebrate::MODULE, 4, &celebrate::Params::DEFAULT),
