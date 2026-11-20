@@ -88,6 +88,7 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
         }
     }
     let (m, c) = (mob_first.expect("the Mob shoots"), ecs_first.expect("the ECS shoots"));
+    eprintln!("crossbow first shot: mob {m} ecs {c}");
     assert!((m - c).abs() <= 10, "the first arrow flies at about the same tick: Mob {m}, ECS {c}");
 }
 

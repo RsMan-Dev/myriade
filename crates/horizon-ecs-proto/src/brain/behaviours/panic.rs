@@ -20,6 +20,10 @@ fn start(w: &mut World, e: Entity, _: &Ctx) {
     stop_nav(w, e);
 }
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
+    // A threat entity in memory (the villager's `HURT_BY_ENTITY`): the flight is `walk_away`'s, the random spots are only for the rest.
+    if c.get::<Params>().threat.is_some_and(|t| std::ptr::eq(t, &HURT_BY_ENTITY) && present(w, e, t)) {
+        return true;
+    }
     if nav_done(w, e)
         && let Some(p) = pick(w, e, crate::spots::Pick::Default { h: 5, v: 4 })
     {

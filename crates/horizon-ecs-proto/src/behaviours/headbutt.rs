@@ -38,7 +38,37 @@ fn unit(w: &mut World, e: Entity) -> f64 {
     w.get_mut::<Rng>(e).map_or(0.5, |mut r| f64::from(r.next_u32()) / f64::from(u32::MAX))
 }
 
+/// `HoglinAi.onHitTarget`: an adult that hits a piglin while the adult piglins it sees outnumber the adult hoglins retreats from it
+/// and tells the adult hoglins it sees to (`broadcastRetreat`: each handles it at its own next tick, here at once).
+fn on_hit_target(w: &mut World, e: Entity, target: Entity) {
+    if w.get::<crate::cow::GrowAt>(e).is_some() || !crate::brain::sensors::hoglin_sight::piglins_outnumber(w, e) {
+        return;
+    }
+    let piglin = w.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:piglin").map(|s| s.id);
+    if piglin.is_none() || crate::targeting::info(w, Who::Entity(target)).map(|i| i.species) != piglin {
+        return;
+    }
+    let who = Who::Entity(target);
+    super::retreat_on_hurt::avoid_target(w, e, who);
+    if let Some(crate::brain::MemValue::Whos(others)) = crate::brain::get(w, e, &crate::brain::sensors::hoglin_sight::HOGLINS).cloned() {
+        for o in others {
+            if let Who::Entity(o) = o {
+                super::retreat_on_hurt::retreat_from_nearest(w, o, who);
+            }
+        }
+    }
+}
+
 fn hit(w: &mut World, e: Entity) {
+    let struck = w.get::<Target>(e).map(|t| t.who);
+    throw(w, e);
+    // After the throw, which reads the target that the retreat forgets.
+    if let Some(Who::Entity(t)) = struck {
+        on_hit_target(w, e, t);
+    }
+}
+
+fn throw(w: &mut World, e: Entity) {
     if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
         w.resource_mut::<crate::goals::Events>().host.sound("entity.hoglin.attack", [p.x, p.y, p.z], 1.0, 1.0);
     }

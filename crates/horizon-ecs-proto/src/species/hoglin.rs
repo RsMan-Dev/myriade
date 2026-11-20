@@ -4,9 +4,9 @@
 //! when idle; an `AVOID_TARGET` makes it retreat at 1.3 to 15 blocks. The zoglin conversion and its ambient sound are goals.
 //! Left out (see `suivi/ecs-portage/reste/hoglin.md`): the retreat and fight sounds, the baby recoil, the walk value.
 use super::Def;
-use crate::behaviours::{ambient_sound, breed, float, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
-use crate::brain::behaviours::{pacify, walk_away};
-use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, repellent_and_adult};
+use crate::behaviours::{ambient_sound, breed, convert_timer, float, retreat_on_hurt, follow_parent, headbutt, hurt_by, look_at_player, melee, nearest_target, stroll, Cap, Cond, Entry};
+use crate::brain::behaviours::{look_at_target_sink, move_to_target_sink, pacify, walk_away};
+use crate::brain::sensors::{hoglin_sight, hurt_by as hurt_by_sensor, living, repellent_and_adult};
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 
@@ -28,15 +28,24 @@ pub fn pacified(w: &World, e: Entity) -> bool {
     present(w, e, &pacify::PACIFIED)
 }
 
+/// `HoglinAi.setAttackTargetIfCloserThanCurrent`: nothing for a pacified hoglin that receives the broadcast.
+fn not_pacified(w: &World, e: Entity) -> bool {
+    !pacified(w, e)
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:hoglin",
     reference: None,
     targets: &[
-        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], ..hurt_by::Params::DEFAULT }).when(&ADULT),
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], alert_when: Some(not_pacified), ..hurt_by::Params::DEFAULT }).when(&ADULT),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&TARGETING),
     ],
     goals: &[
+        // `HoglinAi.wasHurtBy`, baby: it retreats from the attacker.
+        Entry::new(&retreat_on_hurt::MODULE, 0, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
+        // `Hoglin.aiStep`: more than 300 ticks where piglins cannot live (the host's `UnsafePlace`) and it becomes a zoglin.
+        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300 }),
         Entry::new(&melee::MODULE, 2, &melee::Params { interval: 41, interval_baby: Some(16), follow_unseen: true, forget_unreachable: Some(200), ..melee::Params::DEFAULT }).when(&NOT_RETREATING),
         Entry::new(&headbutt::MODULE, 2, &headbutt::Params { knockback: 0.6 }),
         Entry::new(&breed::MODULE, 3, &breed::Params { foods: &["minecraft:crimson_fungus"], ..breed::Params::DEFAULT }).when(&BREEDING),
@@ -52,6 +61,7 @@ pub static DEF: Def = Def {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),
             SensorEntry::new(&hurt_by_sensor::SENSOR, 20),
+            SensorEntry::new(&hoglin_sight::SENSOR, 20),
             SensorEntry::new(&repellent_and_adult::SENSOR, 20).with(&repellent_and_adult::Params {
                 block_tag: "minecraft:hoglin_repellents",
                 species: "minecraft:piglin",
@@ -68,6 +78,9 @@ pub static DEF: Def = Def {
         pick: &["fight", "avoid", "idle"],
         initial: &[],
         behaviours: &[
+            // `HoglinAi.initCoreActivity`: `LookAtTargetSink` and `MoveToTargetSink` carry out the walks the activities ask for.
+            BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
+            BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry {
                 behaviour: &pacify::BEHAVIOUR,
                 activity: "fight",
