@@ -53,19 +53,15 @@ pub fn set_peek(w: &mut World, e: Entity, amount: i32, sounds: &Sounds, covered:
 }
 
 /// The lid eases toward its raw peek; the sweep pushes what it opens into.
-pub fn ease(w: &mut World) {
-    let mut lids = w.query::<(Entity, &mut Attached)>();
-    let moves: Vec<(Entity, f32, f32)> = lids
-        .iter_mut(w)
-        .filter_map(|(e, mut a)| {
-            let target = a.raw as f32 * 0.01;
-            let old = a.eased;
-            a.eased = if old > target { (old - LID_SPEED).max(target) } else { (old + LID_SPEED).min(target).max(0.0) };
-            (a.eased != old).then_some((e, old, a.eased))
-        })
-        .collect();
-    for (e, old, new) in moves {
-        crate::cow::push_lid(w, e, old, new);
+pub fn ease(mut lids: Query<(Entity, &mut Attached)>, mut commands: Commands) {
+    for (e, mut a) in &mut lids {
+        let target = a.raw as f32 * 0.01;
+        let old = a.eased;
+        let new = if old > target { (old - LID_SPEED).max(target) } else { (old + LID_SPEED).min(target).max(0.0) };
+        if new != old {
+            a.eased = new;
+            commands.queue(move |w: &mut World| crate::cow::push_lid(w, e, old, new));
+        }
     }
 }
 

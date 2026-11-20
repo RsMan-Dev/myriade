@@ -41,6 +41,10 @@ fn touch_events(
     stacks: Query<(), With<Item>>,
     mut ev: ResMut<Events>,
 ) {
+    // No toucher, no touch: a mover is looked at only by touchers (the sparse set is empty at once).
+    if touchers.is_empty() {
+        return;
+    }
     let mut creatures: Vec<(Entity, Entity)> = Vec::new();
     let mut objects: Vec<(Entity, Entity)> = Vec::new();
     for &e in &moves.0 {

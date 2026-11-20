@@ -24,9 +24,8 @@ impl Params {
 }
 
 /// One tick of the steer: the first rider's input moves the flier; a passenger's input is ignored.
-pub fn drive(w: &mut World) {
-    let mut q = w.query_filtered::<(&Mount, &Yaw, &mut Vel, &Params), With<FlyingSteer>>();
-    for (mount, yaw, mut vel, p) in q.iter_mut(w) {
+pub fn drive(mut q: Query<(&Mount, &Yaw, &mut Vel, &Params), With<FlyingSteer>>) {
+    for (mount, yaw, mut vel, p) in &mut q {
         if mount.rider.is_none() {
             continue;
         }
