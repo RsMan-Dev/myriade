@@ -1217,7 +1217,8 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     let mut table: Vec<Species> = Vec::new();
     let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
-        let kind = Arc::new(types.types[name].clone());
+        // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
+        let kind = Arc::new(types.types.get(name).unwrap_or(&types.types["minecraft:cow"]).clone());
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
         table.push(Species {
             id: i as u8,
