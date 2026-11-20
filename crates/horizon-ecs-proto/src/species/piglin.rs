@@ -34,9 +34,9 @@ pub static DEF: Def = Def {
         Entry::new(&ranged_bow::MODULE, 3, &ranged_bow::Params { speed: 1.0, radius: 8.0, charge: 25, fixed_power: Some(1.6), crossbow: true, ..ranged_bow::Params::DEFAULT }).when(&HOLDS_CROSSBOW),
         // `BackUpIfTooClose.create(5, 0.75)` behind `hasCrossbow` (`PiglinAi.initFightActivity`): backs off from a target too close.
         Entry::new(&back_up_if_too_close::MODULE, 3, &back_up_if_too_close::Params::DEFAULT).when(&HOLDS_CROSSBOW),
-        Entry::new(&melee::MODULE, 3, &melee::Params { interval: 20, ..melee::Params::DEFAULT }).when(&NO_CROSSBOW),
         // `g.add(3, PiglinSpear)` (`mobs/piglin.rs:1346`): the spear in hand takes the fight, the melee keeps the rest.
         Entry::new(&spear_use::MODULE, 3, &spear_use::PIGLIN),
+        Entry::new(&melee::MODULE, 3, &melee::Params { interval: 20, ..melee::Params::DEFAULT }).when(&NO_CROSSBOW),
         Entry::new(&go_to_wanted::MODULE, 4, &go_to_wanted::Params { items: &["minecraft:gold_ingot"], ..go_to_wanted::Params::DEFAULT }),
         Entry::new(&celebrate::MODULE, 4, &celebrate::Params::DEFAULT),
         Entry::new(&look_at_held::MODULE, 5, &look_at_held::Params { items: &["minecraft:gold_ingot"], ..look_at_held::Params::DEFAULT }),

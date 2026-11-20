@@ -33,6 +33,8 @@ fn ecs_mob(h: &mut Herd, name: &str, x: f64, seed: u64) -> Entity {
     e
 }
 fn online(h: &mut Herd, at: Vec3) {
+    // The `Mob` scene has a player that takes no hit; the ECS one must not die of the fight either.
+    h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;
     h.world.resource_mut::<Online>().set(Player { id: 1, x: at.x, y: at.y, z: at.z, main: 0, off: 0, ..Default::default() });
 }
 
@@ -46,6 +48,7 @@ fn spider_keeps(day: bool, ticks: usize) -> (bool, bool) {
     r.mobs[i].ai.target = Some(MWho::Player);
     let mut h = Herd::with_slab(40, true, false);
     h.set_daylight(day);
+    h.set_day(day);
     let e = ecs_mob(&mut h, "minecraft:spider", 0.5, 5);
     online(&mut h, at);
     set_target(&mut h.world, e, Target::player(1, 60));
@@ -70,7 +73,7 @@ fn a_spider_gives_its_target_up_in_light_as_the_mob_does() {
     assert_eq!(day, (false, false), "by day both have given the target up");
 }
 
-/// A drowned with a player target, 40 ticks by night (its attack runs), then daylight: the first tick, after the change, at which its
+/// A drowned with a player target, 30 ticks by night (its attack runs), then daylight: the first tick, after the change, at which its
 /// attack goal is no longer running on each side (`DrownedAttackGoal`, `okTarget`: the target is in water or it is night).
 fn drowned_stops() -> ((bool, bool), Option<usize>, Option<usize>) {
     let at = Vec3::new(2.5, 1.0, 0.5);
@@ -81,16 +84,19 @@ fn drowned_stops() -> ((bool, bool), Option<usize>, Option<usize>) {
     r.mobs[i].ai.target = Some(MWho::Player);
     let mut h = Herd::with_slab(40, true, false);
     h.set_daylight(false);
+    h.set_day(false);
     let e = ecs_mob(&mut h, "minecraft:drowned", 0.5, 6);
     online(&mut h, at);
     set_target(&mut h.world, e, Target::player(1, 60));
-    for _ in 0..40 {
+    // The `Mob` starts its attack on tick 20 and the blow that ends it comes on tick 36: tick 30 is inside the run.
+    for _ in 0..30 {
         r.step(Some(&pv));
         h.tick();
     }
     let night = (r.mobs[i].ai.goals.is_running("DrownedAttackGoal"), h.world.get::<hostile::Meleeing>(e).is_some());
     mob_day(&mut r, true);
     h.set_daylight(true);
+    h.set_day(true);
     let (mut mob_end, mut ecs_end) = (None, None);
     for t in 0..40 {
         r.step(Some(&pv));

@@ -168,6 +168,7 @@ fn an_anvil_hurts_the_creature_under_it_and_wears_as_the_jar_says() {
         let sp = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").unwrap();
         let cow = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
         h.world.get_mut::<Pos>(cow).unwrap().0 = horizon_core::geometry::Vec3::new(0.5, f64::from(top), 0.5);
+        h.world.get_mut::<Health>(cow).unwrap().0 = 1000.0;
         let hp = h.world.get::<Health>(cow).unwrap().0;
         h.world.insert_resource(horizon_ecs_proto::projectile_more::ThrownRng(LegacyRandom::new(seed)));
         let mw = h.world.resource::<Level>().mw.0;
@@ -178,7 +179,7 @@ fn an_anvil_hurts_the_creature_under_it_and_wears_as_the_jar_says() {
         let (mut y, mut vy, mut fell) = (start, 0.0_f64, 0.0);
         loop {
             vy -= 0.04;
-            if y + vy <= f64::from(top) + 1.8 {
+            if y + vy <= f64::from(top) {
                 break;
             }
             fell += -vy;
