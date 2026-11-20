@@ -61,7 +61,7 @@ pub static MODULE: Module = Module {
 fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Pounce { p, attack_time: 0, armed: false });
 }

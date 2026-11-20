@@ -46,7 +46,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Graze { def: *params::<Params>(p), armed: false, slot: inst.slot });
 }
 fn arm_graze_inst(w: &mut World, e: Entity, _: Inst) {

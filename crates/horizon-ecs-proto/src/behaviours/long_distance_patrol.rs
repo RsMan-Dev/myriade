@@ -30,7 +30,7 @@ pub struct Hopping {
 }
 
 pub static MODULE: Module = Module { name: "long_distance_patrol", flags: MOVE, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Walker { p: *params::<Params>(p), slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

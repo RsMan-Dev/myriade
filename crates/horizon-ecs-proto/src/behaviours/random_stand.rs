@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let interval = params::<Params>(p).interval;
     w.entity_mut(e).insert(Stand { next: -interval, interval, armed: false });
 }
@@ -202,7 +202,7 @@ mod tests {
     fn the_counter_starts_at_minus_the_interval() {
         let mut w = World::new();
         let e = w.spawn(()).id();
-        let p: &(dyn Any + Sync) = &Params { interval: 400 };
+        let p: &'static (dyn Any + Sync) = &Params { interval: 400 };
         equip(&mut w, e, Inst { slot: 0, nth: 0 }, p);
         let s = *w.get::<Stand>(e).unwrap();
         assert_eq!((s.next, s.interval, s.armed), (-400, 400, false));

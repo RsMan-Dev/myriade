@@ -17,7 +17,7 @@ pub struct Harness {
 
 pub static RULE: Rule = Rule { name: "happy_ghast_harness", equip, attrs: no_attrs, interact };
 
-fn equip(_: &mut World, _: Entity, _: &(dyn std::any::Any + Sync)) {}
+fn equip(_: &mut World, _: Entity, _: &'static (dyn std::any::Any + Sync)) {}
 
 /// `harnessed_adult`: wearing a harness and not a baby.
 pub fn harnessed_adult(w: &World, e: Entity) -> bool {
@@ -25,7 +25,7 @@ pub fn harnessed_adult(w: &World, e: Entity) -> bool {
 }
 
 /// A player offers an item to an adult without a harness: the harness is worn if the item is one.
-fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &Interaction) -> bool {
     if w.get::<Harness>(e).is_some() || w.get::<GrowAt>(e).is_some() || !is_harness(i.item) {
         return no_interact(w, e, p, i);
     }

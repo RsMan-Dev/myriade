@@ -24,7 +24,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Solid],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Trample(*params::<Params>(p)));
 }
 /// The bump of the walk on a wall (`horizontalCollision`), with the bounds inflated by 0.2 as vanilla.

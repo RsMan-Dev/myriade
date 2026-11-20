@@ -55,7 +55,7 @@ fn resources(w: &mut World) {
         }
     });
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     hostile::ensure_attack(w, e);
     let mut a = w.get_mut::<hostile::Attack>(e).unwrap();
     a.melee_slot = inst.slot;

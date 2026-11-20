@@ -34,7 +34,7 @@ pub struct Params {
 
 pub static RULE: Rule = Rule { name: "attached_face", equip, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let colour = params::<Params>(p).colour;
     w.entity_mut(e).insert(Attached { face: 0, color: colour, raw: 0, eased: 0.0 });
 }

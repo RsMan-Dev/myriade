@@ -33,7 +33,7 @@ pub struct Visiting {
 }
 
 pub static MODULE: Module = Module { name: "raid_move_through_village", flags: MOVE, retry_on_end: true, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Through { p: *params::<Params>(p), slot: inst.slot, poi: [0; 3], visited: Vec::new() });
 }
 fn block(p: horizon_core::geometry::Vec3) -> [i32; 3] {

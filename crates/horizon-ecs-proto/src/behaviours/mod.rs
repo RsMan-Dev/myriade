@@ -32,7 +32,7 @@ pub struct Module {
     pub resources: fn(&mut World),
     /// Once at creation, for each entry of the species that has this module, with its parameters (downcast to
     /// this module's `Params`): creates or completes the module's state components (by `inst.nth` when several).
-    pub equip: fn(&mut World, Entity, Inst, &(dyn Any + Sync)),
+    pub equip: fn(&mut World, Entity, Inst, &'static (dyn Any + Sync)),
     /// The first deadlines: creation, entry into the active zone.
     pub arm: fn(&mut World, Entity, Inst),
     /// A wheel deadline of this entry came up: true = ask `can_use` now.
@@ -191,7 +191,7 @@ pub fn same(a: &'static Module, b: &'static Module) -> bool {
 }
 /// Default entry points.
 pub fn no_resources(_: &mut World) {}
-pub fn no_equip(_: &mut World, _: Entity, _: Inst, _: &(dyn Any + Sync)) {}
+pub fn no_equip(_: &mut World, _: Entity, _: Inst, _: &'static (dyn Any + Sync)) {}
 pub fn no_arm(_: &mut World, _: Entity, _: Inst) {}
 pub fn always(_: &mut World, _: Entity, _: Inst) -> bool {
     true
@@ -202,7 +202,7 @@ pub fn no_interact(_: &mut World, _: Entity, _: Inst, _: &Interaction) -> bool {
     false
 }
 pub fn no_systems(_: &mut Schedule, _: GoalSlot) {}
-pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
+pub fn params<T: 'static>(p: &'static (dyn Any + Sync)) -> &'static T {
     let p: &dyn Any = p;
     p.downcast_ref::<T>().expect("the parameters of another module")
 }

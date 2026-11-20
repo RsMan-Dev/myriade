@@ -16,7 +16,7 @@ pub struct SwapParams {
     pub takes_creature: bool,
 }
 pub static HELD_SWAP: Rule = Rule { name: "held_swap", equip: |_, _, _| {}, attrs: no_attrs, interact };
-fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let p = *params::<SwapParams>(p);
     if i.item == 0 || !crate::items::is(p.from, i.item) || (p.adult_only && w.get::<GrowAt>(e).is_some()) {
         return false;

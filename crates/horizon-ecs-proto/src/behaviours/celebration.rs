@@ -14,7 +14,7 @@ pub struct Celebrate {
     pub slot: u8,
 }
 pub static MODULE: Module = Module { name: "celebration", flags: MOVE, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Celebrate { slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

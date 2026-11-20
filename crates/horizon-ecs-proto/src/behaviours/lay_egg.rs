@@ -72,7 +72,7 @@ pub fn load(w: &mut World, e: Entity) {
 pub fn set_anchor(w: &mut World, e: Entity, at: [i32; 3]) {
     w.entity_mut(e).insert(Anchor(at));
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
     let walk = MoveToBlock::new(def.speed, def.range, def.vertical);
     w.entity_mut(e).insert(Lay { def, walk, next_start: 0, armed: false, slot: inst.slot, dug: 0 });

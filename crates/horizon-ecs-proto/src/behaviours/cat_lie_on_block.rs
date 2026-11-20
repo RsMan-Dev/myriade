@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     cs::ensure(w, e);
     let mut walk = MoveToBlock::new(p.speed, p.range, p.vertical);

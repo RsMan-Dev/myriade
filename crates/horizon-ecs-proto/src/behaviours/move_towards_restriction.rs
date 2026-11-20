@@ -57,7 +57,7 @@ pub static MODULE_LOOK: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Speed(params::<Params>(p).speed));
 }
 /// `Mob.isWithinHome` (`goals::within_home` of the `Mob`): the floored position against the restriction, `d^2 < radius^2`.

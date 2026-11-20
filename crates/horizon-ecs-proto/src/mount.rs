@@ -123,7 +123,7 @@ pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(ridden_drive.after(move_control).before(travel));
 }
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
     if let Some(mut m) = w.get_mut::<Mount>(e) {
         (m.jump_strength, m.max_temper, m.steer, m.seats, m.seat_height, m.by_player) = (p.jump_strength, p.max_temper, p.steer, p.seats, p.seat_height, p.by_player);
@@ -131,7 +131,7 @@ fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
 }
 /// `AbstractHorse.mobInteract` with an empty hand or an item it does not eat: the player rides an adult with a free seat (a stick
 /// mount needs its saddle: without it nobody takes the seat).
-fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let Some(m) = w.get::<Mount>(e) else { return false };
     // A saddle or a body armor in hand is for `equipment::EQUIP`, a lead for `leash::LEASH`.
     if matches!(crate::items::worn_in(i.item), Some(Slot::Saddle | Slot::Body)) || i.item == lead() || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {

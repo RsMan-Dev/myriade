@@ -213,14 +213,14 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// The rule `sun_burn` (no params): the undead that burn in daylight (`Mob.isSunBurnTick`): the eye height they look at the sky from.
 pub static SUN_BURN: crate::rules::Rule = crate::rules::Rule { name: "sun_burn", equip: equip_sun_burn, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
-fn equip_sun_burn(world: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+fn equip_sun_burn(world: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
     world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0), flee: false });
     world.resource_mut::<SunDirty>().0.push(e);
 }
 /// The rule `sun_flee`: the creature that leaves in daylight instead of burning (the enderman: the same draw, a teleport at the hit).
 pub static SUN_FLEE: crate::rules::Rule = crate::rules::Rule { name: "sun_flee", equip: equip_sun_flee, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
-fn equip_sun_flee(world: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+fn equip_sun_flee(world: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
     world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0), flee: true });
     world.resource_mut::<SunDirty>().0.push(e);

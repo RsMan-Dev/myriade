@@ -56,7 +56,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     debug_assert!(p.area <= SCAN_AREA, "the index scan does not reach {} blocks", p.area);
     w.entity_mut(e).insert(Follower { p, slot: inst.slot, recalc: 0, fresh: false, target: None, old_water: None });

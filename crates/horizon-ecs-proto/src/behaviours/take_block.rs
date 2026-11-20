@@ -50,7 +50,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Transform, Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Taking { asks: p.asks, holdable: p.holdable, keep_props: p.keep_props, armed: false, slot: inst.slot });
     if w.get::<Carried>(e).is_none() {

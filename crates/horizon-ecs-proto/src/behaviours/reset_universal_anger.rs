@@ -31,7 +31,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Reset { timestamp: 0, slot: inst.slot });
 }
 /// `ResetUniversalAngerTargetGoal.canUse`: the rule, a player that hit it last, and a hit after the handled one.

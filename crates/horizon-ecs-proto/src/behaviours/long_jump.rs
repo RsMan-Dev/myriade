@@ -109,7 +109,7 @@ const MID_JUMP_DURATION: u64 = 100;
 /// `JUMP_VELOCITY_MULTIPLIER` (f32 dans le `Mob`).
 const JUMP_VELOCITY_MULTIPLIER: f32 = 3.571_428_8;
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(LongJumpState { slot: inst.slot, p, ready_at: 0, armed: None, futile: None });
 }

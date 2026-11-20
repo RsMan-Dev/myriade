@@ -52,7 +52,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let items = crate::items::ItemSet::of(&std::iter::once("minecraft:bone").chain(p.foods.iter().copied()).collect::<Vec<_>>());
     w.entity_mut(e).insert(Begger { slot: inst.slot, items, range_sqr: p.range_sqr, asks: p.asks, pick: 0 });

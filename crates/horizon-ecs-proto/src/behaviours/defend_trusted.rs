@@ -34,7 +34,7 @@ pub struct DefendTrusted {
 
 pub static MODULE: Module = Module { name: "defend_trusted", flags: TARGET, equip, can_use, start, stop, requires: &[Cap::Targets], ..Module::DEFAULT };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(DefendTrusted { p, slot: inst.slot, attacker: None, timestamp: u64::MAX, hurt_at: 0 });
 }

@@ -306,7 +306,7 @@ pub fn wake(w: &mut World, e: Entity) {
 fn systems(_: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {}
 
 /// The flight's components, from the spawn position; the spawner seeds `DragonRng` (see `respawn::spawn_new_dragon`).
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let cfg = *params::<Params>(p);
     // The dragon is no `Mob` type: its health is its own (`Dragon::new`), not the table's.
     w.entity_mut(e).insert((Health(data::MAX_HEALTH), crate::cow::MaxHealth(data::MAX_HEALTH)));

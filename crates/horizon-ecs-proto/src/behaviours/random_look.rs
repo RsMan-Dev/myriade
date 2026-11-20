@@ -38,7 +38,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Head],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Scan { period: params::<Params>(p).period, armed: false, slot: inst.slot });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {

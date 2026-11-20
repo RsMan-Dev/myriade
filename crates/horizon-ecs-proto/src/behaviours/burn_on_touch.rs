@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Toucher { reach: [1.0, 0.5, 1.0] });
 }
 /// The module's tick, called only while a creature that carries it lives (no registered system).

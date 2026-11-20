@@ -39,7 +39,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Admire(*params::<Params>(p)));
 }
 /// Asked again (the equipment changed, the animal entered the zone): the goal is tried one tick later.

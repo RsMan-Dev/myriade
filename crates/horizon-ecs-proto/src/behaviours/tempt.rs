@@ -58,7 +58,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let items = crate::items::ItemSet::of(p.items);
     let t = Tempt { items, speed: p.speed, stop: p.stop, range: p.range, look_y: p.look_y, calm: p.calm, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };

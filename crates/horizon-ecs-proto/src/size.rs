@@ -31,7 +31,7 @@ pub struct SizeRule {
     pub base: (f32, f32),
 }
 pub static SIZE: Rule = Rule { name: "size", equip, attrs: no_attrs, interact: no_interact };
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<SizeParams>(p);
     let base = w.get::<Body>(e).map_or((0.5, 0.5), |b| (b.width, b.height));
     w.entity_mut(e).insert((SizeRule { p, base }, Size(1)));

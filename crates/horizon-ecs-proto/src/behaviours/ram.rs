@@ -92,7 +92,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert((
         Rammer { slot: inst.slot, p, armed: None, phase: Phase::Done, candidate: None, reached_at: None, ram_target: None, ram_direction: Vec3::ZERO, time: 0 },

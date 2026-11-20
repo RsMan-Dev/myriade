@@ -36,7 +36,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Convert(*params::<Params>(p)));
 }
 /// One check at creation: the place a creature lives in does not change while it lives (the host's `UnsafePlace` names a dimension), so no

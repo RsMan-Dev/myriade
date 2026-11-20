@@ -36,7 +36,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Rideable, Cap::Tamable, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(RunAround { p: *params::<Params>(p), slot: inst.slot, pick: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {

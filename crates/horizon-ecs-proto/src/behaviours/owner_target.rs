@@ -31,7 +31,7 @@ pub struct OwnerTarget {
 pub struct OwnerTargets(pub Vec<OwnerTarget>);
 
 pub static MODULE: Module = Module { name: "owner_target", flags: TARGET, equip, can_use, start, stop, requires: &[Cap::Tamable, Cap::Targets], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let t = OwnerTarget { p: *params::<Params>(p), slot: inst.slot, handled: u64::MAX };
     match w.get_mut::<OwnerTargets>(e) {
         Some(mut v) => v.0.push(t),

@@ -20,7 +20,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Invulnerable(0));
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

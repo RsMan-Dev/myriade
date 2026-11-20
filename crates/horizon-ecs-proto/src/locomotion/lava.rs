@@ -21,7 +21,7 @@ impl Params {
 pub struct StandsOnLava;
 
 pub static MODULE: Module = Module { name: "lava", requires: &[Cap::Locomotion, Cap::Body], equip, systems, ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(StandsOnLava);
 }
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {

@@ -63,7 +63,7 @@ fn resources(w: &mut World) {
         }
     });
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(GuardianBeam { p: *params::<Params>(p), slot: inst.slot, attack_time: 0 });
 }
 fn tick(w: &mut World) {

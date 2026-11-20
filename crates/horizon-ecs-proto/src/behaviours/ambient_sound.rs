@@ -27,7 +27,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Ambient(*params::<Params>(p)));
 }
 fn delay(w: &mut World, e: Entity) -> i32 {

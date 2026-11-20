@@ -46,7 +46,7 @@ pub struct Escorts(pub Vec<Escort>);
 pub struct Escorting(pub u8);
 
 pub static MODULE: Module = Module { name: "follow_player_vehicle", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let s = Escort { p: *params::<Params>(p), slot: inst.slot, following: false, leading: false, recalc: 0 };
     match w.get_mut::<Escorts>(e) {
         Some(mut v) => v.0.push(s),

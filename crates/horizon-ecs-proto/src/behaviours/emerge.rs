@@ -27,7 +27,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
     w.entity_mut(e).insert_if_new(RareState { emerge_pending: true, ..RareState::default() });

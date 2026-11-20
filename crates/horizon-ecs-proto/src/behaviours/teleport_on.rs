@@ -43,7 +43,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Living],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Spot { cfg: *params::<Params>(p) });
 }
 /// Below `hurt_below` of the max health, one chance in `hurt_one_in` to teleport (the body's own random).

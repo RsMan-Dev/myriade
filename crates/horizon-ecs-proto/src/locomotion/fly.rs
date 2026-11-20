@@ -76,7 +76,7 @@ pub struct FlyParams {
 pub struct FloatState(pub i32);
 
 pub static MODULE: Module = Module { name: "fly", requires: &[Cap::Locomotion, Cap::Body], equip, systems, ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = crate::behaviours::params::<Params>(p);
     let Some(sid) = w.get::<SpeciesId>(e).map(|s| s.0) else { return };
     let sp = w.resource::<SpeciesTable>().0[sid as usize];

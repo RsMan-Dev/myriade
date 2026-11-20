@@ -33,7 +33,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     if params::<Params>(p).walkable {
         w.entity_mut(e).insert(SnowWalker);
     }

@@ -71,7 +71,7 @@ fn resources(w: &mut World) {
         }
     });
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let n = (inst.nth as usize).min(2);
     let p = *params::<Params>(p);
     if w.get::<Spells>(e).is_none() {

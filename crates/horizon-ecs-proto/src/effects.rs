@@ -256,7 +256,7 @@ pub struct OnHit(pub &'static [(Kind, i32, i32)]);
 /// The rule that gives it (`species` configuration: no code per species). Not done: a player target has no `Effects`.
 pub static ON_HIT: crate::rules::Rule = crate::rules::Rule { name: "on_hit_effects", equip: equip_on_hit, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 pub struct OnHitParams(pub &'static [(Kind, i32, i32)]);
-fn equip_on_hit(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip_on_hit(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(OnHit(crate::rules::params::<OnHitParams>(p).0));
 }
 /// The blow landed: the effects of `from` are put on `target` (a creature, or a player: the player's list is `PlayerEffects`).

@@ -11,7 +11,7 @@ pub struct Params;
 pub struct AvoidSun;
 
 pub static MODULE: Module = Module { name: "restrict_sun", flags: 0, equip, can_use: never, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(AvoidSun);
 }
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {

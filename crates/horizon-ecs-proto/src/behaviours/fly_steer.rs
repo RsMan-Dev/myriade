@@ -40,7 +40,7 @@ pub fn drive_one(mount: &Mount, yaw: &Yaw, vel: &mut Vel, p: &Params) {
 
 /// The rule that makes a mount fly under its rider's steer, with the species' constants.
 pub static RULE: crate::rules::Rule = crate::rules::Rule { name: "fly_steer", equip, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *crate::behaviours::params::<Params>(p);
     w.entity_mut(e).insert((FlyingSteer, p));
 }

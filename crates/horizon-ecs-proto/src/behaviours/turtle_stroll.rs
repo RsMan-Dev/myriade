@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(TurtleStroll { speed: p.speed, slot: inst.slot });
     if let Some(mut s) = w.get_mut::<Stroll>(e) {

@@ -41,7 +41,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     ps::ensure(w, e);
     let def = *params::<Params>(p);
     w.entity_mut(e).insert(Roll { def, slot: inst.slot, armed: false, asks_left: None });

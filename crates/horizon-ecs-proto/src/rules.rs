@@ -9,13 +9,13 @@ pub struct Rule {
     pub name: &'static str,
     /// Once at creation: the state components of the rule from its parameters (a rule reads the entity's own components: body
     /// attributes, the random stream; never a species).
-    pub equip: fn(&mut World, Entity, &(dyn Any + Sync)),
+    pub equip: fn(&mut World, Entity, &'static (dyn Any + Sync)),
     /// The body attributes the rule gives (read when the bundles are made, so that a bundle made without `equip` has them).
-    pub attrs: fn(&(dyn Any + Sync)) -> Attrs,
+    pub attrs: fn(&'static (dyn Any + Sync)) -> Attrs,
     /// A player used an item on the entity (true: handled).
-    pub interact: fn(&mut World, Entity, &(dyn Any + Sync), &crate::behaviours::Interaction) -> bool,
+    pub interact: fn(&mut World, Entity, &'static (dyn Any + Sync), &crate::behaviours::Interaction) -> bool,
 }
-pub fn no_interact(_: &mut World, _: Entity, _: &(dyn Any + Sync), _: &crate::behaviours::Interaction) -> bool {
+pub fn no_interact(_: &mut World, _: Entity, _: &'static (dyn Any + Sync), _: &crate::behaviours::Interaction) -> bool {
     false
 }
 /// What a rule changes of the attributes of the body and the immunities.
@@ -24,7 +24,7 @@ pub struct Attrs {
     pub fall_factor: Option<f64>,
     pub immune: u32,
 }
-pub fn no_attrs(_: &(dyn Any + Sync)) -> Attrs {
+pub fn no_attrs(_: &'static (dyn Any + Sync)) -> Attrs {
     Attrs::default()
 }
 /// The attributes of all the rules of a species, folded.
@@ -44,7 +44,7 @@ impl RuleEntry {
         Self { rule, params }
     }
 }
-pub fn params<T: 'static>(p: &(dyn Any + Sync)) -> &T {
+pub fn params<T: 'static>(p: &'static (dyn Any + Sync)) -> &'static T {
     let p: &dyn Any = p;
     p.downcast_ref::<T>().expect("the parameters of another rule")
 }

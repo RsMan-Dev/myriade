@@ -78,7 +78,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Tamable, Cap::Body],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     // Only a world that has such a creature has the resource: registering one for every world moves the ids of the others' components.
     w.init_resource::<Shoulders>();

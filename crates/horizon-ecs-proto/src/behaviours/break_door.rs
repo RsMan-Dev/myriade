@@ -32,10 +32,10 @@ pub struct Breaking;
 
 pub static MODULE: Module = Module { name: "break_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
 pub static RAID: Module = Module { name: "raid_break_door", flags: MOVE, equip: equip_raid, can_use: can_use_raid, start, stop, tick: Some(tick_raid), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((BreakDoor { p: *params::<Params>(p), slot: inst.slot, time: 0 }, BreakSeeker { slot: inst.slot }));
 }
-fn equip_raid(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip_raid(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((BreakDoor { p: *params::<Params>(p), slot: inst.slot, time: 0 }, RaidBreakSeeker { slot: inst.slot }));
 }
 /// `DOOR_BREAKING_PREDICATE`.

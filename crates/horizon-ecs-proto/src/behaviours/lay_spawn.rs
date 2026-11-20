@@ -40,7 +40,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Layer { slot: inst.slot, p: *params::<Params>(p), next_ok: 0, target: None });
 }
 /// A frog that is already pregnant when the goals are armed is asked for at once.

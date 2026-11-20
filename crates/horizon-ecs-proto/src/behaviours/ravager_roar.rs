@@ -29,7 +29,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Roar(*params::<Params>(p)));
 }
 /// The roar starts: busy, the sound, and the two deadlines.

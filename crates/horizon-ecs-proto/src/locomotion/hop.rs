@@ -70,7 +70,7 @@ pub struct Hop {
 pub struct Hopping;
 
 pub static MODULE: Module = Module { name: "hop", requires: &[Cap::Locomotion, Cap::Goals], equip, systems, ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *crate::behaviours::params::<Params>(p);
     // A body made in the air lands first, then jumps with no wait (the counter starts at 0); the first draw of the direction is its first tick.
     w.entity_mut(e).insert((Hop { p, dir: 0.0, redirect: 1, pending: p.path.map_or(0, |x| x.delay), jumped_at: 0, aggressive: false, armed: false }, Hopping));

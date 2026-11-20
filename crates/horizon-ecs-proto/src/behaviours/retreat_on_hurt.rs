@@ -22,7 +22,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Living, Cap::Targets, Cap::Brain],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Retreat { slot: inst.slot, handled: u64::MAX });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {

@@ -26,7 +26,7 @@ pub struct ToRaid {
 pub struct Walking;
 
 pub static MODULE: Module = Module { name: "pathfind_to_raid", flags: MOVE, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(ToRaid { p: *params::<Params>(p), slot: inst.slot });
 }
 /// `valid`: an active raid, not over, and the raider is not in a village.

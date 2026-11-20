@@ -36,7 +36,7 @@ pub struct Perching;
 
 pub static MODULE: Module = Module { name: "bat_flutter", equip, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 /// `Bat(EntityType, Level)`: a new bat hangs.
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Flutter::default());
     perch(w, e);
 }

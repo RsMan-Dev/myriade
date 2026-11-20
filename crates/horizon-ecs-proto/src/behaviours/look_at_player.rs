@@ -57,7 +57,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Head],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let species = SpeciesSet::of(p.species.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize));
     let g = Glance { range: p.range, period: p.period, armed: false, slot: inst.slot, pick: Who::Player(0), species };

@@ -6,7 +6,7 @@ use crate::raids::has_active_raid;
 use crate::goals::*;
 
 pub static MODULE: Module = Module { name: "raider_open_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(OpenSeeker { slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

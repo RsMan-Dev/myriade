@@ -41,7 +41,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Curse { p: *params::<Params>(p) });
     if w.get::<Restriction>(e).is_none() {
         let at = w.get::<Pos>(e).unwrap().0;

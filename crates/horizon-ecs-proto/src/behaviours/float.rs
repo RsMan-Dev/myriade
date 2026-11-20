@@ -26,7 +26,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     let eye = w.get::<FluidParams>(e).map_or(0.0, |p| p.eye_height);
     w.entity_mut(e).insert(Buoyancy(if eye < 0.4 { 0.0 } else { 0.4 }));
 }

@@ -26,7 +26,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(_: &mut World, _: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {}
+fn equip(_: &mut World, _: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {}
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     crate::goals::arm(w, e, inst.slot, 1);
 }

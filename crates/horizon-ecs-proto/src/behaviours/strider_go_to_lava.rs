@@ -47,7 +47,7 @@ pub static MODULE: Module = Module {
 fn reduced(n: i32) -> i32 {
     (n + 1) / 2
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(Lava { block: MoveToBlock::new(p.speed, p.range, p.vertical), slot: inst.slot, blocked: false });
 }

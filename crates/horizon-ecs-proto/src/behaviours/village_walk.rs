@@ -50,7 +50,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let walk = Walk { p: *params::<Params>(p), slot: inst.slot, pick: None, armed: false };
     match w.get_mut::<VillageWalks>(e) {
         Some(mut v) => v.0.push(walk),

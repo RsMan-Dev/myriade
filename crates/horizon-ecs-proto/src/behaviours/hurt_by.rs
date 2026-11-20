@@ -60,7 +60,7 @@ fn mask_of(w: &World, names: &[&str]) -> crate::species::SpeciesSet {
     let _ = w;
     crate::species::SpeciesSet::of(names.iter().filter_map(|n| crate::species::registry().id(n)).map(|i| i as usize))
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let (alert_types, alert_except, ignore) = (mask_of(w, p.alert_types), mask_of(w, p.alert_except), mask_of(w, p.ignoring));
     w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, ignore, called_by: None });

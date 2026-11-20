@@ -94,7 +94,7 @@ pub struct NeedsWater;
 pub struct Dry;
 
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let sp = *crate::behaviours::params::<Params>(p);
     w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid, reset_pitch: sp.reset_pitch });
     if sp.squid {

@@ -20,7 +20,7 @@ pub struct Interacting {
 }
 
 pub static MODULE: Module = Module { name: "interact_with_door", flags: 0, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(InteractSeeker { slot: inst.slot });
 }
 /// The step of the path being followed: the node left and the node ahead.

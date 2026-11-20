@@ -79,12 +79,12 @@ fn leash_removed(mut world: DeferredWorld, ctx: HookContext) {
     }
 }
 pub static LEASH: Rule = Rule { name: "leash", equip, attrs: no_attrs, interact };
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<LeashParams>(p);
     w.entity_mut(e).insert(Leashable { elastic: p.elastic, snap: p.snap, follow_speed: p.follow_speed });
 }
 /// A lead in hand puts the creature on a lead; the holder's empty hand takes it off.
-fn interact(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     if let Some(l) = w.get::<Leash>(e) {
         return l.holder == Holder::Player(i.player) && detach(w, e).is_some();
     }

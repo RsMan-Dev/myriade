@@ -95,7 +95,7 @@ pub static MODULE: Module = Module {
 
 /// `LivingEntity.getVisibilityPercent` of an invisible target with no armour: `0.7 * 0.1`.
 const INVISIBLE: f64 = 0.07;
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mw = w.resource::<Level>().mw.0;
     let mut ids = Vec::new();

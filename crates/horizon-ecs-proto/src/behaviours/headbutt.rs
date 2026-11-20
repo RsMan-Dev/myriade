@@ -25,7 +25,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let knockback = params::<Params>(p).knockback;
     w.entity_mut(e).insert(Headbutt(knockback));
     if let Some(mut attack) = w.get_mut::<Attack>(e) {

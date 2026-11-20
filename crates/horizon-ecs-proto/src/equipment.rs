@@ -124,7 +124,7 @@ impl EquipParams {
 pub static EQUIP: Rule = Rule { name: "equip", equip: |_, _, _| {}, attrs: no_attrs, interact };
 /// `Mob.mobInteract` of the saddle and the body armor: an adult (tame, if it must be) with the slot empty takes the item the player holds; the item leaves
 /// the player's hand.
-fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let p = *params::<EquipParams>(p);
     if i.item == 0 || w.get::<GrowAt>(e).is_some() {
         return false;

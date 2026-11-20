@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
 fn resources(w: &mut World) {
     w.insert_resource(Babies::default());
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(FollowParent { speed: p.speed, recalc: 0, slot: inst.slot, parent: None });
 }

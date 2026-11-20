@@ -50,7 +50,7 @@ fn resources(w: &mut World) {
         arm_module(w, e, &MODULE, c.first_cooldown as i32);
     });
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Cfg(*params::<Params>(p)));
     w.entity_mut(e).insert_if_new(ActPhase::default());
 }

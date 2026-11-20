@@ -100,7 +100,7 @@ pub(crate) fn species_mask(what: Avoid) -> crate::species::SpeciesSet {
         Avoid::Monsters => SpeciesSet::of(reg.species.iter().enumerate().filter(|(_, s)| crate::cow::is_monster(s.name)).map(|(i, _)| i)),
     }
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     debug_assert!(p.max_dist <= REACH, "the index scan does not reach {} blocks", p.max_dist);
     let a = Avoider {

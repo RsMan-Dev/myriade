@@ -45,7 +45,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 /// Once at creation: the settings of the entry.
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(AirSearch { threshold: p.threshold, reach_up: p.reach_up });
 }

@@ -69,7 +69,7 @@ pub static MODULE: Module = Module { name: "drink_potion", flags: 0, equip, arm,
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Drinker(*params::<Params>(p)));
 }
 /// How many drinkers `tick` visited (the tests of the rest cost read it; before `Thirsty` every drinker was visited every tick).

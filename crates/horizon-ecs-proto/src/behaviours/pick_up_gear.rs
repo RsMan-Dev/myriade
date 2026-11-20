@@ -43,7 +43,7 @@ pub static MODULE: Module = Module { name: "pick_up_gear", flags: 0, equip, fire
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((Gear { p: *params::<Params>(p) }, Looted::default()));
 }
 /// A module tick: called only while a creature that loots lives (no registered system).

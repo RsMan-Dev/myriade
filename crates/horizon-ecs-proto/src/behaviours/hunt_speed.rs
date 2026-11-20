@@ -37,7 +37,7 @@ pub static MODULE: Module = Module {
 fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let now = w.resource::<crate::cow::Clock>().0;
     w.entity_mut(e).insert(Pace { base: p.idle, since: now, max: p.idle, busy: false, hunting: p.hunting, idle: p.idle });

@@ -171,7 +171,7 @@ pub struct Circling;
 /// `PhantomAttackPlayerTargetGoal` (TARGET): one scan per `reduced(60)` asks (a deadline of 2x that): a player within (16 + width, 64, 16 +
 /// width) becomes the target (it must be seen: the target's own `must_see`, with no memory, ends it the tick it is not).
 pub static PHANTOM_ATTACK_PLAYER_TARGET: Module = Module { name: "phantom_attack_player_target", flags: TARGET, equip: scan_equip, arm: scan_arm, fired: scan_fired, can_use: scan_can_use, start: scan_start, stop: scan_stop, requires: &[Cap::Targets], ..Module::DEFAULT };
-fn scan_equip(_: &mut World, _: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {}
+fn scan_equip(_: &mut World, _: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {}
 /// The first scan comes after `reduced(20)` asks (`Phantom.register`), the next ones every `reduced(60)`.
 fn scan_arm(w: &mut World, e: Entity, _: Inst) {
     arm_module(w, e, &PHANTOM_ATTACK_PLAYER_TARGET, 2 * reduced(20));
@@ -333,7 +333,7 @@ fn sweep_tick(w: &mut World) {
 /// `PhantomCircleAroundAnchorGoal` (MOVE): without a target or out of the dive, fly round the anchor at a radius of 5 to 15 blocks, 15
 /// degrees a point; the height, the radius and the angle are drawn again by chance (1 in 350, 250, 450 ticks of the goal).
 pub static PHANTOM_CIRCLE_AROUND_ANCHOR: Module = Module { name: "phantom_circle_around_anchor", tick: Some(circle_tick), flags: MOVE, equip: circle_equip, arm: circle_arm, can_use: circle_can_use, start: circle_start, stop: circle_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn circle_equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn circle_equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     // `Phantom.register`: the anchor is 5 blocks above where it appeared.
     if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
         w.entity_mut(e).insert(Anchor([p.x.ifloor(), p.y.ifloor() + 5, p.z.ifloor()]));

@@ -25,7 +25,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Living],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Bar { color: p.color, name: p.name });
     progress(w, e);

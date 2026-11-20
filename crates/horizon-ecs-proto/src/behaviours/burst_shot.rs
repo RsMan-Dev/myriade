@@ -67,7 +67,7 @@ fn on_target(w: &mut World, e: Entity) {
         w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
     }
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Burst { p: *params::<Params>(p), slot: inst.slot, step: 0, time: 0, last_seen: 0 });
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).

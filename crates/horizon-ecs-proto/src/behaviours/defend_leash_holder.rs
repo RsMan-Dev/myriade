@@ -27,7 +27,7 @@ pub struct Defender {
     attacker: Option<Who>,
 }
 pub static MODULE: Module = Module { name: "defend_leash_holder", flags: TARGET, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Defender { p: *params::<Params>(p), slot: inst.slot, handled: u64::MAX, attacker: None });
 }
 fn tick(w: &mut World) {

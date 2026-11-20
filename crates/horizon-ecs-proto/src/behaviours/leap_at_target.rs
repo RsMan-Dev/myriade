@@ -48,7 +48,7 @@ pub static MODULE: Module = Module {
 fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let yd = params::<Params>(p).yd;
     w.entity_mut(e).insert(Leap { yd, slot: inst.slot, target: [0.0; 3], due: None });
 }

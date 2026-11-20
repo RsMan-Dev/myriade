@@ -46,7 +46,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
     let mut walk = MoveToBlock::new(def.speed, def.range, def.vertical);
     walk.vertical_start = def.vertical_start;

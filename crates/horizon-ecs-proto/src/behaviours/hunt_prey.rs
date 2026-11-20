@@ -40,7 +40,7 @@ fn draw(w: &mut World, e: Entity, (lo, hi): (u32, u32)) -> u64 {
     let r = w.get_mut::<Rng>(e).unwrap().next_u32();
     now_of(w, e) + u64::from(lo + r % (hi - lo + 1))
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let until = draw(w, e, p.cooldown);
     w.entity_mut(e).insert(Hunt { p, until });

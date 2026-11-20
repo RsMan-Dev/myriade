@@ -59,7 +59,7 @@ pub struct Hurts(pub Vec<Entity>);
 fn resources(w: &mut World) {
     w.insert_resource(Hurts::default());
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(Panic { speed: p.speed, h: p.h, v: p.v, window: p.window, water: p.water, environmental: p.environmental, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
 }

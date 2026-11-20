@@ -32,7 +32,7 @@ pub struct Dodges;
 pub struct WaterSensitive;
 
 pub static MODULE: Module = Module { name: "ender_teleport", flags: 0, equip, can_use: never, damaged, requires: &[Cap::Body, Cap::Living], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Teleporter(p));
     if p.dodges {

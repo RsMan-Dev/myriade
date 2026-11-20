@@ -16,7 +16,7 @@ pub struct Spiky;
 
 pub static MODULE: Module = Module { name: "guardian_thorns", flags: 0, equip, can_use: never, requires: &[Cap::Body, Cap::Living, Cap::Locomotion], ..Module::DEFAULT };
 
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Spiky);
 }
 /// The thorns of a blow aimed at a still guardian (and the forced stroll of every blow): only a living direct cause (`Cause::Entity`, `direct`) that is not `#avoids_guardian_thorns`.

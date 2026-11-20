@@ -53,7 +53,7 @@ fn on_target(w: &mut World, e: Entity) {
         w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
     }
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Approach { slot: inst.slot, speed: p.speed, within: p.within, wanted: [0.0; 3] });
 }

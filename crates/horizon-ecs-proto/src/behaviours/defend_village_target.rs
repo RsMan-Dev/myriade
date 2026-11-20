@@ -37,7 +37,7 @@ pub struct Defend {
 #[derive(Resource, Default)]
 pub struct Asks(pub u64);
 pub static MODULE: Module = Module { name: "defend_village_target", flags: TARGET, equip, arm, fired, systems, can_use, start, stop, ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Defend { p: *params::<Params>(p), slot: inst.slot });
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {

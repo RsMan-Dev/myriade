@@ -26,14 +26,14 @@ pub struct WingParams {
     pub fall_immune: bool,
 }
 pub static WING_FLAP: Rule = Rule { name: "wing_flap", equip: equip_wings, attrs: wing_attrs, interact: crate::rules::no_interact };
-fn wing_attrs(p: &(dyn std::any::Any + Sync)) -> crate::rules::Attrs {
+fn wing_attrs(p: &'static (dyn std::any::Any + Sync)) -> crate::rules::Attrs {
     let p = crate::rules::params::<WingParams>(p);
     crate::rules::Attrs { fall_factor: Some(p.fall_factor), immune: if p.fall_immune { IMMUNE_FALL } else { 0 } }
 }
-fn equip_wings(w: &mut World, e: Entity, _: &(dyn std::any::Any + Sync)) {
+fn equip_wings(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Flap::default());
 }
-fn equip_egg(world: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip_egg(world: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let d = *crate::rules::params::<EggDef>(p);
     let left = {
         let mut r = world.get_mut::<Rng>(e).unwrap();

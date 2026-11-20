@@ -56,7 +56,7 @@ fn resources(w: &mut World) {
     });
 }
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     fs::ensure(w, e);
     let p = params::<Params>(p);
     w.entity_mut(e).insert(Plan { speed: p.speed, still_sqr: p.still_sqr, types: p.types });

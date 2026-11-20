@@ -401,7 +401,7 @@ fn release(w: &mut World, e: Entity, h: [i32; 3], stay: u64) {
 }
 
 // ---- the goals -----------------------------------------------------------------------------------------------------
-fn equip(w: &mut World, e: Entity, _: Inst, _: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     ensure(w, e);
 }
 /// A deadline in `ticks` of the bee's own time (never under 2: the asks come every other tick).

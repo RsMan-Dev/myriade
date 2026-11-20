@@ -25,7 +25,7 @@ pub struct Fetcher {
 pub struct Fetching;
 
 pub static MODULE: Module = Module { name: "obtain_banner", flags: MOVE, equip, fired, systems, can_use, start, stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Fetcher { p: *params::<Params>(p), slot: inst.slot, item: None });
 }
 /// An item entity of the ominous banner within reach of the raider.

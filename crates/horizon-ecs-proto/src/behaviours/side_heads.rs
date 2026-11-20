@@ -64,7 +64,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Head, Cap::Targets],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mask = species_mask(&p);
     let due = now_of(w, e) + 1;

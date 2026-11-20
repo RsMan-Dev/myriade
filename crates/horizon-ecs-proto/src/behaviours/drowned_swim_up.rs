@@ -46,7 +46,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
     w.entity_mut(e).insert(Rising { h: def.h, v: def.v, stuck: false, armed: false, slot: inst.slot });
 }

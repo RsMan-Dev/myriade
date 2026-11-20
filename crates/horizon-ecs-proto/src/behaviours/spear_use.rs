@@ -92,7 +92,7 @@ fn resources(w: &mut World) {
         }
     });
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let def = *params::<Params>(p);
     w.entity_mut(e).insert(Spear { def, slot: inst.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new(), last: Vec3::ZERO, moved: Vec3::ZERO });
 }

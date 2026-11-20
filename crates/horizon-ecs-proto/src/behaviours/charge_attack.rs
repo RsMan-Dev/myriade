@@ -57,7 +57,7 @@ pub static MODULE: Module = Module {
 fn resources(w: &mut World) {
     w.resource_mut::<TargetWatchers>().0.push(on_target);
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(Charger { p, slot: inst.slot, start: Vec3::new(0.0, 0.0, 0.0), velocity: Vec3::new(0.0, 0.0, 0.0), rest_until: 0 });
 }

@@ -44,13 +44,13 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
         s.add_systems(owner_events.after(apply_damage));
     }
 }
-fn equip(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<TameParams>(p);
     w.entity_mut(e).insert(TameRule(p));
 }
 /// A player used an item on it: a tame one of this player sits or stands; a wild one is tamed by the item with one chance in
 /// `chance` (the item is used up whatever the draw).
-fn interact(w: &mut World, e: Entity, p: &(dyn std::any::Any + Sync), i: &Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &Interaction) -> bool {
     let p = *params::<TameParams>(p);
     let Some(owner) = w.get::<Owner>(e).map(|o| o.0) else { return false };
     match owner {

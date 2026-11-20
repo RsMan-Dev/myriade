@@ -38,7 +38,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Tamable, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     w.entity_mut(e).insert(StayClose { p, slot: inst.slot, recalc: 0, fresh: false });
     if w.get::<PlayerWatch>(e).is_none() {

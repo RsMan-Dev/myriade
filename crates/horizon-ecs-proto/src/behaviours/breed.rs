@@ -86,7 +86,7 @@ fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
     w.entity_mut(e).remove::<Love>();
 }
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: inst.slot, partner: None });
 }

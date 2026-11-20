@@ -55,7 +55,7 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Targets, Cap::Locomotion, Cap::Brain],
     ..Module::DEFAULT
 };
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(StareFreeze(*params::<Params>(p)));
 }
 /// Creation, entry into the active zone: the rule is asked once.

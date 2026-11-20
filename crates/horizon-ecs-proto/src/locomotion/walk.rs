@@ -16,7 +16,7 @@ impl Params {
     pub const DEFAULT: Params = Params { climber: false, smooth_land: None };
 }
 pub static MODULE: Module = Module { name: "walk", requires: &[Cap::Locomotion], equip, tick: Some(super::climb::tick), ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, _: crate::behaviours::Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: crate::behaviours::Inst, p: &'static (dyn std::any::Any + Sync)) {
     if let (Some(s), Some(mut d)) = (crate::behaviours::params::<Params>(p).smooth_land, w.get_mut::<crate::cow::Drive>(e)) {
         d.smooth_land = Some(s);
     }

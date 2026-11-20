@@ -42,7 +42,7 @@ pub static MODULE: Module = Module {
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let now = now_of(w, e) as i64;
     w.entity_mut(e).insert(Posture { sitting: false, since: now - p.stand_up as i64 - 1, sit_down: p.sit_down, stand_up: p.stand_up });

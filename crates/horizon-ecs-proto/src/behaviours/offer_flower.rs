@@ -31,7 +31,7 @@ pub struct Offering {
 }
 
 pub static MODULE: Module = Module { name: "offer_flower", flags: MOVE | LOOK, equip, arm, fired, blocked: Some(blocked), can_use, start, stop, tick: Some(tick), ..Module::DEFAULT };
-fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let ids = crate::species::registry().species.iter().enumerate().filter(|(_, s)| params::<Params>(p).candidates.contains(&s.name)).map(|(i, _)| i);
     w.entity_mut(e).insert(Offer { p: *params::<Params>(p), slot: inst.slot, mask: SpeciesSet::of(ids), who: None });
 }

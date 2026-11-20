@@ -32,7 +32,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-fn equip(w: &mut World, e: Entity, _: Inst, p: &(dyn std::any::Any + Sync)) {
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     fs::ensure(w, e);
     w.entity_mut(e).insert(FaceplantTicks(params::<Params>(p).ticks));
 }
