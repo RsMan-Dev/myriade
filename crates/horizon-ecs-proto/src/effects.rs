@@ -23,6 +23,8 @@ pub enum Kind {
     Levitation,
     /// Hunger: nothing for a creature (it is a player's).
     Hunger,
+    /// `MobEffects.MINING_FATIGUE`: a player's (the elder guardian's curse).
+    MiningFatigue,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).

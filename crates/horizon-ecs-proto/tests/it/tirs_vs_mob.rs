@@ -66,6 +66,9 @@ struct Tick {
     ecs_fangs: u32,
     mob_vex: u32,
     ecs_vex: u32,
+    /// Entity event 21 (the guardian's charge sound), by side.
+    mob_charge: u32,
+    ecs_charge: u32,
 }
 impl Scene {
     fn step(&mut self, view: &horizon_client_lib::mobs::PlayerView) -> Tick {
@@ -81,11 +84,13 @@ impl Scene {
             match e {
                 MobEvent::CrossbowShot { .. } | MobEvent::Projectile(_) => t.mob_shot += 1,
                 MobEvent::DamagePlayer { amount, kind, .. } if kind.ends_with("indirect_magic") => t.mob_dmg += amount,
+                MobEvent::EntityEvent { event: 21, .. } => t.mob_charge += 1,
                 MobEvent::Fangs { .. } => t.mob_fangs += 1,
                 MobEvent::SpawnKind { .. } => t.mob_vex += 1,
                 _ => {}
             }
         }
+        t.ecs_charge = self.h.drain_host_out().iter().filter(|e| matches!(e, horizon_ecs_proto::host_out::HostEvent::EntityEvent { code: 21, .. })).count() as u32;
         let mut q = self.h.world.query::<(Entity, &Projectile)>();
         let new: Vec<Entity> = q.iter(&self.h.world).map(|x| x.0).filter(|e| !self.seen.contains(e)).collect();
         self.seen.extend(new.iter().copied());
@@ -197,6 +202,13 @@ fn the_guardian_beam_is_its_magic_then_its_blow() {
     assert_eq!(blow, e.len(), "one blow with each beam: {hits:?}");
     let first = |f: fn(&Tick) -> f32| v.iter().map(f).find(|d| *d > 0.0).unwrap();
     assert_eq!(first(|t| t.mob_dmg), first(|t| t.ecs_dmg));
+    // The charge sound (entity event 21) starts the beam's charge: the first one is on the same tick on both sides.
+    let (mc, ec) = (at(&v, |t| t.mob_charge > 0), at(&v, |t| t.ecs_charge > 0));
+    eprintln!("charge sound: mob {mc:?}, ecs {ec:?}");
+    // The ecs guardian gets its target a tick after the `Mob` (the beam hits at 90 and 91: the same lag for the sound), so the sound is compared to the
+    // beam's own hit: the same 80 ticks before it on both sides.
+    assert!(!ec.is_empty() && !m.is_empty());
+    assert_eq!(m[0] - mc[0], e[0] - ec[0], "charge sound before the hit");
 }
 
 /// The evoker: the first spell (vexes or fangs, by the draw of each side) comes at the same tick within the tolerance, the vexes in threes, the fangs as a ring or a line.

@@ -83,8 +83,8 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     targeting::clear_target(w, e);
 }
 #[allow(clippy::type_complexity)]
-fn beam_run(tg: targeting::Targets, mut q: Query<(Aim, &mut GuardianBeam, Option<&Target>), With<Beaming>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
-    for ((e, pos, mut look, looking, _, _), mut b, target) in &mut q {
+fn beam_run(tg: targeting::Targets, mut q: Query<(Aim, &mut GuardianBeam, Option<&Target>, Has<super::elder_curse::Silent>), With<Beaming>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+    for ((e, pos, mut look, looking, _, _), mut b, target, silent) in &mut q {
         let Some(t) = target else {
             reqs.0.push(Req::End(e, b.slot));
             continue;
@@ -107,6 +107,10 @@ fn beam_run(tg: targeting::Targets, mut q: Query<(Aim, &mut GuardianBeam, Option
         b.attack_time += 1;
         if b.attack_time == 0 {
             cmd.entity(e).insert(Beam);
+            // Entity event 21: the clients start the charge sound (the `Mob` sends it unless silent).
+            if !silent {
+                cmd.queue(move |w: &mut World| w.resource_mut::<Events>().host.entity_event(e, 21));
+            }
         } else if b.attack_time >= b.p.duration {
             let p = b.p;
             let who = t.who;

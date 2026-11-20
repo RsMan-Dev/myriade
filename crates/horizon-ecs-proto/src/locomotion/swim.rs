@@ -349,9 +349,11 @@ fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut V
     if !(m.active && following) {
         d.speed = 0.0;
         d.zza = 0.0;
+        d.moving = false;
         m.active = false;
         return;
     }
+    d.moving = true;
     let (dx, dy, dz) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
     let len = (dx * dx + dy * dy + dz * dz).sqrt();
     let yd = dy / len;

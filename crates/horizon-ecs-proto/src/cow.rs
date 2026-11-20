@@ -71,6 +71,8 @@ pub struct Drive {
     /// The level plus one of a levitation effect (0: none), read by the ground travel.
     pub levitation: i32,
     pub speed: f32,
+    /// `Guardian.isMoving` (DATA_ID_MOVING): its move control had a spot to swim to this tick.
+    pub moving: bool,
     /// The move control asks for a jump (`MoveControl`: the target is above the step height and near).
     pub jump: bool,
     /// The jump input (a goal sets it: `FloatGoal` keeps it while the cow is in deep water).
@@ -2726,7 +2728,7 @@ pub(crate) fn apply_damage(
     mut queue: ResMut<DamageQueue>,
     mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
@@ -2739,9 +2741,13 @@ pub(crate) fn apply_damage(
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid, spiky)) = q.get_mut(e) else {
             continue;
         };
+        if spiky {
+            let (by, direct, cause) = (hit.by, hit.direct, hit.cause);
+            commands.queue(move |w: &mut World| crate::behaviours::guardian_thorns::blow(w, e, by, direct, cause));
+        }
         let now = clock.of(e);
         let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
         let mut applied = if cooldown {
@@ -2796,7 +2802,7 @@ pub(crate) fn apply_damage(
         }
         let (who, direct) = (hit.by, hit.direct);
         commands.queue(move |w: &mut World| {
-            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct });
+            crate::goals::dispatch_damaged(w, e, &crate::behaviours::Damaged { amount: applied, who, direct, cause: hit.cause });
             crate::despawn::touch(w, e);
         });
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).

@@ -189,3 +189,159 @@ fn a_dolphin_an_axolotl_a_drowned_the_guardians_and_the_nautiluses_swim_as_their
         _ => {}
     }
 }
+
+// ---- the guardians' spikes, their curse and their sound, against the `Mob` -----------------------------------------------------------------------
+
+fn guardian_pair(seed: u64) -> (MobRef, Herd, usize, bevy_ecs::prelude::Entity) {
+    let (mut r, mut h) = pools();
+    let (i, e) = (r.add(Vec3::new(-6.5, 2.0, 0.5)), ecs_cow(&mut h, -6.5, 2.0, 0.5, seed));
+    h.world.get_mut::<Yaw>(e).unwrap().0 = r.mobs[i].yaw;
+    // The wobble's and the curse's phase is the age plus the id: the `Mob` is given the ecs entity's.
+    let want = h.world.resource::<Clock>().of(e) + u64::from(e.index().index());
+    r.mobs[i].id = (want as u32).wrapping_sub(r.mobs[i].age);
+    (r, h, i, e)
+}
+fn is_guardian() -> bool {
+    let _ = have_data() && { let _ = flat_pair(); true };
+    have_data() && matches!(species().name, "minecraft:guardian" | "minecraft:elder_guardian")
+}
+/// The spikes (`Guardian.hurtServer`): a player's blow on a still guardian draws 2 thorns damage, even a blow the invulnerability window refuses and
+/// the blow that kills; none while the guardian moves. The `Mob`'s `DamagePlayer` events and the ecs player's hits are the same, blow by blow.
+#[test]
+fn a_still_guardian_returns_the_blows_as_its_mob_does() {
+    if !is_guardian() {
+        return;
+    }
+    // (case, the guardian swims to a spot first, the blows: the damage of each, one per tick).
+    let cases: [(&str, bool, &[f32]); 4] = [
+        ("one blow", false, &[3.0]),
+        ("a blow inside the window of the first (refused)", false, &[3.0, 2.0, 3.0]),
+        ("a deadly blow", false, &[1000.0]),
+        ("a moving guardian", true, &[3.0, 4.0]),
+    ];
+    for (case, moving, blows) in cases {
+        let (mut r, mut h, i, e) = guardian_pair(3100);
+        h.set_online(&[(-6.5, 1.5)]);
+        r.mobs[i].ai.goals = Default::default();
+        r.mobs[i].ai.targets = Default::default();
+        h.world.entity_mut(e).remove::<GoalSet>();
+        for _ in 0..4 {
+            r.step(None);
+            h.tick();
+        }
+        if moving {
+            let mw = r.w;
+            r.mobs[i].nav_move_to(mw, [-6.5, 3.0, -10.5], 1.0);
+            go_to_at(&mut h.world, e, [-6.5, 3.0, -10.5], 1.0, 1);
+            for _ in 0..3 {
+                r.step(None);
+                h.tick();
+            }
+        }
+        let before = h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
+        let (mut mob_hits, mut ecs_hits) = (Vec::new(), Vec::new());
+        for &b in blows {
+            let n = r.events.len();
+            r.hit(i, b, [-6.5, 1.0, 1.5]);
+            h.hit_by(e, b, 1);
+            r.step(None);
+            h.tick();
+            mob_hits.extend(r.events[n..].iter().filter_map(|ev| match ev {
+                horizon_client_lib::mobs::MobEvent::DamagePlayer { amount, kind, .. } => Some((*amount, *kind)),
+                _ => None,
+            }));
+            ecs_hits = h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits[before..].iter().map(|x| x.amount).collect();
+            if blows.len() == 1 && b > 100.0 {
+                break;
+            }
+        }
+        let mob_amounts: Vec<f32> = mob_hits.iter().map(|x| x.0).collect();
+        eprintln!("{case}: mob {mob_hits:?} ecs {ecs_hits:?}");
+        assert!(mob_hits.iter().all(|x| x.1 == "minecraft:thorns"), "{case}: {mob_hits:?}");
+        assert_eq!(mob_amounts, ecs_hits, "{case}");
+        assert_eq!(mob_amounts.len(), if moving { 0 } else { blows.len() }, "{case}");
+    }
+}
+/// A blow of the cause magic or an explosion, or a projectile's (not `direct`), is not returned: the `Mob`'s `#avoids_guardian_thorns`.
+#[test]
+fn a_guardian_does_not_return_magic_or_a_projectile() {
+    if !is_guardian() {
+        return;
+    }
+    let (mut r, mut h, i, e) = guardian_pair(3101);
+    h.set_online(&[(-6.5, 1.5)]);
+    r.mobs[i].ai.goals = Default::default();
+    r.mobs[i].ai.targets = Default::default();
+    h.world.entity_mut(e).remove::<GoalSet>();
+    for _ in 0..4 {
+        r.step(None);
+        h.tick();
+    }
+    let before = h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
+    for cause in [Cause::Magic, Cause::Blast, Cause::Fall] {
+        h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: true });
+        h.tick();
+        for _ in 0..12 {
+            h.tick();
+        }
+    }
+    h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause: Cause::Entity, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: false });
+    h.tick();
+    assert_eq!(h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len(), before);
+}
+/// The elder's curse: the ticks `(age + id) % 1200 == 0` are the `Mob`'s `ElderCurse` events and the ecs sounds, the curse reaches the survival players
+/// within 50 blocks (not a creative one, a spectator, nor a far one), at level III for 6000 ticks, and comes back only when under 1200 ticks are left.
+#[test]
+fn the_elder_curse_comes_on_the_ticks_of_the_mob() {
+    if !have_data() || { let _ = flat_pair(); species().name != "minecraft:elder_guardian" } {
+        return;
+    }
+    use horizon_ecs_proto::{effects::{Kind, PlayerEffects}, goals::Player, hostile::PlayerState};
+    let (mut r, mut h, i, e) = guardian_pair(3102);
+    let at = h.world.get::<Pos>(e).unwrap().0;
+    // 1 near, 2 far (70 blocks), 3 creative, 4 spectator, 5 at 49 blocks of the guardian's start: the elder walks within 16 of its home, so it is
+    // not asked to stay in range; 1 and 3 and 4 stand 25 away.
+    for (id, dx) in [(1, 25.0), (2, 70.0), (3, 25.0), (4, 25.0)] {
+        h.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(Player { id, x: at.x + dx, y: at.y, z: at.z, ..Default::default() });
+    }
+    {
+        let mut ps = h.world.resource_mut::<PlayerState>();
+        ps.immortal = true;
+        ps.set_creative(3, true);
+        ps.spectator.resize(5, false);
+        ps.spectator[4] = true;
+    }
+    let (mut mob_ticks, mut sound_ticks) = (Vec::new(), Vec::new());
+    let mut applied: Vec<(u32, u64, i32)> = Vec::new();
+    let mut last: std::collections::HashMap<u32, u64> = Default::default();
+    for t in 1..=7300_u64 {
+        let n = r.events.len();
+        r.step(None);
+        h.tick();
+        if r.events[n..].iter().any(|ev| matches!(ev, horizon_client_lib::mobs::MobEvent::ElderCurse { silent: false, .. })) {
+            mob_ticks.push(t);
+        }
+        if h.drain_host_out().iter().any(|ev| matches!(ev, horizon_ecs_proto::host_out::HostEvent::Sound { name: "minecraft:entity.elder_guardian.curse", .. })) {
+            sound_ticks.push(t);
+        }
+        if let Some(fx) = h.world.get_resource::<PlayerEffects>() {
+            for (id, list) in &fx.0 {
+                for &(k, amp, ends) in list {
+                    if k == Kind::MiningFatigue && last.get(id) != Some(&ends) {
+                        last.insert(*id, ends);
+                        applied.push((*id, t, amp));
+                        assert_eq!(ends - h.world.resource::<Clock>().0, 6000, "player {id}: 6000 ticks");
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("mob {mob_ticks:?} ecs {sound_ticks:?} applied {applied:?}");
+    let _ = i;
+    assert!(!mob_ticks.is_empty());
+    assert_eq!(mob_ticks, sound_ticks);
+    // Only the survival player within range, at level III (amplifier 2): first at the first curse, again when the first is out (6000 ticks later: at
+    // 1200 left the jar's `endsWithin(1199)` is false, so the curse before is skipped).
+    let first = mob_ticks[0];
+    assert_eq!(applied, vec![(1, first, 2), (1, first + 6000, 2)]);
+}
