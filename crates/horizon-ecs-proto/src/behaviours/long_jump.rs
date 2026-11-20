@@ -436,23 +436,20 @@ fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
 }
 
 thread_local! {
-    /// The cells of the paths found by the searches of the series in progress (cleared at its end; at most some hundreds of cells).
+    /// The cells closed by the searches of the series in progress (cleared at its end; at most some hundreds of cells).
     static SEEN: std::cell::RefCell<std::collections::HashSet<[i32; 3]>> = std::cell::RefCell::new(Default::default());
 }
 fn search(w: &World, pm: &horizon_client_lib::mobs::path::PathMob, evaluator: horizon_client_lib::mobs::path::Evaluator, target: [i32; 3], max_visited: i32) -> bool {
     use crate::pathsearch::Finder;
-    // Accepted deviation (suivi/ecs-ecarts.md): a cell of a path found earlier in this series is reachable.
+    // Accepted deviation (suivi/ecs-ecarts.md, 2026-11-20): a cell closed by an earlier search of this series is reachable on foot.
     if SEEN.with(|m| m.borrow().contains(&target)) {
         cnt(13, 1);
         return true;
     }
     cnt(6, 1);
     crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let path = Finder::new(w.resource::<Level>().mw.0, pm, evaluator).with_occ(w.resource::<Level>().occ).find(&[target], 8.0, 0, max_visited);
-    if let Some(p) = path.as_ref().filter(|p| p.reached) {
-        SEEN.with(|m| m.borrow_mut().extend(p.nodes.iter().map(|n| [n.x, n.y, n.z])));
-    }
-    path.is_some_and(|path| path.reached)
+    let f = Finder::new(w.resource::<Level>().mw.0, pm, evaluator).with_occ(w.resource::<Level>().occ);
+    SEEN.with(|m| f.find_reached(target, 8.0, max_visited, &mut m.borrow_mut()))
 }
 
 /// Tag membership by block state, kept for one pick (a handful of states: the 404 cells of a series hash the block name otherwise).

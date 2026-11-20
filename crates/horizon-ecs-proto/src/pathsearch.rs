@@ -2014,6 +2014,13 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// Every cell a search from the start expands within `max_path_length` (no target: a flood), with whether it ran to its end
     /// (`false`: it hit `max_visited`, the answer then depends on the target and the caller searches per target).
+    /// `find` of `[target]` (reach 0) that also adds to `seen` the cells it closed: each is reached by a path of the search (blocked cells, which
+    /// the node table marks closed without ever opening them, have no `came_from` and are left out). Gives whether the target was reached.
+    pub fn find_reached(mut self, target: [i32; 3], max_len: f32, cap: i32, seen: &mut std::collections::HashSet<[i32; 3]>) -> bool {
+        let r = self.find_in(&[target], max_len, 0, cap);
+        seen.extend(self.nodes.iter().filter(|n| n.closed && n.came_from.is_some()).map(|n| [n.x, n.y, n.z]));
+        r.is_some_and(|p| p.reached)
+    }
     pub fn flood(mut self, max_path_length: f32, max_visited: i32) -> Option<(Vec<[i32; 3]>, bool)> {
         self.find_in(&[], max_path_length, 0, max_visited);
         let complete = self.visited < max_visited;

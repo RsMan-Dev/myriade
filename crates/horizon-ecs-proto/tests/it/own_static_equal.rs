@@ -393,3 +393,58 @@ fn water_fluid_states_by_path_type() {
     // The other way round for the types of the set: none is empty (the set is not wider than the registry needs).
     assert_eq!(by_type.len(), 8, "{by_type:?}");
 }
+
+/// The series memo of the long jump (cells closed by the earlier searches of a series answer "reachable") against one search per
+/// candidate, on random series: every memo "yes" that the search denies must still have a foot path (a search with a large bound reaches it; one level per process, `ONE_DENSITY`),
+/// and the first non-reachable candidate (the jump) must exist in both. Run with `-- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn series_memo_never_says_yes_to_an_unreachable_cell() {
+    if !have_data() {
+        return;
+    }
+    // One level per process: the density comes from the environment (`ONE_DENSITY`, 0 for flat).
+    let density: f64 = std::env::var("ONE_DENSITY").ok().and_then(|v| v.parse().ok()).unwrap_or(0.22);
+    for label in [if density == 0.0 { "flat" } else { "rough" }] {
+        let level = level_with(density);
+        let mw = level.mw.0;
+        let table = species_table().0;
+        let mut r = Rng(0x0BAD_5EED_1234_5678);
+        let (mut asked, mut differ, mut false_yes, mut lost, mut series) = (0usize, 0usize, 0usize, 0usize, 0usize);
+        for name in ["minecraft:frog", "minecraft:goat"] {
+            let Some(sp) = table.iter().find(|s| s.name == name).copied() else { continue };
+            let width = if name == "minecraft:frog" { 4 } else { 5 };
+            let mv = (sp.follow_range * 16.0).floor() as i32;
+            for _ in 0..200 {
+                let (x, z) = (2 + (r.unit() * 90.0) as i32, -18 + (r.unit() * 36.0) as i32);
+                let pm = PathMob {
+                    position: Vec3::new(f64::from(x) + 0.5, 1.0, f64::from(z) + 0.5),
+                    width: sp.width, height: sp.height, on_ground: true, in_water: false, max_up_step: 0.6, max_fall_distance: 3, malus: sp.malus,
+                    can_float: sp.can_float, can_open_doors: sp.can_open_doors, can_pass_doors: sp.can_pass_doors, can_walk_over_fences: sp.can_walk_over_fences, stands_on_lava: false,
+                };
+                let eval = Evaluator::Walk;
+                let mut seen = std::collections::HashSet::new();
+                let (mut ref_jump, mut memo_jump) = (None, None);
+                series += 1;
+                for _ in 0..40 {
+                    let t = [x + (r.unit() * f64::from(2 * width + 1)) as i32 - width, 1 + (r.unit() * 3.0) as i32 - 1, z + (r.unit() * f64::from(2 * width + 1)) as i32 - width];
+                    let reference = horizon_ecs_proto::pathsearch::Finder::new(mw, &pm, eval).find(&[t], 8.0, 0, mv).is_some_and(|p| p.reached);
+                    let memo = seen.contains(&t) || horizon_ecs_proto::pathsearch::Finder::new(mw, &pm, eval).find_reached(t, 8.0, mv, &mut seen);
+                    asked += 1;
+                    if memo != reference {
+                        differ += 1;
+                        if memo && !horizon_ecs_proto::pathsearch::Finder::new(mw, &pm, eval).find(&[t], 64.0, 0, 100_000).is_some_and(|p| p.reached) {
+                            false_yes += 1;
+                        }
+                    }
+                    if !reference && ref_jump.is_none() { ref_jump = Some(t); }
+                    if !memo && memo_jump.is_none() { memo_jump = Some(t); }
+                }
+                lost += usize::from(ref_jump.is_some() && memo_jump.is_none());
+            }
+        }
+        println!("series memo {label}: {series} series, {asked} questions, {differ} answers differ, {false_yes} yes for a cell with no foot path, {lost} series that lose their jump");
+        assert_eq!(false_yes, 0);
+        assert_eq!(lost, 0);
+    }
+}

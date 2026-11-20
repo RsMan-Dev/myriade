@@ -80,3 +80,13 @@ Mesure finale (20 graines, 20 piglins) : Mob 14,57 (ecart-type 0,47), ECS 14,58.
 Recensement des capteurs a phase fixe : seul le repoussoir du piglin en avait une ; les capteurs de cerveau (`brain::arm`) et celui de la
 grenouille (`shoot_tongue::arm`) tirent deja `nextInt(periode)` a la creation. Ordre des tirages : le piglin fait un tirage de plus sur son
 flux a la creation (`next_int(20)`, au moment ou son module s'arme) ; les tirages suivants du piglin sont decales d'un rang (meme loi).
+
+## Saut long : mémo de série élargi aux cases fermées (écart ACCEPTÉ par le propriétaire, 2026-11-20)
+Décision : « la question est : est-ce que le joueur verra la différence ? si non, on peut faire ça ». Le mémo `SEEN` reçoit désormais TOUTES les cases
+fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus seulement les cases du chemin trouvé (`Finder::find_reached`).
+- Jar (`LongJumpToRandomPos.pickCandidate`) : candidat atteignable à pied (`createPath(cible,0,8)` non nul et `canReach`) => `goto 0`, candidat écarté, un autre est tiré ; sinon `chosenJump` posé. Liste vide : pas de saut.
+- Sens de l'écart : A* dit « non », mémo dit « oui » => un candidat de plus écarté. Jamais l'inverse (aucun « oui » du A* perdu).
+- Désaccords (400 séries synthétiques, relief 0,22) : grenouille 39/4219, chèvre 64/7155 ; plat 0. Échantillon : chaque case « oui » du mémo a un chemin à pied (BFS 16 ; A* longueur 64 : 0 cas faux). Piège écarté : les cases bloquées fermées sans parent ne comptent pas.
+- Fin de série : séries qui perdaient leur saut : 0 (grenouille 323/400 avant et après, chèvre 400/400, plat 0/400 : tout candidat atteignable). Chèvre relief : 0 série avec un autre premier candidat après filtrage des cases sans parent. Arc réel non rejoué (arc supposé indépendant).
+- Coût (µs/série, `ecsdev`, k=20 candidats) mémo précédent -> élargi : grenouille plat 101 -> 92, relief 61 -> 48 ; chèvre relief 80 -> 75, plat 20 -> 21 (bruit). Questions sans recherche : grenouille relief 936 -> 2438 sur 4219, chèvre 1131 -> 2839 sur 7155.
+- Mémoire : ensemble par fil vidé en fin de série, 0 octet par mob. Test différentiel : `series_memo_never_says_yes_to_an_unreachable_cell` (ignoré, `ONE_DENSITY`).
