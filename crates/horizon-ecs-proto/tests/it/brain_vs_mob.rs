@@ -11,7 +11,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{brain::*, cow::*, goals::*};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:copper_golem")
+    !have_data() || wrong_species(&["minecraft:copper_golem"])
 }
 fn mob_has(m: &Mob, name: &str) -> bool {
     animal_brain::describe(m).is_some_and(|(a, b)| format!("{a};{b}").contains(&format!("{name}=")))

@@ -14,7 +14,7 @@ use horizon_ecs_proto::tame::Owner;
 use horizon_ecs_proto::targeting::Who;
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:horse")
+    !have_data() || wrong_species(&["minecraft:horse"])
 }
 fn input(forward: f32, strafe: f32, yaw: f32, jump: f32) -> Rider {
     Rider { strafe, forward, yaw, pitch: 0.0, jump, steer: false, sprint: false, jumping: false, sneak: false, client: false }

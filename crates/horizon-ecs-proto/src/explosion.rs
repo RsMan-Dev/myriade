@@ -128,6 +128,14 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
     }
 }
 pub fn explode(w: &mut World, b: Blast) {
+    let griefs = mob_griefing(w);
+    explode_with(w, b, griefs);
+}
+/// A primed TNT's blast (`ExplosionInteraction.TNT`): its blocks break whatever the mob griefing rule says.
+pub fn explode_tnt(w: &mut World, b: Blast) {
+    explode_with(w, b, true);
+}
+fn explode_with(w: &mut World, b: Blast, breaks_blocks: bool) {
     if b.radius < 1.0e-5 {
         return;
     }
@@ -179,7 +187,7 @@ pub fn explode(w: &mut World, b: Blast) {
         w.resource_scope(|_, mut ps: Mut<crate::hostile::PlayerState>| ps.hurt(tick, id, amount, (b.at.x, b.at.z), by));
     }
     // The blocks.
-    if mob_griefing(w) {
+    if breaks_blocks {
         let blocks = exploded_positions(w, b.at, b.radius);
         let mw = level.mw.0;
         for p in &blocks {

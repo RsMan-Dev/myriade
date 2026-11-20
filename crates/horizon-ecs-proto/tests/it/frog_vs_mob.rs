@@ -9,7 +9,7 @@ use horizon_ecs_proto::behaviours::{breed::Carrying, croak::Croaking};
 use horizon_ecs_proto::cow::*;
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:frog")
+    !have_data() || wrong_species(&["minecraft:frog"])
 }
 fn spots(n: usize) -> impl Iterator<Item = (f64, f64)> {
     (0..n).map(|k| (6.5 + 2.0 * (k % 4) as f64, -8.5 + 3.0 * (k / 4) as f64))

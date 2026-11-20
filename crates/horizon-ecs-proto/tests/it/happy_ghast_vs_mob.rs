@@ -8,7 +8,7 @@ use common::*;
 use horizon_ecs_proto::cow::*;
 
 fn is(name: &str) -> bool {
-    have_data() && std::env::var("HORIZON_SPECIES").as_deref() == Ok(name)
+    have_data() && !wrong_species(&[name])
 }
 
 /// Dry, the ghast regains one health at 600 ticks, and not before; it stops at its maximum of 20.

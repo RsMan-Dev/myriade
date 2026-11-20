@@ -1,7 +1,7 @@
 //! `IronGolem.registerGoals` as far as the frame has the modules: the blow, closing in on the target, going back to the village and
-//! strolling in it (`village_walk`, on the registry of the points of interest), looking; the target of what hurt it. Missing: the offer of
-//! the flower to a child villager (`OfferFlowerGoal`: the villager's state), `DefendVillageTargetGoal` (the reputation a villager keeps of a
-//! player: its brain), the player it is angry at (`angry_at_player`: no player predicate), the anger, the walk toward a villager who wants a golem, the cracks.
+//! strolling in it (`village_walk`, on the registry of the points of interest), looking; the offer of the flower to a child villager
+//! (`offer_flower`), `DefendVillageTargetGoal` (event-driven, the reputation read from the villager's gossip), the target of what hurt it.
+//! Missing: the player it is angry at (`angry_at_player`: no player predicate), the anger, the walk toward a villager who wants a golem, the cracks.
 use super::Def;
 use crate::behaviours::{hurt_by, look_at_player, melee, move_towards_target, nearest_target, random_look, village_walk, Entry};
 

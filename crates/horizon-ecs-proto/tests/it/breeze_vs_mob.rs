@@ -11,7 +11,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{brain::behaviours::breeze::Pose, cow::*, goals::*, hostile::PlayerState, projectile::Projectile};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:breeze")
+    !have_data() || wrong_species(&["minecraft:breeze"])
 }
 const N: usize = 12;
 const TICKS: i64 = 600;

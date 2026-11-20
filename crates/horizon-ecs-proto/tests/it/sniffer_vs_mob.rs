@@ -8,7 +8,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{brain::behaviours::sniff, cow::*, goals::*};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:sniffer")
+    !have_data() || wrong_species(&["minecraft:sniffer"])
 }
 
 #[test]

@@ -10,7 +10,7 @@ use horizon_ecs_proto::{cow::*, equipment, goals::*, projectile::Projectile};
 use std::sync::Arc;
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:piglin")
+    !have_data() || wrong_species(&["minecraft:piglin"])
 }
 fn ecs_piglin(h: &mut Herd, x: f64, z: f64, seed: u64) -> Entity {
     let table = h.world.resource::<SpeciesTable>().0.clone();

@@ -17,7 +17,7 @@ const BELL: [i32; 3] = [0, 1, 8];
 const SPAWN: (f64, f64) = (0.5, 0.5);
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:villager")
+    !have_data() || wrong_species(&["minecraft:villager"])
 }
 fn centre(p: [i32; 3]) -> (f64, f64) {
     (f64::from(p[0]) + 0.5, f64::from(p[2]) + 0.5)

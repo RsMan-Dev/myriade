@@ -8,7 +8,7 @@ use horizon_ecs_proto::goals::Entered;
 use horizon_ecs_proto::locomotion::hop::Hop;
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:slime")
+    !have_data() || wrong_species(&["minecraft:slime"])
 }
 #[derive(Default, Debug)]
 struct Bounds {

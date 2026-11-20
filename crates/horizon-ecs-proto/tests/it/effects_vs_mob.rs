@@ -8,7 +8,7 @@ use horizon_ecs_proto::{cow::*, effects::{self, Kind}};
 
 /// The scenes are written for a farm animal of 10 hearts or more that is not undead (poison and regeneration do not touch the undead: not modelled).
 fn skip() -> bool {
-    !have_data() || !matches!(std::env::var("HORIZON_SPECIES").as_deref(), Ok("minecraft:cow" | "minecraft:pig" | "minecraft:sheep") | Err(_))
+    !have_data() || wrong_species(&["minecraft:cow", "minecraft:pig", "minecraft:sheep"])
 }
 fn timelines(mob_id: &'static str, kind: Kind, amp: i32, ticks: i32, wound: f32, run: usize) -> (Vec<f32>, Vec<f32>) {
     let (mut r, mut h) = flat_pair();

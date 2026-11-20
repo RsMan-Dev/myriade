@@ -10,7 +10,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::*, cow::*, goals::*, hostile::PlayerState, projectile::*, targeting::*};
 
 fn is(name: &str) -> bool {
-    have_data() && std::env::var("HORIZON_SPECIES").as_deref() == Ok(name)
+    have_data() && !wrong_species(&[name])
 }
 struct Scene {
     r: MobRef,

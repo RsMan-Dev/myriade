@@ -12,7 +12,7 @@ use horizon_ecs_proto::mount::*;
 use horizon_ecs_proto::targeting::{Target, Who};
 
 fn skip(name: &str) -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok(name)
+    !have_data() || wrong_species(&[name])
 }
 fn rider(forward: f32, yaw: f32, jump: f32, sprint: bool, steer: bool) -> Rider {
     Rider { strafe: 0.0, forward, yaw, pitch: 0.0, jump, steer, sprint, jumping: false, sneak: false, client: false }
@@ -149,7 +149,7 @@ fn a_camel_carries_two_and_the_second_does_not_steer() {
 /// rider's target, and the mount's own movement goals are off while it is steered. A shooter keeps 8 blocks from its target.
 #[test]
 fn a_skeleton_steers_its_spider_to_its_target() {
-    if std::env::var_os("REGISTER_ALL").is_none() || !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:spider") {
+    if std::env::var_os("REGISTER_ALL").is_none() || !have_data() || wrong_species(&["minecraft:spider"]) {
         return;
     }
     let mut h = Herd::with_slab(60, true, false);

@@ -14,7 +14,7 @@ use horizon_ecs_proto::goals::{go_to_at, Entered};
 use std::sync::Arc;
 
 fn is(name: &str) -> bool {
-    have_data() && std::env::var("HORIZON_SPECIES").as_deref() == Ok(name)
+    have_data() && !wrong_species(&[name])
 }
 
 /// A cube that holds a block does not walk toward a point; released, it walks there.

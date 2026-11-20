@@ -12,7 +12,7 @@ use horizon_ecs_proto::poi::PoiRegistry;
 
 const POINTS: [([i32; 3], &str); 4] = [([0, 1, 0], "minecraft:bell"), ([4, 1, 0], "minecraft:composter"), ([-4, 1, 0], "minecraft:lectern"), ([0, 1, 6], "minecraft:blast_furnace")];
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:iron_golem")
+    !have_data() || wrong_species(&["minecraft:iron_golem"])
 }
 #[derive(Debug)]
 struct Run {

@@ -148,7 +148,7 @@ fn an_amount_is_awarded_in_orbs_of_the_original_sizes() {
 /// An animal's death is worth 1 + nextInt(3) experience: the orbs of a killed cow add up to 1, 2 or 3 with one chance in three each.
 #[test]
 fn a_killed_animal_leaves_one_to_three_experience() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:cow") {
+    if !have_data() || wrong_species(&["minecraft:cow"]) {
         return;
     }
     let mut h = Herd::with_slab(16, true, false);

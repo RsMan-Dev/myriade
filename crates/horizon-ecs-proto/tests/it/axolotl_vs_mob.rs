@@ -10,7 +10,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{behaviours::breed::feed, brain::present, cow::*, goals::*};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:axolotl")
+    !have_data() || wrong_species(&["minecraft:axolotl"])
 }
 fn mean(v: &[Option<i64>]) -> (f64, usize) {
     let n = v.iter().flatten().count();

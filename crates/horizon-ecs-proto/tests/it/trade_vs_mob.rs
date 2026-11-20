@@ -19,7 +19,7 @@ const SEED: i64 = 0x5EED;
 
 fn skip() -> bool {
     !have_data()
-        || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:villager")
+        || wrong_species(&["minecraft:villager"])
         || std::env::var_os("REGISTER_ALL").is_none()
 }
 

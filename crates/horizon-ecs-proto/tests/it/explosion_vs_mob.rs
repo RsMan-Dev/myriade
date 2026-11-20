@@ -15,7 +15,7 @@ use horizon_ecs_proto::{
 };
 
 fn on() -> bool {
-    have_data() && std::env::var("HORIZON_SPECIES").as_deref() == Ok("minecraft:creeper")
+    have_data() && !wrong_species(&["minecraft:creeper"])
 }
 /// (the tick of the blast, its radius) of a Mob creeper whose player is at `d(t)` blocks and is taken as target at tick 20.
 fn mob_blast(d: impl Fn(usize) -> f64, charged: bool, ticks: usize) -> Option<(usize, f32)> {
@@ -156,4 +156,41 @@ fn the_blast_breaks_a_ball_of_soft_blocks_and_spares_the_hard_ones() {
         assert!(broken.iter().any(|p| (p.0, p.1, p.2) == (c.0 + x, c.1 + y, c.2 + z)), "the centre's neighbours go: {x} {y} {z}");
     }
     assert!(!broken.iter().any(|p| (p.0, p.1, p.2) == (c.0 + 2, c.1, c.2)), "obsidian stays");
+}
+
+/// A primed TNT dropped from 5 blocks: it falls, lies on the ground, explodes on tick 80 (its fuse) and breaks the dirt beside it although
+/// mobs may not grief (`ExplosionInteraction.TNT` follows `tnt_explodes`, not `mobGriefing`); a creeper's blast with the same rule breaks nothing.
+#[test]
+fn primed_tnt_falls_explodes_on_the_fuse_and_breaks_blocks_whatever_mob_griefing_says() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(40, false, false);
+    let mut level = *h.world.resource::<Level>();
+    level.mw = Mw(Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_griefing: false, ..level.mw.0.clone() })));
+    *h.world.resource_mut::<Level>() = level;
+    h.set_block(2, 1, 0, "minecraft:dirt");
+    h.tick();
+    let t = horizon_ecs_proto::tnt::spawn_primed(&mut h.world, Vec3::new(0.5, 6.0, 0.5), Vec3::ZERO, horizon_ecs_proto::tnt::FUSE, horizon_ecs_proto::tnt::POWER);
+    let mut landed = None;
+    let mut gone = None;
+    for k in 1..=100 {
+        h.tick();
+        if h.world.get_entity(t).is_err() {
+            gone = Some(k);
+            break;
+        }
+        let c = h.world.get::<Contact>(t).unwrap();
+        if landed.is_none() && c.on_ground {
+            landed = Some((k, h.world.get::<Pos>(t).unwrap().0.y));
+        }
+    }
+    eprintln!("tnt landed {landed:?}, gone at {gone:?}");
+    assert!(landed.is_some_and(|(k, y)| k < 30 && y < 1.5), "it falls to the ground: {landed:?}");
+    assert!(gone.is_some_and(|k| (80..=81).contains(&k)), "it explodes on its fuse: {gone:?}");
+    for _ in 0..3 {
+        h.tick();
+    }
+    let mw = h.world.resource::<Level>().mw.0;
+    assert!(mw.facts.is_air(mw.world.block(2, 1, 0)), "the dirt beside it is broken with mob griefing off");
 }

@@ -6,6 +6,9 @@ use crate::raids::{raid_of, Celebrating, Raider};
 use crate::targeting::Target;
 use crate::{cow::*, goals::*};
 
+/// The jumps drawn (a test inserts it to count them; the jump itself is the physics' affair).
+#[derive(Resource, Default)]
+pub struct Jumps(pub u64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Celebrate {
     pub slot: u8,
@@ -23,17 +26,21 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Celebrating>();
 }
+/// The goal's tick is every other game tick (`reducedTickDelay`): the cheer is one draw in 50 of them, the jump one in 25.
 fn tick(w: &mut World) {
-    crate::goals::tick_state(w, run);
-}
-fn run(mut q: Query<(&mut Rng, Option<&mut Jump>, Has<crate::mount::Riding>), With<Celebrating>>) {
-    for (mut rng, jump, riding) in &mut q {
-        let _cheer = rng.next_int(50) == 0;
-        if !riding
-            && rng.next_int(25) == 0
-            && let Some(mut j) = jump
-        {
-            j.0 = true;
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Celebrating>>().iter(w).collect();
+    for e in es {
+        if (now_of(w, e) + phase_of(w, e)) % 2 != 0 {
+            continue;
+        }
+        let _cheer = with_rng(w, e, |r| r.next_int(50) == 0);
+        if !w.entity(e).contains::<crate::mount::Riding>() && with_rng(w, e, |r| r.next_int(25) == 0) {
+            if let Some(mut j) = w.get_mut::<Jump>(e) {
+                j.0 = true;
+            }
+            if let Some(mut n) = w.get_resource_mut::<Jumps>() {
+                n.0 += 1;
+            }
         }
     }
 }

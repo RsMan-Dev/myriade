@@ -8,9 +8,9 @@ use horizon_client_lib::mobs;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::*, goals::set_lazy_look, poi::PoiRegistry, raids};
 
-const POINTS: [([i32; 3], &str); 4] = [([0, 1, 0], "minecraft:bell"), ([4, 1, 0], "minecraft:composter"), ([-4, 1, 0], "minecraft:lectern"), ([0, 1, 6], "minecraft:blast_furnace")];
+pub const POINTS: [([i32; 3], &str); 4] = [([0, 1, 0], "minecraft:bell"), ([4, 1, 0], "minecraft:composter"), ([-4, 1, 0], "minecraft:lectern"), ([0, 1, 6], "minecraft:blast_furnace")];
 
-fn village_herd(half: i32) -> Herd {
+pub fn village_herd(half: i32) -> Herd {
     let mut h = Herd::with_slab(half, false, false);
     set_lazy_look(&mut h.world, false);
     for (p, n) in POINTS {

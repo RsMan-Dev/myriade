@@ -1,7 +1,9 @@
 //! `IronGolem` `DefendVillageTargetGoal` (target flag): a golem takes as target the player whom a villager near it holds in bad
 //! reputation (`Gossips::reputation` at or below -100). The box is the golem's, inflated (10, 8, 10); the villagers in it, within 64
 //! blocks, that the golem sees count; the player must be in the box, within 64 blocks, not creative or spectator, and seen. The nearest
-//! such player (then the lowest id) is taken. A golem asks only while a seen villager near it holds a player in bad reputation: it is woken by the gossip that makes one (`wake_golems`, from `gossip::add` and `meet`) and by its own creation, re-asks each tick (the `Mob`'s target goal has no interval) while such a villager stands in reach, and sleeps otherwise.
+//! such player (then the lowest id) is taken. The `Mob` asks every tick; the ecs asks on the events that can change the answer, never on a
+//! timer: the golem's creation, a gossip that makes a villager hold a player in bad reputation (`wake_golems`, from `gossip::add` and `meet`),
+//! and a player's move near it (`Online.seen`). Not an event: a villager or the golem walking into reach while the player stands still.
 use super::gossip::Gossips;
 use super::*;
 use crate::cow::*;
@@ -31,7 +33,10 @@ pub struct Defend {
     slot: u8,
 }
 
-pub static MODULE: Module = Module { name: "defend_village_target", flags: TARGET, equip, arm, fired, can_use, start, stop, ..Module::DEFAULT };
+/// The count of `canUse` asks made, kept only in a world that holds it (the cost test inserts it).
+#[derive(Resource, Default)]
+pub struct Asks(pub u64);
+pub static MODULE: Module = Module { name: "defend_village_target", flags: TARGET, equip, arm, fired, systems, can_use, start, stop, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Defend { p: *params::<Params>(p), slot: inst.slot });
 }
@@ -42,13 +47,25 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         }
     }
 }
-fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let Some(d) = w.get::<Defend>(e).copied() else { return false };
-    if !grudge(w, e, d.p) {
-        return false;
-    }
-    crate::goals::arm(w, e, inst.slot, 1);
+fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
     true
+}
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems(wake_on_player.in_set(slot));
+}
+/// A player moved: the golems around the place he reached ask whether he is the one to defend against.
+fn wake_on_player(on: Res<Online>, idx: Res<Index>, q: Query<&Defend>, mut reqs: ResMut<Requests>) {
+    if q.is_empty() {
+        return;
+    }
+    for &(_, new) in &on.seen {
+        let Some(n) = new else { continue };
+        idx.for_radius(n.x, n.z, 16.0, |c| {
+            if let Ok(d) = q.get(c) {
+                reqs.0.push(Req::Start(c, d.slot));
+            }
+        });
+    }
 }
 /// A gossip made `villager` hold a player at or below the golems' threshold: the golems that see it wake.
 pub fn wake_golems(w: &mut World, villager: Entity) {
@@ -61,7 +78,7 @@ pub fn wake_golems(w: &mut World, villager: Entity) {
     w.resource::<Index>().for_radius(at.x, at.z, 16.0, |c| golems.push(c));
     for c in golems {
         if w.get::<Defend>(c).is_some() {
-            arm_module(w, c, &MODULE, 1);
+            crate::goals::wake(w, c, &MODULE);
         }
     }
 }
@@ -110,6 +127,9 @@ fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {
     players.into_iter().min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1))).map(|(_, id)| id)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
+    if let Some(mut a) = w.get_resource_mut::<Asks>() {
+        a.0 += 1;
+    }
     let Some(d) = w.get::<Defend>(e).copied() else { return false };
     pick(w, e, d.p).is_some()
 }

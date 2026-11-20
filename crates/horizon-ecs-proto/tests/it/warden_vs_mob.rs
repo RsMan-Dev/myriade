@@ -7,7 +7,7 @@ use horizon_client_lib::mobs::{warden, MobEvent};
 use horizon_ecs_proto::{cow::*, behaviours::{act_phase::{ActPhase, Phase}, dig::Withdrawn, suspect_anger}, goals::*, targeting::*};
 
 fn skip() -> bool {
-    !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:warden")
+    !have_data() || wrong_species(&["minecraft:warden"])
 }
 
 /// The first tick of each probe, on both sides: `[emerging, angry, booming, gone]`.

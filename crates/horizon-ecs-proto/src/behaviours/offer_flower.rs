@@ -30,7 +30,7 @@ pub struct Offering {
     left: i32,
 }
 
-pub static MODULE: Module = Module { name: "offer_flower", flags: MOVE | LOOK, equip, arm, fired, can_use, start, stop, tick: Some(tick), ..Module::DEFAULT };
+pub static MODULE: Module = Module { name: "offer_flower", flags: MOVE | LOOK, equip, arm, fired, blocked: Some(blocked), can_use, start, stop, tick: Some(tick), ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &(dyn std::any::Any + Sync)) {
     let ids = crate::species::registry().species.iter().enumerate().filter(|(_, s)| params::<Params>(p).candidates.contains(&s.name)).map(|(i, _)| i);
     w.entity_mut(e).insert(Offer { p: *params::<Params>(p), slot: inst.slot, mask: SpeciesSet::of(ids), who: None });
@@ -40,7 +40,7 @@ fn next(w: &mut World, e: Entity) {
     if o.mask.is_empty() {
         return;
     }
-    let wait = with_rng(w, e, |r| 2 * geometric(r, (o.p.chance + 1) / 2));
+    let wait = with_rng(w, e, |r| 2 * geometric(r, o.p.chance));
     crate::goals::arm(w, e, o.slot, wait);
 }
 fn arm(w: &mut World, e: Entity, _: Inst) {
@@ -49,6 +49,10 @@ fn arm(w: &mut World, e: Entity, _: Inst) {
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     next(w, e);
     true
+}
+/// A goal of the golem that keeps the move flag holds the ask off: the `Mob` makes no draw then, the draw is lost and made again.
+fn blocked(w: &mut World, e: Entity, _: Inst) {
+    next(w, e);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !w.get_resource::<crate::hostile::Daylight>().is_some_and(|d| d.0) {
@@ -73,7 +77,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     best.is_some()
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let n = (w.get::<Offer>(e).unwrap().p.ticks + 1) / 2;
+    // The `Mob`'s goal ticks every other game tick: `reducedTickDelay(400)` of them last 400 game ticks.
+    let n = w.get::<Offer>(e).unwrap().p.ticks;
     w.entity_mut(e).insert(Offering { left: n });
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
