@@ -4,6 +4,7 @@
 //! Replis (fiche 99) : le recul est le recul standard (`Cause::Entity`, sans colère : pas de `by`), pas de cornes, pas de
 //! sonde de chemin pour le départ (le plus proche des départs marchables est retenu), pas de joueur pour cible, pas de
 //! tentation ni d'amour (pas d'état lisible).
+use crate::IFloor as _;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
@@ -254,7 +255,7 @@ fn pos_of(w: &World, e: Entity) -> Vec3 {
 }
 
 fn block_of(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
+    [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()]
 }
 
 fn nav_done(w: &World, e: Entity) -> bool {
@@ -348,7 +349,8 @@ fn level_mw(w: &World) -> &'static MobWorld<'static> {
 
 /// `PrepareRamNearestTarget.isWalkableBlock` : destination stable et malus de chemin nul.
 fn walkable(w: &World, e: Entity, mw: &MobWorld, p: [i32; 3]) -> bool {
-    let t = mw.path_type_static(p[0], p[1], p[2]);
+    crate::pathsearch::adjacent_reset();
+    let t = crate::pathsearch::path_type_static(mw, p[0], p[1], p[2]);
     let malus = w.get::<NavParams>(e).map_or(t.malus(), |n| n.malus[t as usize].unwrap_or_else(|| t.malus()));
     stable_destination(mw, p) && malus == 0.0
 }

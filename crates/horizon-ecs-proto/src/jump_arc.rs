@@ -11,6 +11,8 @@ use horizon_core::jmath;
 pub struct Footprint {
     pub width: f32,
     pub height: f32,
+    /// The world's occupancy masks, when the caller has them (the same answer as the kernel's, for less).
+    pub occ: Option<&'static crate::occupancy::Occupancy>,
 }
 
 /// `LongJumpUtil.calculateJumpVectorForAngle`: from `pos` to `target` (stopping half a block short of it) at `angle` degrees, under `gravity`;
@@ -26,9 +28,7 @@ pub fn jump_vector(pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, ang
     let r = r2.sqrt();
     let y = d.y;
     let g = gravity;
-    let sin2 = jmath::sin(f64::from(2.0 * angrad));
-    let cos_sq = jmath::pow(jmath::cos(f64::from(angrad)), 2.0);
-    let (sin, cos) = (jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad)));
+    let [sin2, cos_sq, sin, cos] = angle_trig(angle, angrad);
     let v0sq = r2 * g / (r * sin2 - 2.0 * y * cos_sq);
     if v0sq < 0.0 {
         return None;
@@ -57,6 +57,22 @@ pub fn jump_vector(pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, ang
     Some(Vec3::new(v0r * jmath::cos(xz), v0y, v0r * jmath::sin(xz)).scale(f64::from(0.95_f32)))
 }
 
+thread_local! {
+    static ANGLES: std::cell::RefCell<Vec<(i32, [f64; 4])>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// `[sin 2a, cos^2 a, sin a, cos a]` of an allowed angle: the same four angles for every candidate, worked out once.
+fn angle_trig(angle: i32, angrad: f32) -> [f64; 4] {
+    ANGLES.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some(e) = c.iter().find(|e| e.0 == angle) {
+            return e.1;
+        }
+        let v = [jmath::sin(f64::from(2.0 * angrad)), jmath::pow(jmath::cos(f64::from(angrad)), 2.0), jmath::sin(f64::from(angrad)), jmath::cos(f64::from(angrad))];
+        c.push((angle, v));
+        v
+    })
+}
+
 /// `LongJumpUtil.isClearTransition`.
 fn clear_transition(mw: &MobWorld, foot: Footprint, from: Vec3, to: Vec3) -> bool {
     let (width, height) = (f64::from(foot.width), f64::from(foot.height));
@@ -68,7 +84,11 @@ fn clear_transition(mw: &MobWorld, foot: Footprint, from: Vec3, to: Vec3) -> boo
     let mut p = from;
     (0..checks).all(|i| {
         p = if i == checks - 1 { to } else { p.add_vector(step) };
-        mw.no_collision(Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half)))
+        let b = Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half));
+        match foot.occ {
+            Some(o) => o.no_collision(horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b),
+            None => mw.no_collision(b),
+        }
     })
 }
 

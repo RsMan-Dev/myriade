@@ -2,6 +2,7 @@
 //! later a ranged attack) reads without knowing which module set it. `Target` is the current target with the memory of
 //! the last sight; the modules that choose a target (`nearest_target`, `hurt_by`) write it with `set_target`, the
 //! systems here keep it honest (`TargetGoal.canContinueToUse`) and clear it when it stops being valid.
+use crate::IFloor as _;
 use crate::cow::*;
 use crate::goals::*;
 use crate::hostile::{ChangedBlocks, PlayerState};
@@ -132,10 +133,10 @@ pub fn clear_target(w: &mut World, e: Entity) {
 /// that stands still, with a still target and still blocks, costs a comparison.
 pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlocks>, mut q: Query<(&Pos, &Eye, &mut Target)>) {
     let mw = level.mw.0;
-    let block = |p: Vec3, eye: f64| (p.x.floor() as i32, (p.y + eye).floor() as i32, p.z.floor() as i32);
+    let block = |p: Vec3, eye: f64| (p.x.ifloor(), (p.y + eye).ifloor(), p.z.ifloor());
     for (pos, look, mut g) in &mut q {
         let Some(i) = tg.info(g.who) else { continue };
-        let (zb, pb) = (block(pos.0, look.0), (i.pos.x.floor() as i32, i.eye.floor() as i32, i.pos.z.floor() as i32));
+        let (zb, pb) = (block(pos.0, look.0), (i.pos.x.ifloor(), i.eye.ifloor(), i.pos.z.ifloor()));
         let mut dirty = zb != g.zblock || pb != g.pblock;
         if !dirty && !changed.0.is_empty() {
             let (lo, hi) = ((zb.0.min(pb.0) - 1, zb.1.min(pb.1) - 1, zb.2.min(pb.2) - 1), (zb.0.max(pb.0) + 1, zb.1.max(pb.1) + 1, zb.2.max(pb.2) + 1));

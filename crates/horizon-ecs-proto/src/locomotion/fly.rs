@@ -6,6 +6,7 @@
 //!
 //! A flier does not sleep while it flies (its physics runs every tick, like the fish in the water); what can sleep is a flier at
 //! rest (perched, hanging), which is a goal's state and is not in this module.
+use crate::IFloor as _;
 use crate::{
     behaviours::{Cap, Inst, Module},
     cow::*,
@@ -132,10 +133,10 @@ fn pathfind(
             stands_on_lava: false,
         };
         let max_len = sp.follow_range;
-        let target = [s.tx.floor() as i32, s.ty, s.tz.floor() as i32];
+        let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
         nav.searches += 1;
         crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = Finder::new(mw, &pm, Evaluator::Fly).find(&[target], max_len, nav.reach, (max_len * 16.0).floor() as i32);
+        let path = Finder::new(mw, &pm, Evaluator::Fly).find(&[target], max_len, nav.reach, (max_len * 16.0).ifloor());
         par.command_scope(e, |mut cmd| match path {
             Some(p) if !p.nodes.is_empty() => {
                 nav.path = Some(p);
@@ -174,7 +175,7 @@ pub fn reaches(w: &World, e: Entity, target: [i32; 3], reach: i32) -> bool {
         stands_on_lava: false,
     };
     let max_len = sp.follow_range;
-    Finder::new(level.mw.0, &pm, Evaluator::Fly).find(&[target], max_len, reach, (max_len * 16.0).floor() as i32).is_some_and(|p| p.reached)
+    Finder::new(level.mw.0, &pm, Evaluator::Fly).find(&[target], max_len, reach, (max_len * 16.0).ifloor()).is_some_and(|p| p.reached)
 }
 
 /// `followThePath` of the air: the node is reached within 1.0 vertically, the position is the animal's own, a node seen in a straight

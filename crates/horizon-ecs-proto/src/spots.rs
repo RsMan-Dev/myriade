@@ -4,6 +4,7 @@
 //! malus), and the best of ten by the species' `walk_target_value` wins (the first on a tie). A module calls `pick` and
 //! never writes its own draw. The numbers come from `Mob` (`goals.rs` `default_random_pos*`, `land_random_pos*`,
 //! `ai.rs` `walk_target_value`); the random stream is the entity's `Rng` (the same laws, not the same stream).
+use crate::IFloor as _;
 use crate::cow::{Level, NavParams, Rng};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::MobWorld;
@@ -139,7 +140,7 @@ impl Spotter<'_> {
         near && !inside
     }
     fn malus_is_zero(&self, p: [i32; 3]) -> bool {
-        let t = self.mw.path_type_static(p[0], p[1], p[2]);
+        let t = crate::pathsearch::path_type_static(self.mw, p[0], p[1], p[2]);
         self.nav.malus[t as usize].unwrap_or_else(|| t.malus()) == 0.0
     }
     fn direction(&mut self, h: i32, v: i32) -> [i32; 3] {
@@ -164,14 +165,14 @@ impl Spotter<'_> {
             return None;
         }
         let yt = self.rng.next_int(2 * v + 1) - v + fly_height;
-        Some([xt.floor() as i32, yt, zt.floor() as i32])
+        Some([xt.ifloor(), yt, zt.ifloor()])
     }
     /// The offset is a block offset: it is rounded first, then added to the position and rounded again.
     fn toward(&self, d: [i32; 3]) -> [i32; 3] {
         [
-            (f64::from(d[0]) + self.pos[0]).floor() as i32,
-            (f64::from(d[1]) + self.pos[1]).floor() as i32,
-            (f64::from(d[2]) + self.pos[2]).floor() as i32,
+            (f64::from(d[0]) + self.pos[0]).ifloor(),
+            (f64::from(d[1]) + self.pos[1]).ifloor(),
+            (f64::from(d[2]) + self.pos[2]).ifloor(),
         ]
     }
     fn in_height(&self, p: [i32; 3]) -> bool {
@@ -344,6 +345,7 @@ pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
     let level = *w.get_resource::<Level>()?;
     let mut rng = Rng(w.get::<Rng>(e)?.0);
     let stable = if w.get::<crate::locomotion::SwimMode>(e).is_some() { Stable::Water } else { Stable::Ground };
+    crate::pathsearch::adjacent_reset();
     let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng);
     sp.stable = stable;
     sp.home = w.get::<Home>(e).copied();

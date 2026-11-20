@@ -6,6 +6,7 @@
 //! dig: a memory that lasts that long wakes the brain, where it is dropped. Not done: the sounds of the transitions (no sound event in the
 //! frame), the path test of `can_dig_at` (`create_path_to(.., 1).reached`: the frame has no path query), the leash and the head pitch of
 //! `head_block`.
+use crate::IFloor as _;
 use crate::behaviours::breed::Love;
 use crate::behaviours::Cap;
 use crate::brain::*;
@@ -94,12 +95,12 @@ fn head_block(w: &World, e: Entity) -> [i32; 3] {
     let yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
     let y = -yaw * (std::f32::consts::PI / 180.0) - std::f32::consts::PI;
     let (fx, fz) = (f64::from(-y.msin()), f64::from(-y.mcos()));
-    [(p[0] + fx * 2.25).floor() as i32, (p[1] + f64::from(0.2_f32)).floor() as i32, (p[2] + fz * 2.25).floor() as i32]
+    [(p[0] + fx * 2.25).ifloor(), (p[1] + f64::from(0.2_f32)).ifloor(), (p[2] + fz * 2.25).ifloor()]
 }
 /// `Sniffer.getOnPos`: the block under its feet.
 fn on_pos(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-    [p[0].floor() as i32, (p[1] - f64::from(0.2_f32)).floor() as i32, p[2].floor() as i32]
+    [p[0].ifloor(), (p[1] - f64::from(0.2_f32)).ifloor(), p[2].ifloor()]
 }
 /// `Sniffer.canDig(BlockPos)` without the path test: a diggable block that is not explored.
 fn can_dig_at(w: &World, e: Entity, p: [i32; 3], tag: &str) -> bool {
@@ -118,7 +119,7 @@ fn can_dig(w: &World, e: Entity, tag: &str) -> bool {
 fn dig_position(w: &mut World, e: Entity, tag: &str) -> Option<[i32; 3]> {
     for idx in 0..5 {
         let Some(p) = pick(w, e, crate::spots::Pick::Land { h: 10 + 2 * idx, v: 3 }) else { continue };
-        let below = [p[0].floor() as i32, p[1].floor() as i32 - 1, p[2].floor() as i32];
+        let below = [p[0].ifloor(), p[1].ifloor() - 1, p[2].ifloor()];
         if can_dig_at(w, e, below, tag) {
             return Some(below);
         }

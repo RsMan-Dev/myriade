@@ -1,4 +1,6 @@
 //! Counting copy of Horizon's `Finder` (walk evaluator included), to be reduced. See suivi/ecs-portage/relais/chemin-partage.md.
+use crate::IFloor as _;
+use horizon_world::registry::BlockStateId;
 use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType, PATH_TYPES}};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::fast_hash::FxHashMap;
@@ -65,6 +67,15 @@ pub fn adjacent_of_state(w: &MobWorld, state: horizon_world::registry::BlockStat
     default
         .or_else(|| matches!(facts.fluid, Fluid::Water | Fluid::Modded).then_some(PathType::WaterBorder))
         .or_else(|| vanilla_adjacent(w.data.path_type(state)))
+}
+/// A new query: the neighbour answers worked out so far (by state, valid for one registry and one set of tags) are forgotten.
+pub fn adjacent_reset() {
+    ADJACENT.with(|cell| {
+        let (table, touched) = &mut *cell.borrow_mut();
+        for id in touched.drain(..) {
+            table[id as usize] = 0;
+        }
+    });
 }
 /// `check_neighbours` inside a finder's query, with no mod hooks: a neighbour's answer depends on its state alone,
 /// so it is worked out once per state per query.
@@ -143,11 +154,87 @@ pub fn neighbourhood_may_answer(w: &MobWorld, x: i32, y: i32, z: i32, some: &mut
     }
     false
 }
+// ---- the block batch ----------------------------------------------------------------------------------------
+/// While a `BlockBatch` guard lives, the block states the searches read are kept in a direct table (the world does not change inside a batch:
+/// one decision of one creature runs many searches over the same cells). One read of the world is some 220 instructions, a hit about 15.
+struct BatchTab {
+    depth: u32,
+    stamp: u32,
+    tab: Vec<(u64, i32, u32, u32)>,
+}
+thread_local! {
+    static BATCH: std::cell::UnsafeCell<BatchTab> = const { std::cell::UnsafeCell::new(BatchTab { depth: 0, stamp: 0, tab: Vec::new() }) };
+}
+const BATCH_BITS: u32 = 13;
+/// Holds the block table open (see above); drop it before anything changes a block.
+pub struct BlockBatch;
+impl BlockBatch {
+    pub fn begin() -> Self {
+        BATCH.with(|b| {
+            // SAFETY: thread local, no reference is kept across calls.
+            let b = unsafe { &mut *b.get() };
+            if b.depth == 0 {
+                if b.tab.is_empty() {
+                    b.tab = vec![(0, 0, 0, 0); 1 << BATCH_BITS];
+                }
+                // What the searches of the last batch kept is of another moment of the world.
+                TLS_BUFFERS.with(|c| {
+                    if let Ok(mut buf) = c.try_borrow_mut() {
+                        buf.clear();
+                    }
+                });
+                b.stamp = b.stamp.wrapping_add(1);
+                if b.stamp == 0 {
+                    b.tab.iter_mut().for_each(|e| e.2 = 0);
+                    b.stamp = 1;
+                }
+            }
+            b.depth += 1;
+        });
+        BlockBatch
+    }
+}
+impl Drop for BlockBatch {
+    fn drop(&mut self) {
+        // SAFETY: as in `begin`.
+        BATCH.with(|b| unsafe { (*b.get()).depth -= 1 });
+    }
+}
+fn batch_open() -> bool {
+    // SAFETY: as in `BlockBatch::begin`.
+    BATCH.with(|b| unsafe { (*b.get()).depth > 0 })
+}
+/// `w.world.block(x, y, z)`, through the batch table when one is open.
+#[inline(always)]
+fn block_at(w: &MobWorld, x: i32, y: i32, z: i32) -> BlockStateId {
+    BATCH.with(|b| {
+        // SAFETY: as in `begin`.
+        let b = unsafe { &mut *b.get() };
+        if b.depth == 0 {
+            return w.world.block(x, y, z);
+        }
+        let kxz = (x as u32 as u64) | ((z as u32 as u64) << 32);
+        let i = ((kxz ^ (y as u32 as u64).wrapping_mul(0x9E37_79B9)).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (64 - BATCH_BITS)) as usize;
+        let e = &mut b.tab[i];
+        if e.2 == b.stamp && e.0 == kxz && e.1 == y {
+            return BlockStateId(e.3);
+        }
+        let id = w.world.block(x, y, z);
+        *e = (kxz, y, b.stamp, id.0);
+        id
+    })
+}
+
+/// Whether a block state of this path type can hold a water fluid (waterlogged). Read off every state of the registry by the test
+/// `water_fluid_states_by_path_type`: a cell of any other type has no water fluid, so its floor is the static one.
+pub fn may_hold_water(t: PathType) -> bool {
+    matches!(t, PathType::Blocked | PathType::DamageCautious | PathType::Fence | PathType::Fire | PathType::Leaves | PathType::Rail | PathType::Trapdoor | PathType::Water)
+}
 pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
     bump(12);
     w.world.cached_path_type(BlockPos::new(x, y, z), || {
         bump(13);
-        let state = w.world.block(x, y, z);
+        let state = block_at(w, x, y, z);
         w.mob_hooks
             .and_then(|hooks| hooks.block_path_type(state, [x, y, z]))
             .unwrap_or_else(|| w.data.path_type(state))
@@ -235,7 +322,7 @@ pub fn check_neighbours(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType) -> Pa
 pub fn floor_level(w: &MobWorld, x: i32, y: i32, z: i32) -> f64 {
     let below = y.saturating_sub(1);
     bump(14);
-    f64::from(below) + f64::from(w.data.state(w.world.block(x, below, z)).top)
+    f64::from(below) + f64::from(w.data.state(block_at(w, x, below, z)).top)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -294,6 +381,8 @@ pub struct FinderBuffers {
     pub types: FxHashMap<(i32, i32, i32), PathType>,
     pub statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     pub collisions: FxHashMap<[u64; 6], bool>,
+    /// What the kept `types`/`statics`/`collisions` were made for (a block batch keeps them from one search to the next; 0: nothing kept).
+    pub sig: u64,
 }
 
 impl FinderBuffers {
@@ -307,6 +396,7 @@ impl FinderBuffers {
             types: FxHashMap::default(),
             statics: std::cell::RefCell::new(FxHashMap::default()),
             collisions: FxHashMap::default(),
+            sig: 0,
         }
     }
 
@@ -317,6 +407,7 @@ impl FinderBuffers {
         self.types.clear();
         self.statics.borrow_mut().clear();
         self.collisions.clear();
+        self.sig = 0;
     }
 }
 
@@ -340,6 +431,9 @@ const NONE: u32 = u32::MAX;
 
 /// One pathfinding query: the node arena, open set and per-query caches.
 pub struct Finder<'a, 'w> {
+    /// Set by the caller of one `find_accepted` that reads only whether the node found is Water: the body-box check of `try_jump_on`
+    /// (which turns a node into none) then changes nothing it reads, unless the node is Water. Cleared by `try_jump_on` before it recurses.
+    lazy_box: bool,
     w: &'a MobWorld<'w>,
     mob: &'a PathMob,
     eval: Evaluator,
@@ -367,6 +461,13 @@ pub struct Finder<'a, 'w> {
     statics: std::cell::RefCell<FxHashMap<(i32, i32, i32), PathType>>,
     collisions: FxHashMap<[u64; 6], bool>,
     use_layer: bool,
+    /// First grid stamp of the run of searches whose cell bytes stay valid.
+    kstamp: u16,
+    /// Set in the layer's section key of the amphibious evaluator (its static types differ from the walking ones).
+    lbit: u64,
+    occ: Option<&'static crate::occupancy::Occupancy>,
+    visited: i32,
+    sig: u64,
     saw_rail: std::cell::Cell<bool>,
     profile: u64,
     entity_width: i32,
@@ -382,9 +483,12 @@ impl<'a, 'w> Drop for Finder<'a, 'w> {
                 self.nodes.clear();
                 self.index.clear();
                 self.heap.clear();
-                self.types.clear();
-                self.statics.borrow_mut().clear();
-                self.collisions.clear();
+                if self.sig == 0 {
+                    self.types.clear();
+                    self.statics.borrow_mut().clear();
+                    self.collisions.clear();
+                }
+                buf.sig = self.sig;
                 buf.nodes = std::mem::take(&mut self.nodes);
                 buf.index = std::mem::take(&mut self.index);
                 buf.heap = std::mem::take(&mut self.heap);
@@ -417,17 +521,33 @@ fn swim_cell_type(
 }
 
 impl<'a, 'w> Finder<'a, 'w> {
+    /// Collision checks go through the occupancy masks (the same answers as `MobWorld::no_collision`).
+    pub fn with_occ(mut self, occ: &'static crate::occupancy::Occupancy) -> Self {
+        self.occ = Some(occ);
+        self
+    }
     pub fn new(w: &'a MobWorld<'w>, mob: &'a PathMob, eval: Evaluator) -> Self {
         let _g = sec(0);
-        ADJACENT.with(|cell| {
-            let (table, touched) = &mut *cell.borrow_mut();
-            for id in touched.drain(..) {
-                table[id as usize] = 0;
+        adjacent_reset();
+        LAYER.with(|l| {
+            let e = LAYER_EPOCH.load(std::sync::atomic::Ordering::Acquire);
+            let mut l = l.borrow_mut();
+            if l.epoch != e {
+                l.map.clear();
+                l.pmap.clear();
+                l.epoch = e;
             }
         });
-        let (nodes, index, heap, mut grid, mut stamp, types, statics, collisions) = TLS_BUFFERS.with(|cell| {
+        let batch = batch_open();
+        let (nodes, index, heap, mut grid, mut stamp, mut types, mut statics, mut collisions, kept_sig) = TLS_BUFFERS.with(|cell| {
             if let Ok(mut buf) = cell.try_borrow_mut() {
-                buf.clear();
+                if batch {
+                    buf.nodes.clear();
+                    buf.index.clear();
+                    buf.heap.clear();
+                } else {
+                    buf.clear();
+                }
                 (
                     std::mem::take(&mut buf.nodes),
                     std::mem::take(&mut buf.index),
@@ -437,6 +557,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     std::mem::take(&mut buf.types),
                     std::mem::take(&mut buf.statics),
                     std::mem::take(&mut buf.collisions),
+                    buf.sig,
                 )
             } else {
                 (
@@ -448,6 +569,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                     FxHashMap::default(),
                     std::cell::RefCell::new(FxHashMap::default()),
                     FxHashMap::default(),
+                    0,
                 )
             }
         });
@@ -461,7 +583,7 @@ impl<'a, 'w> Finder<'a, 'w> {
                 stamp = 1;
             }
         }
-        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
+        let use_layer = LAYER_ON.load(std::sync::atomic::Ordering::Relaxed) && matches!(eval, Evaluator::Walk | Evaluator::Amphibious { .. }) && w.mob_hooks.is_none() && (mob.width + 1.0).floor() <= 5.0 && (mob.height + 1.0).floor() <= 5.0;
         if use_layer && stamp & 63 == 0 {
             layer_evict();
         }
@@ -492,7 +614,26 @@ impl<'a, 'w> Finder<'a, 'w> {
                 MALUS_CACHE.with(|c| *c.borrow_mut() = Some(ProfileCache { key: (key.0, key.1, key.2, key.3, mob.malus), hash: profile, mt }));
             }
         }
+        // In a batch the answers of the search before are kept when it was made for the same mob at the same place.
+        let sig = if batch {
+            let q = mob.position;
+            profile ^ u64::from(amph).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ q.x.to_bits().rotate_left(7) ^ q.y.to_bits().rotate_left(19) ^ q.z.to_bits().rotate_left(31) ^ u64::from(mob.in_water) << 1 | 1
+        } else {
+            0
+        };
+        let kstamp = KSTAMP.with(|k| {
+            if sig == 0 || sig != kept_sig {
+                k.set(stamp as u16);
+            }
+            k.get()
+        });
+        if sig == 0 || sig != kept_sig {
+            types.clear();
+            statics.get_mut().clear();
+            collisions.clear();
+        }
         Self {
+            sig,
             w,
             mob,
             eval,
@@ -517,11 +658,16 @@ impl<'a, 'w> Finder<'a, 'w> {
             statics,
             collisions,
             use_layer,
+            kstamp,
+            lazy_box: false,
+            occ: None,
+            visited: 0,
             saw_rail: std::cell::Cell::new(false),
-            profile,
-            entity_width: (mob.width + 1.0).floor() as i32,
-            entity_height: (mob.height + 1.0).floor() as i32,
-            entity_depth: (mob.width + 1.0).floor() as i32,
+            profile: if amph { profile ^ AMPH_MIX } else { profile },
+            lbit: if amph { AMPH_BIT } else { 0 },
+            entity_width: (mob.width + 1.0).ifloor(),
+            entity_height: (mob.height + 1.0).ifloor(),
+            entity_depth: (mob.width + 1.0).ifloor(),
         }
     }
     /// Mob.getPathfindingMalus; AmphibiousNodeEvaluator.prepare overrides three
@@ -539,22 +685,22 @@ impl<'a, 'w> Finder<'a, 'w> {
     // --- world access -------------------------------------------------
     fn state(&self, x: i32, y: i32, z: i32) -> data::StateData {
         bump(15);
-        self.w.data.state(self.w.world.block(x, y, z))
+        self.w.data.state(block_at(self.w, x, y, z))
     }
     fn pathfindable(&self, x: i32, y: i32, z: i32, kind: PathComputationType) -> bool {
         bump(15);
-        self.w.data.pathfindable(self.w.world.block(x, y, z), kind)
+        self.w.data.pathfindable(block_at(self.w, x, y, z), kind)
     }
     fn type_from_state(&self, x: i32, y: i32, z: i32) -> PathType {
         path_type_from_state(self.w, x, y, z)
     }
     fn fluid(&self, x: i32, y: i32, z: i32) -> Fluid {
         bump(15);
-        self.w.facts.get(self.w.world.block(x, y, z)).fluid
+        self.w.facts.get(block_at(self.w, x, y, z)).fluid
     }
     fn is_air(&self, x: i32, y: i32, z: i32) -> bool {
         bump(15);
-        self.w.facts.is_air(self.w.world.block(x, y, z))
+        self.w.facts.is_air(block_at(self.w, x, y, z))
     }
     /// The layer's section of a cell: from the per-search table when it is within reach of the mob, else from the layer.
     #[inline(always)]
@@ -566,11 +712,11 @@ impl<'a, 'w> Finder<'a, 'w> {
             if !p.is_null() {
                 return p;
             }
-            let p = LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)));
+            let p = LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z) | self.lbit));
             cell.set(p);
             return p;
         }
-        LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z)))
+        LAYER.with(|l| l.borrow_mut().section(layer_key(x, y, z) | self.lbit))
     }
     #[inline(always)]
     fn psect(&self, x: i32, y: i32, z: i32) -> *mut [u8; 4096] {
@@ -589,9 +735,17 @@ impl<'a, 'w> Finder<'a, 'w> {
     }
     /// WalkNodeEvaluator.getFloorLevel(level, pos).
     pub fn static_floor(&self, x: i32, y: i32, z: i32) -> f64 {
-        let below = y.saturating_sub(1);
         if self.use_layer {
             let slot = self.slot(x, y, z);
+            return self.static_floor_at(slot, x, y, z);
+        }
+        f64::from(y.saturating_sub(1)) + f64::from(self.state(x, y.saturating_sub(1), z).top)
+    }
+    /// `static_floor` of a cell whose grid cell (`slot`) is known and reset, with the layer on.
+    #[inline(always)]
+    fn static_floor_at(&self, slot: Option<*mut u64>, x: i32, y: i32, z: i32) -> f64 {
+        let below = y.saturating_sub(1);
+        {
             if let Some(p) = slot {
                 // SAFETY: a grid cell.
                 let c = unsafe { (*p >> 56) as u8 };
@@ -612,9 +766,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             if let Some(p) = slot {
                 unsafe { *p = (*p & !(0xFFu64 << 56)) | (u64::from(c) << 56) };
             }
-            return if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) };
+            if c < 0xFE { f64::from(below) + f64::from(c) / 16.0 } else { f64::from(below) + f64::from(self.state(x, below, z).top) }
         }
-        f64::from(below) + f64::from(self.state(x, below, z).top)
     }
     fn floor_level(&self, x: i32, y: i32, z: i32) -> f64 {
         let amphibious = matches!(self.eval, Evaluator::Amphibious { .. });
@@ -640,7 +793,10 @@ impl<'a, 'w> Finder<'a, 'w> {
             return *v;
         }
         bump(21);
-        let v = !self.w.no_collision(b);
+        let v = match self.occ {
+            Some(o) => !o.no_collision(horizon_client_render::collisions::SceneCollisions { world: self.w.world, binding: self.w.collision, subject: None }, b),
+            None => !self.w.no_collision(b),
+        };
         self.collisions.insert(key, v);
         v
     }
@@ -850,6 +1006,14 @@ impl<'a, 'w> Finder<'a, 'w> {
         bump(7);
         if self.use_layer {
             let slot = self.slot(x, y, z);
+            return self.cached_at(slot, x, y, z);
+        }
+        self.cached_off_layer(x, y, z)
+    }
+    /// `cached` of a cell whose grid cell (`slot`) is known and reset.
+    #[inline(always)]
+    fn cached_at(&mut self, slot: Option<*mut u64>, x: i32, y: i32, z: i32) -> PathType {
+        {
             if let Some(p) = slot {
                 // SAFETY: a grid cell.
                 let v = unsafe { (*p >> 48) as u8 };
@@ -879,6 +1043,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
             return t;
         }
+    }
+    fn cached_off_layer(&mut self, x: i32, y: i32, z: i32) -> PathType {
         if let Some(t) = self.types.get(&(x, y, z)) {
             return *t;
         }
@@ -908,8 +1074,11 @@ impl<'a, 'w> Finder<'a, 'w> {
     unsafe fn fresh(&self, p: *mut u64) {
         // SAFETY: the caller gives a cell of the grid.
         unsafe {
-            if ((*p >> 32) as u16) != self.stamp as u16 {
-                *p = (0xFFu64 << 56) | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
+            let old = (*p >> 32) as u16;
+            if old != self.stamp as u16 {
+                // The type and floor bytes of a search of the same batch, mob and place stay true (the world does not change inside a batch).
+                let keep = if old >= self.kstamp && old != 0 { *p & (!0u64 << 48) } else { 0xFFu64 << 56 };
+                *p = keep | (u64::from(self.stamp as u16) << 32) | u64::from(NONE);
             }
         }
     }
@@ -970,35 +1139,35 @@ impl<'a, 'w> Finder<'a, 'w> {
         match self.eval {
             Evaluator::Swim { .. } => {
                 return Some(self.node(
-                    lo.x.floor() as i32,
-                    (lo.y + 0.5).floor() as i32,
-                    lo.z.floor() as i32,
+                    lo.x.ifloor(),
+                    (lo.y + 0.5).ifloor(),
+                    lo.z.ifloor(),
                 ));
             }
             Evaluator::Amphibious { .. } if m.in_water => {
                 return Some(self.start_node(
-                    lo.x.floor() as i32,
-                    (lo.y + 0.5).floor() as i32,
-                    lo.z.floor() as i32,
+                    lo.x.ifloor(),
+                    (lo.y + 0.5).ifloor(),
+                    lo.z.ifloor(),
                 ));
             }
             Evaluator::Fly => {
-                let (bx, bz) = (p.x.floor() as i32, p.z.floor() as i32);
+                let (bx, bz) = (p.x.ifloor(), p.z.ifloor());
                 let mut start_y;
                 if m.can_float && m.in_water {
-                    start_y = p.y.floor() as i32;
+                    start_y = p.y.ifloor();
                     while &*self.w.facts.get(self.w.world.block(bx, start_y, bz)).name
                         == "minecraft:water"
                     {
                         start_y += 1;
                     }
                 } else {
-                    start_y = (p.y + 0.5).floor() as i32;
+                    start_y = (p.y + 0.5).ifloor();
                 }
                 if !self.can_start_at(bx, start_y, bz) {
-                    let by = p.y.floor() as i32;
+                    let by = p.y.ifloor();
                     for (cx, cz) in [(lo.x, lo.z), (lo.x, hi.z), (hi.x, lo.z), (hi.x, hi.z)] {
-                        let (cx, cz) = (cx.floor() as i32, cz.floor() as i32);
+                        let (cx, cz) = (cx.ifloor(), cz.ifloor());
                         if self.can_start_at(cx, by, cz) {
                             return Some(self.start_node(cx, by, cz));
                         }
@@ -1009,8 +1178,8 @@ impl<'a, 'w> Finder<'a, 'w> {
             _ => {}
         }
         // WalkNodeEvaluator.getStart
-        let (bx, bz) = (p.x.floor() as i32, p.z.floor() as i32);
-        let mut start_y = p.y.floor() as i32;
+        let (bx, bz) = (p.x.ifloor(), p.z.ifloor());
+        let mut start_y = p.y.ifloor();
         let fluid_at = |s: &Self, y: i32| s.fluid(bx, y, bz);
         if !(m.stands_on_lava && fluid_at(self, start_y) == Fluid::Lava) {
             if m.can_float && fluid_at(self, start_y) == Fluid::Water {
@@ -1019,9 +1188,9 @@ impl<'a, 'w> Finder<'a, 'w> {
                 }
                 start_y -= 1;
             } else if m.on_ground {
-                start_y = (p.y + 0.5).floor() as i32;
+                start_y = (p.y + 0.5).ifloor();
             } else {
-                let mut y = (p.y + 1.0).floor() as i32;
+                let mut y = (p.y + 1.0).ifloor();
                 while y > self.w.world.bottom_y() {
                     start_y = y;
                     y -= 1;
@@ -1041,7 +1210,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
         if !self.can_start_at(bx, start_y, bz) {
             for (cx, cz) in [(lo.x, lo.z), (lo.x, hi.z), (hi.x, lo.z), (hi.x, hi.z)] {
-                let (cx, cz) = (cx.floor() as i32, cz.floor() as i32);
+                let (cx, cz) = (cx.ifloor(), cz.ifloor());
                 if self.can_start_at(cx, start_y, cz) {
                     return Some(self.start_node(cx, start_y, cz));
                 }
@@ -1126,7 +1295,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         dir: (i32, i32),
         current: PathType,
     ) -> Option<u32> {
-        if self.use_layer && !Self::partial_collision(current) {
+        if self.use_layer && !Self::partial_collision(current) && !(self.lbit != 0 && NO_AMPH_FAST.load(std::sync::atomic::Ordering::Relaxed)) {
             if let Some(p) = self.slot(x, y, z) {
                 return self.find_accepted_p(p, x, y, z, jump, node_height, dir, current);
             }
@@ -1141,11 +1310,11 @@ impl<'a, 'w> Finder<'a, 'w> {
         // SAFETY: a grid cell; `cached`/`static_floor`/`node_update_max` only fill fields of it.
         let mut e = unsafe { *p };
         if (e >> 48) as u8 == 0 {
-            self.cached(x, y, z);
+            self.cached_at(Some(p), x, y, z);
             e = unsafe { *p };
         }
         if (e >> 56) as u8 == 0xFF {
-            self.static_floor(x, y, z);
+            self.static_floor_at(Some(p), x, y, z);
             e = unsafe { *p };
         }
         let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
@@ -1164,6 +1333,22 @@ impl<'a, 'w> Finder<'a, 'w> {
             node.kind = PathType::Walkable;
             node.cost_malus = node.cost_malus.max(cost);
             return Some(idx);
+        }
+        let t = PathType::ALL[usize::from(ty) - 1];
+        if c < 0xFE && !may_hold_water(t) {
+            // The floor of a cell that cannot hold water is the static one (`floor_level`).
+            if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
+                return None;
+            }
+            let cost = self.mt[t as usize];
+            if cost >= 0.0 {
+                // `find_accepted_slow` returns this node, or the first ground below an Open cell.
+                let n = self.node_update_max(x, y, z, t, cost);
+                return Some(if t == PathType::Open { self.first_ground_below(x, y, z) } else { n });
+            }
+            if jump <= 0 && t != PathType::Open && !Self::partial_collision(t) {
+                return None;
+            }
         }
         self.find_accepted_slow(x, y, z, jump, node_height, dir, current)
     }
@@ -1232,8 +1417,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         current: PathType,
     ) -> Option<u32> {
         bump(3);
+        let lazy = std::mem::take(&mut self.lazy_box);
         let above = self.find_accepted(x, y + 1, z, jump - 1, node_height, dir, current)?;
-        if self.mob.width >= 1.0 {
+        if self.mob.width >= 1.0 || lazy && self.nodes[above as usize].kind != PathType::Water {
             return Some(above);
         }
         let (ak, ax, ay, az) = {
@@ -1249,7 +1435,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let grow = Aabb::new(
             Vec3::new(
                 cx - half,
-                self.floor_level(cx.floor() as i32, y + 1, cz.floor() as i32) + 0.001,
+                self.floor_level(cx.ifloor(), y + 1, cz.ifloor()) + 0.001,
                 cz - half,
             ),
             Vec3::new(
@@ -1349,7 +1535,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         let current = self.cached(px, py, pz);
         let mut jump = 0;
         if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
-            jump = self.mob.max_up_step.max(1.0).floor() as i32;
+            jump = self.mob.max_up_step.max(1.0).ifloor();
         }
         let height = self.floor_level(px, py, pz);
         // Direction.Plane.HORIZONTAL: north, east, south, west; 2D index S=0 W=1 N=2 E=3.
@@ -1394,7 +1580,9 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
         if let Evaluator::Amphibious { prefers_shallow } = self.eval {
             let up = self.find_accepted(px, py + 1, pz, (jump - 1).max(0), height, (0, 0), current);
+            self.lazy_box = true;
             let down = self.find_accepted(px, py - 1, pz, jump, height, (0, 0), current);
+            self.lazy_box = false;
             if self.neighbor_valid(up, pos)
                 && up.is_some_and(|u| self.nodes[u as usize].kind == PathType::Water)
             {
@@ -1454,7 +1642,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         };
         let mut jump = 0;
         if self.malus(above) >= 0.0 && current != PathType::StickyHoney {
-            jump = self.mob.max_up_step.max(1.0).floor() as i32;
+            jump = self.mob.max_up_step.max(1.0).ifloor();
         }
         const DIRS: [(i32, i32, usize); 4] = [(0, -1, 2), (1, 0, 3), (0, 1, 0), (-1, 0, 1)];
         let pos_malus_neg = self.nodes[pos as usize].cost_malus < 0.0;
@@ -1799,6 +1987,9 @@ impl<'a, 'w> Finder<'a, 'w> {
     #[inline(always)]
     fn best_h(&self, n: u32, targets: &mut [Target]) -> f32 {
         let _g = sec(15);
+        if targets.is_empty() {
+            return 0.0;
+        }
         let mut best = f32::MAX;
         let node = &self.nodes[n as usize];
         for t in targets.iter_mut() {
@@ -1814,6 +2005,23 @@ impl<'a, 'w> Finder<'a, 'w> {
     /// PathFinder.findPath over several target positions.
     pub fn find(
         mut self,
+        positions: &[[i32; 3]],
+        max_path_length: f32,
+        reach_range: i32,
+        max_visited: i32,
+    ) -> Option<Path> {
+        self.find_in(positions, max_path_length, reach_range, max_visited)
+    }
+    /// Every cell a search from the start expands within `max_path_length` (no target: a flood), with whether it ran to its end
+    /// (`false`: it hit `max_visited`, the answer then depends on the target and the caller searches per target).
+    pub fn flood(mut self, max_path_length: f32, max_visited: i32) -> Option<(Vec<[i32; 3]>, bool)> {
+        self.find_in(&[], max_path_length, 0, max_visited);
+        let complete = self.visited < max_visited;
+        let cells = self.nodes.iter().filter(|n| n.closed).map(|n| [n.x, n.y, n.z]).collect();
+        Some((cells, complete))
+    }
+    fn find_in(
+        &mut self,
         positions: &[[i32; 3]],
         max_path_length: f32,
         reach_range: i32,
@@ -1855,6 +2063,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         };
         while !self.heap.is_empty() {
             count += 1;
+            self.visited = count;
             if count >= max_visited {
                 break;
             }
@@ -1919,6 +2128,7 @@ impl<'a, 'w> Finder<'a, 'w> {
             }
             drop(g6);
         }
+        LAST_VISITED.store(count, std::sync::atomic::Ordering::Relaxed);
         let g11 = sec(11);
         let reached: Vec<&Target> = targets.iter().filter(|t| t.reached).collect();
         let build = |s: &Self, t: &Target, reached: bool| -> Option<Path> {
@@ -1999,7 +2209,7 @@ fn vanilla_adjacent(t: PathType) -> Option<PathType> {
 }
 
 fn block_pos(m: &PathMob) -> [i32; 3] {
-    [m.position.x.floor() as i32, m.position.y.floor() as i32, m.position.z.floor() as i32]
+    [m.position.x.ifloor(), m.position.y.ifloor(), m.position.z.ifloor()]
 }
 fn make_path(nodes: Vec<PathNode>, target: [i32; 3], reached: bool) -> Path {
     let dist_to_target = nodes.last().map_or(f32::MAX, |n| {
@@ -2036,14 +2246,20 @@ impl Small {
 /// `path_type_static` of a cell does not depend on the mob: one byte per block (0 unknown, else 1 + the type), filled the first
 /// time a search asks, shared by every search, dropped around a change (`layer_changed`). 4096 bytes a section.
 /// The herd's navigation uses this search instead of Horizon's `Finder` (bench option `OWN`).
-pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static USE_OWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 pub static LAYER_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 /// `stat`: 0 unknown, else 1 + the type; `top`: 0xFF unknown, else the collision top of the block in sixteenths (0xFE: not a multiple of 1/16, read the block).
 pub struct Sect {
     stat: [u8; 4096],
     top: [u8; 4096],
 }
+/// Bumped at every block change: each thread's layer forgets what it knew when it sees a newer epoch (the layer is per thread, a change is seen by all).
+pub static LAYER_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub fn layer_bump() {
+    LAYER_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Release);
+}
 pub struct Layer {
+    epoch: u64,
     map: FxHashMap<u64, Box<Sect>>,
     /// By (profile, section): the type a mob of that profile gives a cell (`path_type_of_mob`), one byte a block like `stat`.
     pmap: FxHashMap<(u64, u64), Box<[u8; 4096]>>,
@@ -2051,8 +2267,17 @@ pub struct Layer {
     profiles: Vec<(u64, i32, i32)>,
 }
 thread_local! {
-    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
+    static LAYER: std::cell::RefCell<Layer> = std::cell::RefCell::new(Layer { epoch: 0, map: FxHashMap::default(), pmap: FxHashMap::default(), profiles: Vec::new() });
 }
+thread_local! {
+    static KSTAMP: std::cell::Cell<u16> = const { std::cell::Cell::new(0) };
+}
+/// Bench only: switches the amphibious fast path off, to measure its gain in one binary.
+/// Bench only: nodes opened by the last search.
+pub static LAST_VISITED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+pub static NO_AMPH_FAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const AMPH_BIT: u64 = 1 << 63;
+const AMPH_MIX: u64 = 0x9E37_79B9_7F4A_7C15;
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
     (((x >> 4) as u64) & 0x1F_FFFF) | ((((z >> 4) as u64) & 0x1F_FFFF) << 21) | ((((y >> 4) as u64) & 0x1F_FFFF) << 42)
 }
@@ -2111,11 +2336,13 @@ pub fn layer_changed(x: i32, y: i32, z: i32) {
             });
         }
         boxes([x - 1, y - 1, z - 1], [x + 1, y + 2, z + 1], |key, a, b| {
-            if let Some(sct) = l.map.get_mut(&key) {
-                each(a, b, |i, j| {
-                    sct.stat[i..j].fill(0);
-                    sct.top[i..j].fill(0xFF);
-                });
+            for k in [key, key | AMPH_BIT] {
+                if let Some(sct) = l.map.get_mut(&k) {
+                    each(a, b, |i, j| {
+                        sct.stat[i..j].fill(0);
+                        sct.top[i..j].fill(0xFF);
+                    });
+                }
             }
         });
     });

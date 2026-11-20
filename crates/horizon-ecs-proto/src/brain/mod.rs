@@ -7,6 +7,7 @@
 //! entity is stepped (`brain_step`) only when something woke it: a sensor scanned, a memory changed, a behaviour runs or is
 //! polled. A brain that has nothing to do costs its sensors' scans. The brain needs the `Goals` capability (the random
 //! stream, the look and the head) and `Locomotion` for the behaviours that walk.
+use crate::IFloor as _;
 use crate::behaviours::Cap;
 use crate::cow::*;
 use crate::goals::*;
@@ -53,9 +54,9 @@ impl Tracker {
     }
     pub fn block(&self, w: &World) -> Option<[i32; 3]> {
         match *self {
-            Tracker::Entity(who, _) => crate::targeting::info(w, who).map(|i| [i.pos.x.floor() as i32, i.pos.y.floor() as i32, i.pos.z.floor() as i32]),
+            Tracker::Entity(who, _) => crate::targeting::info(w, who).map(|i| [i.pos.x.ifloor(), i.pos.y.ifloor(), i.pos.z.ifloor()]),
             Tracker::Block(p) => Some(p),
-            Tracker::Point(v) => Some([v[0].floor() as i32, v[1].floor() as i32, v[2].floor() as i32]),
+            Tracker::Point(v) => Some([v[0].ifloor(), v[1].ifloor(), v[2].ifloor()]),
         }
     }
 }
@@ -176,6 +177,9 @@ pub struct Behaviour {
     pub one_shot: bool,
     /// Nothing to do while it runs (no `tick` work): the brain is woken at its end, not every tick.
     pub passive: bool,
+    /// While it runs and this says true, the brain is not stepped every tick: it is woken by its deadline, a memory write, or whatever the
+    /// behaviour arranged itself (the end of the walk, a crossing).
+    pub sleeps: fn(&World, Entity, &Ctx) -> bool,
     pub gate: Option<Gate>,
     pub equip: fn(&mut World, Entity, &Ctx),
     pub can_start: fn(&mut World, Entity, &Ctx) -> bool,
@@ -190,6 +194,9 @@ fn no_damage(_: &mut World, _: Entity, _: &Ctx, _: &crate::behaviours::Damaged) 
 fn yes(_: &mut World, _: Entity, _: &Ctx) -> bool {
     true
 }
+fn no(_: &World, _: Entity, _: &Ctx) -> bool {
+    false
+}
 fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
 impl Behaviour {
     pub const DEFAULT: Behaviour = Behaviour {
@@ -199,6 +206,7 @@ impl Behaviour {
         one_shot: false,
         passive: false,
         gate: None,
+        sleeps: no,
         equip: nothing,
         can_start: yes,
         start: nothing,
@@ -284,6 +292,8 @@ pub struct BInst {
     pub kids: Vec<u16>,
     pub nth: u8,
     pub needs: Needs,
+    /// `needs` resolved to the brain's slots: (slot, must be present); `NONE` = a memory this plan does not hold (never present).
+    needs_l: Vec<(u16, bool)>,
     pub duration: Option<(i32, i32)>,
 }
 pub struct Plan {
@@ -295,6 +305,8 @@ pub struct Plan {
     pub order: Vec<u16>,
     pub acts: Vec<ActivityDef>,
     pick: Vec<u8>,
+    /// `acts[i].requires` resolved like `BInst::needs_l`.
+    act_req: Vec<Vec<(u16, bool)>>,
     initial: Vec<Initial>,
 }
 const NONE: u16 = u16::MAX;
@@ -334,7 +346,7 @@ impl Plan {
             let act = act_of(e.activity).ok_or_else(|| format!("behaviour `{}`: unknown activity `{}`", b.name, e.activity))?;
             let nth = def.behaviours[..i].iter().filter(|o| std::ptr::eq(o.behaviour, b)).count() as u8;
             tops.push(insts.len() as u16);
-            insts.push(BInst { b, params: e.params, act, prio: e.priority, parent: NONE, weight: 1, kids: Vec::new(), nth, needs: e.needs, duration: e.duration });
+            insts.push(BInst { b, params: e.params, act, prio: e.priority, parent: NONE, weight: 1, kids: Vec::new(), nth, needs: e.needs, needs_l: Vec::new(), duration: e.duration });
         }
         for (t, e) in def.behaviours.iter().enumerate() {
             let parent = tops[t];
@@ -342,7 +354,7 @@ impl Plan {
                 kid.behaviour.mems.iter().for_each(|m| note(m));
                 kid.needs.iter().for_each(|(m, _)| note(m));
                 let id = insts.len() as u16;
-                insts.push(BInst { b: kid.behaviour, params: kid.params, act: insts[parent as usize].act, prio: 0, parent, weight: kid.weight, kids: Vec::new(), nth: k as u8, needs: kid.needs, duration: kid.duration });
+                insts.push(BInst { b: kid.behaviour, params: kid.params, act: insts[parent as usize].act, prio: 0, parent, weight: kid.weight, kids: Vec::new(), nth: k as u8, needs: kid.needs, needs_l: Vec::new(), duration: kid.duration });
                 insts[parent as usize].kids.push(id);
             }
         }
@@ -356,7 +368,14 @@ impl Plan {
             local[k.id()] = l as u16;
         }
         let pick = def.pick.iter().filter_map(|n| act_of(n)).collect();
-        Ok(Plan { mems, local, sensors: def.sensors.to_vec(), insts, order, acts: def.activities.to_vec(), pick, initial: def.initial.to_vec() })
+        let resolve = |needs: Needs| -> Vec<(u16, bool)> {
+            needs.iter().map(|(k, n)| (local.get(k.id()).copied().unwrap_or(NONE), *n == Need::Present)).collect()
+        };
+        for i in insts.iter_mut() {
+            i.needs_l = resolve(i.needs);
+        }
+        let act_req = def.activities.iter().map(|a| resolve(a.requires)).collect();
+        Ok(Plan { act_req, mems, local, sensors: def.sensors.to_vec(), insts, order, acts: def.activities.to_vec(), pick, initial: def.initial.to_vec() })
     }
     fn local(&self, k: &MemKey) -> Option<usize> {
         self.local.get(k.id()).copied().filter(|&l| l != NONE).map(usize::from)
@@ -373,6 +392,8 @@ struct Slot {
 #[derive(Clone, Default)]
 struct Run {
     running: bool,
+    /// The deadline wake of a sleeping behaviour is armed.
+    armed: bool,
     end: u64,
     /// The kids of a composite, in the order they are tried.
     order: Vec<u16>,
@@ -389,6 +410,45 @@ pub struct Brain {
     /// `Visible`'s line-of-sight cache, emptied when `visible_mobs` is written.
     sight: Vec<(Who, bool)>,
 }
+impl Brain {
+    fn holds(&self, needs: &[(u16, bool)]) -> bool {
+        needs.iter().all(|&(l, want)| (l != NONE && self.slots[l as usize].v.is_some()) == want)
+    }
+    /// `active && !running && needs` of a top-level behaviour (the step's start loop).
+    fn ready(&self, id: u16) -> bool {
+        let i = &self.plan.insts[id as usize];
+        (i.act == 0 || self.activity == i.act) && !self.run[id as usize].running && self.holds(&i.needs_l)
+    }
+    fn kid_ready(&self, id: u16) -> bool {
+        !self.run[id as usize].running && self.holds(&self.plan.insts[id as usize].needs_l)
+    }
+}
+/// A walk toward a fixed block, the brain asleep: it wakes when the walk ends or the entity comes within `close` (`MoveToTargetSink`).
+#[derive(Component)]
+pub struct SinkWatch {
+    pub target: [i32; 3],
+    pub close: i32,
+}
+fn wake_walks(
+    mut ended: (RemovedComponents<Following>, RemovedComponents<NeedsPath>),
+    mut q: Query<&mut Brain>,
+    moved: Query<(Entity, &Pos, &SinkWatch), Changed<Pos>>,
+    mut awake: ResMut<BrainAwake>,
+) {
+    for e in ended.0.read().chain(ended.1.read()) {
+        if let Ok(mut b) = q.get_mut(e) && !b.awake {
+            b.awake = true;
+            awake.0.push(e);
+        }
+    }
+    for (e, p, s) in &moved {
+        let d = (p.0.x.ifloor() - s.target[0]).abs() + (p.0.y.ifloor() - s.target[1]).abs() + (p.0.z.ifloor() - s.target[2]).abs();
+        if d <= s.close && let Ok(mut b) = q.get_mut(e) && !b.awake {
+            b.awake = true;
+            awake.0.push(e);
+        }
+    }
+}
 /// The entities to step this tick.
 #[derive(Resource, Default)]
 pub struct BrainAwake(pub Vec<Entity>);
@@ -404,7 +464,7 @@ pub fn insert_resources(w: &mut World) {
     w.insert_resource(BrainAwake::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(brain_step.after(arbitrate).before(pathfind));
+    s.add_systems((wake_walks, brain_step).chain().after(arbitrate).before(pathfind));
 }
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {
@@ -582,9 +642,6 @@ pub fn erase(w: &mut World, e: Entity, k: &MemKey) {
         wake(w, e);
     }
 }
-fn needs_ok(w: &World, e: Entity, needs: Needs) -> bool {
-    needs.iter().all(|(k, n)| present(w, e, k) == (*n == Need::Present))
-}
 
 // ---- the step ---------------------------------------------------------------------------------------------------------
 /// `Brain.tick` for the entities that were woken: start what can start (in order), tick what runs, pick the activity.
@@ -593,9 +650,6 @@ pub fn brain_step(world: &mut World) {
     for e in list {
         step(world, e);
     }
-}
-fn active(w: &World, e: Entity, act: u8) -> bool {
-    act == 0 || w.get::<Brain>(e).is_some_and(|b| b.activity == act)
 }
 /// `Brain.isActive(activity)` by name: what a behaviour's `canStillUse` asks (the jar stops nothing when the activity changes).
 pub fn is_active(w: &World, e: Entity, name: &str) -> bool {
@@ -607,8 +661,7 @@ fn step(w: &mut World, e: Entity) {
     let plan = b.plan;
     drop(b);
     for &id in &plan.order {
-        let inst = &plan.insts[id as usize];
-        if active(w, e, inst.act) && !running(w, e, id) && needs_ok(w, e, inst.needs) {
+        if w.get::<Brain>(e).is_some_and(|b| b.ready(id)) {
             try_start(w, e, plan, id);
         }
     }
@@ -619,7 +672,22 @@ fn step(w: &mut World, e: Entity) {
         }
     }
     update_activity(w, e, plan);
-    any = plan.insts.iter().enumerate().any(|(i, x)| x.b.gate.is_none() && !x.b.passive && running(w, e, i as u16));
+    any = false;
+    for (i, x) in plan.insts.iter().enumerate() {
+        if x.b.gate.is_some() || x.b.passive || !running(w, e, i as u16) {
+            continue;
+        }
+        if !(x.b.sleeps)(w, e, &ctx(plan, i as u16)) {
+            any = true;
+            break;
+        }
+        let b = w.get::<Brain>(e).unwrap();
+        if x.duration.is_some() && !b.run[i].armed {
+            let end = b.run[i].end;
+            w.get_mut::<Brain>(e).unwrap().run[i].armed = true;
+            arm_at(w, e, end + 1, Due::BrainWake);
+        }
+    }
     if any {
         wake(w, e);
     }
@@ -650,6 +718,7 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
         }
     }
     set_running(w, e, id, true);
+    w.get_mut::<Brain>(e).unwrap().run[id as usize].armed = false;
     if let Some(g) = inst.b.gate {
         let mut order = inst.kids.clone();
         if g.shuffle {
@@ -665,7 +734,7 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
         }
         w.get_mut::<Brain>(e).unwrap().run[id as usize].order = order.clone();
         for k in order {
-            if !running(w, e, k) && needs_ok(w, e, plan.insts[k as usize].needs) && try_start(w, e, plan, k) && !g.try_all {
+            if w.get::<Brain>(e).is_some_and(|b| b.kid_ready(k)) && try_start(w, e, plan, k) && !g.try_all {
                 break;
             }
         }
@@ -681,8 +750,9 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
 fn tick_or_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
     let inst = &plan.insts[id as usize];
     if inst.b.gate.is_some() {
-        let kids = w.get::<Brain>(e).unwrap().run[id as usize].order.clone();
-        for k in kids {
+        let mut i = 0;
+        while let Some(k) = w.get::<Brain>(e).unwrap().run[id as usize].order.get(i).copied() {
+            i += 1;
             if running(w, e, k) {
                 tick_or_stop(w, e, plan, k);
             }
@@ -713,10 +783,10 @@ fn do_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
 }
 /// `updateActivity`: the first activity of the brain's list whose requirements hold.
 fn update_activity(w: &mut World, e: Entity, plan: &'static Plan) {
-    for &a in &plan.pick {
-        if needs_ok(w, e, plan.acts[a as usize].requires) {
-            w.get_mut::<Brain>(e).unwrap().activity = a;
-            return;
+    let mut b = w.get_mut::<Brain>(e).unwrap();
+    if let Some(&a) = plan.pick.iter().find(|&&a| b.holds(&plan.act_req[a as usize])) {
+        if b.activity != a {
+            b.activity = a;
         }
     }
 }
@@ -777,7 +847,7 @@ fn targetable(w: &World, e: Entity, who: Who) -> bool {
 /// `PathNavigation.moveTo`: a path to the block (exact: reach 0), at this speed modifier; the walk is `pathfind`'s.
 pub fn walk_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
-        (s.tx, s.ty, s.tz) = (at[0], at[1].floor() as i32, at[2]);
+        (s.tx, s.ty, s.tz) = (at[0], at[1].ifloor(), at[2]);
     }
     if let Some(mut n) = w.get_mut::<Nav>(e) {
         n.speed = speed;

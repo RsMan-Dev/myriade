@@ -61,3 +61,23 @@ pub mod equipment_drop;
 pub mod equipment_break;
 pub mod goals_more;
 pub mod pocket;
+
+/// `f64::floor` as an `i32` without the libm call (the baseline target has no `roundsd`): the truncation, one less when it rounded up.
+/// Same result as `x.floor() as i32` for every `x` (saturating at the ends, 0 for NaN).
+pub trait IFloor {
+    fn ifloor(self) -> i32;
+}
+impl IFloor for f64 {
+    #[inline(always)]
+    fn ifloor(self) -> i32 {
+        let i = self as i32;
+        i.saturating_sub((self < f64::from(i)) as i32)
+    }
+}
+impl IFloor for f32 {
+    #[inline(always)]
+    fn ifloor(self) -> i32 {
+        let i = self as i32;
+        i.saturating_sub((self < i as f32) as i32)
+    }
+}

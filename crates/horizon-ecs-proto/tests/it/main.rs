@@ -21,6 +21,7 @@ mod hop_vs_mob;
 mod item_vs_original;
 mod kernel_equal;
 mod own_path_equal;
+mod own_static_equal;
 mod lava_vs_mob;
 mod lazy_look;
 mod long_jump_vs_mob;
