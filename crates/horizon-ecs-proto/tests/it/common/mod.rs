@@ -173,7 +173,9 @@ pub fn tempt_item() -> (u32, &'static str) {
 pub fn have_data() -> bool {
     // The tests inject their own configuration of the modules: every module is inscribed (the frame inscribes carried ones only).
     horizon_ecs_proto::species::inscribe_every_module();
-    std::env::var_os("HORIZON_TEST_RESOURCES").is_some()
+    // A test without its data must fail, never pass empty.
+    assert!(std::env::var_os("HORIZON_TEST_RESOURCES").is_some(), "données de test absentes : exporte HORIZON_TEST_RESOURCES");
+    true
 }
 pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();
