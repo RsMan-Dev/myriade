@@ -9,6 +9,7 @@ mod bow_vs_mob;
 mod brain_vs_mob;
 mod capabilities;
 mod climb_vs_mob;
+mod conditions_vs_mob;
 mod crowd_vs_mob;
 mod direct_fly_vs_mob;
 mod breath_vs_original;

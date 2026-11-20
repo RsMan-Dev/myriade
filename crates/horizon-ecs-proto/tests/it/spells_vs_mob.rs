@@ -141,3 +141,49 @@ fn an_illusioner_blinds_a_target_once_as_the_mob_s_does() {
     // Not on easy.
     assert_eq!((mob_blind(false).len(), ecs_blind(false).len()), (0, 0));
 }
+
+/// An evoker and an iron golem 6 blocks away, a stone wall between them: does each side target the golem within 40 ticks.
+fn golem_behind_wall() -> (bool, bool) {
+    let cells: Vec<(i32, i32, i32)> = (-3..=3).flat_map(|z| (1..=3).map(move |y| (3, y, z))).collect();
+    let mut r = MobRef::new(24, false);
+    for &(x, y, z) in &cells {
+        r.set_block(x, y, z, "minecraft:stone");
+    }
+    let ev = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:evoker"));
+    let g = r.add_kind(Vec3::new(6.5, 1.0, 0.5), mob_kind("minecraft:iron_golem"));
+    r.mobs[ev].ai.goals.clear();
+    r.mobs[g].ai.goals.clear();
+    for _ in 0..40 {
+        r.step(None);
+        r.mobs[g].position = Vec3::new(6.5, 1.0, 0.5);
+    }
+    let mut h = Herd::with_slab(24, false, false);
+    set_lazy_look(&mut h.world, false);
+    for &(x, y, z) in &cells {
+        h.set_block(x, y, z, "minecraft:stone");
+    }
+    let (ec, gc) = (idle(named(&h, "minecraft:evoker")), idle(named(&h, "minecraft:iron_golem")));
+    let e = spawn_species(&mut h.world, &ec, 0.5, 0.5, 7);
+    let g = spawn_species(&mut h.world, &gc, 6.5, 0.5, 8);
+    for x in [e, g] {
+        h.world.get_mut::<ActiveUntil>(x).unwrap().0 = u64::MAX;
+        h.world.resource_mut::<Entered>().0.push(x);
+    }
+    for _ in 0..40 {
+        h.tick();
+        teleport(&mut h.world, g, Vec3::new(6.5, 1.0, 0.5));
+    }
+    (r.mobs[ev].ai.target.is_some(), h.world.get::<Target>(e).is_some())
+}
+/// The evoker's golem target (`must_see` off, the jar: 60 ticks of memory without sight): the golem behind a wall is targeted on both sides.
+#[test]
+#[ignore = "Mob non conforme au jar : cible golem de l'evoker avec vue exigée et mémoire 300 ; jar : sans vue, 60"]
+fn an_evoker_targets_an_iron_golem_it_cannot_see_as_the_mob_does() {
+    if !have_data() {
+        return;
+    }
+    let (m, e) = golem_behind_wall();
+    eprintln!("evoker golem target behind a wall: mob {m}, ecs {e}");
+    assert!(e, "the ecs evoker targets the golem behind the wall");
+    assert_eq!(m, e, "the Mob evoker targets it too");
+}
