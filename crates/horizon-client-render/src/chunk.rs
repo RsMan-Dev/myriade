@@ -760,6 +760,10 @@ impl Chunk {
             .filter(|&s| s < self.sections.len())
     }
     #[inline]
+    pub fn section_holding(&self, y: i32) -> Option<&Section> {
+        self.section_index(y).map(|s| &*self.sections[s])
+    }
+    #[inline]
     pub fn get(&self, x: i32, y: i32, z: i32) -> u32 {
         match self.section_index(y) {
             Some(s) => self.sections[s].get(index(x, y, z)),
@@ -769,6 +773,14 @@ impl Chunk {
     #[inline]
     pub fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
         BlockStateId(self.get(x, y, z))
+    }
+    /// Whether every block of section `s` is state `v` (O(1) on a uniform palette).
+    pub fn section_is_uniform(&self, s: usize, v: u32) -> bool {
+        self.sections[s].is_uniform(v)
+    }
+    /// The number of sections of the column.
+    pub fn section_count(&self) -> usize {
+        self.sections.len()
     }
     /// The blocks that `matches`, section by section from the bottom, each section's in y, z, x
     /// order. A section whose palette holds none is skipped.

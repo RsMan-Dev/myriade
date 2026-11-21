@@ -2037,7 +2037,7 @@ impl crate::entity_rules::EntityRules for Mob {
     }
 }
 /// LivingEntity.getFluidFallingAdjustedMovement.
-fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 {
+pub fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 {
     if gravity != 0.0 && !sprinting {
         let y = if falling && (m.y - 0.005).abs() >= 0.003 && (m.y - gravity / 16.0).abs() < 0.003 {
             -0.003
@@ -2052,7 +2052,7 @@ fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 
 
 /// `CollisionGetter.findFreePosition`: within `allowed`, the point nearest
 /// `preferred` at which a box of the size, centred there, meets no block.
-fn free_position(
+pub(crate) fn free_position(
     w: &MobWorld,
     allowed: Aabb,
     preferred: Vec3,
@@ -3903,7 +3903,7 @@ mod ice_friction_tests;
 mod splash_sound_tests;
 /// `Entity.move`'s fall-reset ray for a mob, with the world's
 /// `minecraft:fall_damage_resetting` blocks.
-fn fall_reset_hit(w: &MobWorld, from: Vec3, moved: Vec3) -> bool {
+pub(crate) fn fall_reset_hit(w: &MobWorld, from: Vec3, moved: Vec3) -> bool {
     let reset = w.block_tags.get("minecraft:fall_damage_resetting");
     crate::entities::fall_reset_hit(
         w.loop_context,

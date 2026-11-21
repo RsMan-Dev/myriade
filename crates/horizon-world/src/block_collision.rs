@@ -122,8 +122,12 @@ impl<'r> BlockCollisionRegistry<'r> {
             let empty = !declared_nonempty
                 && !contextual.contains_key(&id)
                 && cached.cached_shape(id)?.is_some_and(VoxelShape::is_empty);
+            let plain_cube = !contextual.contains_key(&id)
+                && !declared_collision
+                && cached.cached_shape(id)?.is_some_and(VoxelShape::is_block);
             scan_flags.push(
-                u8::from(large)
+                u8::from(plain_cube) << 4
+                    | u8::from(large)
                     | (u8::from(state.name == "minecraft:moving_piston") << 1)
                     | (u8::from(empty) << 2)
                     | (u8::from(contextual.contains_key(&id) || declared_collision) << 3),
@@ -166,6 +170,12 @@ impl<'r> BlockCollisionRegistry<'r> {
             moving_piston: flags & 2 != 0,
             empty_shape: flags & 4 != 0,
         })
+    }
+    /// Whether `state` collides as the unit cube under every context (no contextual rule, no variants).
+    pub fn is_plain_cube(&self, state: BlockStateId) -> bool {
+        self.scan_flags
+            .get(state.0 as usize)
+            .is_some_and(|flags| flags & 16 != 0)
     }
     /// Whether `state` can have a collision shape: false for states whose shape is always
     /// empty, whatever the context. States outside the registry count.

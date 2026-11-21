@@ -34,6 +34,10 @@ pub struct SeedReplay {
     next: std::sync::atomic::AtomicUsize,
 }
 impl SeedReplay {
+    /// The same seeds again from the first (a second game replaying one recording).
+    pub fn fresh(&self) -> std::sync::Arc<SeedReplay> {
+        std::sync::Arc::new(SeedReplay { seeds: self.seeds.clone(), next: std::sync::atomic::AtomicUsize::new(0) })
+    }
     pub fn complete(&self) -> bool {
         self.next.load(std::sync::atomic::Ordering::Relaxed) == self.seeds.len()
     }

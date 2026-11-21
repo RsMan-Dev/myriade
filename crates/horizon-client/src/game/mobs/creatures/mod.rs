@@ -1207,7 +1207,7 @@ impl Game<'_> {
         }
     }
     /// Advance every mob one tick, then apply their events.
-    pub(super) fn tick_creatures(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_creatures(&mut self) -> Result<()> {
         // Hurts dealt since the last creature tick (explosions, commands, the
         // systems after it) teleport an enderman before it ticks, not in its AI step.
         self.settle_hurt_teleports()?;
@@ -2184,7 +2184,7 @@ impl Game<'_> {
         self.handle_mob_events_reusable(&mut events)
     }
 
-    pub(in crate::game) fn handle_mob_events_reusable(
+    pub(crate) fn handle_mob_events_reusable(
         &mut self,
         events: &mut Vec<MobEvent>,
     ) -> Result<()> {

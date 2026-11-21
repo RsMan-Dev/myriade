@@ -18,9 +18,9 @@ pub mod item_damage;
 pub mod packet_source;
 pub mod parallel;
 pub mod powder_snow;
-#[cfg(test)]
+#[cfg(any(test, feature = "proto"))]
 mod test_log;
-#[cfg(test)]
+#[cfg(any(test, feature = "proto"))]
 mod test_resources;
 pub use horizon_client_render::{
     assets, atlas_sources, audio, auth, autotune, ban_notice, bidi, biome, block_edit,
@@ -178,8 +178,8 @@ pub mod stopwatches;
 pub mod structure_blocks;
 pub mod studio;
 pub mod telemetry;
-#[cfg(test)]
-pub(crate) mod test_fixtures;
+#[cfg(any(test, feature = "proto"))]
+pub mod test_fixtures;
 pub mod text_display;
 pub mod tick_chunk_membership;
 pub mod ticket_levels;

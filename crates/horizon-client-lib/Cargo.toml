@@ -16,6 +16,7 @@ horizon-game-discovery = { path = "../horizon-game-discovery" }
 path = "../horizon-client/src/client_lib.rs"
 
 [dependencies]
+bevy_ecs = { version = "0.20.1", default-features = false, features = ["std"] }
 horizon-guest-stack = { path = "../horizon-guest-stack" }
 horizon-mod-api-macros = { path = "../horizon-mod-api-macros" }
 horizon-engine-slots = { path = "../horizon-engine-slots" }
@@ -122,6 +123,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 
 [features]
+proto = []
 # Scoped observations for compiled-guest executor tests only.
 test-payload-probe = []
 # Isolated server-publication slots for resource-backed game fixtures only.

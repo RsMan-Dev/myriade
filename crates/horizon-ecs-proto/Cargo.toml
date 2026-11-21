@@ -1,0 +1,58 @@
+[package]
+name = "horizon-ecs-proto"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+build = "build.rs"
+description = "Prototype: a cow as a bevy_ecs herd (data components, batch systems, sleeping), with Horizon's real block collision kernel"
+
+[dependencies]
+bevy_ecs = { version = "0.20.1", default-features = false, features = ["std", "multi_threaded", "debug"] }
+bevy_tasks = { version = "0.20.1", default-features = false, features = ["multi_threaded"] }
+bevy_utils = { version = "0.20.1", default-features = false, features = ["std", "parallel"] }
+horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
+horizon-client-render = { path = "../horizon-client-render" }
+horizon-core = { path = "../horizon-core" }
+horizon-items = { path = "../horizon-items" }
+horizon-world = { path = "../horizon-world" }
+libc = "0.2"
+
+[features]
+# The markers of the modules (`Moving`, `Following`, `NeedsPath`...) in sparse sets: a toggle does not move the entity's row.
+default = ["sparse"]
+# The sleeping marker in sparse-set storage instead of a table (measured against the table).
+sparse = []
+# Bench probes (atomic counters of the searches and of the long jump), absent from a build without it.
+probes = []
+
+[[bin]]
+name = "path_bench"
+path = "src/bin/path_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "prof_bench"
+path = "src/bin/prof_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "scale_bench"
+path = "src/bin/scale_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "floor_bench"
+path = "src/bin/floor_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "goal_bench"
+path = "src/bin/goal_bench.rs"
+required-features = ["probes"]
+
+[[bin]]
+name = "cow_bench"
+path = "src/bin/cow_bench.rs"
+required-features = ["probes"]

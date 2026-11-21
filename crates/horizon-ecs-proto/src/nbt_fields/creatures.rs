@@ -1,0 +1,678 @@
+//! Les champs NBT propres aux créatures, déclarés par comportement (un composant, des clés). Un champ ne s'applique qu'à une entité qui
+//! porte son composant : sans lui, la clé reste libre (rien n'est inventé). Pas de clé pour `ignited`, que la sauvegarde de référence
+//! n'écrit pas.
+use crate::behaviours::attached_face::Attached;
+use crate::behaviours::bee::Bee;
+use crate::behaviours::hunt_prey::{CannotHunt, Hunt};
+use crate::behaviours::cat_state::Trusting;
+use crate::behaviours::pufferfish_puff::Puff;
+use crate::behaviours::long_jump::LongJumpState;
+use crate::behaviours::ram::{Rammer, Shed};
+use crate::goals::{Occupied, OCC_SITTING};
+use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant};
+use crate::behaviours::do_nothing::Invulnerable;
+use crate::behaviours::forget_target::LlamaStrength;
+use crate::cow::{arm_at, now_of, Due, GrowAt};
+use crate::explosion::{Charged, Fuse};
+use crate::farm::{Egg, Wool};
+use crate::behaviours::bat_flutter::{Flutter, Hanging};
+use crate::behaviours::follow_caravan::Caravan;
+use crate::behaviours::invulnerable_charge::Charge;
+use crate::behaviours::swallow_item::Swallowable;
+use crate::behaviours::swim_to_treasure::Trip;
+use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING, SLEEPING as FOX_SLEEPING};
+use crate::behaviours::swim_to_treasure::GotFish;
+use crate::behaviours::lay_egg::Carrying;
+use crate::behaviours::peek::Peek;
+use crate::behaviours::turtle_state::Turtle;
+use crate::behaviours::still_under_riders::{Slot, StillUntil};
+use crate::behaviours::swallow_hold::SearchAfter;
+use crate::nbt::{accept, owner, Field};
+use crate::size::Size;
+use crate::species::goat::Screaming;
+use bevy_ecs::prelude::*;
+use horizon_core::nbt::{Compound, JavaString, Tag};
+use std::borrow::Cow;
+
+fn byte(t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_))
+}
+/// `CannotHunt` is read as a byte or an int (`AbstractPiglin.readAdditionalSaveData` takes either), written as a byte.
+fn byte_or_int(t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_) | Tag::Int(_))
+}
+
+/// The declared fields, by behaviour: sized (`Size`), creeper (`Fuse`, `ExplosionRadius`, `powered`), wither (`Invul`), llama (`Strength`).
+pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
+    Field { key: Cow::Borrowed("Fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Charge>) },
+    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("Brain"), write: write_brain, read: read_brain, accepts: compound, owner: Some(owner::<LongJumpState>) },
+    Field { key: Cow::Borrowed("HasLeftHorn"), write: write_left_horn, read: read_left_horn, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("HasRightHorn"), write: write_right_horn, read: read_right_horn, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("CannotHunt"), write: write_cannot_hunt, read: read_cannot_hunt, accepts: byte_or_int, owner: Some(owner::<Hunt>) },
+    Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<Caravan>) },
+    Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
+    Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("Peek"), write: write_peek, read: read_peek, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("has_egg"), write: write_has_egg, read: read_has_egg, accepts: byte, owner: Some(owner::<Turtle>) },
+    Field { key: Cow::Borrowed("VillagerData"), write: write_villager, read: read_villager, accepts: compound, owner: Some(owner::<Merchant>) },
+    Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
+    Field { key: Cow::Borrowed("HasNectar"), write: write_nectar, read: read_nectar, accepts: byte, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("HasStung"), write: write_stung, read: read_stung, accepts: byte, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("CannotEnterHiveTicks"), write: write_stay_out, read: read_stay_out, accepts: accept::int, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("hive_pos"), write: write_hive, read: read_hive, accepts: int_array, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("Trusting"), write: write_trusting, read: read_trusting, accepts: byte, owner: None },
+    Field { key: Cow::Borrowed("CropsGrownSincePollination"), write: write_crops, read: read_crops, accepts: accept::int, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("PuffState"), write: write_puff, read: read_puff, accepts: accept::int, owner: Some(owner::<Puff>) },
+    Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<Occupied>) },
+    Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
+    Field { key: Cow::Borrowed("Color"), write: write_wool_color, read: read_wool_color, accepts: byte, owner: Some(owner::<Wool>) },
+    Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("Crouching"), write: write_fox_crouching, read: read_fox_crouching, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("Sleeping"), write: write_fox_sleeping, read: read_fox_sleeping, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: byte, owner: Some(owner::<Trip>) },
+    Field { key: Cow::Borrowed("TicksSincePollination"), write: write_pollination, read: read_pollination, accepts: accept::int, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Flutter>) },
+    Field { key: Cow::Borrowed("still_timeout"), write: write_still, read: read_still, accepts: accept::int, owner: Some(owner::<Slot>) },
+    Field { key: Cow::Borrowed("pickup_timer"), write: write_pickup, read: read_pickup, accepts: accept::int, owner: Some(owner::<Swallowable>) },
+];
+
+fn int_array(t: &Tag) -> bool {
+    matches!(t, Tag::IntArray(_))
+}
+
+fn write_size(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(s) = w.get::<Size>(e) {
+        c.insert("Size".into(), Tag::Int(s.0 - 1));
+    }
+}
+
+/// The jar's `setSize(getInt + 1)`, clamped to 1..=127 as the Horizon client does.
+fn read_size(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    w.entity_mut(e).insert(Size((v + 1).clamp(1, 127)));
+    true
+}
+
+/// The maximum swell, as the creeper's `Fuse` short.
+fn write_fuse(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<Fuse>(e) {
+        c.insert("Fuse".into(), Tag::Short(f.max as i16));
+    }
+}
+
+fn read_fuse(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Short(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<Fuse>(e) else { return false };
+    f.max = i32::from(*v);
+    true
+}
+
+/// The blast radius, a byte as the jar writes it.
+fn write_radius(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<Fuse>(e) {
+        c.insert("ExplosionRadius".into(), Tag::Byte(f.radius as i8));
+    }
+}
+
+fn read_radius(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<Fuse>(e) else { return false };
+    f.radius = f32::from(*v);
+    true
+}
+
+/// `powered` is the `Charged` marker: a byte of one when it is there, zero otherwise (the creeper always writes it).
+fn write_powered(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("powered".into(), Tag::Byte(i8::from(w.get::<Charged>(e).is_some())));
+}
+
+fn read_powered(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Charged);
+    } else {
+        w.entity_mut(e).remove::<Charged>();
+    }
+    true
+}
+
+/// The wither's invulnerable countdown, an int.
+fn write_invul(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("Invul".into(), Tag::Int(w.get::<Invulnerable>(e).map_or(0, |i| i.0)));
+}
+
+fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    w.entity_mut(e).insert(Invulnerable(*v));
+    true
+}
+
+/// `AbstractPiglin.addAdditionalSaveData`: `CannotHunt` is always written, 0 or 1 (the marker), for a hunter.
+fn write_cannot_hunt(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("CannotHunt".into(), Tag::Byte(w.get::<CannotHunt>(e).is_some() as i8));
+}
+
+fn read_cannot_hunt(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let v = match t {
+        Tag::Byte(v) => *v as i32,
+        Tag::Int(v) => *v,
+        _ => return false,
+    };
+    if v != 0 {
+        w.entity_mut(e).insert(CannotHunt);
+    }
+    true
+}
+/// `Goat.addAdditionalSaveData`: `IsScreamingGoat` is written as a byte only when the marker is there (`false` is the default).
+/// `IsScreamingGoat`: a byte, 1 for the screaming goat (its marker), 0 otherwise (the goat always writes it).
+fn write_screaming(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("IsScreamingGoat".into(), Tag::Byte(i8::from(w.get::<Screaming>(e).is_some())));
+}
+
+/// `Goat.addAdditionalSaveData`: `HasLeftHorn` / `HasRightHorn` only while a part is off (`Shed`); a whole goat writes none.
+/// `Brain` memories (`minecraft:long_jump_cooling_down`, the ticks left of the long jump cooldown): written only while it runs.
+fn write_brain(w: &World, e: Entity, c: &mut Compound) {
+    let Some(left) = crate::behaviours::long_jump::cooldown_left(w, e) else { return };
+    let Tag::Compound(brain) = c.entry("Brain".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    let Tag::Compound(memories) = brain.entry("memories".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    memories.insert("minecraft:long_jump_cooling_down".into(), Tag::compound([("value", Tag::Int(left as i32))]));
+}
+
+/// Reads the memory back: its ticks left, or none (the cooldown is over) when the memory is absent.
+fn read_brain(w: &mut World, e: Entity, t: &Tag) -> bool {
+    if !matches!(t, Tag::Compound(_)) {
+        return false;
+    }
+    let left = match t.get("memories").and_then(|m| m.get("minecraft:long_jump_cooling_down")).and_then(|m| m.get("value")) {
+        Some(Tag::Int(v)) => Some(i64::from(*v).max(0) as u64),
+        _ => None,
+    };
+    crate::behaviours::long_jump::set_cooldown_left(w, e, left);
+    true
+}
+
+fn write_left_horn(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("HasLeftHorn".into(), Tag::Byte(i8::from(w.get::<Shed>(e).map_or(0, |s| s.0) & 1 == 0)));
+}
+
+fn write_right_horn(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("HasRightHorn".into(), Tag::Byte(i8::from(w.get::<Shed>(e).map_or(0, |s| s.0) & 2 == 0)));
+}
+
+fn read_left_horn(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    set_horn(w, e, 1, *v == 0);
+    true
+}
+
+fn read_right_horn(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    set_horn(w, e, 2, *v == 0);
+    true
+}
+
+/// Sets (`lost`) or clears the bit of one part in `Shed`, and takes the component away when no part is off.
+fn set_horn(w: &mut World, e: Entity, bit: u8, lost: bool) {
+    let s = w.get::<Shed>(e).map_or(0, |s| s.0);
+    let s = if lost { s | bit } else { s & !bit };
+    if s == 0 {
+        w.entity_mut(e).remove::<Shed>();
+    } else {
+        w.entity_mut(e).insert(Shed(s));
+    }
+}
+
+fn read_screaming(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Screaming);
+    } else {
+        w.entity_mut(e).remove::<Screaming>();
+    }
+    true
+}
+
+/// The llama's strength, an int: `LlamaStrength`, drawn at the pose for a llama and a trader's llama (`cow::spawn::spawn_declared`).
+/// Written only while the component is there: no default is invented.
+fn write_strength(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(s) = w.get::<LlamaStrength>(e) {
+        c.insert("Strength".into(), Tag::Int(s.0));
+    }
+}
+
+fn read_strength(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    w.entity_mut(e).insert(LlamaStrength(*v));
+    true
+}
+
+/// `Age`: negative, the ticks left as a baby (`GrowAt` is the tick it grows at); zero or more, grown up (`GrowAt` goes).
+fn write_age(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(g) = w.get::<GrowAt>(e) {
+        let left = g.0.saturating_sub(now_of(w, e));
+        c.insert("Age".into(), Tag::Int(-i32::try_from(left).unwrap_or(i32::MAX)));
+    }
+}
+
+fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    if *v < 0 {
+        let at = now_of(w, e) + u64::from(v.unsigned_abs());
+        w.entity_mut(e).insert(GrowAt(at));
+    } else {
+        w.entity_mut(e).remove::<GrowAt>();
+    }
+    true
+}
+
+/// The shulker's lid: the face it sits on, and its colour (bytes).
+fn write_face(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Attached>(e) {
+        c.insert("AttachFace".into(), Tag::Byte(a.face as i8));
+    }
+}
+
+fn read_face(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
+    a.face = *v as u8;
+    true
+}
+
+/// `Peek` of a shulker: the raw lid opening (0 to 100), from `Attached` (`peek` moves it).
+fn write_peek(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Attached>(e) {
+        c.insert("Peek".into(), Tag::Byte(a.raw as i8));
+    }
+}
+
+fn read_peek(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
+    a.raw = i32::from(*v);
+    true
+}
+
+/// `has_egg` of a turtle: a byte of one while it carries its egg (`Carrying`, the lay load).
+fn write_has_egg(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("has_egg".into(), Tag::Byte(i8::from(w.get::<Carrying>(e).is_some())));
+}
+
+fn read_has_egg(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Carrying);
+    } else {
+        w.entity_mut(e).remove::<Carrying>();
+    }
+    true
+}
+
+fn write_color(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Attached>(e) {
+        c.insert("Color".into(), Tag::Byte(a.color as i8));
+    }
+}
+
+fn read_color(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
+    a.color = *v as u8;
+    true
+}
+
+/// The bee's flags: nectar and sting, as bytes.
+fn write_nectar(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<Bee>(e) {
+        c.insert("HasNectar".into(), Tag::Byte(i8::from(b.nectar)));
+    }
+}
+
+fn read_nectar(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.nectar = *v != 0;
+    true
+}
+
+fn write_stung(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<Bee>(e) {
+        c.insert("HasStung".into(), Tag::Byte(i8::from(b.stung)));
+    }
+}
+
+fn read_stung(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.stung = *v != 0;
+    true
+}
+
+/// The ticks left before the bee may enter its hive: the own time it ends at, less now.
+fn write_stay_out(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<Bee>(e) {
+        let left = b.stay_out_until.saturating_sub(now_of(w, e));
+        c.insert("CannotEnterHiveTicks".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+    }
+}
+
+fn read_stay_out(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let now = now_of(w, e);
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.stay_out_until = now + u64::try_from(*v).unwrap_or(0);
+    true
+}
+
+/// The remembered hive and flower: three ints when there is one.
+fn write_hive(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<Bee>(e).and_then(|b| b.hive) {
+        c.insert("hive_pos".into(), Tag::IntArray(p.to_vec()));
+    }
+}
+
+fn read_hive(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    let Ok([x, y, z]) = <[i32; 3]>::try_from(v.as_slice()) else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.hive = Some([x, y, z]);
+    true
+}
+
+fn write_flower(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<Bee>(e).and_then(|b| b.flower) {
+        c.insert("flower_pos".into(), Tag::IntArray(p.to_vec()));
+    }
+}
+
+fn read_flower(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    let Ok([x, y, z]) = <[i32; 3]>::try_from(v.as_slice()) else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.flower = Some([x, y, z]);
+    true
+}
+
+fn compound(t: &Tag) -> bool {
+    matches!(t, Tag::Compound(_))
+}
+
+/// `VillagerData`: the type, the profession by name, and the level. A wandering trader has none.
+fn write_villager(w: &World, e: Entity, c: &mut Compound) {
+    let Some(m) = w.get::<Merchant>(e) else { return };
+    if m.wandering {
+        return;
+    }
+    let mut d = Compound::new();
+    d.insert("type".into(), Tag::String(JavaString::from(variant_name(m.variant).as_str())));
+    d.insert("profession".into(), Tag::String(JavaString::from(profession_name(w, m.profession).as_str())));
+    d.insert("level".into(), Tag::Int(i32::from(m.level)));
+    c.insert("VillagerData".into(), Tag::Compound(d));
+}
+
+/// The index of a type or a profession from its name (the tables are short: a scan is at load only).
+fn read_villager(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Compound(d) = t else { return false };
+    let text = |k: &str| match d.get(&JavaString::from(k)) {
+        Some(Tag::String(s)) => Some(s.to_string_lossy()),
+        _ => None,
+    };
+    let (Some(kind), Some(job)) = (text("type"), text("profession")) else { return false };
+    let Some(Tag::Int(level)) = d.get(&JavaString::from("level")) else { return false };
+    let (variant, profession) = {
+        let ww: &World = w;
+        ((0..=u8::MAX).find(|&i| variant_name(i) == kind), (0..=u8::MAX).find(|&p| profession_name(ww, p) == job))
+    };
+    let (Some(variant), Some(profession)) = (variant, profession) else { return false };
+    let Some(mut m) = w.get_mut::<Merchant>(e) else { return false };
+    m.variant = variant;
+    m.profession = profession;
+    m.level = (*level).clamp(1, 5) as u8;
+    true
+}
+
+/// `IsBaby` is `GrowAt` (the baby's `Age` carries the time): written as a byte, read as given, the age does the work.
+fn write_baby(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<GrowAt>(e).is_some() {
+        c.insert("IsBaby".into(), Tag::Byte(1));
+    }
+}
+
+fn read_baby(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_))
+}
+
+/// `Trusting` is a marker: written when present; the read of 1 sets it (an ocelot only).
+fn write_trusting(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Trusting>(e).is_some() {
+        c.insert("Trusting".into(), Tag::Byte(1));
+    }
+}
+
+fn read_trusting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Trusting);
+    }
+    true
+}
+
+fn write_crops(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<Bee>(e) {
+        c.insert("CropsGrownSincePollination".into(), Tag::Int(b.crops));
+    }
+}
+
+fn read_crops(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.crops = *v;
+    true
+}
+
+/// The pufferfish's `PuffState` (0 deflated, 1 half, 2 full).
+fn write_puff(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<Puff>(e) {
+        c.insert("PuffState".into(), Tag::Int(i32::from(p.size)));
+    }
+}
+
+fn read_puff(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let Some(mut p) = w.get_mut::<Puff>(e) else { return false };
+    p.size = (*v).clamp(0, 2) as u8;
+    true
+}
+
+/// `TamableAnimal.Sitting`, the sitting bit of the occupations.
+fn write_sitting(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(o) = w.get::<Occupied>(e) {
+        c.insert("Sitting".into(), Tag::Byte(i8::from(o.0 & OCC_SITTING != 0)));
+    }
+}
+
+fn read_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let now = w.get::<Occupied>(e).map_or(0, |o| o.0);
+    let next = if *v != 0 { now | OCC_SITTING } else { now & !OCC_SITTING };
+    if next != now || w.get::<Occupied>(e).is_some() {
+        w.entity_mut(e).insert(Occupied(next));
+    }
+    true
+}
+
+/// `EggLayTime`: the ticks until the next egg (an int), the due tick less now when the timer runs, else the ticks left (`Egg.left`).
+fn write_egg_time(w: &World, e: Entity, c: &mut Compound) {
+    let Some(g) = w.get::<Egg>(e) else { return };
+    let left = if g.at == u64::MAX { g.left } else { g.at.saturating_sub(now_of(w, e)) };
+    c.insert("EggLayTime".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+/// A read of a running timer re-arms it at the new due tick; an idle one keeps the ticks left until it runs.
+fn read_egg_time(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    let now = now_of(w, e);
+    let at = {
+        let Some(mut g) = w.get_mut::<Egg>(e) else { return false };
+        if g.at == u64::MAX {
+            g.left = ticks;
+            return true;
+        }
+        g.at = now + ticks;
+        g.at
+    };
+    arm_at(w, e, at, Due::Egg);
+    true
+}
+
+/// `Color` of a sheep: the dye of its wool (a byte, 0 to 15).
+fn write_wool_color(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(wool) = w.get::<Wool>(e) {
+        c.insert("Color".into(), Tag::Byte(wool.color as i8));
+    }
+}
+
+fn read_wool_color(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut wool) = w.get_mut::<Wool>(e) else { return false };
+    wool.color = (*v as u8) & 15;
+    true
+}
+
+/// A bit of the flags of a fox (`fox_state`): written as a byte, read back by setting or clearing the bit.
+fn put_fox_bit(w: &World, e: Entity, c: &mut Compound, key: &str, bit: u8) {
+    if let Some(f) = w.get::<FoxFlags>(e) {
+        c.insert(key.into(), Tag::Byte(i8::from(f.0 & bit != 0)));
+    }
+}
+
+fn set_fox_bit(w: &mut World, e: Entity, t: &Tag, bit: u8) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<FoxFlags>(e) else { return false };
+    if *v != 0 { f.0 |= bit } else { f.0 &= !bit }
+    true
+}
+
+/// `Sitting` of a fox: the sitting bit of its flags.
+fn write_fox_sitting(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Sitting", FOX_SITTING);
+}
+
+fn read_fox_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    set_fox_bit(w, e, t, FOX_SITTING)
+}
+
+/// `Crouching` of a fox: the crouching bit; a load that sets it starts the crouch clock at the load's time.
+fn write_fox_crouching(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Crouching", FOX_CROUCHING);
+}
+
+fn read_fox_crouching(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let now = now_of(w, e);
+    if !set_fox_bit(w, e, t, FOX_CROUCHING) {
+        return false;
+    }
+    if let (Tag::Byte(v), Some(mut c)) = (t, w.get_mut::<Crouch>(e)) {
+        if *v != 0 && c.0.is_none() {
+            c.0 = Some(now);
+        } else if *v == 0 {
+            c.0 = None;
+        }
+    }
+    true
+}
+
+/// `Sleeping` of a fox: the sleeping bit of its flags.
+fn write_fox_sleeping(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Sleeping", FOX_SLEEPING);
+}
+
+fn read_fox_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
+    set_fox_bit(w, e, t, FOX_SLEEPING)
+}
+
+/// `GotFish` of a dolphin: a byte of one while the marker is there.
+/// `GotFish`: a byte, 1 while the dolphin has eaten its fish (the marker), 0 otherwise (`Trip` is its always-present component).
+fn write_got_fish(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("GotFish".into(), Tag::Byte(i8::from(w.get::<GotFish>(e).is_some())));
+}
+
+fn read_got_fish(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(GotFish);
+    } else {
+        w.entity_mut(e).remove::<GotFish>();
+    }
+    true
+}
+
+/// `TicksSincePollination`: the ticks since the bee last had nectar (an int), from `Bee.no_nectar_since` (its own time).
+fn write_pollination(w: &World, e: Entity, c: &mut Compound) {
+    let Some(b) = w.get::<Bee>(e) else { return };
+    let ticks = now_of(w, e).saturating_sub(b.no_nectar_since);
+    c.insert("TicksSincePollination".into(), Tag::Int(i32::try_from(ticks).unwrap_or(i32::MAX)));
+}
+
+fn read_pollination(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let since = now_of(w, e).saturating_sub(u64::try_from(*v).unwrap_or(0));
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.no_nectar_since = since;
+    true
+}
+
+/// `BatFlags`: bit 0 while the bat hangs (its `Hanging` marker). The perch is the bat's own state: a load keeps it.
+fn write_bat_flags(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("BatFlags".into(), Tag::Byte(i8::from(w.get::<Hanging>(e).is_some())));
+}
+
+fn read_bat_flags(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_))
+}
+
+/// `still_timeout`: the ticks left of the stillness (an int), from `StillUntil` (its own time); 0 without it. `Slot` (the goal's
+/// always-present component on the happy ghast) holds the key.
+fn write_still(w: &World, e: Entity, c: &mut Compound) {
+    let left = w.get::<StillUntil>(e).map_or(0, |s| s.0.saturating_sub(now_of(w, e)));
+    c.insert("still_timeout".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+fn read_still(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    if ticks == 0 {
+        w.entity_mut(e).remove::<StillUntil>();
+    } else {
+        let until = now_of(w, e) + ticks;
+        w.entity_mut(e).insert(StillUntil(until));
+    }
+    true
+}
+
+/// `pickup_timer`: the ticks left before the cube searches again (an int), from `SearchAfter` (its own time); 0 without the timer, and
+/// `Swallowable` (the cube's always-present component) holds the key.
+fn write_pickup(w: &World, e: Entity, c: &mut Compound) {
+    let left = w.get::<SearchAfter>(e).map_or(0, |s| s.0.saturating_sub(now_of(w, e)));
+    c.insert("pickup_timer".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+fn read_pickup(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    if ticks == 0 {
+        w.entity_mut(e).remove::<SearchAfter>();
+    } else {
+        let until = now_of(w, e) + ticks;
+        w.entity_mut(e).insert(SearchAfter(until));
+    }
+    true
+}

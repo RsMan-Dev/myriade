@@ -1,0 +1,146 @@
+//! Outputs toward the host: a block write, a sound, particles. The `Mob` pushes `MobEvent::SetBlock`, `Sound` and `LevelParticles`
+//! for the host to apply; here a module writes one at the moment of the act (an event, never a scan) and the host reads them all
+//! once per tick with `drain`. One queue (a field of `goals::Events`, `events.host`), empty at rest: no allocation and no byte per entity. Fire and forget, as
+//! the `Mob`'s: the host's refusal of a block is not reported back.
+use horizon_client_lib::items::ItemStack;
+use horizon_world::registry::BlockStateId;
+
+/// One output, one for one with the `MobEvent` of the same name.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HostEvent {
+    SetBlock { pos: [i32; 3], state: BlockStateId },
+    Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32 },
+    Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
+    /// A velocity added to a player (`MobEvent::Push`).
+    /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
+    EntityEvent { entity: bevy_ecs::entity::Entity, code: u8 },
+    /// `Warden.applyDarknessAround`: darkness for the survival players within `radius` of `at`.
+    Darkness { at: [f64; 3], radius: f64 },
+    /// A boss bar of entity `id`: its progress (0..1) and colour; `remove` closes it.
+    BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
+    PushPlayer { player: u32, velocity: [f64; 3] },
+    ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
+    /// An area effect cloud appeared (`radius`, `duration` in ticks).
+    Cloud { at: [f64; 3], radius: f32, duration: i32 },
+    /// A display's data changed: the host resends it to the players tracking it.
+    DisplayUpdate { entity: bevy_ecs::entity::Entity },
+    /// A world event (`LevelEvent`: sound and particle codes played by the client).
+    LevelEvent { event: i32, at: [i32; 3], data: i32 },
+    /// A game event (vibration source), by name.
+    GameEvent { name: &'static str, at: [f64; 3] },
+    /// Experience dropped as orbs.
+    Xp { at: [f64; 3], amount: u32 },
+    /// A player's ender pearl landed: teleport the player to `to`, hurt it by `damage` (a fall), and spawn an endermite where it stood if `endermite`.
+    Pearl { player: u32, to: [f64; 3], damage: f32, endermite: bool },
+    /// A hook reeled in a bite: the host rolls the loot (treasure in open water, `luck` added) and the `xp` orbs for `owner`.
+    FishingCatch { owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32 },
+    /// A creature pulled by a hook: its velocity is added by the host.
+    PullEntity { entity: bevy_ecs::entity::Entity, velocity: [f64; 3] },
+    /// A hook taken back: `damage` to the rod of `owner`.
+    HookRetrieved { owner: u32, damage: i32 },
+    /// `MobEvent::ChestOpen`: a chest's lid moves for the mob `entity`.
+    ChestOpen { chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity },
+    /// `MobEvent::ChestSlot`: a chest's slot now holds `stack` (none: empty).
+    ChestSlot { chest: [i32; 3], slot: usize, stack: Option<ItemStack> },
+    /// `copper_golem` animation state of a golem (`IDLE`, `GETTING_ITEM`...): the `Mob`'s `variant3`.
+    GolemState { entity: bevy_ecs::entity::Entity, state: u8 },
+}
+
+#[derive(Default)]
+pub struct HostOut {
+    out: Vec<HostEvent>,
+}
+
+impl HostOut {
+    /// `MobEvent::SetBlock`.
+    pub fn set_block(&mut self, pos: [i32; 3], state: BlockStateId) {
+        self.out.push(HostEvent::SetBlock { pos, state });
+    }
+    pub fn chest_open(&mut self, chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity) {
+        self.out.push(HostEvent::ChestOpen { chest, open, entity });
+    }
+    pub fn chest_slot(&mut self, chest: [i32; 3], slot: usize, stack: Option<ItemStack>) {
+        self.out.push(HostEvent::ChestSlot { chest, slot, stack });
+    }
+    pub fn golem_state(&mut self, entity: bevy_ecs::entity::Entity, state: u8) {
+        self.out.push(HostEvent::GolemState { entity, state });
+    }
+    pub fn darkness(&mut self, at: [f64; 3], radius: f64) {
+        self.out.push(HostEvent::Darkness { at, radius });
+    }
+    pub fn boss_bar(&mut self, id: u32, name: &'static str, progress: f32, color: u8) {
+        self.out.push(HostEvent::BossBar { id, name, progress, color, remove: false });
+    }
+    pub fn boss_bar_remove(&mut self, id: u32) {
+        self.out.push(HostEvent::BossBar { id, name: "", progress: 0.0, color: 0, remove: true });
+    }
+    /// `MobEvent::Sound(name, at, volume, pitch)`.
+    pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
+        self.out.push(HostEvent::Sound { name, at, volume, pitch });
+    }
+    /// `MobEvent::LevelParticles`.
+    pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {
+        self.out.push(HostEvent::Particles { kind, at, spread, speed, count });
+    }
+    pub fn entity_event(&mut self, entity: bevy_ecs::entity::Entity, code: u8) {
+        self.out.push(HostEvent::EntityEvent { entity, code });
+    }
+    pub fn push_player(&mut self, player: u32, velocity: [f64; 3]) {
+        self.out.push(HostEvent::PushPlayer { player, velocity });
+    }
+    /// `MobEvent::ParrotToShoulder`: the host puts the creature on the player's shoulder and removes it.
+    pub fn shoulder(&mut self, parrot: bevy_ecs::entity::Entity, player: u32) {
+        self.out.push(HostEvent::ParrotToShoulder { parrot, player });
+    }
+    pub fn cloud(&mut self, at: [f64; 3], radius: f32, duration: i32) {
+        self.out.push(HostEvent::Cloud { at, radius, duration });
+    }
+    pub fn display_update(&mut self, entity: bevy_ecs::entity::Entity) {
+        self.out.push(HostEvent::DisplayUpdate { entity });
+    }
+    pub fn level_event(&mut self, event: i32, at: [i32; 3], data: i32) {
+        self.out.push(HostEvent::LevelEvent { event, at, data });
+    }
+    pub fn game_event(&mut self, name: &'static str, at: [f64; 3]) {
+        self.out.push(HostEvent::GameEvent { name, at });
+    }
+    pub fn pearl(&mut self, player: u32, to: [f64; 3], damage: f32, endermite: bool) {
+        self.out.push(HostEvent::Pearl { player, to, damage, endermite });
+    }
+    pub fn xp(&mut self, at: [f64; 3], amount: u32) {
+        self.out.push(HostEvent::Xp { at, amount });
+    }
+    pub fn fishing_catch(&mut self, owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32) {
+        self.out.push(HostEvent::FishingCatch { owner, at, on_ground, open_water, luck, xp });
+    }
+    pub fn pull_entity(&mut self, entity: bevy_ecs::entity::Entity, velocity: [f64; 3]) {
+        self.out.push(HostEvent::PullEntity { entity, velocity });
+    }
+    pub fn hook_retrieved(&mut self, owner: u32, damage: i32) {
+        self.out.push(HostEvent::HookRetrieved { owner, damage });
+    }
+    /// What was written since the last call, in order; the queue keeps its capacity.
+    pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {
+        self.out.drain(..)
+    }
+    pub fn is_empty(&self) -> bool {
+        self.out.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outputs_come_out_in_order_once() {
+        let mut o = HostOut::default();
+        assert!(o.is_empty());
+        o.sound("block.beehive.exit", [1.0, 2.0, 3.0], 1.0, 1.0);
+        o.set_block([1, 2, 3], BlockStateId(7));
+        o.particles("happy_villager", [0.0; 3], [0.5; 3], 0.0, 3);
+        let v: Vec<_> = o.drain().collect();
+        assert!(matches!(v[0], HostEvent::Sound { .. }) && matches!(v[1], HostEvent::SetBlock { pos: [1, 2, 3], .. }) && matches!(v[2], HostEvent::Particles { count: 3, .. }));
+        assert!(o.drain().next().is_none());
+    }
+}

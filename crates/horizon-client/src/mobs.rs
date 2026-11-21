@@ -89,6 +89,8 @@ pub mod random_textures;
 pub mod ravager;
 pub mod render;
 pub mod riders;
+pub mod cow_memo;
+pub mod cow_rest;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;
@@ -126,7 +128,7 @@ pub mod wither;
 
 #[cfg(test)]
 mod invisible_follow_tests;
-mod world;
+pub mod world;
 pub use world::{TargetInfo, VisualShape, single_player_pos, visual_clip, visual_shape};
 pub mod dragon_contacts;
 pub mod zombie_villager;
@@ -1625,6 +1627,8 @@ pub struct Mob {
     /// What `entity_size` answered for its pose and vanilla size (`EntityEvent.Size`):
     /// `dims` uses it while it holds.
     pub size_answer: Option<crate::pose::SizeAnswer>,
+    /// Prototype (mode 3 of `cow_ecs`): the same cache as the ECS component, kept in the mob.
+    pub memo: cow_memo::MobMemo,
 }
 /// A mannequin's `description` and `hide_description` (`Mannequin.updateDescription`):
 /// the default `entity.minecraft.mannequin.label`, none at all, or a component.
@@ -2868,6 +2872,10 @@ pub struct PendingPushes {
     by_mob: crate::fast_hash::FxHashMap<u32, Vec<Vec3>>,
 }
 impl PendingPushes {
+    /// Whether a push waits for mob `id`'s turn.
+    pub fn waiting_for(&self, id: u32) -> bool {
+        self.list.iter().any(|(t, _)| *t == id) || self.by_mob.contains_key(&id)
+    }
     /// `other`'s pushes after these, each mob's in their order.
     pub fn append(&mut self, other: PendingPushes) {
         for (id, v) in other.list {
@@ -3654,6 +3662,7 @@ impl Mob {
             profile: None,
             random_textures: Default::default(),
             size_answer: None,
+            memo: Default::default(),
             attrs: Attrs {
                 speed: kind.speed,
                 attack_damage: kind.attack_damage,

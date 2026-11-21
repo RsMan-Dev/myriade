@@ -1,7 +1,7 @@
 //! Resident client world: streamed chunk columns plus the bookkeeping the game
 //! loop needs to relight and remesh after edits.
 use crate::{
-    chunk::{Chunk, ColumnLayout, LevelShape},
+    chunk::{index, Chunk, ColumnLayout, LevelShape, Section},
     fast_hash::{FxHashMap, FxHashSet},
     section_mask::SectionMask,
 };
@@ -171,6 +171,21 @@ pub struct World {
     /// from the block entities after each tick: the collision queries read it
     /// (`ShulkerBoxBlockEntity.getBoundingBox`), as `moving_pistons` for pistons.
     pub shulkers: FxHashMap<[i32; 3], crate::block_entity_anim::Shulker>,
+}
+/// See [`World::region_stamp`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RegionStamp {
+    n: u8,
+    items: [(i32, i32, i32, u64, u32); RegionStamp::MOST],
+}
+impl RegionStamp {
+    /// The most sections (or missing columns) a stamp holds: a box of 16 blocks a side reaches 8.
+    pub const MOST: usize = 8;
+    fn push(&mut self, item: (i32, i32, i32, u64, u32)) -> Option<()> {
+        *self.items.get_mut(usize::from(self.n))? = item;
+        self.n += 1;
+        Some(())
+    }
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Weather {
@@ -549,6 +564,32 @@ impl World {
         self.chunks.get(&(x >> 4, z >> 4)).map_or(bottom, |chunk| {
             chunk.motion_blocking(x & 15, z & 15, |v| blocks(BlockStateId(v)))
         })
+    }
+    /// What a reader that looked at the blocks of the box `lo..=hi` (block coordinates) keeps to
+    /// know later that none of them was written: the identity and write count of each block
+    /// container the box reaches, and which chunk columns it found missing. `None` when the box
+    /// reaches more than [`RegionStamp::MOST`] sections. Equal stamps mean the same containers
+    /// with the same entries, so every read of the box answers as it did.
+    pub fn region_stamp(&self, lo: [i32; 3], hi: [i32; 3]) -> Option<RegionStamp> {
+        let mut stamp = RegionStamp {
+            n: 0,
+            items: [(0, 0, 0, 0, 0); RegionStamp::MOST],
+        };
+        for cx in lo[0] >> 4..=hi[0] >> 4 {
+            for cz in lo[2] >> 4..=hi[2] >> 4 {
+                let Some(chunk) = self.chunks.get(&(cx, cz)) else {
+                    stamp.push((cx, cz, i32::MIN, 0, 0))?;
+                    continue;
+                };
+                for sy in lo[1] >> 4..=hi[1] >> 4 {
+                    if let Some(s) = chunk.section_index(sy << 4) {
+                        let (uid, edits) = chunk.sections[s].blocks.stamp();
+                        stamp.push((cx, cz, s as i32, uid, edits))?;
+                    }
+                }
+            }
+        }
+        Some(stamp)
     }
     #[inline]
     pub fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
@@ -993,4 +1034,222 @@ mod tests {
 pub struct BlockEntityExtras {
     pub source: Option<horizon_core::nbt::Tag>,
     pub pending_loot: Option<crate::chunk::PendingContainerLoot>,
+}
+
+/// What a [`BlockCursor`] holds for the last 16-block cube it read.
+#[derive(Clone, Copy)]
+enum Held<'a> {
+    /// No chunk at the column: air.
+    Absent,
+    /// The chunk holds no section at this y: state 0, as [`Chunk::block`].
+    NoSection,
+    Section(&'a Section),
+}
+
+/// Reads [`World::block`] while reusing the section of the last 16-block cube read.
+pub struct BlockCursor<'a> {
+    world: &'a World,
+    key: (i32, i32, i32),
+    held: Held<'a>,
+    known: bool,
+}
+
+impl<'a> BlockCursor<'a> {
+    pub fn new(world: &'a World) -> Self {
+        Self {
+            world,
+            key: (0, 0, 0),
+            held: Held::Absent,
+            known: false,
+        }
+    }
+
+    /// Equal to `world.block(x, y, z)`.
+    #[inline]
+    pub fn block(&mut self, x: i32, y: i32, z: i32) -> BlockStateId {
+        let key = (x >> 4, y >> 4, z >> 4);
+        if !self.known || key != self.key {
+            let world = self.world;
+            self.key = key;
+            self.known = true;
+            self.held = match world.chunks.get(&(key.0, key.2)) {
+                None => Held::Absent,
+                Some(chunk) => chunk.section_holding(y).map_or(Held::NoSection, Held::Section),
+            };
+        }
+        match self.held {
+            Held::Absent => self.world.air,
+            Held::NoSection => BlockStateId(0),
+            Held::Section(section) => BlockStateId(section.get(index(x, y, z))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::*;
+    use crate::chunk::ColumnLayout;
+
+    /// A xorshift64 generator, the test's only source of positions.
+    struct XorShift(u64);
+
+    impl XorShift {
+        fn draw(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    #[inline(never)]
+    fn bench_block_world(w: &World, pts: &[[i32; 3]]) -> u64 {
+        pts.iter().map(|p| u64::from(w.block(p[0], p[1], p[2]).0)).sum()
+    }
+    #[inline(never)]
+    fn bench_block_cursor(w: &World, pts: &[[i32; 3]]) -> u64 {
+        let mut c = BlockCursor::new(w);
+        pts.iter().map(|p| u64::from(c.block(p[0], p[1], p[2]).0)).sum()
+    }
+    /// Rays of 0.3-block steps (what an explosion or a line of sight reads): `--toggle-collect=*bench_block_*`.
+    #[test]
+    #[ignore = "bench"]
+    fn cursor_bench() {
+        let mut w = World::new(BlockStateId(0), 0);
+        for x in -2..2 {
+            for z in -2..2 {
+                w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        for i in 0..4000 {
+            w.set(i % 60 - 30, i / 60 % 40, i * 7 % 60 - 30, BlockStateId(3)).unwrap();
+        }
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        let mut pts = Vec::new();
+        for _ in 0..1000 {
+            let mut p = [(rng.draw() % 40) as f64 - 20.0, (rng.draw() % 30) as f64, (rng.draw() % 40) as f64 - 20.0];
+            let d = [(rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0, (rng.draw() % 200) as f64 / 100.0 - 1.0];
+            for _ in 0..20 {
+                pts.push([p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32]);
+                for k in 0..3 {
+                    p[k] += d[k] * 0.3;
+                }
+            }
+        }
+        assert_eq!(bench_block_world(&w, &pts), bench_block_cursor(&w, &pts));
+    }
+
+    #[test]
+    fn cursor_equals_world_block() {
+        let mut w = World::new(BlockStateId(0), 0);
+        for (x, z) in [(0, 0), (1, 0), (-1, -1), (0, 1)] {
+            w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        let written = [
+            (0, 0, 0),
+            (15, 16, 15),
+            (-1, -64, -1),
+            (-16, 100, -16),
+            (5, 319, 9),
+            (-3, -1, -3),
+        ];
+        for (x, y, z) in written {
+            w.set(x, y, z, BlockStateId(7)).unwrap();
+        }
+        let (lo, hi) = (ColumnLayout::VANILLA.min_y(), ColumnLayout::VANILLA.max_y());
+        let bounds = [(-40, 40), (lo - 40, hi + 40), (-40, 40)];
+        let mut cursor = BlockCursor::new(&w);
+        let mut hits = 0;
+        let mut check = |x: i32, y: i32, z: i32| {
+            let got = cursor.block(x, y, z);
+            assert_eq!(got, w.block(x, y, z), "at {x} {y} {z}");
+            hits += usize::from(got != BlockStateId(0));
+        };
+        let edges = [
+            (-1, 0, -1),
+            (0, lo - 1, 0),
+            (0, hi, 0),
+            (-1, hi - 1, 0),
+            (0, 0, -1),
+            (33, 5, -30),
+        ];
+        for (x, y, z) in edges.into_iter().chain(written) {
+            check(x, y, z);
+        }
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        let mut p = [0i32; 3];
+        for _ in 0..20_000 {
+            for (c, &(a, b)) in p.iter_mut().zip(bounds.iter()) {
+                let near = *c + if rng.draw() & 1 == 0 { -1 } else { 1 };
+                *c = if rng.draw() % 10 < 8 && (a..b).contains(&near) {
+                    near
+                } else {
+                    a + (rng.draw() % (b - a) as u64) as i32
+                };
+            }
+            check(p[0], p[1], p[2]);
+        }
+        assert!(hits > 0, "the walk never reached a written block");
+    }
+}
+
+#[cfg(test)]
+mod region_stamp_tests {
+    use super::*;
+    use crate::chunk::Chunk;
+    use std::sync::Arc;
+
+    fn world() -> World {
+        let mut w = World::new(BlockStateId(0), 0);
+        for (x, z) in [(0, 0), (1, 0), (0, 1), (1, 1), (5, 5)] {
+            w.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        w
+    }
+
+    /// A stamp changes when a block of the box is written (even to the same value's neighbour in
+    /// its section), when a chunk of the box is replaced or appears, and not for a write in a
+    /// section the box does not reach.
+    #[test]
+    fn a_region_stamp_follows_the_writes_of_its_sections() {
+        let mut w = world();
+        let (lo, hi) = ([10, 0, 10], [20, 3, 20]);
+        let a = w.region_stamp(lo, hi).unwrap();
+        assert_eq!(a, w.region_stamp(lo, hi).unwrap(), "nothing written");
+        w.set(80, 0, 80, BlockStateId(1)).unwrap();
+        assert_eq!(a, w.region_stamp(lo, hi).unwrap(), "a write in chunk 5,5");
+        w.set(12, 100, 12, BlockStateId(1)).unwrap();
+        assert_eq!(
+            a,
+            w.region_stamp(lo, hi).unwrap(),
+            "a write in another section of the column"
+        );
+        w.set(12, 1, 12, BlockStateId(1)).unwrap();
+        let b = w.region_stamp(lo, hi).unwrap();
+        assert_ne!(a, b, "a write in the box's section");
+        w.set(12, 1, 12, BlockStateId(0)).unwrap();
+        assert_ne!(
+            b,
+            w.region_stamp(lo, hi).unwrap(),
+            "written back is still a write"
+        );
+        // A chunk replaced by an equal copy is another container.
+        let before = w.region_stamp(lo, hi).unwrap();
+        let copy = Arc::new(Chunk::empty(0, 0));
+        w.chunks.insert((0, 0), copy);
+        assert_ne!(before, w.region_stamp(lo, hi).unwrap(), "a chunk replaced");
+        // A column that is missing, then loaded.
+        let far = ([200, 0, 200], [201, 3, 201]);
+        let missing = w.region_stamp(far.0, far.1).unwrap();
+        w.chunks.insert((12, 12), Arc::new(Chunk::empty(12, 12)));
+        assert_ne!(
+            missing,
+            w.region_stamp(far.0, far.1).unwrap(),
+            "a column loaded"
+        );
+        assert!(
+            w.region_stamp([0, -64, 0], [40, 300, 40]).is_none(),
+            "a box of too many sections"
+        );
+    }
 }

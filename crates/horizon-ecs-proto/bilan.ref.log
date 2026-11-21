@@ -1,0 +1,18 @@
+cow idle: ecs 2129 ecs-eager 2430 mob 50490
+cow active(1000 players, no solicitation): ecs 9806 ecs-eager 9682 mob 68404
+cow solicited(50 players, 30% hold, 20 hurt, 20 love): ecs 19808 mob 61035
+pig idle: ecs 327 ecs-eager 512 mob 44391
+pig active(1000 players, no solicitation): ecs 8248 ecs-eager 8074 mob 61114
+pig solicited(50 players, 30% hold, 20 hurt, 20 love): ecs 17738 mob 52252
+sheep idle: ecs 933 ecs-eager 1116 mob 49815
+sheep active(1000 players, no solicitation): ecs 9389 ecs-eager 9243 mob 68066
+sheep solicited(50 players, 30% hold, 20 hurt, 20 love): ecs 19906 mob 60786
+chicken idle: ecs 66 ecs-eager 231 mob 39415
+chicken active(1000 players, no solicitation): ecs 5293 ecs-eager 5177 mob 53598
+chicken solicited(50 players, 30% hold, 20 hurt, 20 love): ecs 11965 mob 44958
+zombie idle: ecs 180 ecs-eager 386 mob 41899
+zombie active(1000 players, no solicitation): ecs 12226 ecs-eager 12144 mob 66194
+zombie chase clear (1024, spacing 6, 1024 players): ecs 6206 mob 52967
+zombie chase crowded (2000, spacing 2, 1000 players): ecs 9018 mob 67630
+crowd 0.5 (cow, 2000, 0 player): batch 12786 ordered 25647 mob 82750
+crowd 0.8 (cow, 2000, 0 player): batch 11630 ordered 19752 mob 68236

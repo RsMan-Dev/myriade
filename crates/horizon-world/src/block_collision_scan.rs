@@ -2,7 +2,7 @@
 //! chunk availability, state metadata, suffocation predicates and context dispatch.
 use crate::{collision_context::CollisionContext, registry::BlockStateId};
 use horizon_core::{
-    geometry::{Aabb, ShapeError, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, Axis, BlockCollider, ShapeError, ShapeOp, Vec3, VoxelShape},
     position::{BlockPos, ChunkPos},
 };
 
@@ -47,6 +47,11 @@ pub trait BlockCollisionWorld {
     /// that section's outer cells without reading them; true reads them all.
     fn may_reach_out(&mut self, _chunk: Self::Chunk, _section_y: i32) -> Result<bool, Self::Error> {
         Ok(true)
+    }
+    /// Whether `block` collides as the unit cube under every context, so its shape need not be asked for.
+    /// False, the default, asks.
+    fn is_plain_cube(&self, _block: CollisionBlock) -> bool {
+        false
     }
     /// Whether every block of the chunk's section `section_y` has an empty collision shape under
     /// every context (all air): true lets the scan pass that section's cells without reading
@@ -154,6 +159,19 @@ struct SectionFacts {
     reaches: bool,
 }
 
+thread_local! {
+    static REFERENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f` with every scan of this thread made the way it was before the fast paths (cell by cell, a shape asked
+/// for every block, a join for every shape): the reference of the equality tests.
+pub fn with_reference_scan<T>(f: impl FnOnce() -> T) -> T {
+    let before = REFERENCE.with(|r| r.replace(true));
+    let out = f();
+    REFERENCE.with(|r| r.set(before));
+    out
+}
+
 /// Entries of the per-thread cache of moved full cubes.
 const MOVED_BLOCKS: usize = 256;
 type MovedBlocks = [Option<(BlockPos, VoxelShape)>; MOVED_BLOCKS];
@@ -182,6 +200,18 @@ fn moved_block(p: BlockPos, offset: Vec3, shape: &VoxelShape) -> VoxelShape {
         let moved = shape.moved(offset);
         cache[slot] = Some((p, moved.clone()));
         moved
+    })
+}
+
+type Found = BlockCollider;
+
+/// Whether some box of the moved shape overlaps `bounds` by more than `MARGIN` on every axis: then the shape's
+/// join with the box is certainly not empty (the join merges coordinates within 1e-7 of each other).
+fn clearly_overlaps(shape: &VoxelShape, offset: Vec3, bounds: Aabb) -> bool {
+    const MARGIN: f64 = 1.0e-5;
+    shape.boxes().iter().any(|b| {
+        let b = b.move_by(offset);
+        Axis::ALL.into_iter().all(|a| b.max(a).min(bounds.max(a)) - b.min(a).max(bounds.min(a)) > MARGIN)
     })
 }
 
@@ -215,6 +245,7 @@ pub struct BlockCollisionScan<'w, 'c, W: BlockCollisionWorld> {
     sections_next: usize,
     /// `missing_chunks_stay_missing`, asked once.
     missing_stays: bool,
+    reference: bool,
     failed: bool,
 }
 impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
@@ -251,6 +282,7 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
             sections: [None; REACH_SECTIONS],
             sections_next: 0,
             missing_stays,
+            reference: REFERENCE.with(std::cell::Cell::get),
             failed: false,
         })
     }
@@ -372,7 +404,168 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
         }
     }
 
+    /// The next block collider: the unit cube is not built, only its offset (the integer block position).
+    pub fn next_collider(
+        &mut self,
+    ) -> Result<Option<BlockCollider>, CollisionScanError<W::Error>> {
+        Ok(self.scan_next()?.map(|(_, found)| found))
+    }
+
     fn find_next(&mut self) -> Result<Option<BlockCollisionHit>, CollisionScanError<W::Error>> {
+        Ok(self.scan_next()?.map(|(position, found)| BlockCollisionHit {
+            position,
+            shape: match found {
+                Found::Cube(_) if self.presence_only => VoxelShape::block(),
+                Found::Cube(offset) => moved_block(position, offset, VoxelShape::block_ref()),
+                Found::Shape(shape) => *shape,
+                Found::Moved(moved) => moved.0.moved(moved.1),
+            },
+        }))
+    }
+
+    /// The cell `p` of the given kind (how many of its coordinates lie on the box's outer layer, 0 to 2), whose
+    /// section has blocks that matter: the block it holds, and the collider it makes, if any.
+    fn examine(
+        &mut self,
+        chunk: W::Chunk,
+        p: BlockPos,
+        kind: usize,
+    ) -> Result<Option<Found>, CollisionScanError<W::Error>> {
+        let block = self
+            .world
+            .collision_block(chunk, p)
+            .map_err(CollisionScanError::World)?;
+        if self.only_suffocating
+            && !self
+                .world
+                .is_suffocating(chunk, block, p)
+                .map_err(CollisionScanError::World)?
+        {
+            return Ok(None);
+        }
+        if kind == 1 && !block.large_collision_shape || kind == 2 && !block.moving_piston {
+            return Ok(None);
+        }
+        if block.empty_shape {
+            return Ok(None);
+        }
+        let offset = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
+        let cube = !self.reference && self.world.is_plain_cube(block);
+        let shape = if cube {
+            None
+        } else {
+            Some(
+                self.world
+                    .context_shape(block, p, &self.context)
+                    .map_err(CollisionScanError::World)?,
+            )
+        };
+        let moved = if cube || shape.as_ref().is_some_and(VoxelShape::is_block) {
+            // Native adds one in floating point, including at i32::MAX.
+            let top = Vec3::new(offset.x + 1.0, offset.y + 1.0, offset.z + 1.0);
+            if !self.bounds.intersects_corners(offset, top) {
+                return Ok(None);
+            }
+            return Ok(Some(Found::Cube(offset)));
+        } else {
+            let shape = shape.expect("a shape that is not a plain cube was asked for");
+            // Shapes whose bounds miss the box share no volume with it:
+            // joinIsNotEmpty(AND) is false without moving them.
+            if !shape
+                .bounds()
+                .is_some_and(|b| b.move_by(offset).intersects(self.bounds))
+            {
+                return Ok(None);
+            }
+            if !self.reference && clearly_overlaps(&shape, offset, self.bounds) {
+                return Ok(Some(Found::Moved(Box::new((shape, offset)))));
+            }
+            let moved = shape.moved(offset);
+            let entity_shape = match &self.entity_shape {
+                Some(shape) => shape,
+                None => self.entity_shape.insert(
+                    VoxelShape::from_box(self.bounds).map_err(CollisionScanError::Shape)?,
+                ),
+            };
+            if moved.is_empty()
+                || !moved
+                    .join_is_not_empty(entity_shape, ShapeOp::AND)
+                    .map_err(CollisionScanError::Shape)?
+            {
+                return Ok(None);
+            }
+            moved
+        };
+        return Ok(Some(Found::Shape(Box::new(moved))));
+    }
+
+    /// `scan_next` for a scan whose answers are the same however the cells are visited (chunks stay as they are, no
+    /// budget to run out): the row's cells are taken a chunk at a time, and only the ones that can matter are read.
+    fn scan_rows(&mut self) -> Result<Option<(BlockPos, Found)>, CollisionScanError<W::Error>> {
+        let [width, height, depth] = self.sizes;
+        while self.cursor[2] < depth {
+            let (cy, cz) = (self.cursor[1], self.cursor[2]);
+            let base = usize::from(cy == 0 || cy == height - 1) + usize::from(cz == 0 || cz == depth - 1);
+            let (y, z) = (self.start.y + cy as i32, self.start.z + cz as i32);
+            let mut cx = self.cursor[0];
+            while cx < width {
+                let x = self.start.x + cx as i32;
+                let end = width.min(cx + 16 - (x & 15) as usize);
+                let at = ChunkPos::new(x >> 4, z >> 4);
+                let section_y = y >> 4;
+                let here = match self.here {
+                    Some((chunk, facts)) if facts.at == at && facts.section_y == section_y => {
+                        Some((chunk, facts))
+                    }
+                    _ => self.enter(at, section_y)?,
+                };
+                if let Some((chunk, facts)) = here
+                    && !facts.empty
+                {
+                    // Cells of kind 3 never count; of kind 1 and 2 only where the section has a block that
+                    // reaches out of its cell.
+                    let (lo, hi) = if facts.reaches && base < 2 {
+                        (cx, end)
+                    } else if facts.reaches || base == 0 {
+                        (cx.max(1), end.min(width - 1))
+                    } else {
+                        (0, 0)
+                    };
+                    for c in lo..hi {
+                        let kind = base + usize::from(c == 0 || c == width - 1);
+                        let p = BlockPos::new(self.start.x + c as i32, y, z);
+                        if let Some(found) = self.examine(chunk, p, kind)? {
+                            self.cursor[0] = c + 1;
+                            self.index = (cz * height + cy) * width + c + 1;
+                            if self.cursor[0] == width {
+                                self.cursor[0] = 0;
+                                self.cursor[1] += 1;
+                                if self.cursor[1] == height {
+                                    self.cursor[1] = 0;
+                                    self.cursor[2] += 1;
+                                }
+                            }
+                            return Ok(Some((p, found)));
+                        }
+                    }
+                }
+                cx = end;
+            }
+            self.cursor[0] = 0;
+            self.cursor[1] += 1;
+            if self.cursor[1] == height {
+                self.cursor[1] = 0;
+                self.cursor[2] += 1;
+            }
+        }
+        self.index = self.count;
+        Ok(None)
+    }
+
+    fn scan_next(&mut self) -> Result<Option<(BlockPos, Found)>, CollisionScanError<W::Error>> {
+        if !self.reference && self.missing_stays && self.budget >= self.count {
+            return self.scan_rows();
+        }
         while self.index < self.count {
             if self.index >= self.budget {
                 return Err(CollisionScanError::VisitBudget);
@@ -448,69 +641,9 @@ impl<'w, 'c, W: BlockCollisionWorld> BlockCollisionScan<'w, 'c, W> {
                 }
                 continue;
             }
-            let block = self
-                .world
-                .collision_block(chunk, p)
-                .map_err(CollisionScanError::World)?;
-            if self.only_suffocating
-                && !self
-                    .world
-                    .is_suffocating(chunk, block, p)
-                    .map_err(CollisionScanError::World)?
-            {
-                continue;
+            if let Some(found) = self.examine(chunk, p, kind)? {
+                return Ok(Some((p, found)));
             }
-            if kind == 1 && !block.large_collision_shape || kind == 2 && !block.moving_piston {
-                continue;
-            }
-            if block.empty_shape {
-                continue;
-            }
-            let shape = self
-                .world
-                .context_shape(block, p, &self.context)
-                .map_err(CollisionScanError::World)?;
-            let offset = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
-            let moved = if shape.is_block() {
-                // Native adds one in floating point, including at i32::MAX.
-                let top = Vec3::new(offset.x + 1.0, offset.y + 1.0, offset.z + 1.0);
-                if !self.bounds.intersects_corners(offset, top) {
-                    continue;
-                }
-                if self.presence_only {
-                    VoxelShape::block()
-                } else {
-                    moved_block(p, offset, &shape)
-                }
-            } else {
-                // Shapes whose bounds miss the box share no volume with it:
-                // joinIsNotEmpty(AND) is false without moving them.
-                if !shape
-                    .bounds()
-                    .is_some_and(|b| b.move_by(offset).intersects(self.bounds))
-                {
-                    continue;
-                }
-                let moved = shape.moved(offset);
-                let entity_shape = match &self.entity_shape {
-                    Some(shape) => shape,
-                    None => self.entity_shape.insert(
-                        VoxelShape::from_box(self.bounds).map_err(CollisionScanError::Shape)?,
-                    ),
-                };
-                if moved.is_empty()
-                    || !moved
-                        .join_is_not_empty(entity_shape, ShapeOp::AND)
-                        .map_err(CollisionScanError::Shape)?
-                {
-                    continue;
-                }
-                moved
-            };
-            return Ok(Some(BlockCollisionHit {
-                position: p,
-                shape: moved,
-            }));
         }
         Ok(None)
     }

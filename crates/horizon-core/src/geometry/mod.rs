@@ -11,7 +11,7 @@ mod traversal;
 pub mod trig;
 use crate::position::BlockPos;
 pub use movement::{
-    block_floor_height, candidate_step_heights, entity_collision_bounds, resolve_shape_movement,
+    BlockCollider, Collider, block_floor_height, try_resolve_step_movement_in, candidate_step_heights, entity_collision_bounds, resolve_shape_movement,
     resolve_step_movement, try_resolve_step_movement,
 };
 pub use shape::{ShapeError, ShapeOp, VoxelShape};
