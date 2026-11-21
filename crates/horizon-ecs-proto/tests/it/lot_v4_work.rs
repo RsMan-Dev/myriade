@@ -1,5 +1,6 @@
 //! Le travail et la reproduction du villageois (lot V4) sur un troupeau éveillé. Valeurs attendues lues dans le `Mob`, pas dans le code ECS.
 use crate::common;
+use bevy_ecs::prelude::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::food_stock::Food;
 use horizon_ecs_proto::brain::behaviours::work_breed;

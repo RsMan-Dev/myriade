@@ -1,7 +1,7 @@
 //! `GoToClosestVillage` (`villager_brain.rs:2309`): 5 draws, the first nearer village wins. The villages are the sections of the
 //! villager's own POI memories and of the villagers it sees (`village_sections`), not of the whole registry.
 use crate::brain::*;
-use crate::cow::{Pos, TypeName};
+use crate::cow::{Pos, SpeciesId};
 use crate::poi::PoiRegistry;
 use crate::spots::Pick;
 use crate::species::villager::{HOME, JOB_SITE, MEETING_POINT, POTENTIAL_JOB_SITE};
@@ -33,7 +33,8 @@ fn poi_block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
 fn village_sections(w: &mut World, e: Entity) -> Vec<[i32; 3]> {
     let keys = [&JOB_SITE, &POTENTIAL_JOB_SITE, &HOME, &MEETING_POINT];
     let mut pois: Vec<[i32; 3]> = keys.into_iter().filter_map(|k| poi_block(w, e, k)).collect();
-    for who in find_all(w, e, |w, who| matches!(who, Who::Entity(t) if w.get::<TypeName>(t).is_some_and(|n| n.0 == "minecraft:villager"))) {
+    let own = w.get::<SpeciesId>(e).map(|s| s.0);
+    for who in find_all(w, e, |w, who| matches!(who, Who::Entity(t) if own.is_some() && w.get::<SpeciesId>(t).map(|s| s.0) == own)) {
         if let Who::Entity(t) = who {
             pois.extend(keys.into_iter().filter_map(|k| poi_block(w, t, k)));
         }

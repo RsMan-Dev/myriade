@@ -67,7 +67,7 @@ enum Interaction {
 #[derive(Clone, Debug, Default)]
 struct Target {
     pos: [i32; 3],
-    name: &'static str,
+    name: String,
     halves: Vec<[i32; 3]>,
 }
 
@@ -248,7 +248,7 @@ fn has_valid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec
     let Some(t) = target_of(w, e) else { return false };
     let unchanged = matches!(mw.world.block_entities.get(&(t.pos[0], t.pos[1], t.pos[2])), Some(BlockEntity::Chest(_)))
         && is_chest_block(mw.block_name(t.pos[0], t.pos[1], t.pos[2]));
-    if !(wanted(w, e, mw, t.name) && unchanged) || blocked(mw, t.pos) {
+    if !(wanted(w, e, mw, &t.name) && unchanged) || blocked(mw, t.pos) {
         return false;
     }
     if state(w, e) != State::Travelling {
@@ -414,7 +414,7 @@ fn find_target(w: &World, e: Entity, mw: &MobWorld, me: Vec3) -> Option<Target> 
                     .chain(connected(mw, p).filter(|o| mw.world.block_entities.contains_key(&(o[0], o[1], o[2]))))
                     .any(|q| visited.contains(&q) || unreachable.contains(&q));
                 if wanted(w, e, mw, name) && !seen {
-                    best = Some((d, Target { pos: p, name, halves }));
+                    best = Some((d, Target { pos: p, name: name.to_string(), halves }));
                 }
             }
         }

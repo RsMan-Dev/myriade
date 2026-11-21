@@ -1,6 +1,9 @@
 //! Le commerce et la vie sociale du villageois (lot V2) sur un troupeau éveillé. Valeurs attendues lues dans le `Mob`, pas dans le code ECS.
 use crate::common;
 use common::*;
+use bevy_ecs::prelude::Entity;
+use horizon_client_lib::merchant::Session;
+use horizon_ecs_proto::targeting::Who;
 use horizon_ecs_proto::behaviours::play_tag;
 use horizon_ecs_proto::behaviours::trade_session::Trading;
 use horizon_ecs_proto::{brain::*, cow::*};
@@ -26,7 +29,7 @@ fn the_villager_follows_the_trading_player_within_four_blocks_awake() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = villager(&mut h);
-    h.world.entity_mut(e).insert(Trading { player: 1, session: 0, since: 0 });
+    h.world.entity_mut(e).insert(Trading { player: 1, session: Session::new(Vec::new(), true), since: 0 });
     h.tick();
     assert!(walk_target(&h.world, e).is_some(), "le villageois doit marcher vers le joueur");
 }

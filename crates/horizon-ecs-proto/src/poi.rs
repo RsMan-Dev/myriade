@@ -194,6 +194,7 @@ impl PoiRegistry {
 }
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(PoiRegistry::default());
+    w.init_resource::<crate::behaviours::poi_claim::ClaimIndex>();
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(poi_changes.after(block_changes).before(crate::targeting::sight_eval));

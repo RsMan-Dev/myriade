@@ -2,7 +2,7 @@
 //! within 3 blocks it holds MOVE as well as LOOK, so a goal that wants MOVE (here a probe, `Stroll`'s flag) does not start meanwhile.
 use bevy_ecs::prelude::*;
 use horizon_ecs_proto::{
-    behaviours::{look_at_player, Entry, Module, MOVE},
+    behaviours::{look_at_player, Entry, Module},
     cow::*,
     goals::*,
     species::Config,

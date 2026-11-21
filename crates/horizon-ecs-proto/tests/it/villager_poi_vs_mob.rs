@@ -29,7 +29,7 @@ fn on_acquired(w: &mut bevy_ecs::world::World, e: Entity, p: [i32; 3]) {
 fn on_lost(w: &mut bevy_ecs::world::World, e: Entity) {
     horizon_ecs_proto::behaviours::profession::on_lost(w, e);
 }
-static PARAMS: Params = Params { memory: &JOB_MEM, accept: accept_job, range: 1, on_acquired, on_lost };
+static PARAMS: Params = Params { memory: &JOB_MEM, accept: accept_job, range: 1, filter: horizon_ecs_proto::behaviours::poi_claim::Filter::Any, on_acquired, on_lost };
 fn params() -> &'static Params {
     &PARAMS
 }

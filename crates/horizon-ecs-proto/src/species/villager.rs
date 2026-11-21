@@ -1,6 +1,7 @@
 //! Le villageois : un cerveau (adulte ou bébé selon `GrowAt`), horaire vanilla (`villager.rs:131`). Ordre des activités = index de `Brain.activity`.
 //! Hors de ce fichier : capteurs de lit, de bébés, de golem et d'hostiles, poste et cloche (`JOB_SITE`, `MEETING_POINT` à
 //! alimenter par la partie POI), le jeu des bébés (`play`), le commerce, la reproduction, la panique du raid (voir villager.md).
+use bevy_ecs::prelude::{Entity, World};
 use super::Def;
 use crate::behaviours::Cap;
 use crate::behaviours::{bed::NEAREST_BED, composter, crop_harvest, jump_on_bed, nearest_bed, nearby_babies, panda_state, play_tag, poi_strolls, gossip, raid, reach_block, ring_bell, schedule, sleep_in_bed, stroll_near_block, summon_defender, victory_celebrate};

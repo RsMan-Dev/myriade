@@ -35,7 +35,7 @@ fn spawn(h: &mut Herd, name: &str, x: f64, z: f64, seed: u64) -> Entity {
 }
 /// The activity of the ECS brain: `describe` gives `activity <name> running [...] memories [...]`.
 fn ecs_act(w: &World, e: Entity) -> String {
-    brain::describe(w, e).and_then(|d| d.split_whitespace().nth(1).map(str::to_string)).unwrap_or_default()
+    horizon_ecs_proto::brain::describe(w, e).and_then(|d| d.split_whitespace().nth(1).map(str::to_string)).unwrap_or_default()
 }
 /// Whole-token match on the `Mob`'s describe: `raid` does not match `pre_raid`, `walk_target` matches `minecraft:walk_target=...`.
 fn mob_token(m: &Mob, tok: &str) -> bool {
