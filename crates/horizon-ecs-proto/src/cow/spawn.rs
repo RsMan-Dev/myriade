@@ -122,7 +122,11 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     let yaw = (rng.next_u32() % 360) as f32;
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
-    let mut e = world.spawn(transform_bundle(sp, x, z, uid));
+    // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
+    let id = world.spawn_empty().id();
+    crate::type_tags::mark(world, id, sp.id);
+    let mut e = world.entity_mut(id);
+    e.insert((transform_bundle(sp, x, z, uid), sp.saved.then_some(crate::nbt::Saved)));
     if has(crate::behaviours::Cap::Solid) {
         e.insert(solid_bundle(sp, x, z));
     }
@@ -155,9 +159,7 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     {
         e.insert(crate::brain::bundle(plan));
     }
-    let id = e.id();
-    crate::type_tags::mark(world, id, sp.id);
-    id
+    e.id()
 }
 
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.

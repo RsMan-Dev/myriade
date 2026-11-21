@@ -3,6 +3,7 @@
 //! sauvegarde. Garde comme `leash_vs_mob.rs` (`HORIZON_SPECIES=minecraft:villager`, `REGISTER_ALL`, `HORIZON_TEST_RESOURCES`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
+use horizon_ecs_proto::nbt::{self, Kind};
 use horizon_client_lib::{
     items::{ItemStack, Items},
     merchant::{self, MerchantOffer, Session, TradeEnv, Trades},
@@ -199,8 +200,12 @@ fn the_trade_fields_survive_a_save() {
     trade_session::open(&mut w, e, 1);
     assert!(ecs_buy(&mut w, e, items, 0));
     trade_session::close(&mut w, e);
-    let saved = trade_offers::save(&w, e);
-    let read = trade_offers::read(|k| saved.iter().find(|(n, _)| *n == k).map(|(_, t)| t)).expect("champs de commerce");
+    nbt::register(&mut w, trade_offers::FIELDS);
+    w.entity_mut(e).insert(Kind("test".into()));
+    let saved = nbt::save(&w, e).expect("an NBT");
+    let f = w.spawn((Merchant::new(false, 0, 0), Kind("test".into()))).id();
+    nbt::load(&mut w, f, &saved);
+    let read = &w.get::<Merchant>(f).unwrap().trade;
     let m = w.get::<Merchant>(e).unwrap();
     assert_eq!(read.xp, m.trade.xp);
     assert_eq!(read.restocks_today, m.trade.restocks_today);

@@ -159,6 +159,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             eye_height: kind.eye_height,
             breathes_water: kind.flags.breathes_water,
             name,
+            saved: crate::species::registry().by_name(name).unwrap().saved,
             width: kind.width as f32,
             height: kind.height as f32,
             step_height: kind.step_height as f32,

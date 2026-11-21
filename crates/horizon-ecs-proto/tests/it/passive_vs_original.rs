@@ -4,7 +4,7 @@
 //! Horizon's code, not from the ECS: Horizon's own functions are `pub(super)` and out of reach from here.
 use bevy_ecs::world::World;
 use horizon_core::{geometry::Vec3, nbt::Tag};
-use horizon_ecs_proto::{cow::{Moving, OwnTime, Pos}, passive::{self, Interact, Raw}};
+use horizon_ecs_proto::{cow::{Moving, OwnTime, Pos}, nbt, passive::{self, Interact}};
 
 fn at() -> Vec3 {
     Vec3::new(10.0, 64.0, -3.0)
@@ -62,7 +62,7 @@ fn an_interaction_box_is_centred_on_the_feet_and_grows_with_the_data() {
     }
     assert!(i.response);
     // The box's keys leave the kept compound: `Interact` is their one copy.
-    assert!(w.get::<Raw>(e).unwrap().0.get("width").is_none());
+    assert!(nbt::get(&w, e, "width").is_none());
 }
 
 #[test]

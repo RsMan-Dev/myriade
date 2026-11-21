@@ -137,6 +137,8 @@ pub struct Species {
     pub breathes_water: bool,
     /// The type (`minecraft:cow`...), whose size, speed and goals below are data of the species.
     pub name: &'static str,
+    /// Whether the type is saved with its world (`Def::saved`): an entity of an unsaved species has no NBT.
+    pub saved: bool,
     pub width: f32,
     pub height: f32,
     pub step_height: f32,
