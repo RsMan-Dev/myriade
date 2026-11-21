@@ -212,7 +212,9 @@ impl Herd {
             let now = now_of(&self.world, e);
             let at = now + 1 + idle_wait(&mut arm, 60).max(0) as u64;
             arm_at(&mut self.world, e, at, Due::Stroll);
-            self.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
+            if let Some(mut st) = self.world.get_mut::<Stroll>(e) {
+                st.scheduled = true;
+            }
         }
         crate::goals::arm_all(&mut self.world);
         self.world.run_system_cached(reindex).unwrap();

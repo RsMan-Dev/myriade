@@ -14,7 +14,7 @@ fn skip() -> bool {
 }
 /// The tick the trader turns invisible (`start_invisible: false`) or loses its effects (`true`: it starts invisible), with the Mob's and the ECS's.
 fn ecs_change(day: bool, start_invisible: bool, ticks: usize) -> Option<usize> {
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.tick();
     h.set_day(day);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
@@ -74,7 +74,7 @@ fn drink_item_vs_mob_nothing_is_drunk_when_the_light_does_not_ask_for_it() {
 
 const SPOT: [f64; 3] = [40.5, 1.0, 0.5];
 fn ecs_wander(ticks: usize) -> f64 {
-    let mut h = Herd::with_slab(80, true, false);
+    let mut h = Herd::with_slab_awake(80, true, false);
     h.tick();
     h.set_day(true);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
@@ -109,7 +109,7 @@ fn wander_to_position_vs_mob_walks_to_two_blocks_of_the_place_of_its_visit() {
 
 /// The trade holds the trader still while the player is within 4 blocks (`distanceToSqr > 16.0`, jar); at 5 blocks it does not.
 fn trade_runs_ecs(dist: f64) -> bool {
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.tick();
     h.set_day(true);
     let (items, enchantments, trades) = crate::trade_vs_mob::registries();

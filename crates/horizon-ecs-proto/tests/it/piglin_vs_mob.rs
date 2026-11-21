@@ -100,7 +100,7 @@ fn a_piglin_backs_away_from_a_close_player_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = mob_piglin(&mut r, 0.5, 0.5, 9);
     r.mobs[i].extra.set_slot_id(horizon_items::equipment::MAINHAND, Some(Arc::from("minecraft:crossbow")));
     let e = ecs_piglin(&mut h, 0.5, 0.5, 9);
@@ -223,7 +223,7 @@ fn a_piglin_opens_the_door_on_its_path_as_a_mob_does() {
     const LOWER: &[(&str, &str)] = &[("open", "false"), ("half", "lower"), ("facing", "east")];
     const UPPER: &[(&str, &str)] = &[("open", "false"), ("half", "upper"), ("facing", "east")];
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     for z in -4..=4 {
         for y in [1, 2] {
             if z != 0 {
@@ -292,7 +292,7 @@ fn a_piglin_walks_to_the_gold_it_sees_on_the_ground() {
     if skip() {
         return;
     }
-    let mut near = Herd::with_slab(60, true, false);
+    let mut near = Herd::with_slab_awake(60, true, false);
     let e = ecs_piglin(&mut near, 0.5, 0.5, 11);
     horizon_ecs_proto::item::drop_item(&mut near.world, horizon_client_lib::items::ItemStack::new("minecraft:gold_ingot", 1), Vec3::new(5.5, 1.0, 0.5), Vec3::ZERO, 0);
     near.world.flush();
@@ -303,7 +303,7 @@ fn a_piglin_walks_to_the_gold_it_sees_on_the_ground() {
     let d5 = xz(near.world.get::<Pos>(e).unwrap().0, Vec3::new(5.5, 1.0, 0.5));
     assert!(d5 < d0 - 0.5, "the piglin walks toward the gold within 5 ticks: {d0:.2} -> {d5:.2}");
 
-    let mut far = Herd::with_slab(60, true, false);
+    let mut far = Herd::with_slab_awake(60, true, false);
     let f = ecs_piglin(&mut far, 0.5, 0.5, 12);
     horizon_ecs_proto::item::drop_item(&mut far.world, horizon_client_lib::items::ItemStack::new("minecraft:gold_ingot", 1), Vec3::new(12.5, 1.0, 0.5), Vec3::ZERO, 0);
     far.world.flush();

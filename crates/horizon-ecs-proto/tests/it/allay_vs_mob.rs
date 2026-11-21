@@ -18,7 +18,7 @@ fn is(name: &str) -> bool {
 
 /// An allay with `hand` in its main hand, and `ground` (3 items) dropped `dx` blocks away from it.
 fn scene(hand: &str, ground: &str, dx: f64) -> (Herd, Entity, Entity) {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 7);
     h.world.resource_mut::<Entered>().0.push(e);
     set_main_hand(&mut h.world, e, Some(ItemStack::new(hand, 1)));
