@@ -70,7 +70,7 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         };
         let grown = bounds.inflate(Vec3::new(1e-7, 1e-7, 1e-7));
         no_collision_empty(&mut scene, bounds)
-            && !self.game.mobs.iter().any(|m| {
+            && !self.game.remote_entities.iter().any(|m| {
                 m.species() == Species::Shulker && m.alive() && m.bounds().intersects(grown)
             })
     }
@@ -78,7 +78,7 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         self.game.finalize_free_chicken(bounds)
     }
     fn ride_chicken(&mut self, chicken: u32, rider: u32) {
-        if let Some(c) = self.game.mobs.iter_mut().find(|m| m.id == chicken) {
+        if let Some(c) = self.game.remote_entities.iter_mut().find(|m| m.id == chicken) {
             c.extra.jockey = true;
             c.extra.rider = Some(rider);
         }
@@ -121,7 +121,7 @@ impl Game<'_> {
     /// The first free chicken a jockey can take: alive, unhindered, inside
     /// the bounds.
     pub(super) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
-        self.mobs
+        self.remote_entities
             .iter()
             .find(|c| {
                 c.species() == Species::Chicken
@@ -205,8 +205,8 @@ impl Game<'_> {
         let game = level.game;
         game.world.random = random;
         for m in created {
-            game.mobs.push(m);
-            game.native_mobs_joined(game.mobs.len() - 1, false);
+            game.remote_entities.push(m);
+            game.native_mobs_joined(game.remote_entities.len() - 1, false);
         }
     }
 }

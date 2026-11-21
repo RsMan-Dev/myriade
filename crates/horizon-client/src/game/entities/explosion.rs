@@ -1115,8 +1115,8 @@ impl Game<'_> {
                 match handle {
                     _ if !hurts => {}
                     EntityHandle::Mob(i) => {
-                        let hurtable = teams_allow(self, self.mob_team(self.mobs[i].id));
-                        let m = &mut self.mobs[i];
+                        let hurtable = teams_allow(self, self.mob_team(self.remote_entities[i].id));
+                        let m = &mut self.remote_entities[i];
                         // The exploding mob is the damage source's entity, so
                         // victims it kills drop its charged-creeper loot
                         // (`Creeper.killedEntity`).

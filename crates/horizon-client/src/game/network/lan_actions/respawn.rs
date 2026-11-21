@@ -597,7 +597,7 @@ impl Game<'_> {
                         ..Default::default()
                     })
                     .or_else(|| {
-                        self.mobs
+                        self.remote_entities
                             .iter()
                             .find(|m| m.id == id)
                             .map(|m| self.mob_entity(m))
@@ -694,7 +694,7 @@ impl Game<'_> {
         {
             return Some("minecraft:player".into());
         }
-        if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
             return Some(m.kind.id.clone());
         }
         // A mob that blew up this tick has left the list, but vanilla's player
@@ -757,7 +757,7 @@ impl Game<'_> {
                 ..Default::default()
             })
             .or_else(|| {
-                self.mobs
+                self.remote_entities
                     .iter()
                     .find(|m| m.id == id)
                     .map(|m| self.mob_entity(m))

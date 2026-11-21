@@ -30,7 +30,7 @@ impl Game<'_> {
         let Some(Some(index)) = index else {
             return;
         };
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         let camel = crate::mobs::camel::is_camel(m.species()).then_some(m.id);
         let Some((sound, volume)) = crate::game::mounts::start_riding_jump(m, data) else {
             return;

@@ -26,7 +26,7 @@ impl Game<'_> {
     pub(in crate::game) fn passenger_present(&self, id: u32) -> bool {
         self.level_entity(id as i32).is_some_and(|t| match t {
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|m| m.id == id && m.alive() && !m.removed),
             _ => true,
@@ -273,7 +273,7 @@ impl Game<'_> {
         });
         riders.sort_by_key(|id| depths[id]);
         let index: std::collections::HashMap<u32, usize> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .map(|(i, m)| (m.id, i))

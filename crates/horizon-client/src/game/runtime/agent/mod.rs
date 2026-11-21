@@ -504,7 +504,7 @@ impl Game<'_> {
             v
         });
         let entity = self.mob_hit().map(|(i, d, _)| {
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             json!({ "id": m.id, "type": m.kind.id, "health": m.health, "distance": d,
                     "pos": [m.position.x, m.position.y, m.position.z] })
         });
@@ -760,7 +760,7 @@ impl Game<'_> {
         };
         // CAN_BE_PICKED's isPickable (`!isRemoved`): a dead-but-tracked mob
         // — a fake player the server keeps at health 0 — is still here.
-        for m in self.mobs.iter().filter(|m| !m.removed) {
+        for m in self.remote_entities.iter().filter(|m| !m.removed) {
             let mut v = json!({ "id": m.id, "kind": "mob", "health": m.health, "baby": m.is_baby(), "hurt_time": m.hurt_time });
             // VillagerData as this game knows it: on a client, what the
             // server's synched data says.
@@ -800,7 +800,7 @@ impl Game<'_> {
             "radius": radius,
             "type": want,
             "tracked": {
-                "mobs": self.mobs.iter().filter(|m| !m.removed).count(),
+                "mobs": self.remote_entities.iter().filter(|m| !m.removed).count(),
                 "items": self.dropped.len(),
                 "orbs": self.orbs.len(),
             },
@@ -1370,7 +1370,7 @@ impl Game<'_> {
                     Some("entity") => {
                         let id: u32 = a.get(1, "ID")?.parse()?;
                         let m = self
-                            .mobs
+                            .remote_entities
                             .iter()
                             .find(|m| m.id == id)
                             .ok_or_else(|| format!("no entity {id}"))?;
@@ -1407,7 +1407,7 @@ impl Game<'_> {
                 let id = a.pos.first().map(|i| i.parse::<u32>()).transpose()?;
                 if let Some(id) = id {
                     let m = self
-                        .mobs
+                        .remote_entities
                         .iter()
                         .find(|m| m.id == id)
                         .ok_or_else(|| format!("no entity {id}"))?;
@@ -1416,7 +1416,7 @@ impl Game<'_> {
                 }
                 let target = self
                     .mob_hit()
-                    .map(|(i, _, _)| (self.mobs[i].id, self.mobs[i].health));
+                    .map(|(i, _, _)| (self.remote_entities[i].id, self.remote_entities[i].health));
                 if id.is_some() && target.map(|t| t.0) != id {
                     return Err("that entity is out of reach or hidden; get closer".into());
                 }
@@ -2189,7 +2189,7 @@ impl Game<'_> {
                 if self.ticks < *report_tick && !timed_out {
                     return None;
                 }
-                let now = id.and_then(|id| self.mobs.iter().find(|m| m.id == id));
+                let now = id.and_then(|id| self.remote_entities.iter().find(|m| m.id == id));
                 Some(json!({
                     "ok": true,
                     "target": id,

@@ -51,12 +51,12 @@ impl Game<'_> {
             ))?;
         }
         let mut seed = 0;
-        self.mobs.for_each_mut(|mob| {
+        self.remote_entities.for_each_mut(|mob| {
             seed += 1;
             mob.random = horizon_core::random::EntityRandom::own(LegacyRandom::new(seed));
         });
-        if self.mobs.len() as u64 != count {
-            return Err(format!("{} of {count} mobs were summoned", self.mobs.len()).into());
+        if self.remote_entities.len() as u64 != count {
+            return Err(format!("{} of {count} mobs were summoned", self.remote_entities.len()).into());
         }
         // The summoned mobs join the level as its next tick opens. A level that opened has
         // bound its entities to their holders; this one does it here.
@@ -128,7 +128,7 @@ impl Game<'_> {
     /// What the ticks left: where every mob stands and what every container holds.
     fn hot_level_state(&self) -> (Vec<[u64; 3]>, Vec<((i32, i32, i32), u32)>) {
         let mobs = self
-            .mobs
+            .remote_entities
             .iter()
             .map(|mob| {
                 [

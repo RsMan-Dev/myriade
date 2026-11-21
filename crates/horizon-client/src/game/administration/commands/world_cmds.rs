@@ -299,7 +299,7 @@ impl Game<'_> {
                     _ => None,
                 });
                 let attacker_species = match attacker {
-                    Some(Who::Mob(i)) => self.mobs.iter().find(|m| m.id == i).map(|m| m.species()),
+                    Some(Who::Mob(i)) => self.remote_entities.iter().find(|m| m.id == i).map(|m| m.species()),
                     _ => None,
                 };
                 let damage = Damage {
@@ -425,7 +425,7 @@ impl Game<'_> {
         let attack = self.combat.attack();
         let mut reinforcements = Vec::new();
         let mut health_changed = false;
-        let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+        let hurt = self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
             let queued = m.outbox.len();
             let old_health = m.health;
             let hurt = m.damage(
@@ -1027,7 +1027,7 @@ impl Game<'_> {
                 .map(Some)
             }
             Target::Mob(mob_id) => {
-                let Some(m) = self.mobs.iter().find(|m| m.id == mob_id) else {
+                let Some(m) = self.remote_entities.iter().find(|m| m.id == mob_id) else {
                     return Ok(None);
                 };
                 // The attributes the mob's gameplay reads live in `finalize`;
@@ -1085,7 +1085,7 @@ impl Game<'_> {
                     "attribute.base.reset" => {
                         self.write_attribute(target, attribute, AttributeWrite::ResetBase);
                         let v = self
-                            .mobs
+                            .remote_entities
                             .iter()
                             .find(|m| m.id == mob_id)
                             .map_or(0.0, |m| finalize::base_value(m, attr));
@@ -1200,7 +1200,7 @@ impl Game<'_> {
                     | "minecraft:friction_modifier"
             ) || self.sulfur_archetype_attribute(t, attribute))
         {
-            let mob = self.mobs.iter_mut().find(|m| m.id == id)?;
+            let mob = self.remote_entities.iter_mut().find(|m| m.id == id)?;
             if mob.extra.armor_attributes.is_none() {
                 mob.extra.armor_attributes =
                     self.motion.attributes.create(&mob.kind.id).map(Box::new);
@@ -1222,7 +1222,7 @@ impl Game<'_> {
         };
         horizon_client::mobs::sulfur_cube::ARCHETYPE_ATTRIBUTES.contains(&attribute)
             && self
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|m| m.id == id && m.species() == horizon_client::mobs::Species::SulfurCube)
     }
@@ -1256,14 +1256,14 @@ impl Game<'_> {
         // A mob's max_absorption counts its Absorption effect's modifier.
         let absorption_bonus = match target {
             Target::Mob(mob) if attribute == "minecraft:max_absorption" => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == mob)
                 .map(|m| horizon_client::mobs::armor::absorption_bonus(&m.extra.effects)),
             _ => None,
         };
         let gear = match target {
-            Target::Mob(mob) => self.mobs.iter().find(|m| m.id == mob).map(|m| {
+            Target::Mob(mob) => self.remote_entities.iter().find(|m| m.id == mob).map(|m| {
                 let enchantments = &self.stations().enchantments;
                 finalize::equipment_modifiers(m, attribute, world_items!(self), enchantments)
             }),
@@ -1562,7 +1562,7 @@ impl Game<'_> {
         let id = match t {
             Target::Player => self.riding?,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle?,
-            Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.extra.mount?,
+            Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.extra.mount?,
             _ => return None,
         };
         Some(if self.is_boat(id) {

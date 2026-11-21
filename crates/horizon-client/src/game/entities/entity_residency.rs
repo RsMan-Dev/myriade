@@ -40,17 +40,16 @@ pub(crate) use assign_resident_ids;
 // Projectiles and knots have distinct Game/Parked field paths;
 // keep binding and resolution on this one family list.
 macro_rules! resident_owners {
-    ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+) => {
+    ($then:ident, $this:ident, $($knots:ident).+) => {
         $then! {
-            ($this, $($projectiles).+)
-            Mob => Mob: mobs,
+            ($this)
+            Mob => Mob: remote_entities,
             Item => Item: dropped,
             Orb => Orb: orbs,
             Stand => Stand: armor_stands,
             Frame => Frame: item_frames,
             Painting => Painting: paintings,
             Boat => Boat: boats,
-            Cart => Cart: carts,
             Other => Other: others,
             Fangs => Fangs: fangs.list,
             Crystal => Crystal: crystals,
@@ -163,13 +162,12 @@ macro_rules! resident_lifetime_slot {
 pub(crate) use resident_lifetime_slot;
 
 macro_rules! define_resident_access {
-    (($this:ident, $($projectiles:ident).+) $($kind:ident => $target:ident: $($field:ident).+,)*) => {
+    (($this:ident) $($kind:ident => $target:ident: $($field:ident).+,)*) => {
         pub(super) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
             }
             $($crate::game::entity_residency::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
-            $this$(.$projectiles)+.bind_residency(journal, Owner { dimension, kind: Kind::Projectile }, |entity| (entity.id, entity.join_seq()));
             $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), horizon_client::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
         }
         pub(super) fn with_resident_owner_slot<R>(
@@ -180,7 +178,6 @@ macro_rules! define_resident_access {
             use $crate::game::entity_residency::SlotAccess;
             match at.owner.kind {
                 $(Kind::$kind => $crate::game::entity_residency::resident_lifetime_slot!($kind, $this$(.$field)+, at.join, visit),)*
-                Kind::Projectile => $crate::game::entity_residency::resident_lifetime_slot!(Projectile, $this$(.$projectiles)+, at.join, visit),
                 Kind::Dragon => {
                     $this.dragon.locate(at.join).map_or(SlotAccess::Missing, |_| {
                         use horizon_mod_runtime::attachments::HasAttachmentLifetime;
@@ -195,7 +192,7 @@ macro_rules! define_resident_access {
                     let Some(part) = $this.dragon.as_mut().and_then(|dragon| dragon.parts.get_mut(usize::from(offset))) else { return SlotAccess::Missing; };
                     SlotAccess::Done(visit(part.attachment_lifetime()))
                 },
-                Kind::Player | Kind::Hook => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Player | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -207,11 +204,6 @@ macro_rules! define_resident_access {
                     let id = entity.id;
                     Some(SourceEntity { id, value: (Target::$target(id), visible) })
                 })*
-                Kind::Projectile => {
-                    let index = $this$(.$projectiles)+.locate(at.join)?;
-                    let id = $this$(.$projectiles)+[index].id;
-                    Some(SourceEntity { id, value: (Target::Projectile(id), true) })
-                }
                 Kind::Dragon => {
                     $this.dragon.locate(at.join)?;
                     let id = $this.dragon.as_ref()?.id;
@@ -227,7 +219,7 @@ macro_rules! define_resident_access {
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }
-                Kind::Player | Kind::Hook => None,
+                Kind::Player | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => None,
             };
             source
         }
@@ -254,7 +246,6 @@ impl Game<'_> {
     resident_owners!(
         define_resident_access,
         self,
-        creatures.projectiles,
         resident_entities.knots
     );
 }

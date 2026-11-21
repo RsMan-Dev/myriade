@@ -110,7 +110,7 @@ impl Game<'_> {
         // LootCommand.dropKillLoot supplies the selected live mob as THIS_ENTITY.
         let live_target = match target {
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|mob| mob.id == id)
                 .map(|mob| horizon_client::mobs::drops::loot_entity(mob, None)),

@@ -29,7 +29,7 @@ impl Game<'_> {
         }
     }
     fn nautilus_sound(&mut self, index: usize, sound: &str) {
-        let at = self.mobs[index].center();
+        let at = self.remote_entities[index].center();
         self.audio
             .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
     }
@@ -37,16 +37,16 @@ impl Game<'_> {
     /// click on a nautilus, used or not, makes it persistent before its own
     /// handling runs.
     pub(super) fn nautilus_clicked(&mut self, id: Option<i32>) {
-        let Some(index) = id.and_then(|id| Self::named_entity(&self.mobs, id, |m| m.id)) else {
+        let Some(index) = id.and_then(|id| Self::named_entity(&self.remote_entities, id, |m| m.id)) else {
             return;
         };
-        if nautilus::is_nautilus(self.mobs[index].species()) {
-            self.mobs[index].persistent = true;
+        if nautilus::is_nautilus(self.remote_entities[index].species()) {
+            self.remote_entities[index].persistent = true;
         }
     }
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.
     pub(super) fn interact_nautilus(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if !m.alive() || Some(m.id) == self.riding {
             return false;
         }
@@ -66,7 +66,7 @@ impl Game<'_> {
             if !food {
                 return false;
             }
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             if !m.extra.age_locked {
                 let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
                 horizon_client::mobs::ai::age_up(m, secs, true);
@@ -86,11 +86,11 @@ impl Game<'_> {
             if !tame && food {
                 // tryToTame: one time in three.
                 self.use_nautilus_food(item);
-                let rolled = self.mobs[index].random.next_int_bound(3).unwrap_or(1) == 0;
+                let rolled = self.remote_entities[index].random.next_int_bound(3).unwrap_or(1) == 0;
                 let acting = self.acting_player_uuid();
                 let (tamer, tamer_entity_id) = (self.native_acting_id(), self.own_entity_id());
                 let tamed = rolled && !self.animal_tame_cancelled(index, tamer, tamer_entity_id);
-                let m = &mut self.mobs[index];
+                let m = &mut self.remote_entities[index];
                 if tamed {
                     m.extra.tame = true;
                     m.extra.owner = Some(acting);
@@ -98,20 +98,20 @@ impl Game<'_> {
                     m.nav_stop();
                 }
                 if tamed {
-                    self.set_event_ai_target(self.mobs[index].id, None, self.lan_acting);
+                    self.set_event_ai_target(self.remote_entities[index].id, None, self.lan_acting);
                 }
-                let sound = nautilus::eat_sound(&self.mobs[index]);
+                let sound = nautilus::eat_sound(&self.remote_entities[index]);
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
-                self.mob_event_particles(self.mobs[index].id, if tamed { 7 } else { 6 });
+                self.mob_event_particles(self.remote_entities[index].id, if tamed { 7 } else { 6 });
                 self.nautilus_sound(index, sound);
                 if tamed {
-                    let view = self.mob_entity(&self.mobs[index]);
+                    let view = self.mob_entity(&self.remote_entities[index]);
                     self.trigger_entity("minecraft:tame_animal", "entity", &view);
                     self.pet_tamed(index);
                 }
                 return true;
             }
-            let m = &self.mobs[index];
+            let m = &self.remote_entities[index];
             if food && m.health < m.attrs.max_health {
                 // feed(player, hand, stack, 2, 1).
                 let sound = nautilus::eat_sound(m);
@@ -123,7 +123,7 @@ impl Game<'_> {
                     .get(item)
                     .and_then(|i| i.food.as_ref())
                     .map(|f| f.0 as i32);
-                let m = &mut self.mobs[index];
+                let m = &mut self.remote_entities[index];
                 m.heal(&self.loop_context, nautilus::feed_heal(nutrition));
                 self.use_nautilus_food(item);
                 self.nautilus_sound(index, sound);
@@ -131,15 +131,15 @@ impl Game<'_> {
             }
             // Equippable.equipOnInteract: a saddle or nautilus armour on a
             // tame adult.
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             if item == "minecraft:saddle" && tame && !m.extra.saddled() {
                 let held = self.inventory[self.selected].clone();
                 m.set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
                 let sound = nautilus::saddle_sound(m);
                 self.nautilus_sound(index, sound);
                 self.consume_held();
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
+                let id = self.remote_entities[index].id;
+                let pos = self.remote_entities[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
                 return true;
             }
@@ -149,8 +149,8 @@ impl Game<'_> {
                     .set_body_stack(held.map(|s| ItemStack { count: 1, ..s }));
                 self.nautilus_sound(index, "item.armor.equip_nautilus");
                 self.consume_held();
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
+                let id = self.remote_entities[index].id;
+                let pos = self.remote_entities[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
                 return true;
             }
@@ -158,7 +158,7 @@ impl Game<'_> {
         if tame && !food {
             // doPlayerRide: `player.startRiding(this)`, which keeps the
             // rider's view (`ServerPlayer.startRiding`'s `Relative.ROTATION`).
-            let id = self.mobs[index].id;
+            let id = self.remote_entities[index].id;
             if !self.native_may_board(id) {
                 return true;
             }
@@ -170,19 +170,19 @@ impl Game<'_> {
         // Animal.mobInteract: a tame adult fed at full health falls in love
         // (a zombie nautilus too: `ZombieNautilus` overrides neither `isFood`
         // nor `mobInteract`, and its brain simply has no make-love goal).
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         if food && m.extra.age == 0 && m.extra.in_love <= 0 {
             m.extra.in_love = 600;
             m.extra.love_player = true;
             let sound = nautilus::eat_sound(m);
             let id = m.id;
             self.love_cause.insert(id, self.lan_acting);
-            let kind = self.mobs[index].kind.id.clone();
+            let kind = self.remote_entities[index].kind.id.clone();
             self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
             self.use_nautilus_food(item);
             self.nautilus_sound(index, sound);
             // Animal.setInLove: entity event 18.
-            self.mob_event_particles(self.mobs[index].id, 18);
+            self.mob_event_particles(self.remote_entities[index].id, 18);
             return true;
         }
         false

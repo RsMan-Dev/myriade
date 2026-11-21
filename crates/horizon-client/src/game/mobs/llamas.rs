@@ -8,7 +8,7 @@ use horizon_core::random::RandomSource;
 
 impl Game<'_> {
     fn llama_sound(&mut self, index: usize, sound: &str, volume: f32) {
-        let at = self.mobs[index].center();
+        let at = self.remote_entities[index].center();
         let pitch = (self.world.random.next_float() - self.world.random.next_float()) * 0.2 + 1.0;
         self.audio
             .play(&format!("minecraft:{sound}"), Some(at), volume, pitch);
@@ -21,7 +21,7 @@ impl Game<'_> {
             "minecraft:hay_block" => (90, 6, 10.0),
             _ => return false,
         };
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         let mut used = false;
         let mut loved = false;
         if item == "minecraft:hay_block" && m.extra.tame && m.extra.age == 0 && m.extra.in_love <= 0
@@ -59,9 +59,9 @@ impl Game<'_> {
         }
         // Animal.setInLove: entity event 18.
         if loved {
-            let id = self.mobs[index].id;
+            let id = self.remote_entities[index].id;
             self.love_cause.insert(id, self.lan_acting);
-            let kind = self.mobs[index].kind.id.clone();
+            let kind = self.remote_entities[index].kind.id.clone();
             self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
@@ -72,7 +72,7 @@ impl Game<'_> {
     /// `AbstractChestedHorse.mobInteract` and `AbstractHorse.mobInteract` for
     /// llamas and trader llamas. Returns whether the click was used.
     pub(super) fn interact_llama(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if !m.alive() || Some(m.id) == self.riding {
             return false;
         }
@@ -80,17 +80,17 @@ impl Game<'_> {
         let (baby, tamed, vehicle) = (m.is_baby(), m.extra.tame, m.rider.is_some());
         let open_inventory = !baby && tamed && sneaking;
         if !vehicle && !open_inventory && !item.is_empty() {
-            if self.mobs[index].kind.food.iter().any(|f| f == item) {
+            if self.remote_entities[index].kind.food.iter().any(|f| f == item) {
                 return self.feed_llama(index, item);
             }
             if !tamed {
                 let mut events = Vec::new();
-                equine::make_mad(&mut self.mobs[index], &mut events);
+                equine::make_mad(&mut self.remote_entities[index], &mut events);
                 let _ = self.handle_mob_events(events);
                 return true;
             }
-            if !self.mobs[index].extra.chested && item == "minecraft:chest" {
-                self.mobs[index].extra.chested = true;
+            if !self.remote_entities[index].extra.chested && item == "minecraft:chest" {
+                self.remote_entities[index].extra.chested = true;
                 self.llama_sound(index, "entity.llama.chest", 1.0);
                 self.consume_held();
                 return true;
@@ -105,19 +105,19 @@ impl Game<'_> {
             self.open_mount_menu(index);
             return true;
         }
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let carpet = |i: &str| i.ends_with("_carpet") && i.starts_with("minecraft:");
         if !item.is_empty() {
             if item == "minecraft:shears" && m.extra.body_id().is_some_and(carpet) {
                 // Equippable.canBeSheared: the carpet comes off.
                 let at = m.center();
-                let carpet = self.mobs[index].take_body_equipment().unwrap();
+                let carpet = self.remote_entities[index].take_body_equipment().unwrap();
                 self.audio
                     .play("minecraft:item.llama_carpet.unequip", Some(at), 1.0, 1.0);
                 self.spawn_item(carpet, at, [0.0, 0.2, 0.0], 10);
                 self.damage_held_tool();
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
+                let id = self.remote_entities[index].id;
+                let pos = self.remote_entities[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], false);
                 return true;
             }
@@ -126,11 +126,11 @@ impl Game<'_> {
                     stack.count = 1;
                     stack
                 });
-                self.mobs[index].extra.set_body_stack(held);
+                self.remote_entities[index].extra.set_body_stack(held);
                 self.llama_sound(index, "entity.llama.swag", 1.0);
                 self.consume_held();
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
+                let id = self.remote_entities[index].id;
+                let pos = self.remote_entities[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
                 return true;
             }
@@ -140,12 +140,12 @@ impl Game<'_> {
             return true;
         }
         // doPlayerRide; mounting drops a lead.
-        let id = self.mobs[index].id;
+        let id = self.remote_entities[index].id;
         if !self.native_may_board(id) {
             return true;
         }
         self.break_leash(id, true, false);
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         m.extra.flag = false;
         m.extra.counter = 0;
         self.yaw = m.yaw;
@@ -154,12 +154,12 @@ impl Game<'_> {
         true
     }
     fn is_led_by_trader(&self, index: usize) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         m.species() == horizon_client::mobs::Species::TraderLlama
             && matches!(
                 m.extra.leash,
                 Some(horizon_client::mobs::leash::Holder::Mob(id))
-                    if self.mobs.iter().any(|o| o.id == id
+                    if self.remote_entities.iter().any(|o| o.id == id
                         && o.species() == horizon_client::mobs::Species::WanderingTrader)
             )
     }

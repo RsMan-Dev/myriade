@@ -23,15 +23,15 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         shears: &ItemStack,
     ) -> Option<(usize, bool)> {
-        if !mod_api::__private::has_entity_parts() || !self.mobs[index].alive() {
+        if !mod_api::__private::has_entity_parts() || !self.remote_entities[index].alive() {
             return None;
         }
         let parts = mod_api::__private::entity_parts();
-        let list = parts.entity_parts(&self.mobs[index].kind.id);
+        let list = parts.entity_parts(&self.remote_entities[index].kind.id);
         if list.is_empty() {
             return None;
         }
-        let entity = self.entity(self.mobs[index].id)?;
+        let entity = self.entity(self.remote_entities[index].id)?;
         let shears = shears.try_into_api().ok()?;
         list.iter().enumerate().find_map(|(at, attached)| {
             let _guard = enter_native_mod(ModCall {
@@ -56,10 +56,10 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         shears: &ItemStack,
     ) {
-        let (id, at) = (self.mobs[index].id, self.mobs[index].position);
+        let (id, at) = (self.remote_entities[index].id, self.remote_entities[index].position);
         let parts = mod_api::__private::entity_parts();
         let (Some(attached), Some(entity), Ok(shears)) = (
-            parts.entity_parts(&self.mobs[index].kind.id).get(part),
+            parts.entity_parts(&self.remote_entities[index].kind.id).get(part),
             self.entity(id),
             shears.try_into_api(),
         ) else {
@@ -74,15 +74,15 @@ impl Game<'_> {
             attached.part().on_sheared(self, entity, player, &shears)
         };
         // The part may have moved or removed the mob: its drops fall where it is now.
-        let index = self.mobs.iter().position(|m| m.id == id && !m.removed);
-        let at = index.map_or(at, |i| self.mobs[i].position);
+        let index = self.remote_entities.iter().position(|m| m.id == id && !m.removed);
+        let at = index.map_or(at, |i| self.remote_entities[i].position);
         for drop in drops {
             let Ok(stack) = drop.try_into_engine(self.items()) else {
                 continue;
             };
             self.spawn_at_location(at, 1.0, stack);
             let Some(i) = index else { continue };
-            let r = &mut self.mobs[i].random;
+            let r = &mut self.remote_entities[i].random;
             let push = [
                 f64::from((r.next_float() - r.next_float()) * 0.1),
                 f64::from(r.next_float() * 0.05),
@@ -108,7 +108,7 @@ impl Game<'_> {
         if part.is_some_and(|(_, shearable)| !shearable) {
             return Some(false);
         }
-        let mob = &self.mobs[index];
+        let mob = &self.remote_entities[index];
         let (id, at) = (mob.id, mob.position);
         let shearable = part.is_some()
             || match mob.species() {
@@ -128,7 +128,7 @@ impl Game<'_> {
             }
             // The hook had `&mut self`: find the mob again by id; a mob a mod
             // removed, or shears it swapped, ends the interaction.
-            let Some(now) = self.mobs.iter().position(|m| m.id == id && !m.removed) else {
+            let Some(now) = self.remote_entities.iter().position(|m| m.id == id && !m.removed) else {
                 return Some(true);
             };
             index = now;

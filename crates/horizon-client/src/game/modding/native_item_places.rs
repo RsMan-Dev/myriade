@@ -40,7 +40,7 @@ impl Game<'_> {
             at(&b.position)
         } else {
             let m = self
-                .mobs
+                .remote_entities
                 .iter_mut()
                 .find(|m| m.id == id && m.extra.chested)?;
             let size = super::mount_menu::mount_columns(m) * 3;
@@ -111,7 +111,7 @@ impl Game<'_> {
     pub(super) fn entity_container_size(&self, entity: u32) -> Option<usize> {
         self.entity_automation_size(entity).or_else(|| {
             let m = self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == entity && m.extra.chested)?;
             Some(super::mount_menu::mount_columns(m) * 3)
@@ -142,7 +142,7 @@ impl Game<'_> {
         if !self.places_simulated() {
             return None;
         }
-        (self.mobs.iter().any(|m| m.id == entity && !m.removed)
+        (self.remote_entities.iter().any(|m| m.id == entity && !m.removed)
             || self.armor_stands.iter().any(|a| a.id == entity))
         .then_some(7)
     }
@@ -434,7 +434,7 @@ impl Game<'_> {
         if !self.places_simulated() {
             return None;
         }
-        if let Some(mob) = self.mobs.iter().find(|m| m.id == entity && !m.removed) {
+        if let Some(mob) = self.remote_entities.iter().find(|m| m.id == entity && !m.removed) {
             return Some(mob.equipment_stacks().get(slot as usize).cloned());
         }
         let stand = self.armor_stands.iter().find(|a| a.id == entity)?;

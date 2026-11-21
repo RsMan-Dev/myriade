@@ -15,7 +15,7 @@ impl SwingHost for Game<'_> {
         match target_of(entity) {
             Target::Player => self.swing_arm(),
             Target::Mob(id) => {
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     m.ai.swinging = true;
                     m.ai.swing_time = -1;
                 }

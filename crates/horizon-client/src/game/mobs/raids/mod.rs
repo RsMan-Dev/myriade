@@ -244,7 +244,7 @@ impl Game<'_> {
     /// Every claimed village point of interest (job sites, beds, bells).
     fn village_pois(&self) -> Vec<[i32; 3]> {
         let mut out: Vec<[i32; 3]> = Vec::new();
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if m.species() != Species::Villager || !m.alive() {
                 continue;
             }
@@ -516,7 +516,7 @@ impl Game<'_> {
         self.raiding.raids.set_omen_level(id, level).unwrap_or(0)
     }
     pub(super) fn raid_glow(&mut self, id: i32) {
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             if raider::state(m).is_some_and(|s| s.raid_id == Some(id)) {
                 m.add_effect("glowing", 1000, 1);
             }
@@ -541,7 +541,7 @@ impl Game<'_> {
     }
     /// A raid's members (`groupRaiderMap`): the living raiders it counts.
     pub(super) fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
-        members(&self.mobs, id)
+        members(&self.remote_entities, id)
     }
     /// `getHealthOfLivingRaiders`, leaving out one raider.
     fn remaining_raider_health(&self, id: i32, except: Option<u32>) -> f32 {
@@ -571,7 +571,7 @@ impl Game<'_> {
     /// The members of every raid, for `Raids.tick`.
     fn raider_infos(&self) -> HashMap<i32, Vec<RaiderInfo>> {
         let mut out: HashMap<i32, Vec<RaiderInfo>> = HashMap::new();
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if !m.alive() || m.removed {
                 continue;
             }
@@ -599,7 +599,7 @@ impl Game<'_> {
     /// the wave's leader).
     fn register_loaded_raiders(&mut self) {
         let pending: Vec<(u32, i32, i32, f32, bool)> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| m.alive() && !m.removed)
             .filter_map(|m| {
@@ -621,7 +621,7 @@ impl Game<'_> {
                 }
                 None => false,
             };
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                 let s = raider::state_mut(m);
                 s.registered = true;
                 if !known {
@@ -695,14 +695,14 @@ impl Game<'_> {
             Action::Spawn { pos, wave, spawns } => self.spawn_wave(id, pos, wave, &spawns),
             Action::Horn { pos, seed } => self.raid_horn(id, pos, seed),
             Action::Remove { id: mob } => {
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                     let s = raider::state_mut(m);
                     s.raid_id = None;
                     s.active_raid = false;
                 }
             }
             Action::SetOutside { id: mob, ticks } => {
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                     raider::state_mut(m).ticks_outside_raid = ticks;
                 }
             }
@@ -818,7 +818,7 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         let id = self.spawn_event_mob(kind.entity(), at, leader, raider::Reason::Event)?;
-        let m = self.mobs.iter_mut().find(|m| m.id == id)?;
+        let m = self.remote_entities.iter_mut().find(|m| m.id == id)?;
         let s = raider::state_mut(m);
         s.raid_id = Some(raid_id);
         s.wave = wave;
@@ -860,8 +860,8 @@ impl Game<'_> {
             return None;
         }
         let id = mob.id;
-        self.mobs.push(mob);
-        self.native_mobs_joined(self.mobs.len() - 1, false);
+        self.remote_entities.push(mob);
+        self.native_mobs_joined(self.remote_entities.len() - 1, false);
         Some(id)
     }
 
@@ -871,7 +871,7 @@ impl Game<'_> {
     fn sync_raiders(&mut self, centers: &HashSet<(i32, i32, i32)>) {
         let now = self.world.game_time;
         let golems: HashSet<u32> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| m.species() == Species::IronGolem)
             .map(|m| m.id)
@@ -880,7 +880,7 @@ impl Game<'_> {
         let mut leaders: HashSet<(i32, i32)> = HashSet::new();
         let mut ridden: HashSet<u32> = HashSet::new();
         let mut positions: Vec<(u32, Vec3, bool)> = Vec::new();
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             let Some(s) = raider::state(m) else { continue };
             if !m.alive() {
                 continue;
@@ -910,7 +910,7 @@ impl Game<'_> {
         let mut joins: Vec<(u32, i32, f32)> = Vec::new();
         let mut new_leaders: Vec<(i32, i32, u32)> = Vec::new();
         let homes = self.raid_homes();
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             let species = m.species();
             if !raider::is_raider(species) {
                 continue;
@@ -1051,7 +1051,7 @@ impl Game<'_> {
                     && (p.x - at.x).abs() <= 16.0
                     && (p.y - at.y).abs() <= 16.0
                     && (p.z - at.z).abs() <= 16.0
-                    && let Some(m) = self.mobs.iter().find(|m| m.id == *mid)
+                    && let Some(m) = self.remote_entities.iter().find(|m| m.id == *mid)
                     && raider::state(m).is_some_and(|s| s.can_join_raid && s.raid_id != Some(id))
                     && m.alive()
                     && m.ai.no_action_time <= 2400
@@ -1070,7 +1070,7 @@ impl Game<'_> {
         let Some(wave) = self.raiding.raids.get(id).map(|r| r.groups_spawned) else {
             return;
         };
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
             return;
         };
         let s = raider::state_mut(m);
@@ -1167,7 +1167,7 @@ impl Game<'_> {
             r.remove_from_raid(m.health, false, living);
             self.raiding.raids.dirty = true;
         }
-        if let Some(dead) = self.mobs.iter_mut().find(|x| x.id == m.id) {
+        if let Some(dead) = self.remote_entities.iter_mut().find(|x| x.id == m.id) {
             raider::state_mut(dead).raid_id = None;
         }
     }
@@ -1178,7 +1178,7 @@ impl Game<'_> {
     fn sync_villager_raids(&mut self, infos: &HashMap<i32, Vec<RaiderInfo>>) {
         let raids = &self.raiding.raids;
         let mut ongoing = Vec::new();
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             if m.species() != Species::Villager {
                 continue;
             }
@@ -1218,7 +1218,7 @@ impl Game<'_> {
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.
     fn mob_raid_splash(&mut self, id: u32) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         let at = [m.position.x, m.position.y, m.position.z];
@@ -1281,7 +1281,7 @@ impl Game<'_> {
     pub(super) fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
         let mut out = HashSet::new();
         let world = self.mob_world_base(&[]);
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if m.species() != Species::Villager || !m.alive() {
                 continue;
             }
@@ -1546,7 +1546,7 @@ impl Game<'_> {
                 return Err("raid observation: villager UUID missing/wrong type".into());
             };
             let m = self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id && m.species() == Species::Villager)
                 .ok_or("raid observation: actor is not a villager")?;

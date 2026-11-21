@@ -619,7 +619,7 @@ impl Game<'_> {
             .collect();
         for rider in accepted {
             if self.entity_is_passenger(rider) == Some(false)
-                && !self.mobs.iter().any(|m| m.id == rider.id() && !m.alive())
+                && !self.remote_entities.iter().any(|m| m.id == rider.id() && !m.alive())
             {
                 // Reject callback topology changes: the shared mount path
                 // checks live handles, dimension, cycles and vehicle capacity.
@@ -1403,7 +1403,7 @@ impl Game<'_> {
             .map(|body| (body.position, [body.yaw, 0.0]))
             .or_else(|| {
                 parked
-                    .mobs
+                    .remote_entities
                     .iter()
                     .find(|body| body.id == id)
                     .map(|body| (body.position, [body.yaw, body.head_pitch]))
@@ -1415,7 +1415,7 @@ impl Game<'_> {
         // admitted: teleportCrossDimension copies passengers before the root.
         let vehicle = if let Some(body) = take_vehicle(&mut parked.boats, id, at, yaw, motion) {
             OffLevel::Boat(body)
-        } else if let Some(body) = take_vehicle(&mut parked.mobs, id, at, yaw, motion) {
+        } else if let Some(body) = take_vehicle(&mut parked.remote_entities, id, at, yaw, motion) {
             OffLevel::Mob(body)
         } else {
             return;

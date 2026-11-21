@@ -24,7 +24,7 @@ impl Game<'_> {
         pitch: f32,
         except_actor: bool,
     ) {
-        let mob = &self.mobs[index];
+        let mob = &self.remote_entities[index];
         let entity = horizon_client::sound_engine::SoundEntity::new(
             mob.id,
             [mob.position.x, mob.position.y, mob.position.z],
@@ -107,7 +107,7 @@ impl Game<'_> {
                 removed: false,
             });
         }
-        self.mobs
+        self.remote_entities
             .iter()
             .find(|m| m.id == id)
             .map(|m| SoundEntityState {

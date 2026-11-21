@@ -211,7 +211,7 @@ impl Game<'_> {
             };
             let tnt_box = self.tnts[i].bounds();
             for &j in js {
-                let m = &mut self.mobs[j];
+                let m = &mut self.remote_entities[j];
                 // Primed TNT's box is 0.98 wide.
                 let offset = horizon_client::mobs::riders::vehicle_attachment(m, 0.98);
                 m.seated(id, offset, tnt_box);

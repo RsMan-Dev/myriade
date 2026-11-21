@@ -1368,7 +1368,7 @@ impl Game<'_> {
     }
     /// The root of a stack of riders (`Entity.getRootVehicle`).
     fn mob_root(&self, mut object: MobObject) -> MobObject {
-        for _ in 0..self.mobs.len() + self.persist.off_level.len() {
+        for _ in 0..self.remote_entities.len() + self.persist.off_level.len() {
             let Some(vehicle) = self.mob_at(object).extra.mount else {
                 break;
             };
@@ -1466,7 +1466,7 @@ impl Game<'_> {
                 }
             }
         } else {
-            self.mobs.retain(|m| !gone.contains(&m.id));
+            self.remote_entities.retain(|m| !gone.contains(&m.id));
         }
         self.persist.off_level.retain(|id, _| !gone.contains(id));
         for &id in &gone {
@@ -1645,7 +1645,7 @@ impl Game<'_> {
                 .and_then(|e| self.ecs.entity_nbt(e))
                 .is_some_and(|c| entity_nbt::flag(&Tag::Compound(c), "Silent"));
         }
-        self.mobs.iter().find(|m| m.id == id).map_or_else(
+        self.remote_entities.iter().find(|m| m.id == id).map_or_else(
             || {
                 self.persist
                     .raw
@@ -1701,7 +1701,7 @@ impl Game<'_> {
         } else {
             None
         };
-        let legacy: &[Mob] = if self.ecs.is_active() { &[] } else { &self.mobs };
+        let legacy: &[Mob] = if self.ecs.is_active() { &[] } else { &self.remote_entities };
         entity_nbt::who_by_uuid(&self.persist.uuids, legacy, player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
     }
     /// The mob that was loaded or saved with a UUID.
@@ -2142,7 +2142,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return None;
         }
-        let m = &self.mobs[i];
+        let m = &self.remote_entities[i];
         // `Entity.shouldBeSaved`: a passenger saves only under its root, even
         // when that root is a boat or cart retained off-level and never saved.
         let saves = self.mob_root(MobObject::Resident(i)) == MobObject::Resident(i)
@@ -2151,7 +2151,7 @@ impl Game<'_> {
                 .is_none_or(|v| !self.is_boat(v) && self.ecs.cart_kind(v).is_none())
             && keys.contains(&chunk_of(m.position))
             && !m.removed;
-        saves.then(|| (chunk_of(self.mobs[i].position), self.mob_tree_nbt(i)))
+        saves.then(|| (chunk_of(self.remote_entities[i].position), self.mob_tree_nbt(i)))
     }
     pub(super) fn save_item(
         &mut self,

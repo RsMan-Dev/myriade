@@ -859,7 +859,7 @@ impl Game<'_> {
                     self.level.set_difficulty(self.ui.difficulty);
                     self.sync_rules();
                     if self.ui.difficulty == 0 {
-                        self.mobs.retain(|m| !m.hostile());
+                        self.remote_entities.retain(|m| !m.hostile());
                     }
                     let Some(host) = self.lan.as_mut() else {
                         return;

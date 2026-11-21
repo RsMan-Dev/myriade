@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_> {
     pub(super) fn mob_at(&self, object: MobObject) -> &Mob {
         match object {
-            MobObject::Resident(index) => &self.mobs[index],
+            MobObject::Resident(index) => &self.remote_entities[index],
             MobObject::OffLevel(id) => self.persist.off_level[&id]
                 .as_mob()
                 .expect("mob object slot"),
@@ -13,7 +13,7 @@ impl Game<'_> {
 
     pub(super) fn mob_at_mut(&mut self, object: MobObject) -> &mut Mob {
         match object {
-            MobObject::Resident(index) => &mut self.mobs[index],
+            MobObject::Resident(index) => &mut self.remote_entities[index],
             MobObject::OffLevel(id) => self
                 .persist
                 .off_level
@@ -26,7 +26,7 @@ impl Game<'_> {
     /// Internal object lookup, including a passenger refused level residency.
     /// This is deliberately separate from `level_entity` and native handle queries.
     pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
-        self.mobs
+        self.remote_entities
             .iter()
             .find(|mob| mob.id == id)
             .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_mob))
@@ -34,8 +34,8 @@ impl Game<'_> {
 
     /// Mutate an extant mob object without making it resident.
     pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
-        if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
-            return Some(&mut self.mobs[index]);
+        if let Some(index) = self.remote_entities.iter().position(|mob| mob.id == id) {
+            return Some(&mut self.remote_entities[index]);
         }
         self.persist
             .off_level
@@ -503,7 +503,7 @@ impl Game<'_> {
             self.persist.off_level.insert(id, OffLevel::Mob(m));
         } else {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
-            self.mobs.push(m);
+            self.remote_entities.push(m);
         }
         if !refused && restore_target {
             self.native_restore_loaded_target(id, anger_uuid);
@@ -519,7 +519,7 @@ impl Game<'_> {
     /// passengers cannot save even before their list entry is swept.
     pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<MobObject> {
         let mut riders: Vec<(i64, u32, MobObject)> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, mob)| mob.extra.mount == Some(id) && !mob.removed)
@@ -746,7 +746,7 @@ impl Game<'_> {
     }
 
     pub(super) fn mob_object_slot(&self, id: u32) -> Option<MobObject> {
-        self.mobs
+        self.remote_entities
             .iter()
             .position(|mob| mob.id == id)
             .map(MobObject::Resident)
@@ -760,7 +760,7 @@ impl Game<'_> {
     }
 
     pub(super) fn mob_object_slots(&self) -> impl Iterator<Item = MobObject> + '_ {
-        (0..self.mobs.len()).map(MobObject::Resident).chain(
+        (0..self.remote_entities.len()).map(MobObject::Resident).chain(
             self.persist
                 .off_level
                 .iter()
@@ -833,14 +833,14 @@ impl Game<'_> {
         // target still in the world gets it now, so `uuid_of` can name it.
         if let Some(horizon_client::mobs::Who::Mob(target)) = self.mob_at(object).extra.angry_at
             && target != 0
-            && self.mobs.iter().any(|m| m.id == target)
+            && self.remote_entities.iter().any(|m| m.id == target)
         {
             self.uuid_for(target);
         }
         // The mob that last hurt it, still resident, gets its UUID now, as the
         // anger target does, so `put_last_hurt_by_mob` can name it.
         if let Some(horizon_client::mobs::Who::Mob(attacker)) = self.mob_at(object).ai.last_hurt_by
-            && self.mobs.iter().any(|m| m.id == attacker)
+            && self.remote_entities.iter().any(|m| m.id == attacker)
         {
             self.uuid_for(attacker);
         }

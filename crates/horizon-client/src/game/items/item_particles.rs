@@ -64,7 +64,7 @@ impl Game<'_> {
             self.eat_particles(&stack, 5);
             return;
         }
-        let Some(m) = self.mobs.iter().find(|m| m.id == id as u32) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id as u32) else {
             return;
         };
         let Some(stack) = m.item_by_slot(slot) else {

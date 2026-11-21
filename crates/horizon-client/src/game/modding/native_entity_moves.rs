@@ -141,7 +141,7 @@ impl Game<'_> {
                 }) == Some(true)
             }
             Target::Mob(id) => {
-                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+                let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
                     return false;
                 };
                 m.yaw = yaw;
@@ -170,7 +170,7 @@ impl Game<'_> {
             return Some(g.head_yaw);
         }
         if let Target::Mob(id) = t {
-            return Some(self.mobs.iter().find(|m| m.id == id)?.head_yaw);
+            return Some(self.remote_entities.iter().find(|m| m.id == id)?.head_yaw);
         }
         Some(0.0)
     }
@@ -181,7 +181,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(entity)? else {
             return None;
         };
-        Some(self.mobs.iter().find(|m| m.id == id)?.body_yaw)
+        Some(self.remote_entities.iter().find(|m| m.id == id)?.body_yaw)
     }
     /// Turns a mob's head to `yaw` (`Entity.setYHeadRot`); its body follows
     /// as its AI turns it. Players' heads can turn too; false for other kinds
@@ -191,7 +191,7 @@ impl Game<'_> {
             return false;
         }
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => match self.mobs.iter_mut().find(|m| m.id == id) {
+            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.head_yaw = yaw;
                     m.needs_sync = true;
@@ -252,7 +252,7 @@ impl Game<'_> {
             *v = Vec3::new(v.x + x, v.y + y, v.z + z);
         });
         if let EntityHandle::Mob(i) = h {
-            self.mobs[i].needs_sync = true;
+            self.remote_entities[i].needs_sync = true;
         }
         true
     }

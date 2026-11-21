@@ -1853,7 +1853,7 @@ impl Game<'_> {
         let idle_at = |p: horizon_core::geometry::Vec3| {
             !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
-        for (index, m) in (self.mobs.iter().enumerate()).filter(|(_, m)| !m.removed && m.id > after)
+        for (index, m) in (self.remote_entities.iter().enumerate()).filter(|(_, m)| !m.removed && m.id > after)
         {
             let Some(host) = self.lan.as_ref() else {
                 return;
@@ -1910,7 +1910,7 @@ impl Game<'_> {
             mob_equipment(m, &mut host.hub, &mut e.equipment);
         }
         if let Some(host) = self.lan.as_ref() {
-            states.fill(self, &self.mobs, host.hub.sync_data(), out);
+            states.fill(self, &self.remote_entities, host.hub.sync_data(), out);
         }
         for d in self.dropped.iter().filter(|d| d.id > after) {
             let Some(host) = self.lan.as_ref() else {
@@ -1974,8 +1974,8 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if m.removed {
                 continue;
             }
@@ -1986,7 +1986,7 @@ impl Game<'_> {
                 || mob_effects(m),
                 |i| mob_effect(m, &m.extra.effects[i]),
             ) {
-                self.mobs[i].extra.modified_effect_particles = update;
+                self.remote_entities[i].extra.modified_effect_particles = update;
             }
         }
         for i in 0..host.hub.guests.len() {
@@ -2689,7 +2689,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             if m.rider.is_some()
                 && self.riding != Some(m.id)
                 && !host.hub.guests.iter().any(|g| g.vehicle == Some(m.id))
@@ -3268,7 +3268,7 @@ impl Game<'_> {
         } else {
             ParticleType::Crit
         };
-        let body = self.mob_index.get(&self.mobs, id as u32).map_or(
+        let body = self.remote_index.get(&self.remote_entities, id as u32).map_or(
             TrackingBody {
                 feet,
                 width,
@@ -3368,7 +3368,7 @@ impl Game<'_> {
         }
         // Hurt and death animations of mobs.
         let mut seen = HashMap::new();
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             let dead = !m.alive();
             let old = host
                 .mob_state

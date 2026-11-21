@@ -884,7 +884,7 @@ macro_rules! entity_lists {
     ($then:ident, $($args:tt)*) => {
         $crate::game::entity::$then! {
             ($($args)*)
-            Mob(Mob) mobs: mobs,
+            Mob(Mob) mobs: remote_entities,
             Item(ItemEntity) dropped: dropped,
             Boat(Boat) boats: boats,
             Cart(Minecart) carts: carts,

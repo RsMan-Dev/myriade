@@ -77,7 +77,7 @@ impl Game<'_> {
         }
         let catalog = self.motion.attributes.clone();
         let items = world_items!(self);
-        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
+        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
             if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
                 continue;
             }
@@ -120,7 +120,7 @@ impl Game<'_> {
         }
         let catalog = self.motion.attributes.clone();
         let items = world_items!(self);
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
             return;
         };
         collect_equipment(&catalog, items, m);
@@ -350,7 +350,7 @@ impl Game<'_> {
                     // The body's map owns the command value, while bodiless physics
                     // reads the base and permanent modifiers from finalize's cache.
                     if done && name == "minecraft:knockback_resistance" {
-                        let m = self.mobs.iter_mut().find(|m| m.id == mob && !m.removed)?;
+                        let m = self.remote_entities.iter_mut().find(|m| m.id == mob && !m.removed)?;
                         // Admission belongs to the body's map. Its archetype changes can
                         // remove an ID without touching finalize's mirror, so an accepted
                         // add replaces any stale copy there rather than being refused twice.
@@ -370,7 +370,7 @@ impl Game<'_> {
                     }
                     return Some(done);
                 }
-                let m = self.mobs.iter_mut().find(|m| m.id == mob && !m.removed)?;
+                let m = self.remote_entities.iter_mut().find(|m| m.id == mob && !m.removed)?;
                 if let Some(a) = own_attribute(m, name) {
                     return Some(write_own_attribute(m, a, write));
                 }
@@ -417,7 +417,7 @@ impl Game<'_> {
         let catalog = self.motion.attributes.clone();
         let (live, entity, seed) = match t {
             Target::Mob(id) => {
-                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return;
                 };
                 // The seed is only read when the map is not built yet.

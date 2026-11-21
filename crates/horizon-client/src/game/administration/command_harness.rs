@@ -372,7 +372,7 @@ impl Game<'_> {
                             return Err("anger state: UUID mismatch".into());
                         }
                         let m = g
-                            .mobs
+                            .remote_entities
                             .iter()
                             .find(|m| m.id == id && m.alive() && !m.removed)
                             .ok_or("anger state: missing live actor")?;
@@ -696,7 +696,7 @@ impl Game<'_> {
                     self.in_owner_level(|g| -> Result<()> {
                         let id = g
                             .mob_by_uuid(horizon_client::lan::playerdata::uuid_ints(uuid))
-                            .filter(|id| g.mobs.iter().any(|m| m.id == *id && !m.removed))
+                            .filter(|id| g.remote_entities.iter().any(|m| m.id == *id && !m.removed))
                             .ok_or("mob click: missing live mob")?;
                         let owner = g.serving.as_ref().ok_or("mob click: no server")?.owner;
                         let conn = g

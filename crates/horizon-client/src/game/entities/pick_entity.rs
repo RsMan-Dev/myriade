@@ -59,7 +59,7 @@ impl Game<'_> {
                 )
             }),
             self.mob_hit()
-                .map(|(index, distance, _)| hit(self.mobs[index].id, distance, true)),
+                .map(|(index, distance, _)| hit(self.remote_entities[index].id, distance, true)),
             self.redirectable_hit()
                 .map(|(id, distance)| hit(id, distance, false)),
             self.dragon_hit().map(|(id, distance)| CrosshairEntityHit {
@@ -135,7 +135,7 @@ impl Game<'_> {
     /// framed item when it holds one) or end crystal.
     pub(super) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = u32::try_from(id).ok()?;
-        let item = if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+        let item = if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
             // Mob.getPickResult: SpawnEggItem.byId.
             let egg = format!("{}_spawn_egg", m.kind.id);
             return self.items().get(&egg).map(|_| ItemStack::new(&egg, 1));
@@ -172,7 +172,7 @@ impl Game<'_> {
         };
         let mob = u32::try_from(id)
             .ok()
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
             .map(|m| m.bounds());
         let Some(b) = self
             .object_target(id)

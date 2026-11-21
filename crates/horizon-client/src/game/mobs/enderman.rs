@@ -32,7 +32,7 @@ impl Game<'_> {
     /// after it, not on the mob's next AI step.
     pub(super) fn settle_hurt_teleports(&mut self) -> Result<()> {
         let pending: Vec<u32> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| {
                 (m.species() == Species::Enderman && m.extra.counter2 > 0)
@@ -44,23 +44,23 @@ impl Game<'_> {
             // What `LivingEntity.hurtServer` raised comes first, where the
             // mob was hurt and from its random's next draws: the hurt
             // sound, `InfestedMobEffect.onMobHurt`'s silverfish.
-            let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+            let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
                 continue;
             };
-            let hurt = std::mem::take(&mut self.mobs[i].outbox);
+            let hurt = std::mem::take(&mut self.remote_entities[i].outbox);
             if !hurt.is_empty() {
                 self.handle_mob_events(hurt)?;
             }
-            let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+            let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
                 continue;
             };
-            let shulker = self.mobs[i].species() == Species::Shulker;
+            let shulker = self.remote_entities[i].species() == Species::Shulker;
             // A shulker's teleport reads the mobs around it (`noCollision`,
             // the crowding count of `hitByShulkerBullet`), itself included as
             // in its own tick; an enderman's reads only blocks.
             let uuid = self.level.player_uuid;
             let others: Vec<_> = if shulker {
-                self.mobs
+                self.remote_entities
                     .iter()
                     .map(|m| super::creatures::seen(m, uuid, self.items()))
                     .collect()
@@ -69,7 +69,7 @@ impl Game<'_> {
             };
             // The world is read while the mob moves: take it out, then put it
             // back where it was (the mob order stays).
-            let mut mob = self.mobs.swap_remove(i);
+            let mut mob = self.remote_entities.swap_remove(i);
             let from = mob.position;
             let mut events = Vec::new();
             // `hitByShulkerBullet` draws its crowding check from the level's random.
@@ -93,9 +93,9 @@ impl Game<'_> {
             }
             self.world.random = level_random;
             let to = mob.position;
-            self.mobs.push(mob);
-            let last = self.mobs.len() - 1;
-            self.mobs.swap(i, last);
+            self.remote_entities.push(mob);
+            let last = self.remote_entities.len() - 1;
+            self.remote_entities.swap(i, last);
             // The hurt's teleport (`teleportTo`) is one position update, told at once.
             self.entity_section_moved(id, Some([from.x, from.y, from.z]), [to.x, to.y, to.z]);
             self.handle_mob_events(events)?;
@@ -113,7 +113,7 @@ impl Game<'_> {
     ) -> Result<()> {
         // Runtime ids identify the actual mob in this level. An obsolete attempt
         // must not clear another mob's hand or a subsequently changed stack.
-        if !self.mobs.iter().any(|m| {
+        if !self.remote_entities.iter().any(|m| {
             m.id == mob
                 && m.alive()
                 && !m.removed
@@ -171,7 +171,7 @@ impl Game<'_> {
         // A listener can change the candidate's blocks or the mob. Refuse that
         // stale attempt instead of overwriting its writes or normalizing twice.
         let kind = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| {
                 m.id == mob
@@ -203,7 +203,7 @@ impl Game<'_> {
             Some(horizon_client::mobs::Who::Mob(mob)),
             Some(candidate.state),
         );
-        if let Some(m) = self.mobs.iter_mut().find(|m| {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| {
             m.id == mob
                 && !m.removed
                 && m.species() == Species::Enderman

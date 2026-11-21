@@ -83,7 +83,7 @@ impl Game<'_> {
                 HostEvent::ChestSlot { chest, slot, stack } => self.golem_chest_slot(chest, slot, stack),
                 HostEvent::GolemState { entity, state } => {
                     let id = self.entity_id(entity);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         m.extra.variant3 = state;
                     }
                 }
@@ -149,7 +149,7 @@ impl Game<'_> {
 
     /// A velocity added to a creature (the `MobEvent::Push` arm, as `Game.mobs` still holds it).
     fn add_mob_velocity(&mut self, id: u32, v: Vec3) {
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.velocity = m.velocity.add_vector(v);
         }
     }

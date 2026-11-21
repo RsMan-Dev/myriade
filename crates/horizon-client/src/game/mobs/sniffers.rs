@@ -25,7 +25,7 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         if let Some(id) = self.spawn_mob_raw("minecraft:sniffer", at, true)
-            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+            && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
         {
             m.extra.age = sniffer::BABY_START_AGE;
             let yaw = self.world.random.next_float() * 360.0 - 180.0;
@@ -45,8 +45,8 @@ impl Game<'_> {
         if players.is_empty() {
             return;
         }
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if m.species() != Species::Sniffer
                 || !m.alive()
                 || !players
@@ -73,7 +73,7 @@ impl Game<'_> {
                     self.lan_entity_event(id as i32, 63, at);
                 }
                 if ms > 1700 && ms < 6000 {
-                    let head = sniffer::head_block(&self.mobs[i]);
+                    let head = sniffer::head_block(&self.remote_entities[i]);
                     let ground = [head[0], head[1] - 1, head[2]];
                     let below = self.world.block(ground[0], ground[1], ground[2]);
                     // `stateBelow.getRenderShape() != RenderShape.INVISIBLE`.
@@ -96,7 +96,7 @@ impl Game<'_> {
                         }
                         // The hit sound is playLocalSound too: silence does not mute it.
                         if age.is_multiple_of(10) {
-                            let sniffer = Some((id, self.mobs[i].kind.id.as_str()));
+                            let sniffer = Some((id, self.remote_entities[i].kind.id.as_str()));
                             let hit = self
                                 .block_sound_type(
                                     ground,
@@ -112,7 +112,7 @@ impl Game<'_> {
             }
             // GameEvent.ENTITY_ACTION for the whole dig, outside the dust window.
             if age.is_multiple_of(10) {
-                let head = sniffer::head_block(&self.mobs[i]);
+                let head = sniffer::head_block(&self.remote_entities[i]);
                 self.post_block_game_event(
                     "minecraft:entity_action",
                     head,

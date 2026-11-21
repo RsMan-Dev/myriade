@@ -37,7 +37,7 @@ fn infects(difficulty: Difficulty, coin: impl FnOnce() -> bool) -> bool {
 impl Game<'_> {
     /// `ZombieVillager.handleEntityEvent(16)`: only the client plays the cure sound.
     pub(super) fn zombie_villager_cure_sound(&mut self, id: u32) {
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
             && let Some(horizon_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
                 zombie_villager::cure_sound(m)
         {
@@ -49,28 +49,28 @@ impl Game<'_> {
     /// `Zombie.killedEntity`: a villager killed by a zombie may rise as a
     /// zombie villager keeping its profession, trades and gossip.
     pub(super) fn zombie_killed(&mut self, killer: u32, victim: u32) {
-        let Some(k) = self.mobs.iter().position(|m| m.id == killer) else {
+        let Some(k) = self.remote_entities.iter().position(|m| m.id == killer) else {
             return;
         };
-        let Some(v) = self.mobs.iter().position(|m| m.id == victim) else {
+        let Some(v) = self.remote_entities.iter().position(|m| m.id == victim) else {
             return;
         };
-        if !is_zombie(self.mobs[k].species())
-            || self.mobs[v].species() != Species::Villager
-            || self.mobs[v].alive()
-            || self.mobs[v].removed
+        if !is_zombie(self.remote_entities[k].species())
+            || self.remote_entities[v].species() != Species::Villager
+            || self.remote_entities[v].alive()
+            || self.remote_entities[v].removed
         {
             return;
         }
         let difficulty = self.world.health_rules.difficulty;
-        let random = &mut self.mobs[k].random;
+        let random = &mut self.remote_entities[k].random;
         if !infects(difficulty, || random.next_boolean()) {
             return;
         }
         // The villager is gone without dying: no drops, no death animation.
-        let old = self.mobs[v].clone();
-        self.mobs[v].removed = true;
-        self.mobs[v].health = 0.0;
+        let old = self.remote_entities[v].clone();
+        self.remote_entities[v].removed = true;
+        self.remote_entities[v].health = 0.0;
         let at = [old.position.x, old.position.y, old.position.z];
         let Some(id) = self.spawn_mob(
             "minecraft:zombie_villager",
@@ -82,16 +82,16 @@ impl Game<'_> {
         ) else {
             return;
         };
-        let ensure = self.mobs.iter().position(|m| m.id == victim);
+        let ensure = self.remote_entities.iter().position(|m| m.id == victim);
         if let Some(i) = ensure {
             self.ensure_offers(i);
         }
-        let old = ensure.map_or(old, |i| self.mobs[i].clone());
-        let Some(z) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let old = ensure.map_or(old, |i| self.remote_entities[i].clone());
+        let Some(z) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return;
         };
         convert_to_zombie_villager(&old, z);
-        for rider in self.mobs.iter_mut() {
+        for rider in self.remote_entities.iter_mut() {
             if rider.extra.mount == Some(old.id) {
                 rider.extra.mount = Some(id);
             }
@@ -99,8 +99,8 @@ impl Game<'_> {
         if old.extra.mount.is_some() {
             self.position_riders();
         }
-        if !self.mobs[k].silent {
-            let at = self.mobs[k].position;
+        if !self.remote_entities[k].silent {
+            let at = self.remote_entities[k].position;
             self.level_event_at(
                 1026,
                 [
@@ -117,7 +117,7 @@ impl Game<'_> {
     /// villager starts the cure and is eaten; without weakness it does
     /// nothing. Returns whether the click was used.
     pub(super) fn interact_zombie_villager(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if m.species() != Species::ZombieVillager || item != "minecraft:golden_apple" {
             return false;
         }
@@ -128,12 +128,12 @@ impl Game<'_> {
         // `player.getUUID()`: the acting player, a server's guest included.
         let starter = Some(self.acting_player_uuid());
         let time = zombie_villager::WAIT_MIN
-            + self.mobs[index]
+            + self.remote_entities[index]
                 .random
                 .next_int_bound(zombie_villager::WAIT_SPREAD)
                 .unwrap_or(0);
         let mut events = Vec::new();
-        zombie_villager::start_converting(&mut self.mobs[index], starter, time, &mut events);
+        zombie_villager::start_converting(&mut self.remote_entities[index], starter, time, &mut events);
         let _ = self.handle_mob_events(events);
         self.swing_arm();
         true
@@ -143,14 +143,14 @@ impl Game<'_> {
     /// data, trades, experience and gossip, and the curing player earns the
     /// village's trust.
     pub(super) fn cure_zombie_villager(&mut self, id: u32) {
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
             return;
         };
-        if self.mobs[i].removed || zombie_villager::cure(&self.mobs[i]).is_none() {
+        if self.remote_entities[i].removed || zombie_villager::cure(&self.remote_entities[i]).is_none() {
             return;
         }
-        let old = self.mobs[i].clone();
-        self.mobs[i].removed = true;
+        let old = self.remote_entities[i].clone();
+        self.remote_entities[i].removed = true;
         let at = [old.position.x, old.position.y, old.position.z];
         let Some(vid) = self.spawn_mob(
             "minecraft:villager",
@@ -166,11 +166,11 @@ impl Game<'_> {
         // first, as in vanilla, on the fresh villager.
         let nausea =
             self.can_be_affected(Some(vid as i32), "minecraft:villager", "minecraft:nausea");
-        let Some(v) = self.mobs.iter_mut().find(|m| m.id == vid) else {
+        let Some(v) = self.remote_entities.iter_mut().find(|m| m.id == vid) else {
             return;
         };
         let drops = convert_to_villager(&old, v, nausea);
-        for rider in self.mobs.iter_mut() {
+        for rider in self.remote_entities.iter_mut() {
             if rider.extra.mount == Some(old.id) {
                 rider.extra.mount = Some(vid);
             }
@@ -191,7 +191,7 @@ impl Game<'_> {
         let starter = zombie_villager::cure(&old).and_then(|c| c.starter);
         let curer = starter.and_then(|uuid| Some((uuid, self.player_here(uuid)?)));
         // `Villager.onReputationEventFrom(ZOMBIE_VILLAGER_CURED)`.
-        let Some(v) = self.mobs.iter_mut().find(|m| m.id == vid) else {
+        let Some(v) = self.remote_entities.iter_mut().find(|m| m.id == vid) else {
             return;
         };
         if let Some((uuid, _)) = curer {
@@ -208,7 +208,7 @@ impl Game<'_> {
             });
         }
         // The nausea comes after the advancement criterion (finishConversion).
-        if let Some(v) = self.mobs.iter_mut().find(|m| m.id == vid) {
+        if let Some(v) = self.remote_entities.iter_mut().find(|m| m.id == vid) {
             v.add_effect("minecraft:nausea", 200, 0);
         }
         if !old.silent {

@@ -110,7 +110,7 @@ impl Game<'_> {
                 (p.position, f64::from(p.dimensions.eye_height))
             }
             Collector::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id)?;
+                let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 (m.position, m.eye_height())
             }
             // The ECS holds the mob: its position, and its eye height from P's fluid parameters.

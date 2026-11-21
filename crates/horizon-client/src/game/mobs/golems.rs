@@ -103,7 +103,7 @@ impl Game<'_> {
         let id = self.create_triggered(kind, at, 0.0);
         // CarvedPumpkinBlock.trySpawnGolem: setPlayerCreated(true) on the iron golem.
         if kind == "minecraft:iron_golem"
-            && let Some(m) = id.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id))
+            && let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id))
         {
             m.extra.player_created = true;
         }
@@ -116,7 +116,7 @@ impl Game<'_> {
     /// (`WitherSkullBlock.checkSpawn`).
     pub(super) fn trigger_summoned(&mut self, id: Option<u32>, reach: f64) {
         let Some(built) = id
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
             .cloned()
         else {
             return;
@@ -189,8 +189,8 @@ impl Game<'_> {
         mob.previous_body_yaw = yaw;
         mob.previous_head_yaw = yaw;
         let id = mob.id;
-        self.mobs.push(mob);
-        self.native_mobs_joined(self.mobs.len() - 1, false);
+        self.remote_entities.push(mob);
+        self.native_mobs_joined(self.remote_entities.len() - 1, false);
         Some(id)
     }
     /// `CarvedPumpkinBlock.clearPatternBlocks`: every cell of the match
@@ -285,7 +285,7 @@ impl Game<'_> {
                     .insert((copper_at[0], copper_at[1], copper_at[2]), entity);
             }
         }
-        if let Some(m) = id.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+        if let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
             m.extra.variant = weather;
             let p = [m.position.x, m.position.y, m.position.z];
             self.audio

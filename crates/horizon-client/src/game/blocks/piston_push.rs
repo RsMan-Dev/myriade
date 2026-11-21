@@ -484,7 +484,7 @@ impl Game<'_> {
     /// Whether a pushed body is a shulker, which a shulker's lid leaves out.
     fn pushed_shulker(&self, target: MoveWho) -> bool {
         match target {
-            MoveWho::Entity(EntityHandle::Mob(i)) => self.mobs[i].species() == Species::Shulker,
+            MoveWho::Entity(EntityHandle::Mob(i)) => self.remote_entities[i].species() == Species::Shulker,
             MoveWho::Ecs(id) => self.ecs_kind(id).as_deref() == Some("minecraft:shulker"),
             _ => false,
         }
@@ -1005,7 +1005,7 @@ impl Game<'_> {
 
         // shortcut: unoccupied server mobs only, expand when controller/passenger authority is bound.
         let mob = if let MoveWho::Entity(EntityHandle::Mob(i)) = target {
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             (!self.options.execution_role.is_client()
                 && self.remote.is_none()
                 && !m.extra.passenger
@@ -1026,9 +1026,9 @@ impl Game<'_> {
         };
         // Entity.move updates ground before its tiny-collision return.
         if let Some(i) = mob
-            && self.mobs[i].no_ai
+            && self.remote_entities[i].no_ai
         {
-            self.mobs[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
+            self.remote_entities[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
         }
         let tnt_after_move =
             tnt.is_some() && !self.options.execution_role.is_client() && self.remote.is_none();
@@ -1045,7 +1045,7 @@ impl Game<'_> {
         }
         // Restitution reads the new landing block even when the push was blocked.
         if let Some(i) = mob {
-            let mut mobs = self.mobs.lift();
+            let mut mobs = self.remote_entities.lift();
             let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
             // Restitution may call a block Part. Return both loans, including
             // their progressed state, before propagating a callback panic.
@@ -1062,7 +1062,7 @@ impl Game<'_> {
                 mobs[i].restitute_movement(&world, &mut level, limited, resolved);
             }));
             lent.give_back(&mut self.world);
-            self.mobs
+            self.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
             if let Err(payload) = result {
                 std::panic::resume_unwind(payload);
@@ -1158,7 +1158,7 @@ impl Game<'_> {
                 let host = self.lan.as_mut()?;
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
-            MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.mobs[i].piston),
+            MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.remote_entities[i].piston),
             MoveWho::Ecs(id) => self.ecs.piston_limit(id, movement, time),
             _ => limit(accumulators.entry(target).or_default()),
         }

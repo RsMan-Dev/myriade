@@ -35,7 +35,7 @@ impl Game<'_> {
         let Some(loot) = self.server_loot.get() else {
             return;
         };
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         if !loot.has_table(&name) {
@@ -69,7 +69,7 @@ impl Game<'_> {
             let Some(slot) = slot.filter(|s| !inserted.contains(s)) else {
                 continue;
             };
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                 equip_stack(m, slot, stack, chances[slot]);
             }
             inserted.push(slot);
@@ -79,7 +79,7 @@ impl Game<'_> {
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
     pub(super) fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
         let Some(stack) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == id)
             .and_then(|m| horizon_client::mobs::finalize::item_stack(m, slot))
@@ -94,7 +94,7 @@ impl Game<'_> {
         let e = &world_stations!(self).enchantments;
         let pool = e.tag("minecraft:on_mob_spawn_equipment");
         let picked = e.select(world_items!(self), random, &stack, cost, pool);
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             let slot = horizon_client::mobs::finalize::gear_slot(slot);
             for (enchantment, level) in picked {
                 gear::upgrade(m, slot, &enchantment, level);
@@ -104,7 +104,7 @@ impl Game<'_> {
     /// `Pillager` / `Vindicator.applyRaidBuffs`: Quick Charge on a fresh
     /// crossbow after waves 3 and 5, Sharpness on a fresh axe.
     pub(super) fn apply_raid_buffs(&mut self, id: u32, kind: RaiderType, wave: i32, odds: f32) {
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return;
         };
         let enchant = m.random.next_float() <= odds;

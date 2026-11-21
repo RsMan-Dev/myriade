@@ -121,7 +121,7 @@ impl Game<'_> {
             &mut Vec<HeartEvent>,
         ),
     ) -> Result<()> {
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut uuids = std::mem::take(&mut self.persist.uuids);
@@ -138,7 +138,7 @@ impl Game<'_> {
             Vec::new()
         };
         let mut events = Vec::new();
-        let index = std::cell::RefCell::new(std::mem::take(&mut self.mob_index));
+        let index = std::cell::RefCell::new(std::mem::take(&mut self.remote_index));
         let (added, index) = {
             let w = others.then(|| self.mob_world_base(&snapshot));
             let mut host = Host {
@@ -154,9 +154,9 @@ impl Game<'_> {
             (host.added, host.index.into_inner())
         };
         // The heart's additions go after every slot the index holds.
-        self.mob_index = index;
+        self.remote_index = index;
         mobs.extend(added);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         self.persist.uuids = uuids;
         self.next_entity = next_entity;

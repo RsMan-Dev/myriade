@@ -89,7 +89,7 @@ impl Game<'_> {
     /// with the same gear reads no item data and allocates nothing.
     pub(super) fn refresh_gear_knockback_resistance(&mut self) {
         let items = self.res.items();
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             let worn = GEAR.map(|(slot, _)| m.extra.slot_stack(slot));
             if worn.iter().all(Option::is_none) {
                 m.extra.gear_knockback = None;

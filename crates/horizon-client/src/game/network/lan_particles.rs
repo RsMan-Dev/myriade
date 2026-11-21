@@ -504,7 +504,7 @@ impl Game<'_> {
             ]),
             NetworkPositionSource::Entity { id, y_offset } => {
                 let id = u32::try_from(*id).ok()?;
-                self.mobs
+                self.remote_entities
                     .iter()
                     .find(|m| m.id == id && !m.removed)
                     .map(|m| {

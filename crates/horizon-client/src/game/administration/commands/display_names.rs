@@ -16,7 +16,7 @@ impl Game<'_> {
                 .command_guest(conn)
                 .map_or_else(String::new, |g| g.name.clone()),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| m.command_name().plain()),
@@ -29,7 +29,7 @@ impl Game<'_> {
     /// of the type, UUID and name) and `withInsertion(getStringUUID())`. A mob
     /// gets its UUID when it joins the level; one without keeps the bare name.
     pub(in crate::game) fn mob_command_name(&self, id: u32) -> Text {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return Text::translate("entity.", &[]);
         };
         let name = m.command_name();

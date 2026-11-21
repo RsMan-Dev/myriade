@@ -50,7 +50,7 @@ impl Game<'_> {
             return;
         };
         let stack = e.stack.clone();
-        let target = self.mob_entity(&self.mobs[index]);
+        let target = self.mob_entity(&self.remote_entities[index]);
         self.for_each_player(|g| {
             if g.acting_uuid() == owner {
                 g.trigger_item_entity("minecraft:thrown_item_picked_up_by_entity", &stack, &target);

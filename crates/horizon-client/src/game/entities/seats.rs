@@ -154,7 +154,7 @@ impl Game<'_> {
                 continue;
             };
             for &j in js {
-                let m = &mut self.mobs[j];
+                let m = &mut self.remote_entities[j];
                 let offset = horizon_client::mobs::riders::vehicle_attachment(m, seat.width);
                 let at = Vec3::new(
                     seat.position.x,

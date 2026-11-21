@@ -31,7 +31,7 @@ impl Game<'_> {
         let since = (m.age as i32).wrapping_sub(m.ai.last_hurt_by_time);
         let reference = match m.ai.last_hurt_by {
             Some(Who::Mob(attacker))
-                if since <= 100 && self.mobs.iter().any(|a| a.id == attacker && a.alive()) =>
+                if since <= 100 && self.remote_entities.iter().any(|a| a.id == attacker && a.alive()) =>
             {
                 self.persist.uuid_of(attacker)
             }
@@ -56,13 +56,13 @@ impl Game<'_> {
     /// up the UUID and does not exclude the holder).
     pub(in crate::game) fn resolve_last_hurt_by_refs(&mut self) {
         let resolved: Vec<(usize, Who)> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter_map(|(i, m)| Some((i, self.who_by_uuid(m.ai.last_hurt_by_ref?)?)))
             .collect();
         for (i, who) in resolved {
-            let ai = &mut self.mobs[i].ai;
+            let ai = &mut self.remote_entities[i].ai;
             ai.last_hurt_by = Some(who);
             ai.last_hurt_by_ref = None;
         }

@@ -4055,7 +4055,7 @@ impl Game<'_> {
         let Some(index) = self.mob_interaction_target(target) else {
             return false;
         };
-        let mob = &self.mobs[index];
+        let mob = &self.remote_entities[index];
         if mob.removed || !mob.alive() {
             return false;
         }
@@ -6035,7 +6035,7 @@ impl Game<'_> {
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
         let mut best: Option<(usize, f64, [f64; 3])> = None;
-        for (i, m) in self.mobs.iter().enumerate() {
+        for (i, m) in self.remote_entities.iter().enumerate() {
             // ProjectileUtil.getEntityHitResult: the mob the player rides
             // shares its root vehicle and is never the hit, nor is the
             // camera entity the pick starts from. EntitySelector.CAN_BE_PICKED
@@ -6410,7 +6410,7 @@ impl Game<'_> {
     /// opened must not inherit them, nor save them as its own.
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
-        self.mobs.clear();
+        self.remote_entities.clear();
         self.dropped.clear();
         self.orbs.clear();
         self.creatures.projectiles.clear();
@@ -7128,7 +7128,7 @@ impl Game<'_> {
     /// `guest_target_box` resolves a guest's vehicle through.
     fn riding_box(&self) -> Option<Aabb> {
         let id = self.riding?;
-        if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
             return Some(m.bounds());
         }
         if let Some((lo, hi, _)) = self.object_target(id as i32) {
@@ -7366,7 +7366,7 @@ impl Game<'_> {
         // Creative players skip the monster check (`!this.isCreative()`).
         if problem.is_none()
             && !self.creative
-            && self.mobs.iter().any(|m| {
+            && self.remote_entities.iter().any(|m| {
                 // `Monster.class` entities that `isPreventingPlayerRest`: a
                 // zombified piglin only while it is angry.
                 horizon_client::mobs::ai::is_monster(m.species())

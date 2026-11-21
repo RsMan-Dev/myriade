@@ -30,13 +30,13 @@ impl Game<'_> {
     /// and monsters spawning, a copy of it appears out of sight and takes
     /// `target`; both then call less often.
     pub(super) fn call_reinforcements(&mut self, caller: u32, target: Who) {
-        let Some(index) = self.mobs.iter().position(|m| m.id == caller) else {
+        let Some(index) = self.remote_entities.iter().position(|m| m.id == caller) else {
             return;
         };
         if self.world.health_rules.difficulty != Difficulty::Hard {
             return;
         }
-        let zombie = &mut self.mobs[index];
+        let zombie = &mut self.remote_entities[index];
         if f64::from(zombie.random.next_float()) >= zombie.attrs.spawn_reinforcements {
             return;
         }
@@ -64,7 +64,7 @@ impl Game<'_> {
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
         let spot = self.reinforcement_spot(&kind, from, &mut own, &mut rules);
-        self.mobs[index].random = own;
+        self.remote_entities[index].random = own;
         self.world.random = rules;
         let Some(spot) = spot else {
             return;
@@ -85,7 +85,7 @@ impl Game<'_> {
             .and_then(|host| host.mob_players.get(&caller).copied())
             .or(self.lan_acting);
         self.set_event_ai_target(id, Some(target), player);
-        if let Some(reinforcement) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(reinforcement) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             // ZOMBIE_REINFORCEMENT_CALLEE_CHARGE.
             finalize::add_modifier(
                 reinforcement,
@@ -96,7 +96,7 @@ impl Game<'_> {
             );
         }
         // The caller's charge grows by 0.05 each time it calls.
-        let caller = &mut self.mobs[index];
+        let caller = &mut self.remote_entities[index];
         let charged = finalize::modifier_amount(
             caller,
             Attr::SpawnReinforcements,

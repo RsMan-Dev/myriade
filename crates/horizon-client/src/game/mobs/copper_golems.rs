@@ -25,7 +25,7 @@ impl Game<'_> {
     /// `OfferFlowerGoal.stop` (`MobEvent::Gift`): the item on the target's
     /// empty antenna, as a guaranteed drop.
     pub(super) fn receive_gift(&mut self, target: u32, item: &'static str) {
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target)
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == target)
             && m.saddle_item().is_none()
         {
             m.set_saddle(Some(ItemStack::new(item, 1)));
@@ -109,7 +109,7 @@ impl Game<'_> {
                 ),
             );
             let count = self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| {
                     m.species() == Species::CopperGolem
@@ -172,19 +172,19 @@ impl Game<'_> {
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
     pub(super) fn golem_become_statue(&mut self, id: u32) {
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
             return;
         };
         self.with_entity_held_out(id, |game| {
-            let mut m = game.mobs[i].clone();
+            let mut m = game.remote_entities[i].clone();
             game.golem_turn_to_statue(&mut m);
             if !game
                 .persist
                 .removals
                 .contains(&super::commands::Target::Mob(id))
-                && let Some(i) = game.mobs.iter().position(|x| x.id == id)
+                && let Some(i) = game.remote_entities.iter().position(|x| x.id == id)
             {
-                game.mobs.update(i, |owner| {
+                game.remote_entities.update(i, |owner| {
                     horizon_client::join_seq::store_back(owner, m);
                 });
             }
@@ -275,7 +275,7 @@ impl Game<'_> {
             },
             _ => None,
         };
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.custom_name = plain;
             m.custom_name_text = Some(horizon_client::entity_nbt::name_text(&name));
         }
@@ -357,7 +357,7 @@ impl Game<'_> {
         if let Some(name) = name {
             self.name_golem(id, name);
         }
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.yaw = yaw;
             m.previous_yaw = yaw;
             m.body_yaw = yaw;
@@ -382,23 +382,23 @@ impl Game<'_> {
     }
     /// `CopperGolem.mobInteract`; true when handled.
     pub(super) fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
-        if self.mobs[index].species() != Species::CopperGolem || !self.mobs[index].alive() {
+        if self.remote_entities[index].species() != Species::CopperGolem || !self.remote_entities[index].alive() {
             return false;
         }
         let at = {
-            let m = &self.mobs[index];
+            let m = &self.remote_entities[index];
             [m.position.x, m.position.y, m.position.z]
         };
         if item.is_empty() {
             // Empty hand: the golem throws what it carries back.
-            let Some(h) = held(&self.mobs[index]).cloned() else {
+            let Some(h) = held(&self.remote_entities[index]).cloned() else {
                 return false;
             };
-            set_held(&mut self.mobs[index], None);
+            set_held(&mut self.remote_entities[index], None);
             // BehaviorUtils.throwItem: from 0.3 below the golem's eyes towards
             // the player's feet at 0.3 blocks a tick, default pickup delay.
             let p = self.player.as_ref().map(|p| p.position);
-            let eye = self.mobs[index].eye_height();
+            let eye = self.remote_entities[index].eye_height();
             let from = [at[0], at[1] + eye - f64::from(0.3f32), at[2]];
             let v = p.map_or([0.0; 3], |p| {
                 let d = [p.x - at[0], p.y - at[1], p.z - at[2]];
@@ -414,20 +414,20 @@ impl Game<'_> {
         }
         let name = item;
         let is_axe = name.ends_with("_axe");
-        let waxed = self.mobs[index].extra.vector[0] as i64 == -2;
+        let waxed = self.remote_entities[index].extra.vector[0] as i64 == -2;
         if name == "minecraft:shears" && self.golem_shearable(index) {
             // CopperGolem.shear: the sound, the antenna slot emptied (an
             // unequip) and the flower dropped 1.5 up.
             // level.playSound(null, this, COPPER_GOLEM_SHEAR, PLAYERS, 1, 1).
             let shear = LevelSound::new("minecraft:entity.copper_golem.shear", at, 1.0, 1.0)
                 .in_source(SoundSource::Players);
-            self.play_bound_sound(shear, self.mobs[index].id, None);
-            let antenna = self.mobs[index].saddle_item();
-            self.mobs[index].set_saddle(None);
-            let id = self.mobs[index].id;
+            self.play_bound_sound(shear, self.remote_entities[index].id, None);
+            let antenna = self.remote_entities[index].saddle_item();
+            self.remote_entities[index].set_saddle(None);
+            let id = self.remote_entities[index].id;
             self.mob_equip_event(id, at, false);
             if let Some(a) = antenna {
-                let p = self.mobs[index].position;
+                let p = self.remote_entities[index].position;
                 self.spawn_at_location(p, 1.5, a);
             }
             // mobInteract: gameEvent(SHEAR, player) after the shear, before the
@@ -438,11 +438,11 @@ impl Game<'_> {
             return true;
         }
         let block = {
-            let p = self.mobs[index].position;
+            let p = self.remote_entities[index].position;
             [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
         };
         if name == "minecraft:honeycomb" && !waxed {
-            self.mobs[index].extra.vector[0] = -2.0;
+            self.remote_entities[index].extra.vector[0] = -2.0;
             self.level_event_at(3003, block, 0);
             self.audio
                 .play("minecraft:item.honeycomb.wax_on", Some(at), 1.0, 1.0);
@@ -450,17 +450,17 @@ impl Game<'_> {
             return true;
         }
         if is_axe && waxed {
-            self.mobs[index].extra.vector[0] = -1.0;
+            self.remote_entities[index].extra.vector[0] = -1.0;
             // level.playSound(null, this, AXE_SCRAPE, getSoundSource(), 1, 1).
             let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
                 .in_source(SoundSource::Neutral);
-            self.play_bound_sound(scrape, self.mobs[index].id, None);
+            self.play_bound_sound(scrape, self.remote_entities[index].id, None);
             self.level_event_at(3004, block, 0);
             self.damage_held_tool();
             return true;
         }
-        if is_axe && self.mobs[index].extra.variant > 0 {
-            let m = &mut self.mobs[index];
+        if is_axe && self.remote_entities[index].extra.variant > 0 {
+            let m = &mut self.remote_entities[index];
             m.extra.vector[0] = -1.0;
             m.extra.variant = horizon_client::mobs::copper_golem::weather_previous(m.extra.variant);
             let id = m.id;
@@ -476,7 +476,7 @@ impl Game<'_> {
     }
     /// `readyForShearing`: the antenna holds a flower shears take.
     pub(super) fn golem_shearable(&self, index: usize) -> bool {
-        self.mobs[index].saddle_item().is_some_and(|a| {
+        self.remote_entities[index].saddle_item().is_some_and(|a| {
             self.res
                 .items()
                 .item_tags

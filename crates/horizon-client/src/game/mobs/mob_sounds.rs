@@ -17,7 +17,7 @@ impl Game<'_> {
     pub(super) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
         let ridden = self
             .riding
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id && !m.removed))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id && !m.removed))
             .map(|m| {
                 let species = m.species();
                 let sound = RiddenSound {
@@ -64,7 +64,7 @@ impl Game<'_> {
         let mut mobs = Vec::new();
         let mut bee_indices = Vec::new();
 
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if m.removed {
                 continue;
             }
@@ -116,7 +116,7 @@ impl Game<'_> {
     /// hum starts (one loop per guardian; the loops of its earlier beams are
     /// the same loop, as each one follows the guardian's charge).
     pub(super) fn start_guardian_sound(&mut self, id: u32) {
-        let Some(m) = self.mobs.iter().find(|m| {
+        let Some(m) = self.remote_entities.iter().find(|m| {
             m.id == id && matches!(m.species(), Species::Guardian | Species::ElderGuardian)
         }) else {
             return;
@@ -142,7 +142,7 @@ impl Game<'_> {
     /// sound loop starts (`SnifferSoundInstance`).
     pub(super) fn start_sniffer_digging_sound(&mut self, id: u32) {
         let Some(m) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == id && m.species() == Species::Sniffer)
         else {

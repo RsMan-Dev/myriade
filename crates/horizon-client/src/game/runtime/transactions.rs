@@ -822,7 +822,7 @@ impl Game<'_> {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
+        if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) {
             level.mob_health.entry(id).or_insert(KeptMobHealth {
                 health: mob.health,
                 absorption: mob.absorption,
@@ -876,7 +876,7 @@ impl Game<'_> {
         if level.equipment.contains_key(&id) {
             return;
         }
-        let kept = if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
+        let kept = if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) {
             KeptEquipment::Mob(mob.equipment_stacks().iter().cloned().collect())
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == id) {
             KeptEquipment::Stand(stand.equipment.iter().cloned().collect())
@@ -1092,7 +1092,7 @@ impl Game<'_> {
         for (id, kept) in equipment {
             match kept {
                 KeptEquipment::Mob(stacks) => {
-                    let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                    let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
                         continue;
                     };
                     for (slot, stack) in stacks.into_iter().enumerate() {
@@ -1192,7 +1192,7 @@ impl Game<'_> {
             });
         }
         for (id, len) in level.mob_lengths {
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                 m.extra.items.truncate(len);
             }
         }
@@ -1232,7 +1232,7 @@ impl Game<'_> {
             self.world.modified.restore(chunk, mark);
         }
         for (id, kept) in level.mob_health {
-            if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
+            if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                 mob.health = kept.health;
                 mob.absorption = kept.absorption;
                 mob.needs_sync = kept.needs_sync;

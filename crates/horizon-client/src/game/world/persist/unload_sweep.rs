@@ -73,7 +73,7 @@ impl Game<'_> {
             })
             .map(|object| self.mob_at(object).id)
             .collect();
-        self.mobs.retain(|m| {
+        self.remote_entities.retain(|m| {
             let keep = !leaving.contains(&m.id);
             if !keep {
                 removed.push(m.id);

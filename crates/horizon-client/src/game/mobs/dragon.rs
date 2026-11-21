@@ -2995,7 +2995,7 @@ impl Game<'_> {
             };
             // Keep team lookup in Game (including tamed pets' owner teams).
             let allowed: Vec<bool> = self
-                .mobs
+                .remote_entities
                 .iter()
                 .map(|m| {
                     horizon_client::scoreboard::teams_allow_damage(
@@ -3010,12 +3010,12 @@ impl Game<'_> {
                 for (index, &allowed) in allowed.iter().enumerate() {
                     if horizon_client::mobs::dragon_contacts::contact_part(
                         crate::game::entity::damage_level_of!(self),
-                        &mut self.mobs[index],
+                        &mut self.remote_entities[index],
                         &frame,
                         allowed,
                         part,
                     ) {
-                        let id = self.mobs[index].id;
+                        let id = self.remote_entities[index].id;
                         self.mob_post_attack(
                             id,
                             Some(horizon_client::mobs::Who::Mob(frame.dragon_id)),
@@ -3137,7 +3137,7 @@ impl Game<'_> {
             .filter(|p| p.alive)
             .map(|p| (p.bounds, p.position))
             .chain(
-                self.mobs
+                self.remote_entities
                     .iter()
                     .filter(|m| m.alive())
                     .map(|m| (m.bounds(), m.position)),
@@ -3199,7 +3199,7 @@ impl Game<'_> {
             Vec::new()
         } else {
             let tags = &self.stations().enchantments.entity_tags;
-            self.mobs
+            self.remote_entities
                 .iter()
                 .filter(|m| m.alive() && mob_can_be_affected(tags, &m.kind.id, "instant_damage"))
                 .map(|m| (m.id, m.bounds(), m.position))
@@ -4258,7 +4258,7 @@ impl Game<'_> {
                     Vec3::new(c.position.x + 1.0, c.position.y + 2.0, c.position.z + 1.0),
                 )
             })
-            || self.mobs.iter().any(|m| {
+            || self.remote_entities.iter().any(|m| {
                 let w = f64::from(m.width()) / 2.0;
                 let h = f64::from(m.height());
                 touches(

@@ -73,7 +73,7 @@ impl Game<'_> {
                 }
                 Target::Mob(id) => {
                     let Some(kind) = self
-                        .mobs
+                        .remote_entities
                         .iter()
                         .find(|m| m.id == id && !m.removed)
                         .map(|m| m.kind.id.clone())
@@ -87,7 +87,7 @@ impl Game<'_> {
                     if !self.can_be_affected(Some(id as i32), &kind, name) {
                         false
                     } else {
-                        match self.mobs.iter_mut().find(|m| m.id == id) {
+                        match self.remote_entities.iter_mut().find(|m| m.id == id) {
                             Some(m) => {
                                 let new = !m.has_effect(name);
                                 // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
@@ -149,7 +149,7 @@ impl Game<'_> {
                 (Target::Player | Target::Guest(_), Some(e)) => self
                     .for_player(t, |g| g.remove_player_effects(Some(e.index)))
                     .unwrap_or(false),
-                (Target::Mob(id), e) => match self.mobs.iter_mut().find(|m| m.id == id) {
+                (Target::Mob(id), e) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                     Some(m) => m.retain_effects(|x| e.is_some_and(|e| x.id != namespaced(e.id))),
                     None => false,
                 },
@@ -236,7 +236,7 @@ impl Game<'_> {
                 }
                 Target::Mob(mob) => {
                     let held = self
-                        .mobs
+                        .remote_entities
                         .iter()
                         .find(|m| m.id == mob)
                         .and_then(|m| m.extra.main_hand_id().map(str::to_owned));

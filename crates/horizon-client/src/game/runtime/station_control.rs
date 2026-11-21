@@ -213,11 +213,11 @@ impl Game<'_> {
             )),
             "mount-menu" => {
                 let eye = self.eye_position().ok_or("no player")?;
-                let index = (0..self.mobs.len())
-                    .filter(|&i| horizon_client::mobs::equine::is_equine(self.mobs[i].species()))
+                let index = (0..self.remote_entities.len())
+                    .filter(|&i| horizon_client::mobs::equine::is_equine(self.remote_entities[i].species()))
                     .min_by(|&a, &b| {
                         let d = |i: usize| {
-                            let c = self.mobs[i].center();
+                            let c = self.remote_entities[i].center();
                             (c[0] - eye[0]).powi(2)
                                 + (c[1] - eye[1]).powi(2)
                                 + (c[2] - eye[2]).powi(2)
@@ -226,10 +226,10 @@ impl Game<'_> {
                     })
                     .ok_or("no horse around")?;
                 if flag("tame") {
-                    self.mobs[index].extra.tame = true;
+                    self.remote_entities[index].extra.tame = true;
                 }
                 if flag("chest") {
-                    self.mobs[index].extra.chested = true;
+                    self.remote_entities[index].extra.chested = true;
                 }
                 self.open_mount_menu(index);
                 ok()

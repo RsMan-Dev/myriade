@@ -162,7 +162,7 @@ impl Game<'_> {
             first_join(&self.tridents),
             first_join(&self.rockets),
             first_join(&self.dropped),
-            first_join(&self.mobs),
+            first_join(&self.remote_entities),
         ];
         // A batch ticks whole, so an entity of the three kinds goes after the
         // last batch that holds anything that joined before it.

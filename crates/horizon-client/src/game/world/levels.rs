@@ -630,7 +630,7 @@ impl Levels {
     pub(super) fn parked_entity_count(&self, dim: Dim) -> Option<usize> {
         let l = self.parked.get(&dim)?;
         Some(
-            l.mobs.iter().filter(|m| !m.removed).count()
+            l.remote_entities.iter().filter(|m| !m.removed).count()
                 + l.dropped.len()
                 + l.orbs.len()
                 + l.ecs_cart_count()
@@ -653,7 +653,7 @@ impl Levels {
 
     /// The mobs of a parked level.
     pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
-        self.parked.get(&dim).map(|level| &*level.mobs)
+        self.parked.get(&dim).map(|level| &*level.remote_entities)
     }
 
     pub(super) fn parked_perf_views(
@@ -1006,9 +1006,9 @@ impl Game<'_> {
     /// arrival already moved it, keeping every id that the guests' mounts name.
     pub(super) fn parked_vehicle_root(&self, from: Dim, mut id: u32) -> Option<u32> {
         let p = self.levels.parked.get(&from)?;
-        for _ in 0..=p.mobs.len() + p.persist.off_level.len() + 1 {
+        for _ in 0..=p.remote_entities.len() + p.persist.off_level.len() + 1 {
             let mob = p
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .or_else(|| {
@@ -1041,7 +1041,7 @@ impl Game<'_> {
             return Vec::new();
         };
         let mut edges: Vec<_> = p
-            .mobs
+            .remote_entities
             .iter()
             .chain(
                 p.persist
@@ -1081,8 +1081,8 @@ impl Game<'_> {
             if let Some(state) = p.portal_states.remove(&id) {
                 self.portals.entities.insert(id, state);
             }
-            let mob = if let Some(index) = p.mobs.iter().position(|m| m.id == id) {
-                Some(p.mobs.remove_for_transfer(index))
+            let mob = if let Some(index) = p.remote_entities.iter().position(|m| m.id == id) {
+                Some(p.remote_entities.remove_for_transfer(index))
             } else {
                 // Boats and carts are only roots, which the caller takes.
                 match p.persist.off_level.remove(&id) {
@@ -1118,7 +1118,7 @@ impl Game<'_> {
             return;
         }
         match object {
-            persist::OffLevel::Mob(mob) => self.mobs.push(mob),
+            persist::OffLevel::Mob(mob) => self.remote_entities.push(mob),
             persist::OffLevel::Boat(boat) => self.boats.push(boat),
         }
     }

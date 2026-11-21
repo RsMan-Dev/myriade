@@ -37,7 +37,7 @@ impl Game<'_> {
     }
     /// `getKillCredit` naming a wither that is still in the level.
     fn is_wither(&self, id: u32) -> bool {
-        self.mobs
+        self.remote_entities
             .iter()
             .any(|o| o.id == id && o.alive() && o.species() == Species::Wither)
     }
@@ -132,7 +132,7 @@ impl Game<'_> {
             90.0
         };
         let id = self.create_triggered("minecraft:wither", at, yaw);
-        if let Some(m) = id.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+        if let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
             m.persistent = true;
             horizon_client::mobs::wither::make_invulnerable(m);
         }
@@ -152,7 +152,7 @@ impl Game<'_> {
     ) -> horizon_client::Result<()> {
         // Projectile.getOwner: none once the owner is gone.
         let live_owner = match p.owner {
-            Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && !m.removed) => {
+            Some(Who::Mob(id)) if self.remote_entities.iter().any(|m| m.id == id && !m.removed) => {
                 Some(Who::Mob(id))
             }
             Some(Who::Mob(_)) => None,
@@ -211,7 +211,7 @@ impl Game<'_> {
             }
             Some(Who::Mob(id)) => {
                 let owner_species = owner
-                    .and_then(|o| self.mobs.iter().find(|m| m.id == o))
+                    .and_then(|o| self.remote_entities.iter().find(|m| m.id == o))
                     .map(|m| m.species());
                 let source = Damage {
                     kind,
@@ -220,7 +220,7 @@ impl Game<'_> {
                     attacker_species: owner_species,
                 };
                 let mut survived_hit = false;
-                let killed = match self.mobs.iter_mut().find(|m| m.id == id) {
+                let killed = match self.remote_entities.iter_mut().find(|m| m.id == id) {
                     Some(m) => {
                         let hit = m.damage(
                             crate::game::entity::damage_level_of!(self, scoped),
@@ -243,7 +243,7 @@ impl Game<'_> {
                 if survived_hit
                     && wither_ticks > 0
                     && let Some(m) = self
-                        .mobs
+                        .remote_entities
                         .iter_mut()
                         .find(|m| m.id == id && m.species() != Species::Wither)
                 {
@@ -289,7 +289,7 @@ impl Game<'_> {
     fn heal_skull_owner(&mut self, p: &Projectile, owner: Option<Who>) {
         match owner {
             Some(Who::Mob(id)) => {
-                if let Some(w) = self.mobs.iter_mut().find(|m| m.id == id && m.alive()) {
+                if let Some(w) = self.remote_entities.iter_mut().find(|m| m.id == id && m.alive()) {
                     w.heal(&self.loop_context, 5.0);
                 }
             }

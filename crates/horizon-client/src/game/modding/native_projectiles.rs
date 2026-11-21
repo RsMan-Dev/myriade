@@ -166,7 +166,7 @@ impl Game<'_> {
             };
             return (entity, kind.into());
         }
-        if let Some(mob) = self.mobs.iter().find(|m| m.id == id) {
+        if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id) {
             return (id, mob_kind(mob));
         }
         if let Some(cart) = self.carts.iter().find(|c| c.id == id) {

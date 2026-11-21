@@ -40,7 +40,7 @@ impl Game<'_> {
         let mut bites = Vec::new();
         let mut sneezes = Vec::new();
         for m in self
-            .mobs
+            .remote_entities
             .iter_mut()
             .filter(|m| m.species() == Species::Panda)
         {
@@ -76,7 +76,7 @@ impl PandaLevel for Game<'_> {
     fn panda_in_love(&mut self, id: u32) {
         self.love_cause.insert(id, self.lan_acting);
         let kind = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == id)
             .map(super::native_hooks::mob_kind)

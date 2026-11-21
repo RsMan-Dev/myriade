@@ -349,7 +349,7 @@ impl Game<'_> {
         let area = Aabb::new(min, min.add_vector(Vec3::new(1.0, 1.0, 1.0)))
             .inflate(Vec3::new(3.0, 3.0, 3.0));
         for m in self
-            .mobs
+            .remote_entities
             .iter_mut()
             .filter(|m| m.species() == Species::Parrot && m.bounds().intersects(area))
         {

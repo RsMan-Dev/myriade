@@ -30,7 +30,7 @@ impl Game<'_> {
         self.block_ticks = Ticks::new(0);
         self.tick_chunks.clear();
         self.sync_tick_chunks();
-        self.mobs.clear();
+        self.remote_entities.clear();
         self.dropped.clear();
         self.orbs.clear();
         self.hoppers.clear();

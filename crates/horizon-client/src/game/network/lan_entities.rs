@@ -186,7 +186,7 @@ impl Game<'_> {
             .passenger_slots
             .keys()
             .copied()
-            .chain(self.mobs.iter().filter_map(|m| m.extra.mount))
+            .chain(self.remote_entities.iter().filter_map(|m| m.extra.mount))
             .collect();
         vehicles.sort_unstable();
         vehicles.dedup();
@@ -202,7 +202,7 @@ impl Game<'_> {
                 continue;
             }
             if let Some(driver) = self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == vehicle as u32)
                 .and_then(|m| m.extra.rider)
@@ -666,7 +666,7 @@ impl Game<'_> {
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
     pub(super) fn lan_syncs_looked(&mut self) {
-        for m in &mut self.mobs {
+        for m in &mut self.remote_entities {
             m.needs_sync = false;
             m.sync_position = false;
         }

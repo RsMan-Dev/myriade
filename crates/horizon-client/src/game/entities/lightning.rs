@@ -93,7 +93,7 @@ impl Game<'_> {
                     // The trap flag and age are not on P's horse yet (QUESTION to the referent).
                     self.ecs_spawn_trap_horse(at);
                 } else if let Some(id) = self.spawn_mob_raw("minecraft:skeleton_horse", at, false)
-                    && let Some(h) = self.mobs.iter_mut().find(|m| m.id == id)
+                    && let Some(h) = self.remote_entities.iter_mut().find(|m| m.id == id)
                 {
                     h.extra.trap = true;
                     h.extra.age = 0;
@@ -178,7 +178,7 @@ impl Game<'_> {
         }
         let sees_sky = |g: &Self, p: [i32; 3]| g.world.light(p[0], p[1], p[2]) >> 4 == 15;
         let mut candidates: Vec<[i32; 3]> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| m.alive())
             .map(|m| {

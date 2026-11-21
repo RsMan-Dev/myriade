@@ -37,7 +37,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(merchant.entity())? else {
             return None;
         };
-        self.mobs.iter().position(|m| {
+        self.remote_entities.iter().position(|m| {
             m.id == id
                 && !m.removed
                 && matches!(m.species(), Species::Villager | Species::WanderingTrader)
@@ -46,7 +46,7 @@ impl Game<'_> {
 
     fn native_villager_index(&self, merchant: MerchantRef) -> Option<usize> {
         let index = self.native_merchant_index(merchant)?;
-        (self.mobs[index].species() == Species::Villager).then_some(index)
+        (self.remote_entities[index].species() == Species::Villager).then_some(index)
     }
 
     /// Reads the offers, experience and level (1 for a trader) of the mob at
@@ -57,7 +57,7 @@ impl Game<'_> {
         index: usize,
         read: impl FnOnce(&[MerchantOffer], i32, i32) -> T,
     ) -> T {
-        self.merchant_read_lent(&self.mobs[index], read)
+        self.merchant_read_lent(&self.remote_entities[index], read)
     }
 
     /// The same read while an AI tick lends this mob out of `self.mobs`.
@@ -102,7 +102,7 @@ impl Game<'_> {
         index: usize,
         edit: impl FnOnce(&mut Vec<MerchantOffer>, &mut i32, &mut i32) -> bool,
     ) -> bool {
-        let mob = &self.mobs[index];
+        let mob = &self.remote_entities[index];
         if mob.species() == Species::Villager
             && self
                 .stations()
@@ -125,7 +125,7 @@ impl Game<'_> {
             });
             return sent && done;
         }
-        let mob = &mut self.mobs[index];
+        let mob = &mut self.remote_entities[index];
         if mob.extra.flag2 {
             return false;
         }
@@ -197,7 +197,7 @@ impl Game<'_> {
         if !self.merchant_valid_offer(&offer) {
             return false;
         }
-        if self.lan_trade_conn(self.mobs[mob].id).is_none() && !self.mobs[mob].extra.flag2 {
+        if self.lan_trade_conn(self.remote_entities[mob].id).is_none() && !self.remote_entities[mob].extra.flag2 {
             self.ensure_offers(mob);
         }
         self.merchant_write(mob, |offers, _, _| {
@@ -225,14 +225,14 @@ impl Game<'_> {
     /// it. None when nobody trades, or the screen is the host window's.
     pub(super) fn merchant_trading_player(&self, merchant: MerchantRef) -> Option<PlayerRef> {
         let index = self.native_merchant_index(merchant)?;
-        let conn = self.lan_trade_conn(self.mobs[index].id)?;
+        let conn = self.lan_trade_conn(self.remote_entities[index].id)?;
         self.player(self.lan_trade_player(conn)?)
     }
 
     /// `VillagerData.profession`, a registry id (`minecraft:farmer`; none is
     /// `minecraft:none`). None for a wandering trader.
     pub(super) fn merchant_profession(&self, merchant: MerchantRef) -> Option<String> {
-        let mob = &self.mobs[self.native_villager_index(merchant)?];
+        let mob = &self.remote_entities[self.native_villager_index(merchant)?];
         Some(mob.extra.profession.id())
     }
 
@@ -254,19 +254,19 @@ impl Game<'_> {
         else {
             return false;
         };
-        let id = self.mobs[index].id;
+        let id = self.remote_entities[index].id;
         if self
             .stations()
             .professions
-            .state_index(&self.mobs[index].extra.profession)
+            .state_index(&self.remote_entities[index].extra.profession)
             .is_none()
-            || self.mobs[index].extra.flag2
+            || self.remote_entities[index].extra.flag2
             || self.lan_trade_conn(id).is_some()
         {
             return false;
         }
         let table = self.stations().professions.clone();
-        villager::set_profession(&mut self.mobs[index], &table, profession);
+        villager::set_profession(&mut self.remote_entities[index], &table, profession);
         true
     }
 
@@ -293,7 +293,7 @@ impl Game<'_> {
 
     /// `VillagerData.type`, a registry id (`minecraft:plains`).
     pub(super) fn merchant_villager_type(&self, merchant: MerchantRef) -> Option<String> {
-        let mob = &self.mobs[self.native_villager_index(merchant)?];
+        let mob = &self.remote_entities[self.native_villager_index(merchant)?];
         let name = VILLAGER_TYPES[mob.extra.variant as usize % VILLAGER_TYPES.len()];
         Some(format!("minecraft:{name}"))
     }
@@ -308,16 +308,16 @@ impl Game<'_> {
         let Some(kind) = registry_index(kind, &VILLAGER_TYPES) else {
             return false;
         };
-        let id = self.mobs[index].id;
+        let id = self.remote_entities[index].id;
         if let Some(conn) = self.lan_trade_conn(id) {
             let variant = format!("minecraft:{}", VILLAGER_TYPES[kind as usize]);
             if !self.lan_trade_edit(conn, |session| session.variant = variant) {
                 return false;
             }
-        } else if self.mobs[index].extra.flag2 {
+        } else if self.remote_entities[index].extra.flag2 {
             return false;
         }
-        self.mobs[index].extra.variant = kind;
+        self.remote_entities[index].extra.variant = kind;
         true
     }
 

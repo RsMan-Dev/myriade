@@ -3,7 +3,7 @@ use super::*;
 
 impl Game<'_> {
     pub(in crate::game) fn position_mob_rider(&mut self, i: usize, index: &HashMap<u32, usize>) {
-        let Some(v) = self.mobs[i].extra.mount else {
+        let Some(v) = self.remote_entities[i].extra.mount else {
             return;
         };
         let Some(&j) = index.get(&v) else {
@@ -36,14 +36,14 @@ impl Game<'_> {
                 .get(&(v as i32))
                 .map(|d| d.seat().1)
                 .unwrap_or_else(|| {
-                    let old = self.mobs[i].previous;
+                    let old = self.remote_entities[i].previous;
                     glam::DVec3::new(
                         old.x,
-                        old.y + riders::vehicle_attachment(&self.mobs[i], vehicle_width),
+                        old.y + riders::vehicle_attachment(&self.remote_entities[i], vehicle_width),
                         old.z,
                     )
                 });
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             let offset = riders::vehicle_attachment(m, vehicle_width);
             m.seated(v, offset, vehicle_box);
             m.position = Vec3::new(at.x, at.y - offset, at.z);
@@ -55,13 +55,13 @@ impl Game<'_> {
             m.ai.nav.stop();
             return;
         };
-        let vehicle = &self.mobs[j];
+        let vehicle = &self.remote_entities[j];
         let mut place = (0, 1);
         if horizon_client::mobs::camel::is_camel(vehicle.species()) {
             // Camel.getPassengerAttachmentPoint: the seat follows the
             // rider's place in `getPassengers` (load order).
-            let mut aboard: Vec<usize> = (0..self.mobs.len())
-                .filter(|&k| self.mobs[k].extra.mount == Some(v))
+            let mut aboard: Vec<usize> = (0..self.remote_entities.len())
+                .filter(|&k| self.remote_entities[k].extra.mount == Some(v))
                 .collect();
             let player_aboard = vehicle.rider.is_some() || self.riding == Some(v);
             let (seat, count) = if player_aboard {
@@ -70,7 +70,7 @@ impl Game<'_> {
             } else {
                 if let Some(driver) = vehicle.extra.rider
                     && let Some(pos) =
-                        aboard.iter().position(|&k| self.mobs[k].id == driver)
+                        aboard.iter().position(|&k| self.remote_entities[k].id == driver)
                     && pos != 0
                 {
                     let driver_idx = aboard.remove(pos);
@@ -86,7 +86,7 @@ impl Game<'_> {
                 (
                     seats
                         .iter()
-                        .position(|&(_, id, _)| id == self.mobs[i].id)
+                        .position(|&(_, id, _)| id == self.remote_entities[i].id)
                         .unwrap_or(seat),
                     seats.len(),
                 )
@@ -102,7 +102,7 @@ impl Game<'_> {
             // boards after one sits at index 1.
             let player_aboard = vehicle.rider.is_some() || self.riding == Some(v);
             let seat = usize::from(player_aboard)
-                + self.mobs[..i]
+                + self.remote_entities[..i]
                     .iter()
                     .filter(|r| r.extra.mount == Some(v))
                     .count();
@@ -111,17 +111,17 @@ impl Game<'_> {
             } else {
                 self.seated_passengers(v)
                     .iter()
-                    .position(|&(_, id, _)| id == self.mobs[i].id)
+                    .position(|&(_, id, _)| id == self.remote_entities[i].id)
                     .unwrap_or(seat)
             };
             place = (seat, 1);
         }
         let attach =
-            Self::mob_passenger_attachment(vehicle, &self.mobs[i], place.0, place.1);
+            Self::mob_passenger_attachment(vehicle, &self.remote_entities[i], place.0, place.1);
         let (pos, prev) = (vehicle.position, vehicle.previous);
         let (yaw, prev_yaw) = (vehicle.yaw, vehicle.previous_yaw);
         let (body, prev_body) = (vehicle.body_yaw, vehicle.previous_body_yaw);
-        let rider = &self.mobs[i];
+        let rider = &self.remote_entities[i];
         let controlling = riders::controls_vehicle(
             vehicle,
             rider,
@@ -133,7 +133,7 @@ impl Game<'_> {
         let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
         let vehicle_width = vehicle.width();
         let vehicle_box = vehicle.bounds();
-        let m = &mut self.mobs[i];
+        let m = &mut self.remote_entities[i];
         let offset = riders::vehicle_attachment(m, vehicle_width);
         m.seated(v, offset, vehicle_box);
         m.position = riders::seat(attach, offset, pos, yaw);
@@ -158,9 +158,9 @@ impl Game<'_> {
         i: usize,
         index: &HashMap<u32, usize>,
     ) {
-        if let Some(vehicle) = self.mobs[i].extra.mount {
+        if let Some(vehicle) = self.remote_entities[i].extra.mount {
             let aboard = self
-                .mobs
+                .remote_entities
                 .iter()
                 .enumerate()
                 .filter_map(|(j, m)| (m.extra.mount == Some(vehicle)).then_some(j))

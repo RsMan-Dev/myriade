@@ -1576,7 +1576,7 @@ impl Game<'_> {
             .map(|e| (e.id, e.position, 0.25, 0.25))
             .collect();
         let mut mobs: Vec<(u32, Vec3, f32, f32)> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
             .map(|m| (m.id, m.position, m.width(), m.height()))
@@ -1704,7 +1704,7 @@ impl Game<'_> {
             .iter()
             .map(|e| (e.id, true, ticks(e.position)))
             .chain(
-                self.mobs
+                self.remote_entities
                     .iter()
                     .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
             )

@@ -141,7 +141,7 @@ impl Game<'_> {
     /// True when `id` is a creature (`live`: and alive): the ECS's, or the host's mobs outside the ECS.
     pub(in crate::game) fn creature_is(&self, id: u32, live: bool) -> bool {
         if !self.ecs.is_active() {
-            return self.mobs.iter().any(|m| m.id == id && (!live || m.alive()));
+            return self.remote_entities.iter().any(|m| m.id == id && (!live || m.alive()));
         }
         // No health accessor on the bridge yet: `live` only checks presence (gap listed in the report).
         self.ecs.exists(id) && self.ecs.kind(id).is_some()
@@ -150,7 +150,7 @@ impl Game<'_> {
     /// The species of the creature `id`: from its mob type on the ECS (kinds are already namespaced), else the host mob's.
     pub(in crate::game) fn creature_species(&self, id: u32) -> Option<Species> {
         if !self.ecs.is_active() {
-            return self.mobs.iter().find(|m| m.id == id).map(|m| m.species());
+            return self.remote_entities.iter().find(|m| m.id == id).map(|m| m.species());
         }
         let kind = self.ecs.kind(id)?;
         self.res.mob_types().get(kind).map(|t| t.species)

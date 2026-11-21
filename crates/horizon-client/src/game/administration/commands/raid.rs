@@ -68,7 +68,7 @@ impl Game<'_> {
                     ),
                 ) {
                     Some(id) => {
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                             raider::set_patrol_leader(m, true);
                             raider::finalize(m, raider::Reason::Other);
                         }

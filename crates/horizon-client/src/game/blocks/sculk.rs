@@ -282,7 +282,7 @@ impl Game<'_> {
             Some("dig") => {
                 // Let every warden's minute of calm run out.
                 for m in self
-                    .mobs
+                    .remote_entities
                     .iter_mut()
                     .filter(|m| m.species() == Species::Warden)
                 {
@@ -623,7 +623,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mob_context(id, state);
         }
-        let mob = self.mob_slot(id).map(|i| &self.mobs[i]);
+        let mob = self.mob_slot(id).map(|i| &self.remote_entities[i]);
         self.context_of_mob(mob, id, state)
     }
     /// `GameEvent.Context.of(mob, state)` for an ECS mob: its rider and its listening are read from P's components.
@@ -654,11 +654,11 @@ impl Game<'_> {
         }
         if let Some(slots) = &self.sculk.mob_slots
             && let Some(&i) = slots.by_id.get(&id)
-            && self.mobs.get(i).is_some_and(|m| m.id == id)
+            && self.remote_entities.get(i).is_some_and(|m| m.id == id)
         {
             return Some(i);
         }
-        self.mob_index.find(&self.mobs, id)
+        self.remote_index.find(&self.remote_entities, id)
     }
     fn context_of_mob(&self, mob: Option<&Mob>, id: u32, state: Option<BlockStateId>) -> Context {
         Context {
@@ -824,7 +824,7 @@ impl Game<'_> {
         let mobs = self.sculk.mob_slots.as_ref().and_then(|s| {
             let mut near = Vec::new();
             for &(i, id) in &s.listeners {
-                let mob = self.mobs.get(i)?;
+                let mob = self.remote_entities.get(i)?;
                 if mob.id != id {
                     return None;
                 }
@@ -852,10 +852,10 @@ impl Game<'_> {
                 }
             }
             None => {
-                let stamp = self.mobs.stamp();
+                let stamp = self.remote_entities.stamp();
                 let slots = self.listener_slots(stamp);
                 for &i in &slots {
-                    if (i as usize) < self.mobs.len() {
+                    if (i as usize) < self.remote_entities.len() {
                         self.mob_listen(i as usize, event, pos, &ctx);
                     }
                 }
@@ -876,7 +876,7 @@ impl Game<'_> {
         if self.sculk.listeners_of.take() != Some(stamp) {
             slots.clear();
             slots.extend(
-                self.mobs
+                self.remote_entities
                     .iter()
                     .enumerate()
                     .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
@@ -908,10 +908,10 @@ impl Game<'_> {
     }
     /// The mob at `index` hears a game event, if it is a warden or an allay.
     fn mob_listen(&mut self, index: usize, event: &'static str, pos: [f64; 3], ctx: &Context) {
-        if self.mobs[index].species() == Species::Warden && self.mobs[index].alive() {
+        if self.remote_entities[index].species() == Species::Warden && self.remote_entities[index].alive() {
             self.warden_listen(index, event, pos, ctx);
         }
-        if self.mobs[index].species() == Species::Allay && self.mobs[index].alive() {
+        if self.remote_entities[index].species() == Species::Allay && self.remote_entities[index].alive() {
             self.allay_listen(index, event, pos, ctx);
             // Allay.JukeboxListener, its own listener beside the vibrations'.
             let playing = match event {
@@ -919,7 +919,7 @@ impl Game<'_> {
                 "minecraft:jukebox_stop_play" => Some(false),
                 _ => None,
             };
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             if let Some(playing) = playing
                 && allay::hears_jukebox(m, pos)
             {
@@ -949,8 +949,8 @@ impl Game<'_> {
             return;
         }
         if let Some(t) = self
-            .mob_index
-            .get(&self.mobs, id)
+            .remote_index
+            .get(&self.remote_entities, id)
             .and_then(|m| m.last_damage.map(|(_, t)| t))
         {
             self.sculk.damaged.insert(id, t);
@@ -966,7 +966,7 @@ impl Game<'_> {
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
             Who::Mob(id) if self.ecs.is_active() => self.ecs_view(id).map(|v| v.position),
             Who::Mob(id) => self.mob_slot(id).map(|i| {
-                let p = self.mobs[i].position;
+                let p = self.remote_entities[i].position;
                 [p.x, p.y, p.z]
             }),
         };
@@ -1101,9 +1101,9 @@ impl Game<'_> {
     /// `Warden.VibrationUser`: accept a vibration for the warden at `index`.
     fn warden_listen(&mut self, index: usize, event: &'static str, pos: [f64; 3], ctx: &Context) {
         let now = self.world.game_time;
-        let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.mobs[index].id);
+        let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.remote_entities[index].id);
         let (occludes, world) = (&self.sculk.tables.occludes, &self.world);
-        let avoided = warden::listen(&mut self.mobs[index], now, event, pos, &ctx, |a, b| {
+        let avoided = warden::listen(&mut self.remote_entities[index], now, event, pos, &ctx, |a, b| {
             sculk::is_occluded(a, b, |p| {
                 let state = world.block(p.x, p.y, p.z);
                 occludes.get(state.0 as usize).copied().unwrap_or(false)
@@ -1121,7 +1121,7 @@ impl Game<'_> {
         let (occludes, world) = (&self.sculk.tables.occludes, &self.world);
         let dimension = self.dim.id();
         allay::listen(
-            &mut self.mobs[index],
+            &mut self.remote_entities[index],
             now,
             event,
             pos,
@@ -1322,7 +1322,7 @@ impl Game<'_> {
     fn rides_player(&self, who: Option<Who>) -> bool {
         match who {
             Some(Who::Mob(id)) if self.ecs.is_active() => self.ecs_has_rider(id),
-            _ => matches!(who, Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && m.rider.is_some())),
+            _ => matches!(who, Some(Who::Mob(id)) if self.remote_entities.iter().any(|m| m.id == id && m.rider.is_some())),
         }
     }
     /// `SculkSensorBlock.activate`.
@@ -1370,7 +1370,7 @@ impl Game<'_> {
         // On an ECS level no mob is walked here (P emits no step vibration yet).
         let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
         if !self.ecs.is_active() {
-            for m in &self.mobs {
+            for m in &self.remote_entities {
                 if m.alive() && m.on_ground {
                     standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
                 }
@@ -1403,7 +1403,7 @@ impl Game<'_> {
             let is_warden = match who {
                 Who::Mob(id) if self.ecs.is_active() => self.ecs_is_listener(id),
                 _ => matches!(who, Who::Mob(id)
-                    if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Warden)),
+                    if self.remote_entities.iter().any(|m| m.id == id && m.species() == Species::Warden)),
             };
             match self.kind_of_state(state.0) {
                 KIND_SENSOR | KIND_CALIBRATED => {
@@ -1491,7 +1491,7 @@ impl Game<'_> {
                     })
             })
         } else {
-            self.mobs.iter().any(|m| {
+            self.remote_entities.iter().any(|m| {
                 m.species() == Species::Warden
                     && m.alive()
                     && (m.position.x - c[0]).abs() < 24.0
@@ -1608,8 +1608,8 @@ impl Game<'_> {
             if !self.warden_fits(&mob) {
                 continue;
             }
-            self.mobs.push(mob);
-            self.native_mobs_joined(self.mobs.len() - 1, false);
+            self.remote_entities.push(mob);
+            self.native_mobs_joined(self.remote_entities.len() - 1, false);
             return true;
         }
         false
@@ -1663,7 +1663,7 @@ impl Game<'_> {
     fn warden_fits(&self, mob: &Mob) -> bool {
         let bounds = mob.bounds();
         if self
-            .mobs
+            .remote_entities
             .iter()
             .any(|m| !m.removed && m.alive() && m.bounds().intersects(bounds))
         {
@@ -2371,7 +2371,7 @@ impl Game<'_> {
             u32,
             bool,
         )> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| m.alive())
             .map(|m| {
@@ -2389,11 +2389,11 @@ impl Game<'_> {
             })
             .collect();
         let mut by_id = FxHashMap::default();
-        for (i, m) in self.mobs.iter().enumerate() {
+        for (i, m) in self.remote_entities.iter().enumerate() {
             by_id.entry(m.id).or_insert(i);
         }
         let listeners = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
@@ -2468,7 +2468,7 @@ impl Game<'_> {
             }
         }
         self.sculk.mob_slots = None;
-        let alive: FxHashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
+        let alive: FxHashSet<u32> = self.remote_entities.iter().map(|m| m.id).collect();
         self.sculk.damaged.retain(|id, _| alive.contains(id));
         self.sculk.steps.retain(|who, _| match who {
             Who::Player => true,
@@ -2487,7 +2487,7 @@ impl Game<'_> {
             return Some(p);
         }
         let p = if let Some(i) = self.mob_slot(id) {
-            self.mobs[i].position
+            self.remote_entities[i].position
         } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
             b.position
         } else if let Some(c) = self.carts.iter().find(|c| c.id == id) {
@@ -2576,7 +2576,7 @@ impl Game<'_> {
             }
             Who::Mob(id) => {
                 let slot = self.mob_slot(id)?;
-                let mob = &self.mobs[slot];
+                let mob = &self.remote_entities[slot];
                 self.supporting_block(mob.position, mob.bounds())
             }
         }

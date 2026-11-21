@@ -26,7 +26,7 @@ impl Game<'_> {
             self.hot_level(5, 2)?;
             self.hot_mobs(128, 2)?;
             let dimension = self.dim.id().to_owned();
-            let entities: Vec<u32> = self.mobs.iter().map(|mob| mob.id).collect();
+            let entities: Vec<u32> = self.remote_entities.iter().map(|mob| mob.id).collect();
             recorder.measure(hook, CALLS, || {
                 let mut canceled = 0u64;
                 for call in 0..CALLS as usize {
@@ -49,7 +49,7 @@ impl Game<'_> {
             self.hot_level(6, 2)?;
             self.hot_mobs(128, 2)?;
             let holders: Vec<_> = self
-                .mobs
+                .remote_entities
                 .iter()
                 .map(|mob| mod_api::Holder::Entity(mob.id))
                 .collect();

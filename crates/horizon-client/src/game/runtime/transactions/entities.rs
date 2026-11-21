@@ -279,7 +279,7 @@ impl Game<'_> {
         };
         match target {
             Target::Mob(id) => {
-                for mob in self.mobs.iter_mut().filter(|m| m.id == id) {
+                for mob in self.remote_entities.iter_mut().filter(|m| m.id == id) {
                     level.lifetimes.mob_removed.entry(id).or_insert(mob.removed);
                     mob.removed = true;
                 }
@@ -412,7 +412,7 @@ impl Game<'_> {
     /// removed mobs back, the entities it added out. Its arrivals come back.
     pub(super) fn roll_back_entity_journal(&mut self, journal: EntityJournal) -> HashSet<u32> {
         for (id, was) in journal.mob_removed {
-            for mob in self.mobs.iter_mut().filter(|m| m.id == id) {
+            for mob in self.remote_entities.iter_mut().filter(|m| m.id == id) {
                 mob.removed = was;
             }
         }

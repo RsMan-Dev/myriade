@@ -449,7 +449,7 @@ impl Game<'_> {
             Slot::Equipment(i) => self.equipment.get(*i).cloned(),
             Slot::Ender(i) => self.ender_items.get(*i).cloned().flatten(),
             Slot::Mob(id, key) => {
-                let m = self.mobs.iter().find(|m| m.id == *id)?;
+                let m = self.remote_entities.iter().find(|m| m.id == *id)?;
                 m.equipment_stacks()[mob_slot(key)?].clone()
             }
             Slot::Stand(id, i) => self
@@ -598,7 +598,7 @@ impl Game<'_> {
         };
         // SulfurCube.getEquipmentSlotForItem: swallowable items occupy the body slot.
         if let Slot::Mob(id, "body") = slot
-            && self.mobs.iter().find(|m| m.id == *id).is_some_and(|m| {
+            && self.remote_entities.iter().find(|m| m.id == *id).is_some_and(|m| {
                 m.species() == horizon_client::mobs::Species::SulfurCube
                     && horizon_client::mobs::sulfur_cube::swallowable(m, &stack.item)
             })
@@ -714,13 +714,13 @@ impl Game<'_> {
                 None => false,
             },
             Slot::Mob(id, key) => {
-                let Some(index) = self.mobs.iter().position(|m| m.id == *id) else {
+                let Some(index) = self.remote_entities.iter().position(|m| m.id == *id) else {
                     return false;
                 };
                 let Some(slot) = mob_slot(key) else {
                     return false;
                 };
-                let m = &self.mobs[index];
+                let m = &self.remote_entities[index];
                 let old = m.equipment_stacks()[slot].clone();
                 let first_tick = m.first_tick;
                 let at = [m.position.x, m.position.y, m.position.z];
@@ -738,7 +738,7 @@ impl Game<'_> {
                                 .get(&s.item)
                                 .is_some_and(|i| i.equip_slot.is_some()))
                 });
-                let changed = self.mobs[index].set_equipment_stack(slot, stack);
+                let changed = self.remote_entities[index].set_equipment_stack(slot, stack);
                 if changed && !first_tick && !same && self.remote.is_none() {
                     self.mob_equip_event(*id, at, equippable);
                 }

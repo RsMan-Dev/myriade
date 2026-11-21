@@ -105,7 +105,7 @@ impl Game<'_> {
     /// the dragon and its parts, hooks, players) answer None: their own
     /// passes and the player walk read the list for them.
     pub(in crate::game) fn blast_handle(&self, id: u32) -> Option<EntityHandle> {
-        if let Some(i) = self.mobs.iter().position(|m| m.id == id) {
+        if let Some(i) = self.remote_entities.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Mob(i));
         }
         if let Some(i) = self.dropped.iter().position(|m| m.id == id) {

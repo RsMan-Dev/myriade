@@ -660,7 +660,7 @@ impl Game<'_> {
                 continue;
             };
             for &j in js {
-                let m = &mut self.mobs[j];
+                let m = &mut self.remote_entities[j];
                 // Cushion's box is 1 wide.
                 let offset = horizon_client::mobs::riders::vehicle_attachment(m, 1.0);
                 let at = Vec3::new(c.position.x, c.position.y + 0.25 - offset, c.position.z);

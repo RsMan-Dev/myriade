@@ -79,13 +79,13 @@ impl Game<'_> {
     }
 
     fn sulfur_sound(&mut self, index: usize, sound: &str) {
-        let at = self.mobs[index].center();
+        let at = self.remote_entities[index].center();
         self.audio
             .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
     }
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
     fn eject_sulfur_block(&mut self, index: usize) {
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         let Some(item) = m.take_body_equipment() else {
             return;
         };
@@ -98,7 +98,7 @@ impl Game<'_> {
     }
     /// `SulfurCube.mobInteract`. Returns whether the click was used.
     pub(super) fn interact_sulfur_cube(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if m.species() != Species::SulfurCube || !m.alive() {
             return false;
         }
@@ -108,7 +108,7 @@ impl Game<'_> {
             if !m.kind.food.iter().any(|f| f == item) || !horizon_client::mobs::ai::can_age_up(m) {
                 return false;
             }
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             let secs = (-m.extra.age / 20) as f32 * 0.1;
             // AgeableMob.ageUp: a grown cube is size 2 (SulfurCube.ageBoundaryReached).
             horizon_client::mobs::ai::age_up(m, secs as i32, false);
@@ -130,7 +130,7 @@ impl Game<'_> {
                 self.send_overlay_message(message);
                 return false;
             }
-            sulfur_cube::prime(&mut self.mobs[index], false);
+            sulfur_cube::prime(&mut self.remote_entities[index], false);
             if item == "minecraft:flint_and_steel" {
                 self.damage_held_tool();
             } else {
@@ -141,18 +141,18 @@ impl Game<'_> {
         }
         if item == "minecraft:shears" && sulfur_cube::has_body(m) {
             // shear: out comes the block, and nothing is swallowed for 5 s.
-            let sheared = self.mobs[index].extra.body_stack().map(|s| s.item.clone());
+            let sheared = self.remote_entities[index].extra.body_stack().map(|s| s.item.clone());
             self.eject_sulfur_block(index);
-            self.mobs[index].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
+            self.remote_entities[index].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
             self.sulfur_sound(index, "entity.sulfur_cube.eject");
             self.damage_held_tool();
             // gameEvent(SHEAR, player).
-            let at = self.mobs[index].position;
+            let at = self.remote_entities[index].position;
             let ctx = self.who_context(Some(Who::Player), None);
             self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
             // CriteriaTriggers.PLAYER_SHEARED_EQUIPMENT with the body block.
             if let Some(body) = sheared {
-                let target = self.mob_entity(&self.mobs[index]);
+                let target = self.mob_entity(&self.remote_entities[index]);
                 self.trigger_item_entity(
                     "minecraft:player_sheared_equipment",
                     &ItemStack::new(&body, 1),
@@ -170,11 +170,11 @@ impl Game<'_> {
             let held = self.inventory[self.selected]
                 .clone()
                 .map(|s| ItemStack { count: 1, ..s });
-            self.mobs[index].extra.set_body_stack(held);
+            self.remote_entities[index].extra.set_body_stack(held);
             self.consume_held();
             self.sulfur_sound(index, "entity.sulfur_cube.absorb");
             // Entity.gameEvent(ENTITY_INTERACT): the cube is the source.
-            let (id, at) = (self.mobs[index].id, self.mobs[index].position);
+            let (id, at) = (self.remote_entities[index].id, self.remote_entities[index].position);
             let ctx = self.who_context(Some(Who::Mob(id)), None);
             self.post_game_event("minecraft:entity_interact", [at.x, at.y, at.z], ctx);
             return true;
@@ -190,7 +190,7 @@ impl Game<'_> {
     /// bucket's mobs are picked up in `interact_mob`.
     fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         self.audio.play(
             "minecraft:item.bucket.fill_sulfur_cube",
             Some(m.center()),
@@ -203,13 +203,13 @@ impl Game<'_> {
         self.trigger_item("minecraft:filled_bucket", &filled);
         // PlayerInteractTrigger: the bucket as it was, and the cube picked up.
         if let Some(stack) = &held {
-            let target = self.mob_entity(&self.mobs[index]);
+            let target = self.mob_entity(&self.remote_entities[index]);
             self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
         }
-        let id = self.mobs[index].id;
+        let id = self.remote_entities[index].id;
         // Leashable.dropLeash, then discard.
         self.break_leash(id, true, false);
-        self.mobs[index].removed = true;
+        self.remote_entities[index].removed = true;
         // ItemUtils.createFilledResult.
         self.filled_result(filled);
         if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
@@ -221,7 +221,7 @@ impl Game<'_> {
     /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
     /// use this tick although the body has changed since.
     pub(super) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
-        self.mobs
+        self.remote_entities
             .iter()
             .filter(|m| m.species() == Species::SulfurCube)
             .filter_map(|m| Some((m.id, sulfur_cube::adopted_explosion(m)?.0)))
@@ -244,8 +244,8 @@ impl Game<'_> {
         // Vanilla calls primeWhenOnPoweredPosition from SulfurCube.tick,
         // not from a block-change callback. Frozen descendants never poll power.
         let blocked = self.mobs_below_off_level();
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if blocked.contains(&m.id)
                 || m.species() != Species::SulfurCube
                 || !m.alive()
@@ -264,7 +264,7 @@ impl Game<'_> {
             let signal =
                 self.with_level(|b, level, ticks| b.best_neighbor_signal(level, ticks, at));
             if signal != 0 {
-                sulfur_cube::prime_with_fuse(&mut self.mobs[i], false, fuse);
+                sulfur_cube::prime_with_fuse(&mut self.remote_entities[i], false, fuse);
             }
         }
     }
@@ -282,7 +282,7 @@ impl Game<'_> {
             return;
         }
         if let Who::Mob(id) = who
-            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+            && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
             && m.species() == Species::SulfurCube
         {
             sulfur_cube::burning_arrow_hit(m);
@@ -295,13 +295,13 @@ impl Game<'_> {
             .ui
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING);
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if m.species() != Species::SulfurCube || !self.creatures.ticked.contains(&m.id) {
                 continue;
             }
             if !m.alive() || m.is_baby() || sulfur_cube::has_body(m) || m.extra.ints[3] > 0 {
-                self.mobs[i].extra.point = None;
+                self.remote_entities[i].extra.point = None;
                 continue;
             }
             let reach = m
@@ -320,7 +320,7 @@ impl Game<'_> {
                 .map(|(j, e)| (j, e.position.distance_squared(pos)))
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             let Some((j, _)) = best else {
-                self.mobs[i].extra.point = None;
+                self.remote_entities[i].extra.point = None;
                 continue;
             };
             // Mob.aiStep: items within the box grown by (1, 0, 1).
@@ -329,7 +329,7 @@ impl Game<'_> {
                 .inflate(horizon_core::geometry::Vec3::new(1.0, 0.0, 1.0));
             let e = &self.dropped[j];
             let close = touch.contains(e.position);
-            self.mobs[i].extra.point = Some([e.position.x, e.position.y, e.position.z]);
+            self.remote_entities[i].extra.point = Some([e.position.x, e.position.y, e.position.z]);
             if !griefing || !close {
                 continue;
             }
@@ -338,7 +338,7 @@ impl Game<'_> {
                 .is_some_and(|uuid| Some(uuid) == self.level.player_uuid);
             let mut swallowed = e.stack.clone();
             swallowed.count = 1;
-            let (taken_item, id) = (e.clone(), self.mobs[i].id);
+            let (taken_item, id) = (e.clone(), self.remote_entities[i].id);
             self.add_pickup(
                 super::pickups::Taken::Item(Box::new(taken_item)),
                 super::pickups::Collector::Mob(id),
@@ -348,12 +348,12 @@ impl Game<'_> {
             if e.stack.count == 0 {
                 self.remove_dropped(j);
             }
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             m.extra.set_body_stack(Some(swallowed.clone()));
             m.extra.point = None;
             self.sulfur_sound(i, "entity.sulfur_cube.absorb");
             if thrown_by_player {
-                let target = self.mob_entity(&self.mobs[i]);
+                let target = self.mob_entity(&self.remote_entities[i]);
                 self.trigger_item_entity(
                     "minecraft:thrown_item_picked_up_by_entity",
                     &swallowed,

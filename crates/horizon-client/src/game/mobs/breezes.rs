@@ -12,8 +12,8 @@ impl Game<'_> {
         let Some(camera) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if m.species() != Species::Breeze
                 || !m.alive()
                 || m.position.distance_squared(camera) > 32.0 * 32.0
@@ -27,14 +27,14 @@ impl Game<'_> {
                 _ => (1, false),
             };
             if jump_trail {
-                self.mobs[i].extra.scratch[1] += 1;
-                if self.mobs[i].extra.scratch[1] > 5 {
+                self.remote_entities[i].extra.scratch[1] += 1;
+                if self.remote_entities[i].extra.scratch[1] > 5 {
                     continue;
                 }
             } else {
-                self.mobs[i].extra.scratch[1] = 0;
+                self.remote_entities[i].extra.scratch[1] = 0;
             }
-            let (block, state) = self.breeze_ground(&self.mobs[i]);
+            let (block, state) = self.breeze_ground(&self.remote_entities[i]);
             // `emitGroundParticles` skips an invisible block; the jump trail
             // (`emitJumpTrailParticles`) does not ask.
             if !jump_trail && self.res.facts().get(state).render_shape == RenderShape::Invisible {
@@ -43,7 +43,7 @@ impl Game<'_> {
             let Some((sprite, tint)) = self.particle_sprite(state, block) else {
                 continue;
             };
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             let at = if jump_trail {
                 [
                     m.position.x + m.velocity.x,

@@ -623,7 +623,7 @@ impl Game<'_> {
                             mob.extra
                                 .mount
                                 .or(if local_player { self.riding } else { None }),
-                            &self.mobs,
+                            &self.remote_entities,
                             alpha as f32,
                         ),
                     }

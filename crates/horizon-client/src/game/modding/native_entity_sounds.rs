@@ -39,7 +39,7 @@ impl Game<'_> {
         Some(match self.native_entity_target(entity)? {
             Target::Player | Target::Guest(_) => SoundSource::Players,
             Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id)?;
+                let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 let evil = m.species() == Species::Rabbit
                     && m.extra.variant == horizon_client::mobs::rabbit::EVIL;
                 if evil || hostile_species(m.species()) {

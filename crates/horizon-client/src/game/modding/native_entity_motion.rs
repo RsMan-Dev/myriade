@@ -129,7 +129,7 @@ impl Game<'_> {
         match t {
             Target::Boat(_) => true,
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|m| m.id == id && horizon_client::mobs::equine::controlled(m)),
             _ => false,
@@ -162,7 +162,7 @@ impl Game<'_> {
         let [x, y, z] = velocity;
         with_entity_mut!(self, h, e => *e.velocity_mut() = Vec3::new(x, y, z));
         if let EntityHandle::Mob(i) = h {
-            self.mobs[i].needs_sync = true;
+            self.remote_entities[i].needs_sync = true;
         }
         true
     }

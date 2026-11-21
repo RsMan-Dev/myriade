@@ -35,7 +35,7 @@ impl Game<'_> {
                 .is_some_and(|tag| tag.contains(&*s.item))
         });
         allay::interaction::predict(
-            &mut self.mobs[index].clone(),
+            &mut self.remote_entities[index].clone(),
             offered.as_ref(),
             hand == Hand::Main,
             duplicates,
@@ -59,7 +59,7 @@ impl Game<'_> {
         });
         let actor = self.acting_uuid();
         let Some(result) = predict(
-            &mut self.mobs[index],
+            &mut self.remote_entities[index],
             offered.as_ref(),
             hand == Hand::Main,
             duplicates,
@@ -105,7 +105,7 @@ impl Game<'_> {
     /// `Allay.mobInteract`: duplicate when dancing with an amethyst shard,
     /// take the held item, or hand back what it holds.
     pub(super) fn interact_allay(&mut self, index: usize, item: Option<&ItemStack>) -> bool {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if m.species() != Species::Allay || !m.alive() {
             return false;
         }
@@ -118,14 +118,14 @@ impl Game<'_> {
         });
         if m.extra.flag && shard && m.extra.egg_time == 0 {
             let pos = at;
-            self.mobs[index].extra.egg_time = 6000;
+            self.remote_entities[index].extra.egg_time = 6000;
             if let Some(id) = self.spawn_mob_raw("minecraft:allay", pos, true)
-                && let Some(c) = self.mobs.iter_mut().find(|m| m.id == id)
+                && let Some(c) = self.remote_entities.iter_mut().find(|m| m.id == id)
             {
                 c.extra.egg_time = 6000;
             }
             // Allay.duplicateAllay: entity event 18, three spawnHeartParticle.
-            let id = self.mobs[index].id;
+            let id = self.remote_entities[index].id;
             self.mob_event_particles(id, 18);
             self.play_allay_sound("minecraft:block.amethyst_block.chime", at, id);
             self.consume_held();
@@ -134,7 +134,7 @@ impl Game<'_> {
         let acting = self.acting_uuid();
         let holds = m.extra.main_hand_id().is_some();
         if !holds && let Some(mut given) = item.cloned() {
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             // `Allay.mobInteract` hands over one item, its components and all.
             given.count = 1;
             m.extra.set_main_hand_stack(Some(given));
@@ -148,7 +148,7 @@ impl Game<'_> {
         }
         // Allay.mobInteract takes the item back only through an empty main hand.
         if holds && item.is_none() && self.hand == Hand::Main {
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             // The hand's stack keeps the components (a potion) the items came with.
             let held = m
                 .extra
@@ -162,7 +162,7 @@ impl Game<'_> {
             self.play_allay_sound("minecraft:entity.allay.item_taken", at, id);
 
             // Allay.mobInteract ends with swing(MAIN_HAND, ...).
-            self.mobs[index].swing();
+            self.remote_entities[index].swing();
             if let Some(stack) = carried {
                 self.spawn_item(stack, at, [0.0, 0.2, 0.0], 40);
             }

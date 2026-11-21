@@ -105,7 +105,7 @@ impl Game<'_> {
     /// love 18): the guests get the byte, and this game draws it as its own
     /// client would.
     pub(super) fn mob_event_particles(&mut self, id: u32, event: i8) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         let at = [m.position.x, m.position.y, m.position.z];
@@ -115,7 +115,7 @@ impl Game<'_> {
     /// `handleEntityEvent(event)`'s particles about mob `id`
     /// (`Villager`, `TamableAnimal`, `AbstractHorse`, `Animal`, `Allay`).
     pub(super) fn entity_event_particles(&mut self, id: u32, event: i8) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         if let Some((kind, burst)) =
@@ -131,7 +131,7 @@ impl Game<'_> {
         kind: &'static str,
         burst: horizon_client::particles::Burst,
     ) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         let feet = [m.position.x, m.position.y, m.position.z];
@@ -208,7 +208,7 @@ impl Game<'_> {
         let Some(i) = self.villager_index(id) else {
             return;
         };
-        villager::ext_mut(&mut self.mobs[i]).gossips.add(
+        villager::ext_mut(&mut self.remote_entities[i]).gossips.add(
             uuid,
             GossipType::Trading,
             gossip::REPUTATION_CHANGE_PER_TRADE,
@@ -259,7 +259,7 @@ impl Game<'_> {
         {
             return;
         }
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if !m.alive() || m.removed {
             return;
         }
@@ -273,22 +273,22 @@ impl Game<'_> {
         let problem = self.sleep_problem(bed_exists, false);
         let mut may_continue = None;
         self.native_can_continue_sleeping(uuid, "", &kind, pos, problem, &mut may_continue);
-        villager::ext_mut(&mut self.mobs[index]).may_continue_sleeping =
+        villager::ext_mut(&mut self.remote_entities[index]).may_continue_sleeping =
             Some(may_continue.unwrap_or(problem.is_none()));
     }
     /// `LivingEntity.stopSleeping` for the villager `id`, outside its own
     /// tick: it stands up and its bed is no longer occupied.
     pub(super) fn wake_villager(&mut self, id: u32) {
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
             return;
         };
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut events = Vec::new();
         villager::stop_sleeping(&mut mobs[i], &self.mob_world_base(&[]), &mut events);
         villager_brain::woken(&mut mobs[i], self.world.game_time);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         if let Err(e) = self.handle_mob_events(events) {
             log::warn!("waking villager {id}: {e}");

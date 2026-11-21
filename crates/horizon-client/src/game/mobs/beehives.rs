@@ -65,11 +65,11 @@ impl HiveHost for GameHive<'_, '_> {
             return None;
         }
         let id = self.game.load_mob(tag.clone(), None)?;
-        let i = self.game.mobs.iter().position(|m| m.id == id)?;
-        Some(self.game.mobs.remove(i))
+        let i = self.game.remote_entities.iter().position(|m| m.id == id)?;
+        Some(self.game.remote_entities.remove(i))
     }
     fn add(&mut self, m: Mob) -> bool {
-        self.game.mobs.push(m);
+        self.game.remote_entities.push(m);
         true
     }
     fn sound(&mut self, name: &'static str, at: [f64; 3]) {
@@ -103,7 +103,7 @@ impl Game<'_> {
             return false;
         }
         let is_brain = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|mob| mob.id == id)
             .is_some_and(|mob| horizon_client::mobs::ai::brain_target(mob).is_some());
@@ -157,7 +157,7 @@ impl Game<'_> {
                 }
             }
         }
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         if !is_brain || !horizon_client::mobs::ai::set_brain_target(mob, chosen) {
@@ -229,7 +229,7 @@ impl Game<'_> {
     pub(super) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
         let Some(i) = self
-            .mobs
+            .remote_entities
             .iter()
             .position(|m| m.id == mob && m.alive() && !m.removed)
         else {
@@ -239,13 +239,13 @@ impl Game<'_> {
         {
             return;
         }
-        if self.mobs[i].extra.leash.is_some() {
+        if self.remote_entities[i].extra.leash.is_some() {
             self.break_leash(mob, true, false);
-            self.mobs[i].extra.leash = None;
+            self.remote_entities[i].extra.leash = None;
         }
-        self.mobs[i].extra.mount = None;
+        self.remote_entities[i].extra.mount = None;
         let tag = self.mob_tree_nbt(i);
-        let flower = bee::get(&self.mobs[i]).and_then(|b| b.flower);
+        let flower = bee::get(&self.remote_entities[i]).and_then(|b| b.flower);
         let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key)
         else {
             return;
@@ -262,14 +262,14 @@ impl Game<'_> {
                 Some(Who::Mob(mob)),
                 Some(state),
             );
-            let kind = self.mobs[i].kind.id.clone();
+            let kind = self.remote_entities[i].kind.id.clone();
             let block = self
                 .res
                 .facts()
                 .get(self.world.block(at[0], at[1], at[2]))
                 .name
                 .clone();
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                 m.removed = true;
             }
             self.native_entity_enter_block(mob, &kind, at, &block);
@@ -307,14 +307,14 @@ impl Game<'_> {
         let sedated = beehive::smokey(&self.mob_world_base(&[]), at);
         if let Some(p) = self.player_view().map(|p| p.position) {
             let ids: Vec<u32> = self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
                 .map(|m| m.id)
                 .collect();
             for id in ids {
                 if sedated {
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         bee::set_stay_out_of_hive_countdown(m);
                     }
                 } else {
@@ -423,7 +423,7 @@ impl Game<'_> {
                 .put(lease, BlockEntity::Beehive(hive));
             if let Some(p) = self.player_view().map(|p| p.position) {
                 let ids: Vec<u32> = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
                     .map(|m| m.id)
@@ -467,15 +467,15 @@ impl Game<'_> {
         if players.is_empty() {
             return;
         }
-        let mut bees: Vec<usize> = (0..self.mobs.len())
+        let mut bees: Vec<usize> = (0..self.remote_entities.len())
             .filter(|&i| {
-                let m = &self.mobs[i];
+                let m = &self.remote_entities[i];
                 m.species() == horizon_client::mobs::Species::Bee
                     && !m.removed
                     && m.bounds().intersects(area)
             })
             .collect();
-        bees.retain(|&i| self.mobs[i].ai.target.is_none());
+        bees.retain(|&i| self.remote_entities[i].ai.target.is_none());
         for i in bees {
             // Util.getRandom over the players.
             let pick = self
@@ -483,7 +483,7 @@ impl Game<'_> {
                 .random
                 .next_int_bound(players.len() as i32)
                 .unwrap_or(0) as usize;
-            self.set_event_ai_target(self.mobs[i].id, Some(Who::Player), players[pick]);
+            self.set_event_ai_target(self.remote_entities[i].id, Some(Who::Player), players[pick]);
         }
     }
 }

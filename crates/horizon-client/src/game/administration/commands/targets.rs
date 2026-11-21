@@ -23,7 +23,7 @@ impl Game<'_> {
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.position),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| [m.position.x, m.position.y, m.position.z]),
@@ -128,7 +128,7 @@ impl Game<'_> {
         match t {
             Target::Player | Target::Guest(_) => "minecraft:player".into(),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| {

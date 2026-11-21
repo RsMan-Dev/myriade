@@ -234,10 +234,10 @@ impl Game<'_> {
     /// sounds.
     pub(super) fn attack_mob(&mut self, index: usize) {
         let attack = self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id));
-        let target_kind = self.mobs[index].kind.id.clone();
+        let target_kind = self.remote_entities[index].kind.id.clone();
         let target_kind = format!("minecraft:{}", target_kind.trim_start_matches("minecraft:"));
         let ((amount, scale, crit, magic), admitted) =
-            self.melee_damage_with_admission(&target_kind, true, Some(self.mobs[index].id));
+            self.melee_damage_with_admission(&target_kind, true, Some(self.remote_entities[index].id));
         // Player.onAttack: the hit starts the attack strength again, hurt or not.
         self.attack_ticks = 0;
         if !admitted {
@@ -255,18 +255,18 @@ impl Game<'_> {
                 .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         // LivingEntity.setLastHurtMob (tamed wolves join in).
-        self.combat.last_hurt_mob = Some((self.mobs[index].id, self.world.game_time));
-        let old_health = self.mobs[index].health;
+        self.combat.last_hurt_mob = Some((self.remote_entities[index].id, self.world.game_time));
+        let old_health = self.remote_entities[index].health;
         let source = match from {
             Some(f) => self.attack_source(f),
             None => horizon_client::mobs::Damage::of(horizon_client::mobs::DamageKind::Generic),
         };
         let landed = self.hurt_by_player(index, amount, source);
-        if landed && old_health > 0.0 && !self.mobs[index].alive() {
+        if landed && old_health > 0.0 && !self.remote_entities[index].alive() {
             self.native_kill_event(index);
         }
         if landed {
-            let victim = self.mob_entity(&self.mobs[index]);
+            let victim = self.mob_entity(&self.remote_entities[index]);
             self.player_hit(
                 &victim,
                 creatures::damage_type(source.kind, true),
@@ -281,20 +281,20 @@ impl Game<'_> {
             p.attack_log.push(horizon_client::health::AttackRecord {
                 game_time: p.health.game_time(),
                 target: target_kind.clone(),
-                id: self.mobs[index].id,
-                killed: landed && !self.mobs[index].alive(),
+                id: self.remote_entities[index].id,
+                killed: landed && !self.remote_entities[index].alive(),
                 amount,
                 scale,
                 crit,
                 landed,
-                dealt: old_health - self.mobs[index].health,
+                dealt: old_health - self.remote_entities[index].health,
             });
         }
         if landed {
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
                 if self.legacy_rules() {
-                    let m = &mut self.mobs[index];
+                    let m = &mut self.remote_entities[index];
                     let v = [m.velocity.x, m.velocity.y, m.velocity.z];
                     let [x, y, z] = horizon_client::legacy_combat::extra_knockback(
                         v,
@@ -305,7 +305,7 @@ impl Game<'_> {
                     m.needs_sync = true;
                 } else {
                     let level = crate::game::entity::damage_level_of!(self, &attack);
-                    self.mobs[index].knockback_full(
+                    self.remote_entities[index].knockback_full(
                         level,
                         f64::from(knockback),
                         xd,
@@ -317,7 +317,7 @@ impl Game<'_> {
                 }
                 self.stop_sprint_after_extra_knockback();
             }
-            let mob = &self.mobs[index];
+            let mob = &self.remote_entities[index];
             let actual = old_health - mob.health; // Player.damageStatsAndHearts
             // Player.attack: crit emitter and damage indicator hearts.
             let (feet, width, height) = (
@@ -329,7 +329,7 @@ impl Game<'_> {
             if crit {
                 self.critical_hit(
                     self.lan_acting,
-                    self.mobs[index].id as i32,
+                    self.remote_entities[index].id as i32,
                     feet,
                     width,
                     height,
@@ -340,7 +340,7 @@ impl Game<'_> {
             if magic {
                 self.critical_hit(
                     self.lan_acting,
-                    self.mobs[index].id as i32,
+                    self.remote_entities[index].id as i32,
                     feet,
                     width,
                     height,
@@ -370,7 +370,7 @@ impl Game<'_> {
                     randomization: 0,
                 });
             }
-            self.remember_mob_player_credit(self.mobs[index].id);
+            self.remember_mob_player_credit(self.remote_entities[index].id);
             let sound = if crit {
                 "minecraft:entity.player.attack.crit"
             } else if scale > 0.9 {
@@ -382,8 +382,8 @@ impl Game<'_> {
             // let sweep has both sounds (attackVisualEffects).
             if let Some(at) = sweep {
                 let target = (
-                    self.mobs[index].bounds(),
-                    mace::Spared::Mob(self.mobs[index].id),
+                    self.remote_entities[index].bounds(),
+                    mace::Spared::Mob(self.remote_entities[index].id),
                 );
                 self.sweep_attack(at, from, Some(target), scale);
             }
@@ -392,7 +392,7 @@ impl Game<'_> {
             }
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
             // its voice pitch from its own random).
-            let queued = std::mem::take(&mut self.mobs[index].outbox);
+            let queued = std::mem::take(&mut self.remote_entities[index].outbox);
             let mut infested = Vec::new();
             for event in queued {
                 match event {
@@ -405,7 +405,7 @@ impl Game<'_> {
                     }
                     other => {
                         // Left for the end of the tick.
-                        self.mobs[index].outbox.push(other);
+                        self.remote_entities[index].outbox.push(other);
                     }
                 }
             }

@@ -232,7 +232,7 @@ impl Game<'_> {
                 (true, guest.creative(), p.fall_distance, p.fall_flying)
             }
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
                 (false, false, mob.fall_distance, mob.extra.fall_flying)
             }
             Target::Stand(_) | Target::Dragon(_) => (false, false, 0.0, false),

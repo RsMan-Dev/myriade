@@ -15,10 +15,10 @@ impl Game<'_> {
     fn native_level_raid_collections(&self, level: LevelRef) -> Option<(&Raids, &[Mob])> {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
-            Some((self.raids_in_place()?, &self.mobs))
+            Some((self.raids_in_place()?, &self.remote_entities))
         } else {
             let parked = self.levels.parked_of(level.dimension_id())?;
-            Some((parked.raiding.raids(level.dimension_id())?, &parked.mobs))
+            Some((parked.raiding.raids(level.dimension_id())?, &parked.remote_entities))
         }
     }
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
@@ -77,7 +77,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let raider = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        let raider = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         let id = horizon_client::mobs::raider::state(raider)?.raid_id?;
         let level = self.entity_level(mob.entity())?;
         self.level_raid(level, id)

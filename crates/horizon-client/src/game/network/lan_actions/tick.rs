@@ -297,7 +297,7 @@ impl Game<'_> {
             let Some(index) = first_spin_target(
                 swept,
                 riding,
-                self.mobs.iter().map(|m| (m.id, m.removed, m.bounds())),
+                self.remote_entities.iter().map(|m| (m.id, m.removed, m.bounds())),
             ) else {
                 return;
             };

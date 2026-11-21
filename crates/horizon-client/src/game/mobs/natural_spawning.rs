@@ -1407,7 +1407,7 @@ impl<'a> Game<'a> {
             let level = self.natural_level();
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
-                .mobs
+                .remote_entities
                 .iter()
                 .map(|m| Counted {
                     entity: &m.kind.id,

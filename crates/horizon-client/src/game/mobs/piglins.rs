@@ -42,7 +42,7 @@ impl Game<'_> {
         if target == Who::Mob(mob)
             || horizon_client::scoreboard::teams_allied(self.mob_team(mob), target_team)
             || self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|other| other.id == mob)
                 .is_none_or(|other| other.ai.target.is_some())
@@ -238,12 +238,12 @@ impl Game<'_> {
             .ui
             .rules
             .bool_at(horizon_client::gamerules::vanilla::UNIVERSAL_ANGER);
-        for i in 0..self.mobs.len() {
+        for i in 0..self.remote_entities.len() {
             // A hook below may have shortened the list.
-            if i >= self.mobs.len() {
+            if i >= self.remote_entities.len() {
                 break;
             }
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             if m.species() != Species::Piglin
                 || m.is_baby()
                 || !m.alive()
@@ -263,7 +263,7 @@ impl Game<'_> {
             } else {
                 player_uuid
             };
-            let id = self.mobs[i].id;
+            let id = self.remote_entities[i].id;
             let change = if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
                 let original = self
                     .lan_acting_entity
@@ -285,10 +285,10 @@ impl Game<'_> {
                 horizon_client::mobs::TargetChange::Set(Some(horizon_client::mobs::Who::Player))
             };
             // The hook had `&mut self`: find the piglin again by id.
-            let Some(i) = self.mobs.iter().position(|m| m.id == id && !m.removed) else {
+            let Some(i) = self.remote_entities.iter().position(|m| m.id == id && !m.removed) else {
                 continue;
             };
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             let previous = m.ai.target;
             horizon_client::mobs::piglin::set_guarded_anger_target(m, target_uuid);
             m.ai.target = match change {

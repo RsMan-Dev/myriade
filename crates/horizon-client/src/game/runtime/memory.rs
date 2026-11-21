@@ -495,7 +495,7 @@ impl Game<'_> {
             }
         };
         level(
-            &self.mobs,
+            &self.remote_entities,
             [
                 self.dropped.len(),
                 self.orbs.len(),
