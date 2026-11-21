@@ -8,3 +8,6 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body]),
     ..Def::EMPTY
 };
+
+/// The block this entity is made of when it stands in the world (`TntBlock`: destroyed by a blast, it is primed in its place).
+pub const BLOCK: &str = "minecraft:tnt";

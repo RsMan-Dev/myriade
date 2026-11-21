@@ -208,7 +208,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
     if breaks_blocks {
         let blocks = exploded_positions(w, b.at, b.radius, skull);
         let mw = level.mw.0;
-        let tnt = crate::blocks::resolve(mw, "minecraft:tnt", &[]);
+        let tnt = crate::blocks::resolve(mw, crate::species::tnt::BLOCK, &[]);
         let mut rng = w.resource::<ExplosionRng>().0;
         for p in &blocks {
             // `TntBlock.wasExploded`: a TNT block the blast destroys is primed in its place.

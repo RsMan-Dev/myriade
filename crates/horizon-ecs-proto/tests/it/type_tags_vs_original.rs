@@ -6,7 +6,7 @@ use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    cow::{spawn_species, species_table, DamageQueue, Health, Species},
+    cow::{spawn_species, species_table, DamageQueue, Health, Herd, Species},
     effects::{self, Brew},
     type_tags,
 };

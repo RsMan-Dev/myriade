@@ -141,7 +141,7 @@ fn the_bullet_homes_on_the_player_tick_by_tick_as_the_mob_s_does() {
             MobEvent::Projectile(p) => Some(p),
             _ => None,
         });
-        ecs = h.world.query::<(Entity, &horizon_client_lib::projectiles::Projectile)>().iter(&h.world).map(|x| x.0).next();
+        ecs = h.world.query::<(Entity, &horizon_ecs_proto::projectile::Projectile)>().iter(&h.world).map(|x| x.0).next();
         if mob.is_some() {
             break;
         }
@@ -156,8 +156,8 @@ fn the_bullet_homes_on_the_player_tick_by_tick_as_the_mob_s_does() {
         if !keep && mob_end.is_none() {
             mob_end = Some(t);
         }
-        match h.world.get::<horizon_client_lib::projectiles::Projectile>(ecs) {
-            Some(p) if ecs_end.is_none() => worst = worst.max((p.position.x - mob.position.x).abs().max((p.position.y - mob.position.y).abs()).max((p.position.z - mob.position.z).abs())),
+        match h.world.get::<horizon_ecs_proto::cow::Pos>(ecs).filter(|_| h.world.get::<horizon_ecs_proto::projectile::Projectile>(ecs).is_some()) {
+            Some(p) if ecs_end.is_none() => worst = worst.max((p.0.x - mob.position.x).abs().max((p.0.y - mob.position.y).abs()).max((p.0.z - mob.position.z).abs())),
             Some(_) => {}
             None => {
                 ecs_end.get_or_insert(t);

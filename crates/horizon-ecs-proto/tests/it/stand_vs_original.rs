@@ -5,10 +5,10 @@ use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
-use horizon_ecs_proto::stand_pose::{self, Part};
+use horizon_ecs_proto::behaviours::stand_pose::{self, Part};
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::equipment;
-use horizon_ecs_proto::goals::{equipped, Slot};
+use horizon_ecs_proto::goals::{equipped, Entered, Slot};
 use horizon_ecs_proto::stand::{self, Blow, LastHit, Stand, Unsettled, DEFAULT_POSE, INVISIBLE, MARKER, NO_GRAVITY, SMALL};
 
 /// A small stand is the baby box (0.5 by 0.9875), any other the full one (0.5 by 1.975).

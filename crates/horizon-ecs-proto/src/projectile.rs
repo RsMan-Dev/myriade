@@ -206,7 +206,7 @@ pub fn fly(
     mut stuck: ResMut<StuckIndex>,
     creatures: Query<&Bounds, With<Health>>,
     dodgers: Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
-    hurts: Query<&crate::cow::health::HurtAt>,
+    hurts: Query<&crate::cow::HurtAt>,
     potion: Query<&crate::effects::PotionId>,
     healths: Query<&Health>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
@@ -493,6 +493,9 @@ const LINGERING_CLOUD: crate::effect_cloud::EffectCloud = crate::effect_cloud::E
     duration: 600,
     reapplication_delay: 20,
     duration_scale: 1.0,
+    hidden: &[],
+    ambient: &[],
+    owner: None,
 };
 /// A cloud of the flask's potion where it broke; a flask without a `PotionId` makes none.
 fn linger(w: &mut World, e: Entity, at: Vec3) {

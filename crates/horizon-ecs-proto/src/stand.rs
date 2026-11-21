@@ -134,7 +134,7 @@ pub fn ignores_explosion(s: Stand) -> bool {
 pub fn break_drop(w: &mut World, e: Entity) -> Entity {
     let at = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     w.entity_mut(e).despawn();
-    crate::item::drop_item(w, ItemStack::new("minecraft:armor_stand", 1), at, Vec3::ZERO, 10)
+    crate::item::drop_item(w, ItemStack::new(crate::species::armor_stand::ITEM, 1), at, Vec3::ZERO, 10)
 }
 
 /// A stand whose physics is live: `travel` moves it while it has `Moving`, `fall` takes this back once it rests (a SparseSet: no cost

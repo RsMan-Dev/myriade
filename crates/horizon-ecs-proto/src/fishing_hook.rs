@@ -12,6 +12,7 @@ use crate::targeting::player_box;
 use crate::type_tags::TagId;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::arrows::clip_block_hit;
+use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
 use horizon_client_lib::blocks::Fluid;
 use horizon_core::geometry::{trig, Aabb, Vec3};
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -86,7 +87,7 @@ pub struct Hook {
     /// The entity type tag that turns the hook back (`deflects_projectiles`), resolved at the cast, None if the data has none (4 bytes).
     pub deflect: Option<TagId>,
     /// The entity that last turned the hook back, to play its sound once (`lastDeflectedBy`, 8 bytes).
-    pub last_deflected: Option<u32>,
+    pub last_deflected: Option<u64>,
 }
 
 /// `FishingHook(player, level, luck, lureSpeed)` thrown from `at` with `velocity`: the hook of `owner`, and the cast sound at its place.
@@ -138,7 +139,7 @@ fn cell(p: Vec3) -> [i32; 3] {
 }
 /// The random of a synchronized draw (`FishingHook.syncronizedRandom`): the hook and the game time, not the level's draws.
 fn sync_random(e: Entity, time: u64) -> LegacyRandom {
-    LegacyRandom::new(i64::from(e.to_bits()) ^ time as i64)
+    LegacyRandom::new(e.to_bits() as i64 ^ time as i64)
 }
 /// `FishingHook.onSyncedDataUpdated` on the bite: the plunge `-0.4 * nextFloat(0.6, 1.0)`, in float as vanilla.
 fn bite_impulse(r: &mut impl RandomSource) -> f64 {

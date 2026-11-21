@@ -403,7 +403,7 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
                 Brew::Harm(amp) | Brew::Heal(amp) => {
                     let undead = type_tags::is::<InvertedHealingAndHarm>(w, c);
                     let harms = matches!(brew, Brew::Harm(_)) != undead;
-                    let base = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
+                    let base: i32 = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
                     let amount = (scale * f64::from(base.wrapping_shl(amp as u32)) + 0.5).floor() as f32;
                     if harms {
                         match owner {

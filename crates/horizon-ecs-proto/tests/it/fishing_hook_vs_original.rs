@@ -7,7 +7,7 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::{trig, Vec3};
 use horizon_core::random::{LegacyRandom, RandomSource};
-use horizon_ecs_proto::cow::Herd;
+use horizon_ecs_proto::cow::{Herd, Pos};
 use horizon_ecs_proto::fishing_hook::{cast, reel, Hook, Phase, Target};
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::host_out::HostEvent;

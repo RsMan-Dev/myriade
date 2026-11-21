@@ -96,7 +96,7 @@ pub fn spawn(w: &mut World, at: Vec3, t: Transform, s: Shown, kind: impl Bundle)
 }
 
 /// Writes `value` into the component of `e` when it differs, and emits one update. False when nothing changed or `e` has no such component.
-pub fn set<C: Component + PartialEq>(w: &mut World, e: Entity, value: C) -> bool {
+pub fn set<C: Component<Mutability = bevy_ecs::component::Mutable> + PartialEq>(w: &mut World, e: Entity, value: C) -> bool {
     let Some(mut c) = w.get_mut::<C>(e) else { return false };
     if *c == value {
         return false;

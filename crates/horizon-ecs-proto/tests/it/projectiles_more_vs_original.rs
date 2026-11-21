@@ -134,9 +134,9 @@ fn a_blue_skull_breaks_obsidian_that_a_normal_one_does_not() {
     let mut counts = Vec::new();
     for blue in [false, true] {
         let (mut r, mut h) = flat_pair();
-        for x in -4..=4 {
-            for y in 0..=8 {
-                for z in -4..=4 {
+        for x in -4..=4_i32 {
+            for y in 0..=8_i32 {
+                for z in -4..=4_i32 {
                     let norm = x.abs().max((y - 4).abs()).max(z.abs());
                     r.set_block(x, y, z, if norm == 2 { "minecraft:obsidian" } else { "minecraft:dirt" });
                 }
@@ -160,9 +160,9 @@ fn a_blue_skull_leaves_a_block_the_wither_cannot_break() {
         return;
     }
     let (mut r, mut h) = flat_pair();
-    for x in -4..=4 {
-        for y in 0..=8 {
-            for z in -4..=4 {
+    for x in -4..=4_i32 {
+        for y in 0..=8_i32 {
+            for z in -4..=4_i32 {
                 let norm = x.abs().max((y - 4).abs()).max(z.abs());
                 r.set_block(x, y, z, if norm == 2 { "minecraft:bedrock" } else { "minecraft:dirt" });
             }

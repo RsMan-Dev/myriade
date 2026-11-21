@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    cow::DamageQueue,
+    cow::{DamageQueue, Herd},
     effect_cloud::{self, EffectCloud},
     effects::{self, Brew, PotionId},
 };
