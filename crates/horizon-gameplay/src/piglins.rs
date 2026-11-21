@@ -2,7 +2,7 @@
 //! bartering when the admiring is over, and the hand-over of currency.
 use crate::piglin_level::PiglinLevel;
 use horizon_client::{
-    first_person::SwingAnimation,
+    mobs::ai::SwingAnimation,
     items::ItemStack,
     mobs::{
         Mob, Species,

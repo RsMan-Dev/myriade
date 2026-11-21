@@ -70,7 +70,6 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
             ),
         };
         Ok(EngineOptions {
-            polytone_seed: None,
             source: None,
             ty,
             mod_particle: custom,

@@ -27,6 +27,10 @@ impl Burst {
         speed: Some(0.02),
         y: 1.0,
     };
+    /// `Ocelot.spawnTrustingParticles`, `Animal`'s entity event 18.
+    pub const TAMING: Self = Self { count: 7, speed: Some(0.02), y: 0.5 };
+    /// `Allay`'s entity event 18: three `spawnHeartParticle`.
+    pub const ALLAY: Self = Self { count: 3, speed: Some(0.02), y: 0.5 };
     /// `Dolphin.addParticlesAroundSelf`.
     pub const DOLPHIN: Self = Self {
         count: 7,
@@ -65,4 +69,39 @@ pub fn item_use_particles(
             [d.x, d.y + 0.05, d.z],
         );
     }
+}
+/// The particle bursts entity events show on the client: the particle and
+/// burst of `handleEntityEvent(event)` for the entity type `entity`.
+pub fn entity_event_burst(entity: &str, event: u8) -> Option<(&'static str, Burst)> {
+    let entity = entity.strip_prefix("minecraft:").unwrap_or(entity);
+    let tamable = matches!(
+        entity,
+        "wolf" | "cat" | "parrot" | "nautilus" | "zombie_nautilus"
+    );
+    let horse = matches!(
+        entity,
+        "horse"
+            | "donkey"
+            | "mule"
+            | "llama"
+            | "trader_llama"
+            | "camel"
+            | "camel_husk"
+            | "skeleton_horse"
+            | "zombie_horse"
+    );
+    Some(match (entity, event) {
+        ("villager", 12) => ("heart", Burst::VILLAGER),
+        ("villager", 13) => ("angry_villager", Burst::VILLAGER),
+        ("villager", 14) => ("happy_villager", Burst::VILLAGER),
+        ("villager", 42) => ("splash", Burst::VILLAGER),
+        ("allay", 18) => ("heart", Burst::ALLAY),
+        ("dolphin", 38) => ("happy_villager", Burst::DOLPHIN),
+        ("ocelot", 41) => ("heart", Burst::TAMING),
+        ("ocelot", 40) => ("smoke", Burst::TAMING),
+        (_, 7) if tamable || horse => ("heart", Burst::TAMING),
+        (_, 6) if tamable || horse => ("smoke", Burst::TAMING),
+        (_, 18) if !matches!(entity, "villager" | "allay") => ("heart", Burst::TAMING),
+        _ => return None,
+    })
 }

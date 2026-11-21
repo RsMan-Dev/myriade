@@ -1,10 +1,10 @@
 //! `/playsound` and `/stopsound`.
 use super::entity::{EntityHost, EntityRef, holder, num};
 use super::host::R;
+use horizon_client_core::sound_source::SOUND_SOURCES;
 use horizon_client::{
     command::{Arg, Context},
     scoreboard_cmd::Tracker,
-    settings::SOUND_SOURCES,
     text::Text,
 };
 

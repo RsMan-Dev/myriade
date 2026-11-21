@@ -10,7 +10,6 @@ pub mod block_state;
 pub mod content_declarations;
 pub mod damage;
 pub mod game_rule_values;
-pub mod gui_draw;
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
 pub mod inside_write;
@@ -844,24 +843,6 @@ impl TryIntoEngine for mod_api::GameRuleValue {
             // A kind this game has no rule of.
             _ => Err(()),
         }
-    }
-}
-
-impl TryIntoApi for horizon_client::boss_overlay::ModBar {
-    type Api = mod_api::ClientBossBar;
-    type Error = mod_api::text::TextFormError;
-
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::ClientBossBar {
-            uuid: self.uuid,
-            name: self.name.try_into_api()?,
-            progress: self.progress,
-            color: self.color,
-            overlay: self.overlay,
-            darken_screen: self.darken_screen,
-            play_boss_music: self.play_boss_music,
-            create_world_fog: self.create_world_fog,
-        })
     }
 }
 
