@@ -110,7 +110,7 @@ mod tests {
     /// chosen; without it in the list, nothing is remembered.
     #[test]
     fn the_nearest_adult_of_the_same_species_is_remembered() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let pig = creature(&mut h, "minecraft:pig", 1.5, 0.5, false);
         let baby = creature(&mut h, "minecraft:cow", 2.5, 0.5, true);
@@ -128,7 +128,7 @@ mod tests {
     /// parameter's tag is the one read.
     #[test]
     fn the_nearest_adult_of_the_tagged_species_is_remembered() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let zombie = creature(&mut h, "minecraft:zombie", 1.5, 0.5, false);
         let baby_sheep = creature(&mut h, "minecraft:sheep", 2.5, 0.5, true);
@@ -143,7 +143,7 @@ mod tests {
     /// Without the visible list, `ANY` leaves the memory as it is (its early return); a player is never chosen.
     #[test]
     fn without_the_list_any_keeps_its_memory_and_players_are_skipped() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let pig = creature(&mut h, "minecraft:pig", 6.5, 0.5, false);
         visible(&mut h, e, vec![Who::Entity(pig)]);

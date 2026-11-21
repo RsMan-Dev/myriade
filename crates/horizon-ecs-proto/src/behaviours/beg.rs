@@ -138,7 +138,7 @@ mod tests {
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 9, &BEG)];
 
     fn herd_with(entries: &'static [Entry]) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let mut sp = *species();
         sp.goals = Config { entries };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);

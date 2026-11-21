@@ -26,7 +26,7 @@ struct Pair {
 /// `n` pairs of axolotls `gap` blocks apart, in love on both sides.
 fn pairs(n: usize, gap: f64, seed: u64) -> Pair {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let mut ids = Vec::new();
@@ -216,7 +216,7 @@ fn the_axolotl_swims_about_as_the_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     pool(&r, &mut h);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
@@ -286,7 +286,7 @@ fn the_axolotl_swims_about_as_the_mob_does() {
 /// Regeneration, and the tick the memory is gone, on both sides.
 fn dead_scene(seed: u64, n: usize, damage: f32) -> ([usize; 2], [usize; 2], [Vec<i64>; 2]) {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     pool(&r, &mut h);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.0, y: 1.0, z: 0.0, main: 0, off: 0, ..Default::default() });
     let table = h.world.resource::<SpeciesTable>().0.clone();
@@ -381,7 +381,7 @@ fn the_axolotl_hunts_a_cod_as_the_mob_does() {
     let mut hurt_rows: Vec<[Option<i64>; 2]> = Vec::new();
     for seed in 0..6u64 {
         let mut r = MobRef::new(60, false);
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         pool(&r, &mut h);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let sp = *table.iter().find(|s| s.name == species().name).unwrap();

@@ -76,7 +76,7 @@ mod tests {
     /// A seen target 6 blocks away: it is looked at and walked to, at speed 1.0 and close 0.
     #[test]
     fn it_walks_to_a_seen_target_out_of_reach() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 6.5, 0.5, 92);
@@ -90,7 +90,7 @@ mod tests {
     /// Seen and within reach: the walk target is cleared (a walk left over from before is erased); not seen, the walk is set.
     #[test]
     fn it_stops_walking_when_seen_and_in_reach_and_walks_when_unseen() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let near = spawn_species(&mut h.world, &sp, 1.5, 0.5, 92);

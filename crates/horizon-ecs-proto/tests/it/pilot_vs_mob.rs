@@ -188,7 +188,7 @@ fn avoid_run(o: &AvOpt) -> AvOut {
         }
     }
     // ---- ECS
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 7 + o.salt as u64);
     h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
     if o.wall {
@@ -373,7 +373,7 @@ fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
         // The ECS side: asleep, a far player wakes it.
         let params = leak(avoid_entity::Params { what: avoid_entity::Avoid::Species(leak([species().id])), max_dist: 6.0, ..avoid_entity::Params::DEFAULT });
         let entries: &'static [Entry] = leak([Entry::new(&avoid_entity::MODULE, 3, params)]);
-        let mut h = Herd::with_slab(20, true, false);
+        let mut h = Herd::with_slab_awake(20, true, false);
         let e = ecs_with(&mut h, entries, 0.5, 0.5, 7 + salt as u64);
         let t = ecs_with(&mut h, &[], 5.5, 0.5, 8);
         for x in [e, t] {
@@ -397,7 +397,7 @@ fn avoid_7_a_sleeping_avoider_wakes_up_with_a_listed_animal_in_range() {
 const N_DRAWS: usize = 60_000;
 fn spot_law(grass: bool) {
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     if grass {
         for x in -19..=19 {
             for z in 0..=19 {
@@ -490,7 +490,7 @@ fn flee_1_hide_pos_law() {
         return;
     }
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     // Bright shade (sky 12) in the east half, dark shade (sky 1) in the west half.
     for x in -18..=18 {
         for z in -18..=18 {
@@ -558,7 +558,7 @@ fn flee_2_burning_animal_walks_to_the_spot_at_the_first_selector_tick() {
     // 12 animals 3 blocks apart reach x 21.5: the slab is 24 wide each way (on one of 20 the last stood in the void, fell and was removed).
     let pos = |k: usize| (-12.0 + 3.0 * k as f64 + 0.5, 0.5);
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let open: Vec<(i32, i32)> = (0..n).map(|k| (pos(k).0.floor() as i32, 0)).collect();
     shade_both(&r, &h, &open);
     let entries: &'static [Entry] = leak([Entry::new(&flee_sun::MODULE, 3, &flee_sun::Params::DEFAULT)]);
@@ -670,7 +670,7 @@ fn flee_3_night_means_no_start() {
         return;
     }
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     shade_both(&r, &h, &[(0, 0)]);
     let entries: &'static [Entry] = leak([Entry::new(&flee_sun::MODULE, 3, &flee_sun::Params::DEFAULT)]);
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
@@ -707,7 +707,7 @@ fn flee_4_the_roof_goes_and_a_burning_monster_flees() {
         return;
     }
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     // Bright shade everywhere (sky 12): a spot exists at every column; no cell sees the sky except the ones restored.
     let (mut mob_start, mut ecs_start) = (None, None);
     roof(r.level.blocks.0, 18, 12, &[]);
@@ -776,7 +776,7 @@ fn horse_run(horses: usize, ticks: usize, grass: bool) -> (Vec<Vec<usize>>, Vec<
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let es: Vec<Entity> = (0..horses).map(|k| ecs_with(&mut h, entries, at(k).0, at(k).1, 30 + k as u64)).collect();
     for (k, &e) in es.iter().enumerate() {
         h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[ids[k]].id);
@@ -851,7 +851,7 @@ fn trace_avoid_from_start() {
     let _ = MobRef::new(20, false);
     let params = leak(avoid_entity::Params { what: avoid_entity::Avoid::Species(leak([species().id])), max_dist: 6.0, ..avoid_entity::Params::DEFAULT });
     let entries: &'static [Entry] = leak([Entry::new(&avoid_entity::MODULE, 3, params)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 7);
     ecs_with(&mut h, &[], 5.5, 0.5, 8);
     for t in 0..40 {
@@ -897,7 +897,7 @@ fn stand_3_first_rear_law() {
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let es: Vec<Entity> = (0..2000).map(|k| ecs_with(&mut h, entries, -15.0 + 2.0 * (k % 16) as f64 + 0.5, -9.0 + 0.01 * k as f64, 100 + k as u64)).collect();
     let mut first: Vec<Option<usize>> = vec![None; es.len()];
     for t in 0..horizon {
@@ -942,7 +942,7 @@ fn stand_4_rear_lasts_twenty_ticks_and_does_not_chain() {
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let es: Vec<Entity> = (0..600).map(|k| ecs_with(&mut h, entries, -15.0 + 2.0 * (k % 16) as f64 + 0.5, -9.0 + 0.05 * k as f64, 200 + k as u64)).collect();
     let mut eruns: Vec<usize> = Vec::new();
     let mut ecur = vec![0usize; es.len()];

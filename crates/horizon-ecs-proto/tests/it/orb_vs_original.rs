@@ -17,7 +17,7 @@ struct Scene {
     ecs: Vec<Entity>,
 }
 fn scene(player: Option<Vec3>) -> Scene {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let mw = h.world.resource::<Level>().mw.0;
     let mut players = Vec::new();
     if let Some(p) = player {
@@ -127,7 +127,7 @@ fn an_amount_is_awarded_in_orbs_of_the_original_sizes() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let mut r = horizon_core::random::LegacyRandom::new(3);
     award(&mut h.world, Vec3::new(2.5, 1.0, 2.5), 100, &mut r);
     let mut values: Vec<i32> = h.world.query::<&Orb>().iter(&h.world).map(|o| o.value).collect();
@@ -151,7 +151,7 @@ fn a_killed_animal_leaves_one_to_three_experience() {
     if !have_data() || wrong_species(&["minecraft:cow"]) {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let mut tally = [0usize; 4];
     for k in 0..300 {
         let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 21 + k as u64);

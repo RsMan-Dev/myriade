@@ -127,7 +127,7 @@ mod tests {
 
     /// Pandas on the slab, landed, yaw 0 (the cell in front is the one at +z). Returns the herd and the entities.
     fn pandas(seed: u64, genes: &[(Gene, bool)]) -> (Herd, Vec<Entity>) {
-        let mut h = Herd::with_slab(8, true, false);
+        let mut h = Herd::with_slab_awake(8, true, false);
         let mut sp: Species = *species();
         sp.goals = Config { entries: &ENTRIES };
         let mut out = Vec::new();

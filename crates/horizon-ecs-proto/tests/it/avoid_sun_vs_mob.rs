@@ -41,7 +41,7 @@ fn mob_end(day: bool, avoid: bool) -> f64 {
     r.mobs[i].position.x
 }
 fn ecs_end(day: bool, avoid: bool) -> f64 {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     for (x, z) in roof_cells() {
         h.set_block(x, ROOF, z, "minecraft:stone");
     }

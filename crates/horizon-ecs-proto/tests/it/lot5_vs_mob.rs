@@ -151,7 +151,7 @@ fn drowned_goes_to_the_water_by_day_and_to_the_beach_by_night() {
         let mut rows = Vec::new();
         for j in 0..8 {
             let mut r = MobRef::new(24, false);
-            let mut h = Herd::with_slab(24, false, false);
+            let mut h = Herd::with_slab_awake(24, false, false);
             platform(&r, &mut h);
             set_day(&r, &mut h, day);
             let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(from, 60.0, 0.5), j + 1);
@@ -200,7 +200,7 @@ fn cost_of_the_drowned_day_night_chain() {
     let Some(c) = horizon_ecs_proto::instr::Counter::new() else { return };
     let mut per = Vec::new();
     for name in ["minecraft:drowned", "minecraft:cow"] {
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         h.world.resource_mut::<horizon_ecs_proto::hostile::Daylight>().0 = false;
         let mut es = Vec::new();
         for k in 0..300 {
@@ -228,7 +228,7 @@ fn slime_hunts_the_player_at_contact_range() {
     let (mut dm, mut de) = (Vec::new(), Vec::new());
     for j in 0..8 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:slime"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         mobs::cube::set_size(&mut r.mobs[i], 2);
         r.mobs[i].ai.no_action_time = 0;
@@ -259,7 +259,7 @@ fn polar_bear_defends_its_cub() {
         let (mut sm, mut se, mut nm, mut ne) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
         for j in 0..12 {
             let mut r = MobRef::new(24, false);
-            let mut h = Herd::with_slab(24, false, false);
+            let mut h = Herd::with_slab_awake(24, false, false);
             let i = mob_add(&mut r, mob_kind("minecraft:polar_bear"), Vec3::new(0.5, 1.0, 0.5), j + 1);
             r.mobs[i].ai.no_action_time = 0;
             let e = ecs_named(&mut h, "minecraft:polar_bear", None, 0.5, 0.5, 13_000 + j as u64, u64::from(far_id(j + 1)));
@@ -311,7 +311,7 @@ fn the_species_of_the_configuration_wave_start_and_run() {
     }
     for name in ["minecraft:strider", "minecraft:parrot", "minecraft:turtle", "minecraft:enderman", "minecraft:skeleton", "minecraft:ghast", "minecraft:zombified_piglin"] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind(name), Vec3::new(0.5, 1.0, 0.5), 5);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 15_000, u64::from(far_id(5)));
@@ -344,7 +344,7 @@ fn debug_drowned_night() {
         return;
     }
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     platform(&r, &mut h);
     set_day(&r, &mut h, false);
     let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(-5.5, 60.0, 0.5), 3);
@@ -374,7 +374,7 @@ fn a_drowned_hunts_a_villager_and_drops_the_attack_when_it_leaves_the_water() {
     }
     for night in [true, false] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         platform(&r, &mut h);
         set_day(&r, &mut h, !night);
         let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(-6.5, 60.0, 0.5), 3);
@@ -448,7 +448,7 @@ fn a_drowned_picks_a_villager_target_at_the_pace_of_its_mob() {
         let (mut m, mut x) = (Vec::new(), Vec::new());
         for k in 0..300usize {
             let mut r = MobRef::new(24, false);
-            let mut h = Herd::with_slab(24, false, false);
+            let mut h = Herd::with_slab_awake(24, false, false);
             platform(&r, &mut h);
             set_day(&r, &mut h, !night);
             let i = mob_add(&mut r, mob_kind("minecraft:drowned"), Vec3::new(-6.5, 60.0, 0.5), 3 + 17 * k);

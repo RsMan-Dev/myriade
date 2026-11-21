@@ -32,7 +32,7 @@ fn floor(h: &mut Herd) {
 /// The 100 000 of each settle within a few seconds of game time, and then no item and no orb is awake or moving.
 #[test]
 fn a_floor_of_items_and_orbs_wakes_nothing_once_settled() {
-    let mut h = Herd::with_slab(170, true, false);
+    let mut h = Herd::with_slab_awake(170, true, false);
     floor(&mut h);
     for _ in 0..60 {
         h.tick();
@@ -47,7 +47,7 @@ fn a_floor_of_items_and_orbs_wakes_nothing_once_settled() {
 /// A player within 8 blocks of an orb attracts it; the others of a grid of 1 000 are not drawn, and they stay asleep.
 #[test]
 fn one_player_draws_the_orbs_within_eight_blocks_only() {
-    let mut h = Herd::with_slab(64, true, false);
+    let mut h = Herd::with_slab_awake(64, true, false);
     let p = Vec3::new(0.5, 1.0, 0.5);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: p.x, y: p.y, z: p.z, main: 0, off: 0, ..Default::default() });
     let mut within = 0;

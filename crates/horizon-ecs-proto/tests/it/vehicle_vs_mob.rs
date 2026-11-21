@@ -20,7 +20,7 @@ fn boxed(at: Vec3) -> Aabb {
 /// The goal runs on each side: (ticks it ran at, as (first, last)).
 fn scenario(at: Vec3, nautilus_vehicle: bool, moving: impl Fn(u32) -> bool, passenger: impl Fn(u32) -> bool) -> ((Option<u32>, Option<u32>), (Option<u32>, Option<u32>)) {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 31_337);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);

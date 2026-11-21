@@ -6,7 +6,7 @@ fn main() {
     let a: Vec<String> = std::env::args().collect();
     let n: usize = a.get(1).and_then(|s| s.parse().ok()).unwrap_or(1000);
     let rounds: usize = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(6);
-    let mut herd = Herd::with_mix(n, 6.0, true, false, 42, false, 0);
+    let mut herd = Herd::with_mix_awake(n, 6.0, true, false, 42, false, 0);
     for _ in 0..50 {
         herd.tick();
     }

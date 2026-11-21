@@ -105,7 +105,7 @@ mod tests {
     /// A baby with an adult cow 8 blocks away starts walking to its eyes at 1.1, close 2, and looks at it.
     #[test]
     fn a_baby_walks_to_an_adult_at_eight_blocks() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &ADULT_ENTRY, true);
         let adult = creature(&mut h, 8.5, 0.5, false);
         set(&mut h.world, e, &NEAREST_VISIBLE_ADULT, MemValue::Who(Who::Entity(adult)), None);
@@ -117,7 +117,7 @@ mod tests {
     /// It keeps following the adult: the walk's target is the adult, so it aims where the adult now is.
     #[test]
     fn the_walk_follows_the_adult_as_it_moves() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &ADULT_ENTRY, true);
         let adult = creature(&mut h, 8.5, 0.5, false);
         set(&mut h.world, e, &NEAREST_VISIBLE_ADULT, MemValue::Who(Who::Entity(adult)), None);
@@ -131,7 +131,7 @@ mod tests {
     /// starts, so the refusals come from the distance and the state.
     #[test]
     fn it_does_not_start_too_close_too_far_or_when_grown_or_walking() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &ADULT_ENTRY, true);
         let near = creature(&mut h, 2.5, 0.5, false);
         set(&mut h.world, e, &NEAREST_VISIBLE_ADULT, MemValue::Who(Who::Entity(near)), None);
@@ -155,7 +155,7 @@ mod tests {
     /// The player variant follows the nearest visible player, not the adult.
     #[test]
     fn the_player_variant_follows_the_player() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &PLAYER_ENTRY, true);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 8.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         set(&mut h.world, e, &NEAREST_VISIBLE_PLAYER, MemValue::Who(Who::Player(1)), None);

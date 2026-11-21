@@ -83,7 +83,7 @@ mod tests {
 
     /// Two cows: `e` carries the reset and the anger, `foe` is the target `e` holds (alive, so the targeting keeps it).
     fn pair(seed: u64) -> (Herd, Entity, Entity) {
-        let mut h = Herd::with_slab(8, true, false);
+        let mut h = Herd::with_slab_awake(8, true, false);
         let mut sp: Species = *species();
         sp.goals = Config { entries: &ENTRIES };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, seed);

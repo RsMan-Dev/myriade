@@ -25,7 +25,7 @@ fn gap(a: Vec3, b: Vec3) -> f64 {
 /// the speed of each side at the ticks of `show`.
 fn run(ticks: u32, preroll: u32, boost: Option<(u32, u32)>, f: impl Fn(u32) -> (f32, f32, f32, bool, bool)) -> f64 {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 31_337);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
@@ -85,7 +85,7 @@ fn a_pig_without_the_stick_is_not_steered() {
     if skip("minecraft:pig") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
@@ -124,7 +124,7 @@ fn a_camel_carries_two_and_the_second_does_not_steer() {
     if skip("minecraft:camel") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(e);
     for id in 1..=3 {
@@ -152,7 +152,7 @@ fn a_skeleton_steers_its_spider_to_its_target() {
     if std::env::var_os("REGISTER_ALL").is_none() || !have_data() || wrong_species(&["minecraft:spider"]) {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = species_table().0;
     let sk = *table.iter().find(|s| s.name == "minecraft:skeleton").expect("skeleton");
     let spider = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);

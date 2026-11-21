@@ -78,7 +78,7 @@ fn main() {
         "rest" | "crowd" | "walk" => {
             // `crowd` and `walk`: every animal stays awake for good (`ActiveUntil` max) so the stroll goal runs without a player.
             spacing = envf("SPACING", if scene == "crowd" { 0.8 } else { 6.0 });
-            herd = Herd::new(n, spacing, true, parallel, 42);
+            herd = Herd::new_awake(n, spacing, true, parallel, 42);
             if scene != "rest" {
                 let all: Vec<bevy_ecs::entity::Entity> = herd.world.query_filtered::<bevy_ecs::entity::Entity, bevy_ecs::prelude::With<horizon_ecs_proto::cow::Stroll>>().iter(&herd.world).collect();
                 for e in all {
@@ -91,7 +91,7 @@ fn main() {
             spacing = envf("SPACING", 6.0);
             let side = (n as f64).sqrt().ceil() as i32;
             let half = ((f64::from(side) * spacing + 4.0) / 2.0) as i32 + 1;
-            herd = Herd::with_slab(half, true, false);
+            herd = Herd::with_slab_awake(half, true, false);
             if parallel {
                 herd.world.resource_mut::<horizon_ecs_proto::cow::Config>().parallel = true;
             }
@@ -114,7 +114,7 @@ fn main() {
         }
         "solicit" | "chase" => {
             spacing = envf("SPACING", if scene == "chase" { 6.0 } else { 2.0 });
-            herd = Herd::new(n, spacing, true, parallel, 42);
+            herd = Herd::new_awake(n, spacing, true, parallel, 42);
             let side = (n as f64).sqrt().ceil() * spacing;
             if scene == "chase" {
                 npl = envf("PLAYERS", n as f64) as usize;

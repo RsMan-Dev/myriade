@@ -197,7 +197,7 @@ mod tests {
     /// On a path through two closed doors, the step opens both and remembers both; with no path, nothing moves.
     #[test]
     fn it_opens_the_doors_of_its_step_and_remembers_them() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         at(&mut h, e, 1.5, 0.5);
         door(&mut h, [0, 1, 0], "minecraft:oak_door", false);
@@ -215,7 +215,7 @@ mod tests {
     /// The door passed through is closed once the entity is within 3 blocks of it on the next step; a far one is forgotten and stays open.
     #[test]
     fn it_closes_a_passed_door_within_three_blocks_and_forgets_a_far_one() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         at(&mut h, e, 1.5, 0.5);
         door(&mut h, [0, 1, 0], "minecraft:oak_door", false);
@@ -237,7 +237,7 @@ mod tests {
     /// A door outside the tag (iron) is never touched: the wooden door of the same step opens, the iron one stays closed.
     #[test]
     fn it_does_not_touch_a_door_outside_the_mob_tag() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         at(&mut h, e, 1.5, 0.5);
         door(&mut h, [0, 1, 0], "minecraft:oak_door", false);
@@ -253,7 +253,7 @@ mod tests {
     /// The same node asked twice sets a 20-tick cooldown; a different node then counts it down and is refused while it stays above 0.
     #[test]
     fn it_waits_its_cooldown_before_a_new_node() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         at(&mut h, e, 1.5, 0.5);
         door(&mut h, [0, 1, 0], "minecraft:oak_door", false);

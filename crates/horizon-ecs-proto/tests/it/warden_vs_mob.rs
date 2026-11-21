@@ -33,7 +33,7 @@ fn close(a: Option<i64>, b: Option<i64>, tol: i64) -> bool {
 /// One warden on each side, a player 6 blocks away, both sides' ticks in step.
 fn scene() -> (MobRef, Herd, Entity, usize) {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let i = r.add_id(horizon_core::geometry::Vec3::new(0.5, 1.0, 0.5), 7);

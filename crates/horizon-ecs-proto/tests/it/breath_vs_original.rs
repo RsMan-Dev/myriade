@@ -7,7 +7,7 @@ use horizon_ecs_proto::dragon::breath::{Cloud, CloudSpec, WAIT};
 
 #[test]
 fn a_breath_sleeps_for_its_wait_then_grows_and_goes_at_its_end() {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let spec = CloudSpec { radius: 5.0, grown: 8.0, duration: 200, amplifier: 0 };
     let e = breath_cloud::spawn(&mut h.world, spec, [0.5, 64.0, 0.5]);
 
@@ -36,7 +36,7 @@ fn a_breath_sleeps_for_its_wait_then_grows_and_goes_at_its_end() {
 fn no_cloud_means_no_visit_and_a_sleeping_one_none_either() {
     use horizon_ecs_proto::breath_cloud::CloudVisits;
     let visits = |h: &Herd| h.world.get_resource::<CloudVisits>().copied().unwrap_or_default();
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     for _ in 0..5 {
         h.tick();
     }

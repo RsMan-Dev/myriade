@@ -26,7 +26,7 @@ fn a_cube_holding_a_block_stands_still_and_moves_again_once_released() {
     if !is("minecraft:sulfur_cube") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 7);
     h.world.resource_mut::<Entered>().0.push(e);
     let start = h.world.get::<Pos>(e).unwrap().0;

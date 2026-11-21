@@ -46,7 +46,7 @@ fn a_creature_past_128_blocks_goes_at_once_and_one_within_does_not() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     let mw = h.world.resource::<Level>().mw.0;
     player(&mut h, 0.0, 0.0);
     h.tick();
@@ -82,7 +82,7 @@ fn the_idle_despawn_has_the_law_of_the_draw_of_each_tick() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     let mw = h.world.resource::<Level>().mw.0;
     player(&mut h, 0.0, 0.0);
     h.tick();
@@ -131,7 +131,7 @@ fn a_player_within_32_blocks_keeps_every_creature_and_the_count_starts_when_it_l
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     player(&mut h, 0.0, 0.0);
     h.tick();
     let z = zombie();
@@ -156,7 +156,7 @@ fn a_creature_a_walking_player_leaves_behind_goes_on_the_tick_the_mob_would_go()
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     let mw = h.world.resource::<Level>().mw.0;
     player(&mut h, 0.0, 0.0);
     h.tick();
@@ -186,7 +186,7 @@ fn leaving_the_ring_starts_the_count_with_the_law_of_the_mob() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     let mw = h.world.resource::<Level>().mw.0;
     player(&mut h, 0.0, 0.0);
     h.tick();
@@ -231,7 +231,7 @@ fn a_creature_that_picked_something_up_is_kept_and_not_counted() {
     }
     use horizon_ecs_proto::despawn::{Despawn, Persistent};
     use horizon_ecs_proto::spawning::SpawnCounts;
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     player(&mut h, 0.0, 0.0);
     h.tick();
     let z = zombie();

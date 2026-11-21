@@ -1601,7 +1601,7 @@ mod tests {
     }
     fn herd() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        Some(Herd::new(0, 6.0, true, false, 3))
+        Some(Herd::new_awake(0, 6.0, true, false, 3))
     }
     /// A cow that does nothing by itself: always active, no stroll and no look timer armed.
     fn cow(h: &mut Herd, x: f64, z: f64, seed: u64) -> Entity {
@@ -1947,7 +1947,7 @@ mod tests {
         if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
             return;
         }
-        let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
         let e = h.world.spawn(cow_bundle(-39.0, -47.0, 51)).id();
         h.world.get_mut::<Pos>(e).unwrap().0.y = 3.0;
         h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(-39.0, 3.0, -47.0), crate::cow::species().width, crate::cow::species().height);

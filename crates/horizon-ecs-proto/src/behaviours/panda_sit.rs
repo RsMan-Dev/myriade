@@ -142,7 +142,7 @@ mod tests {
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 7, &Params::DEFAULT)];
 
     fn cow(seed: u64) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(8, true, false);
+        let mut h = Herd::with_slab_awake(8, true, false);
         let mut sp: Species = *species();
         sp.goals = Config { entries: &ENTRIES };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, seed);

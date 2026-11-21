@@ -81,6 +81,7 @@ mod turtle_vs_mob;
 mod village_vs_mob;
 mod variants_vs_mob;
 mod zombie_vs_mob;
+mod zone_default;
 mod zone_vs_mob;
 mod illagers_vs_mob;
 mod raids_vs_mob;

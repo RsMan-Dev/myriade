@@ -68,7 +68,7 @@ fn the_rope_snaps_as_the_player_walks_away() {
     let n = 12;
     let spot = |k: usize| Vec3::new(-6.0 + 3.0 * (k % 5) as f64 + 0.5, 1.0, -6.0 + 4.0 * (k / 5) as f64 + 0.5);
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let mut es = Vec::new();
     for k in 0..n {
         let i = r.add_id(spot(k), 500 + 31 * k as u32);
@@ -133,7 +133,7 @@ fn three_llamas_make_a_caravan_as_in_the_original() {
         let pts = [Vec3::new(0.5, 1.0, 6.5), Vec3::new(3.5 + off * 0.2, 1.0, 2.5), Vec3::new(-4.5, 1.0, 1.5 + off * 0.3)];
         let player = Vec3::new(0.5, 1.0, 12.5);
         let mut r = MobRef::new(60, false);
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         let mut es = Vec::new();
         for (k, p) in pts.iter().enumerate() {
             let i = r.add_id(*p, 700 + 11 * k as u32 + 3 * trial as u32);
@@ -208,7 +208,7 @@ fn a_lead_is_a_component_with_a_directory_events_and_a_home() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 2.5, 0.5, 5);
     let o = spawn_species(&mut h.world, species(), 4.5, 0.5, 6);
     h.world.resource_mut::<Entered>().0.extend([e, o]);
@@ -244,7 +244,7 @@ fn the_lamas_of_a_trader_defend_it() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let trader_sp = species_named("minecraft:wandering_trader");
     let llama_sp = species_named("minecraft:trader_llama");
     let zombie_sp = species_named("minecraft:cow");
@@ -290,7 +290,7 @@ fn probe_the_caravan_gaps() {
     let off = 1.5 * 7.0;
     let pts = [Vec3::new(0.5, 1.0, 6.5), Vec3::new(3.5 + off * 0.2, 1.0, 2.5), Vec3::new(-4.5, 1.0, 1.5 + off * 0.3)];
     let player = Vec3::new(0.5, 1.0, 12.5);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let mut es = Vec::new();
     for (k, p) in pts.iter().enumerate() {
         let e = spawn_species(&mut h.world, species(), p.x, p.z, 21 + k as u64 + 49);

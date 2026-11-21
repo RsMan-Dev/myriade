@@ -351,7 +351,7 @@ mod tests {
         let types: &'static [&'static str] = Box::leak(vec![name].into_boxed_slice());
         for (max_dy, expect_near) in [(None, true), (Some(2.0), false)] {
             let p: &'static Params = Box::leak(Box::new(Params { types, must_see: false, max_dy, range: Some(16.0), ..Params::DEFAULT }));
-            let mut h = Herd::with_slab(30, false, false);
+            let mut h = Herd::with_slab_awake(30, false, false);
             let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
             let mut sp = *species();
             sp.goals = Config { entries };

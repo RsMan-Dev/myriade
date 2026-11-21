@@ -18,7 +18,7 @@ fn check(name: &str, place: impl Fn(&mut Herd, i32, i32, i32), remove: impl Fn(&
         eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
         return;
     }
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let (x, y, z) = (3, 4, 3);
     // Warm: the masks of the section are built and answer "free".
     assert!(free(&h, x, y, z), "{name}: the cell starts free");

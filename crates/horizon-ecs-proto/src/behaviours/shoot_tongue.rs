@@ -105,8 +105,12 @@ fn view(w: &World, o: Entity) -> Option<View> {
 }
 /// `can_eat`: a slime or magma cube of size 1 that lives.
 fn edible(w: &World, who: Entity, p: &Params) -> bool {
+    // The size first: only the cubes carry one, so nearly every other creature is refused by one lookup.
+    if !w.get::<Size>(who).is_some_and(|s| s.0 == 1) {
+        return false;
+    }
     let Some(i) = view(w, who) else { return false };
-    w.get::<Size>(who).is_some_and(|s| s.0 == 1) && p.prey.iter().any(|n| crate::species::registry().id(n) == Some(usize::from(i.species)))
+    p.prey.iter().any(|n| crate::species::registry().id(n) == Some(usize::from(i.species)))
 }
 /// `FrogAttackablesSensor`: the nearest edible prey within the detection distance and in sight, but those left alone.
 fn scan(w: &World, e: Entity) -> Option<Entity> {

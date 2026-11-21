@@ -181,7 +181,7 @@ mod tests {
     /// A dolphin with this goal alone, in a pond, with its treasure imposed `dist` blocks away on x; the air is full.
     fn pond(dist: i32) -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         h.fill_water(8);
         let table = h.world.resource::<SpeciesTable>().0.clone();

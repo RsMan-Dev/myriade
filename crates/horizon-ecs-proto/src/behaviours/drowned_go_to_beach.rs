@@ -178,7 +178,7 @@ mod tests {
     /// `sea - 3` (the depth the goal needs). The beach: stone at row `sea - 4` over x 6..=7, z -1..=1, with air above it.
     fn world() -> Option<(Herd, Entity, i32)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:drowned").unwrap();

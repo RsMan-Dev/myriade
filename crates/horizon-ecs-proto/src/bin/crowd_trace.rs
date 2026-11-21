@@ -88,7 +88,7 @@ fn main() {
         if threads > 0 {
             bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
         }
-        let mut herd = Herd::with_hazards(n, spacing, true, threads > 0, 42, false);
+        let mut herd = Herd::with_hazards_awake(n, spacing, true, threads > 0, 42, false);
         for i in 0..n {
             let e = herd.world.query_filtered::<bevy_ecs::prelude::Entity, bevy_ecs::prelude::With<ActiveUntil>>().iter(&herd.world).nth(i).unwrap();
             let p = at(i);

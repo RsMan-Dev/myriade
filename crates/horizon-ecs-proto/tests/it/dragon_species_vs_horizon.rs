@@ -16,7 +16,7 @@ fn a_dragon_is_born_hovering_with_its_type_health() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the dragon's species");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);

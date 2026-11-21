@@ -17,7 +17,7 @@ struct Scene {
     ecs: Vec<Entity>,
 }
 fn scene() -> Scene {
-    let h = Herd::with_slab(16, true, false);
+    let h = Herd::with_slab_awake(16, true, false);
     let mw = h.world.resource::<Level>().mw.0;
     Scene { h, o: Original { mw, items: Vec::new() }, ecs: Vec::new() }
 }

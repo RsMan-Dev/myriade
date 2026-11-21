@@ -28,7 +28,7 @@ fn the_gossip_of_a_player_decays_a_day() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = villager_at(&mut h, (0.5, 0.5), 7);
     h.tick(); // the brain exists after its first tick: the memories need it
     eg::add(&mut h.world, e, 7, eg::Kind::MinorNegative, 25);
@@ -46,7 +46,7 @@ fn five_villagers_who_slept_call_an_iron_golem_on_a_column() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let ids: Vec<Entity> = (0..5).map(|k| villager_at(&mut h, (2.0 * k as f64, 0.5), k as u64 + 1)).collect();
     for &e in &ids {
         h.world.entity_mut(e).insert(summon_defender::LastSlept(0));
@@ -73,7 +73,7 @@ fn a_birth_comes_at_its_tick_and_the_parents_rest() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let a = villager_at(&mut h, (0.5, 0.5), 11);
     let b = villager_at(&mut h, (1.5, 0.5), 12);
     for &p in &[a, b] {

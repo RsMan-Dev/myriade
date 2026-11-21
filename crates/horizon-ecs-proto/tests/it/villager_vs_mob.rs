@@ -60,7 +60,7 @@ fn mob_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     out
 }
 fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
     let e = spawn_species(&mut h.world, &sp, SPAWN.0, SPAWN.1, 1);

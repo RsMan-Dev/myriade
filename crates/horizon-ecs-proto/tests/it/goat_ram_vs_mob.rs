@@ -37,7 +37,7 @@ fn mob_run() -> Run {
 }
 
 fn ecs_run() -> Run {
-    let mut h = Herd::with_slab(60, false, false);
+    let mut h = Herd::with_slab_awake(60, false, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = |n: &str| table.iter().position(|s| s.name == n).unwrap();
     let g = spawn_species(&mut h.world, &table[sp("minecraft:goat")], 0.5, 0.5, 1000);

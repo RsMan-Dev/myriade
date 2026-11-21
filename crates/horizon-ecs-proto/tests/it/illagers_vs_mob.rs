@@ -46,7 +46,7 @@ fn mob_shots(id: u32, ticks: usize) -> Vec<usize> {
     shots
 }
 fn ecs_shots(seed: u64, ticks: usize) -> Vec<usize> {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     h.set_online(&[(0.5, 6.5)]);
     let mut p = named(&h, "minecraft:pillager");
@@ -128,7 +128,7 @@ fn a_vindicator_strikes_as_the_mob_s_does() {
         r.mobs[c].health = full;
         r.mobs[c].position = Vec3::new(1.7, 1.0, 0.5);
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     let v = named(&h, "minecraft:vindicator");
     let mut cow = named(&h, "minecraft:cow");

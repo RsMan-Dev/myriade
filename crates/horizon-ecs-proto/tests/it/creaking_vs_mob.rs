@@ -50,7 +50,7 @@ fn mob_run(j: usize, start: Vec3, player: Vec3, ticks: i64, looks: &dyn Fn(i64) 
     tr
 }
 fn ecs_run(j: usize, start: Vec3, player: Vec3, ticks: i64, looks: &dyn Fn(i64) -> bool) -> Trace {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:creaking").unwrap();
     let e = spawn_species(&mut h.world, &sp, start.x, start.z, ((j as u64) + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));

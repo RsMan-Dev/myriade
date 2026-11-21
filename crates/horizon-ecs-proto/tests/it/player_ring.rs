@@ -16,7 +16,7 @@ fn the_ring_of_32_blocks_is_kept_by_events_for_walking_jumping_coming_and_going_
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(100, true, false);
+    let mut h = Herd::with_slab_awake(100, true, false);
     let at: Vec<(f64, f64)> = (0..600).map(|i| (-95.0 + f64::from(i % 30) * 6.3 + f64::from(i % 7) * 0.31, -95.0 + f64::from(i / 30) * 9.1 + f64::from(i % 5) * 0.27)).collect();
     let all = h.populate(&at, 11);
     let mut seed = 0x1234_5678_u64;

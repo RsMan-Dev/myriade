@@ -135,7 +135,7 @@ mod tests {
     /// A zombie with this goal alone, restricted to a block at the origin of the slab with a radius of 6; `None` without the resources.
     fn world(look: bool, dx: f64) -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, true, false);
+        let mut h = Herd::with_slab_awake(200, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:zombie").unwrap();

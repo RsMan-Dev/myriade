@@ -52,7 +52,7 @@ fn ecs_run(villagers: bool) -> Run {
     ecs_seed(villagers, 21)
 }
 fn ecs_seed(villagers: bool, seed: u64) -> Run {
-    let mut h = Herd::with_slab(70, true, false);
+    let mut h = Herd::with_slab_awake(70, true, false);
     for (p, n) in POINTS {
         h.set_block(p[0], p[1], p[2], n);
     }

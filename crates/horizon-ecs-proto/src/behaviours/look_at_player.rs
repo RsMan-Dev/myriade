@@ -229,12 +229,12 @@ mod tests {
             return;
         }
         // The process species is set by the first world built.
-        drop(Herd::with_slab(60, true, false));
+        drop(Herd::with_slab_awake(60, true, false));
         let own: &'static [&'static str] = Box::leak(vec![species().name].into_boxed_slice());
         let others: &'static Params = Box::leak(Box::new(Params { species: own, period: 1, ..Params::DEFAULT }));
         static PLAYERS: Params = Params { period: 1, ..Params::DEFAULT };
         for (p, who_expected) in [(others, true), (&PLAYERS, false)] {
-            let mut h = Herd::with_slab(60, true, false);
+            let mut h = Herd::with_slab_awake(60, true, false);
             let mut sp = *species();
             sp.goals = Config { entries: Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice()) };
             let a = spawn_species(&mut h.world, &sp, 0.5, 0.5, 80);

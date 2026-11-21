@@ -107,7 +107,7 @@ mod tests {
     /// step it is tempted in: the tick of the start runs).
     #[test]
     fn it_looks_at_a_tempting_player_and_walks_to_him() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 8.5);
         tempt(&mut h, e);
@@ -119,7 +119,7 @@ mod tests {
     /// Without a temptation, or with a cooldown, it does not start; without the cooldown, the same temptation starts it.
     #[test]
     fn it_does_not_start_without_a_temptation_or_during_a_cooldown() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 8.5);
         step(&mut h, e);
@@ -136,7 +136,7 @@ mod tests {
     /// Near him (2.5 blocks, the tadpole's close) the walk target is cleared while the look stays; far again, it is set.
     #[test]
     fn it_stops_walking_when_close_and_resumes_when_he_moves_away() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 8.5);
         tempt(&mut h, e);
@@ -154,7 +154,7 @@ mod tests {
     /// When the temptation is gone, the behaviour stops: the cooldown is 100 ticks, the walk and the look are cleared.
     #[test]
     fn it_stops_when_the_temptation_ends_and_starts_the_cooldown() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 8.5);
         tempt(&mut h, e);

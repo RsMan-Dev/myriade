@@ -44,7 +44,7 @@ fn mob_blast(d: impl Fn(usize) -> f64, charged: bool, ticks: usize) -> Option<(u
 fn ecs_blast(d: impl Fn(usize) -> f64, charged: bool, ticks: usize) -> Option<(usize, f32)> {
     let mut sp = *species();
     sp.goals = horizon_ecs_proto::species::Config { entries: Box::leak(Box::new([Entry::new(&swell::MODULE, 2, &swell::Params::DEFAULT)])) };
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     set_lazy_look(&mut h.world, false);
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 77);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
@@ -101,7 +101,7 @@ fn the_blast_hurts_by_the_distance_and_pushes_away() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let cows: Vec<Entity> = [1.0_f64, 3.0, 5.0].iter().enumerate().map(|(k, d)| ecs_cow(&mut h, 20.5 + d, 1.0, 20.5 + 3.0 * k as f64 * 0.0, 5 + k as u64)).collect();
     for _ in 0..5 {
         h.tick();
@@ -134,7 +134,7 @@ fn the_blast_breaks_a_ball_of_soft_blocks_and_spares_the_hard_ones() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let c = (20, 6, 20);
     for x in -5..=5 {
         for y in -5..=5 {
@@ -165,7 +165,7 @@ fn primed_tnt_falls_explodes_on_the_fuse_and_breaks_blocks_whatever_mob_griefing
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let mut level = *h.world.resource::<Level>();
     level.mw = Mw(Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_griefing: false, ..level.mw.0.clone() })));
     *h.world.resource_mut::<Level>() = level;

@@ -22,7 +22,7 @@ fn a_dry_happy_ghast_heals_one_health_every_600_ticks() {
     if !is("minecraft:happy_ghast") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 7);
     h.world.get_mut::<Health>(e).unwrap().0 = 10.0;
 
@@ -49,7 +49,7 @@ fn a_happy_ghast_with_a_player_on_it_holds_still() {
     if !is("minecraft:happy_ghast") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 7);
     h.world.entity_mut(e).insert(horizon_ecs_proto::behaviours::still_under_riders::Above);
     h.world.get_mut::<Vel>(e).unwrap().0 = horizon_core::geometry::Vec3::new(0.2, 0.0, 0.0);

@@ -31,7 +31,7 @@ fn fence_gone(_: &World, _: [i32; 3]) -> bool {
 
 /// A slab with the support held: a cushion sits on the block at (0, 60, 0); a knot is tied to the fence in that cell.
 fn scene() -> Herd {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     cushion::insert_resources(&mut h.world);
     leash_knot::insert_resources(&mut h.world);
     h.world.insert_resource(CushionHost { can_place, survives: held, hazard: no_hazard });

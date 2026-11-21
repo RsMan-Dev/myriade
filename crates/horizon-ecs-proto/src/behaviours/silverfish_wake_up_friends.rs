@@ -147,7 +147,7 @@ mod tests {
         false
     }
     fn herd_with(entries: Vec<Entry>) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(20, true, false);
+        let mut h = Herd::with_slab_awake(20, true, false);
         set_lazy_look(&mut h.world, false);
         let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:cow").unwrap();
         sp.goals = Config { entries: Box::leak(entries.into_boxed_slice()) };

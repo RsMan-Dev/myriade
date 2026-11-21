@@ -40,7 +40,7 @@ fn a_falling_block_lands_on_the_reference_tick_and_is_placed() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let cell = [0, top + 10, 0];
     let sand = stone(&h);
@@ -68,7 +68,7 @@ fn a_landed_block_leaves_nothing_awake() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let sand = stone(&h);
     fall(&mut h.world, [0, top + 3, 0], sand, None);
@@ -84,7 +84,7 @@ fn a_block_still_in_the_air_after_600_ticks_is_removed_and_drops_its_item() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let sand = stone(&h);
     let item = horizon_client_lib::items::ItemStack::new("minecraft:sand", 1);
@@ -109,7 +109,7 @@ fn concrete_powder_landing_in_water_sets_as_concrete() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     h.set_block(0, top, 0, "minecraft:water");
     h.tick();
@@ -133,7 +133,7 @@ fn a_falling_block_follows_horizons_own_golden_tick_by_tick() {
         return;
     }
     let golden = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/falling_free_fall.txt")).expect("the golden of Horizon's falling block");
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let sand = stone(&h);
     let e = fall(&mut h.world, [0, top + 9, 0], sand, None);

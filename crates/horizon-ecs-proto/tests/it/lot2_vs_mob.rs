@@ -79,7 +79,7 @@ fn mean_of(v: &[Option<usize>]) -> (usize, f64) {
 fn enderman_first(take: bool, ticks: usize, batch: usize) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let n = 36;
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let kind = mob_kind("minecraft:enderman");
     let dirt = r.w.registry.default_state("minecraft:dirt").unwrap();
     let entries: &'static [Entry] = leak([
@@ -218,7 +218,7 @@ fn neutral_anger_duration_after_the_target_is_lost() {
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&neutral_anger::MODULE, 200, &neutral_anger::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let es: Vec<Entity> = (0..n).map(|j| ecs_with(&mut h, entries, near(j).x, near(j).z, 300 + j as u64, u64::from(far_id(j)))).collect();
     h.tick();
@@ -286,7 +286,7 @@ fn panda_sit_first_episode() {
         Entry::new(&panda_sit::MODULE, 7, &panda_sit::Params::DEFAULT),
         Entry::new(&stroll::MODULE, 14, &stroll::Params::DEFAULT),
     ]);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let wheat = item_id("minecraft:wheat");
     let es: Vec<Entity> = (0..n)
         .map(|j| {
@@ -332,7 +332,7 @@ fn snow_golem_shot_cadence_and_aim() {
     let i = mob_add(&mut r, kind, at, 0);
     r.mobs[i].ai.target = Some(MWho::Player);
     let eye = r.mobs[i].eye_y() - r.mobs[i].position.y;
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let entries: &'static [Entry] = leak([Entry::new(&ranged_attack::MODULE, 1, &ranged_attack::Params::DEFAULT)]);
     let e = ecs_with(&mut h, entries, at.x, at.z, 77, u64::from(far_id(0)));
     h.world.entity_mut(e).insert(Eye(eye));
@@ -372,7 +372,7 @@ fn snow_golem_shot_cadence_and_aim() {
 /// "the start attempt is lost, `start_goal` meets the goal still running"). Immortal cow body, a pool of lava at 5 blocks.
 fn strider_scene(exit_after: usize) -> (Option<usize>, bool) {
     let entries: &'static [Entry] = leak([Entry::new(&strider_go_to_lava::MODULE, 4, &strider_go_to_lava::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 11, 5);
     h.world.entity_mut(e).insert(Health(1.0e9));
     for x in 4..=7 {
@@ -429,7 +429,7 @@ fn silverfish_merge_law() {
     for batch in 0..6 {
         let n = 36;
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let kind = mob_kind("minecraft:silverfish");
         let entries: &'static [Entry] = leak([Entry::new(&silverfish_merge::MODULE, 5, &silverfish_merge::Params::DEFAULT)]);
         let (mut ids, mut es) = (Vec::new(), Vec::new());
@@ -485,7 +485,7 @@ fn leap_at_target_law() {
     for batch in 0..5 {
         let n = 18;
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let entries: &'static [Entry] = leak([Entry::new(&leap_at_target::MODULE, 1, &leap_at_target::Params::DEFAULT)]);
         let mut hunters = Vec::new();
         let mut es = Vec::new();
@@ -580,7 +580,7 @@ fn ghast_look_yaw() {
         r.mobs[t].ai.goals.clear();
         let tid = r.mobs[t].id;
         r.mobs[g].ai.target = Some(MWho::Mob(tid));
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         let entries: &'static [Entry] = leak([Entry::new(&ghast_look::MODULE, 7, &ghast_look::Params::DEFAULT)]);
         let e = ecs_with(&mut h, entries, 0.5, 0.5, 21, 3);
         let mut sp = *species();
@@ -610,7 +610,7 @@ fn brute_stroll_home_distances() {
     use horizon_ecs_proto::behaviours::brute_stroll_home as bh;
     let mut r = MobRef::new(40, false);
     let entries: &'static [Entry] = leak([Entry::new(&bh::MODULE, 5, &bh::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let dists = [5.0, 30.0];
     let mut mob = Vec::new();
     let mut ecs = Vec::new();
@@ -650,7 +650,7 @@ fn freeze_reask_cost_wall_time() {
     }
     let run = |with: bool| -> f64 {
         let entries: &'static [Entry] = if with { leak([Entry::new(&freeze_when_looked_at::MODULE, 1, &freeze_when_looked_at::Params::DEFAULT)]) } else { &[] };
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         let es: Vec<Entity> = (0..1500).map(|j| ecs_with(&mut h, entries, -6.0 + 0.45 * (j % 40) as f64, -8.0 + 0.45 * (j / 40) as f64, 2000 + j as u64, j as u64)).collect();
         h.tick();
@@ -715,7 +715,7 @@ fn freeze_when_looked_at_cone_at_two_distances() {
             let mut view = player_view(player, None);
             view.look = look;
             let entries: &'static [Entry] = leak([Entry::new(&freeze_when_looked_at::MODULE, 1, &freeze_when_looked_at::Params::DEFAULT)]);
-            let mut h = Herd::with_slab(40, false, false);
+            let mut h = Herd::with_slab_awake(40, false, false);
             let e = ecs_with(&mut h, entries, 0.5, 0.5, 31, 3);
             h.world.entity_mut(e).insert(Eye(eye_h));
             h.world.resource_mut::<Online>().set(Player { id: 1, x: player.x, y: player.y, z: player.z, main: 0, off: 0, ..Default::default() });
@@ -754,7 +754,7 @@ fn look_for_player_delay_and_stare() {
         let (mut mob_t, mut ecs_t) = (Vec::new(), Vec::new());
         for batch in 0..4 {
             let mut r = MobRef::new(40, false);
-            let mut h = Herd::with_slab(40, false, false);
+            let mut h = Herd::with_slab_awake(40, false, false);
             let entries: &'static [Entry] = leak([Entry::new(&look_for_player::MODULE, 1, &look_for_player::Params::DEFAULT)]);
             let (mut ids, mut es) = (Vec::new(), Vec::new());
             // Eight endermen on a row along z, each 8 blocks from the player's x, the player stays one: same gaze for all.
@@ -827,7 +827,7 @@ fn fox_sleep_delay_and_wake() {
             let w = r.w as *const horizon_client_lib::mobs::MobWorld as *mut horizon_client_lib::mobs::MobWorld;
             (*w).daylight = true;
         }
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         h.world.insert_resource(horizon_ecs_proto::hostile::Daylight(true));
         let entries: &'static [Entry] = leak([Entry::new(&fox_sleep::MODULE, 7, &fox_sleep::Params::DEFAULT)]);
         let (mut ids, mut fe) = (Vec::new(), Vec::new());
@@ -907,7 +907,7 @@ fn fox_eat_berries_first_pick() {
     for batch in 0..4 {
         let n = 16;
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let entries: &'static [Entry] = leak([Entry::new(&fox_eat_berries::MODULE, 10, &fox_eat_berries::Params::DEFAULT)]);
         let (mut ids, mut es) = (Vec::new(), Vec::new());
         for j in 0..n {
@@ -950,7 +950,7 @@ fn attack_turtle_egg_first_break() {
     for batch in 0..4 {
         let n = 16;
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let entries: &'static [Entry] = leak([Entry::new(&attack_turtle_egg::MODULE, 4, &attack_turtle_egg::Params::DEFAULT)]);
         let (mut ids, mut es, mut eggs) = (Vec::new(), Vec::new(), Vec::new());
         for j in 0..n {
@@ -1009,7 +1009,7 @@ fn move_towards_target_start_and_range() {
         for batch in 0..3 {
             let n = 12;
             let mut r = MobRef::new(40, false);
-            let mut h = Herd::with_slab(40, false, false);
+            let mut h = Herd::with_slab_awake(40, false, false);
             let entries: &'static [Entry] = leak([Entry::new(&move_towards_target::MODULE, 2, &move_towards_target::Params::DEFAULT)]);
             let (mut gs, mut es, mut start) = (Vec::new(), Vec::new(), Vec::new());
             for j in 0..n {

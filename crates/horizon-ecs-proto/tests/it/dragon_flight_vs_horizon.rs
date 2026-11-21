@@ -41,7 +41,7 @@ fn ours() -> Vec<String> {
     }
 
     // The Holding dragon from (0.5, 80, 0.5), seed 5, 300 ticks of the real schedule: position and yaw bits and the phase, per tick.
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     h.world.insert_resource(FlightNodes::build(&LAYOUT, |_, _| GROUND));
     crate::dragon_support::lay_ground(&mut h);
     let table = h.world.resource::<SpeciesTable>().0.clone();

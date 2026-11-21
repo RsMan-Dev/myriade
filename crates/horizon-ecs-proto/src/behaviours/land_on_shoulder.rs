@@ -163,7 +163,7 @@ mod tests {
 
     /// A world with `n` creatures of the process species whose only goal is this one, tame to player 1, who stands `dx` blocks away.
     fn world(n: usize, dx: f64) -> (Herd, Vec<Entity>) {
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         let mut sp = *species();
         let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 3, &Params::DEFAULT)].into_boxed_slice());
         sp.goals = Config { entries };

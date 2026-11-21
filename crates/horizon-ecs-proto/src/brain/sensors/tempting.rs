@@ -99,7 +99,7 @@ mod tests {
     /// A player holding the food at 8 blocks tempts; the same player at 12 blocks, or with nothing in hand, does not.
     #[test]
     fn a_player_with_food_within_range_tempts() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 1, 8.5, carrot());
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });
@@ -115,7 +115,7 @@ mod tests {
     /// An entity without the species' data (no `equip`) has no tempting player, whatever is held.
     #[test]
     fn without_the_species_data_nobody_tempts() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         player(&mut h, 1, 4.5, carrot());
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });

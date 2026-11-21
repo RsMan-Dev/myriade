@@ -75,7 +75,7 @@ fn mob_run(j: usize, start: Vec3, _player: Vec3) -> Trace {
     tr
 }
 fn ecs_run(j: usize, start: Vec3, _player: Vec3) -> Trace {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:breeze").unwrap();
     let e = spawn_species(&mut h.world, &sp, start.x, start.z, ((j as u64) + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
@@ -170,7 +170,7 @@ fn a_wind_burst_pushes_a_creature_away_without_hurting_it() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let sp = h.world.resource::<SpeciesTable>().0[0];
     let e = spawn_species(&mut h.world, &sp, 2.5, 0.5, 11);
     h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;

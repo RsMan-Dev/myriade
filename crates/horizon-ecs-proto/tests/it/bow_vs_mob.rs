@@ -25,7 +25,7 @@ struct Scene {
 /// A skeleton with a bow and the player as its target on both sides, the player at `player`.
 fn scene(skeleton: Vec3, player: Vec3) -> Scene {
     let mut r = MobRef::new(40, false);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let mob = r.add(skeleton);
     r.mobs[mob].extra.set_main_hand(Some("minecraft:bow".into()));
     r.mobs[mob].ai.target = Some(MWho::Player);

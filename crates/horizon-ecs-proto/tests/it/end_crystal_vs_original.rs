@@ -30,7 +30,7 @@ fn fire_under_a_crystal_comes_on_the_vanilla_ticks() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     h.world.insert_resource(EndFire(true));
     h.set_block(CELL[0], CELL[1], CELL[2], "minecraft:air");
     h.tick();
@@ -58,7 +58,7 @@ fn blows_are_refused_or_remove_the_crystal_on_their_tick() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     h.world.insert_resource(EndFire(true));
     let at = Vec3::new(0.5, 10.0, 0.5);
     let e = spawn(&mut h.world, at, true);

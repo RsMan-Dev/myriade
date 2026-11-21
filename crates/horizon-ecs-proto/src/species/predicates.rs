@@ -220,7 +220,7 @@ mod dark_tests {
         if crate::cow::skip_unless_walker("dark_enough") {
             return;
         }
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 1);
         for day in [true, false] {
             h.set_daylight(day);

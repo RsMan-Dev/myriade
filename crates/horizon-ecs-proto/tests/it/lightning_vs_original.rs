@@ -29,7 +29,7 @@ impl BoltLevel for Stub {
 }
 
 fn scene() -> Herd {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     h.world.insert_resource(Strikes(Some(Box::new(Stub))));
     h
 }

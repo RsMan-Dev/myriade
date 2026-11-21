@@ -171,7 +171,7 @@ fn cactus_fire_and_lava_hurt_as_a_mob_does() {
     let spots = [("lava", -47.0, -47.0), ("fire", -47.0, -39.0), ("cactus", -39.0, -39.0)];
     for rest in [true, false] {
         let mut r = Ref::new(56, true);
-        let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+        let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
         let ids: Vec<(usize, Entity)> = spots
             .iter()
             .map(|s| {
@@ -210,7 +210,7 @@ fn mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len().max(1) as f64
 }
 fn flat_pair() -> (Ref, Herd) {
-    (Ref::new(20, false), Herd::new(0, 6.0, true, false, 3))
+    (Ref::new(20, false), Herd::new_awake(0, 6.0, true, false, 3))
 }
 fn xz(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
@@ -506,7 +506,7 @@ fn a_cow_in_a_pond_floats_as_a_mob_does() {
         return;
     }
     let mut r = Ref::new(56, true);
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let (i, e) = (r.add(Vec3::new(-39.0, 3.0, -47.0)), ecs_cow(&mut h, -39.0, 3.0, -47.0, 77));
     let (mut my, mut cy, mut n) = (0.0, 0.0, 0.0);
     for t in 1..=400 {
@@ -567,7 +567,7 @@ fn a_burning_cow_runs_to_the_water_as_a_mob_does() {
         return;
     }
     let mut r = Ref::new(56, true);
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let (x, z) = (-39.5, -42.5);
     let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
     for _ in 0..3 {
@@ -628,7 +628,7 @@ fn trace_cactus() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let e = ecs_cow(&mut h, -39.0, 1.0, -39.0, 77);
     if std::env::var_os("FRESH").is_some() {
         h.world.get_mut::<Vel>(e).unwrap().0.y = 0.0;
@@ -654,7 +654,7 @@ fn trace_burning() {
         return;
     }
     let mut r = Ref::new(56, true);
-    let mut h = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut h = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let (x, z) = (-39.5, -42.5);
     let (i, e) = (r.add(Vec3::new(x, 1.0, z)), ecs_cow(&mut h, x, 1.0, z, 77));
     for _ in 0..3 {

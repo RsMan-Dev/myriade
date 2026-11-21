@@ -208,7 +208,7 @@ mod tests {
     }
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         // No silverfish species exists in the ECS yet: the module is species-agnostic, so a zombie carries it.

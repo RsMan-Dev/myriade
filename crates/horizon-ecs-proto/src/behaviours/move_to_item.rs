@@ -180,7 +180,7 @@ mod tests {
     }
     /// A dolphin in a pool of water (x, z in -8..=8, rows `sea-3..=sea+1`).
     fn world() -> (Herd, Entity, i32) {
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:dolphin").unwrap();

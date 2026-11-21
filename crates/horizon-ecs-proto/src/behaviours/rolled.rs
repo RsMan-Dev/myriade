@@ -67,7 +67,7 @@ mod tests {
     /// Un bébé et un adulte à 7 blocs (distance dans la portée du suivi).
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:cow").unwrap();
         sp.goals = config();

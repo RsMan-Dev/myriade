@@ -11,7 +11,7 @@ use horizon_ecs_proto::{cow::*, goals::set_lazy_look, poi::PoiRegistry, raids};
 pub const POINTS: [([i32; 3], &str); 4] = [([0, 1, 0], "minecraft:bell"), ([4, 1, 0], "minecraft:composter"), ([-4, 1, 0], "minecraft:lectern"), ([0, 1, 6], "minecraft:blast_furnace")];
 
 pub fn village_herd(half: i32) -> Herd {
-    let mut h = Herd::with_slab(half, false, false);
+    let mut h = Herd::with_slab_awake(half, false, false);
     set_lazy_look(&mut h.world, false);
     for (p, n) in POINTS {
         h.set_block(p[0], p[1], p[2], n);

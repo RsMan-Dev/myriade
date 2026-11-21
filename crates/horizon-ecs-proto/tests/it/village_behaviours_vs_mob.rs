@@ -35,7 +35,7 @@ fn player_x(s: &Scene, t: usize) -> f64 {
 }
 /// The first tick the golem holds the player as target, and the asks made by the ecs.
 fn ecs_run(s: &Scene, ticks: usize) -> (Option<usize>, u64) {
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.tick();
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|x| x.name == "minecraft:villager").unwrap();
     let g = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
@@ -141,7 +141,7 @@ fn pen(mut set: impl FnMut(i32, i32)) {
 /// `offer_flower`: the first start is a draw of one in 8000 asked every other tick (the `Mob` draws each ask, the ecs a geometric deadline: not the
 /// same stream, so the law over seeds), and the poppy is held out for the same number of ticks.
 fn flower_ecs(seed: u64, limit: usize) -> Option<(usize, usize)> {
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.tick();
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|x| x.name == "minecraft:villager").unwrap();
     h.world.insert_resource(horizon_ecs_proto::hostile::Daylight(true));
@@ -212,7 +212,7 @@ fn raider_state(m: &mut horizon_client_lib::mobs::Mob, f: impl FnOnce(&mut horiz
 /// (1 in 50, observable as a sound) and the jump (1 in 25) are counted over the same span; the Mob's jump draw follows its cheer draw, so the cheer rate checks the cadence.
 fn celebrate_ecs(ticks: usize) -> (Option<usize>, u64) {
     use horizon_ecs_proto::{behaviours::celebration::Jumps, raids};
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.world.init_resource::<Jumps>();
     h.tick();
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 31);
@@ -404,7 +404,7 @@ const PATROL_TARGET: [i32; 3] = [38, 1, 0];
 /// reached by `ticks` (the hops' draws are fixed by the target, not drawn).
 fn patrol_ecs(ticks: usize) -> (Option<usize>, f64, Vec<(usize, [i32; 3])>) {
     use horizon_ecs_proto::raids::{Patrol, Raider};
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     h.tick();
     let es: Vec<Entity> = (0..3).map(|i| spawn_species(&mut h.world, species(), -20.0 - i as f64 * 7.0, 0.5, 31 + i as u64)).collect();
     for &e in &es {

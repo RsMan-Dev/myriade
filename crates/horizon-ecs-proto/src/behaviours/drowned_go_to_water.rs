@@ -133,7 +133,7 @@ mod tests {
     }
     /// A drowned on a stone floor at `sea`, a pool of water (x 3..=8, rows `sea-2..=sea+1`) beside it.
     fn world(day: bool) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:drowned").unwrap();

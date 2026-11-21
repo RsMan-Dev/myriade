@@ -16,7 +16,7 @@ fn an_item_below_the_world_is_removed_when_the_original_is() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let mw = h.world.resource::<Level>().mw.0;
     let at = Vec3::new(0.5, -120.0, 0.5);
     let mut o = Original { mw, items: vec![original(1, ItemStack::new("minecraft:stick", 1), at, Vec3::ZERO, 0)] };

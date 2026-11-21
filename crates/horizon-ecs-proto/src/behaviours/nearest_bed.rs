@@ -110,7 +110,7 @@ mod tests {
             eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
             return;
         }
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         h.set_block_state(6, 1, 0, "minecraft:red_bed", &[("part", "head")]);
         h.tick();
         let table = h.world.resource::<SpeciesTable>().0.clone();

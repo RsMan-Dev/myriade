@@ -51,7 +51,7 @@ fn main() {
     println!("process before the world: rss {:.1} MB, live {:.1} MB", mb(r0 as usize), mb(l0));
     println!("terrain (build_level, leaked): rss +{:.1} MB, allocator +{:.1} MB (chunks, collision binding, light, facts)", mb((r1 - r0) as usize), mb(l1 - l0));
     let l2 = LIVE.load(Relaxed);
-    let mut herd = Herd::with_slab(half, true, false);
+    let mut herd = Herd::with_slab_awake(half, true, false);
     let (r3, l3) = (rss(), LIVE.load(Relaxed));
     println!("empty Herd on its own terrain (second terrain included): allocator +{:.1} MB, rss {:.1} MB", mb(l3 - l2), mb(r3 as usize));
     let base_live = LIVE.load(Relaxed);

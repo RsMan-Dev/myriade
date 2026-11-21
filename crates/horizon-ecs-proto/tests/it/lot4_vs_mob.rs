@@ -126,7 +126,7 @@ fn reach_cat_bed_and_turtle_egg() {
     // Cat: on a 2-block platform (the search starts 2 rows down then 3 up: the row of the cat's own ground is never visited), a bed on the ground 3 blocks away.
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let i = mob_add(&mut r, mob_kind("minecraft:cat"), Vec3::new(0.5, 3.0, 0.5), j + 1);
         mobs::tame::set_tame(&mut r.mobs[i], true);
@@ -176,7 +176,7 @@ fn reach_cat_bed_and_turtle_egg() {
     // Turtle: an egg, sand 6 to 14 blocks away.
     for j in 0..12 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let i = mob_add(&mut r, mob_kind("minecraft:turtle"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[i].extra.flag = true;
@@ -245,7 +245,7 @@ fn cat_sits_on_a_flat_bed() {
     }
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let i = mob_add(&mut r, mob_kind("minecraft:cat"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         mobs::tame::set_tame(&mut r.mobs[i], true);
@@ -286,7 +286,7 @@ fn cat_lies_down_after_taming() {
     let (mut sm, mut se, mut n) = (0.0, 0.0, 0.0);
     for j in 0..10 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let i = mob_add(&mut r, mob_kind("minecraft:cat"), Vec3::new(0.5, 3.0, 0.5), j + 1);
         let e = ecs_named(&mut h, "minecraft:cat", None, 0.5, 0.5, 7000 + j as u64, u64::from(id));
@@ -349,7 +349,7 @@ fn ocelot_strikes_a_chicken() {
     let (mut a1, mut a2, mut b1, mut b2, mut na, mut nb) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for j in 0..12 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let oi = mob_add(&mut r, mob_kind("minecraft:ocelot"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[oi].ai.no_action_time = 0;
@@ -411,7 +411,7 @@ fn wolf_begs_for_a_bone() {
     let (mut sm, mut se, mut n) = (0.0, 0.0, 0.0);
     for j in 0..16 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let id = far_id(j + 1);
         let i = mob_add(&mut r, mob_kind("minecraft:wolf"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         let e = ecs_named(&mut h, "minecraft:wolf", None, 0.5, 0.5, 10_000 + j as u64, u64::from(id));
@@ -450,7 +450,7 @@ fn the_species_of_lot_4_start() {
         return;
     }
     for name in ["minecraft:wolf", "minecraft:cat", "minecraft:ocelot", "minecraft:creeper", "minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse", "minecraft:llama"] {
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 31, 3);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for _ in 0..40 {

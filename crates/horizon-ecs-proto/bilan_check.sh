@@ -68,6 +68,8 @@ done < "$now"
 if [ -z "${BILAN_LOG:-}" ]; then
   sc=$(mktemp); ./species_cost.sh > "$sc" 2>&1 || fail=1
   grep -v '^ok [a-z_]* [0-9]*$' "$sc" | sed 's/^/species cost: /'; rm -f "$sc"
+  sc=$(mktemp); ./species_dormant.sh > "$sc" 2>&1 || fail=1
+  grep -v '^ok [a-z_]* [0-9]*$' "$sc" | sed 's/^/species dormant: /'; rm -f "$sc"
 fi
 [ $fail -ne 0 ] && risers
 rm -f "$now"; exit $fail

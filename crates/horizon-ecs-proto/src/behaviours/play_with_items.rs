@@ -118,7 +118,7 @@ mod tests {
     /// Un dauphin seul avec ce but, dans une mare (eau aux rangées -1 et 0), cap au sud, une pile en main.
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(30, false, false);
+        let mut h = Herd::with_slab_awake(30, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         for x in -6..=6 {
             for z in -6..=6 {

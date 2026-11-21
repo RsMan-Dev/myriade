@@ -20,7 +20,7 @@ fn oracle(at: &[(f64, f64)], view: i32, sim: i32) -> Levels {
     t.levels()
 }
 fn pair() -> (MobRef, Herd) {
-    (MobRef::new(HALF, false), Herd::with_slab(HALF, true, false))
+    (MobRef::new(HALF, false), Herd::with_slab_awake(HALF, true, false))
 }
 
 /// The chunks that tick are the chunks of Horizon's tickets, for the view and simulation distances of a server, as the
@@ -30,7 +30,7 @@ fn the_chunks_that_tick_are_those_of_the_tickets() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     h.set_simulation(2);
     let steps: Vec<Vec<(f64, f64)>> = vec![
         vec![(0.5, 0.5)],
@@ -201,7 +201,7 @@ fn a_sleeping_creature_is_out_of_the_wheel_and_does_not_move() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     h.set_players(vec![(50.0, 0.0)]);
     h.set_simulation(6);
     h.tick();
@@ -245,7 +245,7 @@ fn a_creature_walking_to_the_border_falls_asleep_there() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     // The player's chunk is 0: with a radius of 2 the chunks -2..=2 tick, so x < 48.
     h.set_players(vec![(8.0, 8.0)]);
     h.set_simulation(2);
@@ -337,7 +337,7 @@ fn the_herd_stays_awake_or_asleep_by_its_chunk() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     h.set_players(vec![(0.0, 0.0)]);
     h.set_simulation(2);
     let at: Vec<(f64, f64)> = (0..400).map(|i| (-60.0 + f64::from(i % 20) * 6.0 + 0.5, -60.0 + f64::from(i / 20) * 6.0 + 0.5)).collect();
@@ -371,7 +371,7 @@ fn zombie_hits(gap: i64, s1: i64, s2: i64) -> (Vec<i64>, Vec<i64>, bool) {
     use horizon_ecs_proto::hostile::PlayerState;
     let mut r = MobRef::new(HALF, false);
     r.kind = mob_kind("minecraft:zombie");
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let (target, near, far) = ((60.0, 0.0), (50.0, 0.0), (-90.0, -90.0));
@@ -499,7 +499,7 @@ fn a_creature_created_where_nothing_ticks_is_born_asleep() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
+    let mut h = Herd::with_slab_awake(HALF, true, false);
     h.set_players(vec![(8.0, 8.0)]);
     h.set_simulation(2);
     h.tick();

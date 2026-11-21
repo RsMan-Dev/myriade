@@ -14,11 +14,11 @@ const WARNING: u64 = 36;
 
 /// The ticks of a spawner made at tick 0 with a drop after `after` ticks: the sound at `after - 36`, the drop at `after`.
 fn h_clock_of_birth() -> u64 {
-    Herd::with_slab(16, true, false).world.resource::<Clock>().0
+    Herd::with_slab_awake(16, true, false).world.resource::<Clock>().0
 }
 
 fn run(after: u32, item: &str) -> (Option<u64>, Option<u64>, Vec<u64>) {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let e = spawn(&mut h.world, ItemStack::new(item, 1), Vec3::new(0.5, 5.0, 0.5), after);
     let (mut sound, mut gone, mut particles) = (None, None, Vec::new());
     for t in 1..=u64::from(after) + 10 {
@@ -81,7 +81,7 @@ fn air_drops_nothing_and_the_spawner_is_gone() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let e = spawn(&mut h.world, ItemStack::new("minecraft:air", 1), Vec3::new(0.5, 5.0, 0.5), 5);
     for _ in 0..6 {
         h.tick();

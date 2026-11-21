@@ -7,7 +7,7 @@ use horizon_ecs_proto::eye;
 
 #[test]
 fn an_eye_flies_towards_its_target_and_shatters_on_its_81st_tick() {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let e = eye::launch(&mut h.world, Vec3::new(0.5, 64.0, 0.5), Vec3::new(0.5, 70.0, 100.5), true);
 
     h.tick();

@@ -32,7 +32,7 @@ fn view(at: Vec3) -> PlayerView {
 /// A tame wolf of player 1 (who stands at `owner_at`) on both sides, standing.
 fn pair(owner_at: Vec3) -> Pair {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 77_777);
     tame::set_tame(&mut r.mobs[i], true);
     r.mobs[i].extra.owner = Some(UUID);
@@ -63,7 +63,7 @@ fn a_bone_tames_one_wild_wolf_in_three_and_the_owner_orders_it_to_sit() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let mut tamed = 0;
     let mut last = None;
     for k in 0..300 {
