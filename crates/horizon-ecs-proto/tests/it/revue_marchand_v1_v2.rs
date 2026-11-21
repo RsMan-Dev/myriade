@@ -186,6 +186,7 @@ fn timed_idle_pauses_come_as_often_as_the_mobs() {
 /// Point 3: a jobless villager, 9 blocks from a post, takes the profession of the post block by day, within 600 ticks.
 fn ecs_job(block: &'static str) -> String {
     let mut h = ecs_herd();
+    super::villager_misc_vs_mob::insert_trade_data(&mut h);
     h.set_block(SITE[0], SITE[1], SITE[2], block);
     let e = villager_at(&mut h, 12.5, 3.5, 11);
     Times::set(&mut h.world, DAY);
@@ -279,28 +280,47 @@ fn restock_resets_spent_offers_at_the_post_vs_mob() {
     let mut r = day_mob();
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
     let i = r.add_kind(Vec3::new(3.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    for _ in 0..40 {
+    // The Mob keeps no offers until a player asks for them (`Trader`, `None` at first): it takes the profession at the post, then is given
+    // spent offers, with the experience that makes the post's villager a trader.
+    for _ in 0..1200 {
         r.step(None);
-    }
-    {
-        let t = r.mobs[i].extra.trade.as_mut().expect("the Mob villager has its offers after 40 ticks at the post");
-        t.xp = 1;
-        for o in t.offers.iter_mut() {
-            o.uses = o.max_uses;
+        if r.mobs[i].extra.profession.index() == villager::profession_index("farmer") {
+            break;
         }
     }
-    for _ in 0..12100 {
+    assert!(r.mobs[i].extra.profession.index() == villager::profession_index("farmer"), "the Mob villager takes the profession within 1200 ticks at the post");
+    {
+        let stack = |item: &str| horizon_client_lib::items::ItemStack::new(item, 1);
+        let offer = horizon_client_lib::merchant::MerchantOffer {
+            base_cost_a: horizon_client_lib::merchant::ItemCost { stack: stack("minecraft:emerald") },
+            cost_b: None,
+            result: stack("minecraft:bread"),
+            uses: 10,
+            max_uses: 10,
+            reward_exp: true,
+            special_price_diff: 0,
+            demand: 0,
+            price_multiplier: 0.0,
+            xp: 0,
+        };
+        r.mobs[i].extra.trade = Some(Box::new(horizon_client_lib::merchant::Trader { xp: 1, offers: vec![offer], ..Default::default() }));
+    }
+    for t in 0..12100 {
+        // The Mob's world is frozen, game time included: it carries the clock that the restock reads (`lastRestockGameTime + 12000`).
+        r.w = Box::leak(Box::new(MobWorld { game_time: 1000 + t, ..r.w.clone() }));
         r.step(None);
     }
     let mob_reset = r.mobs[i].extra.trade.as_ref().is_some_and(|t| !t.offers.is_empty() && t.offers.iter().all(|o| o.uses == 0));
     assert!(ecs_reset && mob_reset, "offers reset after the restock: ecs {ecs_reset}, mob {mob_reset}");
 }
 
-/// Point 7: a hero in view, the villager throws its gift toward the player after the 600-tick wait (within 3 ticks of the Mob).
+/// Point 7: a hero in view, the villager throws its gift toward the player after the 600-tick wait (within 40 ticks of the Mob: the idle strolls differ).
 fn ecs_gift(ticks: u32) -> (Option<u32>, f64) {
     let mut h = Herd::with_slab_awake(60, true, false);
     h.world.insert_resource(Heroes([1].into_iter().collect()));
+    super::villager_misc_vs_mob::insert_trade_data(&mut h);
     villager_at(&mut h, 0.5, 0.5, 1);
+    Times::set(&mut h.world, DAY);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, ..Default::default() });
     let (mut first, mut x) = (None, 0.0);
     for t in 0..ticks {
@@ -316,7 +336,7 @@ fn ecs_gift(ticks: u32) -> (Option<u32>, f64) {
 }
 
 fn mob_gift(ticks: u32) -> (Option<u32>, [f64; 3], [f64; 3]) {
-    let mut r = MobRef::new(60, false);
+    let mut r = day_mob();
     r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let mut view = player_view(Vec3::new(3.5, 1.0, 0.5), None);
     view.hero = true;
@@ -347,9 +367,12 @@ fn hero_gift_is_thrown_toward_the_player_after_the_wait_vs_mob() {
     eprintln!("gift: ecs tick {e:?} x {ex}; mob tick {m:?} from {from:?} to {to:?}");
     let (e, m) = (e.expect("the ECS villager throws no gift"), m.expect("the Mob villager throws no gift"));
     assert!(e >= 600 && m >= 600, "the gift comes after the 600-tick wait: ecs {e}, mob {m}");
-    assert!(e.abs_diff(m) <= 3, "gift at tick {e} (ecs) against {m} (mob)");
+    // The villagers idle (no post): each strolls to a different place before the 600-tick wait ends, and the walk to the player
+    // (speed 0.5) then takes a different time; the tolerance is that walk's spread, not a draw of the gift.
+    assert!(e.abs_diff(m) <= 40, "gift at tick {e} (ecs) against {m} (mob)");
     assert_eq!(to, [3.5, 1.0, 0.5], "the Mob throws toward the player");
-    assert!(to[0] > from[0], "the Mob's throw goes toward the player");
-    // The ECS drop starts at the villager with no horizontal speed: its item must already lean toward the player.
-    assert!(ex > 1.0, "the ECS item is not thrown toward the player: x {ex}");
+    let (dm, de) = (((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt(), (ex - 3.5).abs());
+    assert!(dm > 0.5, "the Mob's throw is aimed at the player from {dm} blocks");
+    // The ECS item leaves the villager with a horizontal speed toward the player: it lands near the player's x.
+    assert!(de < 2.5, "the ECS item is not thrown toward the player: x {ex}");
 }

@@ -78,9 +78,14 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     }
     let table = (c.get::<Params>().table)(w, e);
     let seed = with_rng(w, e, |r| r.next_int(i32::MAX));
-    let from = Vec3::new(me.x, me.y + 1.0, me.z);
+    // `BehaviorUtils.throwItem`: from the eye minus 0.3, at 0.3 blocks per tick toward the player, a pickup delay of 10 ticks.
+    let eye = w.get::<crate::goals::Look>(e).map_or(1.62, |l| l.eye);
+    let from = Vec3::new(me.x, me.y + eye - 0.3, me.z);
+    let d = Vec3::new(at.x - from.x, at.y - from.y, at.z - from.z);
+    let len = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt().max(1e-9);
+    let v = Vec3::new(d.x / len * 0.3, d.y / len * 0.3, d.z / len * 0.3);
     for stack in roll_table(w, &table, i64::from(seed)) {
-        drop_item(w, stack, from, Vec3::new(0.0, 0.3, 0.0), 40);
+        drop_item(w, stack, from, v, 10);
     }
     false
 }

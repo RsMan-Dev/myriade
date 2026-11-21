@@ -187,7 +187,8 @@ fn gift_table(w: &World, e: Entity) -> String {
         return "minecraft:gameplay/hero_of_the_village/baby_gift".to_string();
     }
     let profession = w.get::<Merchant>(e).map_or(0, |m| m.profession);
-    let name = match trade_offers::profession_name(w, profession).as_str() {
+    let full = trade_offers::profession_name(w, profession);
+    let name = match full.strip_prefix("minecraft:").unwrap_or(&full) {
         "none" | "nitwit" | "" => "unemployed".to_string(),
         other => other.to_string(),
     };
@@ -255,7 +256,7 @@ pub static DEF: Def = Def {
     name: "minecraft:villager",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
-        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40), SensorEntry::new(&nearby_babies::SENSOR, 20).with(&nearby_babies::Params::SAME), SensorEntry::new(&nearest_bed::SENSOR, 20).with(&nearest_bed::Params { nearest: &NEAREST_BED, candidate: &nearest_bed::BED_CANDIDATE, follow_range: 48.0 }), SensorEntry::new(&village_hostile::SENSOR, 20).with(&HOSTILES)],
+        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&crate::brain::sensors::nearest_players::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40), SensorEntry::new(&nearby_babies::SENSOR, 20).with(&nearby_babies::Params::SAME), SensorEntry::new(&nearest_bed::SENSOR, 20).with(&nearest_bed::Params { nearest: &NEAREST_BED, candidate: &nearest_bed::BED_CANDIDATE, follow_range: 48.0 }), SensorEntry::new(&village_hostile::SENSOR, 20).with(&HOSTILES)],
         activities: ACTIVITIES,
         pick: PICK,
         initial: &[],
