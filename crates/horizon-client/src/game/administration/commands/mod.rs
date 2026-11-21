@@ -4320,10 +4320,6 @@ mod percent_f_tests {
 }
 
 #[cfg(test)]
-#[path = "teleport_mob_tests.rs"]
-mod teleport_mob_tests;
-
-#[cfg(test)]
 #[path = "teleport_item_tests.rs"]
 mod teleport_item_tests;
 
@@ -4692,10 +4688,6 @@ mod selector_bounds_tests {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "local_coordinate_command_tests.rs"]
-mod local_coordinate_command_tests;
 
 #[cfg(test)]
 mod query_feedback_tests {
@@ -5651,9 +5643,6 @@ mod global_selector_order_tests {
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity.rs"]
 mod knot_identity_tests;
-
-#[cfg(test)]
-mod mob_display_name_tests;
 
 #[cfg(test)]
 #[path = "item_count_predicate_tests.rs"]

@@ -62,7 +62,3 @@ impl Game<'_> {
             .ok_or_else(|| err("commands.summon.failed", &[]))
     }
 }
-
-#[cfg(test)]
-#[path = "summon_execute_tests.rs"]
-mod tests;

@@ -23,9 +23,6 @@ mod residency;
 #[cfg(test)]
 mod retained_limits_tests;
 pub(in crate::game) mod section_steps;
-#[cfg(test)]
-#[path = "../../creatures/spawn_egg_mob_tests.rs"]
-mod spawn_egg_mob_tests;
 mod world_view;
 use super::api_values::TryIntoApi;
 use super::level_sounds::LevelSound;

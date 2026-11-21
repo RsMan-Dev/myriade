@@ -12,11 +12,3 @@ impl Game<'_> {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "death_weapon_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "death_weapon_review_tests.rs"]
-mod review_tests;

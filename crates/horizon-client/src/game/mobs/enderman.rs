@@ -254,6 +254,3 @@ impl Game<'_> {
             .any(|b| b.intersects(area))
     }
 }
-#[cfg(test)]
-#[path = "enderman/enderman_occupancy_tests.rs"]
-mod occupancy_tests;

@@ -86,9 +86,6 @@ pub(super) const REACHED: &[(&str, &str, &str)] = &[
     ("Players", "server_host", "Ok(h.players())"),
     ("Profiles", "server_host_mut", "Ok(h.profiles())"),
     ("RuntimeLevels", "server_host_mut", "Ok(h.runtime_levels())"),
-    ("ClientSession", "client_host", "Ok(h.client_session())"),
-    ("RenderAssets", "client_host", "Ok(h.render_assets())"),
-    ("InstanceGroups", "client_host", "Ok(h.instance_groups())"),
     // A level hook's host first: inside a level write it is the one the call hands over.
     (
         "AttachmentStore",
