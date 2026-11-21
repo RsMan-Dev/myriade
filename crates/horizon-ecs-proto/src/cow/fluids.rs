@@ -55,6 +55,7 @@ pub struct AirLow;
 /// Ask `wall_check` to look whether the cow's head is in a block (a spawn, a teleport, a growth: the events that
 /// can put a box into blocks).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
 pub struct Recheck;
 
 /// The head of the cow is in a suffocating block: it hurts every tick until that stops.

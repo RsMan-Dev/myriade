@@ -270,6 +270,7 @@ impl OrdCmds<'_, '_> {
 
 /// A velocity a cow that did not move is owed by a push (applied by `apply_pushes`).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
 pub struct PushIn(pub Vec3);
 
 /// `LivingEntity.pushEntities` / `Entity.push` for the boxes that moved this step (the only ones that can start

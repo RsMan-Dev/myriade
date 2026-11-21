@@ -205,6 +205,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
 
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
 #[derive(Component, Default)]
+#[component(storage = "SparseSet")]
 pub struct Recompute;
 
 /// `PathNavigation.recomputePath`: made at once if the last recompute is more than 20 ticks old and the cow can update
