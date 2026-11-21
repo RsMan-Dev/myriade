@@ -233,6 +233,24 @@ fn ecs_reset_profession_without_a_site_and_no_experience() {
     assert!(h.world.get::<Profession>(e).is_none());
 }
 
+/// `ResetProfession` (jar): a villager that traded (experience over 0) or is above level 1 keeps its profession without a job site.
+#[test]
+fn ecs_employee_who_lost_the_site_keeps_the_profession_with_experience_or_level() {
+    if !have_data() {
+        return;
+    }
+    let farmer = villager::profession_index("farmer").unwrap();
+    for (xp, level) in [(5, 1), (0, 2)] {
+        let mut h = scene();
+        let e = villager_at(&mut h, 3.5, 3.5, 11);
+        let mut m = horizon_ecs_proto::behaviours::trade_offers::Merchant::new(false, farmer, 0);
+        m.trade.xp = xp;
+        m.level = level;
+        h.world.entity_mut(e).insert((Profession(PoiType::Farmer), m));
+        assert!(!(poi_assign::RESET.can_start)(&mut h.world, e, &ctx(&RESET_SITE)), "xp {xp} level {level}");
+    }
+}
+
 static GO_TO: poi_go_to_site::Params = poi_go_to_site::Params { potential: &POTENTIAL_JOB_SITE, speed: 0.5 };
 
 /// The walk to a potential site starts from its memory, and its stop clears the memory.
