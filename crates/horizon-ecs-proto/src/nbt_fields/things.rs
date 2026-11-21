@@ -59,13 +59,13 @@ pub const FIELDS: &[Field] = &[
 /// The constructors of the sorts with a bespoke creation: `restore` calls the one of its id (no species spawn), then distributes the keys.
 pub fn builders() -> &'static [(&'static str, crate::nbt::Builder)] {
     &[
-        ("minecraft:item", build_item),
-        ("minecraft:experience_orb", build_orb),
-        ("minecraft:tnt", build_tnt),
-        ("minecraft:end_crystal", build_end_crystal),
-        ("minecraft:falling_block", build_falling_block),
-        ("minecraft:trident", build_trident),
-        ("minecraft:ominous_item_spawner", build_ominous),
+        (crate::species::lists::ITEM, build_item),
+        (crate::species::lists::EXPERIENCE_ORB, build_orb),
+        (crate::species::lists::TNT, build_tnt),
+        (crate::species::lists::END_CRYSTAL, build_end_crystal),
+        (crate::species::lists::FALLING_BLOCK, build_falling_block),
+        (crate::species::lists::TRIDENT, build_trident),
+        (crate::species::lists::OMINOUS_ITEM_SPAWNER, build_ominous),
     ]
 }
 

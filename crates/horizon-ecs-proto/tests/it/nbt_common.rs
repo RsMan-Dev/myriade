@@ -20,7 +20,7 @@ fn comp(entries: impl IntoIterator<Item = (&'static str, Tag)>) -> Compound {
     }
 }
 
-fn cow(w: &mut World) -> Entity {
+fn a_cow(w: &mut World) -> Entity {
     let sp = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     spawn_species(w, &sp, 3.0, 4.0, 1)
 }
@@ -28,12 +28,12 @@ fn cow(w: &mut World) -> Entity {
 #[test]
 fn fire_is_the_ticks_left_as_a_short_and_a_load_sets_it() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     let now = now_of(&a.world, cow);
     a.world.entity_mut(cow).insert(Burning { until: now + 40 });
     assert_eq!(nbt::get(&a.world, cow, "Fire"), Some(Tag::Short(40)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).insert(Burning { until: 0 });
     assert_eq!(nbt::load(&mut a.world, other, &comp([("Fire", Tag::Short(7))])), Some(0));
     let until = a.world.get::<Burning>(other).expect("still on fire").until;
@@ -46,15 +46,16 @@ fn fire_is_the_ticks_left_as_a_short_and_a_load_sets_it() {
 #[test]
 fn ticks_frozen_is_an_int_and_a_key_without_its_component_stays_free() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).insert(Frozen(5));
     assert_eq!(nbt::get(&a.world, cow, "TicksFrozen"), Some(Tag::Int(5)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).remove::<Frozen>();
     assert_eq!(nbt::load(&mut a.world, other, &comp([("TicksFrozen", Tag::Int(9))])), Some(0));
     assert_eq!(nbt::get(&a.world, other, "TicksFrozen"), Some(Tag::Int(9)));
-    assert!(a.world.get::<NbtData>(other).is_some(), "the key is kept free");
+    assert_eq!(a.world.get::<Frozen>(other).map(|f| f.0), Some(9), "the key poses its component (a creator)");
+    assert!(a.world.get::<NbtData>(other).is_none(), "so it is not kept free");
 
     a.world.entity_mut(other).insert(Frozen(0));
     assert_eq!(nbt::load(&mut a.world, other, &comp([("TicksFrozen", Tag::Int(9))])), Some(0));
@@ -64,12 +65,12 @@ fn ticks_frozen_is_an_int_and_a_key_without_its_component_stays_free() {
 #[test]
 fn in_love_is_the_ticks_left_as_an_int() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     let now = now_of(&a.world, cow);
     a.world.entity_mut(cow).insert(Love(now + 30));
     assert_eq!(nbt::get(&a.world, cow, "InLove"), Some(Tag::Int(30)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).insert(Love(0));
     assert_eq!(nbt::load(&mut a.world, other, &comp([("InLove", Tag::Int(12))])), Some(0));
     assert_eq!(a.world.get::<Love>(other).map(|l| l.0), Some(now_of(&a.world, other) + 12));
@@ -79,7 +80,7 @@ fn in_love_is_the_ticks_left_as_an_int() {
 #[test]
 fn persistence_required_is_a_byte_that_sets_and_takes_the_marker() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).remove::<Persistent>();
     assert_eq!(nbt::get(&a.world, cow, "PersistenceRequired"), None, "no marker, no key");
 
@@ -96,11 +97,11 @@ fn persistence_required_is_a_byte_that_sets_and_takes_the_marker() {
 #[test]
 fn rotation_is_the_yaw_with_a_zero_pitch_and_a_load_sets_it() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).insert(Yaw(1.5));
     assert_eq!(nbt::get(&a.world, cow, "Rotation"), Some(Tag::List(vec![Tag::Float(1.5f32.to_bits()), Tag::Float(0)])));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).remove::<Yaw>();
     let rot = Tag::List(vec![Tag::Float(2.0f32.to_bits()), Tag::Float(0)]);
     assert_eq!(nbt::load(&mut a.world, other, &comp([("Rotation", rot)])), Some(0));
@@ -111,7 +112,7 @@ fn rotation_is_the_yaw_with_a_zero_pitch_and_a_load_sets_it() {
 #[test]
 fn silent_is_a_byte_that_sets_and_takes_the_marker() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).insert(Silent);
     assert_eq!(nbt::get(&a.world, cow, "Silent"), Some(Tag::Byte(1)));
     assert_eq!(nbt::load(&mut a.world, cow, &comp([("Silent", Tag::Byte(0))])), Some(0));
@@ -122,12 +123,12 @@ fn silent_is_a_byte_that_sets_and_takes_the_marker() {
 #[test]
 fn home_pos_and_home_radius_are_the_centre_and_the_radius_of_home() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).insert(Home { center: [1, 2, 3], radius: 16 });
     assert_eq!(nbt::get(&a.world, cow, "home_pos"), Some(Tag::IntArray(vec![1, 2, 3])));
     assert_eq!(nbt::get(&a.world, cow, "home_radius"), Some(Tag::Int(16)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).remove::<Home>();
     let saved = comp([("home_pos", Tag::IntArray(vec![4, 5, 6])), ("home_radius", Tag::Int(8))]);
     assert_eq!(nbt::load(&mut a.world, other, &saved), Some(0));
@@ -139,12 +140,12 @@ fn home_pos_and_home_radius_are_the_centre_and_the_radius_of_home() {
 #[test]
 fn hurt_time_is_the_invulnerability_left_as_a_short() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     let now = now_of(&a.world, cow);
     a.world.entity_mut(cow).insert(HurtAt { at: now, last: 2.0 });
     assert_eq!(nbt::get(&a.world, cow, "HurtTime"), Some(Tag::Short(10)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).insert(HurtAt { at: 0, last: 0.0 });
     assert_eq!(nbt::load(&mut a.world, other, &comp([("HurtTime", Tag::Short(7))])), Some(0));
     assert_eq!(a.world.get::<HurtAt>(other).map(|h| h.at), Some(now_of(&a.world, other) + 3));
@@ -154,11 +155,11 @@ fn hurt_time_is_the_invulnerability_left_as_a_short() {
 #[test]
 fn hurt_by_timestamp_is_the_tick_of_the_last_hurt_by_a_mob() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     a.world.entity_mut(cow).insert(LastHurtBy { who: Who::Player(1), at: 55 });
     assert_eq!(nbt::get(&a.world, cow, "HurtByTimestamp"), Some(Tag::Int(55)));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     a.world.entity_mut(other).insert(LastHurtBy { who: Who::Player(2), at: 0 });
     assert_eq!(nbt::load(&mut a.world, other, &comp([("HurtByTimestamp", Tag::Int(70))])), Some(0));
     assert_eq!(a.world.get::<LastHurtBy>(other).map(|l| l.at), Some(70));
@@ -168,7 +169,7 @@ fn hurt_by_timestamp_is_the_tick_of_the_last_hurt_by_a_mob() {
 #[test]
 fn anger_end_time_is_the_end_of_the_countdown_as_a_long() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     let angry = Anger { def: &Params::DEFAULT, slot: 0, holding: false, until: 300, at: None, at_player: false, boosted: false };
     a.world.entity_mut(cow).insert(angry);
     assert_eq!(nbt::get(&a.world, cow, "anger_end_time"), Some(Tag::Long(300)));
@@ -181,7 +182,7 @@ fn anger_end_time_is_the_end_of_the_countdown_as_a_long() {
 #[test]
 fn active_effects_is_the_list_of_effects_with_their_ticks_left() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
-    let cow = cow(&mut a.world);
+    let cow = a_cow(&mut a.world);
     effects::add_flagged(&mut a.world, cow, Kind::Speed, 1, 100, HIDDEN | AMBIENT);
     let shown = Tag::compound([
         ("id", Tag::String("minecraft:speed".into())),
@@ -193,7 +194,7 @@ fn active_effects_is_the_list_of_effects_with_their_ticks_left() {
     ]);
     assert_eq!(nbt::get(&a.world, cow, "active_effects"), Some(Tag::List(vec![shown.clone()])));
 
-    let other = cow(&mut a.world);
+    let other = a_cow(&mut a.world);
     assert_eq!(nbt::load(&mut a.world, other, &comp([("active_effects", Tag::List(vec![shown.clone()]))])), Some(0));
     assert!(effects::has(&a.world, other, Kind::Speed));
     let e = a.world.get::<Effects>(other).expect("the effects");

@@ -644,6 +644,13 @@ pub fn is_saved(w: &World, id: &str) -> bool {
     recipe_of(w, id).is_some_and(|r| r.saved)
 }
 
+/// Poses `Saved` on `e` when `id` is saved (a bundle cannot hold an optional component: it is one more insert at the creation).
+pub fn mark_saved(w: &mut World, e: Entity, id: &str) {
+    if is_saved(w, id) {
+        w.entity_mut(e).insert(Saved);
+    }
+}
+
 /// Whether `id` is declared.
 pub fn declared(w: &World, id: &str) -> bool {
     recipe_of(w, id).is_some()

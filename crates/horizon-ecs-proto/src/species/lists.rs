@@ -6,6 +6,23 @@ use crate::projectile_more;
 /// The row a non-`Mob` species takes in the tables of a test world (never read).
 pub const STAND_IN: &str = "minecraft:cow";
 pub const TNT: &str = "minecraft:tnt";
+pub const ITEM: &str = "minecraft:item";
+pub const EXPERIENCE_ORB: &str = "minecraft:experience_orb";
+pub const END_CRYSTAL: &str = "minecraft:end_crystal";
+pub const FALLING_BLOCK: &str = "minecraft:falling_block";
+pub const TRIDENT: &str = "minecraft:trident";
+pub const OMINOUS_ITEM_SPAWNER: &str = "minecraft:ominous_item_spawner";
+pub const EVOKER_FANGS: &str = "minecraft:evoker_fangs";
+pub const AREA_EFFECT_CLOUD: &str = "minecraft:area_effect_cloud";
+pub const FIREWORK_ROCKET: &str = "minecraft:firework_rocket";
+pub const SHULKER_BULLET: &str = "minecraft:shulker_bullet";
+pub const EGG: &str = "minecraft:egg";
+pub const ENDER_PEARL: &str = "minecraft:ender_pearl";
+pub const EXPERIENCE_BOTTLE: &str = "minecraft:experience_bottle";
+pub const DRAGON_FIREBALL: &str = "minecraft:dragon_fireball";
+pub const WIND_CHARGE: &str = "minecraft:wind_charge";
+/// The effect `wither` (the name of an effect, which is also the name of a species).
+pub const WITHER_EFFECT: &str = "minecraft:wither";
 pub const MARKER: &str = "minecraft:marker";
 pub const TEXT_DISPLAY: &str = "minecraft:text_display";
 pub const BLOCK_DISPLAY: &str = "minecraft:block_display";

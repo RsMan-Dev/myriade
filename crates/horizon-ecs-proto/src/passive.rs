@@ -272,8 +272,8 @@ pub fn spawn(w: &mut World, kind: &'static str, at: Vec3, mut tag: Tag) -> Entit
         c.entry("id".into()).or_insert_with(|| Tag::String(kind.into()));
         c.remove(&JavaString::from("Pos"));
     }
-    let saved = crate::nbt::is_saved(w, kind).then_some(crate::nbt::Saved);
-    let e = w.spawn((Pos(at), crate::goals::Uid(crate::goals::next_uid()), TypeName(kind), saved)).id();
+    let e = w.spawn((Pos(at), crate::goals::Uid(crate::goals::next_uid()), TypeName(kind))).id();
+    crate::nbt::mark_saved(w, e, kind);
     if kind == INTERACTION {
         w.entity_mut(e).insert(Interact::default());
     } else if DISPLAYS.contains(&kind) {

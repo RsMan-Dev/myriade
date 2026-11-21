@@ -256,7 +256,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Slowness => "minecraft:slowness",
         Kind::Weakness => "minecraft:weakness",
         Kind::Poison => "minecraft:poison",
-        Kind::Wither => "minecraft:wither",
+        Kind::Wither => crate::species::lists::WITHER_EFFECT,
         Kind::Regeneration => "minecraft:regeneration",
         Kind::FireResistance => "minecraft:fire_resistance",
         Kind::WaterBreathing => "minecraft:water_breathing",

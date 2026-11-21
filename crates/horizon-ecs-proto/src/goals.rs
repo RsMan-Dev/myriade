@@ -153,11 +153,11 @@ impl GoalSet {
 
 pub use crate::items::item_id;
 macro_rules! item_fns {
-    ($($f:ident => $n:literal),* $(,)?) => { $(pub fn $f() -> u32 { item_id($n) })* };
+    ($($f:ident => $n:expr),* $(,)?) => { $(pub fn $f() -> u32 { item_id($n) })* };
 }
 item_fns!(wheat => "minecraft:wheat", carrot => "minecraft:carrot", potato => "minecraft:potato", beetroot => "minecraft:beetroot", carrot_on_a_stick => "minecraft:carrot_on_a_stick",
     wheat_seeds => "minecraft:wheat_seeds", beetroot_seeds => "minecraft:beetroot_seeds", melon_seeds => "minecraft:melon_seeds", pumpkin_seeds => "minecraft:pumpkin_seeds",
-    shears => "minecraft:shears", bone => "minecraft:bone", lead => "minecraft:lead", warped_fungus_on_a_stick => "minecraft:warped_fungus_on_a_stick", saddle => "minecraft:saddle", trident => "minecraft:trident", crossbow => "minecraft:crossbow");
+    shears => "minecraft:shears", bone => "minecraft:bone", lead => "minecraft:lead", warped_fungus_on_a_stick => "minecraft:warped_fungus_on_a_stick", saddle => "minecraft:saddle", trident => crate::species::lists::TRIDENT, crossbow => "minecraft:crossbow");
 /// The phase of the goal selector of the entity: it asks `canUse` on the ticks where tick + phase is even (the id of
 /// a `Mob`). By default the animal's `Uid`.
 #[derive(Component, Clone, Copy, Debug)]

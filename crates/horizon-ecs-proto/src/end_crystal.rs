@@ -86,7 +86,9 @@ fn index_remove(mut world: DeferredWorld, ctx: HookContext) {
 /// A crystal at `at` (feet). Its first tick is armed now: the fire under it is checked then, and nothing runs in between.
 pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
     insert_resources(w);
-    let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }, crate::nbt::is_saved(w, "minecraft:end_crystal").then_some(crate::nbt::Saved))).id();
+    let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }))
+.id();
+    crate::nbt::mark_saved(w, e, crate::species::lists::END_CRYSTAL);
     after(w, e, 1, first_tick);
     e
 }

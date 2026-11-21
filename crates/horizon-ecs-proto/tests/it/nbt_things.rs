@@ -39,6 +39,9 @@ fn a_sort_the_origin_does_not_save_has_no_nbt() {
 #[test]
 fn a_dropped_item_saves_its_age_pickup_delay_and_owner_and_restores_them() {
     let mut h = Herd::with_slab(2, false, false);
+    for _ in 0..60 {
+        h.tick();
+    }
     let w = &mut h.world;
     let at_pos = Vec3::new(0.5, 1.0, 0.5);
     let e = drop_item(w, ItemStack::new("minecraft:stone", 3), at_pos, Vec3::ZERO, 10);
@@ -68,6 +71,9 @@ fn a_dropped_item_saves_its_age_pickup_delay_and_owner_and_restores_them() {
 #[test]
 fn an_experience_orb_saves_value_count_and_age_and_restores_them() {
     let mut h = Herd::with_slab(2, false, false);
+    for _ in 0..60 {
+        h.tick();
+    }
     let w = &mut h.world;
     let e = spawn_orb(w, 7, 3, Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO);
     let now = now_of(w, e);

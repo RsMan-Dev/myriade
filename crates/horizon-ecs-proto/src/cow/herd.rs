@@ -114,7 +114,7 @@ impl Herd {
             read: crate::nbt_tag::read,
         }];
         crate::nbt::begin_declarations(&mut world);
-        for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
+        for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::common::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
             crate::nbt::register(&mut world, fields);
         }
         crate::nbt::register_creators(&mut world, crate::nbt_fields::rides::CREATORS);

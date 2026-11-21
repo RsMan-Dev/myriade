@@ -23,6 +23,9 @@ fn world() -> World {
     w.init_resource::<horizon_ecs_proto::hostile::PlayerState>();
     w.init_resource::<horizon_ecs_proto::cow::Index>();
     horizon_ecs_proto::nbt::register(&mut w, passive::FIELDS);
+    for id in passive::kinds().chain(["custom:thing"]) {
+        horizon_ecs_proto::nbt::declare(&mut w, id, horizon_ecs_proto::nbt::Recipe { saved: true, build: horizon_ecs_proto::nbt::Build::Passive });
+    }
     w
 }
 fn at() -> Vec3 {
@@ -82,7 +85,9 @@ fn an_unsimulated_entity_comes_back_with_its_data() {
     let mut w = world();
     let data = Tag::compound([("id", Tag::String("custom:thing".into())), ("custom", Tag::String("kept".into()))]);
     let e = passive::spawn(&mut w, "custom:thing", at(), data.clone());
-    assert_eq!(passive::save(&w, e), data);
+    let Tag::Compound(saved) = passive::save(&w, e) else { panic!("a compound") };
+    let kept: horizon_core::nbt::Compound = saved.into_iter().filter(|(k, v)| !horizon_ecs_proto::nbt_fields::common::drop_default(&k.to_string_lossy(), v)).collect();
+    assert_eq!(Tag::Compound(kept), data, "the keys at their game default are written as the origin does, the rest is as loaded");
     assert_eq!(w.get::<Pos>(e).unwrap().0.y, 64.0);
     assert_eq!(passive::save(&w, e).get("custom"), Some(&Tag::String("kept".into())));
 }

@@ -18,7 +18,9 @@ pub struct Fang {
 
 /// `new EvokerFangs(level, x, y, z, yaw, warmup, owner)`: the three deadlines are armed now, nothing runs in between.
 pub fn spawn_fang(w: &mut World, at: Vec3, warmup: i32, owner: Entity) -> Entity {
-    let e = w.spawn((Pos(at), OwnTime, Fang { owner }, crate::nbt::is_saved(w, "minecraft:evoker_fangs").then_some(crate::nbt::Saved))).id();
+    let e = w.spawn((Pos(at), OwnTime, Fang { owner }))
+.id();
+    crate::nbt::mark_saved(w, e, crate::species::lists::EVOKER_FANGS);
     after(w, e, warmup + 1, start);
     after(w, e, warmup + 8, bite);
     after(w, e, warmup + 23, end);

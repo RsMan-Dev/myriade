@@ -54,6 +54,11 @@ fn comp(entries: impl IntoIterator<Item = (&'static str, Tag)>) -> Compound {
     }
 }
 
+/// The saved compound without the common keys left at their game default (`save` writes them as the origin does).
+fn without_defaults(c: Option<Compound>) -> Option<Compound> {
+    c.map(|c| c.into_iter().filter(|(k, v)| !horizon_ecs_proto::nbt_fields::common::drop_default(&k.to_string_lossy(), v)).collect())
+}
+
 fn has_custom(w: &World, e: Entity) -> bool {
     w.get::<NbtData>(e).is_some()
 }
@@ -74,7 +79,7 @@ fn an_entity_without_nbt_has_none_and_a_load_keeps_every_unknown_key() {
     ]);
     let e = w.spawn((TypeName("test"), Saved)).id();
     assert_eq!(nbt::load(&mut w, e, &src), Some(0));
-    assert_eq!(nbt::save(&w, e), Some(src));
+    assert_eq!(without_defaults(nbt::save(&w, e)), Some(src));
 }
 
 #[test]
@@ -86,7 +91,7 @@ fn a_declared_key_goes_to_its_component_and_never_to_the_free_keys() {
     assert_eq!(w.get::<Score>(e).map(|s| s.0), Some(7));
     let free = w.get::<NbtData>(e).expect("the free key");
     assert_eq!(free.0.len(), 1, "only `data` is free");
-    assert_eq!(nbt::save(&w, e), Some(comp([("Score", Tag::Int(7)), ("data", Tag::Int(1))])));
+    assert_eq!(without_defaults(nbt::save(&w, e)), Some(comp([("Score", Tag::Int(7)), ("data", Tag::Int(1))])));
 }
 
 #[test]
@@ -225,13 +230,13 @@ fn removing_saved_takes_the_free_keys_and_the_tags_away() {
 }
 
 #[test]
-fn kind_is_kept_only_by_an_entity_without_a_species() {
+fn the_identifier_is_the_type_name_and_a_load_of_id_does_not_change_it() {
     let mut w = World::new();
     nbt::register(&mut w, nbt::COMMON);
     let passive = w.spawn((TypeName("test"), Saved)).id();
     nbt::load(&mut w, passive, &comp([("id", Tag::String("minecraft:item".into()))]));
-    assert_eq!(w.get::<TypeName>(passive).map(|k| k.0), Some("minecraft:item"));
-    assert_eq!(nbt::get(&w, passive, "id"), Some(Tag::String("minecraft:item".into())));
+    assert_eq!(w.get::<TypeName>(passive).map(|k| k.0), Some("test"), "the identifier is fixed at creation");
+    assert_eq!(nbt::get(&w, passive, "id"), Some(Tag::String("test".into())));
     assert!(!has_custom(&w, passive), "`id` is declared, so not free");
 }
 
@@ -321,10 +326,10 @@ fn save_all_then_restore_in_a_new_world_gives_the_same_nbt() {
 #[test]
 fn restore_of_an_unknown_type_is_none_and_spawns_nothing() {
     let mut b = Herd::new(0, 1.0, true, false, 1);
-    let before = b.world.query::<Entity>().iter(&b.world).count();
+    let before = b.world.query_filtered::<Entity, Without<bevy_ecs::resource::IsResource>>().iter(&b.world).count();
     let c = comp([("id", Tag::String("minecraft:not_a_mob".into())), ("Pos", Tag::List(vec![Tag::Double(0.0f64.to_bits()), Tag::Double(0.0f64.to_bits()), Tag::Double(0.0f64.to_bits())]))]);
     assert!(nbt::restore(&mut b.world, &c).is_none());
-    assert_eq!(b.world.query::<Entity>().iter(&b.world).count(), before);
+    assert_eq!(b.world.query_filtered::<Entity, Without<bevy_ecs::resource::IsResource>>().iter(&b.world).count(), before);
 }
 
 static WRITES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -358,9 +363,10 @@ fn save_all_sends_saving_on_each_saved_entity_before_composing() {
     let mut w = World::new();
     w.init_resource::<Sent>();
     w.add_observer(|on: On<nbt::Saving>, mut sent: ResMut<Sent>| sent.0.push(on.entity));
-    let a = w.spawn(Saved).id();
-    let b = w.spawn((Saved, Score(2))).id();
+    let a = w.spawn((TypeName("test"), Saved)).id();
+    let b = w.spawn((TypeName("test"), Saved, Score(2))).id();
     w.spawn(Score(3));
+    w.spawn(Saved);
     nbt::save_all(&mut w, |_, _| {});
     let mut sent = w.resource::<Sent>().0.clone();
     sent.sort();

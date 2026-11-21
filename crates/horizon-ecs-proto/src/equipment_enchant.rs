@@ -33,7 +33,7 @@ pub fn enchant_slot<R: RandomSource>(
 /// The drowned's main hand at spawn: `float > 0.9`, then a trident in 10 of 16, else a fishing rod; `None` when the hand stays empty.
 pub fn drowned_weapon<R: RandomSource>(random: &mut R) -> Option<&'static str> {
     if f64::from(random.next_float()) > 0.9 {
-        Some(if random.next_int_bound(16).unwrap_or(0) < 10 { "minecraft:trident" } else { "minecraft:fishing_rod" })
+        Some(if random.next_int_bound(16).unwrap_or(0) < 10 { crate::species::lists::TRIDENT } else { "minecraft:fishing_rod" })
     } else {
         None
     }

@@ -15,8 +15,8 @@ use horizon_ecs_proto::{
 #[test]
 fn an_undeclared_id_poses_no_saved_and_is_not_saved() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
-    let saved = nbt::is_saved(&h.world, "test:nothing").then_some(Saved);
-    let e = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), TypeName("test:nothing"), saved)).id();
+    let e = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), TypeName("test:nothing"))).id();
+    nbt::mark_saved(&mut h.world, e, "test:nothing");
     assert!(!nbt::declared(&h.world, "test:nothing"));
     assert!(h.world.get::<Saved>(e).is_none(), "no recipe, no Saved");
     let mut saved_count = 0;

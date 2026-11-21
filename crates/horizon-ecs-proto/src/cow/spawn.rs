@@ -124,11 +124,11 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
     let id = world.spawn_empty().id();
     crate::type_tags::mark(world, id, sp.id);
-    let saved = crate::nbt::is_saved(world, sp.name).then_some(crate::nbt::Saved);
+    let saved = crate::nbt::is_saved(world, sp.name);
     let mut e = world.entity_mut(id);
     e.insert(transform_bundle(sp, x, z, uid));
-    if let Some(s) = saved {
-        e.insert(s);
+    if saved {
+        e.insert(crate::nbt::Saved);
     }
     if has(crate::behaviours::Cap::Solid) {
         e.insert(solid_bundle(sp, x, z));

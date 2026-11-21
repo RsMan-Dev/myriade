@@ -15,6 +15,9 @@ fn world() -> World {
     let mut w = World::new();
     nbt::register(&mut w, nbt::COMMON);
     nbt::register(&mut w, passive::FIELDS);
+    for id in passive::kinds().chain(["custom:thing"]) {
+        horizon_ecs_proto::nbt::declare(&mut w, id, horizon_ecs_proto::nbt::Recipe { saved: true, build: horizon_ecs_proto::nbt::Build::Passive });
+    }
     w
 }
 

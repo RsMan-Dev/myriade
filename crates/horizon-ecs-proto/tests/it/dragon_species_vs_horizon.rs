@@ -31,7 +31,7 @@ fn the_dragon_save_keys_are_the_jars() {
     nbt::register(&mut w, save::FIELDS);
     let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), TypeName("minecraft:ender_dragon"), nbt::Saved)).id();
     let saved = nbt::save(&w, e).expect("an NBT");
-    let keys: Vec<String> = saved.keys().map(|k| k.to_string_lossy()).collect();
+    let keys: Vec<String> = saved.iter().filter(|(k, v)| !horizon_ecs_proto::nbt_fields::common::drop_default(&k.to_string_lossy(), v)).map(|(k, _)| k.to_string_lossy()).collect();
     assert_eq!(keys, ["DragonDeathTime", "DragonPhase", "sitting_damage_received"]);
     assert!(matches!(nbt::get(&w, e, "DragonPhase"), Some(Tag::Int(3))));
     assert!(matches!(nbt::get(&w, e, "DragonDeathTime"), Some(Tag::Int(42))));

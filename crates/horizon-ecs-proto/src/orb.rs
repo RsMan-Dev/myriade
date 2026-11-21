@@ -142,7 +142,6 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             Moving,
         ))
         .id();
-    let saved = crate::nbt::is_saved(world, "minecraft:experience_orb").then_some(crate::nbt::Saved);
     world.entity_mut(e).insert((
         Sizes { adult: (0.5, 0.5), baby: (0.5, 0.5) },
         Health(5.0),
@@ -151,9 +150,9 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
         Air(300),
         Resist(0.0),
         Immune(BREATHES_WATER | NO_HURT_COOLDOWN),
-        TypeName("minecraft:experience_orb"),
-        saved,
+        TypeName(crate::species::lists::EXPERIENCE_ORB),
     ));
+    crate::nbt::mark_saved(world, e, crate::species::lists::EXPERIENCE_ORB);
     let now = now_of(world, e);
     world.entity_mut(e).insert(OrbAwake);
     world.entity_mut(e).insert(Orb { value, count, born: now, age_base: now, id, cell, following: None, expire: 0, check: 0 });

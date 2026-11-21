@@ -124,7 +124,7 @@ impl Flight {
     pub const POTION: Flight = Flight { id: "minecraft:splash_potion", gravity: 0.05, order: Order::DragThenMove, hit: OnHit::Potion, ..Self::BASE };
     pub const LINGERING_POTION: Flight = Flight { id: "minecraft:lingering_potion", gravity: 0.05, order: Order::DragThenMove, hit: OnHit::LingeringPotion, ..Self::BASE };
     /// `ThrownTrident` as a mob throws it: gravity 0.05, `ceil(speed * 8)`; no pierce, no return (the item and the loyalty are not modelled).
-    pub const TRIDENT: Flight = Flight { id: "minecraft:trident", gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
+    pub const TRIDENT: Flight = Flight { id: crate::species::lists::TRIDENT, gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
     /// `WitherSkull` (not dangerous): inertia 0.95, 8 damage, the wither effect on a hit, then a blast of power 1.
     pub const WITHER_SKULL: Flight = Self::wither_skull(false);
     pub const SNOWBALL: Flight = Flight { id: "minecraft:snowball", gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
@@ -135,7 +135,7 @@ impl Flight {
     }
 }
 /// The identifiers of `KINDS` declared by a recipe of their own, not by `build`: a thrown trident (`trident.rs`).
-pub const UNSAVED: &[&str] = &["minecraft:trident"];
+pub const UNSAVED: &[&str] = &[crate::species::lists::TRIDENT];
 /// Every projectile identifier with the `Flight` it is made from: `build` launches the kind of its saved `id`. A fireball comes back with
 /// explosion power 1 (no field saves its power).
 pub const KINDS: &[(&str, Flight)] = &[
@@ -147,14 +147,14 @@ pub const KINDS: &[(&str, Flight)] = &[
     ("minecraft:splash_potion", Flight::POTION),
     ("minecraft:lingering_potion", Flight::LINGERING_POTION),
     ("minecraft:snowball", Flight::SNOWBALL),
-    ("minecraft:trident", Flight::TRIDENT),
+    (crate::species::lists::TRIDENT, Flight::TRIDENT),
     ("minecraft:llama_spit", Flight::SPIT),
-    ("minecraft:shulker_bullet", crate::species::shulker::SHOT.flight),
-    ("minecraft:egg", crate::projectile_more::EGG),
-    ("minecraft:ender_pearl", crate::projectile_more::ENDER_PEARL),
-    ("minecraft:experience_bottle", crate::projectile_more::EXPERIENCE_BOTTLE),
-    ("minecraft:dragon_fireball", crate::projectile_more::DRAGON_FIREBALL),
-    ("minecraft:wind_charge", crate::projectile_more::WIND_CHARGE),
+    (crate::species::lists::SHULKER_BULLET, crate::species::shulker::SHOT.flight),
+    (crate::species::lists::EGG, crate::projectile_more::EGG),
+    (crate::species::lists::ENDER_PEARL, crate::projectile_more::ENDER_PEARL),
+    (crate::species::lists::EXPERIENCE_BOTTLE, crate::projectile_more::EXPERIENCE_BOTTLE),
+    (crate::species::lists::DRAGON_FIREBALL, crate::projectile_more::DRAGON_FIREBALL),
+    (crate::species::lists::WIND_CHARGE, crate::projectile_more::WIND_CHARGE),
 ];
 /// The six steps a projectile or a path takes from a block, by direction: down, up, north, south, west, east (the 3D data order).
 pub const STEPS: [[i32; 3]; 6] = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
@@ -197,8 +197,10 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 }
 /// Launches a projectile at `at` with `velocity`, owned by `owner`; saved (`Saved`, in the same insert) when its identifier is.
 pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner: Option<Who>) -> Entity {
-    let saved = crate::nbt::is_saved(world, flight.id).then_some(crate::nbt::Saved);
-    world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime, saved)).id()
+    let id = flight.id;
+    let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
+    crate::nbt::mark_saved(world, e, id);
+    e
 }
 /// The builder of every projectile identifier (`nbt::Builder`): the kind of its saved `id` in `KINDS`, launched at the saved `Pos` with no
 /// owner (the owner is not restored); the saved `Motion` is loaded on the entity by `restore`.

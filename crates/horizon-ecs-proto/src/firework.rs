@@ -78,7 +78,9 @@ pub fn launch(w: &mut World, s: Shot, random: &mut LegacyRandom) -> Entity {
         None => (Vec3::new(drawn_x, 0.05, drawn_z), false),
     };
     let rocket = Rocket { explosions: s.explosions, carrier: s.carrier, angled, horizontal: false, silent: s.silent, due: false };
-    let e = w.spawn((Pos(s.at), Vel(velocity), Projectile { owner: s.owner, age: 0, left_owner: false, expires: 0 }, rocket, OwnTime, crate::nbt::is_saved(w, "minecraft:firework_rocket").then_some(crate::nbt::Saved))).id();
+    let e = w.spawn((Pos(s.at), Vel(velocity), Projectile { owner: s.owner, age: 0, left_owner: false, expires: 0 }, rocket, OwnTime))
+.id();
+    crate::nbt::mark_saved(w, e, crate::species::lists::FIREWORK_ROCKET);
     // `life > lifetime` after the tick's increment: the rocket goes off at the end of its tick `lifetime + 1`, which is the start of
     // the tick `lifetime + 2` for the wheel (the deadline runs before the flight of its tick).
     after(w, e, lifetime + 2, lifetime_over);
