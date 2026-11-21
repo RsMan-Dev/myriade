@@ -31,7 +31,7 @@ mod test_runs;
 mod text_commands;
 mod world_cmds;
 
-use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use super::{Dim, Game, command_text::PLAYER_NAME, vehicle_teleport::TeleportMotion};
 use horizon_client::{
     command::{
         Arg, CommandError, Context, Reader,
@@ -251,8 +251,8 @@ impl Game<'_> {
     /// Commands.performCommand for a line without its slash. A client mod's
     /// `command` hook is the caller's: this also runs on a server.
     pub(super) fn run_command(&mut self, command: &str) -> bool {
-        let d = self.ui.dispatcher.0.clone();
-        let parse = d.parse(command, &self.ui.registries);
+        let d = self.session.dispatcher.0.clone();
+        let parse = d.parse(command, &self.session.registries);
         let result = match parse.executable() {
             Err(e) => {
                 self.syntax_failure(&e, command);
@@ -358,7 +358,7 @@ impl Game<'_> {
     fn accepts_success(&self) -> bool {
         self.console_broadcast.is_some()
             || self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
@@ -395,12 +395,12 @@ impl Game<'_> {
             .with_color(text::GRAY)
             .italic();
         let ops = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         let console = self.is_dedicated_server()
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if ops || console {
@@ -427,7 +427,7 @@ impl Game<'_> {
             return;
         }
         let ops = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // MinecraftServer.sendSystemMessage, unless the server is the source.
@@ -435,7 +435,7 @@ impl Game<'_> {
             && self.lan_acting.is_some()
             && self.is_dedicated_server()
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !console {
@@ -1187,7 +1187,7 @@ impl Game<'_> {
             let own = self.source_entity() == Some(t);
             let told = !own
                 && self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
             let changed = self.for_player(t, |g| {
@@ -1266,8 +1266,6 @@ impl Game<'_> {
         {
             // `ShieldItem.getName`: the banner's base colour names the shield.
             Text::translate(&format!("item.minecraft.shield.{color}"), &[])
-        } else if let Some(head) = horizon_client::item_tooltip::player_head_name(s) {
-            head.text()
         } else {
             // Item.getDescriptionId: a block item's is the block's.
             let (namespace, path) = item.split_once(':').unwrap_or(("minecraft", item));
@@ -2165,7 +2163,7 @@ impl Game<'_> {
                 if let Some(p) = self.player.as_mut() {
                     let _ = p.set_health(0.0, false);
                 }
-                self.ui.death_cause = Some("death.attack.genericKill".into());
+                self.session.death_cause = Some("death.attack.genericKill".into());
             }
             Target::Mob(id) => {
                 // LivingEntity.kill: a generic_kill death in the ECS, with its loot and its death event.
@@ -2697,7 +2695,7 @@ impl Game<'_> {
             .map(|i| i64::from(max[i] - min[i] + 1))
             .product::<i64>();
         let limit = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
@@ -2941,7 +2939,7 @@ impl Game<'_> {
         }
         let area = (0..3).map(|i| i64::from(size[i] + 1)).product::<i64>();
         let limit = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
@@ -3244,7 +3242,7 @@ impl Game<'_> {
         value: Value,
         actor: Option<&mod_api::GameRuleActor<'_>>,
     ) {
-        if self.ui.rules.set(&rule.name, value) {
+        if self.session.rules.set(&rule.name, value) {
             self.game_rule_changed(&rule.name, value, actor);
         }
         self.sync_rules();
@@ -3988,7 +3986,7 @@ impl Game<'_> {
                 single: false,
                 players: false,
             })
-            .parse(&mut reader, &self.ui.registries)
+            .parse(&mut reader, &self.session.registries)
             {
                 Ok(Arg::Entity(s)) if reader.cursor > 1 => {
                     let found = self.select(&s);
@@ -4112,13 +4110,11 @@ mod teleport_pitch_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         let kind = game
@@ -4351,7 +4347,7 @@ mod teleport_player_tests {
             player.position = Vec3::new(0.0, 64.0, 0.0);
             player.velocity = Vec3::new(1.0, -2.0, 3.0);
             player.fall_distance = 7.0;
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             // An absolute teleport zeroes every axis and stands the player
             // on the ground, keeping the fall distance (performTeleport).
             assert!(game.run_command("tp 10 70 10"));
@@ -4644,13 +4640,11 @@ mod selector_bounds_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -4727,7 +4721,7 @@ mod query_feedback_tests {
                 }],
             )
             .unwrap();
-            game.ui.rules = GameRules::with_registry(Arc::new(registry), &[]);
+            game.session.rules = GameRules::with_registry(Arc::new(registry), &[]);
             for (input, display, stored) in [
                 (
                     "spawn_monsters",
@@ -4745,7 +4739,7 @@ mod query_feedback_tests {
                     "test:spawn_monsters",
                 ),
             ] {
-                game.ui.rules.set(stored, Value::Bool(true));
+                game.session.rules.set(stored, Value::Bool(true));
                 let mut context = Context {
                     root: 0,
                     nodes: Vec::new(),
@@ -4777,8 +4771,8 @@ mod query_feedback_tests {
                 let error = game.cmd_gamerule(&context).unwrap_err();
                 assert_eq!(error.key, "commands.gamerule.not_set");
                 assert_eq!(error.message.component()["with"][0]["text"], display);
-                assert_eq!(game.ui.rules.get(stored), Some(Value::Bool(false)));
-                assert_eq!(game.ui.rules.rule(input).unwrap().name, stored);
+                assert_eq!(game.session.rules.get(stored), Some(Value::Bool(false)));
+                assert_eq!(game.session.rules.rule(input).unwrap().name, stored);
             }
         });
     }
@@ -4810,13 +4804,11 @@ mod query_feedback_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -4942,13 +4934,11 @@ mod forced_respawn_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.player = Some(
@@ -5226,13 +5216,11 @@ mod fill_note_instrument_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

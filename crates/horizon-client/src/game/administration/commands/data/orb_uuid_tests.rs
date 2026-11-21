@@ -27,13 +27,11 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();

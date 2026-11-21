@@ -18,34 +18,14 @@ impl Game<'_> {
         &mut self,
         entry: PendingWorldEntry,
     ) -> Result<Option<PendingWorldEntry>> {
-        // An entry dropped by an error still tells a mod waiting on it (`drop_world_entry`).
-        if let Err(error) = self.poll_world_rest() {
-            self.drop_world_entry(entry);
-            return Err(error);
-        }
-        if self.rest_loader.is_none() {
-            return Ok(Some(entry));
-        }
-        self.perf.world_opening();
-        self.displace_pending_replay(mod_api::ReplayError::WorldBusy);
-        self.pending_entry = Some(entry);
-        log::info!("Horizon: world entry waiting for world resources");
-        Ok(None)
+        // The world resources load synchronously at start: nothing waits, the entry is handed back.
+        Ok(Some(entry))
     }
 
     pub(super) fn resume_world_entry(&mut self) -> Result<()> {
         // A mod's read replay waiting here is told as failed before the error leaves; other
         // entries stay as they were.
-        if let Err(error) = self
-            .poll_integrated_start()
-            .and_then(|()| self.poll_world_rest())
-        {
-            self.displace_pending_replay(mod_api::ReplayError::Unavailable);
-            return Err(error);
-        }
-        if self.rest_loader.is_some() {
-            return Ok(());
-        }
+        self.poll_integrated_start()?;
         world_loading::preload_world_data(
             false,
             &self.options.resources,
@@ -71,37 +51,8 @@ impl Game<'_> {
                     existing_only,
                 )?;
             }
-            Some(PendingWorldEntry::Server {
-                address,
-                name,
-                cookies,
-                lan,
-                realm,
-            }) => {
-                self.connect_server_with_options(&address, &name, cookies, lan, realm)?;
-            }
-            Some(PendingWorldEntry::StudioReplay(path)) => {
-                let path_str = path.to_string_lossy().to_string();
-                if let Err(e) = self.open_studio_replay(&path_str) {
-                    log::warn!("Horizon Studio: could not open {path_str}: {e}");
-                }
-            }
-            Some(PendingWorldEntry::PreparedReplay { driver, origin }) => {
-                self.open_prepared_replay(*driver, origin);
-            }
+            Some(PendingWorldEntry::Server { .. }) => {}
             None => {}
-        }
-        Ok(())
-    }
-
-    pub(super) fn poll_world_rest(&mut self) -> Result<()> {
-        if let Some(loader) = &self.rest_loader
-            && loader.ready()?
-        {
-            self.rest_loader
-                .take()
-                .ok_or("missing world loader")?
-                .finish()?;
         }
         Ok(())
     }
@@ -194,9 +145,6 @@ impl Game<'_> {
         // Item damage predicates use the same frozen registry as player hurt.
         Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
         items.bind_component_damage_catalog(&health.damage);
-        // The recipe tables, the stations and the recipe book read one folder:
-        // hold its files so it is read once.
-        let _recipe_files = horizon_client::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
             lan::sync::prepare_server_sources(root, &self.res.core.item_data, &overlay)?
         } else {
@@ -245,7 +193,7 @@ impl Game<'_> {
             received.as_deref()
         };
         let registries = native_data_maps::WorldRegistries::new(
-            self.ui
+            self.session
                 .registries
                 .by_registry
                 .iter()
@@ -502,7 +450,6 @@ impl Game<'_> {
         self.server_items = None;
         self.refresh_infiniburn();
         self.install_parts(parts);
-        self.invalidate_tagged_shader_ids();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         self.forget_book();
         horizon_client::structure_blocks::forget_loot_data();
@@ -526,26 +473,10 @@ impl Game<'_> {
         self.adv.tree = advancements;
         self.adv.reset_tree();
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });
-        self.resolve_enchant_particles();
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
-        self.build_screen();
     }
 
     pub(in crate::game) fn join_world_rest(&mut self) -> Result<()> {
-        if self.rest_loader.is_some() {
-            let waited = Instant::now();
-            log::info!("Horizon: waiting for world resources");
-            while self.rest_loader.is_some() {
-                self.poll_world_rest()?;
-                if self.rest_loader.is_some() {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
-            log::info!(
-                "Horizon: world resources joined after {} ms",
-                waited.elapsed().as_millis()
-            );
-        }
         if self.res.rest.get().is_none() {
             return Err("world resources are unavailable".into());
         }
@@ -705,7 +636,6 @@ impl Game<'_> {
     pub(super) fn resolve_parts(&self) -> Result<()> {
         let prepared = self.prepare_parts(self.items())?;
         self.install_parts(prepared);
-        self.resolve_enchant_particles();
         Ok(())
     }
     /// Ask the parts of each block `isPathfindable` once per state and type, and of each item

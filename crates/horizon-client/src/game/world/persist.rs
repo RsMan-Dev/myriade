@@ -2466,13 +2466,11 @@ mod interaction_saved_defaults_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2675,13 +2673,11 @@ mod loaded_tag_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2874,13 +2870,11 @@ mod item_display_saved_transform_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.native_lifecycle
@@ -4046,13 +4040,11 @@ mod h262_enderman_absolute_anger_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -4288,13 +4280,11 @@ mod sulfur_body_attribute_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -4572,13 +4562,11 @@ mod summoned_knot_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -4849,13 +4837,11 @@ mod camel_pose_saved_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -5278,13 +5264,11 @@ mod trader_llama_discard_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

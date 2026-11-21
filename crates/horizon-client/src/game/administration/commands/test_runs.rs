@@ -283,7 +283,7 @@ impl Game<'_> {
         self.clear_game_tests();
         let tests = match ctx.get("tests") {
             Some(Arg::Str(pattern)) => horizon_client::command::args::select_resources(
-                self.ui.registries.ids("minecraft:test_instance"),
+                self.session.registries.ids("minecraft:test_instance"),
                 pattern,
             )
             .into_iter()
@@ -378,7 +378,7 @@ impl Game<'_> {
             "test.run" => {
                 let tests = match ctx.get("tests") {
                     Some(Arg::Str(pattern)) => horizon_client::command::args::select_resources(
-                        self.ui.registries.ids("minecraft:test_instance"),
+                        self.session.registries.ids("minecraft:test_instance"),
                         pattern,
                     )
                     .into_iter()

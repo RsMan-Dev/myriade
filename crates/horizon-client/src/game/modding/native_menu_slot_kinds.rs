@@ -11,9 +11,6 @@ fn layout_kinds(
 ) -> Vec<MenuSlotKind> {
     use MenuSlotKind::*;
     let mut kinds = vec![Other; count];
-    if content.is_none() && Game::remote_station_kind(name).is_some() {
-        return kinds;
-    }
     for (slot, kind) in kinds.iter_mut().enumerate() {
         let internal = if let Some(content) = content {
             if slot < content.slots {

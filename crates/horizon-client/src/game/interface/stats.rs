@@ -86,7 +86,7 @@ impl Game<'_> {
                         };
                         return host.hub.synced_id(&registry, &id).is_some();
                     }
-                    self.ui
+                    self.session
                         .registries
                         .ids(registry)
                         .iter()
@@ -299,7 +299,7 @@ impl Game<'_> {
     /// player of the level counts: the game's own and the hosted ones (a
     /// server thread's players are all hosted).
     pub(super) fn spawn_phantoms(&mut self) {
-        let rules = &self.ui.rules;
+        let rules = &self.session.rules;
         if !rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             || !rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS)
             || !rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_PHANTOMS)

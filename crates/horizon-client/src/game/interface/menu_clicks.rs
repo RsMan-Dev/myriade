@@ -33,7 +33,7 @@ impl Game<'_> {
             && input == horizon_client::menu::Input::Throw
             && self.carried.is_some()
             && false
-            && ((slot < 9 && self.creative_tab_open()) || self.creative_inventory_open())
+            && false
         {
             self.creative_throw_carrying(slot, button);
             return true;
@@ -53,7 +53,7 @@ impl Game<'_> {
         };
         let count = if button == 0 {
             1
-        } else if self.creative_inventory_open() {
+        } else if false {
             let max = world_items!(self)
                 .get(&old.item)
                 .map_or(64, |i| i.max_stack);
@@ -69,35 +69,6 @@ impl Game<'_> {
         });
         self.player_equipment_changed(&before);
         self.apply_equipment();
-        self.remote_creative_throw(ItemStack { count, ..old });
-        self.send_creative_slots();
-    }
-    /// Bedrock's tick when a stack splits: a right-click with an empty hand on a stack of more
-    /// than one, which the menu halves. Returns the clicked slot and the counts that confirm
-    /// the click actually did it (the stack before, and the half the hand should hold after).
-    pub(super) fn split_click(
-        &mut self,
-        ops: &[(Option<usize>, i32, horizon_client::menu::Input)],
-    ) -> Option<(usize, u32, u32)> {
-        let [(Some(slot), 1, horizon_client::menu::Input::Pickup)] = ops else {
-            return None;
-        };
-        if self.carried.is_some() {
-            return None;
-        }
-        let stack = self.slot_mut(*slot).clone()?;
-        (stack.count > 1).then(|| (*slot, stack.count, stack.count.div_ceil(2)))
-    }
-    /// Whether the menu did the split `split_click` described: the hand took the upper half and
-    /// the clicked slot kept the lower one.
-    pub(super) fn split_done(&mut self, split: (usize, u32, u32)) -> bool {
-        let (slot, before, half) = split;
-        let carried = self.carried.as_ref().is_some_and(|c| c.count == half);
-        carried
-            && self
-                .slot_mut(slot)
-                .clone()
-                .is_some_and(|s| s.count.saturating_add(half) == before)
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
     pub(super) fn menu_ops(
@@ -114,7 +85,6 @@ impl Game<'_> {
         if let [(Some(slot), button, input)] = ops {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
-        let split = self.split_click(ops);
         let ops = ops.to_vec();
         let done = self.menu_session(move |menu, env, to_menu| {
             let mut clicks = Vec::new();
@@ -141,15 +111,6 @@ impl Game<'_> {
             }
             Some(true)
         });
-        // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        // The pad's own click, and only the pad's: the mouse's split doesn't buzz.
-        if done
-            && self.input_made_pointer_event()
-            && let Some(split) = split
-            && self.split_done(split)
-        {
-            self.input_feedback(horizon_client::input_source::Feedback::ItemStackSplit);
-        }
         done
     }
     /// The open menu as the verified engine (`horizon_client::menu`): the
@@ -245,21 +206,11 @@ impl Game<'_> {
         let smithing_open = station_kind == Some(stations::Kind::Smithing);
         let enchanting_open = station_kind == Some(stations::Kind::Enchanting);
         let beacon_open = station_kind == Some(stations::Kind::Beacon);
-        let (kind, game_of): (Kind, Vec<Option<usize>>) = if self.creative_tab_open() {
+        let (kind, game_of): (Kind, Vec<Option<usize>>) = if false {
             // ItemPickerMenu: the display slots (clicked by the screen), then the hotbar.
             let mut v = vec![None; 45];
             v.extend((0..9).map(Some));
             (Kind::ItemPicker, v)
-        } else if let Some(columns) = self
-            .mount_menu_columns()
-            .filter(|_| false && self.mount_active())
-        {
-            // A server's HorseInventoryMenu: the saddle, the body armour,
-            // the chest, then the inventory.
-            let mut v = vec![Some(mount_menu::SADDLE), Some(mount_menu::ARMOR)];
-            v.extend((0..columns * 3).map(|i| Some(mount_menu::CHEST + i)));
-            v.extend((9..36).chain(0..9).map(Some));
-            (Kind::Mount(columns), v)
         } else if merchant_open {
             // MerchantMenu: two payment slots, the result, then the inventory.
             let mut v: Vec<Option<usize>> = vec![
@@ -344,15 +295,7 @@ impl Game<'_> {
                         (kind, size)
                     }
                     Some(BlockEntity::Brewing(_)) => (Kind::Brewing, 5),
-                    Some(BlockEntity::Mod(_)) => {
-                        match self
-                            .remote_menu_type()
-                            .and_then(horizon_client::containers::mod_menu_type)
-                        {
-                            Some(t) => (Kind::Mod(t), t.slots),
-                            None => return false,
-                        }
-                    }
+                    Some(BlockEntity::Mod(_)) => return false,
                     Some(BlockEntity::Furnace(f)) => (
                         Kind::Furnace(
                             match f.kind.recipe_type().trim_start_matches("minecraft:") {
@@ -372,7 +315,7 @@ impl Game<'_> {
                     plain: false,
                 };
                 (kind, map)
-            } else if self.station.is_none() && !self.mount_active() {
+            } else if self.station.is_none() {
                 let table = self.craft_size == 3;
                 let map = Map {
                     container: 0,
@@ -401,19 +344,11 @@ impl Game<'_> {
             None => game_of.iter().position(|x| *x == Some(g)),
         };
         let mut menu = Menu::new(kind);
-        let menu_id = if matches!(kind, Kind::Mount(_)) {
-            Some("horizon:mount_inventory")
-        } else if matches!(kind, Kind::Inventory | Kind::ItemPicker) {
-            None
-        } else {
-            self.remote_menu_type()
-        };
+        let menu_id = matches!(kind, Kind::Mount(_)).then_some("horizon:mount_inventory");
         menu.set_registry_id(menu_id);
         menu.set_block_pos(self.container.map(|(x, y, z)| [x, y, z]));
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
-        if matches!(kind, Kind::Mount(_)) {
-            menu.mount = self.mount_menu_entity();
-        }
+
         let total = menu.slot_count();
         let before: Vec<Option<ItemStack>> = game_of
             .iter()
@@ -601,7 +536,6 @@ impl Game<'_> {
             if !predicting {
                 self.award_stat("crafted", &stack.item, stack.count as i32);
             }
-            self.tutorial_get_item(Some(stack));
         }
         for (i, stack) in after.into_iter().enumerate() {
             if let Some(g) = game_of[i] {
@@ -632,15 +566,6 @@ impl Game<'_> {
             {
                 let at = [p.position.x, p.position.y, p.position.z];
                 self.award_furnace_recipes(pos, at);
-            }
-        } else if self.screen == Screen::Creative {
-            // A THROW in the creative screen with an empty hand: on an item tab's hotbar
-            // `AbstractContainerMenu.doClick` calls `Player.handleCreativeModeItemDrop`, on the
-            // Survival Inventory tab the screen does. The stack goes to the server, the slot
-            // follows with the others (SetCreativeModeSlot). Only the server can drop it; the
-            // slot has already given it up.
-            for stack in dropped {
-                self.remote_creative_throw(stack);
             }
         }
         if kind == Kind::Loom {

@@ -1,7 +1,19 @@
 use super::*;
 
+/// The blocks a guest's hand flips that its use predicts (and hears at once): a wooden or
+/// copper door, trapdoor or fence gate, a lever, a button or a cauldron, whose fill level
+/// changes as the bucket, bottle or dye lands. An iron door or trapdoor has no hand use.
+fn hand_operated(name: &str) -> bool {
+    let name = name.trim_start_matches("minecraft:");
+    ((name.ends_with("_door") || name.ends_with("_trapdoor")) && !name.starts_with("iron_"))
+        || name.ends_with("_fence_gate")
+        || name.ends_with("_button")
+        || name == "lever"
+        || name.ends_with("cauldron")
+}
+
 impl Game<'_> {
-    /// `level.playSound(player, ...)` of a guest's use it predicted (`remote::hand_operated`
+    /// `level.playSound(player, ...)` of a guest's use it predicted (`hand_operated`
     /// blocks only, as the guest decides): the others hear it now, the guest already did.
     pub(super) fn guest_use_sounds(&mut self, conn: u32, logged: usize, heard: usize) {
         if self.lan.is_none() {
@@ -49,7 +61,7 @@ impl Game<'_> {
         }
         let hand_operated = !changed.is_empty()
             && changed.iter().all(|&(x, y, z)| {
-                crate::game::remote::hand_operated(&facts.get(self.world.block(x, y, z)).name)
+                hand_operated(&facts.get(self.world.block(x, y, z)).name)
             });
         if hand_operated && let Some(capture) = self.audio.capture.as_mut() {
             sounds.extend(capture.drain(heard.min(capture.len())..));

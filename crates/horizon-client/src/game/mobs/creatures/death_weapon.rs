@@ -253,7 +253,7 @@ impl Game<'_> {
             luck: 0.0,
             vehicle,
             mob_drops: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS),
             world_seed: self.level.seed,

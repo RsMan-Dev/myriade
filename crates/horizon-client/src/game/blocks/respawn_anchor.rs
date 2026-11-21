@@ -676,9 +676,9 @@ mod connected_spawnpoint_rotation_tests {
 
     fn command(game: &mut Game<'_>, text: &str) {
         game.chat_capture = Some(Vec::new());
-        game.ui.registries.permission = 4;
+        game.session.registries.permission = 4;
         let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-        let parsed = dispatcher.parse(text, &game.ui.registries);
+        let parsed = dispatcher.parse(text, &game.session.registries);
         let (ctx, _) = parsed
             .executable()
             .expect("actual registered dedicated command");

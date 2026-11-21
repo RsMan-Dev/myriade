@@ -14,7 +14,7 @@ struct CrosshairEntityHit {
 }
 
 fn nearest_entity(
-    hits: [Option<CrosshairEntityHit>; 4],
+    hits: [Option<CrosshairEntityHit>; 3],
     block_distance: Option<f64>,
 ) -> Option<CrosshairEntityHit> {
     hits.into_iter().flatten().fold(None, |best, hit| {
@@ -30,20 +30,6 @@ fn nearest_entity(
 
 impl Game<'_> {
     fn crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
-        if let Some(entity) = self.targeting().entity {
-            let (_, distance) = self.targeting_entity_hit(entity)?;
-            return Some(CrosshairEntityHit {
-                id: entity.id() as i32,
-                distance,
-                pickable: !matches!(
-                    self.native_client_entity_target(entity)?,
-                    crate::game::commands::Target::Projectile(_)
-                        | crate::game::commands::Target::DragonPart(_)
-                        | crate::game::commands::Target::Other(_)
-                ),
-                suggest_uuid: self.level_dragon_part(entity.id()).is_none(),
-            });
-        }
         let hit = |id: u32, distance, pickable| CrosshairEntityHit {
             id: id as i32,
             distance,
@@ -51,13 +37,6 @@ impl Game<'_> {
             suggest_uuid: true,
         };
         let hits = [
-            self.remote_object_hit(true).map(|object| {
-                hit(
-                    object.id as u32,
-                    object.distance,
-                    !self.interactions.contains_key(&object.id),
-                )
-            }),
             self.mob_hit()
                 .map(|(index, distance, _)| hit(self.remote_entities[index].id, distance, true)),
             self.redirectable_hit()
@@ -81,14 +60,7 @@ impl Game<'_> {
     /// view_hit, this never traces distant terrain.
     pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
         use crate::game::api_values::TryIntoApi;
-        if !self.native_window() || self.title.is_some() {
-            return None;
-        }
         self.player.as_ref()?;
-        if let Some(entity) = self.targeting().entity {
-            let (point, _) = self.targeting_entity_hit(entity)?;
-            return Some(CrosshairTarget::Entity { entity, point });
-        }
         if let Some(hit) = self.crosshair_entity_hit() {
             let (eye, direction) = self.aim()?;
             let point = std::array::from_fn(|axis| eye[axis] + direction[axis] * hit.distance);

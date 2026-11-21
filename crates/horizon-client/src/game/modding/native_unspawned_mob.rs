@@ -14,7 +14,7 @@ use super::Game;
 use super::api_values::TryIntoEngine;
 use super::living_attributes::{AttributeWrite, collect_equipment, write_unspawned_attribute};
 use horizon_client::mobs::finalize::{Ageable, Group};
-use horizon_client::mobs::{Mob, equine, llama, render, tame};
+use horizon_client::mobs::{DYE_NAMES, Mob, equine, llama, tame};
 use horizon_client::text::Text;
 use horizon_world::attribute_map::ValueKind;
 use horizon_world::attributes::Operation;
@@ -335,8 +335,8 @@ pub(in crate::game) fn native_spawn_group(group: &Group, epoch: WorldEpoch) -> O
             tropical: match look {
                 Some((pattern, base, color)) => Some(TropicalVariant::new(
                     named(&horizon_client::entity_nbt::TROPICAL_PATTERNS, *pattern)?,
-                    named(&render::DYE_NAMES, *base)?,
-                    named(&render::DYE_NAMES, *color)?,
+                    named(&DYE_NAMES, *base)?,
+                    named(&DYE_NAMES, *color)?,
                 )),
                 None => None,
             },
@@ -414,8 +414,8 @@ pub(in crate::game) fn spawn_group(group: &SpawnGroup) -> Option<Group> {
                         &horizon_client::entity_nbt::TROPICAL_PATTERNS,
                         &look.pattern,
                     )?,
-                    index(&render::DYE_NAMES, &look.base_color)?,
-                    index(&render::DYE_NAMES, &look.pattern_color)?,
+                    index(&DYE_NAMES, &look.base_color)?,
+                    index(&DYE_NAMES, &look.pattern_color)?,
                 )),
                 None => None,
             },

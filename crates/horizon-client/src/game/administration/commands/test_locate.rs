@@ -61,7 +61,7 @@ impl Game<'_> {
     pub(super) fn test_locate(&mut self, ctx: &Context) -> R<i32> {
         let selected: Vec<String> = match ctx.get("tests") {
             Some(Arg::Str(pattern)) => horizon_client::command::args::select_resources(
-                self.ui.registries.ids("minecraft:test_instance"),
+                self.session.registries.ids("minecraft:test_instance"),
                 pattern,
             )
             .into_iter()

@@ -4,7 +4,6 @@
 //! (`SculkShriekerBlockEntity`, `SpawnUtil`), catalysts feeding the sculk
 //! spreader from deaths, and the darkness wardens and shriekers cast.
 use super::{Game, Result, commands::R};
-use horizon_client::actions::Action;
 use horizon_client::join_seq::ListStamp;
 use horizon_client::{
     containers::BlockEntity,
@@ -23,6 +22,7 @@ use horizon_core::{
 };
 use horizon_world::registry::BlockStateId;
 use mod_api::client::particles::PositionSource;
+use crate::game::cosmetic_random::cosmetic_random;
 use std::collections::HashSet;
 
 pub const HELP: &[&str] = &[
@@ -605,7 +605,7 @@ impl Game<'_> {
             owner_uuid: None,
             dampening_state: self.state_dampens(state),
             spectator: self.spectator(),
-            stepping_carefully: self.keys.held(Action::Sneak),
+            stepping_carefully: self.sneak_held,
             dampens: false,
             targetable: !dead && !creative && !self.spectator(),
             living: true,
@@ -766,14 +766,6 @@ impl Game<'_> {
         pos: [f64; 3],
         mut make_ctx: impl FnMut(&mut Self) -> Context,
     ) {
-        super::dispense_fixture::record(|| {
-            format!(
-                "G {},{},{} {event}",
-                pos[0].floor() as i32,
-                pos[1].floor() as i32,
-                pos[2].floor() as i32
-            )
-        });
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
             let ctx = make_ctx(self);
             let cause = event_cause(ctx.source, self.lan_acting_entity);
@@ -1446,7 +1438,7 @@ impl Game<'_> {
         self.state_property(state, "can_summon") == Some("true")
             && self.world.health_rules.difficulty != Difficulty::Peaceful
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_WARDENS)
     }
@@ -1704,28 +1696,9 @@ impl Game<'_> {
         let (previous, current) = self.sculk.darkness;
         previous + (current - previous) * partial
     }
-    /// The fog's view of the darkness effect, while it is on.
-    pub(super) fn darkness_fog(&self) -> Option<f32> {
-        self.potions
-            .effects
-            .get("darkness")
-            .map(|_| self.darkness_blend(self.clock.fraction() as f32))
-    }
-    /// `LightmapRenderStateExtractor`: (brightness taken off the gamma
-    /// option, the pulsing light scale).
-    pub(super) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
-        let scale = self.settings.file.double("darknessEffectScale") as f32;
-        let modifier = self.darkness_blend(partial) * scale;
-        let pulse = ((self.visual_ticks() as f32 - partial) * std::f32::consts::PI * 0.025).cos()
-            * 0.45
-            * modifier;
-        (modifier, pulse.max(0.0) * scale)
-    }
-
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
     /// (`GameRenderer.nightVisionScale`), or conduit power's water vision.
     pub(super) fn night_vision_intensity(&self, partial: f32) -> f32 {
-        use mod_api::client::fog::FogType;
         if let Some(e) = self.potions.effects.get("night_vision") {
             // MobEffectInstance.endsWithin(200); -1 is infinite.
             return if e.duration < 0 || e.duration > 200 {
@@ -1733,12 +1706,6 @@ impl Game<'_> {
             } else {
                 0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
             };
-        }
-        if self.potions.effects.get("conduit_power").is_some()
-            && let Some(eye) = self.eye_position()
-        {
-            let in_water = self.camera_fog_type(eye) == FogType::Water;
-            return self.fog.water_vision(in_water);
         }
         0.0
     }
@@ -1840,7 +1807,7 @@ impl Game<'_> {
         let count = data >> 6;
         if count > 0 {
             // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.random();
+            let mut r = cosmetic_random();
             if r.next_float() < 0.3 + count as f32 * 0.1 {
                 let volume = 0.15 + 0.02 * (count * count) as f32 * r.next_float();
                 let pitch = 0.4 + 0.3 * count as f32 * r.next_float();
@@ -2064,7 +2031,7 @@ impl Game<'_> {
             )
         });
         if let Some((at, on_ground, health, flying)) = player {
-            let crouch = self.keys.held(Action::Sneak);
+            let crouch = self.sneak_held;
             if on_ground && !self.spectator() {
                 self.step_on_redstone_ore(at, crouch, true);
             }
@@ -2915,13 +2882,11 @@ mod command_damage_listener_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

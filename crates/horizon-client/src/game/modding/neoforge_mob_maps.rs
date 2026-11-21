@@ -140,7 +140,7 @@ pub(super) fn load<'a>(
                 |value| {
                     let id = format!(
                         "minecraft:{}",
-                        horizon_client::mobs::render::VILLAGER_TYPES[*value as usize]
+                        horizon_client::mobs::VILLAGER_TYPES[*value as usize]
                     );
                     horizon_core::nbt::Tag::String(id.as_str().into())
                 },

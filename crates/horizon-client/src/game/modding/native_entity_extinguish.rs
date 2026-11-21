@@ -1,5 +1,5 @@
 //! `Entity.extinguishFire`, distinct from the silent `clearFire` write.
-use super::{Game, commands::Target, powder_snow::extinguish_pitch};
+use super::{Game, commands::Target, cosmetic_random::cosmetic_random, powder_snow::extinguish_pitch};
 use mod_api::{EntityRef, SoundSource};
 use horizon_core::nbt::Tag;
 
@@ -14,7 +14,7 @@ impl Game<'_> {
                     let ticks = player.fire_ticks;
                     let at = [player.position.x, player.position.y, player.position.z];
                     if ticks > 0 {
-                        let pitch = extinguish_pitch(game.particles.random());
+                        let pitch = extinguish_pitch(&mut cosmetic_random());
                         game.audio.play_on(
                             SoundSource::Players.index(),
                             "minecraft:entity.generic.extinguish_fire",
@@ -48,7 +48,7 @@ impl Game<'_> {
                 let ticks = stand.fire_ticks;
                 let at = [stand.position.x, stand.position.y, stand.position.z];
                 if ticks > 0 {
-                    let pitch = extinguish_pitch(self.particles.random());
+                    let pitch = extinguish_pitch(&mut cosmetic_random());
                     self.audio.play_on(
                         SoundSource::Neutral.index(),
                         "minecraft:entity.generic.extinguish_fire",

@@ -5,7 +5,6 @@
 //! compound of block id to property name. Horizon keeps unmodelled components
 //! in `StackData::other`, so the component travels through NBT unchanged.
 use super::Game;
-use horizon_client::actions::Action;
 use horizon_client::{Result, items::ItemStack, text::Text};
 use horizon_core::position::BlockPos;
 use horizon_world::level::flags;
@@ -81,7 +80,7 @@ impl Game<'_> {
         // `Player.isSecondaryUseActive` / `isShiftKeyDown`: the acting
         // player's sneak input. `keys` holds the host's, toggled sneak
         // included; `enter_guest` fills it from the guest's sneak state.
-        let backward = self.keys.held(Action::Sneak);
+        let backward = self.sneak_held;
 
         if cycle {
             // `cycleState`: a property selected on another block falls back to

@@ -219,7 +219,7 @@ fn a_player_pour_with_a_changed_hand_is_refused() {
             let used = game.player_empty_contents(&stick, TARGET, &hit);
             assert!(matches!(
                 used,
-                Some(horizon_client::first_person::UseResult::Fail)
+                Some(crate::hand_use::UseResult::Fail)
             ));
             assert_eq!(game.inventory[slot], Some(stick));
             // The Part's equipment write is journaled and rolls back with the refused pour.
@@ -252,7 +252,7 @@ fn a_player_pours_through_the_part_and_keeps_an_empty_bucket() {
         let used = game.player_empty_contents(&stick, TARGET, &hit);
         assert!(matches!(
             used,
-            Some(horizon_client::first_person::UseResult::Success { swing: true })
+            Some(crate::hand_use::UseResult::Success { swing: true })
         ));
         assert!(honey_at_target(game));
         let held = game.inventory[slot]

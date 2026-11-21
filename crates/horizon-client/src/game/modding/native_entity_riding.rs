@@ -911,7 +911,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.ui.registries.permission = 4;
+                game.session.registries.permission = 4;
                 for (id, name) in [
                     (40, "minecraft:zombie"),
                     (41, "minecraft:pig"),
@@ -1506,15 +1506,15 @@ mod tests {
             };
 
             // `tickLeash`: `removeLeash` with the rule off, `dropLeash` with it on.
-            game.ui.rules.set("entity_drops", Value::Bool(false));
+            game.session.rules.set("entity_drops", Value::Bool(false));
             tick_cleanup(game);
             assert!(game.dropped.is_empty());
-            game.ui.rules.set("entity_drops", Value::Bool(true));
+            game.session.rules.set("entity_drops", Value::Bool(true));
             tick_cleanup(game);
             take_one_lead(game, at);
 
             // `Leashable.dropLeash` asks no rule: the lead falls as promised.
-            game.ui.rules.set("entity_drops", Value::Bool(false));
+            game.session.rules.set("entity_drops", Value::Bool(false));
             assert!(cow.leash_to(game, holder));
             assert!(cow.detach_leash(game, true));
             take_one_lead(game, at);

@@ -22,7 +22,7 @@ impl Game<'_> {
     pub(in crate::game) fn perform_cart_command(&mut self, id: u32) -> bool {
         let game_time = self.world.game_time;
         let rules_work = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         let dimension = self.dim;
@@ -97,7 +97,7 @@ impl Game<'_> {
             return;
         };
         let feedback = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         if feedback {
@@ -106,7 +106,7 @@ impl Game<'_> {
         if broadcast
             && feedback
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
         {
@@ -120,7 +120,6 @@ impl Game<'_> {
         let Some(block) = self.ecs.cart_command(id) else {
             return;
         };
-        self.open_edit_screen((0, 0, 0), Some(id), block, Mode::Redstone, false);
     }
     /// The edit screen's Done for a cart (`populateAndSendPacket`, then
     /// `onDone` clears the last output of a cart that no longer tracks it): a
@@ -130,7 +129,7 @@ impl Game<'_> {
             self.system_message(Text::translate("advMode.notAllowed", &[]));
             return;
         }
-        let command = s.command.value().to_owned();
+        let command = s.command.clone();
         let track_output = s.track_output;
         // The output button set the cart's own flag as it was pressed.
         self.edit_command_cart(id, |c| c.track_output = track_output);
@@ -161,7 +160,7 @@ impl Game<'_> {
     /// cart's own components, so `onUpdated` has nothing to copy.
     pub(super) fn apply_cart_command(&mut self, id: u32, command: String, track_output: bool) {
         let enabled = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         if self

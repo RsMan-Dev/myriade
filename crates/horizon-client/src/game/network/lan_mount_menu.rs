@@ -329,7 +329,7 @@ mod tests {
                 .push(("minecraft:unbreaking".into(), 2));
             mob.extra.set_body_stack(Some(armor.clone()));
             game.mobs.push(mob);
-            game.open_mount_menu(0);
+
             let mut menu = game.mount_engine_menu(0, 0);
             assert_eq!(menu.slot(1), Some(&armor));
             let env = game.menu_env();

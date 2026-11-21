@@ -9,7 +9,6 @@
 //! pull of the rope (`Leashable.tickLeash`) and the snap are the ECS's, and the
 //! host only ties, unties and drops the lead by network id.
 use super::Game;
-use horizon_client::actions::Action;
 use horizon_client::mobs::leash::{self, Holder};
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
@@ -177,7 +176,7 @@ impl Game<'_> {
         let at = [c.x, c.y, c.z];
         // The sneak branch: the player's mobs and boats on leads are re-tied
         // to this boat.
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         if sneaking
             && self.tie_player_leads(glam::DVec3::new(c.x, c.y, c.z), Holder::Boat(id), None)
         {

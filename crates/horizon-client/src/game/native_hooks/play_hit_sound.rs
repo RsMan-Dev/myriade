@@ -1,27 +1,14 @@
 use super::*;
-use horizon_core::{geometry::Direction, position::BlockPos};
 
 impl Game<'_> {
     pub(in crate::game) fn play_mining_hit_sound(
         &mut self,
         state: BlockStateId,
         pos: [i32; 3],
-        face: [i32; 3],
+        _face: [i32; 3],
         unshared: bool,
     ) {
-        let mut cancel = false;
-        // A face that names no direction (never from a block hit) skips the hook, not the sound.
-        if mod_api::__private::has_scoped_hook(mod_api::HookId::PlayHitSound)
-            && let Some(face) = Direction::ALL.into_iter().find(|d| d.normal() == face)
-        {
-            self.native_play_hit_sound(super::fire::PlayHitSoundCall {
-                state,
-                pos: BlockPos::new(pos[0], pos[1], pos[2]),
-                face,
-                cancel: &mut cancel,
-            });
-        }
-        if cancel || unshared {
+        if unshared {
             return;
         }
         let sounds = self.res.facts().get(state).sounds.clone();
@@ -30,12 +17,21 @@ impl Game<'_> {
         let pitch = sounds.pitch * 0.5;
         self.audio.play(&sounds.hit, at, volume, pitch);
     }
+}
 
-
-    pub(in crate::game) fn native_play_hit_sound(
+impl Game<'_> {
+    pub(in crate::game) fn breaking_block_effects(
         &mut self,
-        call: super::fire::PlayHitSoundCall<'_>,
+        pos: [i32; 3],
+        face: [i32; 3],
+        play_sound: bool,
     ) {
-        self.fire_play_hit_sound(call);
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        if self.res.facts().is_air(state) {
+            return;
+        }
+        if play_sound {
+            self.play_mining_hit_sound(state, pos, face, true);
+        }
     }
 }

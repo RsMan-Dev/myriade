@@ -61,7 +61,7 @@ impl Game<'_> {
         match body["method"].as_str().unwrap_or_default() {
             // `GameRulesService.get`: every rule the server has, with its type and current value.
             "gamerules" => {
-                let rules = &self.ui.rules;
+                let rules = &self.session.rules;
                 let all: Vec<Value> = rules
                     .available_rules()
                     .map(|r| typed_rule(r, rules.get(&r.name).unwrap_or(r.default)))
@@ -77,7 +77,7 @@ impl Game<'_> {
                 let Some(key) = update["key"].as_str() else {
                     return json!({ "invalid": format!("No key key in MapLike[{update}]") });
                 };
-                let rule = self.ui.rules.rule(key).cloned();
+                let rule = self.session.rules.rule(key).cloned();
                 let Some(rule) = rule else {
                     let key = if key.contains(':') {
                         key.to_owned()
@@ -107,7 +107,7 @@ impl Game<'_> {
                     Ok(value) => value,
                     Err(invalid) => return json!({ "invalid": invalid }),
                 };
-                let current = self.ui.rules.get(&rule.name).unwrap_or(rule.default);
+                let current = self.session.rules.get(&rule.name).unwrap_or(rule.default);
                 rpc(format!(
                     "Game rule '{}' updated from '{current}' to '{value}'",
                     rule.name

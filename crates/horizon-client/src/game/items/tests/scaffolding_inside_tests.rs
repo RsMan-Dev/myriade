@@ -5,7 +5,6 @@
 use crate::game::{Game, Hit, game_tests::tests::server_game};
 use horizon_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
 use horizon_core::geometry::Vec3;
-use winit::keyboard::KeyCode;
 
 /// The block name at `pos`.
 fn name(game: &Game<'_>, pos: [i32; 3]) -> String {
@@ -53,8 +52,7 @@ fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
     *game.held_mut() = Some(ItemStack::new("minecraft:scaffolding", 1));
     game.yaw = 0.0;
     game.pitch = -90.0;
-    game.keys
-        .press(KeyCode::ShiftLeft, horizon_client::held::Source::Keyboard);
+    game.sneak_held = true;
     let hit: Hit = game.pick().expect("the eye is inside the column");
     assert_eq!(hit.pos, COLUMN, "the click is on the block the eye is in");
     assert!(game.use_hand(Some(&hit)).unwrap());

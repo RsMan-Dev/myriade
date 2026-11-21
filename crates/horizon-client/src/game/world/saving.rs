@@ -1,7 +1,7 @@
 //! The save screen freezes simulation, but keeps pumping window events while
 //! snapshots are prepared in small batches and the region workers drain.
-use super::{ClientQuit, Game, loading_frame};
-use horizon_client::{Result, hud::HudBatch};
+use super::Game;
+use horizon_client::Result;
 use std::{
     collections::{HashSet, VecDeque},
     time::{Duration, Instant},
@@ -40,9 +40,6 @@ impl Game<'_> {
             })
     }
     pub(super) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
-        if quit {
-            self.client_quit.set(ClientQuit::ShuttingDown);
-        }
         if let Some(save) = &mut self.pending_save {
             save.quit |= quit;
             return Ok(());
@@ -58,10 +55,7 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        if self.integrated.is_some() {
-            // Minecraft.disconnect: the client logs out before its server halts.
-            self.client_logging_out();
-        }
+
         // Stop client-side terrain work before the integrated server is shut down. The
         // server's own stop path aborts its workers, but the window's streaming registration
         // is dropped only after the event loop exits and would otherwise wait for queued work.
@@ -88,7 +82,6 @@ impl Game<'_> {
                 stage: Stage::Generation,
             });
         }
-        self.capture(false);
         Ok(())
     }
 
@@ -140,8 +133,6 @@ impl Game<'_> {
                     // can then run without blocking on the server's writes.
                     if save.quit {
                         self.integrated.take().unwrap().stop()?;
-                    } else {
-                        self.leave_server(None)?;
                     }
                     Ok(true)
                 }
@@ -236,7 +227,6 @@ impl Game<'_> {
                     Ok(true)
                 } else {
                     if save.close {
-                        self.finish_perf();
                         self.finish_close_world()?;
                     }
                     self.clock.reset();
@@ -303,5 +293,20 @@ impl Game<'_> {
             self.native_level_save(self.dim.id());
         }
         Ok(())
+    }
+}
+
+impl Game<'_> {
+    pub(in crate::game) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<horizon_core::nbt::Tag> {
+        let e = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;
+        let name = self.data_block_name(pos);
+        let mut tag =
+            horizon_client::save::block_entity_encode::encode((pos[0], pos[1], pos[2]), e, &name);
+        if let horizon_core::nbt::Tag::Compound(c) = &mut tag {
+            for key in ["id", "x", "y", "z", "keepPacked"] {
+                c.remove(&key.into());
+            }
+        }
+        Some(tag)
     }
 }

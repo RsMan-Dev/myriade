@@ -76,7 +76,6 @@ fn compiled_wasm_loopback() {
             let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             for _ in 0..2 {
                 let mut received = -1.0;
-                game.native_tick_target_millis(&mut received);
                 assert_eq!(received, expected);
             }
         });

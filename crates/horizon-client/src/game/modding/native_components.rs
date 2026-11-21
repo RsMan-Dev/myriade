@@ -90,7 +90,7 @@ impl Game<'_> {
         component: &str,
     ) -> Option<Tag> {
         let item = mod_api::__private::item_key_id(item)?;
-        let prototype = self.pack.item_renderer.models.prototypes.get(item)?;
+        let prototype = self.res.item_defaults().entries().get(item)?;
         Some(horizon_client::scoreboard::json_to_tag(
             prototype.get(component)?,
         ))
@@ -137,10 +137,9 @@ impl Game<'_> {
             };
         }
         let Some(value) = self
-            .pack
-            .item_renderer
-            .models
-            .prototypes
+            .res
+            .item_defaults()
+            .entries()
             .get(&*stack.item)
             .and_then(|item| item.get("minecraft:instrument"))
         else {
@@ -249,12 +248,11 @@ impl Game<'_> {
         stack: &ItemStack,
         id: &str,
     ) -> Option<serde_json::Value> {
-        self.pack
-            .item_renderer
-            .models
-            .components_view(&horizon_client::item_render::stack_view(stack))
-            .get(id)
-            .cloned()
+        crate::game::stack_components::stack_component(
+            self.res.item_defaults().entries(),
+            &crate::game::stack_text::stack_view(stack),
+            id,
+        )
     }
     pub(in crate::game) fn item_resource_entity_attack_range(
         &self,
@@ -298,7 +296,7 @@ impl Game<'_> {
     ) -> Option<bool> {
         self.items().get(&stack.item)?;
         stack_can_be_hurt_by(
-            &self.pack.item_renderer.models,
+            self.res.item_defaults().entries(),
             &self.health_resources.damage,
             stack,
             name,
@@ -1219,13 +1217,12 @@ mod combat_query_tests {
 
 /// Supply the gameplay component snapshot to the shared stack rule.
 pub(in crate::game) fn stack_can_be_hurt_by(
-    models: &horizon_assets::item_model::ItemModels,
+    defaults: &std::collections::BTreeMap<String, serde_json::Value>,
     catalog: &horizon_world::damage_source::Catalog,
     stack: &ItemStack,
     name: &str,
 ) -> Option<bool> {
-    let default = models
-        .prototypes
+    let default = defaults
         .get(stack.item.as_ref())
         .and_then(|components| components.get("minecraft:damage_resistant"));
     horizon_client::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
@@ -1239,8 +1236,8 @@ pub(in crate::game) const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [
 ];
 
 pub(in crate::game) fn item_damage_resolver<'a>(
-    models: &'a horizon_assets::item_model::ItemModels,
+    defaults: &'a std::collections::BTreeMap<String, serde_json::Value>,
     catalog: &'a horizon_world::damage_source::Catalog,
 ) -> impl Fn(&ItemStack, &str) -> bool + 'a {
-    move |stack, damage| stack_can_be_hurt_by(models, catalog, stack, damage).unwrap_or(true)
+    move |stack, damage| stack_can_be_hurt_by(defaults, catalog, stack, damage).unwrap_or(true)
 }

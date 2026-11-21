@@ -1,7 +1,7 @@
 //! Still-fluid boxes drawn by block entity, mob and player submit hooks
-//! ([`BlockEntityDrawContext::fluid_box`](crate::BlockEntityDrawContext::fluid_box)).
+//! (a fluid box a mod draws).
 
-/// How [`BlockEntityDrawContext::fluid_box`](crate::BlockEntityDrawContext::fluid_box) draws a
+/// How a fluid box draws a
 /// still fluid: a machine's tank, a basin's contents.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
@@ -39,7 +39,7 @@ impl FluidBoxOptions {
     }
 }
 
-/// Why [`BlockEntityDrawContext::fluid_box`](crate::BlockEntityDrawContext::fluid_box) drew
+/// Why a fluid box drew
 /// nothing. A refused box appends no geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

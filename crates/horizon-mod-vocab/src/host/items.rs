@@ -132,36 +132,6 @@ pub trait ItemsServerHost {
         remainder: ItemStack,
     ) -> Result<Option<ItemStack>, StackWriteError>;
 }
-/// The client host's methods of the `items` area, implemented by the game and reached through [`crate::ClientHost`].
-#[horizon_mod_api_macros::host_area]
-pub trait ItemsClientHost {
-    /// Side: client.
-    /// Creative mode only: gives the player `count` of `item`
-    /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
-    #[access(WorldOnly)]
-    fn give(&mut self, item: ItemKey, count: u32) -> Result<(), String>;
-    /// Side: client.
-    /// `ItemStack.getHoverName()` as plain text: the custom name, else a written book's non-blank
-    /// title, else the item's name in the client's language (potion contents, a head's owner and
-    /// the `item_name` component as vanilla). No rarity colour or italics. An invalid stack reads
-    /// an empty string.
-    #[access(ClientSetup)]
-    fn hover_name(&self, stack: &ItemStack) -> String;
-    /// Side: client.
-    /// Registered enchantments, in registry order.
-    #[access(ClientSetup)]
-    fn enchantments(&self) -> Vec<EnchantmentInfo>;
-    /// Side: client.
-    /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
-    #[access(ClientSetup)]
-    fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32>;
-    /// Side: client.
-    /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
-    #[access(ClientSetup)]
-    fn enchantment_supports(&self, id: &str, item: ItemKey) -> bool;
-}
 /// The handles' reads of the `items` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]
@@ -216,14 +186,6 @@ pub trait ItemsBackend {
         target: EntityRef,
         base_damage: f32,
     ) -> Option<f32>;
-    /// Side: client. The item's standard tooltip lines before mod callbacks or drawing.
-    #[access(WorldOnly)]
-    fn item_resource_tooltip(
-        &self,
-        stack: &ItemStack,
-        advanced: bool,
-        creative: bool,
-    ) -> Option<Vec<TooltipElement>>;
     /// Side: server.
     /// How many container slots `at`'s side reaches (none: every slot), by its
     /// `WorldlyContainer` rules: a furnace's top reaches its input only. A composter's up,

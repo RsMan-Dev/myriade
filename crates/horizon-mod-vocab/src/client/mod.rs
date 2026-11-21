@@ -63,7 +63,6 @@ pub(crate) mod special_model_renderers;
 pub(crate) mod terrain_draw;
 pub(crate) mod types;
 /// Buttons and text fields for mod screens.
-pub mod widgets;
 pub(crate) mod world_draw;
 pub(crate) mod world_request;
 

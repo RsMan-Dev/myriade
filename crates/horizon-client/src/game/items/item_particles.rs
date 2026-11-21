@@ -1,29 +1,20 @@
-//! The sprites of item particles: `BreakingItemParticle.ItemParticleProvider.getSprite`
-//! resolves the stack's model for the ground and picks a layer's particle sprite.
+//! Item particles: the options of an item's particle, and the eating draws that spawn them.
 use super::Game;
-use horizon_assets::item_model::DisplayContext;
-use horizon_client::{
-    items::ItemStack,
-    particles::{self, ParticleOptions},
-};
+use horizon_client::{items::ItemStack, particles::{self, ParticleOptions}};
 
 impl Game<'_> {
-    /// `ItemParticleOption(ITEM, stack)`: the layer particle sprites of the
-    /// stack's model resolved for the ground, with seed 0.
-    pub(super) fn item_particle(&self, stack: &ItemStack) -> ParticleOptions {
-        let state = self.resolve_item(stack, DisplayContext::Ground, None, 0);
-        ParticleOptions::item(state.layers.iter().map(|l| l.particle.clone()).collect())
-            .with_source(&stack.item)
+    /// `ItemParticleOption(ITEM, stack)`: the layer sprites come from the item's model, which
+    /// the server does not hold, so the option carries no layers.
+    pub(super) fn item_particle(&self, _stack: &ItemStack) -> ParticleOptions {
+        ParticleOptions::item(Vec::new())
     }
-    /// `LivingEntity.spawnItemParticles(stack, count)` for the local player,
-    /// drawing from the world random as its eating sounds do.
-    pub(super) fn eat_particles(&mut self, stack: &ItemStack, count: u32) {
+    /// `LivingEntity.spawnItemParticles(stack, count)` for the local player: the particles are
+    /// client-only, so only their draws from the world random remain.
+    pub(super) fn eat_particles(&mut self, _stack: &ItemStack, count: u32) {
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
         let eye_y = self.eye_position().map_or(p.y, |e| e[1]);
-        let options = self.item_particle(stack);
-        let mut spawned = Vec::new();
         particles::item_use_particles(
             &mut self.world.random,
             self.pitch,
@@ -31,10 +22,7 @@ impl Game<'_> {
             [p.x, p.y, p.z],
             eye_y,
             count,
-            |p, v| spawned.push((p, v)),
+            |_, _| {},
         );
-        for (p, v) in spawned {
-            self.particles.add(&options, p, v);
-        }
     }
 }

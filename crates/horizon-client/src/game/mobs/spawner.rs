@@ -83,7 +83,7 @@ impl Game<'_> {
         let range = f64::from(spawner.required_player_range);
         if !self.alive_player_near(at[0], at[1], at[2], range)
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
@@ -382,7 +382,7 @@ impl Game<'_> {
             _ => return None,
         };
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
@@ -428,7 +428,7 @@ impl Game<'_> {
     /// own level, else the window's player.
     pub(super) fn acting_player_is_op(&self) -> bool {
         self.lan_acting_permission
-            .unwrap_or(self.ui.registries.permission)
+            .unwrap_or(self.session.registries.permission)
             > 0
     }
     /// `EntityType.createDefaultStackConfig` on an entity an item made (a

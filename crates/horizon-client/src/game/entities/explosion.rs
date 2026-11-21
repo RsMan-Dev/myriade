@@ -62,7 +62,6 @@ pub(super) struct ExplosionCause {
 pub(super) struct ClipData<'a, 'r> {
     pub facts: &'a horizon_client::blocks::BlockFacts,
     pub behaviours: &'a horizon_world::level::Behaviours,
-    pub tables: &'a horizon_client::mesher::MeshTables,
     pub registry: &'r horizon_world::registry::BlockRegistry,
 }
 pub(super) struct ColliderRays<'a, 'r> {
@@ -97,18 +96,6 @@ impl RayWorld for ColliderRays<'_, '_> {
             if data.behaviours.data(state).dynamic_shape {
                 return Err(io::Error::other("dynamic ray shape unsupported"));
             }
-            if mode == RayBlockMode::Outline {
-                let facts = data.facts.get(state);
-                let shape = super::perspective::ray_shape_from_boxes(&facts.outline)?;
-                let offset = super::perspective::outline_offset(
-                    data.tables,
-                    state,
-                    p.x,
-                    p.z,
-                    facts.outline_offset,
-                );
-                return Ok(shape.moved(Vec3::new(offset[0], offset[1], offset[2])));
-            }
         }
         let binding = self.scene.binding;
         binding
@@ -116,10 +103,7 @@ impl RayWorld for ColliderRays<'_, '_> {
             .map_err(|e| io::Error::other(format!("{e:?}")))
     }
     fn interaction_shape(&mut self, state: BlockStateId, _: BlockPos) -> io::Result<VoxelShape> {
-        match &self.clip_data {
-            Some(data) => super::perspective::ray_interaction_shape(data.registry, state),
-            None => Ok(VoxelShape::empty()),
-        }
+        Ok(VoxelShape::empty())
     }
     fn fluid_is_source(&mut self, _: ()) -> io::Result<bool> {
         Ok(false)
@@ -1039,7 +1023,7 @@ impl Game<'_> {
         let blast = Blast {
             vehicles_ignore: matches!(self.blast_indirect_source(), Some(Who::Mob(_)))
                 && !self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
@@ -1353,7 +1337,7 @@ impl Game<'_> {
         // No listener and the rule on: no mob is refused, and no cause is looked up.
         if !Game::grief_hooked(self)
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
         {
@@ -1468,7 +1452,7 @@ impl Game<'_> {
         &self,
         rule: horizon_client::gamerules::RuleIndex,
     ) -> BlockInteraction {
-        if self.ui.rules.bool_at(rule) {
+        if self.session.rules.bool_at(rule) {
             BlockInteraction::DestroyWithDecay
         } else {
             BlockInteraction::Destroy
@@ -1655,7 +1639,7 @@ impl Game<'_> {
     /// bottom centre of the block, with its spawn animation.
     pub(super) fn spawn_infestation(&mut self, pos: [i32; 3]) {
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
         {
@@ -1802,7 +1786,7 @@ impl Game<'_> {
                 .unwrap_or(0);
             if xp > 0
                 && self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
             {
@@ -1875,7 +1859,7 @@ impl Game<'_> {
         // getRandomShortFuse(80); no game event.
         if is_tnt
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -2322,7 +2306,7 @@ mod tests {
                     }
                     assert_eq!(game.world.block(x, 64, 1), game.world.air);
                 }
-                game.ui
+                game.session
                     .rules
                     .set("block_drops", horizon_client::gamerules::Value::Bool(false));
                 game.world.set(5, 64, 1, dirt).unwrap();
@@ -2339,7 +2323,7 @@ mod tests {
                 *seen.lock().unwrap(),
                 [[1, 64, 1], [2, 64, 1], [3, 64, 1], [4, 64, 1], [5, 64, 1]]
             );
-            game.ui
+            game.session
                 .rules
                 .set("block_drops", horizon_client::gamerules::Value::Bool(true));
             game.world.set(6, 64, 1, infested).unwrap();
@@ -2862,7 +2846,7 @@ mod shulker_lock_drop_tests {
             .unwrap();
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
         assert!(
-            game.ui
+            game.session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS),
             "actual drop rule must be enabled"
@@ -3016,7 +3000,7 @@ mod explicit_source_tests {
             );
             game.options.dedicated = None;
             game.creative = false;
-            game.ui.difficulty = 2;
+            game.session.difficulty = 2;
             game.build_registries();
             for mode in 0..5 {
                 let nested = mode == 4;

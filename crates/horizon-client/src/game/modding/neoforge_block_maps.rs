@@ -50,7 +50,7 @@ impl Game<'_> {
             // Tables and the registry generation are installed together before this call.
             // Use the same membership boundary as their staged data-map load.
             let registries = WorldRegistries::new(
-                self.ui
+                self.session
                     .registries
                     .by_registry
                     .iter()

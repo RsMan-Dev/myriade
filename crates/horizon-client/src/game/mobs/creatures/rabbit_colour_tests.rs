@@ -87,7 +87,7 @@ fn a_baby_rabbit_takes_a_parents_colour_or_a_fresh_biome_variant() {
         // The parent's stream ends where vanilla's does: the coin, then
         // finalizeSpawnChildFromBreeding's 1-to-7 roll.
         if game
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS)
         {

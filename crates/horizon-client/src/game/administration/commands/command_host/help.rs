@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 impl HelpHost for Game<'_> {
     fn dispatcher(&self) -> Arc<Dispatcher> {
-        self.ui.dispatcher.0.clone()
+        self.session.dispatcher.0.clone()
     }
     fn registries(&self) -> &Registries {
-        &self.ui.registries
+        &self.session.registries
     }
     fn permission_level(&self) -> u8 {
-        self.ui.registries.permission
+        self.session.registries.permission
     }
 }

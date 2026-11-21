@@ -446,7 +446,7 @@ mod tests {
                 game.options.dedicated = Some(Vec::new());
                 let dimension = if death { Dim::Nether } else { Dim::End };
                 game.enter_level(dimension).unwrap();
-                game.ui.rules.set(
+                game.session.rules.set(
                     "keep_inventory",
                     horizon_client::gamerules::Value::Bool(keep),
                 );

@@ -4,19 +4,16 @@
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
 use super::{Game, InteractTarget};
-use horizon_assets::resource_source::ResourceSource;
+use horizon_core::random::RandomSource;
 use horizon_client::{
     Result,
-    cit::{Hand, Kind, Rule},
     entities::ArmorStand,
     items::ItemStack,
-    mobs::{Mob, Part, Who, anim::Poses},
-    trims::{TrimOverride, TrimRegistry, TrimTexture},
+    mobs::{Mob, Who, anim::Poses},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
-    random::RandomSource,
 };
 use bevy_ecs::entity::Entity as EcsEntity;
 use horizon_ecs_proto::{
@@ -162,137 +159,7 @@ fn layer_color(undyed: Option<u32>, stack: Option<&ItemStack>) -> u32 {
     })
 }
 
-/// Armor stand models and the humanoid layers of every equipment asset.
-pub(super) struct ArmorStandAssets {
-    /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
-    pub main: Option<Arc<Part>>,
-    pub small: Option<Arc<Part>>,
-    /// (slot model suffix, small) -> model.
-    pub layers: HashMap<(&'static str, bool), Arc<Part>>,
-    /// The player's armour models by slot (helmet, chestplate, leggings, boots).
-    pub player: HashMap<&'static str, Part>,
-    /// asset id -> layer kind (humanoid / humanoid_leggings) -> each layer's (texture, undyed colour), in order.
-    pub equipment: HashMap<String, HashMap<String, Vec<(String, Option<u32>)>>>,
-    /// asset id -> `trim_overrides`.
-    pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
-    pub trims: TrimRegistry,
-    /// The resources the trim textures are made from.
-    pub root: ResourceSource,
-}
-impl ArmorStandAssets {
-    pub fn load(
-        root: &ResourceSource,
-        document: Option<&horizon_client::mobs::EntityModelDocument>,
-    ) -> Self {
-        let load = |key: &str| document.and_then(|document| document.model(key));
-        let mut layers = HashMap::new();
-        let mut player = HashMap::new();
-        for slot in ["helmet", "chestplate", "leggings", "boots"] {
-            if let Some(part) = load(&format!("minecraft:player#{slot}")) {
-                player.insert(slot, part);
-            }
-            for (small, model) in [(false, "armor_stand"), (true, "armor_stand_small")] {
-                if let Some(part) = load(&format!("minecraft:{model}#{slot}")) {
-                    layers.insert((slot, small), Arc::new(part));
-                }
-            }
-        }
-        for (key, name) in [
-            ("minecraft:elytra#main", "elytra"),
-            ("minecraft:elytra_baby#main", "elytra_baby"),
-        ] {
-            if let Some(part) = load(key) {
-                player.insert(name, part);
-            }
-        }
-        let mut equipment = HashMap::new();
-        let mut trim_overrides = HashMap::new();
-        // EquipmentAssetManager reads resolved resources in every namespace.
-        for namespace in root.namespaces("assets") {
-            let prefix = format!("assets/{namespace}/equipment/");
-            for path in root.list(&prefix) {
-                let Some(name) = path
-                    .strip_prefix(&prefix)
-                    .and_then(|path| path.strip_suffix(".json"))
-                else {
-                    continue;
-                };
-                let Ok(v) = root
-                    .read(&path)
-                    .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
-                else {
-                    continue;
-                };
-                let Ok(v) = v else { continue };
-                let id = format!("{namespace}:{name}");
-                let mut kinds = HashMap::new();
-                for kind in ["humanoid", "humanoid_leggings", "wings"] {
-                    // Every layer of the kind: leather's overlay is layer 1.
-                    let layers: Vec<(String, Option<u32>)> = v["layers"][kind]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|layer| {
-                            let tex = layer["texture"].as_str().unwrap_or(&id);
-                            let (tex_namespace, tex) =
-                                tex.split_once(':').unwrap_or(("minecraft", tex));
-                            let sprite = match tex_namespace {
-                                "minecraft" => format!("entity/equipment/{kind}/{tex}"),
-                                other => format!("{other}:entity/equipment/{kind}/{tex}"),
-                            };
-                            let undyed = layer["dyeable"]["color_when_undyed"]
-                                .as_i64()
-                                .map(|c| c as u32 & 0xFF_FFFF);
-                            (sprite, undyed)
-                        })
-                        .collect();
-                    if !layers.is_empty() {
-                        kinds.insert(kind.to_owned(), layers);
-                    }
-                }
-                trim_overrides.insert(id.clone(), TrimOverride::list(&v));
-                equipment.insert(id, kinds);
-            }
-        }
-        Self {
-            main: load("minecraft:armor_stand#main").map(Arc::new),
-            small: load("minecraft:armor_stand_small#main").map(Arc::new),
-            layers,
-            player,
-            equipment,
-            trim_overrides,
-            trims: TrimRegistry::load(root),
-            root: root.to_owned(),
-        }
-    }
-    /// Trim data of reloaded resources (the models stay).
-    pub fn apply_resources(&mut self, fresh: Self) {
-        self.equipment = fresh.equipment;
-        self.trim_overrides = fresh.trim_overrides;
-        self.trims = fresh.trims;
-        self.root = fresh.root;
-    }
-    /// `TrimTextureKey`: the trim texture of `stack` on its humanoid
-    /// layer (`humanoid` or `humanoid_leggings`), if it has a trim.
-    fn trim_texture(&self, asset: &str, kind: &str, stack: &ItemStack) -> Option<TrimTexture> {
-        let (material, pattern) =
-            horizon_client::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
-        let overrides = self
-            .trim_overrides
-            .get(asset)
-            .map_or(&[][..], Vec::as_slice);
-        TrimTexture::resolve(&self.trims, overrides, material, pattern, kind)
-    }
-}
 impl Game<'_> {
-    /// OptiFine CIT: the winning armour or elytra rule (`kind`) of the worn `stack`. No lookup
-    /// without CIT rules.
-    pub(super) fn cit_worn_rule(&self, kind: Kind, stack: &ItemStack) -> Option<&Rule> {
-        let rules = &self.pack.item_renderer.cit.as_ref()?.rules;
-        let item_max = self.items().get(&stack.item).map_or(0, |i| i.max_damage);
-        horizon_client::item_render::cit::worn_rule(rules, kind, stack, item_max)
-            .and_then(|i| rules.rules.get(i))
-    }
     /// `ArmorStandItem.useOn`.
     /// `ArmorStandItem.useOn` up to its `FAIL`s, which a client checks too:
     /// not on a bottom face, and nothing in the new stand's box. The block it
@@ -417,7 +284,7 @@ impl Game<'_> {
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, a) in self.armor_stands.iter().enumerate() {
             // Minecraft.pick never hits the camera entity it looks from.
-            if a.marker || self.remote_camera_id() == Some(a.id) {
+            if a.marker {
                 continue;
             }
             let b = a.bounds();
@@ -456,7 +323,7 @@ impl Game<'_> {
         let mut best: Option<(u32, f64, [f64; 3])> = None;
         for e in self.ecs.select(&q) {
             let Some(id) = id_of(w, e) else { continue };
-            if w.get::<EcsStand>(e).is_some_and(|s| s.flags & ecs_stand::MARKER != 0) || self.remote_camera_id() == Some(id) {
+            if w.get::<EcsStand>(e).is_some_and(|s| s.flags & ecs_stand::MARKER != 0) {
                 continue;
             }
             let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { continue };
@@ -1036,18 +903,8 @@ impl Game<'_> {
         else {
             return;
         };
-        let block = [
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        ];
-        let Some((sprite, tint)) = self.particle_sprite(state, block) else {
-            return;
-        };
-        let options = horizon_client::particles::ParticleOptions::block(
+        let options = horizon_client::particles::ParticleOptions::simple(
             horizon_client::particles::ParticleType::Block,
-            sprite,
-            tint,
         );
         // Entity.getY(2/3): the box's height is scaled by 2/3 from the feet.
         let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
@@ -1379,7 +1236,7 @@ impl Game<'_> {
                 .is_some_and(|s| s.name == "minecraft:turtle_egg");
             if egg
                 && self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
                 && self.world.random.next_int_bound(chance).unwrap_or(1) == 0
@@ -1404,7 +1261,7 @@ impl Game<'_> {
         };
         let (dying, stacks) = armor_stand_dying_drops(
             stand,
-            self.ui
+            self.session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS),
             dying,
@@ -1498,7 +1355,7 @@ impl Game<'_> {
         let Some(e) = self.ecs.entity_of(id) else { return false };
         let registry = &self.health_resources.damage;
         let Some(kind) = registry.id(damage_type) else { return false };
-        if !self.ui.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) && matches!(causing, Some(Target::Mob(_))) {
+        if !self.session.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) && matches!(causing, Some(Target::Mob(_))) {
             return false;
         }
         if registry.in_tag(kind, "minecraft:bypasses_invulnerability") {
@@ -1596,7 +1453,7 @@ impl Game<'_> {
             return false;
         };
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing, Some(Target::Mob(_)))
@@ -2425,7 +2282,7 @@ mod pumpkin_equippable_use_tests {
         ].into_iter().enumerate() {
             let held = format!("minecraft:carved_pumpkin[{}{}{}]", component.unwrap_or(""), if component.is_some() { "," } else { "" }, marker);
             let before = game.as_guest(2, |g| {
-                assert_eq!(g.ui.registries.permission, 2);
+                assert_eq!(g.session.registries.permission, 2);
                 assert!(g.run_command("clear @s") || g.inventory.iter().all(Option::is_none));
                 g.run_command("item replace entity @s armor.head with air");
                 g.run_command(&format!("gamemode {mode}"));

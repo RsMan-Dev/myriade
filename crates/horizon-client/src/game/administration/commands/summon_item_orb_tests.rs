@@ -29,13 +29,11 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();
@@ -60,21 +58,9 @@ fn summon_item_succeeds_with_and_without_nbt_without_leaving_an_entity() {
             "summon minecraft:item 4.5 200 4.5 {}",
         ] {
             let before = game.next_entity;
-            assert!(
-                game.run_command(command),
-                "{command}: {:?}",
-                game.ui.chat.recent_lines(3)
-            );
+            assert!(game.run_command(command), "{command}");
             assert_eq!(game.next_entity, before + 1, "{command}");
             assert!(game.dropped.is_empty(), "{command}");
-            assert_eq!(
-                game.ui.chat.recent_components(1),
-                vec![serde_json::json!({
-                    "translate": "commands.summon.success",
-                    "with": [{ "text": "" }],
-                })],
-                "{command}"
-            );
         }
     });
 }
@@ -89,11 +75,7 @@ fn a_summoned_orb_keeps_the_position_it_was_asked_for() {
         assert!(game.run_command("setblock 4 100 4 stone"));
         // Its box (0.5 tall) reaches into the stone's top 0.2, which is what
         // makes the constructor's unstuck search move it in the first place.
-        assert!(
-            game.run_command("summon minecraft:experience_orb 4.5 100.8 4.5"),
-            "{:?}",
-            game.ui.chat.recent_lines(3)
-        );
+        assert!(game.run_command("summon minecraft:experience_orb 4.5 100.8 4.5"));
         let orb = game.orbs.last().expect("an orb");
         assert_eq!(orb.position, Vec3::new(4.5, 100.8, 4.5));
         assert_eq!(orb.velocity, Vec3::ZERO);

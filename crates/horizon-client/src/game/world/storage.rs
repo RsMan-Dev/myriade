@@ -74,8 +74,6 @@ impl Game<'_> {
         self.world.block_entities.get_or_insert_with(key, || entity);
         self.container = Some(key);
         self.open_container_slots = Some((key, self.open_container_size()));
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
         self.right = false;
     }
     /// `BaseContainerBlockEntity.createMenu` (and `ChestBlock`'s provider for
@@ -376,7 +374,6 @@ impl Game<'_> {
         }) {
             self.close_container();
             self.screen = super::Screen::Playing;
-            self.capture(true);
             return;
         }
         let range = self.reach() + 4.0;
@@ -385,8 +382,6 @@ impl Game<'_> {
         });
         if !near {
             self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
         }
     }
     /// `CraftingMenu.stillValid`: the open crafting table closes once its
@@ -405,8 +400,6 @@ impl Game<'_> {
         let range = self.reach() + 4.0;
         if !(table && horizon_client::lan::guest::within_block_range(eye, range, pos)) {
             self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
         }
     }
     /// The number of slots of the open container.
@@ -465,9 +458,6 @@ impl Game<'_> {
     /// Rows of the open generic 9-wide container (`ChestMenu`), or None for
     /// the other menus (hoppers, dispensers, shulker boxes, furnaces...).
     pub(super) fn chest_rows(&self) -> Option<usize> {
-        if let Some((rows, _)) = self.remote_chest_menu() {
-            return Some(rows);
-        }
         if !matches!(self.container_kind()?, BlockEntity::Chest(_)) {
             return None;
         }

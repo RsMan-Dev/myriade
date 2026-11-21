@@ -493,7 +493,7 @@ impl Game<'_> {
         let blocklike = !src.breeze
             && !src.wind_charge
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING);
         let diameter = f64::from(radius * 2.0);
@@ -544,7 +544,7 @@ impl Game<'_> {
         let burst = Blast {
             vehicles_ignore: src.mob
                 && !self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: !blocklike,
@@ -737,7 +737,7 @@ impl Game<'_> {
         // Explosion.canTriggerBlocks: a breeze's charge needs mob griefing.
         if !src.breeze
             || self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
         {
@@ -789,7 +789,7 @@ impl Game<'_> {
         });
         if breeze
             && !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
         {

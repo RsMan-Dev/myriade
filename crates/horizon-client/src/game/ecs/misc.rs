@@ -38,7 +38,7 @@ impl Game<'_> {
             match ev {
                 MiscEvent::Lightning { at, cosmetic } => {
                     if !cosmetic {
-                        if self.ui.difficulty >= 2 {
+                        if self.session.difficulty >= 2 {
                             let mut random = EntityRandom::own(random_source::entity());
                             self.bolt_fire(at, 4, &mut random);
                         }

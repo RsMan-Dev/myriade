@@ -393,7 +393,7 @@ mod tests {
             assert_eq!(seen(game, 123).unwrap().0, 0.07);
 
             // The command sees the mod's bar and the mod sees the command's changes.
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             assert!(game.run_command("bossbar set mod:bar value 9"));
             assert_eq!(bar.value(game), Some(9));
             assert!(game.run_command("bossbar get mod:bar value"));

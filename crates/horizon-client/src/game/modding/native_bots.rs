@@ -212,7 +212,7 @@ impl Game<'_> {
         let (world, refuse_missing) = if self.is_logical_server() {
             (self.level_in_place(level).then_some(&self.world)?, false)
         } else {
-            (self.client_view_world(level)?, true)
+            return None;
         };
         let mut scene = ScanColumns {
             scene: SceneCollisions {

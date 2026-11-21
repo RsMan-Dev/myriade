@@ -19,7 +19,7 @@ impl Game<'_> {
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: self.level.spawn_dimension(),
-            difficulty: i32::from(self.ui.difficulty),
+            difficulty: i32::from(self.session.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
             tick_rate: self.clock.rate(),

@@ -14,8 +14,8 @@ impl Game<'_> {
             .collect();
         ids.sort();
         ids.dedup();
-        self.ui.registries.enchantments = ids.clone();
-        self.ui
+        self.session.registries.enchantments = ids.clone();
+        self.session
             .registries
             .by_registry
             .entry("minecraft:enchantment".into())

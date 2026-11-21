@@ -23,7 +23,7 @@ impl Game<'_> {
         {
             return Err(err("commands.summon.invalidPosition", &[]));
         }
-        if self.ui.difficulty == 0 && !horizon_client::mobs::finalize::allowed_in_peaceful(kind) {
+        if self.session.difficulty == 0 && !horizon_client::mobs::finalize::allowed_in_peaceful(kind) {
             return Err(err("commands.summon.failed.peaceful", &[]));
         }
         Ok(())

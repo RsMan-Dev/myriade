@@ -186,7 +186,7 @@ fn a_thousand_stone_blocks_turn_to_air_with_drops_decayed_by_the_rule() {
         for decay in [true, false] {
             assert!(game.run_command("fill 0 70 0 9 79 9 minecraft:stone"));
             game.dropped.clear();
-            assert!(game.ui.rules.set(
+            assert!(game.session.rules.set(
                 "block_explosion_drop_decay",
                 horizon_client::gamerules::Value::Bool(decay),
             ));
@@ -297,7 +297,7 @@ fn tnt_primes_owned_by_the_causing_entity() {
 #[ignore = "daily"]
 fn drops_of_one_item_merge_at_the_first_blocks_position() {
     each_target(|game, via, _| {
-        assert!(game.ui.rules.set(
+        assert!(game.session.rules.set(
             "block_explosion_drop_decay",
             horizon_client::gamerules::Value::Bool(false),
         ));
@@ -335,7 +335,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
         // Block.popResource spends the same three position doubles even
         // when the gamerule prevents constructing the merged item entity.
         assert!(
-            game.ui
+            game.session
                 .rules
                 .set("block_drops", horizon_client::gamerules::Value::Bool(false))
         );

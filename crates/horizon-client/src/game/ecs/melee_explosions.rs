@@ -85,7 +85,7 @@ impl Game<'_> {
             _ => None,
         };
         let blast = Blast { at, radius, fire, owner, source };
-        let drops = self.ui.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS);
+        let drops = self.session.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS);
         // `ItemStack.canBeHurtBy`: the stacks that resist an explosion take no damage from it.
         let stacks: Vec<(u32, _)> = self
             .ecs

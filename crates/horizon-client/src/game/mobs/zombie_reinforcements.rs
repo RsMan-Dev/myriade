@@ -42,11 +42,11 @@ impl Game<'_> {
         }
         // ServerLevel.isSpawningMonsters.
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS)
         {

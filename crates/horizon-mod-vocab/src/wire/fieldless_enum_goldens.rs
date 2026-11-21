@@ -221,11 +221,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "DrawError"
     );
     assert_eq!(
-        <crate::client::widgets::EditKey as Wire>::layout(&mut vec![]),
-        0x6c13deff5b2c9a7f,
-        "EditKey"
-    );
-    assert_eq!(
         <crate::entity::types::EffectApplicable as Wire>::layout(&mut vec![]),
         0xf9e6f35173bb69ec,
         "EffectApplicable"

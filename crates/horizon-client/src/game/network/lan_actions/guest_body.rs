@@ -281,7 +281,7 @@ impl Game<'_> {
                         id,
                         duration,
                         amplifier,
-                    } if game.ui.difficulty != 0 => {
+                    } if game.session.difficulty != 0 => {
                         game.give_player_effect(id, *duration, i32::from(*amplifier));
                     }
                     _ => {}
@@ -503,7 +503,6 @@ impl Game<'_> {
                         host.hub
                             .entity_event(g.entity_id, crate::game::combat::DROWN_EVENT);
                     }
-                    self.drown_particles(at, [0.0; 3], 8);
                 }
                 // ServerPlayer.onInsideBlock: the enter_block trigger, for the
                 // player who moved.
@@ -534,7 +533,6 @@ impl Game<'_> {
                         self.send_level_sound(LevelSound::new(name, at, 1.0, 1.0), Some(conn));
                     }
                     if particles {
-                        self.honey_slide_particles(at);
                         if let Some(host) = self.lan.as_ref() {
                             host.hub.entity_event(id, 53);
                         }

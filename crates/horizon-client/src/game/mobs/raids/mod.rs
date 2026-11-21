@@ -183,7 +183,7 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
     fn spawn_patrols(&self) -> bool {
         self.level
             .game
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_PATROLS)
     }
@@ -446,7 +446,7 @@ impl Game<'_> {
     ) -> Option<i32> {
         if self.spectator()
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::RAIDS)
             || !self.gameplay_attribute(horizon_client::patrol::CAN_START_RAID, at)
@@ -610,7 +610,7 @@ impl Game<'_> {
             let members = |id: i32| infos.get(&id).cloned().unwrap_or_default();
             raids.tick(
                 &lvl,
-                self.ui
+                self.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::RAIDS),
                 &members,
@@ -699,7 +699,7 @@ impl Game<'_> {
             .iter()
             .map(|g| (g.conn, g.position, g.placed && g.dimension == dim))
             .collect();
-        let neutral = horizon_client::settings::SOUND_SOURCES
+        let neutral = horizon_client_core::sound_source::SOUND_SOURCES
             .iter()
             .position(|s| *s == "neutral")
             .unwrap_or(0) as i32;
@@ -820,7 +820,7 @@ impl Game<'_> {
                 r.remove_leader(wave);
             }
             if let Some(uuid) = hero {
-                r.add_hero(uuid);
+                r.add_hero(horizon_client::lan::playerdata::uuid_ints(uuid));
             }
             r.remove_from_raid(health, false, living);
             self.raiding.raids.dirty = true;
@@ -1018,11 +1018,11 @@ impl Game<'_> {
             )
         };
         let enemies = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS);
         let mut random = std::mem::replace(

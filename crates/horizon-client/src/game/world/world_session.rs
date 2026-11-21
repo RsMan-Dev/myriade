@@ -11,7 +11,7 @@ impl Game<'_> {
         name: Option<&str>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<&horizon_client::title::WorldOptions>,
+        create: Option<&crate::game::world_options::WorldOptions>,
     ) -> Result<()> {
         self.open_world_as(folder, name, seed, creative, create, false)
     }
@@ -31,7 +31,7 @@ impl Game<'_> {
         name: Option<&str>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<&horizon_client::title::WorldOptions>,
+        create: Option<&crate::game::world_options::WorldOptions>,
         existing_only: bool,
     ) -> Result<()> {
         let saves = std::env::current_dir()?.join("saves");
@@ -126,32 +126,6 @@ impl Game<'_> {
         self.finish_open_world(prepared)
     }
 
-    /// Leaving the game with a world open (window closed, Quit, `quit`):
-    /// menu items go back (Player.closeContainer), then the world is saved,
-    /// once.
-    pub(super) fn finish_perf(&mut self) {
-        // One session per computer: P1's (a splitscreen player's would count it again).
-        if self.options.split_guest {
-            return;
-        }
-        let s = &self.settings;
-        let settings = horizon_telemetry::payload::Settings {
-            render_distance: s.render_distance.clamp(0, 255) as u8,
-            simulation_distance: s.simulation_distance.clamp(0, 255) as u8,
-            // 260 is the slider's "unlimited".
-            max_fps: if s.max_fps >= 260 {
-                0
-            } else {
-                s.max_fps.min(u32::from(u16::MAX)) as u16
-            },
-            vsync: s.vsync,
-            fullscreen: s.fullscreen,
-            graphics: s.graphics_preset.clone(),
-        };
-        self.perf
-            .finish(&horizon_client::logging::game_home(), settings);
-    }
-
     pub(super) fn save_for_exit(&mut self) -> Result<()> {
         // Native application termination can bypass CloseRequested. Finish any
         // save screen synchronously here, before the process can go away.
@@ -161,14 +135,10 @@ impl Game<'_> {
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
-        // A repro recording is finished and bundled before the process may go away.
-        self.repro_on_exit();
-        self.finish_perf();
         if self.saved_for_exit {
             return Ok(());
         }
-        // exitWorldAndClose disconnects the client from its world.
-        self.client_logging_out();
+
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.
         self.streaming.abort_generation();
@@ -191,24 +161,8 @@ impl Game<'_> {
 
     pub(super) fn close_world(&mut self) -> Result<()> {
         self.destroying.clear();
-        // Pause-menu and death-screen exits use the normal world-close action.
-        // A standalone replay owns a synthetic remote session, so it must go
-        // through replay cleanup instead of being treated like a server.
-        if self.replay.playing() {
-            self.close_studio_replay();
-            return Ok(());
-        }
-        // A recording cannot cross into another world, and a replay feeding the
-        // title screen is nonsense.
-        self.repro_world_closed();
-        self.clear_waypoints();
         self.post_effects.clear();
         self.spectated_post_effect = None;
-        // Mod screens' living scenes go with the world their entities were copied from.
-        self.live_scenes.get_mut().clear();
-        if self.external_server() {
-            return self.leave_server(None);
-        }
         self.begin_closing_save(false)
     }
 }
@@ -218,7 +172,8 @@ impl Game<'_> {
 /// folder is not one either; a link out of `saves/` is left to Play's symlink alert, and a mod's request
 /// checks containment itself (`world_request_entry`).
 fn refuses_missing_save(saves: &std::path::Path, folder: &str, existing_only: bool) -> bool {
-    existing_only && !horizon_client::title::is_save_folder(saves, folder)
+    let dir = saves.join(folder);
+    existing_only && !(dir.join("level.dat").is_file() || dir.join("level.dat_old").is_file())
 }
 
 #[cfg(test)]

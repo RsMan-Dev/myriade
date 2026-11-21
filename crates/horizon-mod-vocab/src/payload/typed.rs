@@ -169,22 +169,6 @@ token!(
     "A typed clientbound payload: the token [`PayloadRegistrar`]'s `*_to_client_typed` and `*_bidirectional_typed` return."
 );
 
-impl<T: PayloadCodec> ToServer<T> {
-    /// Queue `value` to the connected server through
-    /// [`ClientHost::send_payload_to_server`], with its results, after checking the token:
-    /// `StaleToken` for one the registrar did not hand out for this type.
-    pub fn send(
-        &self,
-        host: &mut dyn ClientHost,
-        value: &T,
-    ) -> Result<PayloadAccepted, PayloadSendError> {
-        self.token
-            .claims(self.value_schema, PayloadDirection::ToServer)?;
-        host.check_payload_token(&self.token)?;
-        let body = self.token.body(value)?;
-        host.send_payload_to_server(&self.token.id, body)
-    }
-}
 
 impl<T: PayloadCodec> ToClient<T> {
     /// Queue `value` to `player` through [`PlayerRef::send_payload`], with its results, after

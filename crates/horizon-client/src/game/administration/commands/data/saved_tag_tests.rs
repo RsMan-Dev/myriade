@@ -27,13 +27,11 @@ pub(super) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

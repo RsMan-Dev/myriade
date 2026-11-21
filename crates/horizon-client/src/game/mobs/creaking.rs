@@ -217,7 +217,9 @@ impl Game<'_> {
                 });
                 self.world.block_entities.put(lease, BlockEntity::CreakingHeart(heart));
             }
-            Some((lease, other)) => self.world.block_entities.put(lease, other),
+            Some((lease, other)) => {
+                self.world.block_entities.put(lease, other);
+            }
             None => {}
         }
         if claimed {
@@ -304,7 +306,7 @@ impl Game<'_> {
             // Block.popExperience: the amount is drawn, then nothing pops
             // with `block_drops` off.
             if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
             {
@@ -362,13 +364,13 @@ impl Game<'_> {
     }
     /// `ServerLevel.isSpawningMonsters`.
     pub(super) fn spawning_monsters(&self) -> bool {
-        self.ui.difficulty != 0
+        self.session.difficulty != 0
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS)
     }

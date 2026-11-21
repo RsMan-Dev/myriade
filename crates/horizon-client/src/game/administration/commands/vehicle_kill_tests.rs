@@ -28,13 +28,11 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();

@@ -148,7 +148,7 @@ impl Game<'_> {
         if self.is_logical_server() {
             return self.native_living_target(living);
         }
-        match self.native_client_entity_target(living.entity())? {
+        match None::<Target>? {
             Target::Player => Some(Target::Player),
             _ => None,
         }
@@ -450,11 +450,7 @@ impl Game<'_> {
                 let p = g.motion.as_deref()?;
                 Some(self.can_use_portal_of(p, g.vehicle.is_some(), g.sleeping))
             }
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.can_use_portal(id),
-            Target::Mob(id) => {
-                let m = self.remote_mob(id)?;
-                Some(self.mob_portal_eligible(m))
-            }
+            Target::Mob(id) if self.ecs.is_active() => Some(self.ecs.can_use_portal(id)),
             _ => None,
         }
     }
@@ -675,14 +671,6 @@ impl Game<'_> {
                 })
                 .is_some(),
             Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.heal_id(id, amount),
-            Some(Target::Mob(id)) => {
-                let Some(m) = self.remote_mob_mut(id) else {
-                    return false;
-                };
-                m.heal(&self.loop_context, amount);
-                m.needs_sync = true;
-                true
-            }
             _ => false,
         }
     }

@@ -4,24 +4,16 @@
 //! alternatives overlay, ghost recipes, and placing a recipe in the grid
 //! (`ServerPlaceRecipe`). Which recipes are known comes from the advancement
 //! rewards; the open and filter settings are saved with the player.
-#[path = "recipe_book/mod_screen.rs"]
-mod mod_screen;
-
 use super::Game;
 use horizon_client::{
     containers::{BlockEntity, FurnaceKind},
-    hud::HudBatch,
     items::ItemStack,
     menu::place::PostPlace,
     recipe_book::{Book, BookType, ClientBook, Entry, GhostTarget},
     text::Text,
-    ui::EditBox,
 };
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
-use std::{
-    collections::BTreeSet,
-    time::{Duration, Instant},
-};
+use std::collections::BTreeSet;
 
 /// A ghost recipe slot: the items it cycles through.
 struct Ghost {
@@ -34,11 +26,9 @@ pub(super) struct RecipeUi {
     /// Explicit viewport for renderer-less resource-backed fixtures.
     #[cfg(test)]
     pub(super) test_viewport: Option<[u32; 2]>,
-    custom: mod_screen::ModRecipeUi,
     /// The last authoritative property-set and stonecutter generation.
     pub(super) server_properties: crate::recipe_book::ServerRecipeProperties,
     book: Option<Book>,
-    pub(super) search: Option<EditBox>,
     ghost: Vec<Ghost>,
     /// The client's copy of the known recipes (`ClientRecipeBook`), its
     /// order deciding the buttons', and the recipes it was last synced with.
@@ -49,63 +39,12 @@ pub(super) struct RecipeUi {
     /// made with them over its own (`Book::use_server_entries`).
     server_entries:
         std::collections::BTreeMap<i32, horizon_protocol::packets::recipes::RecipeBookEntry>,
-    /// The server's checks of viewer transfers (`transfer_recipe_check`).
-    checks: TransferChecks,
 }
-
-/// The server's answers to `horizon:recipe_check`, for what the client last
-/// saw of the open menu: its window, its state id, and the inventory and
-/// grid. Any change there forgets them.
-#[derive(Default)]
-struct TransferChecks {
-    seen: Option<(i32, i32, Vec<Option<ItemStack>>)>,
-    answers: Vec<CheckAnswer>,
-    /// The one request out: its display id and when it went.
-    asked: Option<(i32, i32, Instant)>,
-}
-
-impl TransferChecks {
-    fn ask(&mut self, display_id: i32, now: Instant) -> Option<i32> {
-        static NEXT_TAG: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-        let tag = NEXT_TAG
-            .try_update(
-                std::sync::atomic::Ordering::Relaxed,
-                std::sync::atomic::Ordering::Relaxed,
-                |tag| tag.checked_add(1),
-            )
-            .ok()?;
-        self.asked = Some((tag, display_id, now));
-        Some(tag)
-    }
-}
-
-/// One answer of `TransferChecks`.
-struct CheckAnswer {
-    display_id: i32,
-    /// When it came.
-    at: Instant,
-    /// How many times it was asked again for this view of the menu.
-    refreshes: u32,
-    check: RecipeTransferCheck,
-}
-
-/// How old an answer is asked again while it is wanted (chests beside a
-/// station change without the client seeing it), and how many times for one
-/// view of the menu.
-const CHECK_REFRESH: Duration = Duration::from_secs(2);
-const CHECK_REFRESHES: u32 = 15;
-/// A request with no answer this long is given up, and another may go.
-const CHECK_WAIT: Duration = Duration::from_millis(500);
 
 impl RecipeUi {
-    /// A new screen starts without a ghost recipe, overlay or search focus.
+    /// A new screen starts without a ghost recipe.
     pub(super) fn reset_screen(&mut self) {
         self.ghost.clear();
-        if let Some(search) = self.search.as_mut() {
-            search.focused = false;
-            search.set_value("");
-        }
-        self.custom = mod_screen::ModRecipeUi::default();
     }
 }
 
@@ -121,7 +60,7 @@ impl Game<'_> {
             return None;
         }
         // Explicitly assigned mod panels use their own identity and flags.
-        if self.mount_active() || self.native_screen_height().is_some() {
+        if self.native_screen_height().is_some() {
             return None;
         }
         match self.container_kind() {
@@ -136,25 +75,11 @@ impl Game<'_> {
             _ => None,
         }
     }
-    fn book_open(&self, book: BookType) -> bool {
-        self.level.recipe_book.open[book.index()]
-    }
-    /// Whether typed keys go to the search box.
+    /// The search box is client-only: no typed key reaches it on a server.
     pub(super) fn recipe_search_focused(&self) -> bool {
-        (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
-            && self.recipe_ui.search.as_ref().is_some_and(|s| s.focused)
+        false
     }
-    /// Text typed (or one backspace) into the search box.
-    pub(super) fn recipe_text(&mut self, text: Option<&str>, backspace: bool) {
-        let Some(search) = self.recipe_ui.search.as_mut() else {
-            return;
-        };
-        if backspace {
-            search.delete_chars(-1);
-        } else if let Some(text) = text {
-            search.insert_text(text);
-        }
-    }
+    pub(super) fn recipe_text(&mut self, _: Option<&str>, _: bool) {}
     // ---- recipes and what can be crafted ----
 
     /// Sends the client book what changed in the server's: the first time a
@@ -212,7 +137,6 @@ impl Game<'_> {
     /// the server's recipes arrived, or a new session began.
     pub(super) fn forget_book(&mut self) {
         self.recipe_ui.book = None;
-        self.recipe_ui.custom = mod_screen::ModRecipeUi::default();
         self.recipe_tables.books = None;
         self.invalidate_mod_book_placement_catalogues();
     }
@@ -222,32 +146,7 @@ impl Game<'_> {
             book.set_display_ids(self.display_index());
             self.recipe_ui.book = Some(book);
         }
-        self.ensure_recipe_search();
     }
-    fn ensure_recipe_search(&mut self) {
-        if self.recipe_ui.search.is_none() {
-            let mut search = EditBox::new(0.0, 0.0, 81.0, 14.0);
-            search.message = super::screen_info::tr("itemGroup.search", &[]);
-            search.max_length = 50;
-            search.focused = false;
-            search.text_color = u32::MAX;
-            self.recipe_ui.search = Some(search);
-        }
-    }
-    // ---- geometry ----
-
-    fn batch_for_size(&self) -> Option<HudBatch> {
-        #[cfg(test)]
-        if let Some(size) = self.recipe_ui.test_viewport {
-            return Some(HudBatch::new(size, self.settings.gui_scale_inputs()));
-        }
-        let r = self.renderer.as_ref()?;
-        Some(HudBatch::new(
-            [r.config.width, r.config.height],
-            self.settings.gui_scale_inputs(),
-        ))
-    }
-
     /// Whether the open screen takes `native_place_recipe`: a crafting grid's
     /// book (the inventory's or a crafting table's), or a mod menu type's
     /// crafting grid.
@@ -257,10 +156,8 @@ impl Game<'_> {
     }
     /// Whether the open menu is a mod menu type with a crafting grid.
     fn mod_crafting_open(&self) -> bool {
-        self.remote
-            .as_ref()
-            .and_then(|r| r.menu.as_ref())
-            .and_then(|(_, menu)| horizon_client::containers::mod_menu_type(menu))
+        self.local_mod_menu()
+            .and_then(|(menu, _)| horizon_client::containers::mod_menu_type(menu))
             .is_some_and(|t| t.crafting.is_some())
     }
     /// `native_place_recipe`: the book's click on the recipe with this display
@@ -285,10 +182,7 @@ impl Game<'_> {
     /// Whether the open menu is a content mod's menu type (a machine's, with or without a grid):
     /// the server's menu on a server, the block's own in a solo world or on a LAN host.
     fn mod_menu_open(&self) -> bool {
-        self.remote_menu_type()
-            .and_then(horizon_client::containers::mod_menu_type)
-            .is_some()
-            || self.local_mod_menu().is_some()
+        self.local_mod_menu().is_some()
     }
     /// The content mod menu type and block of the menu this player has open when the game is
     /// its own server (a solo world, a LAN host's own player): the block container's menu type.
@@ -333,34 +227,13 @@ impl Game<'_> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         }
-        {
-            // The game is its own server: the mod menu's part answers first, as on a server,
-            // then the grid transfer.
-            if let Some(answer) = self.local_menu_transfer(recipe, max, false) {
-                self.show_transfer_result(answer);
-                return;
-            }
-            self.local_grid_transfer(recipe, max);
+        // The game is its own server: the mod menu's part answers first, as on a server,
+        // then the grid transfer.
+        if let Some(answer) = self.local_menu_transfer(recipe, max, false) {
+            self.show_transfer_result(answer);
             return;
         }
-        if !self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.recipe_viewer.transfer)
-        {
-            self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
-            return;
-        }
-        let mut request = horizon_protocol::buf::Writer::new();
-        request.varint(self.remote_menu_id());
-        request.string(recipe);
-        request.u8(u8::from(max));
-        self.send(horizon_protocol::packets::play::Serverbound::CustomPayload(
-            horizon_protocol::packets::configuration::CustomPayload {
-                channel: horizon_client::lan::recipes::TRANSFER_CHANNEL.into(),
-                data: request.data,
-            },
-        ));
+        self.local_grid_transfer(recipe, max);
     }
     /// The display ids of `recipe_id` that the server sent and this book
     /// numbers the same way (`Book::confirmed_ids`): the entries
@@ -380,15 +253,6 @@ impl Game<'_> {
             || (self.creative && self.craft_size != 3 && !self.mod_crafting_open())
         {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
-            return;
-        }
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| !r.recipe_viewer.transfer)
-        {
-            // Older Horizon and vanilla servers still accept book clicks.
-            let _ = self.recipe_place(display_id, false);
             return;
         }
         self.ensure_book();
@@ -432,7 +296,6 @@ impl Game<'_> {
 
     fn show_transfer_result(&mut self, result: RecipeTransferResult) {
         if result == RecipeTransferResult::Moves {
-            self.close_transferred_recipe();
         }
     }
 
@@ -461,56 +324,7 @@ impl Game<'_> {
                 missing_cells: Vec::new(),
             });
         }
-        let eligible_menu =
-            self.mod_recipe_screen() || (!self.spectator() && self.mod_menu_open());
-        if !eligible_menu || !self.remote.as_ref().is_some_and(|r| r.recipe_viewer.check) {
-            return None;
-        }
-        let now = Instant::now();
-        let seen = (
-            self.remote_menu_id(),
-            self.remote.as_ref().map_or(0, |r| r.state_id),
-            (self.inventory.iter().take(36))
-                .chain(&self.craft_grid)
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
-        let checks = &mut self.recipe_ui.checks;
-        if checks.seen.as_ref() != Some(&seen) {
-            *checks = TransferChecks {
-                seen: Some(seen),
-                ..Default::default()
-            };
-        }
-        let answer = (checks.answers.iter()).find(|a| a.display_id == display_id);
-        let ask = match answer {
-            None => true,
-            Some(a) => a.refreshes < CHECK_REFRESHES && now.duration_since(a.at) >= CHECK_REFRESH,
-        };
-        let answer = answer.map(|a| a.check.clone());
-        let waiting = (checks.asked).is_some_and(|(_, _, at)| now.duration_since(at) < CHECK_WAIT);
-        if ask && !waiting {
-            self.ensure_book();
-            let id = (self.recipe_ui.book.as_ref())
-                .and_then(|book| book.entries.iter().find(|e| e.display_id == display_id))
-                .map(|e| e.id.clone());
-            if let Some(id) = id {
-                let mut request = horizon_protocol::buf::Writer::new();
-                request.varint(self.remote_menu_id());
-                let Some(tag) = self.recipe_ui.checks.ask(display_id, now) else {
-                    return answer;
-                };
-                request.varint(tag);
-                request.string(&id);
-                self.send(horizon_protocol::packets::play::Serverbound::CustomPayload(
-                    horizon_protocol::packets::configuration::CustomPayload {
-                        channel: horizon_client::lan::recipes::CHECK_CHANNEL.into(),
-                        data: request.data,
-                    },
-                ));
-            }
-        }
-        answer
+        None
     }
 
 
@@ -588,47 +402,15 @@ impl Game<'_> {
     // ---- drawing ----
 
 }
-
-#[cfg(test)]
-mod request_generation_tests {
-    use super::*;
-    #[test]
-    fn delayed_answers_cannot_match_inventory_changes_or_retries() {
-        let mut checks = TransferChecks::default();
-        let first = checks.ask(42, Instant::now()).unwrap();
-        checks = TransferChecks::default(); // Inventory change clears the cache.
-        let second = checks.ask(42, Instant::now()).unwrap();
-        assert_ne!(first, second);
-        let retry = checks.ask(42, Instant::now()).unwrap();
-        assert_ne!(second, retry);
-        assert_eq!(
-            checks.asked.map(|(tag, id, _)| (tag, id)),
-            Some((retry, 42))
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    /// `CraftingScreen` has the book; a server's menu without a grid has none.
-    #[test]
-    #[ignore = "daily"]
-    fn a_servers_crafting_table_has_the_book() {
-        use super::*;
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-            game.connect_local(pipe, "Crafter").unwrap();
-            game.container = None;
-            let open = |game: &mut Game<'_>, menu: &str| {
-                game.remote
-                    .as_mut()
-                    .unwrap()
-                    .menu
-                    .set(Some((3, menu.into())));
-                game.active_book()
-            };
-            assert_eq!(open(game, "minecraft:crafting"), Some(BookType::Crafting));
-            assert_eq!(open(game, "minecraft:cartography_table"), None);
-        });
+#[path = "recipe_book/resolve.rs"]
+mod resolve;
+impl Game<'_> {
+    /// The stacks a mod recipe book's slot display stands for, with no stock in hand.
+    pub(in crate::game) fn resolve_mod_book_declaration_slot(
+        &self,
+        slot: &mod_api::RecipeSlotDisplay,
+    ) -> Vec<ItemStack> {
+        let stocks = horizon_client::menu::place::Stacked::default();
+        resolve::Resolver::new(self, &stocks, &[]).resolve(slot)
     }
 }

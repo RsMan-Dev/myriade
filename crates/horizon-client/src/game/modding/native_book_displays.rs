@@ -18,7 +18,7 @@ impl DisplayResources for Resources<'_, '_> {
     }
     fn component(&self, id: &str) -> bool {
         self.0
-            .ui
+            .session
             .registries
             .ids("minecraft:data_component_type")
             .iter()
@@ -27,7 +27,7 @@ impl DisplayResources for Resources<'_, '_> {
     }
     fn trim_pattern(&self, id: &str) -> bool {
         self.0
-            .ui
+            .session
             .registries
             .ids("minecraft:trim_pattern")
             .iter()

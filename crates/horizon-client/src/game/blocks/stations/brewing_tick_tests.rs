@@ -38,7 +38,7 @@ fn place(game: &mut crate::game::Game<'_>, pos: (i32, i32, i32), entity: BlockEn
 fn a_brewed_remainder_ignores_the_block_drops_rule() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
-    assert!(game.ui.rules.set("block_drops", Value::Bool(false)));
+    assert!(game.session.rules.set("block_drops", Value::Bool(false)));
     let pos = (8, 64, 8);
     place(
         &mut game,

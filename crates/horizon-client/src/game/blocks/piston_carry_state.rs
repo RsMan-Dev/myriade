@@ -88,7 +88,6 @@ impl Game<'_> {
     /// Reject obsolete mesh entries even if an old asynchronous upload arrives after a move.
     pub(super) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
         self.world.block(pos[0], pos[1], pos[2]).0 == state
-            && self.res.block_entity_render().renders(state)
     }
     /// Runs before with_level returns: no menu, ticker, save or packet sees an old owner.
     pub(super) fn finish_piston_position_changes(&mut self, changes: Vec<PositionChange>) {

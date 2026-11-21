@@ -6,7 +6,6 @@ use crate::game::commands::Target;
 use crate::game::minecarts::CartKind;
 use crate::mobs::Who;
 use horizon_client::Result;
-use horizon_client::sound_engine::BLOCKS;
 use horizon_ecs_proto::{cart_variants::HitResult, host_out_cart_move::CartMoveEvent, host_out_cart_variants::CartEvent, targeting};
 
 impl Game<'_> {
@@ -56,7 +55,7 @@ impl Game<'_> {
             CartEvent::Fuse { entity } => {
                 let id = self.ecs_id_of(entity);
                 let Some(at) = self.ecs_view(id).map(|v| v.position) else { return Ok(()) };
-                self.audio.play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
+                self.audio.play_on(horizon_client_core::sound_source::SOUND_SOURCES.iter().position(|s| *s == "block").unwrap_or(0), "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
             }
             CartEvent::Explode { at, power, .. } => self.tnt_blast(at, power, None)?,
             CartEvent::Broke { entity, attacker, .. } => {

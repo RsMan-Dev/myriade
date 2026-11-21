@@ -498,48 +498,6 @@ impl Game<'_> {
         self.tell_entity_sections();
     }
 
-    /// A client handles one packet from its server ([`Game::apply_packet`]). A packet that adds,
-    /// moves or removes an entity is a position-update boundary: `handleAddEntity` files the
-    /// entity untold, a move (`handleMoveEntity`, `handleEntityPositionSync`,
-    /// `handleTeleportEntity`, `handleMovePlayer`'s `PlayerPosition`, a vehicle's) is told when
-    /// it put the entity in another section, and `handleRespawn`'s new player starts over.
-    /// An entity a move only starts interpolating moves at the client's entity tick.
-    pub(in crate::game) fn handle_packet(
-        &mut self,
-        packet: horizon_protocol::packets::play::Clientbound,
-    ) -> super::Result<()> {
-        use horizon_protocol::packets::play::Clientbound as C;
-        if self.entity_section_scope().is_none() {
-            return self.apply_packet(packet);
-        }
-        if let C::RemoveEntities(p) = &packet {
-            for &id in &p.ids {
-                self.entity_section_forget(id as u32);
-            }
-        }
-        let packet_section = match &packet {
-            C::AddEntity(p) => Some((true, p.id as u32, p.position)),
-            _ => None,
-        };
-        let respawned = matches!(packet, C::Respawn(_));
-        let result = self.apply_packet(packet);
-        if result.is_ok()
-            && let Some((joined, id, at)) = packet_section
-        {
-            if joined {
-                self.entity_section_joined(id, at);
-            } else {
-                self.entity_section_moved_id(id);
-            }
-        }
-        if respawned {
-            self.entity_section_forget(self.own_entity_id() as u32);
-        }
-        result
-    }
-
-    /// Tells `entity_entering_section` each crossing queued by a nested write, in order. Called
-    /// from inside a listener it does nothing: the outer write is still in progress.
     pub(super) fn tell_entity_sections(&mut self) {
         let Some(batch) = self.native_lifecycle.entity_sections.begin_telling() else {
             return;

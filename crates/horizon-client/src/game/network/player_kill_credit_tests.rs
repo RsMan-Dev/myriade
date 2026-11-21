@@ -111,7 +111,7 @@ fn kill(game: &mut Game<'_>, attacker: u32, ty: &str, player: bool) {
     game.as_guest(CONN, |g| {
         let known = (!player).then_some(attacker);
         if player {
-            g.note_player_attacker(ty, attacker, Text::literal(super::chat::PLAYER_NAME), None);
+            g.note_player_attacker(ty, attacker, Text::literal(crate::game::command_text::PLAYER_NAME), None);
         }
         assert!(
             g.hurt_player_from(100.0, Some([22.5, 100.0, 9.5]), ty, Some(known), false),
@@ -157,8 +157,8 @@ fn a_player_killing_another_player_credits_the_kill() {
     let mut game = game(&mut resources);
     add_objectives(&mut game);
     kill(&mut game, HOST, "minecraft:player_attack", true);
-    assert_eq!(score(&game, super::chat::PLAYER_NAME, "kills"), Some(1));
-    assert_eq!(score(&game, super::chat::PLAYER_NAME, "pvp"), Some(1));
+    assert_eq!(score(&game, crate::game::command_text::PLAYER_NAME, "kills"), Some(1));
+    assert_eq!(score(&game, crate::game::command_text::PLAYER_NAME, "pvp"), Some(1));
     assert_eq!(
         game.stats.get("custom", "minecraft:player_kills"),
         1,
@@ -205,7 +205,7 @@ fn a_guest_killing_another_guest_credits_the_kill() {
         "PLAYER_KILLS"
     );
     // The host's own body is not the killer.
-    assert_eq!(score(&game, super::chat::PLAYER_NAME, "kills"), None);
+    assert_eq!(score(&game, crate::game::command_text::PLAYER_NAME, "kills"), None);
     assert_eq!(game.stats.get("custom", "minecraft:player_kills"), 0);
 }
 
@@ -225,7 +225,7 @@ fn a_wither_killing_a_player_leaves_a_rose() {
     let name = &*game.res.facts().get(game.world.block(22, 100, 9)).name;
     assert_eq!(name, "minecraft:wither_rose", "the rose block");
     assert_eq!(
-        score(&game, super::chat::PLAYER_NAME, "kills"),
+        score(&game, crate::game::command_text::PLAYER_NAME, "kills"),
         None,
         "a mob's kill credits no score"
     );

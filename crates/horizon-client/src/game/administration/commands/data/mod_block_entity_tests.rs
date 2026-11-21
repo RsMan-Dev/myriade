@@ -121,13 +121,11 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.world = World::new(game.res.facts().air, 1);

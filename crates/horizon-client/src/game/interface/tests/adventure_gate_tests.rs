@@ -65,7 +65,7 @@ fn click(game: &mut crate::game::Game<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>)
 fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
     let Some(mut game) = game() else { return };
     assert!(
-        game.ui
+        game.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
     );

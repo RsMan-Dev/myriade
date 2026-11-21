@@ -1841,13 +1841,11 @@ mod stand_equip_event_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -1940,13 +1938,11 @@ mod mob_equipment_command_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2070,7 +2066,7 @@ mod mob_equipment_command_tests {
 
     fn actor(game: &mut Game<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000019-0000-0000-0000-{n:012x}");
-        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
+        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}")), "{kind}/{n}");
         let mob = game
             .mobs
             .iter()
@@ -2350,13 +2346,11 @@ mod mob_equipment_stack_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2375,7 +2369,7 @@ mod mob_equipment_stack_tests {
 
     fn actor(game: &mut Game<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000017-0000-0000-0000-{n:012x}");
-        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
+        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}")), "{kind}/{n}");
         let mob = game
             .mobs
             .iter()
@@ -2767,7 +2761,7 @@ mod registered_slot_source_read_tests {
             definition.as_bytes()
         );
         assert!(
-            game.ui
+            game.session
                 .registries
                 .datapacks_enabled
                 .iter()
@@ -2927,7 +2921,7 @@ mod registered_slot_source_preservation_tests {
             let dispatcher = horizon_client::command::vanilla::game_dispatcher();
             assert!(
                 dispatcher
-                    .parse(&command, &game.ui.registries)
+                    .parse(&command, &game.session.registries)
                     .executable()
                     .is_ok(),
                 "registered argument must be admitted: {command}"

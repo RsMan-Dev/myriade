@@ -1,5 +1,5 @@
 //! Standalone models drawn with the terrain's own materials by block entity, mob and player
-//! submit hooks ([`BlockEntityDrawContext::terrain_model`](crate::BlockEntityDrawContext::terrain_model)).
+//! submit hooks (a terrain model a mod draws).
 
 /// Which terrain material a [`TerrainModelOptions`] draw uses.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -69,7 +69,7 @@ impl<'a> TerrainUvShift<'a> {
 }
 
 // no wire: borrowed call-scoped view; transport uses owned snapshots rather than serializing references.
-/// How [`BlockEntityDrawContext::terrain_model`](crate::BlockEntityDrawContext::terrain_model)
+/// How a terrain model
 /// draws a model. The default is the model's own materials and shading, its baked UVs and no
 /// tint.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -135,7 +135,7 @@ impl<'a> TerrainModelOptions<'a> {
     }
 }
 
-/// Why [`BlockEntityDrawContext::terrain_model`](crate::BlockEntityDrawContext::terrain_model)
+/// Why a terrain model
 /// drew nothing. A refused draw appends no geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

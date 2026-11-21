@@ -21,7 +21,7 @@ impl Game<'_> {
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;
         Some(match read {
             PlayerRead::Guest(g) => g.permission,
-            PlayerRead::Acting { .. } if self.lan_acting.is_some() => self.ui.registries.permission,
+            PlayerRead::Acting { .. } if self.lan_acting.is_some() => self.session.registries.permission,
             PlayerRead::Acting { .. } if self.allow_commands() => 4,
             PlayerRead::Acting { .. } => 0,
         })
@@ -194,7 +194,7 @@ mod tests {
                 "allies with friendly fire"
             );
 
-            game.ui.rules.set("pvp", Value::Bool(false));
+            game.session.rules.set("pvp", Value::Bool(false));
             assert_eq!(
                 a.can_harm(&*game, b),
                 Some(false),
@@ -204,7 +204,7 @@ mod tests {
             // During the attacker's own turn the same answer comes from their state in place.
             let acting = game.as_guest(12, |game| a.can_harm(&*game, b)).unwrap();
             assert_eq!(acting, Some(false));
-            game.ui.rules.set("pvp", Value::Bool(true));
+            game.session.rules.set("pvp", Value::Bool(true));
             let acting = game.as_guest(12, |game| a.can_harm(&*game, b)).unwrap();
             assert_eq!(acting, Some(true));
 

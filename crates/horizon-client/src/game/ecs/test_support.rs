@@ -27,11 +27,9 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
     let mut game = Game::new(
         resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(root.clone())),
-        None,
     )
     .unwrap();
     game.ecs = game.test_ecs_level();

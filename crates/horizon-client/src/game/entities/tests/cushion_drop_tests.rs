@@ -41,13 +41,11 @@ fn game() -> Game<'static> {
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();
@@ -63,11 +61,11 @@ fn game() -> Game<'static> {
     // `Cushion.dropItem` only drops under `ENTITY_DROPS`, and the blast below
     // only reaches the cushion under `MOB_GRIEFING` (both default on).
     assert!(
-        game.ui
+        game.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
             && game
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
     );

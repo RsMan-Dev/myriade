@@ -1,5 +1,6 @@
 //! Prepared cauldron callbacks and their authoritative action savepoint.
 use super::*;
+use mod_api::client::first_person::Hand;
 use horizon_client::cauldron::interactions::{Dispatcher, Entry};
 use mod_api::__private::game::RegistrationContextNew;
 use std::{cell::RefCell, sync::Arc};
@@ -311,7 +312,7 @@ impl Game<'_> {
                     return Err(());
                 }
                 if plan.sound.as_ref().is_some_and(|sound| {
-                    !chat::command_export(&self.options.resources, true).is_some_and(|registry| {
+                    !crate::game::command_text::command_export(&self.options.resources, true).is_some_and(|registry| {
                         registry
                             .ids("minecraft:sound_event")
                             .iter()

@@ -361,7 +361,7 @@ fn a_mob_blast_breaks_blocks_only_when_its_source_may_grief() {
             for griefing in [false, true] {
                 with_game(|game| {
                     floor(game);
-                    assert!(game.ui.rules.set(
+                    assert!(game.session.rules.set(
                         "mob_griefing",
                         horizon_client::gamerules::Value::Bool(griefing),
                     ));

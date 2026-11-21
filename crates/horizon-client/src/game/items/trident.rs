@@ -8,7 +8,6 @@ use super::{Game, view_vector};
 use horizon_client::{
     collisions::SceneCollisions,
     items::ItemStack,
-    mesher::Vertex,
     mobs::{Who, anim::Poses},
 };
 use horizon_core::{geometry::Vec3, random::RandomSource};
@@ -71,10 +70,6 @@ impl Game<'_> {
         }
         self.ecs.set_next_bolt_cause(Some(guest.unwrap_or(0)));
         self.spawn_bolt(at, false);
-        // The summon effect's owner is the thrower: LightningBolt.setCause.
-        if let Some(bolt) = self.bolts.last_mut() {
-            bolt.cause = Some(guest);
-        }
         self.audio
             .play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
     }
@@ -294,13 +289,11 @@ mod tests {
         let mut game = super::Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.player =

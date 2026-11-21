@@ -590,11 +590,9 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&ResourceSource::directory(root)),
-            None,
         )
         .unwrap();
         game.fns.store.predicates.insert(

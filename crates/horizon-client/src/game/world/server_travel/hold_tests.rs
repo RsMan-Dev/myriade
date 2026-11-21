@@ -321,7 +321,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
         let pos = [FAR as i32, 150, FAR as i32];
         let chunk = pos[0] >> 4;
         game.level.world_spawn = Some(pos);
-        assert!(game.ui.rules.set_string("respawn_radius", "0"));
+        assert!(game.session.rules.set_string("respawn_radius", "0"));
         let elsewhere = personal.then(|| (game.dim.id().into(), pos, 93.0, 12.0, true));
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
             guest.dead = true;

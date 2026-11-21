@@ -8,7 +8,6 @@
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
 use super::{Game, Hit, InteractTarget, Keys, ray_box};
-use horizon_client::actions::Action;
 use horizon_client::entities::{Cushion, dye_index};
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -324,7 +323,7 @@ impl Game<'_> {
             return false;
         }
         // isSecondaryUseActive.
-        if self.keys.held(Action::Sneak) {
+        if self.sneak_held {
             return false;
         }
         let id = self.cushions[i].id;
@@ -427,7 +426,7 @@ impl Game<'_> {
         // `Cushion.dropItem`: the item unless drops are off or the cause is a
         // player with infinite materials (the TNT's owner for a blast).
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
             || self.infinite_materials(source.as_ref())

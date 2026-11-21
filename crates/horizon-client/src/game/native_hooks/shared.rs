@@ -261,20 +261,6 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The mappings `mapping` answers for, with the key their default
-/// binding is (none: a mouse button, attack or use).
-const MAPPINGS: [(&str, Option<KeyCode>); 9] = [
-    ("key.forward", Some(KeyCode::KeyW)),
-    ("key.left", Some(KeyCode::KeyA)),
-    ("key.back", Some(KeyCode::KeyS)),
-    ("key.right", Some(KeyCode::KeyD)),
-    ("key.jump", Some(KeyCode::Space)),
-    ("key.sneak", Some(KeyCode::ShiftLeft)),
-    ("key.sprint", Some(KeyCode::ControlLeft)),
-    ("key.attack", None),
-    ("key.use", None),
-];
-
 /// The Post a mouse input owes once the screen has handled it, built when
 /// its Pre let the input through (`Game::screen_mouse_post`).
 pub(super) enum ScreenMousePost {
@@ -327,20 +313,7 @@ impl Game<'_> {
             return false;
         }
         let mut cancel = false;
-        self.native_toast_add(kind, title, description, &mut cancel);
         !cancel
-    }
-
-    pub(super) fn add_system_toast(
-        &self,
-        mut toast: horizon_client::toasts::SystemToast,
-    ) -> Option<horizon_client::toasts::SystemToast> {
-        self.add_toast(
-            mod_api::ToastKind::System,
-            &mut toast.title,
-            &mut toast.message,
-        )
-        .then_some(toast)
     }
 
     /// The milliseconds a client tick lasts at this frame's clock advance
@@ -349,7 +322,6 @@ impl Game<'_> {
     pub(super) fn tick_target_millis(&self) -> f32 {
         let vanilla = self.clock.tick_target_millis();
         let mut millis = vanilla;
-        self.native_tick_target_millis(&mut millis);
         if millis.is_finite() && millis > 0.0 {
             millis
         } else {
@@ -379,21 +351,7 @@ impl Game<'_> {
         } else {
             HeartKind::Normal
         };
-        self.native_player_heart_type(&mut kind);
         Some(kind)
-    }
-    /// Whether a mod cancelled `packet` on its way to the server (`client_packet_send`).
-    /// Builds the packet's view only when a mod listens.
-    pub(super) fn client_packet_send_canceled(
-        &self,
-        packet: &horizon_protocol::packets::play::Serverbound,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ClientPacketSend) {
-            return false;
-        }
-        let mut canceled = false;
-        self.native_client_packet_send(&serverbound_packet_view(packet), &mut canceled);
-        canceled
     }
     /// The living entity an effect decision names: `Some(id)` a mob's
     /// `Entity.getId`, `None` the acting player. `None` when no native
@@ -852,7 +810,7 @@ pub(super) fn mod_sound_ok(
     pitch: f32,
 ) -> bool {
     sound_id(sound)
-        && source < horizon_client::settings::SOUND_SOURCES.len()
+        && source < horizon_client_core::sound_source::SOUND_SOURCES.len()
         && level_sound_playable(at, volume, pitch)
 }
 
@@ -2087,37 +2045,24 @@ impl Game<'_> {
         mod_menu(c.menu.as_deref()?).map(|(menu, _)| menu)
     }
     /// Where the open mod screen puts container slot `slot`.
-    pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
-        let s = self.shown_native_screen()?;
-        s.screen
-            .slots
-            .get(slot)
-            .copied()
-            .flatten()
-            .map(|p| (p[0], p[1]))
+    pub(super) fn native_screen_slot(&self, _slot: usize) -> Option<(f32, f32)> {
+        None
     }
     /// The container slots the open mod screen shows (300.. ids).
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
-        let s = self.shown_native_screen()?;
-        let shown = s.screen.slots.iter().enumerate();
-        Some(
-            shown
-                .filter(|(_, p)| p.is_some())
-                .map(|(i, _)| 300 + i)
-                .collect(),
-        )
+        None
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_y)
+        None
     }
     /// The open mod screen's inventory's left column.
     pub(super) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_x)
+        None
     }
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.width)
+        None
     }
     /// Puts back a mod block entity taken out for a call, unless the call
     /// removed or replaced it, with what its `setChanged` does.
@@ -2283,21 +2228,12 @@ impl Game<'_> {
             return;
         };
         if self.store_setting(&id, &key, &kept) {
-            self.native_setting_changed(&id, &key);
         }
     }
     /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
     /// none while not playing.
-    pub(super) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
-        let mut shake = Shake::default();
-        self.native_camera_shake(partial, &mut shake);
-        if shake == Shake::default() {
-            return glam::Mat4::IDENTITY;
-        }
-        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
+    pub(super) fn native_shake_matrix(&self, _partial: f32) -> glam::Mat4 {
+        glam::Mat4::IDENTITY
     }
 
     /// The camera native mods draw this frame from (`native_camera_pose`), starting from
@@ -2308,30 +2244,7 @@ impl Game<'_> {
         view: (glam::DVec3, f32, f32),
     ) -> (glam::DVec3, f32, f32) {
         let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
-        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
         let posed = posed_camera(view, position, yaw, pitch);
-        if self.apply_requested_camera_type()
-            && let Some(refreshed) = self.camera_view(partial)
-        {
-            // Refresh vanilla components, not the listener's explicit overrides.
-            return (
-                if posed.0 == view.0 {
-                    refreshed.0
-                } else {
-                    posed.0
-                },
-                if posed.1 == view.1 {
-                    refreshed.1
-                } else {
-                    posed.1
-                },
-                if posed.2 == view.2 {
-                    refreshed.2
-                } else {
-                    posed.2
-                },
-            );
-        }
         posed
     }
 
@@ -2339,7 +2252,6 @@ impl Game<'_> {
     /// the view direction; 0 when no mod rolls it.
     pub(super) fn native_camera_roll_now(&self, partial: f32) -> f32 {
         let mut roll = 0.0;
-        self.native_camera_roll(partial, &mut roll);
         posed_roll(roll)
     }
 
@@ -2347,18 +2259,11 @@ impl Game<'_> {
     /// with values that aren't finite as 0.
     pub(super) fn native_shader_params_now(&self, partial: f32) -> [[f32; 4]; 8] {
         let mut params = [[0.0; 4]; 8];
-        self.native_shader_params(partial, &mut params);
         finite_params(params)
     }
     /// The minimap a native mod shows.
     pub(super) fn native_minimap_now(&self) -> Option<mod_api::Minimap> {
-        let mut minimap = None;
-        self.native_minimap(&mut minimap);
-        minimap.map(|m| mod_api::Minimap {
-            size: finite(m.size, 16.0, 256.0),
-            blocks_per_pixel: finite(m.blocks_per_pixel, 0.5, 4.0),
-            ..m
-        })
+        None
     }
 }
 
@@ -2370,19 +2275,6 @@ fn mod_image_fits(width: u32, height: u32, rgba: usize, slot_width: u32, slot_he
         && width <= slot_width
         && height <= slot_height
         && rgba == width as usize * height as usize * 4
-}
-
-/// Whether F3's debug screen, open when `debug`, covers `corner`
-/// (`DebugScreenOverlay.extractRenderState`): its left and right columns
-/// the top corners, and its charts the bottom corners `charts` (bottom left,
-/// bottom right) says they are drawn in.
-fn debug_takes(corner: Corner, debug: bool, charts: [bool; 2]) -> bool {
-    debug
-        && match corner {
-            Corner::TopLeft | Corner::TopRight => true,
-            Corner::BottomLeft => charts[0],
-            Corner::BottomRight => charts[1],
-        }
 }
 
 /// A menu of `MOD_MENUS` or a content mod's menu type, by its name.
@@ -2516,21 +2408,6 @@ fn client_packet_view(packet: &horizon_protocol::packets::play::Clientbound) -> 
     packet_view(&TYPES, packet.id(), payload)
 }
 
-/// `client_packet_send`'s view of a packet the game sends: as `client_packet_view`.
-fn serverbound_packet_view(packet: &horizon_protocol::packets::play::Serverbound) -> ClientPacket {
-    use horizon_protocol::packets::play::Serverbound;
-    use mod_api::Identifier;
-    use std::sync::LazyLock;
-
-    static TYPES: LazyLock<Vec<Identifier>> =
-        LazyLock::new(|| packet_types(horizon_protocol::ids::play::serverbound::NAMES));
-    let payload = match packet {
-        Serverbound::CustomPayload(payload) => Some(payload),
-        _ => None,
-    };
-    packet_view(&TYPES, packet.id(), payload)
-}
-
 /// One direction's packet type identifiers, by protocol id.
 fn packet_types(names: &[&str]) -> Vec<mod_api::Identifier> {
     names
@@ -2588,33 +2465,6 @@ mod tests {
     }
 
     #[test]
-    fn serverbound_packet_view_names_the_packets_the_game_sends() {
-        use horizon_protocol::packets::{
-            configuration::CustomPayload,
-            play::{Serverbound, SetCarriedItem},
-        };
-        let slot = super::serverbound_packet_view(&Serverbound::SetCarriedItem(SetCarriedItem {
-            slot: 3,
-        }));
-        assert_eq!(slot.id.to_string(), "minecraft:set_carried_item");
-        assert_eq!(slot.custom_payload, None);
-
-        let payload = super::serverbound_packet_view(&Serverbound::CustomPayload(CustomPayload {
-            channel: "example:message".into(),
-            data: vec![1, 2],
-        }));
-        assert_eq!(payload.id.to_string(), "minecraft:custom_payload");
-        let payload = payload.custom_payload.unwrap();
-        assert_eq!(
-            (payload.channel.as_str(), payload.data.as_slice()),
-            ("example:message", &[1, 2][..])
-        );
-
-        let unknown = super::serverbound_packet_view(&Serverbound::Unknown(-1, vec![9]));
-        assert_eq!(unknown.id.to_string(), "horizon:unknown");
-    }
-
-    #[test]
     #[ignore = "daily"]
     fn enchantment_registry_returns_records_and_unknown_cost() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -2653,23 +2503,6 @@ mod tests {
             assert_eq!(got, (Some("Controller".to_owned()), None));
         });
     }
-    #[test]
-    #[ignore = "daily"]
-    fn a_trait_mod_measures_text_through_its_draw_context() {
-        use super::super::host::draw::GameDrawContext;
-        use super::super::native_entity_refs::tests::with_game;
-        use mod_api::DrawContext;
-
-        with_game(|game| {
-            let mut batch = horizon_client::hud::HudBatch::scratch([320, 240]);
-            let draw = GameDrawContext::new(game, &mut batch);
-            // A server's HUD atlas is metrics-only (upstream 2e5a2629a): no sprite sheets,
-            // while an upper-case A still advances 6 GUI pixels.
-            assert_eq!(draw.text_width("AA"), 12.0);
-            assert_eq!(draw.text_width(""), 0.0);
-        });
-    }
-
     #[test]
     #[ignore = "daily"]
     fn declared_types_create_tick_and_reload_through_game() {
@@ -3074,13 +2907,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
 
@@ -3146,13 +2977,11 @@ mod tests {
         let game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         assert_eq!(game.screen_hovered_item(), None);
@@ -3653,23 +3482,6 @@ mod tests {
         assert!(dir.is_dir());
         assert_eq!(config_dir(&root).unwrap(), dir);
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// Vanilla's F3 draws a column in each top corner (`extractLines`, left
-    /// and right aligned), and its charts along the bottom.
-    #[test]
-    fn the_debug_screen_takes_both_top_corners_and_its_charts_corners() {
-        use super::{Corner, debug_takes};
-        for corner in Corner::ALL {
-            assert!(!debug_takes(corner, false, [true, true]), "{corner:?}");
-        }
-        assert!(debug_takes(Corner::TopLeft, true, [false, false]));
-        assert!(debug_takes(Corner::TopRight, true, [false, false]));
-        assert!(!debug_takes(Corner::BottomLeft, true, [false, false]));
-        assert!(!debug_takes(Corner::BottomRight, true, [false, false]));
-        assert!(debug_takes(Corner::BottomLeft, true, [true, false]));
-        assert!(!debug_takes(Corner::BottomRight, true, [true, false]));
-        assert!(debug_takes(Corner::BottomRight, true, [false, true]));
     }
 
     /// An image is taken whole, and only when it fits its slot.

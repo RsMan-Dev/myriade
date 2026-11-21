@@ -32,29 +32,30 @@ mod world_view;
 use super::api_values::TryIntoApi;
 use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
-use super::{Dim, Game, InteractTarget, native_mob_draw::PlayerRender, view_vector};
+use super::{Dim, Game, InteractTarget, view_vector};
 use horizon_client::{
     Result,
     blocks::Fluid,
     crafting::Recipes,
-    health::{HealthEvent, HurtSource, Hurting, Knock},
+    health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
     items::{ItemStack, Items},
     mobs::{
-        Damage, DamageKind, Mob, MobEvent, PlayerView, Seen, SpawnSetup, Species, Who,
+        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         finalize::Group,
         spawning::{self, BiomeFacts},
     },
+    collisions::SceneCollisions,
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld},
+    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
 };
 use horizon_core::{
-    geometry::{Aabb, Direction, Vec3, trig::Mth},
+    geometry::{Aabb, Direction, Vec3, trig::Mth, traverse_blocks},
     position::BlockPos,
     random::RandomSource,
 };
-use mod_api::{EquipmentSlot, SoundSource};
+use mod_api::{EquipmentSlot, LootDrops, SoundSource};
 use std::sync::Arc;
 
 pub(super) type SpawnReason = horizon_client::mobs::spawn_rules::Reason;
@@ -515,7 +516,7 @@ impl Game<'_> {
             (Some(yaw), _) => yaw,
             (None, SpawnSite::Finalizing(SpawnReason::Command)) => 0.0,
             (None, SpawnSite::Finalizing(SpawnReason::SpawnItemUse | SpawnReason::Dispenser)) => {
-                horizon_client::camera::wrap_degrees(self.world.random.next_float() * 360.0)
+                mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0)
             }
             _ => self.world.random.next_float() * 360.0,
         };
@@ -932,7 +933,6 @@ impl Game<'_> {
                 })));
                 // Drawn seated (Entity.isPassenger).
                 state["passenger"] = m.extra.passenger.into();
-                state["guardian_beam"] = serde_json::json!(horizon_client::mobs::guardian::beam(m, 0.0));
                 state
             })
             .collect();
@@ -2175,7 +2175,7 @@ impl Game<'_> {
                     // canEntityGrief), ROAR_TARGET_WITH_GRIEFING also takes the armor stands.
                     if event == 69
                         && self
-                            .ui
+                            .session
                             .rules
                             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
                         && let Some(area) = self
@@ -3117,7 +3117,7 @@ impl Game<'_> {
                                 .name
                                 .starts_with("minecraft:infested_")
                             && self
-                                .ui
+                                .session
                                 .rules
                                 .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
                         {
@@ -3289,7 +3289,7 @@ impl Game<'_> {
                     ticks,
                     source,
                 } => self.mob_vibration_particle(source, from, to, ticks),
-                MobEvent::DigParticles { at } => self.warden_dig_particles(at),
+                MobEvent::DigParticles { .. } => {}
                 MobEvent::BlockBreakEffect { pos, block } => {
                     // Turtle.aiStep broadcasts LevelEvent 2001, not the
                     // particles themselves: the event carries the particles and
@@ -3383,7 +3383,7 @@ impl Game<'_> {
                         table,
                         "minecraft:gameplay/turtle_grow" | "minecraft:gameplay/panda_sneeze"
                     ) && !self
-                        .ui
+                        .session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS)
                     {
@@ -3489,7 +3489,7 @@ impl Game<'_> {
     /// from the breeding parent after the rule check.
     fn award_breeding_experience(&mut self, parent: u32, at: [f64; 3]) {
         let mob_drops = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS);
         if let Some(amount) = self
@@ -3529,7 +3529,7 @@ impl Game<'_> {
         // A client of someone else's world has the server's mobs only to show.
         if false
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
         {
@@ -4160,7 +4160,7 @@ impl Game<'_> {
     /// player is invulnerable to wither damage (creative, spectator). A
     /// server's player gets it from the server.
     pub(super) fn wither_rose_contact(&mut self) {
-        if self.ui.difficulty == 0 {
+        if self.session.difficulty == 0 {
             return;
         }
         self.give_player_effect("minecraft:wither", 40, 0);
@@ -4293,11 +4293,11 @@ impl Game<'_> {
             loop_context: &self.loop_context,
             raining: rain,
             mob_griefing: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
             tnt_explodes: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES),
             mob_hooks: self
@@ -4383,7 +4383,7 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.remote_entities, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.remote_entities[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.remote_camera_id())
+                    named_mob_pickable(m.alive(), m.id, self.riding, None)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),
@@ -4741,11 +4741,12 @@ impl Game<'_> {
                     7,
                     1.0,
                     1.0,
-                    horizon_client::sound_engine::SoundEntity::new(m.id, feet, m.silent),
+                    m.id,
+                    feet,
                     None,
                 );
                 m.extra.sheared = true;
-                let color = horizon_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
+                let color = horizon_client::mobs::DYE_NAMES[m.extra.color as usize & 15];
                 drops_table = format!("minecraft:shearing/sheep/{color}");
                 let stacks = world_items!(self).loot_table(
                     &drops_table,
@@ -4824,7 +4825,7 @@ impl Game<'_> {
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
                     && item.ends_with("_dye")
-                    && horizon_client::mobs::render::DYE_NAMES
+                    && horizon_client::mobs::DYE_NAMES
                         .iter()
                         .position(|d| {
                             item.trim_start_matches("minecraft:")
@@ -4836,7 +4837,7 @@ impl Game<'_> {
                 let name = item
                     .trim_start_matches("minecraft:")
                     .trim_end_matches("_dye");
-                if let Some(c) = horizon_client::mobs::render::DYE_NAMES
+                if let Some(c) = horizon_client::mobs::DYE_NAMES
                     .iter()
                     .position(|d| *d == name)
                 {
@@ -4898,7 +4899,7 @@ impl Game<'_> {
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
                     && item.ends_with("_dye")
-                    && horizon_client::mobs::render::DYE_NAMES
+                    && horizon_client::mobs::DYE_NAMES
                         .iter()
                         .position(|d| {
                             item.trim_start_matches("minecraft:")
@@ -4910,7 +4911,7 @@ impl Game<'_> {
                 let name = item
                     .trim_start_matches("minecraft:")
                     .trim_end_matches("_dye");
-                if let Some(c) = horizon_client::mobs::render::DYE_NAMES
+                if let Some(c) = horizon_client::mobs::DYE_NAMES
                     .iter()
                     .position(|d| *d == name)
                 {
@@ -5583,7 +5584,7 @@ impl Game<'_> {
     /// Shared peaceful-mode eligibility for spawn eggs.
     pub(super) fn spawn_egg_allowed(&self, item: &str) -> bool {
         let kind = item.trim_end_matches("_spawn_egg");
-        self.ui.difficulty != 0
+        self.session.difficulty != 0
             || self
                 .res
                 .mob_types()
@@ -5849,7 +5850,7 @@ impl Game<'_> {
     /// entity: the rule alone, as NeoForge.
     pub(super) fn can_entity_grief(&self, entity: Option<u32>) -> bool {
         let rule = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING);
         entity.map_or(rule, |entity| self.entity_grief(entity, rule))
@@ -6253,7 +6254,7 @@ fn dye_color_mix_in_recipes(
     b: u8,
 ) -> Option<u8> {
     let dye = |c: u8| {
-        let name = horizon_client::mobs::render::DYE_NAMES[usize::from(c) & 15];
+        let name = horizon_client::mobs::DYE_NAMES[usize::from(c) & 15];
         Some(ItemStack::new(&format!("minecraft:{name}_dye"), 1))
     };
     let grid = [dye(a), dye(b), None, None];
@@ -6262,7 +6263,7 @@ fn dye_color_mix_in_recipes(
         .item
         .strip_prefix("minecraft:")?
         .strip_suffix("_dye")?;
-    let index = horizon_client::mobs::render::DYE_NAMES
+    let index = horizon_client::mobs::DYE_NAMES
         .iter()
         .position(|n| *n == name)?;
     u8::try_from(index).ok()
@@ -6484,7 +6485,7 @@ mod dye_mix_tests {
             Recipes::load(&root, &items, &overlay, &crate::game::test_server_load()).unwrap();
         let dye = |name: &str| {
             u8::try_from(
-                horizon_client::mobs::render::DYE_NAMES
+                horizon_client::mobs::DYE_NAMES
                     .iter()
                     .position(|n| *n == name)
                     .unwrap_or_else(|| panic!("{name} is not a dye colour")),
@@ -6746,13 +6747,11 @@ mod conversion_tag_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -6959,12 +6958,12 @@ mod loaded_mob_arrow_permission_tests {
             assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
             assert!(game.world.loaded(3, 1));
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
             );
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
             );
@@ -6996,7 +6995,7 @@ mod loaded_mob_arrow_permission_tests {
                 let x = if n <= 3 { 3 } else { 11 };
                 let z = 1 + 4 * ((n - 1) % 3);
                 if game
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
                     != griefing
@@ -7004,7 +7003,7 @@ mod loaded_mob_arrow_permission_tests {
                     assert!(game.run_command(&format!("gamerule mob_griefing {griefing}")));
                 }
                 assert_eq!(
-                    game.ui
+                    game.session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
                     griefing

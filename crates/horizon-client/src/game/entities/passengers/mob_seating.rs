@@ -1,5 +1,6 @@
 //! Shared physical mob seating; specialized vehicle seats stay authoritative.
 use super::*;
+use horizon_core::geometry::Aabb;
 
 impl Game<'_> {
     pub(in crate::game) fn position_mob_rider(&mut self, i: usize, index: &HashMap<u32, usize>) {

@@ -54,7 +54,7 @@ fn early_server_game_rules_saved_and_creation_values() {
         for saved in [false, true] {
             let scratch = tempfile::tempdir().unwrap();
             let registry = Arc::new(horizon_client::gamerules::RuleRegistry::vanilla());
-            let mut create = horizon_client::title::WorldOptions::default();
+            let mut create = crate::game::world_options::WorldOptions::default();
             assert!(create.rules.set("keep_inventory", Value::Bool(true)));
             assert!(create.rules.set("random_tick_speed", Value::Int(7)));
             if saved {

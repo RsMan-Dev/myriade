@@ -14,7 +14,7 @@ pub struct SkullModel {
     /// (`mymod:goblin_head#main`) or vanilla's (`minecraft:zombie_head#main`). Its root's `head`
     /// part is posed as vanilla's skull heads are.
     pub layer: String,
-    /// The entity texture drawn when the item model names none, as `BlockEntityDrawContext::
+    /// The entity texture drawn when the item model names none, as `
     /// model_part` takes a sprite (`entity/zombie/zombie`, a mod's `mymod:entity/goblin`).
     pub texture: String,
 }

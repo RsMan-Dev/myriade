@@ -34,7 +34,7 @@ fn command_stops_navigation_and_dismounts() {
         let mut vehicle = Mob::new(42, kind, Vec3::new(0.0, 64.0, 0.0), 0.0);
         vehicle.extra.rider = Some(12);
         game.mobs.push(vehicle);
-        game.ui.registries.permission = 4;
+        game.session.registries.permission = 4;
         assert!(game.run_command("tp @e[type=minecraft:zombie] 10 70 10"));
         let mob = &game.mobs[0];
         assert_eq!(mob.position, Vec3::new(10.5, 70.0, 10.5));

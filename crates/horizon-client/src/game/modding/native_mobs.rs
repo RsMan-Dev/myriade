@@ -193,7 +193,7 @@ impl Game<'_> {
             .mob_types()
             .get(&qualified)
             .is_some_and(|t| t.category == "monster");
-        if monster && self.ui.difficulty == 0 {
+        if monster && self.session.difficulty == 0 {
             return None;
         }
         if self.ecs.is_active() {

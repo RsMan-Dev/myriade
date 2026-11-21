@@ -9,7 +9,8 @@
 //! handle, on a client, and for a kind Horizon keeps no such state for (each
 //! doc says which).
 use super::{Game, commands::Target};
-use horizon_client::first_person::{Hand, SwingAnimation};
+use mod_api::client::first_person::Hand;
+use crate::hand_use::SwingAnimation;
 use horizon_client::lan::waypoints::Icon;
 use horizon_client::mobs::{spear_use, stuck::Stuck};
 use mod_api::{Identifier, LivingRef};
@@ -62,7 +63,7 @@ impl Game<'_> {
             Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.swing(id, hand == Hand::Off),
             Some(Target::Mob(id)) => {
                 self.remote_mob_any_mut(id).is_some_and(|m| {
-                    m.swing_hand_modified(hand == Hand::Off, SwingAnimation::DEFAULT)
+                    m.swing_hand_modified(hand == Hand::Off, crate::mobs::ai::SwingAnimation::DEFAULT)
                 })
             }
             Some(Target::Player | Target::Guest(_)) => {
@@ -74,14 +75,12 @@ impl Game<'_> {
                     let before = game.swings_started;
                     game.swing_hand(hand, SwingAnimation::DEFAULT);
                     started = game.swings_started != before;
-                    let current = game.swing.current;
-                    if let (true, true, Some(c), Some(id)) =
-                        (started, send_to_self, current, game.lan_acting_entity)
+                    if let (true, true, Some(id)) = (started, send_to_self, game.lan_acting_entity)
                     {
                         game.guest_packets.push(super::lan_actions::swing_packet(
                             id as i32,
-                            c.hand,
-                            c.animation,
+                            hand,
+                            SwingAnimation::DEFAULT,
                         ));
                     }
                 });

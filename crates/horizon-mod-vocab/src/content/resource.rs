@@ -298,18 +298,6 @@ impl ItemResource {
     ) -> Option<f32> {
         backend_of(host)?.item_resource_attack_damage_bonus(&self.0, attacker, target, base_damage)
     }
-    /// Standard tooltip text, with explicit advanced and creative flags and the client's
-    /// current viewer context. Uses the same line builder as inventory tooltips and skips
-    /// mod callbacks, so a tooltip hook can safely request another item's base lines.
-    /// Returns None without a client backend, or when the item cannot be resolved.
-    pub fn tooltip(
-        &self,
-        host: &dyn crate::ClientHost,
-        advanced: bool,
-        creative: bool,
-    ) -> Option<Vec<crate::TooltipElement>> {
-        backend_of(host)?.item_resource_tooltip(&self.0, advanced, creative)
-    }
     /// Roll compatible enchantments from the named enchantment tag with the active server
     /// level's random source. Returns a detached resource, converting a book to an enchanted
     /// book when selected. None means the request was refused or the roll chose nothing.

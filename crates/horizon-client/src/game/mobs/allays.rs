@@ -3,11 +3,8 @@
 //! reaches the delivery and the liked player through [`AllayLevel`].
 use super::Game;
 use super::level_sounds::LevelSound;
-use horizon_client::{
-    first_person::Hand,
-    items::ItemStack,
-    mobs::{Species, allay},
-};
+use horizon_client::{items::ItemStack, mobs::{Species, allay}};
+use mod_api::client::first_person::Hand;
 use horizon_gameplay::allays::AllayLevel;
 use mod_api::SoundSource;
 

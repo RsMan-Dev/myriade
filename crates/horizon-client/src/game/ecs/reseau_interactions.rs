@@ -42,13 +42,13 @@ impl Game<'_> {
         })
     }
 
-    /// Columns of the mount `id`'s inventory (`mount_menu::mount_columns`).
+    /// Columns of the mount `id`'s inventory (`mobs::mount_inventory::mount_columns`).
     pub(in crate::game) fn mount_columns_of(&self, id: u32) -> Option<usize> {
         if self.ecs.is_active() {
             return self.ecs.mount_columns(id);
         }
         let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(crate::game::mount_menu::mount_columns(m))
+        Some(crate::game::mount_inventory::mount_columns(m))
     }
 
     /// The kind id of the mount `id`, as its menu names it (`minecraft:` ids as the mob has them).

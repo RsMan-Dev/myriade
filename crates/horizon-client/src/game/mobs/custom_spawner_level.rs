@@ -18,11 +18,11 @@ impl CustomSpawnerLevel for Game<'_> {
         self.dim == Dim::Overworld
     }
     fn spawn_mobs_and_monsters(&self) -> bool {
-        self.ui
+        self.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS)
     }

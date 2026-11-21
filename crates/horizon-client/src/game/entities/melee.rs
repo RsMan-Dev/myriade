@@ -82,7 +82,6 @@ impl Game<'_> {
         let arc = horizon_client::particles::ParticleOptions::simple(
             horizon_client::particles::ParticleType::SweepAttack,
         );
-        self.particles.add(&arc, at, [0.0; 3]);
         // Player.sweepAttack's `sendParticles(SWEEP_ATTACK, ..., 0, dx, 0, dz, 0)`:
         // the offset is the one from the player to the particle.
         let origin = from.unwrap_or(at);
@@ -350,13 +349,6 @@ impl Game<'_> {
             if actual > 2.0 {
                 let indicator = horizon_client::particles::ParticleOptions::simple(
                     horizon_client::particles::ParticleType::DamageIndicator,
-                );
-                self.particles.send_particles(
-                    &indicator,
-                    [feet[0], feet[1] + height * 0.5, feet[2]],
-                    [0.1, 0.0, 0.1],
-                    0.2,
-                    (actual * 0.5) as u32,
                 );
                 // The players a server serves are sent them too.
                 self.lan_send_particles(lan_particles::QueuedParticle {

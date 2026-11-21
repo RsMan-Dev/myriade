@@ -8,35 +8,35 @@ impl ClientSession for Game<'_> {
             "client_server",
             mod_api::__private::LoadAccess::ClientSetup,
         );
-        self.native_client_server()
+        None
     }
     fn client_language(&self) -> Option<String> {
         mod_api::__private::check_access(
             "client_language",
             mod_api::__private::LoadAccess::ClientSetup,
         );
-        self.native_client_language()
+        None
     }
     fn client_latency(&self) -> Option<u32> {
         mod_api::__private::check_access(
             "client_latency",
             mod_api::__private::LoadAccess::ClientSetup,
         );
-        self.native_client_latency()
+        None
     }
     fn client_tab_list(&self) -> Option<ClientTabList> {
         mod_api::__private::check_access(
             "client_tab_list",
             mod_api::__private::LoadAccess::ClientSetup,
         );
-        self.native_client_tab_list()
+        None
     }
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
         mod_api::__private::check_access(
             "client_frame_stats",
             mod_api::__private::LoadAccess::ClientSetup,
         );
-        self.native_client_frame_stats()
+        None
     }
 }
 impl Commands for Game<'_> {
@@ -169,21 +169,21 @@ impl RenderAssets for Game<'_> {
             "model",
             mod_api::__private::LoadAccess::PublishedResources,
         );
-        self.native_model(id)
+        Err(ModelError::UnknownModel)
     }
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         mod_api::__private::check_access(
             "render_pipeline",
             mod_api::__private::LoadAccess::PublishedResources,
         );
-        self.pack.render.render_pipeline(id)
+        Err(RenderPipelineError::Unknown)
     }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         mod_api::__private::check_access(
             "animation",
             mod_api::__private::LoadAccess::PublishedResources,
         );
-        self.pack.render.animation(id)
+        None
     }
 }
 

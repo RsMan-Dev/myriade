@@ -1,6 +1,6 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
 use super::{Arg, Context, Game, R, Target, err};
-use horizon_client::{hud_overlays::Titles, lan::data::component_nbt, text::Text};
+use horizon_client::{lan::data::component_nbt, text::Text};
 use horizon_protocol::packets::play::{self, Clientbound as C};
 
 /// `EntitySelector.COMPILABLE_CODEC` (`CompilableString.CommandParserHelper.apply`):
@@ -65,7 +65,7 @@ impl Game<'_> {
         };
         let value: serde_json::Value =
             serde_json::from_str(json).map_err(|e| err("argument.component.invalid", &[&e]))?;
-        if let Some(message) = invalid_selector(&value, &self.ui.registries) {
+        if let Some(message) = invalid_selector(&value, &self.session.registries) {
             return Err(err("argument.component.invalid", &[&message]));
         }
         // NbtContents.resolve: the path's values in the entity, block or
@@ -110,7 +110,7 @@ impl Game<'_> {
                 single: false,
                 players: false,
             };
-            let Ok(Arg::Entity(sel)) = entities.parse(&mut reader, &self.ui.registries) else {
+            let Ok(Arg::Entity(sel)) = entities.parse(&mut reader, &self.session.registries) else {
                 return Text::literal(raw);
             };
             let found = self.select(&sel);
@@ -154,7 +154,7 @@ impl Game<'_> {
             players: false,
         };
         let mut holder = name.to_owned();
-        if let Ok(Arg::Entity(sel)) = ty.parse(&mut reader, &self.ui.registries)
+        if let Ok(Arg::Entity(sel)) = ty.parse(&mut reader, &self.session.registries)
             && !reader.can_read()
         {
             let found = self.select(&sel);
@@ -193,7 +193,7 @@ impl Game<'_> {
                 single: false,
                 players: false,
             };
-            if let Ok(Arg::Entity(s)) = ty.parse(&mut reader, &self.ui.registries) {
+            if let Ok(Arg::Entity(s)) = ty.parse(&mut reader, &self.session.registries) {
                 for t in self.select(&s) {
                     if let Ok(tag) = self.data_of(&super::data::DataRef::Entity(t)) {
                         sources.push(tag);
@@ -270,21 +270,10 @@ impl Game<'_> {
             .map_or_else(Text::empty, |t| self.target_name(*t));
         let single = n == 1;
         let key = if ctx.has("clear") {
-            self.titles_or_packet(
-                &players,
-                Titles::clear,
-                C::ClearTitles(play::Bool1 { value: false }),
-            );
+            self.titles_or_packet(&players, C::ClearTitles(play::Bool1 { value: false }));
             "cleared"
         } else if ctx.has("reset") {
-            self.titles_or_packet(
-                &players,
-                |t| {
-                    t.clear();
-                    t.reset_times();
-                },
-                C::ClearTitles(play::Bool1 { value: true }),
-            );
+            self.titles_or_packet(&players, C::ClearTitles(play::Bool1 { value: true }));
             "reset"
         } else if ctx.has("times") {
             let get = |k: &str| match ctx.get(k) {
@@ -294,7 +283,6 @@ impl Game<'_> {
             let (fade_in, stay, fade_out) = (get("fadeIn"), get("stay"), get("fadeOut"));
             self.titles_or_packet(
                 &players,
-                |t| t.set_times(fade_in, stay, fade_out),
                 C::SetTitlesAnimation(play::TitlesAnimation {
                     fade_in,
                     stay,
@@ -308,17 +296,13 @@ impl Game<'_> {
                 text: component_nbt(&text.component()),
             };
             if ctx.has("subtitle") {
-                self.titles_or_packet(&players, |t| t.set_subtitle(text), C::SetSubtitleText(sent));
+                self.titles_or_packet(&players, C::SetSubtitleText(sent));
                 "show.subtitle"
             } else if ctx.has("actionbar") {
-                self.titles_or_packet(
-                    &players,
-                    |t| t.set_overlay(text, false),
-                    C::SetActionBarText(sent),
-                );
+                self.titles_or_packet(&players, C::SetActionBarText(sent));
                 "show.actionbar"
             } else {
-                self.titles_or_packet(&players, |t| t.set_title(text), C::SetTitleText(sent));
+                self.titles_or_packet(&players, C::SetTitleText(sent));
                 "show.title"
             }
         };
@@ -334,18 +318,12 @@ impl Game<'_> {
         Ok(n as i32)
     }
     /// TitleCommand's `connection.send` for each player: a guest is sent the
-    /// packet, the window's own player shows it.
-    fn titles_or_packet(&mut self, players: &[Target], local: impl FnOnce(&mut Titles), packet: C) {
-        let mut local = Some(local);
+    /// packet.
+    fn titles_or_packet(&mut self, players: &[Target], packet: C) {
         for &t in players {
             match t {
                 Target::Player if self.lan_acting.is_some() => {
                     self.guest_packets.push(packet.clone());
-                }
-                Target::Player => {
-                    if let Some(local) = local.take() {
-                        local(&mut self.titles);
-                    }
                 }
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {

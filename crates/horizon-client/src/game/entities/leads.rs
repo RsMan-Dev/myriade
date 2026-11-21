@@ -3,7 +3,6 @@
 //! `LeashFenceKnotEntity.interact`), loading and saving who holds what,
 //! breaking, and drawing the rope (`LeashFeatureRenderer`) and the knot.
 use super::{Game, commands::Target};
-use horizon_client::actions::Action;
 use horizon_client::mobs::MobEvent;
 use horizon_client::{
     items::ItemStack,
@@ -352,7 +351,7 @@ impl Game<'_> {
         }
         // `Leashable.tickLeash`: a lead that snapped (`sound`) always drops (`leashTooFarBehaviour` -> `dropLeash`); one whose holder or creature
         // is gone drops under `entityDrops`, else it is `removeLeash`.
-        if sound || self.ui.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS) {
+        if sound || self.session.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS) {
             self.drop_lead_item(at);
         }
     }
@@ -387,7 +386,7 @@ impl Game<'_> {
         let drop = drop
             && (!dying
                 || self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS));
         self.break_leash(id, drop, sound);
@@ -670,7 +669,7 @@ impl Game<'_> {
     /// `Entity.interact` on the ECS mob `id` with the held `item`: the sneak tie, the shears, the untie and the lead.
     /// The bridge holds the leads; the host keeps the boats, the sounds, the game events and the item.
     pub(super) fn interact_leash_ecs(&mut self, id: u32, item: &str) -> Option<LeashInteraction> {
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         let e = self.ecs.entity_of(id)?;
         let at = self.ecs.position(id)?;
         if !self.mob_alive(id) {
@@ -744,7 +743,7 @@ impl Game<'_> {
         let existing = self.ecs_leashed_ids(k);
         let existing_boats = self.boats_on(Holder::Knot(knot_pos));
         let held_item = self.held().map(|s| s.item.to_string());
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
             for id in existing {
                 self.break_leash_used(id, true);
@@ -816,7 +815,7 @@ impl Game<'_> {
         index: usize,
         item: &str,
     ) -> Option<LeashInteraction> {
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         let id = self.remote_entities[index].id;
         let at = self.remote_entities[index].center();
         if !self.remote_entities[index].alive() {
@@ -945,7 +944,7 @@ impl Game<'_> {
             .collect();
         let existing_boats = self.boats_on(Holder::Knot(knot_pos));
         let held_item = self.held().map(|s| s.item.to_string());
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         // Shears snip every lead on the knot.
         if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
             for i in existing {
@@ -1011,95 +1010,6 @@ impl Game<'_> {
             self.swing_arm();
         }
         attached
-    }
-    /// `Player.getRopeHoldPosition` (and `LocalPlayer`'s in first person).
-    fn player_rope_hold(
-        &self,
-        p: &horizon_client::motion::PlayerMotion,
-        alpha: f64,
-    ) -> glam::DVec3 {
-        // Player.getRopeHoldPosition: `0.22 * (RIGHT ? -1 : 1)`.
-        let hand_dir = if self.settings.main_hand_left {
-            1.0
-        } else {
-            -1.0
-        };
-        if self.camera_type.is_first_person() {
-            let (yaw, pitch) =
-                rope_hold_angles((self.yaw, self.pitch), self.rope_rot_old, alpha as f32);
-            let v = glam::DVec3::new(0.39 * hand_dir, -0.6, 0.3);
-            // Vec3.xRot(-pitch) then yRot(-yaw).
-            let (s, c) = ((-pitch).sin(), (-pitch).cos());
-            let v = glam::DVec3::new(v.x, v.y * c + v.z * s, v.z * c - v.y * s);
-            // Entity.getEyePosition(partialTick).
-            let feet = self.previous_position.lerp(p.position, alpha);
-            let eye = glam::DVec3::new(feet.x, feet.y + f64::from(p.dimensions.eye_height), feet.z);
-            return rot_y(v, -yaw) + eye;
-        }
-        // Player.getRopeHoldPosition: the view's pitch eased toward `xRotO`,
-        // the body's yaw between `yBodyRotO` and `yBodyRot`, from
-        // `getPosition(partialTick)`.
-        let (_, x_rot) = rope_hold_angles((self.yaw, self.pitch), self.rope_rot_old, alpha as f32);
-        let t = alpha as f32;
-        let y_rot = self.player_model.as_ref().map_or(
-            f64::from(self.yaw * (std::f32::consts::PI / 180.0)),
-            |m| {
-                f64::from(
-                    (m.previous_body_yaw + t * (m.body_yaw - m.previous_body_yaw))
-                        * (std::f32::consts::PI / 180.0),
-                )
-            },
-        );
-        let feet = self.previous_position.lerp(p.position, alpha);
-        let pos = glam::DVec3::new(feet.x, feet.y, feet.z);
-        let x_rotated = |v: glam::DVec3| {
-            // Vec3.xRot(-xRot).
-            let (s, c) = ((-x_rot).sin(), (-x_rot).cos());
-            glam::DVec3::new(v.x, v.y * c + v.z * s, v.z * c - v.y * s)
-        };
-        if p.fall_flying || p.auto_spin_attack_ticks > 0 {
-            // getViewVector(partialTick) against getDeltaMovement, flat.
-            let look = horizon_world::view_direction::view_vector(
-                self.rope_rot_old.1 + t * (self.pitch - self.rope_rot_old.1),
-                self.rope_rot_old.0 + t * (self.yaw - self.rope_rot_old.0),
-            );
-            let movement = p.velocity;
-            let speed_len = movement.x * movement.x + movement.z * movement.z;
-            let look_len = look.x * look.x + look.z * look.z;
-            let z_rot = if speed_len > 0.0 && look_len > 0.0 {
-                let dot =
-                    (movement.x * look.x + movement.z * look.z) / (speed_len * look_len).sqrt();
-                let sign = movement.x * look.z - movement.z * look.x;
-                // Math.signum: 0 for 0.
-                let signum = if sign > 0.0 {
-                    1.0
-                } else if sign < 0.0 {
-                    -1.0
-                } else {
-                    0.0
-                };
-                f64::from((signum * horizon_core::jmath::acos(dot)) as f32)
-            } else {
-                0.0
-            };
-            // Vec3(xOff, -0.11, 0.85).zRot(-zRot).xRot(-xRot).yRot(-yRot).
-            let v = glam::DVec3::new(0.22 * hand_dir, -0.11, 0.85);
-            let (s, c) = ((-z_rot).sin(), (-z_rot).cos());
-            let v = glam::DVec3::new(v.x * c + v.y * s, v.y * c - v.x * s, v.z);
-            return pos + rot_y(x_rotated(v), -y_rot);
-        }
-        // LivingEntity.isVisuallySwimming.
-        if p.pose == Pose::Swimming || (!p.fall_flying && p.pose == Pose::FallFlying) {
-            let v = glam::DVec3::new(0.22 * hand_dir, 0.2, -0.15);
-            return pos + rot_y(x_rotated(v), -y_rot);
-        }
-        let crouching = self.keys.held(Action::Sneak);
-        let v = glam::DVec3::new(
-            0.22 * hand_dir,
-            f64::from(p.dimensions.height) - 1.0,
-            if crouching { -0.2 } else { 0.07 },
-        );
-        pos + rot_y(v, -y_rot)
     }
 }
 
@@ -1305,13 +1215,11 @@ mod attach_tests {
         let mut game = super::Game::new(
             res,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.creative = false;

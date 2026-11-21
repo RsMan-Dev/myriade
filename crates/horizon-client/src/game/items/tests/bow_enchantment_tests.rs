@@ -27,13 +27,11 @@ fn game_with_player(root: &std::path::Path) -> Game<'static> {
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.creative = true;

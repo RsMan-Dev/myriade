@@ -1,13 +1,6 @@
 //! `horizon-report [SECONDS]` and `horizon-trace [SECONDS]` on the dedicated server's console, and `HORIZON_TRACE`: record a window of ticks into `reports/profile-<time>Z.hzperf`; the words they take live in `horizon_gameplay::dedicated::report`.
 use super::super::memory::{MEMORY_EVERY_S, flatten_report};
-use super::super::{
-    Dim, Game,
-    perf_remote::{Asked, Done},
-    profile_capture::shown,
-    tick_profile,
-};
-use horizon_client::client_perf::request::Threads;
-use horizon_client::perf_net::Refusal;
+use super::super::{Dim, Game, tick_profile};
 use horizon_client::server_perf::{
     self, CaptureEnd, CaptureOptions, SamplerOptions, ServerPerf, WorldCounts,
     traffic::{Conn, Wire},
@@ -18,7 +11,7 @@ pub(in crate::game) use horizon_gameplay::dedicated::report::LOOSE_ENTITIES;
 pub(super) use horizon_gameplay::dedicated::report::{Command, MAX_SECONDS, parse, parse_trace};
 use horizon_perf_format::{
     files,
-    v1::{GpuMode, HorizonOptions, Start, StopReason, Trigger},
+    v1::{HorizonOptions, Start, StopReason, Trigger},
 };
 use horizon_world::level::BlockId;
 use std::{
@@ -39,27 +32,18 @@ pub(super) struct Plan {
 }
 
 /// Logs the captures whose files are done; with `wait`, every one still being finished.
-pub(in crate::game) fn log_saved(perf: &mut ServerPerf, wait: bool) -> Vec<Done> {
-    perf.take_saved(wait)
-        .into_iter()
-        .map(|saved| match saved {
+pub(in crate::game) fn log_saved(perf: &mut ServerPerf, wait: bool) {
+    for saved in perf.take_saved(wait) {
+        match saved {
             Ok(saved) => {
                 for path in &saved.deleted {
                     log::info!("Horizon: removed the oldest capture {}", path.display());
                 }
                 log::info!("Horizon: {}", files::saved_line(&saved.path));
-                Done::Saved {
-                    path: shown(&saved.path),
-                    file: saved.path.clone(),
-                    removed: saved.deleted.iter().map(|p| shown(p)).collect(),
-                }
             }
-            Err(e) => {
-                log::error!("Horizon: could not write the performance capture: {e}");
-                Done::Failed
-            }
-        })
-        .collect()
+            Err(e) => log::error!("Horizon: could not write the performance capture: {e}"),
+        }
+    }
 }
 
 /// A report being recorded: what the game side needs while the capture runs.
@@ -188,44 +172,6 @@ impl Game<'_> {
         self.start_perf_capture(state, plan)
     }
 
-    /// Begins and ends the captures guests asked for, between two ticks.
-    pub(super) fn serve_perf_requests(&mut self, state: &mut super::ServerState) {
-        self.pump_perf_files();
-        for asked in self.take_perf_asked() {
-            match asked {
-                Asked::Start { conn, name, wanted } => {
-                    if state.report.is_some() || state.perf.capturing() || state.perf.finishing() {
-                        self.perf_refused(conn, Refusal::AlreadyRunning);
-                        continue;
-                    }
-                    let options = wanted.options();
-                    let plan = Plan {
-                        seconds: options.seconds.unwrap_or(MAX_SECONDS),
-                        samples: options.samples,
-                        timeline: options.timeline,
-                        file: None,
-                        trigger: Trigger::Remote,
-                        sampler: SamplerOptions {
-                            hz: options.hz,
-                            over_ms: options.over_ms,
-                            wall: options.wall,
-                            all_threads: options.threads == Threads::All,
-                        },
-                    };
-                    match self.record_report(state, &plan) {
-                        Some(path) => self.perf_started(conn, name, &wanted, &shown(&path)),
-                        None => {
-                            state.report = None;
-                            log::error!("Horizon: {name}'s server profile did not start");
-                            self.perf_refused(conn, Refusal::Failed);
-                        }
-                    }
-                }
-                Asked::Stop(reason) => self.finish_perf_capture(state, reason),
-            }
-        }
-    }
-
     /// Opens the `.hzperf` that records beside a report, and logs where it goes.
     pub(super) fn start_perf_capture(
         &self,
@@ -281,7 +227,7 @@ impl Game<'_> {
                 compression,
             )),
             mods: self.perf_mods(),
-            game_rules: Some(server_perf::game_rules(&self.ui.rules)),
+            game_rules: Some(server_perf::game_rules(&self.session.rules)),
             horizon_options: Some(horizon),
             players: self.lan.as_ref().map_or(0, |h| {
                 h.hub
@@ -301,7 +247,6 @@ impl Game<'_> {
             block_names: self.block_names(),
             levels: self.level_counts(),
             wire: self.wire_bytes(),
-            gpu: GpuMode::Unspecified,
             timeline: plan.timeline.then(Default::default),
             file: plan.file.clone(),
         }
@@ -458,7 +403,6 @@ impl Game<'_> {
             wire: self.wire_bytes(),
             span_ns,
             mob_ns,
-            gpu: None,
             bench: Vec::new(),
         }
     }
@@ -524,13 +468,11 @@ mod tests {
         Game::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap()
     }

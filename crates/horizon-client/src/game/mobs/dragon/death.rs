@@ -30,7 +30,7 @@ impl Game<'_> {
         let first_kill = fight && !self.fight.previously_killed;
         let xp = if first_kill { 12000 } else { 500 };
         let drops = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS);
         if t > 150 && t % 5 == 0 && drops {

@@ -68,7 +68,7 @@ impl Game<'_> {
             self.level_events.push(LevelEvent::LevelEvent { id: 2001, pos: cell, data: state.0 as i32, source: None });
             self.level_events.push(LevelEvent::GameEvent { pos: cell, event: "minecraft:block_destroy", state: None });
         }
-        if drop && self.ui.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS) {
+        if drop && self.session.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS) {
             self.drop_falling_block(state, Vec3::new(at[0], at[1], at[2]));
         }
     }

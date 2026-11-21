@@ -6,7 +6,6 @@
 //! renderers are built again, and resolves each target's layers to the slot its draw reads, so a
 //! frame hands an entity to its own type's layers and to no other mod.
 use crate::wire::{Reader, Wire, WireError, Writer};
-use crate::{BlockEntityDrawContext, EntityRenderState, PosedParts};
 use std::sync::Arc;
 
 /// A player model, as a player's skin chooses it: each has a renderer of its own, and a layer added
@@ -34,30 +33,11 @@ pub enum LayerTarget {
 
 /// A mod's layer: NeoForge's `RenderLayer`, held by the game for every entity of its target.
 /// Entities of a target share one layer, so what differs between them comes from
-/// [`EntityRenderState`].
+/// `EntityRenderState`.
 ///
 /// A frame has no `Host`: drawing reads nothing of the world but what the state, the parts and
 /// `draw` give. A layer that needs more reads it in a hook and keeps what it read.
 pub trait EntityRenderLayer: Send + Sync + 'static {
-    /// `RenderLayer.submit`: draw over `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
-    /// `item`, `model_part`), after its model and the layers before this one. The pose stack starts
-    /// in the entity's frame: at its feet, turned with its body, +z the way it faces, +x its left,
-    /// +y up, in blocks (`entity.yaw` is the body's turn, `entity.pitch` the head's). `parts` are a
-    /// humanoid model's parts as vanilla posed them this frame, to attach to an arm or the head;
-    /// None for a model that isn't humanoid. `draw` also has the partial tick, the game time and
-    /// the entity's light. Asked once a frame for each entity of the target in view, but not for
-    /// one whose `render_living_pre` or `render_player_pre` a mod canceled: as with NeoForge's
-    /// canceled `RenderLivingEvent.Pre`, none of its layers draw then. A frame is
-    /// drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. An `Err`, a
-    /// panic, and a wasm call that is refused or traps all mean the same: what it drew this frame
-    /// is dropped, the error is logged once, and the layer is asked no more until the next
-    /// resource load adds it again.
-    fn submit(
-        &self,
-        entity: &EntityRenderState,
-        parts: Option<&PosedParts>,
-        draw: &mut dyn BlockEntityDrawContext,
-    ) -> Result<(), String>;
 }
 
 crate::wire::wire_handlers::handler!(dyn EntityRenderLayer, "EntityRenderLayer");

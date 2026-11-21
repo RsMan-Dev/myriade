@@ -3,13 +3,13 @@ use super::Game;
 
 impl Game<'_> {
     pub(super) fn sync_stat_registries(&mut self) {
-        self.ui.registries.sync_damage_type_ids();
+        self.session.registries.sync_damage_type_ids();
         let custom = mod_api::__private::custom_stat_declarations();
         if custom.is_empty() {
             return;
         }
         let entry = self
-            .ui
+            .session
             .registries
             .by_registry
             .entry("minecraft:custom_stat".into())

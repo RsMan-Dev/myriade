@@ -3,6 +3,7 @@
 //! entities for. A behaviour returns what is left in the slot and the level
 //! event it plays (`DefaultDispenseItemBehavior.dispense` then plays that
 //! event and the smoke animation, event 2000).
+use crate::game::cosmetic_random::cosmetic_random;
 use super::level_sounds::LevelSound;
 use super::{Game, item_abilities::ability};
 use horizon_client::{
@@ -373,7 +374,6 @@ impl Game<'_> {
     /// The dispenser level events: 1000 click, 1001 fail, 1002 launch, 1004
     /// firework shoot, 1018 blaze shoot and 2000 smoke shot out of the front.
     pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
-        super::dispense_fixture::record(|| format!("L {id} {},{},{} {data}", pos.0, pos.1, pos.2));
         let c = Self::center(pos);
         match id {
             1000 => self
@@ -391,13 +391,13 @@ impl Game<'_> {
             // LevelEventHandler runs on the client: its pitch draws come from
             // the client level's random, never the server stream.
             1018 => {
-                let r = self.particles.random();
+                let mut r = cosmetic_random();
                 let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
                 self.audio
                     .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
             }
             1051 => {
-                let pitch = 0.4 / (self.particles.random().next_float() * 0.4 + 0.8);
+                let pitch = 0.4 / (cosmetic_random().next_float() * 0.4 + 0.8);
                 self.audio
                     .play("minecraft:entity.wind_charge.throw", Some(c), 0.5, pitch);
             }
@@ -914,7 +914,7 @@ impl Game<'_> {
         let id = if reason == horizon_client::mobs::spawn_rules::Reason::Bucket {
             // The bucket's reason is not among the ones that wrap the yaw
             // itself, so the draw is made here, the same single level draw.
-            let yaw = horizon_client::camera::wrap_degrees(self.world.random.next_float() * 360.0);
+            let yaw = mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0);
             self.spawn_mob_facing(&name, at, true, site, yaw)?
         } else {
             self.spawn_mob(&name, at, true, site)?
@@ -1219,7 +1219,7 @@ impl Game<'_> {
                     Some(horizon_core::nbt::Tag::Compound(c)) => Some(c),
                     _ => None,
                 };
-                self.ecs.apply_egg_components(id, stack, data.as_ref(), bucket);
+                self.ecs.apply_egg_components(id, stack, data, bucket);
             }
             self.ecs.set_from_bucket(id);
             return self.mob_ambient(id);
@@ -1281,7 +1281,7 @@ impl Game<'_> {
                 Some(horizon_core::nbt::Tag::Compound(c)) => Some(c),
                 _ => None,
             };
-            self.ecs.apply_egg_components(id, &stack, data.as_ref(), None);
+            self.ecs.apply_egg_components(id, &stack, data, None);
         }
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
@@ -1641,7 +1641,7 @@ impl Game<'_> {
             // primeTime(false): the fuse is lit only while TNT explodes; the
             // ignition counts either way.
             if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
                 && sulfur_cube::prime(&mut self.remote_entities[i], false)
@@ -1662,7 +1662,7 @@ impl Game<'_> {
             _ => None,
         });
         if let Some(id) = ecs_cube {
-            if self.ui.rules.bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES) && self.ecs.prime(id, None) {
+            if self.session.rules.bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES) && self.ecs.prime(id, None) {
                 let at = self.ecs_mob(id).map_or([0.0; 3], |m| [m.at.x, m.at.y, m.at.z]);
                 self.audio.play("entity.tnt.primed", Some(at), 1.0, 1.0);
                 let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
@@ -1697,7 +1697,7 @@ impl Game<'_> {
             );
         } else if &*name == "minecraft:tnt" {
             if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
                 && self.tnt_prime_allowed(target_pos)
@@ -1760,7 +1760,7 @@ impl Game<'_> {
     }
     fn dispense_tnt(&mut self, pos: Pos, facing: Direction, stack: ItemStack) -> Dispensed {
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -1810,7 +1810,7 @@ impl Game<'_> {
         let target = offset(pos, facing);
         let free = self.res.facts().is_air(self.block_at(target))
             && target.1 >= self.world.bottom_y() + 2
-            && self.ui.difficulty != 0
+            && self.session.difficulty != 0
             && self.can_build_wither(target);
         if free {
             let rotation = match facing {
@@ -2248,7 +2248,7 @@ impl Game<'_> {
                 }
                 Species::Sheep if !m.extra.sheared && !m.is_baby() => {
                     let color =
-                        horizon_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
+                        horizon_client::mobs::DYE_NAMES[m.extra.color as usize & 15];
                     self.play_bound_sound(
                         shear_sound("minecraft:entity.sheep.shear"),
                         entity_id,

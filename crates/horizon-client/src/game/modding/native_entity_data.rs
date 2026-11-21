@@ -168,7 +168,6 @@ impl Game<'_> {
     pub(super) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
             Target::Mob(id) if self.ecs_has(id) => mob_category_named(self.ecs.category(id)?),
-            Target::Mob(id) => mob_category_named(self.remote_entities.iter().find(|m| m.id == id)?.category()),
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
         })

@@ -2106,14 +2106,6 @@ impl Game<'_> {
         if self.native_screen_inventory_y().is_some() {
             return None;
         }
-        // A server's menu shows by its type, whatever block (or minecart) holds it.
-        if let Some(menu) = self.remote_menu_type() {
-            return match menu {
-                "minecraft:hopper" => Some(Screen::Hopper),
-                "minecraft:generic_3x3" => Some(Screen::Dispenser),
-                _ => None,
-            };
-        }
         if key.1 == super::minecarts::CART_KEY_Y {
             return (self.open_cart_kind() == Some(super::minecarts::CartKind::Hopper))
                 .then_some(Screen::Hopper);

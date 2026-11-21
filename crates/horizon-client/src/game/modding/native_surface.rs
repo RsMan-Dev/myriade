@@ -174,7 +174,7 @@ mod tests {
                     tag_items: Some(game.res.items()),
                     loop_context: &game.loop_context,
                     damage_hooks: &game.damage_hooks,
-                    block_registries: Some(&game.ui.registries),
+                    block_registries: Some(&game.session.registries),
                 };
                 let coefficient = LivingAirWorld::block_friction(&mut world, floor).unwrap();
                 calls.store(0, Ordering::SeqCst);

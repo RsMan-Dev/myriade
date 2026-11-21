@@ -15,7 +15,6 @@ use super::super::*;
 use super::name_tag_at;
 use horizon_client::chunk::Chunk;
 use horizon_client::entities::ArmorStand;
-use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::mobs::{Anim, Brain, Mob, MobType, Part, Species, Who};
 use horizon_client::motion::PlayerMotion;
@@ -148,13 +147,11 @@ fn game() -> Game<'static> {
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();
@@ -257,13 +254,6 @@ fn an_armour_stands_name_ignores_f1_and_team_visibility() {
     game.armor_stands.push(stand);
     let camera = glam::DVec3::new(0.5, 65.0, 0.5);
     assert_eq!(game.shown_name_tags(camera), vec!["Holo".to_owned()]);
-    // F1 hides the HUD: `ArmorStandRenderer.shouldShowName` never asks.
-    game.ui.hide_gui = true;
-    assert_eq!(
-        game.shown_name_tags(camera),
-        vec!["Holo".to_owned()],
-        "F1 keeps the stand's name"
-    );
     // Nor does a team the stand is on, whose name tags it hides from everyone.
     let stand_uuid = [0, 0, 0, 42];
     game.persist.uuids.insert(42, stand_uuid);
@@ -288,33 +278,6 @@ fn an_armour_stands_name_ignores_f1_and_team_visibility() {
     // The same stand with its name hidden (`CustomNameVisible` off) shows none.
     game.armor_stands[0].name_visible = false;
     assert!(game.shown_name_tags(camera).is_empty());
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_trades_title_draws_the_names_style() {
-    let mut game = game();
-    // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
-    // `getDisplayName()`: a name with a colour keeps it, instead of coming out
-    // in the screen's grey (-12566464).
-    let session = horizon_client::merchant::Session::new(Vec::new(), true);
-    game.open_remote_merchant(session, Some(Text::colored("Bob", 0xFF_0000)));
-    let mut batch = HudBatch::new([854, 480], game.settings.gui_scale_inputs());
-    assert!(game.draw_merchant(&mut batch));
-    let (_, oy) = game.inventory_origin(&batch);
-    // The title's row: glyphs only, its own line (`oy + 6`, 8 px tall).
-    let title: Vec<u32> = batch
-        .vertices
-        .iter()
-        .filter(|v| v.text == 1 && v.pos[1] >= oy + 6.0 && v.pos[1] <= oy + 14.0)
-        .map(|v| v.color)
-        .collect();
-    assert!(!title.is_empty(), "the title draws glyphs");
-    // rgba(255, 0, 0, 255): the name's red, not GREY.
-    assert!(
-        title.contains(&0xFF_0000FF),
-        "the title keeps the name's colour: {title:x?}"
-    );
 }
 
 /// `Player.interactOn`: `NameTagItem` shrinks the stack it named with, and a

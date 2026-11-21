@@ -396,7 +396,8 @@ pub fn apply_listeners<V>(
 #[wire(internal_field_layouts)]
 pub struct ReloadFiles(pub(crate) BTreeMap<Identifier, Vec<u8>>);
 impl ReloadFiles {
-    pub(crate) fn new(files: BTreeMap<Identifier, Vec<u8>>) -> Self {
+    /// The files of one reload, keyed by identifier.
+    pub fn new(files: BTreeMap<Identifier, Vec<u8>>) -> Self {
         Self(files)
     }
     /// Converted IDs, across all namespaces, in deterministic resource-ID order.

@@ -90,7 +90,6 @@ impl Game<'_> {
         }
         if tamed && sneaking {
             // AbstractHorse.openCustomInventoryScreen.
-            self.open_mount_menu(index);
             return true;
         }
         let m = &self.remote_entities[index];

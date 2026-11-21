@@ -86,13 +86,11 @@ fn game<'a>(
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();

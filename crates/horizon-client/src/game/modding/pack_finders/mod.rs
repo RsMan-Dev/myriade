@@ -1,24 +1,26 @@
 //! Mod-supplied repository sources. Discovery owns the metadata and retained
 //! readers; selection and resource/data reloads use the ordinary pack paths.
-use super::{Game, api_values::TryIntoEngine, mods::ModsState};
+use super::{Game, mods::ModsState};
 use horizon_assets::resource_source::{ResourceSource, stays_inside};
-use horizon_client::{
-    datapack::DataPack,
-    pack_screen::{PackInfo, Source as ScreenSource, load_icon},
-    packs::{self, Pack, Position, Source},
-};
+use horizon_client::datapack::DataPack;
 use mod_api::{
-    ClientHost, HookId, Host, HostSide, PackFinderError, PackFinders, PackPosition,
-    PackRegistration, PackSource, PackType, ServerHost,
+    ClientHost, HookId, Host, HostSide, PackFinderError, PackFinders, PackRegistration, PackType,
+    ServerHost,
 };
 
 #[cfg(test)]
 mod tests;
 
+/// A repository layer a mod's finder added: its id and its opened source.
+pub(super) struct Found {
+    id: String,
+    source: ResourceSource,
+}
+
 struct Registry {
     kind: PackType,
     mods: ModsState,
-    packs: Vec<Pack>,
+    packs: Vec<Found>,
 }
 impl Registry {
     fn new(kind: PackType, mods: ModsState) -> Self {
@@ -71,36 +73,10 @@ impl PackFinders for Registry {
         let source = source
             .subdirectory(location.path())
             .map_err(|_| PackFinderError::InvalidPath)?;
-        let format = match self.kind {
-            PackType::ClientResources => horizon_core::version::RESOURCE_PACK_FORMAT,
-            PackType::ServerData => horizon_core::version::DATA_PACK_FORMAT,
-            _ => return Err(PackFinderError::InvalidMetadata),
-        };
-        let title = entry.title.try_into_engine(&())?;
-        let mut pack = packs::pack_for(id, title, Source::Opened(source), format)
-            .ok_or(PackFinderError::InvalidMetadata)?;
-        pack.selection = Some(PackInfo {
-            id: pack.id.clone(),
-            title: pack.title.clone(),
-            description: pack.raw_description.clone(),
-            description_style: pack.description_style.clone(),
-            source: match entry.source {
-                PackSource::BuiltIn => ScreenSource::BuiltIn,
-                PackSource::Feature => ScreenSource::Feature,
-                _ => return Err(PackFinderError::InvalidMetadata),
-            },
-            compat: pack.compatibility,
-            icon: pack.icon_png().as_deref().and_then(load_icon),
-            required: entry.always_active,
-            position: match entry.position {
-                PackPosition::Top => Position::Top,
-                PackPosition::Bottom => Position::Bottom,
-                _ => return Err(PackFinderError::InvalidMetadata),
-            },
-            fixed: false,
-            hidden: entry.hidden,
-        });
-        self.packs.push(pack);
+        if !matches!(self.kind, PackType::ClientResources | PackType::ServerData) {
+            return Err(PackFinderError::InvalidMetadata);
+        }
+        self.packs.push(Found { id, source });
         Ok(())
     }
 }
@@ -115,7 +91,7 @@ mod_api::impl_client_host_areas!(DiscoveryHost);
 impl ServerHost for DiscoveryHost {}
 mod_api::impl_server_host_areas!(DiscoveryHost);
 
-pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
+pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Found> {
     if !mod_api::__private::listened(HookId::AddPackFinders) {
         return Vec::new();
     }
@@ -134,10 +110,7 @@ pub(super) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
     discover(PackType::ServerData, mods)
         .into_iter()
         .map(|pack| {
-            let mut data =
-                DataPack::from_source(pack.id, pack.source.open().expect("retained source"));
-            data.selection = pack.selection;
-            std::sync::Arc::new(data)
+            std::sync::Arc::new(DataPack::from_source(pack.id, pack.source))
         })
         .collect()
 }
@@ -154,7 +127,7 @@ pub(super) fn data_repository(
 }
 
 impl Game<'_> {
-    pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
+    pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Found> {
         if !mod_api::__private::listened(HookId::AddPackFinders) {
             return Vec::new();
         }

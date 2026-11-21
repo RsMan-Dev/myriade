@@ -9,7 +9,7 @@ impl Game<'_> {
             )
         };
         let Some(i) = DIFFICULTIES.iter().position(|d| ctx.has(d)) else {
-            let current = self.ui.difficulty;
+            let current = self.session.difficulty;
             self.feedback_unbroadcast(Text::translate(
                 "commands.difficulty.query",
                 &[name(current)],
@@ -17,7 +17,7 @@ impl Game<'_> {
             return Ok(i32::from(current));
         };
         let i = i as u8;
-        if self.ui.difficulty == i {
+        if self.session.difficulty == i {
             return Err(CommandError::new(Text::translate(
                 "commands.difficulty.failure",
                 &[name(i)],
@@ -29,8 +29,8 @@ impl Game<'_> {
     }
     /// `MinecraftServer.setDifficulty(difficulty, true)`.
     pub(in crate::game) fn set_difficulty_forced(&mut self, i: u8) {
-        let from = self.ui.difficulty;
-        self.ui.difficulty = i;
+        let from = self.session.difficulty;
+        self.session.difficulty = i;
         // The level data holds the world's difficulty: it survives the
         // reopen, so it follows the command.
         self.level.set_difficulty(i);

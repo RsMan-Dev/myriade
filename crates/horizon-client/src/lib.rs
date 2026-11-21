@@ -18,3 +18,4 @@ static ALLOCATOR: horizon_threads::GameAllocator = horizon_threads::GAME_ALLOCAT
 pub mod game;
 pub mod ecs_bridge;
 pub mod orb_limits;
+pub mod hand_use;

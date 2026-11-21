@@ -14,7 +14,7 @@ impl Game<'_> {
             return EntityResidency::Gone;
         }
         if !self.is_logical_server() {
-            return match self.native_client_entity_target(entity) {
+            return match None::<()> {
                 Some(_) => EntityResidency::InPlace,
                 None => EntityResidency::Gone,
             };

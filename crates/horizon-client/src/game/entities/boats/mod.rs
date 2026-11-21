@@ -10,11 +10,9 @@ mod lifetime_tests;
 mod placement;
 pub(super) use placement::OutlineFluidRay;
 
-pub(super) use horizon_client_gameplay::boat_models::BoatModels;
 pub(super) use horizon_gameplay::boats::*;
 
-use super::{Game, InteractTarget, entity::Entity, entity_culling::at, view_vector};
-use horizon_client::actions::Action;
+use super::{Game, InteractTarget, entity::Entity, view_vector};
 use horizon_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions},
@@ -359,7 +357,7 @@ impl Game<'_> {
         }
         // floatBoat
         // `-getGravity()`: none with NoGravity.
-        let mut vspeed = 0.0 - b.get_gravity();
+        let mut vspeed = 0.0 - if b.no_gravity { 0.0 } else { 0.04 };
         let mut buoyancy = 0.0;
         let inv_friction: f32;
         let obstacles = self.boat_move_obstacles(&b);
@@ -590,17 +588,6 @@ impl Game<'_> {
         }
         columns
     }
-    /// `Entity.handleOnInsideBubbleColumn`: a column under more water lifts
-    /// boat `i` up to 0.7 or drags it down to -0.3 (`AbstractBoat` does not
-    /// override `onInsideBubbleColumn`), applied by the column's own push below
-    /// the surface.
-    pub(super) fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
-        // Client display only (the server's boats live in the ECS): a client moves only the boat its player drives.
-        if !self.controls_boat(self.boats[i].id) {
-            return;
-        }
-        self.boats.update(i, |b| column.push(&mut b.velocity));
-    }
     /// `AbstractBoat.onAboveBubbleColumn`: whether the splash comes up, one
     /// time in a hundred for a boat that is not under water.
     pub(super) fn boat_splash_roll(&mut self, i: usize) -> bool {
@@ -639,7 +626,7 @@ impl Game<'_> {
     /// `AbstractBoat.handleBubbleColumnEffect`: an up column throws the boat
     /// up at 0.6, a down column pulls it down by 0.7.
     pub(super) fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
-        if !self.controls_boat(self.boats[i].id) {
+        if self.riding != Some(self.boats[i].id) {
             return;
         }
         self.boats.update(i, |b| {
@@ -850,7 +837,7 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         // Only a client's own pick is stopped by a block: the range check passed.
         if target.is_none() && !self.before_block(d) {
             return false;
@@ -883,8 +870,6 @@ impl Game<'_> {
                 .insert(key, horizon_client::containers::BlockEntity::Chest(items));
         }
         self.container = Some(key);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
         self.right = false;
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:container_open", at, ctx);
@@ -942,7 +927,7 @@ impl Game<'_> {
             && hurt == Some(true)
             && !self.creative
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
         {
@@ -988,7 +973,7 @@ impl Game<'_> {
             return None;
         }
         let drops = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS);
         match self.with_ecs(|ecs, mw| ecs.boat_hit(mw, id, damage, by, creative, drops)) {

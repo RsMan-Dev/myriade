@@ -56,13 +56,11 @@ fn game<'a>(
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.world_root = world.to_path_buf();
@@ -80,7 +78,7 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
     // The world opens: its state, registries and test instances.
     game.load_world_state().unwrap();
     game.ensure_datapacks();
-    let enabled = &game.ui.registries.datapacks_enabled;
+    let enabled = &game.session.registries.datapacks_enabled;
     assert!(
         enabled.iter().any(|id| id == "file/fixture"),
         "the world's pack is enabled: {enabled:?}"
@@ -171,7 +169,7 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
     game.load_world_state().unwrap();
-    let ids = |game: &Game<'_>| game.ui.registries.ids("minecraft:test_instance").to_vec();
+    let ids = |game: &Game<'_>| game.session.registries.ids("minecraft:test_instance").to_vec();
     assert_eq!(ids(&game), ["h275:broken", "minecraft:always_pass"]);
     assert!(
         game.test_def("minecraft:always_pass").unwrap().block_based,

@@ -80,20 +80,15 @@ impl Game<'_> {
                     if self.res.facts().get(below).render_shape
                         != horizon_client::blocks::RenderShape::Invisible
                     {
-                        if self
-                            .particle_sprite(below, [head[0], head[1] - 1, head[2]])
-                            .is_some()
-                        {
-                            let dust = [
-                                f64::from(head[0]) + 0.5,
-                                f64::from(head[1]) + 0.5 - f64::from(0.65_f32),
-                                f64::from(head[2]) + 0.5,
-                            ];
-                            // Drawn in this window when it has one, and sent to
-                            // the players within 32 blocks (the server thread's
-                            // window is one of them).
-                            self.landing_dust(below, Vec3::new(dust[0], dust[1], dust[2]), 30, 0.0);
-                        }
+                        let dust = [
+                            f64::from(head[0]) + 0.5,
+                            f64::from(head[1]) + 0.5 - f64::from(0.65_f32),
+                            f64::from(head[2]) + 0.5,
+                        ];
+                        // Drawn in this window when it has one, and sent to
+                        // the players within 32 blocks (the server thread's
+                        // window is one of them).
+                        self.landing_dust(below, Vec3::new(dust[0], dust[1], dust[2]), 30, 0.0);
                         // The hit sound is playLocalSound too: silence does not mute it.
                         if age.is_multiple_of(10) {
                             let sniffer = Some((id, self.remote_entities[i].kind.id.as_str()));

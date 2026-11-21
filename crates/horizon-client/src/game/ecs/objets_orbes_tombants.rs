@@ -25,12 +25,12 @@ impl Game<'_> {
         Some(self.ecs_id_of(e))
     }
     /// The host's table of what a stack on the ground resists (bit 0: fire, bit 1: explosion), `ItemStack.canBeHurtBy` for the fire and the
-    /// blast. It captures the item models and the damage catalog, not `self`, so P reads it at every creation of an item.
+    /// blast. It captures the item defaults and the damage catalog, not `self`, so P reads it at every creation of an item.
     pub(in crate::game) fn item_resists_fn(&self) -> ItemResistsFn {
-        let models = self.pack.item_renderer.clone();
+        let res = self.res.clone();
         let catalog = self.health_resources.damage.clone();
         Box::new(move |stack| {
-            let default = models.models.prototypes.get(stack.item.as_ref()).and_then(|components| components.get("minecraft:damage_resistant"));
+            let default = res.item_defaults().entries().get(stack.item.as_ref()).and_then(|components| components.get("minecraft:damage_resistant"));
             let hurt_by = |name: &str| horizon_client::item_damage::stack_can_be_hurt_by(default, &catalog, stack, name) == Some(false);
             u8::from(hurt_by("minecraft:in_fire")) | u8::from(hurt_by("minecraft:explosion")) << 1
         })

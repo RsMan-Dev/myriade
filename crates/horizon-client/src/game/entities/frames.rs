@@ -89,10 +89,6 @@ pub(in crate::game) fn facing_of(face: [i32; 3]) -> u8 {
         _ => 5,
     }
 }
-fn center(f: &ItemFrame) -> [f64; 3] {
-    let (lo, hi) = f.bounds();
-    std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0)
-}
 /// `HangingEntity.spawnAtLocation`: drops sit 0.15 out from the wall.
 pub(super) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -> [f64; 3] {
     [
@@ -112,30 +108,6 @@ struct FramedItem {
     kind: &'static str,
     owner: OwnerState,
 }
-/// `ItemFrameRenderer.extractRenderState`'s `ItemOwner` (`updateForNonLiving`
-/// with the frame entity): `ItemFrame.position` and
-/// `ItemFrame.getVisualRotationYInDegrees`.
-fn frame_owner(f: &ItemFrame) -> OwnerState {
-    super::item_draw::owner_at(center(f), visual_rotation_y_degrees(f), f.kind())
-}
-/// `ItemFrame.getVisualRotationYInDegrees`: the frame's own yaw, as an item
-/// model's owner reads it (a framed compass's needle turns with it).
-fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
-    // `Direction.get2DDataValue` of a wall frame, and the axis direction's
-    // step for the two flat ones.
-    let s = f.step();
-    let (two_d, correction) = match (s[0], s[1], s[2]) {
-        (0, 0, 1) => (0, 0),
-        (-1, 0, 0) => (1, 0),
-        (0, 0, -1) => (2, 0),
-        (1, 0, 0) => (3, 0),
-        (0, y, _) => (-1, 90 * y),
-        _ => (0, 0),
-    };
-    crate::camera::wrap_degrees(
-        180.0 + (two_d * 90) as f32 + f32::from(f.rotation) * 45.0 + correction as f32,
-    )
-}
 impl Game<'_> {
     /// Asks the mods whether the acting guest may place a hanging entity
     /// of type `kind` at `pos` (`native_hanging_place`): true when one
@@ -149,7 +121,7 @@ impl Game<'_> {
         cancel
     }
     pub(super) fn block_distance(&self) -> Option<f64> {
-        if self.native_window() && self.targeting().hit_through_walls {
+        if false && self.targeting().hit_through_walls {
             return None;
         }
         self.pick_unfiltered().map(|h| {

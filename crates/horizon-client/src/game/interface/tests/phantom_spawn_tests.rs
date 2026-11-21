@@ -46,13 +46,11 @@ fn game<'a>(root: &std::path::Path, resources: &'a mut Option<Arc<Resources>>) -
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();

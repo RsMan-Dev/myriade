@@ -27,13 +27,11 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

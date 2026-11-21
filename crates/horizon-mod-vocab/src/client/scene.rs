@@ -71,7 +71,7 @@ impl SceneView {
     }
 }
 
-/// An entity standing in a scene: the same description `DrawContext::entity` draws (a
+/// An entity standing in a scene: the same description a scene's entity draws (a
 /// new living entity of a type, with optional saved data, or an entity of the client's
 /// level), prepared and drawn by the same path (its type's renderer and the mods'
 /// layers, full bright, made for drawing only), placed at `pos` in the scene's own
@@ -80,7 +80,7 @@ impl SceneView {
 #[non_exhaustive]
 #[derive(horizon_mod_api_macros::Wire)]
 pub struct SceneEntity {
-    /// Which entity, as `DrawContext::entity` takes it.
+    /// Which entity, as a scene takes it.
     pub entity: crate::GuiEntity,
     /// Its feet, in the scene's blocks (a block at `[0, 0, 0]` spans 0 to 1).
     pub pos: [f64; 3],
@@ -195,7 +195,7 @@ pub const SCENE_MAX_PARTICLES: usize = 512;
 /// ([`SceneError::TooManyScenes`]).
 pub const SCENE_MAX_ANIMATING: usize = 4;
 
-/// A scene `DrawContext::draw_scene` draws: its blocks, and optionally the entities
+/// A scene drawn as a whole: its blocks, and optionally the entities
 /// standing in it, the particles the mod adds and the clock that ticks them. A scene of
 /// blocks alone (no entities, no particles, and no clock or one with `animate_blocks`
 /// off) keeps no state and reads no clock. Keep one and change its clock each frame.
@@ -266,19 +266,19 @@ pub enum SceneError {
         /// The block's index in `blocks`.
         index: u32,
     },
-    /// No living entity type has the entity's id, as `DrawContext::entity` refuses it.
+    /// No living entity type has the entity's id, as a scene's entity refuses it.
     UnknownType {
         /// The entity's index in `entities`.
         index: u32,
     },
-    /// The entity's data names another type or doesn't load, as `DrawContext::entity`
+    /// The entity's data names another type or doesn't load, as a scene's entity
     /// refuses it.
     BadData {
         /// The entity's index in `entities`.
         index: u32,
     },
     /// The entity's handle names no living entity of the client's level, as
-    /// `DrawContext::entity` refuses it.
+    /// a scene's entity refuses it.
     NoEntity {
         /// The entity's index in `entities`.
         index: u32,

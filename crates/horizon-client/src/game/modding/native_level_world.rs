@@ -208,7 +208,7 @@ impl Game<'_> {
     /// or `hard`, as `/difficulty` names it.
     pub(super) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
         self.native_level_world(level)?;
-        DIFFICULTIES.get(usize::from(self.ui.difficulty)).copied()
+        DIFFICULTIES.get(usize::from(self.session.difficulty)).copied()
     }
     /// `ServerLevel.getCurrentDifficultyAt(pos)` in the level the handle names, in place or
     /// parked.
@@ -228,7 +228,7 @@ impl Game<'_> {
         key: BoolGameRuleKey,
     ) -> Option<bool> {
         self.native_level_world(level)?;
-        self.ui
+        self.session
             .rules
             .bool_slot(mod_api::__private::game_rule_bool_slot(key)?)
     }
@@ -239,7 +239,7 @@ impl Game<'_> {
         key: mod_api::IntGameRuleKey,
     ) -> Option<i32> {
         self.native_level_world(level)?;
-        self.ui
+        self.session
             .rules
             .int_slot(mod_api::__private::game_rule_int_slot(key)?)
     }
@@ -251,7 +251,7 @@ impl Game<'_> {
         rule: &str,
     ) -> Result<Option<GameRuleValue>, LevelReadError> {
         self.native_level_world_result(level)?;
-        Ok(self.ui.rules.get(rule))
+        Ok(self.session.rules.get(rule))
     }
     /// `/gamerule <rule> <value>` from a mod: the world's rule changes, `game_rule_changed`
     /// fires with no actor and the clients get the rules. The rule already at `value` is true
@@ -265,7 +265,7 @@ impl Game<'_> {
         if self.native_level_world(level).is_none() {
             return false;
         }
-        let Some(rule) = self.ui.rules.rule(rule).cloned() else {
+        let Some(rule) = self.session.rules.rule(rule).cloned() else {
             return false;
         };
         let fits = match (rule.default, value) {
@@ -273,7 +273,7 @@ impl Game<'_> {
             (GameRuleValue::Int(_), GameRuleValue::Int(v)) => (rule.min..=rule.max).contains(&v),
             _ => false,
         };
-        if fits && self.ui.rules.get(&rule.name) != Some(value) {
+        if fits && self.session.rules.get(&rule.name) != Some(value) {
             self.set_game_rule(&rule, value, None);
         }
         fits
@@ -310,7 +310,7 @@ impl Game<'_> {
         level: LevelRef,
     ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError> {
         self.native_level_world_result(level)?;
-        let rules = &self.ui.rules;
+        let rules = &self.session.rules;
         Ok(rules
             .available_rules()
             .filter_map(|r| Some((r.name.clone(), rules.get(&r.name)?)))
@@ -540,7 +540,7 @@ mod tests {
             with_game(|game| {
                 let registry = Arc::new(crate::game::api_values::game_rule_registry());
                 game.level.rule_registry = registry.clone();
-                game.ui.rules = gamerules::GameRules::with_registry(registry, &[]);
+                game.session.rules = gamerules::GameRules::with_registry(registry, &[]);
                 let level = game.level("minecraft:overworld").unwrap();
                 assert_eq!(level.game_rule_bool(game, *KEY.get().unwrap()), Some(true));
             })
@@ -574,7 +574,7 @@ mod tests {
             with_game(|game| {
                 let registry = Arc::new(crate::game::api_values::game_rule_registry());
                 game.level.rule_registry = registry.clone();
-                game.ui.rules = gamerules::GameRules::with_registry(registry.clone(), &[]);
+                game.session.rules = gamerules::GameRules::with_registry(registry.clone(), &[]);
                 game.load_world_state().unwrap();
                 game.set_allow_commands(true);
                 game.build_registries();
@@ -585,8 +585,8 @@ mod tests {
                 assert_eq!(level.game_rule_int(game, key), Some(8));
                 assert!(game.run_command("gamerule example:cap 12"));
                 assert_eq!(level.game_rule_int(game, key), Some(12));
-                let saved = game.ui.rules.to_nbt().tag;
-                game.ui.rules = gamerules::GameRules::from_nbt_with_registry(&saved, &[], registry);
+                let saved = game.session.rules.to_nbt().tag;
+                game.session.rules = gamerules::GameRules::from_nbt_with_registry(&saved, &[], registry);
                 assert_eq!(level.game_rule_int(game, key), Some(12));
             })
         });
@@ -638,7 +638,7 @@ mod tests {
         with_mods(mods, || {
             with_game(|game| {
                 assert!(
-                    game.ui
+                    game.session
                         .rules
                         .set("random_tick_speed", gamerules::Value::Int(7))
                 );
@@ -672,7 +672,7 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             assert!(level.set_game_rule(game, "keep_inventory", GameRuleValue::Bool(true)));
             assert_eq!(
-                game.ui.rules.get("keep_inventory"),
+                game.session.rules.get("keep_inventory"),
                 Some(gamerules::Value::Bool(true))
             );
             assert!(game.level_set_game_rule(
@@ -681,7 +681,7 @@ mod tests {
                 gamerules::Value::Int(9)
             ));
             assert_eq!(
-                game.ui.rules.get("random_tick_speed"),
+                game.session.rules.get("random_tick_speed"),
                 Some(gamerules::Value::Int(9))
             );
             assert!(game.level_set_game_rule(level, "random_tick_speed", gamerules::Value::Int(9)));
@@ -693,7 +693,7 @@ mod tests {
                 gamerules::Value::Int(-1)
             ));
             assert_eq!(
-                game.ui.rules.get("random_tick_speed"),
+                game.session.rules.get("random_tick_speed"),
                 Some(gamerules::Value::Int(9))
             );
 
@@ -805,12 +805,12 @@ mod tests {
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             assert!(
-                game.ui
+                game.session
                     .rules
                     .set("keep_inventory", gamerules::Value::Bool(true))
             );
             assert!(
-                game.ui
+                game.session
                     .rules
                     .set("random_tick_speed", gamerules::Value::Int(7))
             );

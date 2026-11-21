@@ -9,14 +9,9 @@
 //! (`PiercingWeapon.attack`), which Lunge turns into a dash.
 use super::{Game, view_vector};
 pub(super) use horizon_client::spear::hits_in_reach;
-use horizon_client::{
-    attack_strength::delay,
-    collisions::SceneCollisions,
-    first_person::Hand,
-    items::ItemStack,
-    mobs::Damage,
-    spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH},
-};
+use horizon_client::{attack_strength::delay, collisions::SceneCollisions, items::ItemStack, mobs::Damage, spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH}};
+use mod_api::client::first_person::Hand;
+use crate::hand_use::SwingAnimation;
 use horizon_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
@@ -489,7 +484,8 @@ impl Game<'_> {
         // swingAndResetAttackStrength (ServerPlayer): a swing that starts
         // resets the attack strength.
         let swings = self.swings_started;
-        self.swing_hand(Hand::Main, kinetic.attack_animation());
+        let a = kinetic.attack_animation();
+        self.swing_hand(Hand::Main, SwingAnimation { kind: a.kind, duration: a.duration });
         if self.swings_started != swings {
             self.reset_attack_strength();
         }

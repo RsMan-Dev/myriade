@@ -333,14 +333,14 @@ mod tests {
                 Some("gamerule mob_griefing false")
             );
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
             );
             assert!(game.perform_cart_command(command.entity().id()));
             assert!(
                 !game
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
                 "the new command ran"

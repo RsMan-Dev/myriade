@@ -7,7 +7,7 @@ impl FillbiomeHost for Game<'_> {
         Game::block_pos_arg(self, ctx, name)
     }
     fn max_block_modifications(&self) -> i32 {
-        self.ui
+        self.session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS)
     }

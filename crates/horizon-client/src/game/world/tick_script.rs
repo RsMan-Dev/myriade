@@ -7,7 +7,6 @@
 //! before the tick runs, as a player's input in the frame before it; when its ticks have run, the client
 //! writes the scenario's name to PATH with the extension `done`.
 use super::Game;
-use super::event_loop::EventLoopCtl;
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Default)]
@@ -62,8 +61,9 @@ fn parse(text: &str) -> Option<Running> {
 }
 
 impl Game<'_> {
-    /// Before a client tick: start the scenario the harness handed over, or play this tick's lines.
-    pub(super) fn tick_script_step(&mut self, event_loop: &dyn EventLoopCtl) {
+    /// Before a client tick: start the scenario the harness handed over. Its lines are not played: a server has no
+    /// client input or menu to act on.
+    pub(super) fn tick_script_step(&mut self) {
         let Some(path) = self.tick_script.path.clone() else {
             return;
         };
@@ -78,45 +78,18 @@ impl Game<'_> {
                 return;
             };
             self.tick_script.running = Some(script);
-            self.send_signed_chat_input("/wire-mark");
         }
         let Some(running) = self.tick_script.running.as_mut() else {
             return;
         };
         let tick = running.tick;
         running.tick += 1;
-        let lines = running.steps.remove(&tick).unwrap_or_default();
+        running.steps.remove(&tick);
         let finished = (running.tick > running.ticks).then(|| running.name.clone());
-        for line in lines {
-            if !self.tick_script_click(&line) {
-                self.replay_line(&line, event_loop);
-            }
-        }
         if let Some(name) = finished {
             self.tick_script.running = None;
             let _ = std::fs::write(path.with_extension("done"), name);
         }
-    }
-}
-
-impl Game<'_> {
-    /// `click-slot SLOT [right] [shift]` without a renderer: horizon-ctl's version clicks where the
-    /// slot is drawn, and `--headless` draws nothing. The vanilla driver clicks the menu itself
-    /// (`MultiPlayerGameMode.handleContainerInput`), and so does this.
-    fn tick_script_click(&mut self, line: &str) -> bool {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        let (Some(&"click-slot"), Some(Ok(slot))) =
-            (words.first(), words.get(1).map(|w| w.parse()))
-        else {
-            return false;
-        };
-        let input = if words.contains(&"shift") {
-            horizon_client::menu::Input::QuickMove
-        } else {
-            horizon_client::menu::Input::Pickup
-        };
-        self.remote_menu_ops(&[(Some(slot), i32::from(words.contains(&"right")), input)]);
-        true
     }
 }
 

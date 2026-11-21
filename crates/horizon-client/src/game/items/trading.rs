@@ -6,7 +6,7 @@ use super::{
     Game,
     stations::{INPUT, Kind, RESULT, Station},
 };
-use horizon_client::mobs::{Species, render::VILLAGER_TYPES, villager};
+use horizon_client::mobs::{Species, VILLAGER_TYPES, villager};
 use horizon_client::{
     items::ItemStack,
     merchant::{self, MerchantOffer, TradeContext},
@@ -675,8 +675,6 @@ impl Game<'_> {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
         s.merchant = Some(Box::new(state));
         self.station = Some(s);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
         self.right = false;
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).

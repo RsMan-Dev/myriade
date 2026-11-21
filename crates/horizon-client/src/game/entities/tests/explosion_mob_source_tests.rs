@@ -19,7 +19,7 @@ fn blast_boat(
     game.boats.clear();
     game.boats
         .push(Boat::new(1, "oak".into(), Vec3::new(16.2, 64.0, 8.5), 0.0));
-    assert!(game.ui.rules.set("mob_griefing", Value::Bool(mob_griefing)));
+    assert!(game.session.rules.set("mob_griefing", Value::Bool(mob_griefing)));
     game.combat.blast_owner = owner;
     game.combat.blast_owner_player = player;
     game.server_explode([8.5, 64.0, 8.5], 4.0, BlockInteraction::Destroy, false)

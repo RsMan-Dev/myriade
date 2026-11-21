@@ -12,9 +12,9 @@ use horizon_client::{
     effects::EffectInstance,
     join_seq::{JoinList, ListStamp},
     mobs::{Mob, seen_grid::SeenGrid},
-    particles::ParticleLevel,
     potent_sulfur::{
-        can_be_reached_by_noxious_gas, find_noxious_gas_source_block, unobstructed_block_count,
+        Level, can_be_reached_by_noxious_gas, find_noxious_gas_source_block,
+        unobstructed_block_count,
     },
 };
 use horizon_core::{
@@ -130,12 +130,10 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.findNoxiousGasSourceBlock` of the sulfur at
     /// `pos`.
     fn potent_sulfur_source(&self, pos: Pos) -> Option<[i32; 3]> {
-        let level = ParticleLevel {
+        let level = Level {
             world: &self.world,
             facts: self.res.facts(),
             collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
         };
         find_noxious_gas_source_block(&level, [pos.0, pos.1, pos.2])
     }
@@ -194,12 +192,10 @@ impl Game<'_> {
         if !self.mobs_in_pass(area, &mut near) {
             near.extend(0..self.remote_entities.len() as u32);
         }
-        let level = ParticleLevel {
+        let level = Level {
             world: &self.world,
             facts: self.res.facts(),
             collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
         };
         // The gas reads blocks only, so the mobs it reaches can be found
         // before any gets its effect.
@@ -272,12 +268,10 @@ impl Game<'_> {
             p.position.z,
         ];
         let reached = {
-            let level = ParticleLevel {
+            let level = Level {
                 world: &self.world,
                 facts: self.res.facts(),
                 collision: self.collision,
-                player: None,
-                cached_chunk: std::cell::Cell::new(None),
             };
             can_be_reached_by_noxious_gas(&level, source, eye)
         };
@@ -365,12 +359,10 @@ impl Game<'_> {
             return;
         };
         let water_blocks = source[1] - pos.1 - 1;
-        let level = ParticleLevel {
+        let level = Level {
             world: &self.world,
             facts: self.res.facts(),
             collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
         };
         let height = unobstructed_block_count(&level, [pos.0, pos.1 + 1, pos.2], water_blocks);
         let area = launch_area(pos, height);

@@ -325,7 +325,7 @@ impl Game<'_> {
             return;
         };
         let ids = names.iter().map(|(name, _)| name.clone()).collect();
-        self.ui
+        self.session
             .registries
             .by_registry
             .entry("minecraft:dialog".to_owned())

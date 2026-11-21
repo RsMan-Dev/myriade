@@ -752,7 +752,7 @@ mod tests {
         let world = saves.join("Bulk World");
         let request = |create: bool| {
             let rules = std::sync::Arc::new(horizon_client::gamerules::RuleRegistry::vanilla());
-            let options = horizon_client::title::WorldOptions {
+            let options = crate::game::world_options::WorldOptions {
                 world_type: horizon_client::save::WorldPreset::Flat,
                 rules: horizon_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
                 ..Default::default()

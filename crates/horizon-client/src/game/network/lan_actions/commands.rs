@@ -150,7 +150,7 @@ impl Game<'_> {
     ) -> Option<(bool, Vec<horizon_client::text::Text>)> {
         let swap = self.enter_guest(c.conn)?;
         self.chat_capture = Some(Vec::new());
-        let level = std::mem::replace(&mut self.ui.registries.permission, c.permission);
+        let level = std::mem::replace(&mut self.session.registries.permission, c.permission);
         let ok = if self.perform_native_command(c.conn, c.permission, &c.command) {
             true
         } else if c.quiet {
@@ -158,7 +158,7 @@ impl Game<'_> {
         } else {
             self.run_command(&c.command)
         };
-        self.ui.registries.permission = level;
+        self.session.registries.permission = level;
         let mut lines = self.chat_capture.take().unwrap_or_default();
         self.leave_guest(swap);
         if std::mem::take(&mut self.save_after_guest_turn) {
@@ -259,14 +259,14 @@ impl Game<'_> {
         };
         let skip = usize::from(text.starts_with('/'));
         let command = &text[skip..];
-        let d = self.ui.dispatcher.0.clone();
+        let d = self.session.dispatcher.0.clone();
         // Server players and lists, not the host's registries: a dedicated server has no local player.
         let triggers =
             super::super::scoreboard::trigger_objectives_for(&self.score.board, &player_name);
         let mut players = if self.options.dedicated.is_some() {
             Vec::new()
         } else {
-            self.ui.registries.players.clone()
+            self.session.registries.players.clone()
         };
         players.extend(host.hub.online_players().map(|g| g.name.clone()));
         let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists {
@@ -307,12 +307,12 @@ impl Game<'_> {
         let own_banned_ips = std::mem::replace(&mut reg.banned_ips, banned_ips);
         let own_whitelisted = std::mem::replace(&mut reg.whitelisted, whitelisted);
         let own_triggers = std::mem::replace(&mut reg.trigger_objectives, triggers);
-        let parse = d.parse(command, &self.ui.registries);
+        let parse = d.parse(command, &self.session.registries);
         // Commands.sendCommands prunes the tree a player's client completes from; the answer the
         // server sends follows the same test, so a child literal of a path the sender may not run
         // is not offered either (Bukkit hides it; brigadier alone lists every child).
         let ((start, end), mut suggestions) =
-            d.client_suggestions(&parse, command.len(), &self.ui.registries);
+            d.client_suggestions(&parse, command.len(), &self.session.registries);
         self.native_tab_complete(
             player_uuid,
             &player_name,

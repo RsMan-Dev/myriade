@@ -408,12 +408,9 @@ impl Game<'_> {
         }
         // The position packet moves the old position along (absolute xyz).
         self.previous_position = at;
-        // `broadcastEntityEvent(46)` after the teleport. A server-thread window
-        // is a remote client, so the packet is what draws the particles there.
+        // `broadcastEntityEvent(46)` after the teleport.
         if let Some(id) = self.lan_acting_entity {
             self.lan_entity_event(id as i32, 46, [at.x, at.y, at.z]);
-        } else {
-            self.portal_particles();
         }
         true
     }
@@ -502,9 +499,7 @@ impl EmissionWorld for Emitter<'_, '_> {
     /// a guest's server turn leaves the guest out.
     fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
         let at = self.0.feet();
-        if !self.0.is_logical_server() {
-            self.0.play_client_player_sound(&sound, volume, pitch);
-        } else if self.0.lan_acting.is_some() {
+        if self.0.lan_acting.is_some() {
             if let Some(at) = at {
                 self.0.guest_player_sounds.push((sound, at, volume, pitch));
             }
@@ -881,7 +876,9 @@ impl TeleportConsumeWorld for EcsHeldTeleporter<'_, '_> {
         Ok(())
     }
     fn reset_fall_distance(&mut self) -> Result<(), ()> {
-        self.game.ecs.reset_fall_distance(self.mob).ok_or(())
+        let e = self.game.ecs.entity_of(self.mob).ok_or(())?;
+        self.game.ecs.set_fall_distance(e, 0.0);
+        Ok(())
     }
     fn reset_impulse(&mut self) -> Result<(), ()> {
         Ok(())

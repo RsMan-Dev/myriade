@@ -1,5 +1,5 @@
 //! Shape queries for a supplied state without replacing the block in the world.
-use super::{Game, perspective};
+use super::Game;
 use horizon_client::{
     block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
 };
@@ -29,13 +29,11 @@ impl Game<'_> {
             .then(|| self.context_outline(pos, state, player_context, anims))
             .flatten();
         let f = self.res.facts().get(state);
-        let o = perspective::outline_offset(
-            &self.pack.context.tables,
-            state,
-            pos[0],
-            pos[2],
-            f.outline_offset,
-        );
+        let o = if f.outline_offset {
+            f.offset_at(pos[0], pos[2])
+        } else {
+            [0.0; 3]
+        };
         let base = [
             f64::from(pos[0]) + o[0],
             f64::from(pos[1]) + o[1],

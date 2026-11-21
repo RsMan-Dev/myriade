@@ -86,7 +86,7 @@ impl Game<'_> {
         };
         let board = &self.score.board;
         let Some(attacker) = host.hub.guest(actor).filter(|_| {
-            self.ui
+            self.session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::PVP)
         }) else {

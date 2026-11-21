@@ -5,7 +5,7 @@
 use crate::game::game_tests::tests::server_game;
 use crate::game::{Game, GuestUse, Hit};
 use horizon_client::command::args::GameMode;
-use horizon_client::first_person::Hand;
+use mod_api::client::first_person::Hand;
 use horizon_client::items::ItemStack;
 use horizon_core::nbt::Tag;
 use horizon_world::registry::BlockStateId;

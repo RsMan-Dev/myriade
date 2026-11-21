@@ -40,13 +40,11 @@ pub(super) fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();

@@ -8,8 +8,8 @@
 //! exit portal, the egg and the next gateway; and its rendering and boss bar.
 #[path = "dragon/death.rs"]
 mod death;
-#[path = "dragon/rays.rs"]
-mod rays;
+#[path = "dragon/fireball_burst.rs"]
+mod fireball_burst;
 #[path = "dragon/residency.rs"]
 mod residency;
 #[path = "dragon/save_lending.rs"]
@@ -25,7 +25,6 @@ use super::{
 };
 use horizon_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Reduction},
-    mesher::Vertex,
     mobs::{Damage, DamageKind, Who},
     projectiles::{Projectile, ProjectileKind},
     random_source,
@@ -1556,7 +1555,7 @@ impl Game<'_> {
         let player = by.or_else(|| {
             let p = c.position;
             let at = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
-            let peaceful = self.ui.difficulty == 0;
+            let peaceful = self.session.difficulty == 0;
             nearest_enemy(&self.fight_players(), peaceful, at, None, |_| true).map(|p| p.who)
         });
         let Some(d) = self.dragon.as_mut() else {
@@ -2248,7 +2247,7 @@ impl Game<'_> {
     /// One phase server tick (`doServerTick`).
     fn tick_phase(&mut self) {
         let players = self.fight_players();
-        let peaceful = self.ui.difficulty == 0;
+        let peaceful = self.session.difficulty == 0;
         // A crystal destroyed since: strafe the player it named.
         if let Some(d) = self.dragon.as_mut()
             && let Some(who) = d.strafe_request.take()
@@ -3417,125 +3416,6 @@ impl Breath {
     }
 }
 impl Game<'_> {
-    /// `submitCrystalBeams`: an eight-sided tube from `from` (+2 up) along
-    /// `delta`, the beam texture scrolling along it.
-    pub(super) fn crystal_beam(
-        &self,
-        from: glam::DVec3,
-        delta: glam::DVec3,
-        time: f32,
-        camera: glam::DVec3,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(s) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/end_crystal/end_crystal_beam")
-            .copied()
-        else {
-            return;
-        };
-        let q = |v: f32| (v * 65535.0).round().clamp(0.0, 65535.0) as u32;
-        let wrap_light = q(s.v0) | q(s.v1 - s.v0) << 16;
-        let (dx, dy, dz) = (delta.x as f32, delta.y as f32, delta.z as f32);
-        let horizontal = (dx * dx + dz * dz).sqrt();
-        let length = (dx * dx + dy * dy + dz * dz).sqrt();
-        let m = glam::Mat4::from_translation(
-            (from - camera).as_vec3() + glam::Vec3::new(0.0, 2.0, 0.0),
-        ) * glam::Mat4::from_rotation_y(-dz.atan2(dx) - std::f32::consts::FRAC_PI_2)
-            * glam::Mat4::from_rotation_x(-horizontal.atan2(dy) - std::f32::consts::FRAC_PI_2);
-        let (v0, v1) = (-time * 0.01, length / 32.0 - time * 0.01);
-        let (mut last_sin, mut last_cos, mut last_u) = (0.0f32, 0.75f32, 0.0f32);
-        let u = |x: f32| s.u0 + (s.u1 - s.u0) * x;
-        for i in 1..=8 {
-            let a = i as f32 * std::f32::consts::TAU / 8.0;
-            let (sin, cos) = (a.sin() * 0.75, a.cos() * 0.75);
-            let uu = i as f32 / 8.0;
-            for (p, uv, c) in [
-                (
-                    glam::Vec3::new(last_sin * 0.2, last_cos * 0.2, 0.0),
-                    [u(last_u), v0],
-                    0xFF00_0000,
-                ),
-                (
-                    glam::Vec3::new(last_sin, last_cos, length),
-                    [u(last_u), v1],
-                    0xFFFF_FFFF,
-                ),
-                (glam::Vec3::new(sin, cos, length), [u(uu), v1], 0xFFFF_FFFF),
-                (
-                    glam::Vec3::new(sin * 0.2, cos * 0.2, 0.0),
-                    [u(uu), v0],
-                    0xFF00_0000,
-                ),
-            ] {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: m.transform_point3(p).to_array(),
-                    uv,
-                    // HDR output: the healing beam shines (entity.wgsl hdr_entity_mark).
-                    layer: 6 | u32::from(horizon_client::mesher::BRIGHT) << 16,
-                    color: c,
-                    light: wrap_light,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-            (last_sin, last_cos, last_u) = (sin, cos, uu);
-        }
-    }
-    /// Dragon fireballs as the dragon_fireball sprite facing the camera.
-    pub(super) fn dragon_fireball_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(s) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/enderdragon/dragon_fireball")
-            .copied()
-        else {
-            return;
-        };
-        let forward = glam::DVec3::from_array(super::view_vector(self.yaw, self.pitch));
-        let right = forward.cross(glam::DVec3::Y).normalize_or_zero();
-        let up = right.cross(forward).normalize_or_zero();
-        for b in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == horizon_client::projectiles::ProjectileKind::DragonFireball)
-        {
-            let p = glam::DVec3::new(
-                b.previous.x + (b.position.x - b.previous.x) * alpha,
-                b.previous.y + (b.position.y - b.previous.y) * alpha,
-                b.previous.z + (b.position.z - b.previous.z) * alpha,
-            ) - camera;
-            // DragonFireballRenderer: scale 2, full bright.
-            let h = 1.0;
-            for (c, uv) in [
-                (p - right * h - up * h, [s.u0, s.v1]),
-                (p + right * h - up * h, [s.u1, s.v1]),
-                (p + right * h + up * h, [s.u1, s.v0]),
-                (p - right * h + up * h, [s.u0, s.v0]),
-            ] {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: c.as_vec3().to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light: 240 | 240 << 8,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
-    }
     pub(super) fn fight_ready(&mut self) -> bool {
         self.load_fight();
         // spawnExitPortal runs from scanState and the dragon's death, both
@@ -4350,7 +4230,7 @@ impl Game<'_> {
         // Diverges from upstream: shared mod finalization also admits command dragons.
         let yaw = match site {
             SpawnSite::Finalizing(horizon_client::mobs::spawn_rules::Reason::Command) => 0.0,
-            _ => horizon_client::camera::wrap_degrees(self.world.random.next_float() * 360.0),
+            _ => mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0),
         };
         let finalized = match site {
             SpawnSite::Finalizing(reason) => {
@@ -4456,8 +4336,6 @@ impl Game<'_> {
 
 #[path = "dragon/crystal.rs"]
 mod crystal;
-#[path = "dragon/death_render.rs"]
-mod death_render;
 
 #[cfg(test)]
 mod tests {
@@ -4640,7 +4518,7 @@ mod tests {
                     // snapTo always draws yaw; only completed Mob.finalizeSpawn
                     // draws the follow-range triangle and handedness roll.
                     let mut expected = LegacyRandom::new(42);
-                    let yaw = horizon_client::camera::wrap_degrees(expected.next_float() * 360.0);
+                    let yaw = mod_api::client::camera::wrap_degrees(expected.next_float() * 360.0);
                     if let Some(dragon) = game.dragon.as_ref() {
                         assert_eq!(dragon.yaw, yaw);
                         assert_eq!(dragon.previous_yaw, yaw);

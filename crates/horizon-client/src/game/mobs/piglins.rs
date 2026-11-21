@@ -238,7 +238,7 @@ impl Game<'_> {
             .map(horizon_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid);
         let universal = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::UNIVERSAL_ANGER);
         for i in 0..self.remote_entities.len() {

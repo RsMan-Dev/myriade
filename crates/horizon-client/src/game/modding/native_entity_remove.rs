@@ -314,7 +314,7 @@ mod tests {
 
         with_game(|game| {
             game.load_other_as(12, "minecraft:marker", [0.0; 3]);
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             let selector = "execute if entity @e[type=minecraft:marker]";
             assert!(game.run_command(selector));
             let entity = game.entity(12).unwrap();
@@ -583,7 +583,7 @@ mod tests {
         with_game(|game| {
             game.load_other_as(12, "minecraft:marker", [0.0; 3]);
             game.persist.raw.insert(12, Tag::Compound(Compound::new()));
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             assert!(game.run_command("kill @e[type=minecraft:marker]"));
             assert!(!game.persist.raw.contains_key(&12));
         });

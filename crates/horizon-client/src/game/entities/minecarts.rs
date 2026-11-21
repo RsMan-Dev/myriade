@@ -13,19 +13,14 @@ mod section_steps;
 use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
 use crate::ecs_bridge::cart_variants::CartAttacker;
 use horizon_ecs_proto::cart_variants::HitResult;
-use horizon_client::actions::Action;
 use horizon_client::{
     blocks::Fluid,
     containers::BlockEntity,
     items::ItemStack,
-    mesher::Vertex,
-    mobs::{Species, Who, anim::Poses, riders},
-    particles::{ParticleOptions, ParticleType},
-    random_source,
-    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
+    mobs::{Species, Who, riders},
 };
 use horizon_core::{
-    geometry::{Aabb, Vec3, trig},
+    geometry::{Aabb, Vec3},
 };
 use horizon_world::registry::BlockStateId;
 #[cfg(test)]
@@ -224,7 +219,7 @@ impl Game<'_> {
     /// every cart alike (`cart_max_speed` cuts a furnace minecart's).
     fn max_speed_new(&self, c: &Minecart) -> f64 {
         f64::from(
-            self.ui
+            self.session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::MAX_MINECART_SPEED),
         ) * if c.in_water { 0.5 } else { 1.0 }
@@ -264,7 +259,7 @@ impl Game<'_> {
     /// receives 70 only sets the fuse (`handleEntityEvent`).
     pub(super) fn prime_cart(&mut self, c: &mut Minecart) {
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -276,7 +271,7 @@ impl Game<'_> {
         self.lan_entity_event(id, TNT_PRIME_EVENT, at);
         if !self.entity_silent(c.id) {
             self.audio
-                .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
+                .play_on(horizon_client_core::sound_source::SOUND_SOURCES.iter().position(|s| *s == "block").unwrap_or(0), "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
         }
     }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
@@ -332,53 +327,6 @@ impl Game<'_> {
         }
     }
 
-    /// `ClientPacketListener.postAddEntitySoundInstance` for the carts that
-    /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
-    /// two inside sounds when the player got in one; then what the sound
-    /// instances read this tick (the ridden cart and every cart).
-    pub(super) fn start_cart_sounds(&mut self) -> (Option<u32>, Vec<CartSound>) {
-        let carts: Vec<CartSound> = self
-            .carts
-            .iter()
-            .map(|c| CartSound {
-                id: c.id,
-                position: [c.position.x, c.position.y, c.position.z],
-                // Vec3.horizontalDistance.
-                speed: (c.velocity.x * c.velocity.x + c.velocity.z * c.velocity.z).sqrt(),
-            })
-            .collect();
-        self.cart_sounds
-            .retain(|id| carts.iter().any(|c| c.id == *id));
-        for cart in &carts {
-            if !self.cart_sounds.contains(&cart.id) {
-                let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
-                if res != PlayResult::NotStarted {
-                    self.cart_sounds.insert(cart.id);
-                }
-            }
-        }
-        let vehicle = self.riding.filter(|id| carts.iter().any(|c| c.id == *id));
-        if vehicle != self.riding_cart_sounds
-            && let Some(cart) = carts.iter().find(|c| Some(c.id) == vehicle)
-        {
-            let mut started = true;
-            for underwater in [true, false] {
-                let instance =
-                    SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
-                if res == PlayResult::NotStarted {
-                    started = false;
-                }
-            }
-            if started {
-                self.riding_cart_sounds = vehicle;
-            }
-        } else if vehicle.is_none() {
-            self.riding_cart_sounds = None;
-        }
-        (vehicle, carts)
-    }
     /// The rider's tick: the cart moves with the rider's input as its push.
     pub(super) fn tick_cart_riding(&mut self, keys: Keys) -> bool {
         let Some(id) = self.riding.filter(|&id| self.ecs.cart_kind(id).is_some()) else {
@@ -562,7 +510,7 @@ impl Game<'_> {
         let Some(kind) = self.cart_genre(id) else {
             return false;
         };
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.sneak_held;
         let held = self.held().cloned();
         match kind {
             CartKind::Rideable => {
@@ -627,8 +575,6 @@ impl Game<'_> {
                 .insert(key, BlockEntity::Chest(items));
         }
         self.container = Some(key);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
         self.right = false;
         if kind == CartKind::Chest {
             // `MinecartChest.interact` (which overrides
@@ -776,206 +722,11 @@ impl Game<'_> {
             }
         }
     }
-    /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
-    pub(super) fn block_model_vertices(
-        &self,
-        state: BlockStateId,
-        seed: i64,
-        m: glam::Mat4,
-        light: u32,
-        diffuse: bool,
-        out: &mut Vec<Vertex>,
-    ) {
-        // BlockTintSource.color(state) with no level: each tinted face's default colour.
-        let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
-        let tables = &self.pack.context.tables;
-        let tint = |index: i32| tables.default_tint(state, index, grass);
-        self.tinted_block_model_vertices(state, seed, m, |_| light, diffuse, tint, out);
-    }
-
-    /// The block the cart shows: `None` for air (`AbstractMinecartRenderer`
-    /// draws and stretches its culling box only for a non-air state).
-    fn display_state(&self, c: &Minecart) -> Option<BlockStateId> {
-        shown_unless_air(self.display_state_unfiltered(c), |s| {
-            self.res.facts().is_air(s)
-        })
-    }
-    fn display_state_unfiltered(&self, c: &Minecart) -> Option<BlockStateId> {
-        let registry = &self.pack.assets.registry;
-        let with = |name: &str, props: &[(&str, &str)]| {
-            let mut s = registry.state(registry.default_state(name)?)?.clone();
-            for (k, v) in props {
-                s.properties.insert((*k).to_owned(), (*v).to_owned());
-            }
-            registry.id(&s)
-        };
-        // AbstractMinecart.getDisplayBlockState: a custom state wins.
-        if let Some(state) = c
-            .custom_display
-            .as_ref()
-            .and_then(|tag| horizon_client::entity_nbt::state_from_nbt(registry, tag))
-        {
-            return Some(state);
-        }
-        match c.kind {
-            CartKind::Rideable => None,
-            CartKind::Chest => with("minecraft:chest", &[("facing", "north")]),
-            CartKind::Hopper => registry.default_state("minecraft:hopper"),
-            CartKind::Furnace => with(
-                "minecraft:furnace",
-                &[
-                    ("facing", "north"),
-                    ("lit", if c.fuel > 0 { "true" } else { "false" }),
-                ],
-            ),
-            CartKind::Tnt => registry.default_state("minecraft:tnt"),
-            CartKind::CommandBlock => registry.default_state("minecraft:command_block"),
-            // MinecartSpawner.getDefaultDisplayBlockState.
-            CartKind::Spawner => registry.default_state("minecraft:spawner"),
-        }
-    }
 }
 
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests.rs"]
 mod minecart_tnt_tests;
-
-/// Local geometry with atlas coordinates resolved for both CPU and GPU consumers.
-#[derive(Clone, Copy)]
-pub(super) struct PreparedModelFace {
-    positions: [[f32; 3]; 4],
-    uv: [[f32; 2]; 4],
-    pub(super) facing: horizon_assets::model::Direction,
-    pub(super) tint_index: i32,
-    light_emission: u8,
-}
-
-impl PreparedModelFace {
-    pub(super) fn new(
-        quad: &horizon_assets::bake::ModelQuad,
-        sprite: horizon_client::hud::Rect,
-    ) -> Self {
-        Self {
-            positions: quad.positions,
-            uv: quad.uv.map(|uv| {
-                [
-                    sprite.u0 + uv[0] * (sprite.u1 - sprite.u0),
-                    sprite.v0 + uv[1] * (sprite.v1 - sprite.v0),
-                ]
-            }),
-            facing: quad.facing,
-            tint_index: quad.tint_index,
-            light_emission: quad.light_emission,
-        }
-    }
-
-    pub(super) fn positions(&self) -> [[f32; 3]; 4] {
-        self.positions
-    }
-
-    pub(in crate::game) fn gpu_vertex(
-        &self,
-        corner: usize,
-    ) -> horizon_client::gfx::PreparedModelVertex {
-        let normal = horizon_client::item_render::direction_vector(self.facing);
-        horizon_client::gfx::PreparedModelVertex {
-            pos: [
-                self.positions[corner][0],
-                self.positions[corner][1],
-                self.positions[corner][2],
-                1.0,
-            ],
-            uv: [self.uv[corner][0], self.uv[corner][1], 0.0, 0.0],
-            normal: [normal.x, normal.y, normal.z, 0.0],
-            flags: [
-                u32::from(self.tint_index >= 0),
-                u32::from(self.light_emission),
-                0,
-                0,
-            ],
-        }
-    }
-}
-
-/// Shared transform, shading and light path for block-state and prepared standalone faces.
-pub(super) fn emit_model_faces(
-    faces: impl IntoIterator<Item = (PreparedModelFace, u32)>,
-    m: glam::Mat4,
-    diffuse: bool,
-    tint: impl Fn(i32) -> Option<u32>,
-    out: &mut Vec<Vertex>,
-) {
-    use horizon_assets::model::Direction as D;
-    let mut normals = horizon_client::item_render::FaceNormals::new(m);
-    for (quad, light) in faces {
-        let shade: u32 = match quad.facing {
-            D::Up => 255,
-            D::Down => 127,
-            D::North | D::South => 204,
-            D::West | D::East => 153,
-        };
-        let mut color = if diffuse {
-            u32::MAX
-        } else {
-            0xFF00_0000 | shade << 16 | shade << 8 | shade
-        };
-        if let Some(t) = tint(quad.tint_index) {
-            color =
-                horizon_client::hud_layout::multiply(color, horizon_client::mobs::render::abgr(t));
-        }
-        let normal = if diffuse {
-            let n = normals
-                .face(quad.facing)
-                .to_array()
-                .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
-            [n[0], n[1], n[2], 127]
-        } else {
-            [0; 4]
-        };
-        let light = if diffuse {
-            let emission = u32::from(quad.light_emission) * 16;
-            (light & 0xFF) | (light >> 8 & 0xFF).max(emission) << 8
-        } else {
-            light
-        };
-        for k in 0..4 {
-            let uv = quad.uv[k];
-            out.push(Vertex {
-                normal,
-                pos: m
-                    .transform_point3(glam::Vec3::from_array(quad.positions[k]))
-                    .to_array(),
-                uv,
-                layer: 0,
-                color,
-                light,
-                glint_uv: [0.0, 0.0],
-            });
-        }
-    }
-}
-
-/// Vanilla multiplies tint, alpha included, only when `tintIndex != -1`.
-pub(in crate::game) fn scale_tint_alpha(
-    vertices: &mut [Vertex],
-    faces: &[PreparedModelFace],
-    tint: u32,
-) {
-    let alpha = tint >> 24;
-    if alpha == 255 {
-        return;
-    }
-    let (quads, _) = vertices.as_chunks_mut::<4>();
-    for (face, quad) in faces.iter().zip(quads) {
-        if face.tint_index < 0 {
-            continue;
-        }
-        for vertex in quad {
-            let scaled = (vertex.color >> 24) * alpha / 255;
-            vertex.color = vertex.color & 0x00FF_FFFF | scaled << 24;
-        }
-    }
-}
 
 #[cfg(test)]
 #[path = "minecarts/tests.rs"]
@@ -1153,7 +904,7 @@ mod hook_mutation_regressions {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.ui
+                game.session
                     .rules
                     .set("entity_drops", horizon_client::gamerules::Value::Bool(true));
                 let boat = game.ecs_spawn("minecraft:oak_boat", [0.0; 3], None).unwrap();

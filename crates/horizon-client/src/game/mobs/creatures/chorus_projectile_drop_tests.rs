@@ -30,13 +30,11 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.native_lifecycle
@@ -139,7 +137,7 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
         assert!(game.dropped.is_empty());
         assert!(game.run_command("gamerule projectiles_can_break_blocks true"));
         assert!(
-            game.ui
+            game.session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
         );

@@ -249,11 +249,10 @@ impl Game<'_> {
     /// ends the use after it.
     pub(super) fn release_used_item(&mut self, stack: &ItemStack, ticks: u32, hand_changed: bool) {
         let canceled = !hand_changed && !self.use_item_stopped(stack, ticks);
-        let (release, spyglass) = item_use::release_parts(canceled, hand_changed);
+        let (release, _) = item_use::release_parts(canceled, hand_changed);
         match &*stack.item {
             "minecraft:bow" if release => self.release_bow(stack, self.ticks_held(stack, ticks)),
             "minecraft:trident" if release => self.release_trident(self.ticks_held(stack, ticks)),
-            "minecraft:spyglass" if spyglass => self.stop_spyglass(),
             _ => {}
         }
         if release {

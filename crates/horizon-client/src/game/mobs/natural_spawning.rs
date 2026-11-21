@@ -1050,7 +1050,7 @@ impl horizon_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
     }
     fn spawner_blocks_work(&self) -> bool {
         self.game
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
@@ -1102,7 +1102,7 @@ impl<'a> Game<'a> {
     pub(super) fn spawn_host(&self) -> SpawnHost<'_> {
         let data = self.finalize_spawn_data();
         SpawnHost {
-            biome_zoom: self.streaming.biome_zoom,
+            biome_zoom: BiomeZoom::new(horizon_core::biome::obfuscate_seed(self.level.seed)),
             border: self.border.geometry(),
             mob_types: self.res.mob_types(),
             structure_spawns: &self.structure_spawns,
@@ -1119,7 +1119,7 @@ impl<'a> Game<'a> {
                     ]
                 }),
             spawn_mobs: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS),
             spawning_monsters: self.spawning_monsters(),
@@ -1327,7 +1327,7 @@ impl<'a> Game<'a> {
     /// `spawn_monsters` rule, the persistent ones every 400 ticks, and the
     /// level's spawn flags (`SpawnPolicy`) taking away.
     pub(super) fn natural_categories(&self, state: &SpawnState) -> Vec<Category> {
-        let rules = &self.ui.rules;
+        let rules = &self.session.rules;
         if !rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS) {
             return Vec::new();
         }
@@ -1355,7 +1355,7 @@ impl<'a> Game<'a> {
         }
         // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
         if self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
         {
@@ -1780,7 +1780,7 @@ mod tests {
             game.spawning_chunks(&game.level_players(), &mut scratch);
             assert_eq!(scratch.candidates, vec![(0, 0)]);
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
             );
@@ -2715,7 +2715,7 @@ mod tests {
         )];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
-                game.ui.difficulty = 2;
+                game.session.difficulty = 2;
                 let at = [8.5, 64.0, 8.5];
                 game.spawn_mob(
                     "minecraft:zombie_horse",

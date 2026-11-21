@@ -154,7 +154,7 @@ impl Game<'_> {
             &Json::String(id.to_owned()),
             &|i| self.read_test_environment_json(i),
             0,
-            &self.ui.rules,
+            &self.session.rules,
         )
     }
 
@@ -181,12 +181,12 @@ impl Game<'_> {
                 let previous = self.world.day_time;
                 if clock == "minecraft:overworld" {
                     self.world.day_time = *time;
-                    self.ui.clock.partial = 0.0;
+                    self.session.clock.partial = 0.0;
                 }
                 Saved::Clock(previous)
             }
             Environment::Difficulty(d) => {
-                let previous = self.ui.difficulty;
+                let previous = self.session.difficulty;
                 self.set_difficulty_forced(*d);
                 Saved::Difficulty(previous)
             }
@@ -200,10 +200,10 @@ impl Game<'_> {
                 let original = rules
                     .iter()
                     .filter_map(|(name, _)| {
-                        let rule = self.ui.rules.rule(name)?;
+                        let rule = self.session.rules.rule(name)?;
                         Some((
                             rule.name.to_owned(),
-                            self.ui.rules.get(&rule.name).unwrap_or(rule.default),
+                            self.session.rules.get(&rule.name).unwrap_or(rule.default),
                         ))
                     })
                     .collect();
@@ -236,7 +236,7 @@ impl Game<'_> {
             (Environment::ClockTime { clock, .. }, Saved::Clock(previous)) => {
                 if clock == "minecraft:overworld" {
                     self.world.day_time = previous;
-                    self.ui.clock.partial = 0.0;
+                    self.session.clock.partial = 0.0;
                 }
             }
             (_, Saved::Difficulty(d)) => self.set_difficulty_forced(d),
@@ -263,8 +263,8 @@ impl Game<'_> {
     /// `GameRules.setAll`.
     fn set_environment_rules(&mut self, rules: &[(String, Value)]) {
         for (name, value) in rules {
-            if let Some(rule) = self.ui.rules.rule(name).cloned()
-                && self.ui.rules.set(&rule.name, *value)
+            if let Some(rule) = self.session.rules.rule(name).cloned()
+                && self.session.rules.set(&rule.name, *value)
             {
                 self.game_rule_changed(&rule.name, *value, None);
             }

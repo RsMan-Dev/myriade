@@ -633,34 +633,6 @@ fn a_client_copy_registers_no_mod_goals() {
 
 #[test]
 #[ignore = "daily"]
-fn a_screens_entity_registers_no_mod_goals() {
-    install_game_mods();
-    let asked = || ASKED.load(std::sync::atomic::Ordering::Relaxed);
-    super::super::native_entity_refs::tests::with_client_game(|game| {
-        let kind = game.res.mob_types().get("minecraft:husk").unwrap().clone();
-        // The authoritative construction asks the part…
-        let _ = Mob::new(90, kind, Vec3::new(0.5, 65.0, 0.5), 0.0);
-        let before = asked();
-        assert!(before >= 1, "the part is installed");
-        // …a screen drawing the type, by type and from saved data, does not.
-        let look = mod_api::GuiEntityLook::At([50.0, 40.0]);
-        let view = mod_api::GuiEntityView::new([26.0, 8.0, 75.0, 78.0], 30.0, 0.0625, look);
-        let mut data = horizon_core::nbt::Compound::new();
-        data.insert("IsBaby".into(), horizon_core::nbt::Tag::Byte(1));
-        for entity in [
-            mod_api::GuiEntity::kind("minecraft:husk"),
-            mod_api::GuiEntity::with_data("minecraft:husk", data),
-        ] {
-            let mut batch = horizon_client::hud::HudBatch::scratch([320, 240]);
-            assert_eq!(game.native_draw_entity(&mut batch, &entity, view), Ok(()));
-            assert!(!batch.vertices.is_empty());
-        }
-        assert_eq!(asked(), before, "a GUI draw runs no register_goals");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_goal_jump_goes_through_the_jump_control_input() {
     struct Jumper;
     impl Goal for Jumper {

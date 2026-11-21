@@ -258,7 +258,7 @@ impl Game<'_> {
         };
         Some(match def.id {
             "darkness" => self.darkness_blend(partial),
-            "nausea" => self.nausea_blend(partial),
+            "nausea" => 0.0,
             _ => {
                 let (previous, current) = e.client_blend;
                 let previous = u8::from(previous) as f32;

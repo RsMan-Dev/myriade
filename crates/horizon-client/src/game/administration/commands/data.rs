@@ -1628,13 +1628,11 @@ mod wolf_live_anger_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -1950,13 +1948,11 @@ mod loot_table_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2074,13 +2070,11 @@ mod modern_literal_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2132,7 +2126,7 @@ mod modern_literal_tests {
                 let dispatcher = horizon_client::command::vanilla::game_dispatcher();
                 assert!(
                     dispatcher
-                        .parse(&command, &game.ui.registries)
+                        .parse(&command, &game.session.registries)
                         .executable()
                         .is_ok(),
                     "admission: {route}/{name}"
@@ -2296,13 +2290,11 @@ mod falling_live_adoption_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

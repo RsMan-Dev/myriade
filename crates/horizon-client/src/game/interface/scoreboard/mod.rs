@@ -2,20 +2,17 @@
 //! player (health, food, xp, deaths, kills, statistics), score holders for
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
-use super::{Game, chat::PLAYER_NAME, commands::Target};
-use horizon_client::actions::Action;
+use super::{Game, commands::Target};
+use crate::game::command_text::PLAYER_NAME;
 use horizon_client::{
     command::{
         Context,
         args::{IntRange, Selector},
     },
-    hud::HudBatch,
-    hud_layout, hud_overlays,
     lan::{guest::Guest, playerdata::ints_uuid},
     save::{self, uuid_from_text, uuid_text},
     scoreboard::{self as sb, Comp, Scoreboard, literal},
     scoreboard_cmd::{self, Env, Holder},
-    tab_list::TabPlayer,
     text::Text,
 };
 use horizon_core::nbt::Tag;
@@ -177,7 +174,7 @@ impl Game<'_> {
     /// The names commands complete: objectives, teams and tracked holders.
     pub(super) fn sync_score_registries(&mut self) {
         let board = &self.score.board;
-        let reg = &mut self.ui.registries;
+        let reg = &mut self.session.registries;
         reg.objectives = board.objectives.iter().map(|o| o.name.clone()).collect();
         // Trigger objectives: the locks `/trigger` and `scoreboard players enable` complete from.
         reg.trigger_scores.clear();
@@ -583,9 +580,8 @@ impl Game<'_> {
 
     /// `Entity.getScoreboardName`: another player's profile name
     /// (`Player.getScoreboardName`), any other entity's UUID.
-    pub(in crate::game) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
-        self.remote_player_name(id)
-            .map_or_else(|| uuid_text(uuid), str::to_owned)
+    pub(in crate::game) fn scoreboard_name(&self, _id: u32, uuid: [i32; 4]) -> String {
+        uuid_text(uuid)
     }
     /// `TamableAnimal.getTeam` of a mob or another player: its own team, else,
     /// when it is a tamed pet, its root owner's.
@@ -730,7 +726,6 @@ impl Game<'_> {
             .iter()
             .filter_map(|m| uuid_from_text(m).filter(|u| uuid_text(*u) == *m))
             .collect();
-        let names: std::collections::HashSet<&str> = members.into_iter().collect();
         horizon_client::mobs::Teams {
             player: self.player_team(),
             mobs: self
@@ -739,14 +734,11 @@ impl Game<'_> {
                 .keys()
                 .filter_map(|id| {
                     if !tame_owners.contains_key(id) {
-                        let own = match self.remote_player_name(*id) {
-                            Some(name) => names.contains(name),
-                            None => self
-                                .persist
-                                .uuids
-                                .get(id)
-                                .is_some_and(|u| uuids.contains(u)),
-                        };
+                        let own = self
+                            .persist
+                            .uuids
+                            .get(id)
+                            .is_some_and(|u| uuids.contains(u));
                         if !own {
                             return None;
                         }
@@ -885,7 +877,7 @@ impl Game<'_> {
             players: false,
         };
         let Ok(horizon_client::command::Arg::Entity(sel)) =
-            ty.parse(&mut reader, &self.ui.registries)
+            ty.parse(&mut reader, &self.session.registries)
         else {
             return raw.to_owned();
         };
@@ -905,11 +897,7 @@ impl Game<'_> {
         if board.display.is_empty() {
             return None;
         }
-        // A server's client is in its team by its profile name.
-        let name = self
-            .remote
-            .as_ref()
-            .map_or(PLAYER_NAME, |r| r.profile_name.as_str());
+        let name = PLAYER_NAME;
         let team_slot = board
             .players_team(name)
             .and_then(|t| t.color.as_ref())
@@ -934,37 +922,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-}
-
-fn tab_players_needed(shown: bool, changed: bool) -> bool {
-    shown || changed
-}
-
-#[test]
-fn hidden_tab_skips_players_except_for_visibility_narration() {
-    use horizon_client::tab_list;
-    for count in [1, 150, 1000] {
-        let shown = tab_list::visible(true, false, false, count, false);
-        assert!(!tab_players_needed(shown, false));
-        assert!(
-            tab_players_needed(shown, true),
-            "closing narration needs names"
-        );
-        let shown = tab_list::visible(true, true, false, count, false);
-        assert!(tab_players_needed(shown, false));
-    }
-}
-
-/// The host and guests that have entered the world, rebuilt from live state.
-pub(super) fn local_tab_players(me: TabPlayer, guests: &[Guest]) -> Vec<TabPlayer> {
-    let mut players = vec![me];
-    players.extend(guests.iter().filter(|g| g.placed).map(|g| {
-        let mut player = TabPlayer::new(g.uuid, &g.name);
-        player.game_mode = g.game_mode;
-        player.latency = g.latency.load(std::sync::atomic::Ordering::Relaxed);
-        player
-    }));
-    players
 }
 
 /// `ScoreHolder.getFeedbackDisplayName`: the holder's display name with its
@@ -1053,94 +1010,6 @@ impl Env for GameEnv<'_, '_> {
     }
     fn feedback(&mut self, message: Text) {
         self.g.feedback(message);
-    }
-}
-
-#[cfg(test)]
-mod tab_list_tests {
-    use super::*;
-    use horizon_client::{
-        lan::{Joined, PlayerSender},
-        tab_list,
-    };
-    use horizon_protocol::packets::configuration::ClientInformation;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicI32, Ordering},
-        mpsc,
-    };
-
-    fn guest(uuid: u128, name: &str) -> Guest {
-        let (tx, _rx) = mpsc::channel();
-        Guest::new(
-            Joined {
-                conn: uuid as u32,
-                uuid,
-                name: name.into(),
-                properties: Vec::new(),
-                info: ClientInformation::new(8),
-                brand: "test".into(),
-                sender: PlayerSender::new(tx, Arc::default()),
-                latency: Arc::new(AtomicI32::new(42)),
-                address: "127.0.0.1:25565".parse().unwrap(),
-                expected: false,
-            },
-            uuid as i32,
-            [0.0, 64.0, 0.0],
-            8,
-        )
-    }
-
-    #[test]
-    fn lan_tab_list_tracks_join_and_disconnect() {
-        let me = TabPlayer::new(1, PLAYER_NAME);
-        let mut guests = vec![guest(2, "Alex")];
-        let players = local_tab_players(me.clone(), &guests);
-        assert_eq!(players.as_slice(), std::slice::from_ref(&me));
-        assert!(!tab_list::visible(true, true, true, players.len(), false));
-
-        guests[0].placed = true;
-        let players = local_tab_players(me.clone(), &guests);
-        assert_eq!(players.len(), 2);
-        assert_eq!(players[0], me);
-        assert_eq!(players[1].uuid, 2);
-        assert_eq!(players[1].name, "Alex");
-        assert!(tab_list::visible(true, true, true, players.len(), false));
-        assert!(!tab_list::visible(true, false, true, players.len(), false));
-
-        guests.clear();
-        let players = local_tab_players(me, &guests);
-        assert_eq!(players.len(), 1);
-        assert!(!tab_list::visible(true, true, true, players.len(), false));
-        assert!(tab_list::visible(true, true, true, players.len(), true));
-        // F1 (`Hud.isHidden`) takes the list away: `extractRenderState` draws
-        // it inside `if (!isHidden)`, the key and the objective aside.
-        assert!(!tab_list::visible(false, true, true, players.len(), true));
-        assert!(!tab_list::visible(false, true, false, 2, false));
-    }
-
-    #[test]
-    fn lan_tab_list_reads_current_guest_state() {
-        let me = TabPlayer::new(1, PLAYER_NAME);
-        let mut guests = vec![guest(2, "Alex"), guest(3, "Grumm")];
-        for guest in &mut guests {
-            guest.placed = true;
-        }
-        guests[0].game_mode = tab_list::SPECTATOR;
-        let players = local_tab_players(me.clone(), &guests);
-        assert_eq!(players.len(), 3);
-        assert_eq!(players[1].game_mode, tab_list::SPECTATOR);
-        assert_eq!(players[1].latency, 42);
-        assert_eq!(players[1].skin, tab_list::default_skin(2));
-        assert_eq!(players[2].name, "Grumm");
-
-        guests[0].game_mode = 1;
-        guests[0].latency.store(123, Ordering::Relaxed);
-        guests.remove(1);
-        let players = local_tab_players(me, &guests);
-        assert_eq!(players.len(), 2);
-        assert_eq!(players[1].game_mode, 1);
-        assert_eq!(players[1].latency, 123);
     }
 }
 

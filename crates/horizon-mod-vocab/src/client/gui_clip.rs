@@ -1,7 +1,7 @@
-//! What [`crate::DrawContext::push_clip`] and [`crate::DrawContext::pop_clip`] answer when they
+//! What `push_clip` and `pop_clip` answer when they
 //! change nothing.
 
-/// Why [`crate::DrawContext::push_clip`] or [`crate::DrawContext::pop_clip`] changed nothing.
+/// Why `push_clip` or `pop_clip` changed nothing.
 /// The clip stack is as it was before the call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

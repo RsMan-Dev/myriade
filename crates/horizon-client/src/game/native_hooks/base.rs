@@ -530,61 +530,6 @@ impl GameLevel<'_> {
 
 /// The hook points. Each does nothing in Horizon.
 impl Game<'_> {
-    /// Render-thread notification after a resource-pack reload has applied successfully.
-    /// Atlas, models, renderer and client caches already refer to the new resources.
-    /// Selection/F3+T and server-pack reloads share this point; initial startup does not
-    /// (`client_setup` is the once-only moment after the initial load).
-    pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("client reload notice on its owning thread");
-        self.fire_client_resources_reloaded();
-    }
-    /// The client made a new level for `dimension` (NeoForge's
-    /// `LevelEvent.Load` from the `ClientLevel` constructor): on joining a
-    /// server, single player's own included, and on changing dimension.
-    /// Its chunks come after. When the dimension changes, the old level's
-    /// `native_client_level_unload` follows this, as `Minecraft.setLevel`
-    /// tells it after the new level is made. Client-side, on the window; the
-    /// server's levels have `native_level_load`.
-    pub(in crate::game) fn native_client_level_load(&mut self, dimension: &str) {
-        self.fire_client_level_load(dimension);
-    }
-    /// The client dropped its level for `dimension` (`LevelEvent.Unload`
-    /// from `Minecraft.setLevel` and `disconnect`): replaced by another
-    /// dimension's, or on leaving the server. Once for each
-    /// `native_client_level_load`. Not told when the game itself quits.
-    /// Client-side.
-    pub(in crate::game) fn native_client_level_unload(&mut self, dimension: &str) {
-        self.fire_client_level_unload(dimension);
-    }
-    /// Before an eligible targeted block's selection outline is built.
-    /// Cancel skips only the default block highlight, after normal HUD and game-mode gates.
-    pub(in crate::game) fn native_block_highlight(
-        &self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        partial: f32,
-        canceled: &mut bool,
-    ) {
-        self.fire_block_highlight(pos, state, partial, canceled);
-    }
-    /// The world frame's local visual sources. Push requests; Horizon validates
-    /// and limits them before rendering. Called only while a world is visible.
-    pub(in crate::game) fn native_visuals(
-        &self,
-        rims: &mut Vec<BlockRim>,
-        lights: &mut Vec<ColoredLight>,
-    ) {
-        self.fire_visuals(rims, lights);
-    }
-    /// At most 32 pairs of already-loaded base and transparent overlay sprites.
-    /// Per-pixel alpha in the overlay marks full-bright material, without
-    /// illuminating the surrounding block or changing gameplay light.
-    pub(in crate::game) fn native_emissive(&self, layers: &mut Vec<(&'static str, &'static str)>) {
-        self.fire_emissive(layers);
-    }
     /// The world's phases, read-only; `error_text` carries the engine's
     /// own open-failure text, empty otherwise. Server-side. A server loop or final
     /// save failure fires `WorldCloseFailed` with the error text.
@@ -603,19 +548,6 @@ impl Game<'_> {
         call: mod_api::__private::DatapackSyncCall<'_>,
     ) {
         self.fire_datapack_sync(call);
-    }
-    /// The server's recipes of `recipe_types` arrived (NeoForge's
-    /// `RecipesReceivedEvent`): from now on the recipe helpers
-    /// (`native_recipes`, `recipes_of_type`) give the server's recipes
-    /// of those types in place of the window's own, so rebuild what you made
-    /// of them. It comes after a join, once the window has its player, and
-    /// after every `/reload`, on a server whose mods asked for them
-    /// (`native_datapack_sync`), single player included; with no types when
-    /// the server stopped sending them and the window is back on its own
-    /// recipes. A recipe the
-    /// window's own recipe book doesn't know has `book_id` -1. Client-side.
-    pub(in crate::game) fn native_recipes_received(&mut self, recipe_types: &[String]) {
-        self.fire_recipes_received(recipe_types);
     }
     /// The folders of JSON files native mods read from the data
     /// (`AddServerReloadListenersEvent`): push yours, each a listener id and a
@@ -708,37 +640,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
         self.fire_level_tick_post(level);
     }
-    /// Before one of vanilla's HUD layers is drawn (`RenderGuiLayerEvent.Pre`):
-    /// draw here to put something below the layer, or set `canceled` to hide
-    /// it. `layer` is the layer's id, in the order Horizon draws them:
-    /// `minecraft:crosshair`, `hotbar`, `effects`, `boss_overlay`,
-    /// `vehicle_health` (only riding a mount), `contextual_info_bar` (the
-    /// mount's jump bar, the locator bar or the experience bar, with the level
-    /// number), `player_health` (the health, armor, food and air rows, drawn in
-    /// one pass), `selected_item_name`, `sleep_overlay`, `overlay_message`
-    /// (the action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. A layer F1 hides fires nothing, and the chat
-    /// screen draws the focused chat itself, so `chat` is only the unfocused
-    /// lines. The camera overlays and the debug screen are not layers here:
-    /// they are not drawn in this pass. Draw with `native_fill`, `native_text`
-    /// and the sprite helpers; `draw.size()` is the GUI
-    /// size. A layer a mod registered (`native_register_gui_layers`) fires this
-    /// and `native_gui_layer_post` too, with its own id, in its place among
-    /// these.
-    pub(in crate::game) fn native_gui_layer_pre(
-        &self,
-        layer: &str,
-        draw: &mut HudBatch,
-        canceled: &mut bool,
-    ) {
-        self.fire_gui_layer_pre(layer, draw, canceled);
-    }
-    /// After one of vanilla's HUD layers (or after the layer a mod hid), with
-    /// the ids of `native_gui_layer_pre`: draw here to put something above
-    /// the layer (`RenderGuiLayerEvent.Post`).
-    pub(in crate::game) fn native_gui_layer_post(&self, layer: &str, draw: &mut HudBatch) {
-        self.fire_gui_layer_post(layer, draw);
-    }
     /// `Player.interactOn`: both logical sides answer before entity interaction.
     /// Only the client's own consuming answer stops its hand loop.
     pub(in crate::game) fn native_entity_interact(
@@ -783,126 +684,10 @@ impl Game<'_> {
     ) {
         self.fire_player_tick_post(call);
     }
-    pub(in crate::game) fn native_health_hud(
-        &mut self,
-        inputs: &mod_api::client::hud_layout::HealthInputs,
-        wi: i32,
-        hi: i32,
-        draws: &mut Option<Vec<GuiDraw>>,
-    ) {
-        self.fire_health_hud(inputs, wi, hi, draws);
-    }
-    /// Gameplay scrolling after accumulation, before hotbar/spectator handling.
-    /// `scroll` is scaled x/y, `accumulated` whole x/y steps, `buttons` left/middle/right,
-    /// and `cursor` the GUI position. Cancel skips gameplay scrolling.
-    pub(in crate::game) fn native_mouse_scrolling(
-        &mut self,
-        scroll: [f64; 2],
-        accumulated: [i32; 2],
-        buttons: [bool; 3],
-        cursor: [f32; 2],
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_mouse_scrolling(scroll, accumulated, buttons, cursor, modifiers, canceled);
-    }
     /// A command typed or clicked in chat, without its slash, before the
     /// server and Horizon's commands see it: set `ran` when the mod ran it.
     pub(in crate::game) fn native_command(&mut self, command: &str, ran: &mut bool) {
         self.fire_command(command, ran);
-    }
-    /// World field of view, after normal calculation and zoom and before projection/Nausea.
-    /// Called for world rendering and near-plane overlays; hand/HUD FOV uses its own path.
-    /// Only finite values in 1..=179 degrees replace the computed FOV.
-    pub(in crate::game) fn native_compute_fov(
-        &self,
-        partial: f32,
-        camera: [f64; 3],
-        degrees: &mut f32,
-    ) {
-        self.fire_compute_fov(partial, camera, degrees);
-    }
-    /// The zoom a native mod asks for, applied while playing (the spyglass's
-    /// own view wins): set `zoom` when it is none yet.
-    pub(in crate::game) fn native_zoom(&self, zoom: &mut Option<mod_api::Zoom>) {
-        self.fire_zoom(zoom);
-    }
-    /// Computed world fog RGB, after ordinary effects and before upload. Title panoramas skip it.
-    /// Only finite RGB components in 0..=1 are accepted; alpha and distances stay unchanged.
-    pub(in crate::game) fn native_compute_fog_color(
-        &self,
-        partial: f32,
-        camera: [f64; 3],
-        fog_type: mod_api::client::fog::FogType,
-        rgb: &mut [f32; 3],
-    ) {
-        self.fire_compute_fog_color(partial, camera, fog_type, rgb);
-    }
-    /// Camera submersion fog type (`Camera.getFluidInCamera`), checked before fog and camera
-    /// fluid effects are set up. Allows native mods (such as Freecam) to clear underwater,
-    /// lava or powder snow submersion by setting `fog_type` to `FogType::Atmospheric`.
-    pub(in crate::game) fn native_camera_submersion(
-        &self,
-        camera: [f64; 3],
-        fog_type: &mut mod_api::client::fog::FogType,
-    ) {
-        self.fire_camera_submersion(camera, fog_type);
-    }
-    /// Final world fog, after the computed color hook, ordinary calculations and Horizon's fog
-    /// option, before upload. Title panoramas skip it. Invalid color or distance values retain the
-    /// original whole fog.
-    pub(in crate::game) fn native_render_fog(
-        &self,
-        partial: f32,
-        camera: [f64; 3],
-        fog_type: mod_api::client::fog::FogType,
-        fog: &mut mod_api::client::fog::FogData,
-    ) {
-        self.fire_render_fog(partial, camera, fog_type, fog);
-    }
-    /// The camera shake native mods ask for in this frame, `partial` ticks
-    /// past the last tick (0 to 1): add your pitch, yaw and roll in degrees
-    /// and your offset in blocks, along the camera's right, up and back, to
-    /// `shake`, so several mods' shakes add up. Read while playing only;
-    /// Horizon scales the sum by Distortion Effects and bounds it
-    /// (`native_shake_matrix`).
-    pub(in crate::game) fn native_camera_shake(&self, partial: f32, shake: &mut Shake) {
-        self.fire_camera_shake(partial, shake);
-    }
-    /// Change the colours of `biome` (`minecraft:plains`) on this client: the
-    /// grass, foliage (leaves, vines), dry foliage (leaf litter) and water
-    /// tints, 0xRRGGBB, as its biome file and the colormaps set them. Asked
-    /// for every biome when a mod calls `refresh_biome_colors`, which
-    /// rebuilds the terrain with them; a season mod answers from its season
-    /// and calls that when the season turns. The dark forest's modifier
-    /// still applies to the grass set here; the swamp's noise colours
-    /// replace it.
-    pub(in crate::game) fn native_biome_colors(&self, biome: &str, colors: &mut BiomeColors) {
-        self.fire_biome_colors(biome, colors);
-    }
-    /// The tracks to play over (or instead of) the music on this client,
-    /// asked once a client tick: push a `MusicLayer` (a sound event, looped,
-    /// and its volume, 0 to 1) for each. A layer eases to a new volume over up
-    /// to two seconds, and one left out fades out and stops; layers that
-    /// first appear in the same tick start together, so list every stem of a
-    /// piece from the start, the silent ones at volume 0, and raise them (a
-    /// fuller arrangement as a village grows). Their sound events should be
-    /// `stream: true` in `sounds.json`.
-    pub(in crate::game) fn native_music_layers(&self, layers: &mut Vec<MusicLayer>) {
-        self.fire_music_layers(layers);
-    }
-    /// The values native mods hand their shader packs in this frame,
-    /// `partial` ticks past the last tick (0 to 1): a pack's WGSL reads
-    /// them as `frame.mods` (eight `vec4<f32>`). Write the slots your own
-    /// pack reads; a mod that bundles its pack as `native-<mod id>` is the
-    /// one that pack is for. Asked once a frame while a pack is on; a value
-    /// that isn't finite reads as 0 (`native_shader_params_now`).
-    pub(in crate::game) fn native_shader_params(&self, partial: f32, params: &mut [[f32; 4]; 8]) {
-        self.fire_shader_params(partial, params);
-    }
-    /// The minimap a native mod shows: set `minimap` when it is none yet.
-    pub(in crate::game) fn native_minimap(&self, minimap: &mut Option<mod_api::Minimap>) {
-        self.fire_minimap(minimap);
     }
     /// Register namespaced NBT component types before content loads.
     pub(in crate::game) fn native_component_types(
@@ -952,16 +737,6 @@ impl Game<'_> {
         forms: &mut Vec<mod_api::Answered<mod_api::StandaloneModelForm>>,
     ) {
         Self::fire_standalone_models(context, models, forms);
-    }
-    /// The player changed setting `key` of mod `mod_id` on its page in Options > Mods; the new
-    /// value is kept already.
-    pub(in crate::game) fn native_setting_changed(&mut self, mod_id: &str, key: &str) {
-        self.fire_setting_changed(mod_id, key);
-    }
-    /// The player did `event` on mod `mod_id`'s panel (`panel_items`):
-    /// act on it when it is yours.
-    pub(in crate::game) fn native_panel_event(&mut self, mod_id: &str, event: &PanelEvent) {
-        self.fire_panel_event(mod_id, event);
     }
     /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
     /// set `ticks` when it is yours. Asked for each of the block's states
@@ -1062,260 +837,12 @@ impl Game<'_> {
     ) {
         Self::fire_block_entity_update_tag(pos, entity, tag);
     }
-    /// Draw the mod block entity at `pos`, of block `block`
-    /// (`mymod:machine`), on this client: once a frame while it is in view
-    /// (vanilla's `BlockEntityRenderer.submit`: within its view distance, 64 blocks unless
-    /// `block_entity_view_distance` says otherwise, its chunk
-    /// faded in, and its bounds, `native_block_entity_render_bounding_box`,
-    /// in the frustum), when its `id` is yours. `state` is the block's state
-    /// (`blockEntity.getBlockState()`: read its `facing` with
-    /// `block_state_property`), `entity` holds what the server sent
-    /// (`native_block_entity_update_tag`). Add geometry with
-    /// `native_draw_quad`, `native_draw_cube`, `native_draw_block` and
-    /// `native_draw_item` under `draw`'s pose stack, which starts at the
-    /// block's lower north-west corner, in blocks; `draw` also has the partial
-    /// tick, the game time and the block's light.
-    pub(in crate::game) fn native_block_entity_submit(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: BlockStateId,
-        entity: &ModBlockEntity,
-        draw: &mut BlockEntityDraw,
-    ) {
-        self.fire_block_entity_submit(pos, block, state, entity, draw);
-    }
-    /// Where the mod block entity at `pos` draws, for culling
-    /// (NeoForge's `getRenderBoundingBox`): `bounds` is min x, y, z then max
-    /// x, y, z, in blocks from the block's lower north-west corner. It starts
-    /// as the block with a block of margin around it; widen it when your
-    /// `native_block_entity_submit` draws further (a tall shaft, a beam), or
-    /// set an infinite value for one never culled. Asked once a frame for each
-    /// within its view distance (`block_entity_view_distance`) whose chunk is drawn.
-    pub(in crate::game) fn native_block_entity_render_bounding_box(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: BlockStateId,
-        entity: &ModBlockEntity,
-        bounds: &mut [f32; 6],
-    ) {
-        self.fire_block_entity_render_bounding_box(pos, block, state, entity, bounds);
-    }
-    /// Icons a mod puts on map `map` each time it is drawn: held, in an
-    /// item frame or on the cartography table's screen (a map's pixels are
-    /// its own; nothing is saved in the map). Push `mod_api::MapDecoration`s
-    /// (an atlas sprite, a position in half map pixels, a rotation, and
-    /// whether it shows in a frame and on the screen like vanilla's markers
-    /// do); they are drawn after the vanilla ones with the same pose, and a
-    /// sprite the atlas lacks is left out. `map.center`, `map.scale` and
-    /// `map.dimension` say which blocks the map shows, and
-    /// `mod_api::MapDecoration::x` has the formula. Vanilla's decorations are
-    /// not passed in. Asked every frame a map is drawn, so keep it cheap.
-    /// The client half of `MapDecorationType` and `addDecoration`: a type
-    /// registered on the server and saved in the map's data is not here.
-    pub(in crate::game) fn native_map_decorations(
-        &self,
-        map: &mod_api::MapInfo<'_>,
-        decorations: &mut Vec<mod_api::MapDecoration>,
-    ) {
-        self.fire_map_decorations(map, decorations);
-    }
     /// A menu opens on this client for block `block`, a mod's: set `screen`
     /// when the block is yours, to lay its screen out (`native_screen_draw`
     /// draws it). The server asks it too: a slot it hides is not in the menu
     /// there either, so shift-clicks never fill it.
     pub(in crate::game) fn native_screen(&self, block: &str, screen: &mut Option<mod_api::Screen>) {
         self.fire_screen(block, screen);
-    }
-    /// Draw block `block`'s screen at `origin` (its top left, GUI pixels),
-    /// over a plain panel with its slots' frames and under the items and
-    /// labels, from the menu's data slots `data` (the block entity's `data`
-    /// on the server): data slots are 16-bit on the wire as in vanilla (a
-    /// bigger value wraps), and `data` is empty until the server's first
-    /// values arrive, so read it with `get`. Draw with `native_sprite`, `native_fill` and
-    /// `native_text`.
-    pub(in crate::game) fn native_screen_draw(
-        &self,
-        block: &str,
-        data: &[i32],
-        draw: &mut HudBatch,
-        origin: [f32; 2],
-    ) {
-        self.fire_screen_draw(block, data, draw, origin);
-    }
-    /// The open screen has drawn itself and its tooltips (`Screen.extractRenderStateWithTooltipAndSubtitles`,
-    /// the point of `ScreenEvent.Render.Post`): draw over it with
-    /// `native_fill`, `native_sprite` and `native_text`, `screen.rect` being
-    /// its container panel (or the whole window) and `screen.id` the screen
-    /// it is. Once a frame on the window, never while playing with no screen;
-    /// `&self`, so it reads and draws only. The Win and Options screens call
-    /// it on their own path, after their drawing.
-    ///
-    /// It does not fire for the screens drawn over gameplay after it (a
-    /// server dialog, the server pack, link and code-of-conduct prompts, a
-    /// book, a sign editor): those keep `Screen::Playing`, which it skips (the
-    /// server pack prompt hides an open screen too, and that screen does not
-    /// fire under it), and draw over what it drew, while vanilla's
-    /// `ScreenEvent.Render.Post` fires for them. The title's own screens
-    /// (`title`, `world_select`, `world_create`, `multiplayer`…) fire it too,
-    /// their `screen.id` from the title state machine and the whole window
-    /// their `rect`, and no dialog or prompt over them.
-    pub(in crate::game) fn native_screen_render_post(
-        &self,
-        draw: &mut HudBatch,
-        screen: &ScreenView<'_>,
-    ) {
-        self.fire_screen_render_post(draw, screen);
-    }
-    /// Before a real held-button movement reaches screen drag handlers.
-    /// `screen.mouse` is the current GUI position; `delta` is its GUI-space movement.
-    /// Cancel keeps the new cursor position but skips all screen drag handlers.
-    pub(in crate::game) fn native_screen_mouse_dragged_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        button: i32,
-        delta: [f32; 2],
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_mouse_dragged_pre(screen, button, delta, modifiers, canceled);
-    }
-    /// The wheel turned over the open screen (`ScreenEvent.MouseScrolled.Pre`,
-    /// vanilla's `Screen.mouseScrolled`): `screen` is the screen it is,
-    /// `screen.mouse` where the pointer is (so there is no position of its
-    /// own), `scroll` the wheel's movement in x and y as the game's own scroll
-    /// handler scales it (a line times the wheel sensitivity: with Discrete
-    /// Scrolling on, a notch is ±1, its sign only; a touchpad's pixels are
-    /// divided by 30), and
-    /// `modifiers` GLFW's bits (shift 1, control 2, alt 4, super 8). Set
-    /// `canceled` and nothing the screen would scroll moves: not the bundle
-    /// under the pointer, nor a list, slider, scrollbar or map. Nothing else
-    /// reads the wheel while a screen of the game's is open, so no hotbar slot
-    /// changes either.
-    ///
-    /// It fires before the screen scrolls anything, for the window's wheel
-    /// (horizon-ctl's `scroll-at` sends it through the window too), and
-    /// while a screen of the game's or the title's is open (Options and the
-    /// pack list opened from the title screen count, with no player and no
-    /// `menu`; the title's own). It
-    /// does not fire on the connect and loading
-    /// screens, nor for a server dialog, the server pack, link and
-    /// code-of-conduct prompts, a book or a sign editor drawn over gameplay,
-    /// nor while a world loads or saves: the scroll there stays the game's
-    /// own. A wheel a gamepad or the keyboard's focus sends is not the mouse
-    /// and fires nothing.
-    pub(in crate::game) fn native_screen_mouse_scrolled_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        scroll: [f64; 2],
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_mouse_scrolled_pre(screen, scroll, modifiers, canceled);
-    }
-    /// A key went down over the open screen (`ScreenEvent.KeyPressed.Pre`,
-    /// vanilla's `Screen.keyPressed`): `screen` is the screen it is, `key`
-    /// vanilla's name for the key (`key.keyboard.e`) — a key with no name
-    /// fires nothing — `repeat` whether it is
-    /// the keyboard's auto-repeat of a held press (Horizon's extra; NeoForge
-    /// folds repeats into the event), and `modifiers` GLFW's bits (shift 1,
-    /// control 2, alt 4, super 8). Set `canceled` and the press goes no
-    /// further: no focus move, no Escape-close, no inventory or hotbar key, no
-    /// typing by the key itself.
-    ///
-    /// It fires for the window's presses and their repeats, and for the
-    /// control socket's `key` (a release fires nothing), after the window's
-    /// own shortcuts have run — the fullscreen and screenshot keys, the debug
-    /// keys and the narrator — and while a screen of the game's or the title's
-    /// is open (Options and the pack list opened from the title screen count,
-    /// with no player and no `menu`; the title's own). It does
-    /// not fire on the connect and loading screens, nor for a server dialog, the server pack,
-    /// link and code-of-conduct prompts, a book or a sign editor drawn over
-    /// gameplay, nor while a world loads or saves: the key there stays the
-    /// game's own. A cancelled press's release still runs, and its characters
-    /// are GLFW's separate char callback and still come; see
-    /// `native_screen_char_typed_pre`.
-    pub(in crate::game) fn native_screen_key_pressed_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        key: &str,
-        repeat: bool,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_key_pressed_pre(screen, key, repeat, modifiers, canceled);
-    }
-    /// A character was typed at the open screen
-    /// (`ScreenEvent.CharacterTyped.Pre`, vanilla's `Screen.charTyped`):
-    /// `screen` is the screen it is, `c` the character, `modifiers` GLFW's
-    /// bits (shift 1, control 2, alt 4, super 8), and `field` a copy of the
-    /// focused text box. Set `canceled` and that one character never reaches
-    /// a text box.
-    ///
-    /// `field` is `None` with no box focused, and for the boxes that keep
-    /// their own validators: Options' and World Options' fields, the game
-    /// rules' and the block editor's. `cursor` and `highlight` count Unicode
-    /// scalar characters, and a character sees the box as the one before it
-    /// left it. Change `value`, `cursor` or `highlight` and the box takes the
-    /// change, cancelled or not, so cancel to replace the character yourself.
-    /// New text goes through the box's own filter and length limit, and what
-    /// follows the box (chat suggestions, a search's results, the anvil's
-    /// name) follows it. `max_length`, `multiline` and whether `field` is
-    /// `None` stay the box's: a change to them does nothing.
-    ///
-    /// It fires once per printable character of a key press's text and once
-    /// per character of the input method's committed text, never for a control
-    /// character (Enter, Backspace, Tab, Delete, Escape, a Control letter):
-    /// those are keys, and the game reads them as keys, not as text. A key's
-    /// characters fire after the key has acted, as GLFW's char callback comes
-    /// after its key callback (`KeyboardHandler.charTyped`): `screen` is the
-    /// screen open then, so a key that closes the screen (the inventory key)
-    /// leaves none to hear its character, where vanilla's closed screen hears
-    /// nothing, and one that moves the focus types into the box it moved to.
-    /// They fire even when `native_screen_key_pressed_pre` cancelled the press
-    /// that carried the text, as NeoForge delivers `CharacterTyped.Pre` for a
-    /// cancelled `KeyPressed.Pre`: the characters left reach the text box
-    /// without the key's own effects. Cancelling one character drops only that
-    /// one. The control socket's `type` fires it too, but not for its `\b`
-    /// backspace. Same screens as the key press, and it fires with no text box
-    /// focused (there is nothing to take the character then).
-    pub(in crate::game) fn native_screen_char_typed_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        c: char,
-        modifiers: u32,
-        field: &mut Option<mod_api::client::widgets::TextEdit>,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_char_typed_pre(screen, c, modifiers, field, canceled);
-    }
-    /// A left or right (`right`) press at `at` (GUI pixels from the screen's
-    /// top left, so outside it too) on block `block`'s screen, a mod's, over
-    /// no slot: set `button` to a menu button id when it is on one of yours.
-    /// Horizon sends it to the server (`ContainerButtonClick`,
-    /// `native_menu_button` there) and the press goes no further.
-    pub(in crate::game) fn native_screen_click(
-        &self,
-        block: &str,
-        data: &[i32],
-        at: [f32; 2],
-        right: bool,
-        button: &mut Option<i32>,
-    ) {
-        self.fire_screen_click(block, data, at, right, button);
-    }
-    /// The tooltip at `at` (as in `native_screen_click`) on block `block`'s
-    /// screen, a mod's, over no item: push its lines when it is over
-    /// something of yours. Legacy colour codes (§) work.
-    pub(in crate::game) fn native_screen_tooltip(
-        &self,
-        block: &str,
-        data: &[i32],
-        at: [f32; 2],
-        lines: &mut Vec<String>,
-    ) {
-        self.fire_screen_tooltip(block, data, at, lines);
     }
     /// A player pressed a mod container's button (`clickMenuButton`), on
     /// the server. The block entity is out of the world during the call;
@@ -2210,6 +1737,20 @@ impl Game<'_> {
     ) {
         self.fire_player_lectern_page_change(player, name, pos, page);
     }
+    /// A server player changed an item frame after its contents or rotation changed. `action` is
+    /// `put`, `rotate`, `remove_item` or `break`; `item` is empty when no item remains, and `rotation`
+    /// is the resulting step. Server-side.
+    pub(in crate::game) fn native_player_item_frame_change(
+        &mut self,
+        player: u128,
+        name: &str,
+        entity_id: u32,
+        action: &str,
+        item: &str,
+        rotation: u8,
+    ) {
+        self.fire_player_item_frame_change(player, name, entity_id, action, item, rotation);
+    }
     /// Mending repaired a server player's item with experience from an orb. `repair` is durability
     /// restored and `experience` is the orb's value. Server-side.
     pub(in crate::game) fn native_player_item_mend(
@@ -3069,61 +2610,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_menu_closed(&mut self, uuid: u128, window: i32) {
         self.fire_menu_closed(uuid, window);
     }
-    /// `Item.appendHoverText`: an item's own lines in its tooltip, after its
-    /// name and before its components' (enchantments, lore, attributes). Add
-    /// lines to `lines`, which arrives empty, each with a colour as `rgba` packs
-    /// it (`u32::MAX` keeps the text's own); `Text::legacy` reads `§` codes.
-    /// The stack has its components (`stack.data()`). Asked each frame the
-    /// tooltip shows, never for one the stack hides or a crossbow's loaded
-    /// projectile.
-    pub(in crate::game) fn native_tooltip(&self, stack: &ItemStack, lines: &mut Vec<(Text, u32)>) {
-        self.fire_tooltip(stack, lines);
-    }
-    /// Client-side image component for this stack's tooltip. Answer its width/height
-    /// in GUI pixels; finite positive dimensions reserve space after text and any
-    /// vanilla bundle component. None keeps the vanilla tooltip unchanged.
-    pub(in crate::game) fn native_tooltip_component(
-        &self,
-        stack: &ItemStack,
-        size: &mut Option<[f32; 2]>,
-    ) {
-        self.fire_tooltip_component(stack, size);
-    }
-    /// Render the measured component at origin, inside the tooltip background.
-    /// Stack is the component's data. Use native_sprite/native_fill/native_text;
-    /// size is the measurement returned by native_tooltip_component this frame.
-    pub(in crate::game) fn native_tooltip_component_draw(
-        &self,
-        stack: &ItemStack,
-        draw: &mut HudBatch,
-        origin: [f32; 2],
-        size: [f32; 2],
-    ) {
-        self.fire_tooltip_component_draw(stack, draw, origin, size);
-    }
 
-    /// The small bar `GuiGraphicsExtractor.itemDecorations` draws under an
-    /// item, wherever the game shows one: `bar` arrives holding vanilla's value
-    /// (the damage bar, or a bundle's fullness already applied) and may be
-    /// replaced (width `0..=13`, colour `rgb`) or set to `None` to hide it.
-    /// Asked each frame a stack is drawn. Client-side.
-    pub(in crate::game) fn native_item_bar(&self, stack: &ItemStack, bar: &mut Option<(i32, u32)>) {
-        self.fire_item_bar(stack, bar);
-    }
-    /// Append an item's custom decorations after its default bar, cooldown and count.
-    /// Coordinates are the icon's top-left in GUI units, as the batch takes them;
-    /// no item translation is active.
-    /// Runs wherever the shared item-decoration path is used (hotbar, menus, tooltips,
-    /// and the other screens that draw item icons: advancements, beacon, stats, trading).
-    pub(in crate::game) fn native_item_decorations(
-        &self,
-        stack: &ItemStack,
-        x: f32,
-        y: f32,
-        draw: &mut HudBatch,
-    ) {
-        self.fire_item_decorations(stack, x, y, draw);
-    }
     /// `ItemStack.useOn`: both logical sides answer after the block passed.
     /// Client reads and local effects cannot perform authoritative writes.
     pub(in crate::game) fn native_use_on(&mut self, call: mod_api::__private::UseOnCall<'_>) {
@@ -3170,17 +2657,6 @@ impl Game<'_> {
     /// it is asked so often: answer from the stack alone.
     pub(in crate::game) fn native_use_duration(&self, stack: &ItemStack, duration: &mut i32) {
         self.fire_use_duration(stack, duration);
-    }
-    /// `Item.getUseAnimation` of `stack` in use, with the item's vanilla
-    /// answer as the starting animation. Asked on the client each first-person
-    /// frame and each local or remote player model tick. A spear override is
-    /// refused if the item has no kinetic data.
-    pub(in crate::game) fn native_use_animation(
-        &self,
-        stack: &ItemStack,
-        animation: &mut UseAnimation,
-    ) {
-        self.fire_use_animation(stack, animation);
     }
     /// `Player.canEat` for held `stack` (None for an empty hand) for food and cake.
     /// Cake uses `can_always_eat = false`; `vanilla_can_eat` is vanilla's answer (creative,
@@ -4288,82 +3764,6 @@ impl Game<'_> {
             log.push((pos[0], pos[1], pos[2]));
         }
     }
-    /// The GUI's size in GUI pixels, width then height.
-    pub(in crate::game) fn native_size(&self, draw: &HudBatch) -> [f32; 2] {
-        [draw.width, draw.height]
-    }
-    /// Item `item`'s icon (`mymod:machine`) with its top left at `at`,
-    /// `size` GUI pixels square (16 in a slot); false for an unknown item.
-    pub(in crate::game) fn native_item(
-        &self,
-        batch: &mut HudBatch,
-        item: &str,
-        at: [f32; 2],
-        size: f32,
-    ) -> bool {
-        if self.res.items().get(item).is_none() {
-            return false;
-        }
-        let start = batch.vertices.len();
-        self.draw_item_model(batch, &ItemStack::new(item, 1), at[0], at[1]);
-        batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
-        true
-    }
-    /// Draw a stack and its slot decorations, except the count, at `at`,
-    /// `size` GUI pixels square. False when nothing was drawn: an unknown item
-    /// or an empty stack (air, or a count of 0, as `ItemStack.isEmpty`).
-    pub(in crate::game) fn native_item_stack(
-        &self,
-        batch: &mut HudBatch,
-        stack: &ItemStack,
-        at: [f32; 2],
-        size: f32,
-    ) -> bool {
-        // GuiGraphicsExtractor.item and itemDecorations draw nothing for an
-        // empty stack.
-        if &*stack.item == "minecraft:air" || stack.count == 0 {
-            return false;
-        }
-        if self.res.items().get(&stack.item).is_none() {
-            return false;
-        }
-        let start = batch.vertices.len();
-        self.draw_item_model(batch, stack, at[0], at[1]);
-        self.draw_item_decorations(batch, stack, at[0], at[1], Some(String::new()));
-        batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
-        true
-    }
-    /// Item `item`'s icon drawn with model `model` (`minecraft:paper` as
-    /// `mymod:wheel_icon`, an `item_model` of a content mod's), as `native_item`
-    /// draws one; false for an unknown item.
-    pub(in crate::game) fn native_item_model(
-        &self,
-        batch: &mut HudBatch,
-        item: &str,
-        model: &str,
-        at: [f32; 2],
-        size: f32,
-    ) -> bool {
-        if self.res.items().get(item).is_none() {
-            return false;
-        }
-        let mut stack = ItemStack::new(item, 1);
-        let mut data = horizon_client::item_data::StackData::default();
-        data.set_other(
-            "minecraft:item_model",
-            Some(horizon_core::nbt::Tag::String(model.into())),
-        );
-        stack.extra = Some(Box::new(data));
-        let start = batch.vertices.len();
-        self.draw_item_model(batch, &stack, at[0], at[1]);
-        batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
-        true
-    }
-    /// The open menu's title (the block's name, or the one it was given),
-    /// as plain text.
-    pub(in crate::game) fn screen_title(&self) -> Option<String> {
-        self.remote_menu_title().map(|t| t.plain())
-    }
     /// The clock of the world this window shows, for client mods: its game
     /// time and time of day as the server last sent them
     /// (`ClientboundSetTimePacket`), advanced each tick between packets; none
@@ -4580,13 +3980,11 @@ mod held_break_slot_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());

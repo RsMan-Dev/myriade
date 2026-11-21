@@ -104,7 +104,7 @@ macro_rules! server_ctx {
             spawn_angle: $s.level.world_spawn_angle,
             spawn_dimension: $s.level.spawn_dimension(),
             sea_level: $s.end.locator().map_or(63, |terrain| terrain.sea_level()),
-            difficulty: i32::from($s.ui.difficulty),
+            difficulty: i32::from($s.session.difficulty),
             difficulty_locked: $s.level.difficulty_locked,
             clock_rate,
             tick_rate: $s.clock.rate(),
@@ -696,7 +696,7 @@ impl Game<'_> {
         } else {
             horizon_client::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
         };
-        let transition = self.ui.rules.int_at(rule).max(0);
+        let transition = self.session.rules.int_at(rule).max(0);
         let Some(entry) = self
             .portals
             .player
@@ -1482,7 +1482,7 @@ impl Game<'_> {
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: self.level.spawn_dimension(),
-            difficulty: i32::from(self.ui.difficulty),
+            difficulty: i32::from(self.session.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
             tick_rate: self.clock.rate(),
@@ -1622,13 +1622,11 @@ mod credits_respawn_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(

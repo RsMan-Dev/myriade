@@ -4,7 +4,6 @@
 //! or wasm (`horizon-mod-wasm`, loaded at startup); any other executable file is refused.
 use super::{Game, execution_role::ExecutionRole, registration_capability_coverage as coverage};
 mod menu_books;
-mod standalone;
 use horizon_client::{
     lang,
     mod_list::{self, Installed},
@@ -16,7 +15,6 @@ use horizon_world::{
 };
 use mod_api::__private::game::*;
 use mod_api::RegistrationContext;
-use standalone::collect_standalone_models;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -357,43 +355,6 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
         std::borrow::Cow::Owned(collect())
     }
 }
-/// The native mods' standalone models (`native_standalone_models`), set once
-/// before the resources first load.
-pub(super) fn register_standalone_models(role: ExecutionRole) {
-    if let Some(names) = collect_standalone_models(role) {
-        horizon_client::models::register_standalone(names);
-    }
-    register_fluid_models(role);
-}
-
-/// Recollect before each resource bake, retaining registration-phase attribution.
-pub(super) fn register_fluid_models(role: ExecutionRole) {
-    if let Some(models) = collect_fluid_models(role) {
-        horizon_client::fluid_models::register(models);
-    }
-}
-
-fn collect_fluid_models(
-    role: ExecutionRole,
-) -> Option<Vec<horizon_mod_package::content::FluidModel>> {
-    if !role.is_client() {
-        return None;
-    }
-    let mut models = Vec::new();
-    Game::native_register_fluid_models(&RegistrationContext::new(), &mut models);
-    Some(
-        models
-            .into_iter()
-            .map(|model| horizon_mod_package::content::FluidModel {
-                fluid: model.fluid,
-                still: model.still,
-                flowing: model.flowing,
-                overlay: model.overlay,
-            })
-            .collect(),
-    )
-}
-
 pub(super) fn collect_key_mappings<'declared>(
     role: ExecutionRole,
     declared: &'declared [(&'static str, mod_api::KeyRegistration)],
@@ -401,30 +362,6 @@ pub(super) fn collect_key_mappings<'declared>(
     if role.is_client() { declared } else { &[] }
 }
 
-/// The native mods' entity model layers (`native_register_layer_definitions`), kept
-/// once at start for `bake_layer`, then their skull types (`native_create_skull_models`), baked
-/// once from those layers (or vanilla's under `vanilla_root`), so `minecraft:head` item models may
-/// name their kinds.
-pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
-    if !role.is_client() {
-        return;
-    }
-    let mut layers = Vec::new();
-    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-    horizon_client::mobs::model_layers::register(layers);
-    let mut models = Vec::new();
-    Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
-    horizon_client::skull_models::register(models, vanilla_root);
-}
-/// The native mods' F3 debug entries (`native_register_debug_entries`), kept once at start.
-pub(super) fn register_debug_entries(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut entries = Vec::new();
-    Game::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
-    horizon_client::debug_entries::register(entries);
-}
 /// The native mods' map decoration types (`native_map_decoration_types`), frozen once at start on
 /// every side.
 pub(super) fn register_map_decoration_types() {
@@ -478,17 +415,9 @@ pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
 }
 /// The types native mods register for resource definitions, kept once at start, before
 /// resources load: item tint sources (`native_register_item_tint_sources`), so `tints` entries on
-/// them read the mod's colour; atlas sprite sources (`native_register_sprite_sources`), so atlas
-/// definitions' entries on them list the mod's sprites; model loaders
-/// (`native_register_model_loaders`), so models naming one get the mod's quads; item model node
+/// them read the mod's colour; item model node
 /// types (`native_register_item_models`), so item definitions' nodes of them draw what the mod
-/// answers; and animation targets and interpolations (`native_register_json_animation_types`), so
-/// animation files may name them.
-/// Block-state
-/// definition types (`native_register_block_state_models`), so blockstate files naming one get
-/// the models the mod picks; and special item model renderers
-/// (`native_register_special_model_renderer`), so special models of their types draw what the
-/// mod answers.
+/// answers; and special item model renderers (`native_register_special_model_renderer`).
 pub(super) fn register_resource_sources(role: ExecutionRole) {
     if !role.is_client() {
         return;
@@ -496,21 +425,9 @@ pub(super) fn register_resource_sources(role: ExecutionRole) {
     let mut sources = Vec::new();
     Game::native_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
     horizon_assets::item_model::register_tint_sources(sources);
-    let mut sources = Vec::new();
-    Game::native_register_sprite_sources(&RegistrationContext::new(), &mut sources);
-    horizon_client_render::mod_sprite_sources::register(sources);
-    let mut loaders = Vec::new();
-    Game::native_register_model_loaders(&RegistrationContext::new(), &mut loaders);
-    horizon_client_render::mod_model_loaders::register(loaders);
     let mut models = Vec::new();
     Game::native_register_item_models(&RegistrationContext::new(), &mut models);
     horizon_assets::item_model::register_item_models(models);
-    let mut types = Vec::new();
-    Game::native_register_json_animation_types(&RegistrationContext::new(), &mut types);
-    horizon_client_render::mod_animations::register(types);
-    let mut definitions = Vec::new();
-    Game::native_register_block_state_models(&RegistrationContext::new(), &mut definitions);
-    horizon_client_render::mod_block_state_models::register(definitions);
     register_special_model_renderers();
 }
 /// The native mods' special item model renderers (`native_register_special_model_renderer`),
@@ -528,7 +445,7 @@ fn register_special_model_renderers() {
             );
         }
     }
-    let (mut renderers, replaced) = registry.into_renderers();
+    let (renderers, replaced) = registry.into_renderers();
     for replaced in replaced {
         let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
         log::warn!(
@@ -539,128 +456,7 @@ fn register_special_model_renderers() {
         );
     }
     // In slot order: the types' models resolve to these slots as they decode.
-    let kept = horizon_assets::item_model::register_special_model_types(
-        renderers.keys().cloned().collect(),
-    );
-    super::native_special_renderers::register(
-        kept.into_iter()
-            .filter_map(|kind| renderers.remove(&kind).map(|renderer| (kind, renderer)))
-            .collect(),
-    );
-}
-/// The client presentation registrations, kept once at start, before resources load: the
-/// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
-/// renderers.
-pub(super) fn register_client_presentations(role: ExecutionRole) {
-    register_preset_editors(role);
-    register_dimension_transition_screens(role);
-    register_entity_spectator_shaders(role);
-    register_render_pipelines(role);
-    register_entity_renderers(role);
-}
-
-/// Resolve client dimension-transition registrations once, before the first level opens.
-fn register_dimension_transition_screens(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut screens = Vec::new();
-    Game::native_register_dimension_transition_screen(&RegistrationContext::new(), &mut screens);
-    horizon_client_render::dimension_transition::register(screens);
-}
-
-/// Resolve client spectator post-effect registrations once, before the first level opens.
-pub(super) fn register_entity_spectator_shaders(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut shaders = Vec::new();
-    Game::native_register_entity_spectator_shaders(&RegistrationContext::new(), &mut shaders);
-    horizon_client_render::spectator_shaders::register(shaders);
-}
-
-pub(super) fn register_preset_editors(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut editors = Vec::new();
-    Game::native_register_preset_editors(&RegistrationContext::new(), &mut editors);
-    horizon_client::title::preset_editors::register(editors);
-}
-
-/// Keep the mods' render pipeline registrations once at startup, before resources load: every
-/// load builds them from its own shader files.
-pub(super) fn register_render_pipelines(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut pipelines = Vec::new();
-    Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
-    horizon_client_render::mod_pipelines::register(pipelines);
-}
-
-/// The native mods' meshing registrations, kept once at start, before resources load: colour
-/// resolvers, then the block tint sources that read them, then section geometry renderers.
-pub(super) fn register_meshing(role: ExecutionRole) {
-    register_color_resolvers(role);
-    register_block_tint_sources(role);
-    add_section_geometry(role);
-}
-
-/// The native mods' colour resolvers (`native_register_color_resolvers`), kept once at start,
-/// before the block tint sources that read them and before resources load.
-fn register_color_resolvers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::ColorResolverRegistry::default();
-    Game::native_register_color_resolvers(&RegistrationContext::new(), &mut registry);
-    horizon_client::mesher::register_color_resolvers(registry.into_resolvers());
-}
-
-/// The native mods' block tint sources (`native_register_block_tint_sources`), kept once at
-/// start, before resources load; every resource load applies them to its mesh tables.
-fn register_block_tint_sources(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::BlockTintRegistry::default();
-    Game::native_register_block_tint_sources(&RegistrationContext::new(), &mut registry);
-    horizon_client::mesher::register_block_tint_sources(registry.into_layers());
-}
-/// The native mods' section geometry renderers (`native_add_section_geometry`), kept once at
-/// start, before resources load; every mesh of a section asks them to add their quads.
-fn add_section_geometry(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::SectionGeometryRegistry::default();
-    Game::native_add_section_geometry(&RegistrationContext::new(), &mut registry);
-    horizon_client::mesher::register_section_geometry(registry.into_renderers());
-}
-/// The native mods' entity renderers (`native_register_entity_renderers`), kept once at start,
-/// before resources load; every resource load resolves each type's renderer.
-pub(super) fn register_entity_renderers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::EntityRendererRegistry::default();
-    Game::native_register_entity_renderers(&RegistrationContext::new(), &mut registry);
-    super::native_entity_renderers::register(registry.into_renderers());
-}
-/// The native mods' particle providers (`native_register_particle_providers`) and render groups
-/// (`native_register_particle_groups`), kept once at start, before resources load; every particle
-/// sprite-set load resolves each type's provider and group.
-pub(super) fn register_particles(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut registry = mod_api::ParticleProviderRegistry::default();
-    Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
-    horizon_client::particles::register_particle_providers(registry.into_providers());
-    let mut groups = Vec::new();
-    Game::native_register_particle_groups(&RegistrationContext::new(), &mut groups);
-    horizon_client::particles::register_particle_groups(groups);
+    horizon_assets::item_model::register_special_model_types(renderers.keys().cloned().collect());
 }
 
 /// `root` with the content mods that are on layered over it
@@ -1014,14 +810,6 @@ pub(super) fn content_root(
             overlay.root.prepared().display()
         );
     }
-    // Only the mods' own HUD textures may lose resolution to fit the atlas.
-    horizon_client::hud::set_mod_namespaces(
-        overlay
-            .mods
-            .iter()
-            .flat_map(|m| m.content.namespaces.iter().cloned())
-            .collect(),
-    );
     super::code_block_owners::stage(
         overlay.root.prepared(),
         overlay
@@ -1659,21 +1447,17 @@ impl Game<'_> {
         let content = &self.mods.content_ids;
         let mut next = wanted.clone();
 
-        let mut waiting = Vec::new();
         for id in applied.symmetric_difference(&wanted) {
             if !content.contains(id) || self.mods.live_ids.contains(id) {
                 continue;
             }
             log::info!("Horizon: mod {id} needs a restart to switch");
-            waiting.push(id.clone());
             if applied.contains(id) {
                 next.insert(id.clone());
             } else {
                 next.remove(id);
             }
         }
-        self.ui.options.mods_note = (!waiting.is_empty())
-            .then(|| lang::tr("horizon.mods.switch.restart", &[&waiting.join(", ")]));
         let changed = applied
             .symmetric_difference(&next)
             .any(|id| content.contains(id));
@@ -1688,7 +1472,7 @@ impl Game<'_> {
         );
         self.mods.applied = Some(next);
         self.mods.live = Some(std::time::Instant::now());
-        self.reload_packs();
+        self.mods_reloaded(true);
     }
     /// A live switch's resources applied: the server reloads its data packs
     /// from the new root, as `/reload` does (recipes, tags, loot tables,

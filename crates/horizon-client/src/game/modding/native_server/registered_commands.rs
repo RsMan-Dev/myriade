@@ -70,7 +70,7 @@ impl Game<'_> {
             arguments,
             usages,
         });
-        self.ui.dispatcher.0 = Arc::new(vanilla);
+        self.session.dispatcher.0 = Arc::new(vanilla);
         self.restore_native_commands();
     }
 
@@ -120,7 +120,7 @@ impl Game<'_> {
     pub(in crate::game) fn restore_native_commands(&mut self) {
         if let Some(commands) = &self.native_commands.registered {
             register_dispatcher(
-                Arc::make_mut(&mut self.ui.dispatcher.0),
+                Arc::make_mut(&mut self.session.dispatcher.0),
                 &commands.tree,
                 "native_mod_command",
                 &commands.arguments,

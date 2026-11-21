@@ -1025,15 +1025,3 @@ pub trait EntitiesBackendMut {
         pitch: f32,
     ) -> bool;
 }
-/// The handles' client writes of the `entities` area, implemented by the game and reached through [`ClientBackendMut`].
-// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[horizon_mod_api_macros::host_area]
-pub trait EntitiesClientBackendMut {
-    /// Side: client.
-    /// Spawn sprint particles when called explicitly by a client mod. A
-    /// valid entity returns true even if the block beneath it is invisible.
-    /// Returns false for stale, untracked, server-side, or unsupported entities.
-    #[access(WorldOnly)]
-    fn entity_sprint_particles(&mut self, entity: EntityRef) -> bool;
-}

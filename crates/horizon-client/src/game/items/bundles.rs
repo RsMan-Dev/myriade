@@ -3,15 +3,11 @@
 //! (`BundleContents.Mutable.removeOne`). Moving off the bundle clears the
 //! selection. On a server the selection is sent to it (`ServerboundSelectBundleItemPacket`).
 use super::Game;
-use horizon_client::{
-    bundle::{Contents, toggle_selected},
-    mouse::ScrollWheelHandler,
-};
+use horizon_client::bundle::{Contents, toggle_selected};
 use horizon_protocol::packets::play::{self, Serverbound as S};
 
 #[derive(Default)]
 pub(super) struct BundleMouse {
-    wheel: ScrollWheelHandler,
     /// The slot under the cursor at the last tick (`AbstractContainerScreen.hoveredSlot`).
     hovered: Option<usize>,
 }
@@ -21,11 +17,7 @@ impl Game<'_> {
     /// menu (#4436: a crafting table's, an enchanting table's...), and a container's own
     /// slots. A server only knows those in chest-like menus.
     fn bundle_slot(&mut self, slot: usize) -> bool {
-        slot < 36
-            || slot == 504
-            || ((300..500).contains(&slot)
-                && (true || self.remote_storage_open())
-                && self.slots().contains(&slot))
+        slot < 36 || slot == 504 || ((300..500).contains(&slot) && self.slots().contains(&slot))
     }
 
 

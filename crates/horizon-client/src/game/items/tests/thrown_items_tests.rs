@@ -161,13 +161,11 @@ fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> R {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     let (pipe, _server) = horizon_protocol::connection::Pipe::pair();

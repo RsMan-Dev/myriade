@@ -1,6 +1,6 @@
 //! `/random` (RandomCommand) and `/teammsg` (TeamMsgCommand).
 use super::{Arg, Context, Game, R, Target, err};
-use crate::game::chat::PLAYER_NAME;
+use crate::game::command_text::PLAYER_NAME;
 use horizon_client::{
     clock::SprintReport,
     text::{self, Text},

@@ -264,7 +264,7 @@ fn loot_kill_asks_with_the_commands_source_as_the_attacker() {
                     horizon_client::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
                 g.inventory[g.selected] = Some(sword);
-                g.ui.registries.permission = 4;
+                g.session.registries.permission = 4;
                 assert!(
                     g.run_command("loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]")
                 );
@@ -300,7 +300,7 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
         with_game(|game| {
             game.load_server_loot();
             game.set_allow_commands(true);
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             game.next_entity = 1000;
             zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;
@@ -370,7 +370,7 @@ fn a_draw_made_during_loot_kill_stays_in_the_level_random() {
         with_game(|game| {
             game.load_server_loot();
             game.set_allow_commands(true);
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             game.next_entity = 1000;
             zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;

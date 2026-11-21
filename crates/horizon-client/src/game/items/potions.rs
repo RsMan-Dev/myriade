@@ -8,18 +8,13 @@ use horizon_ecs_proto::{effect_cloud::CloudSpec, effects, targeting};
 use super::{
     Game,
     dragon::{Breath, FightPlayer, FightWho},
-    item_draw::owner_at,
-    remote_projectiles::cloud_client_tick,
     splash_water::thrown_block_hit,
 };
-use horizon_assets::item_model::DisplayContext;
 use horizon_client::health::DamageLevel;
 use horizon_client::{
-    block_entity_render::vertex_light,
     brewing,
     effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects},
     items::ItemStack,
-    mesher::Vertex,
     mobs::{Damage, DamageKind, Mob, NamedDamage, Who},
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
@@ -363,7 +358,7 @@ impl Game<'_> {
         if effects.contains(&"oozing") && self.ecs.is_active() {
             // OozingMobEffect.numberOfSlimesToSpawn, on the ECS level.
             let limit = self
-                .ui
+                .session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::MAX_ENTITY_CRAMMING);
             let count = if limit >= 1 {
@@ -379,7 +374,7 @@ impl Game<'_> {
             // OozingMobEffect.numberOfSlimesToSpawn: two, fewer when the
             // slimes close by already fill the cramming limit.
             let limit = self
-                .ui
+                .session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::MAX_ENTITY_CRAMMING);
             let mut count = 2;
@@ -542,8 +537,6 @@ pub(super) struct BodyPotions {
 pub(super) struct PotionState {
     pub(super) effects: PlayerEffects,
     pub(super) thrown: Vec<ThrownPotion>,
-    /// The area effect clouds a server tracks (game/network/remote_projectiles.rs).
-    pub(super) clouds: Vec<super::remote_projectiles::RemoteCloud>,
     pub(super) applied: Vec<(&'static str, &'static str, f64, &'static str)>,
     /// Armor the protection table was computed for.
     protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
@@ -779,7 +772,6 @@ impl Game<'_> {
                 f64::from(pos[2]) + r.next_double(),
             ];
             let options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles.add(&options, at, [0.0; 3]);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,
@@ -1950,60 +1942,6 @@ impl Game<'_> {
             t.velocity.z * inertia,
         );
     }
-    /// `ThrownItemRenderer` for thrown splash and lingering potions and
-    /// experience bottles: the item (GROUND) facing the camera at scale 1,
-    /// lit at the light probe (the eye, 0.85 of the 0.25 height).
-    pub(super) fn thrown_potion_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let orientation = glam::Mat4::from_quat(self.camera_orientation());
-        for t in &self.potions.thrown {
-            let previous = glam::DVec3::new(t.previous.x, t.previous.y, t.previous.z);
-            let position = glam::DVec3::new(t.position.x, t.position.y, t.position.z);
-            // ThrowableProjectile.shouldRenderAtSqrDistance: hidden for its
-            // first two ticks within 3.5 blocks (not in the thrower's face).
-            if t.age < 2 && position.distance_squared(camera) < 12.25 {
-                continue;
-            }
-            if !self.standing_entity_in_view(
-                camera,
-                super::entity_culling::at(t.previous),
-                super::entity_culling::at(t.position),
-                alpha,
-                0.25,
-                0.25,
-                64.0,
-                0.0,
-            ) {
-                continue;
-            }
-            let p = previous.lerp(position, alpha);
-            let owner = owner_at(p.to_array(), 0.0, &t.stack.item);
-            let state = self.resolve_item(&t.stack, DisplayContext::Ground, Some(&owner), 0);
-            if state.is_empty() {
-                continue;
-            }
-            let pose = glam::Mat4::from_translation((p - camera).as_vec3()) * orientation;
-            let light = self.world.light(
-                p.x.floor() as i32,
-                (p.y + 0.2125).floor() as i32,
-                p.z.floor() as i32,
-            );
-            // Frame generation and temporal upscaling follow its own flight; one not yet
-            // given an id (0) can't be told apart from another, so it keeps the camera's.
-            let motion = if t.id == 0 {
-                0
-            } else {
-                Self::MOTION_OBJECT | u64::from(t.id)
-            };
-            self.mark_motion(out.len(), motion);
-            self.submit_item_world(&state, pose, vertex_light(light), out);
-        }
-        self.mark_motion(out.len(), 0);
-    }
     /// `HealOrHarmMobEffect.applyInstantaneousEffect` with a source (a
     /// potion or a cloud): indirectMagic, not plain magic, credited to the
     /// mob that threw it when there is one.
@@ -2979,13 +2917,11 @@ mod mob_absorption_max_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3153,13 +3089,11 @@ mod mob_health_boost_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3407,13 +3341,11 @@ mod depleted_absorption_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3734,13 +3666,11 @@ mod arrow_contents {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.world

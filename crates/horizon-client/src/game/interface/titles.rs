@@ -1,12 +1,9 @@
-//! Titles, the action bar and the selected item name: the state and layout
-//! live in `hud_overlays` (`Titles`, `ToolHighlight`); this feeds them.
+//! Titles, the action bar and the selected item name: the server sends them as packets.
 use super::Game;
-pub(super) use horizon_client::hud_overlays::Titles;
 use horizon_client::text::Text;
 
 impl Game<'_> {
-    /// `ServerPlayer.sendOverlayMessage`: the steady player sees it on this
-    /// game's HUD; a server client receives it as a packet.
+    /// `ServerPlayer.sendOverlayMessage`: a server client receives it as a packet.
     pub(super) fn send_overlay_message(&mut self, message: Text) {
         if self.lan_acting.is_some() {
             self.guest_packets
@@ -16,8 +13,6 @@ impl Game<'_> {
                         overlay: true,
                     },
                 ));
-        } else if self.options.dedicated.is_none() {
-            self.titles.set_overlay(message, false);
         }
     }
 }

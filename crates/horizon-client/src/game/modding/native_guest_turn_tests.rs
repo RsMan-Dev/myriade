@@ -869,10 +869,10 @@ fn server_services_preserve_identity_and_message_delivery() {
             assert_eq!(b.permission_level(game), Some(1));
             assert_eq!(a.can_use_game_master_blocks(game), Some(true));
             // Acting permissions come from the swapped state, not a parked record.
-            game.ui.registries.permission = 1;
+            game.session.registries.permission = 1;
             assert_eq!(a.permission_level(game), Some(1));
             assert_eq!(a.can_use_game_master_blocks(game), Some(false));
-            game.ui.registries.permission = 3;
+            game.session.registries.permission = 3;
             assert!(a.tell(game, Text::literal("chat")).unwrap());
             assert!(a.action_bar(game, Text::literal("overlay")).unwrap());
             assert!(
@@ -1649,12 +1649,12 @@ fn run_command_refuses_a_player_whose_level_is_parked() {
             let slots = game.native_inventory(13, Player).unwrap().slots;
             slots.iter().flatten().any(|s| *s == stick)
         };
-        assert!(game.ui.rules.bool_at(SEND_COMMAND_FEEDBACK));
+        assert!(game.session.rules.bool_at(SEND_COMMAND_FEEDBACK));
 
         move_to(game, "minecraft:the_nether");
         assert!(!b.run_command(game, "give @s minecraft:stick 1", Owners));
         assert!(!b.run_command(game, "gamerule send_command_feedback false", Owners));
-        assert!(game.ui.rules.bool_at(SEND_COMMAND_FEEDBACK));
+        assert!(game.session.rules.bool_at(SEND_COMMAND_FEEDBACK));
 
         move_to(game, "minecraft:overworld");
         assert!(!has_stick(game));

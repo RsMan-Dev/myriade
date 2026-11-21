@@ -1,4 +1,5 @@
 use super::*;
+use mod_api::client::first_person::Hand;
 
 impl Game<'_> {
     /// `Level.playSound(player, ...)`: a guest's client already predicted the
@@ -24,7 +25,7 @@ impl Game<'_> {
         self.use_failed = false;
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
-        let sneaking = self.keys.held(Mapping::Sneak);
+        let sneaking = self.sneak_held;
         let hands_full = self.stack_in(self.selected).is_some() || self.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
@@ -296,7 +297,7 @@ impl Game<'_> {
                     match &*name {
                         "minecraft:note_block" => self.award_custom_stat("tune_noteblock", 1),
                         "minecraft:bell" => self.award_custom_stat("bell_ring", 1),
-                        "minecraft:lever" => self.lever_puff(hit.pos),
+
                         _ => {}
                     }
                 }
@@ -456,7 +457,7 @@ impl Game<'_> {
         // A guest's UseItemOn stops at ItemStack.useOn: what Item.use does
         // (throw, drink, eat, raise, equip) waits for its UseItem.
         let spawn_egg = stack.item.ends_with("_spawn_egg");
-        use horizon_client::first_person::UseResult;
+        use crate::hand_use::{UseResult};
         let swings = self.swings_started;
         match self.use_tool(&stack, block_hit.is_some())? {
             UseResult::Success { swing } => {
@@ -510,10 +511,6 @@ impl Game<'_> {
                 || (!(info.block.is_some() && block_hit.is_some())
                     && self.equip_from_hand(&stack)))
         {
-            return Ok(true);
-        }
-        if !on_block && &*stack.item == "minecraft:spyglass" {
-            self.use_spyglass();
             return Ok(true);
         }
         // FoodOnAStickItem.use with no boost (not riding its mount, or the
@@ -619,7 +616,7 @@ impl Game<'_> {
             inside: hit.inside,
             yaw: self.yaw,
             pitch: self.pitch,
-            sneaking: self.keys.held(Mapping::Sneak),
+            sneaking: self.sneak_held,
             item: stack.item.to_string(),
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
@@ -664,9 +661,6 @@ impl Game<'_> {
                 Some(BlockEntity::StructureBlock(_)) => self.structure_block_placed(key),
                 Some(BlockEntity::TestBlock(_)) => self.test_block_placed(key),
                 Some(BlockEntity::Jukebox(_)) => self.jukebox_placed(target, &stack),
-                Some(BlockEntity::Sign(sign)) if !sign.waxed && sign.front.has_editable_text() => {
-                    self.open_text_edit(key, true)
-                }
                 _ => {}
             }
         }

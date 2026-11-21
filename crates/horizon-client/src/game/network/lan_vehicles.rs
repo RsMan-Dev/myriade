@@ -236,6 +236,14 @@ impl Game<'_> {
         let mount = self.mob_exists(vehicle);
         let cushion = self.cushions.iter().any(|c| c.id == vehicle);
         let seat = self.seat(vehicle).is_some();
+        // ServerGamePacketListenerImpl.tick: the vehicle's last good position
+        // is where it is now, so a move the server made (a piston, a push)
+        // is not held against the rider's next move, which would fail, be
+        // sent back, and fail again on every answer.
+        let at = boat
+            .then(|| self.ecs.position(vehicle).map(|p| Vec3::new(p[0], p[1], p[2])))
+            .flatten()
+            .or_else(|| self.mount_steered_at(vehicle));
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -247,14 +255,6 @@ impl Game<'_> {
             });
             return;
         }
-        // ServerGamePacketListenerImpl.tick: the vehicle's last good position
-        // is where it is now, so a move the server made (a piston, a push)
-        // is not held against the rider's next move, which would fail, be
-        // sent back, and fail again on every answer.
-        let at = boat
-            .then(|| self.ecs.position(vehicle).map(|p| Vec3::new(p[0], p[1], p[2])))
-            .flatten()
-            .or_else(|| self.mount_steered_at(vehicle));
         if let Some(p) = at {
             {
                 let value = Some([p.x, p.y, p.z]);
@@ -850,13 +850,11 @@ mod controller_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -1032,13 +1030,11 @@ mod controller_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

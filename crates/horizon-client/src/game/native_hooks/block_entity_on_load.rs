@@ -36,7 +36,7 @@ impl Game<'_> {
         let level = if self.is_logical_server() {
             self.level(self.dim.id())
         } else {
-            self.native_client_level()
+            None
         };
         let Some(level) = level else { return };
         let mut remaining = self.world.block_entities.pending_on_load_len();

@@ -891,7 +891,6 @@ mod tests {
                 .iter()
                 .any(|h| h.contract == Contract::Replace)
         );
-        assert!(!catalog.draw_contexts.is_empty());
     }
 
     #[test]

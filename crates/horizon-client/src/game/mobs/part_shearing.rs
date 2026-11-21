@@ -2,7 +2,8 @@
 //! ask the mob's entity parts first (`EntityPart::is_shearable`), and a part that says yes
 //! shears it (`EntityPart::on_sheared`) in place of the species' own shearing.
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use super::{Game, Hand};
+use super::Game;
+use mod_api::client::first_person::Hand;
 use horizon_client::{
     items::ItemStack,
     mobs::{Species, Who},

@@ -132,7 +132,7 @@ impl ActionHost for GameHost<'_, '_> {
             return Residence::Missing;
         }
         if self.identity().side == Side::Client {
-            return if self.game.native_client_entity_target(holder).is_some() {
+            return if false {
                 Residence::Found
             } else {
                 Residence::Missing

@@ -1049,9 +1049,7 @@ impl Game<'_> {
             }
             Some("change_item_damage") => {
                 let amount = level_value(&effect["amount"], level) as u32;
-                if let Some(slot) = horizon_ecs_proto::stand::slot_of_index(slot) {
-                    self.wear_mob_piece_ecs(wearer, slot, amount);
-                }
+                self.wear_mob_piece_ecs(wearer, slot, amount);
             }
             _ => {}
         }

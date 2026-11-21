@@ -68,12 +68,12 @@ impl MobLevel for Game<'_> {
     }
     fn rule(&self, name: &str) -> bool {
         matches!(
-            self.ui.rules.get(name),
+            self.session.rules.get(name),
             Some(horizon_client::gamerules::Value::Bool(true))
         )
     }
     fn mob_griefing(&self) -> bool {
-        self.ui
+        self.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
     }

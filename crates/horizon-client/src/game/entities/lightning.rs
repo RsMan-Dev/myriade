@@ -78,7 +78,7 @@ impl Game<'_> {
                 .get(self.world.block(pos[0], pos[1] - 1, pos[2]))
                 .name;
             let trap = self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
                 && self.world.random.next_double() < difficulty * 0.01
@@ -381,27 +381,6 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.lightning_clear_copper(level, ticks, p));
         let _ = self.process_level_events();
     }
-    /// `LightningBolt.shouldRenderAtSqrDistance`: a bolt is drawn within 64
-    /// blocks times the view scale of the camera, and past that only its sky
-    /// flash and thunder remain. Simulation-order render inputs; seeded
-    /// geometry lives in the renderer.
-    pub(super) fn bolt_instances(
-        &self,
-        camera: glam::DVec3,
-    ) -> Vec<horizon_client::gfx::lightning::Bolt> {
-        let range = 64.0 * self.view_scale();
-        self.bolts
-            .iter()
-            .filter(|b| {
-                let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
-                at.distance_squared(camera) < range * range
-            })
-            .map(|b| horizon_client::gfx::lightning::Bolt {
-                at: b.at,
-                seed: b.seed,
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -441,7 +420,7 @@ mod tests {
                 (-1, 1000.0, true),
             ] {
                 game.world.set(8, 65, 8, air).unwrap();
-                game.ui
+                game.session
                     .rules
                     .set("fire_spread_radius_around_player", Value::Int(radius));
                 game.player = Some(

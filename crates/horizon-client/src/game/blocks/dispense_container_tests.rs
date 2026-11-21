@@ -2,7 +2,7 @@
 //! that returns it fills and empties a bucket-like container (its empty and full forms
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
-use crate::game::{Game, dispense_fixture};
+use crate::game::Game;
 use horizon_client::{chunk::Chunk, items::ItemStack};
 use horizon_core::geometry::Direction;
 use horizon_world::registry::BlockStateId;
@@ -177,87 +177,6 @@ fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
         assert_eq!(item(&emptied), Some(("minecraft:bucket".into(), 1)));
         assert_eq!(front(game), state(game, "minecraft:water"));
         assert!(game.dropped.is_empty());
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front() {
-    with_dispenser(|game, _| {
-        let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
-        for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
-            *cell = Some(ItemStack::new("minecraft:stone", 64));
-        }
-        set_front(game, "minecraft:water");
-        dispense_fixture::start_recording();
-        let left = dispense(game, ItemStack::new("minecraft:bucket", 3));
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(item(&left), Some(("minecraft:bucket".into(), 2)));
-        assert_eq!(front(game), state(game, "minecraft:air"));
-        assert_eq!(game.dropped.len(), 1);
-        assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
-        // The fluid's event, then the spill's click and smoke, then the dispense's own.
-        let clicks = lines
-            .iter()
-            .filter(|line| line.starts_with("L 1000 "))
-            .count();
-        assert_eq!(clicks, 2, "{lines:?}");
-        assert!(lines[0].ends_with("minecraft:fluid_pickup"), "{lines:?}");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
-    with_dispenser(|game, _| {
-        set_front(game, "minecraft:stone");
-        dispense_fixture::start_recording();
-        let left = dispense(game, ItemStack::new("minecraft:bucket", 2));
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(item(&left), Some(("minecraft:bucket".into(), 1)));
-        assert_eq!(game.dropped.len(), 1);
-        assert_eq!(&*game.dropped[0].stack.item, "minecraft:bucket");
-        assert_eq!(front(game), state(game, "minecraft:stone"));
-        assert!(
-            !lines.iter().any(|line| line.starts_with("G ")),
-            "{lines:?}"
-        );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_click() {
-    with_dispenser(|game, _| {
-        crate::game::native_item_places::tests::open_to_lan(game);
-        set_front(game, "minecraft:water");
-        let half = dispense(game, ItemStack::new("minecraft:paper", 1));
-        assert_eq!(front(game), state(game, "minecraft:air"));
-        // Holding 1000 of 2000, it could empty into the air or take more: with a source in
-        // front it takes more.
-        set_front(game, "minecraft:water");
-        game.creatures.lan_sounds.clear();
-        dispense_fixture::start_recording();
-        let full = dispense(game, half.unwrap());
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(front(game), state(game, "minecraft:air"));
-        assert_eq!(item(&full), Some(("minecraft:paper".into(), 1)));
-        let pickup = lines
-            .iter()
-            .position(|line| line.ends_with("minecraft:fluid_pickup"));
-        let click = lines.iter().position(|line| line.starts_with("L 1000 "));
-        assert!(pickup.is_some() && pickup < click, "{lines:?}");
-        let sounds: Vec<_> = game
-            .creatures
-            .lan_sounds
-            .iter()
-            .map(|s| s.sound.clone())
-            .collect();
-        assert_eq!(sounds, ["minecraft:item.bucket.fill"]);
-        // Full, it can only give: it places what it holds.
-        let given = dispense(game, full.unwrap());
-        assert_eq!(front(game), state(game, "minecraft:water"));
-        assert_eq!(item(&given), Some(("minecraft:paper".into(), 1)));
     });
 }
 

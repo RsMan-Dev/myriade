@@ -1208,7 +1208,6 @@ impl Game<'_> {
             if self.container == Some(key) {
                 self.container_opener_event(key, false);
                 self.container = None;
-                self.set_screen(Screen::Playing);
             }
         }
     }
@@ -1543,7 +1542,7 @@ mod crafter_drop_name_tests {
             assert!(game.run_command("forceload add 0 0"));
             assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
             );

@@ -27,13 +27,11 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -62,7 +60,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
         let text = format!("@e[type=minecraft:pig,tag={tag}]");
         let selector = horizon_client::command::selector::parse(
             &mut horizon_client::command::Reader::new(&text),
-            &g.ui.registries,
+            &g.session.registries,
             true,
         )
         .unwrap();

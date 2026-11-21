@@ -105,3 +105,20 @@ pub fn entity_event_burst(entity: &str, event: u8) -> Option<(&'static str, Burs
         _ => return None,
     })
 }
+
+/// `ExplosionParticleInfo`: one block particle of an explosion, with how much of the distance
+/// drawn for it it travels, what its speed is multiplied by, and its weight in the pick.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExplosionParticle {
+    pub options: ParticleOptions,
+    pub scaling: f32,
+    pub speed: f32,
+    pub weight: u32,
+}
+impl ExplosionParticle {
+    /// `Level.DEFAULT_EXPLOSION_BLOCK_PARTICLES`: poof (scaling 0.5) and smoke, one each.
+    pub fn defaults() -> Vec<Self> {
+        let entry = |ty, scaling| Self { options: ParticleOptions::simple(ty), scaling, speed: 1.0, weight: 1 };
+        vec![entry(ParticleType::Poof, 0.5), entry(ParticleType::Smoke, 1.0)]
+    }
+}

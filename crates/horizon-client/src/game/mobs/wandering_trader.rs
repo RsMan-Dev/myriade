@@ -42,7 +42,7 @@ impl Game<'_> {
     pub(super) fn tick_wandering_trader(&mut self) {
         if self.dim != Dim::Overworld
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
         {

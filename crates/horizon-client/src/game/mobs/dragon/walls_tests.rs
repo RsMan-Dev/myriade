@@ -104,7 +104,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
             };
             let griefing = |game: &mut Game<'_>, on: bool| {
                 assert!(
-                    game.ui
+                    game.session
                         .rules
                         .set("mob_griefing", horizon_client::gamerules::Value::Bool(on),)
                 );

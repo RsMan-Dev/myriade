@@ -45,7 +45,7 @@ impl Game<'_> {
         dir: [f64; 3],
         reach: f64,
     ) -> Option<Hit> {
-        if !self.native_window() || !self.targeting().pick_liquids {
+        if !self.targeting().pick_liquids {
             return self.clip_ray(origin, dir, reach);
         }
         use horizon_core::geometry::Vec3;
@@ -77,32 +77,6 @@ impl Game<'_> {
             point: [hit.location.x, hit.location.y, hit.location.z],
             inside: hit.inside,
         })
-    }
-    pub(super) fn mod_attack_targets(&mut self) -> bool {
-        let overridden = self.targeting().entity.is_some();
-        if !overridden && !mod_api::__private::listened(mod_api::HookId::ClientAttackTarget) {
-            return false;
-        }
-        let selected = match self.crosshair_target() {
-            Some(CrosshairTarget::Entity { entity, .. }) => Some(entity),
-            _ => None,
-        };
-        let mut targets: Vec<_> = selected.into_iter().collect();
-        let mut canceled = false;
-        self.native_client_attack_target(&mut targets, &mut canceled);
-        if canceled {
-            return true;
-        }
-        let mut seen = std::collections::HashSet::new();
-        for &entity in &targets {
-            if !seen.insert(entity) {
-                continue;
-            }
-            if let Some((_, distance)) = self.targeting_entity_hit(entity) {
-                self.remote_attack_entity(entity.id() as i32, distance);
-            }
-        }
-        overridden || selected.is_some() || !targets.is_empty()
     }
 }
 

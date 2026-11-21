@@ -18,11 +18,7 @@ impl Game<'_> {
         });
         if let Some((entity, position, dimensions, death_canceled)) = removed {
             self.lan_entity_event(entity, 60, position);
-            self.death_poof(
-                position,
-                f64::from(dimensions.width),
-                f64::from(dimensions.height),
-            );
+
             if !death_canceled {
                 self.guest_drop_carried(gi);
             }

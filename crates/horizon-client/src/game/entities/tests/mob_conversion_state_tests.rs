@@ -38,7 +38,7 @@ fn a_struck_pig_leaves_a_zombified_piglin_that_keeps_its_state() {
     let mut game = game(&mut resources);
     // Easy: `Pig.thunderHit` converts outside peaceful, and the strike itself
     // only starts fires on normal and hard.
-    game.ui.difficulty = 1;
+    game.session.difficulty = 1;
     assert!(game.run_command(
         "summon minecraft:pig 8.5 64 8.5 {CustomName:{text:\"Bolt\"},NoAI:1b,Silent:1b}"
     ));
@@ -147,7 +147,7 @@ fn a_sheared_mooshroom_leaves_a_cow_that_keeps_its_state() {
 fn a_struck_villager_leaves_a_witch_that_keeps_its_state() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    game.ui.difficulty = 1;
+    game.session.difficulty = 1;
     assert!(game.run_command(
         "summon minecraft:villager 2.5 64 2.5 {CustomName:{text:\"Elder\"},Silent:1b}"
     ));

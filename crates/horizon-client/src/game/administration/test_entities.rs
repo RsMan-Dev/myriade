@@ -93,7 +93,7 @@ impl Game<'_> {
         let (boat_w, boat_h) = (super::boats::WIDTH, super::boats::HEIGHT);
         let gone: Vec<u32> = self
             .ecs
-            .boats_in(bounds.min_position(), bounds.max_position())
+            .boats_in(horizon_core::geometry::Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]), horizon_core::geometry::Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]))
             .into_iter()
             .filter(|&id| {
                 self.ecs

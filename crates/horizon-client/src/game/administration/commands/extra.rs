@@ -417,12 +417,12 @@ impl Game<'_> {
                     *t,
                     self.score
                         .board
-                        .players_team(super::super::chat::PLAYER_NAME),
+                        .players_team(super::super::command_text::PLAYER_NAME),
                 ) {
                     (Target::Player, Some(team)) => {
                         let mut n = Text::empty();
                         n.push(horizon_client::scoreboard::comp_text(&team.prefix));
-                        n.push(super::super::chat::PLAYER_NAME);
+                        n.push(super::super::command_text::PLAYER_NAME);
                         n.push(horizon_client::scoreboard::comp_text(&team.suffix));
                         n
                     }
@@ -1057,7 +1057,6 @@ impl Game<'_> {
                 Target::Player if self.lan_acting.is_some() => {
                     self.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.show_play_dialog(holder),
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
@@ -1075,7 +1074,7 @@ impl Game<'_> {
                 Target::Player if self.lan_acting.is_some() => {
                     self.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.clear_dialog(),
+                Target::Player => {}
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
@@ -1101,7 +1100,7 @@ impl Game<'_> {
             format!("minecraft:{text}")
         };
         let index = self
-            .ui
+            .session
             .registries
             .ids("minecraft:dialog")
             .iter()

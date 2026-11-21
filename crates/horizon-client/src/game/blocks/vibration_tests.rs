@@ -113,13 +113,11 @@ fn saddling_a_pig_posts_equip_from_the_pig() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.world
@@ -174,13 +172,11 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.world
@@ -211,7 +207,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
                 tag_items: Some(game.res.items()),
                 loop_context: &game.loop_context,
                 damage_hooks: &game.damage_hooks,
-                block_registries: Some(&game.ui.registries),
+                block_registries: Some(&game.session.registries),
             };
             FallDamageWorld::fall_on(&mut world, state, at, 3.0).unwrap();
         }
@@ -314,13 +310,11 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.world

@@ -6,11 +6,8 @@
 //! and each tick and the release of a use (`native_living_entity_use_item_tick`,
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
 use super::{Game, shield::OFFHAND_SLOT};
-use horizon_client::{
-    first_person::Hand,
-    items::{ItemInfo, ItemStack},
-    mobs::spear_use,
-};
+use horizon_client::{items::{ItemInfo, ItemStack}, mobs::spear_use};
+use mod_api::client::first_person::Hand;
 use horizon_core::use_animation::UseAnimation;
 
 #[derive(Clone, Copy)]
@@ -85,7 +82,6 @@ impl Game<'_> {
                 UseAnimation::None
             }
         });
-        self.native_use_animation(stack, &mut animation);
         // A spear pose needs the effective stack's kinetic data, even when a
         // scoped use_animation override requested it.
         if animation == UseAnimation::Spear {
@@ -209,8 +205,6 @@ impl Game<'_> {
         self.apply_use_cooldown(stack);
         if let Some(consumable) = self.consumable(stack) {
             self.finish_consuming(info, &consumable, stack);
-        } else if &*stack.item == "minecraft:spyglass" {
-            self.stop_spyglass();
         }
         self.use_item_finished(stack);
         // `LivingEntity.completeUsingItem` ends with `stopUsingItem`.
@@ -658,37 +652,12 @@ pub(super) fn count_down(ticks: u32, duration: i32) -> Option<u32> {
     (i64::from(duration) - i64::from(ticks) != 0).then_some(ticks)
 }
 
-/// The first person pose of a hand using an item of `animation`
-/// (`ItemInHandRenderer.renderArmWithItem`'s switch), for an item of no
-/// pose of its own.
-pub(super) fn use_pose(
-    animation: UseAnimation,
-    remaining: f32,
-    duration: f32,
-    partial: f32,
-) -> horizon_client::first_person::ItemPose {
-    use horizon_client::first_person::ItemPose;
-    let ticks_used = duration - (remaining - partial + 1.0);
-    match animation {
-        UseAnimation::Eat | UseAnimation::Drink => ItemPose::Eat {
-            remaining,
-            duration,
-            partial,
-        },
-        UseAnimation::Bow => ItemPose::Bow { ticks_used },
-        UseAnimation::Trident => ItemPose::Trident { ticks_used },
-        UseAnimation::Brush => ItemPose::Brush { remaining, partial },
-        _ => ItemPose::Using,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         bow_release_power, consumes_at_once, count_down, duration_leaving, held, release_parts,
-        start_of, tick_left, ticks_left, use_counter_leaving, use_pose,
+        start_of, tick_left, ticks_left, use_counter_leaving,
     };
-    use horizon_client::first_person::ItemPose;
     use horizon_core::use_animation::UseAnimation;
 
     /// A mob's use counter is 1 on the tick it starts and a bow's use lasts
@@ -821,7 +790,6 @@ mod tests {
                 "minecraft:iron_sword",
                 1,
             ));
-            game.tick_player_model();
             game.visible_hands[0].1 = game.inventory[game.selected].clone();
         }
 
@@ -1016,34 +984,6 @@ mod tests {
         assert!(!consumes_at_once(32));
     }
 
-    #[test]
-    fn a_use_animation_picks_the_hand_pose() {
-        let pose = |animation| use_pose(animation, 12.0, 32.0, 0.5);
-        assert!(matches!(
-            pose(UseAnimation::Drink),
-            ItemPose::Eat { remaining, duration, partial }
-                if (remaining, duration, partial) == (12.0, 32.0, 0.5)
-        ));
-        // ticks used: 32 - (12 - 0.5 + 1).
-        assert!(
-            matches!(pose(UseAnimation::Bow), ItemPose::Bow { ticks_used } if ticks_used == 19.5)
-        );
-        assert!(matches!(
-            pose(UseAnimation::Trident),
-            ItemPose::Trident { ticks_used } if ticks_used == 19.5
-        ));
-        assert!(matches!(
-            pose(UseAnimation::Brush),
-            ItemPose::Brush { remaining, partial } if (remaining, partial) == (12.0, 0.5)
-        ));
-        for animation in [
-            UseAnimation::None,
-            UseAnimation::Block,
-            UseAnimation::Spyglass,
-        ] {
-            assert!(matches!(pose(animation), ItemPose::Using));
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1095,13 +1035,11 @@ pub(super) mod interact_vibration_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.player = Some(

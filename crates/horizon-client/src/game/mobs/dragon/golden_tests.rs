@@ -34,16 +34,14 @@ fn flat_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut g = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(root.clone())),
-        None,
     )
     .unwrap();
     g.options.dedicated = Some(Vec::new());
     // Normal, not the default Peaceful: on Peaceful the dragon sees no enemy and never strafes, as no fight is played.
-    g.ui.difficulty = 2;
+    g.session.difficulty = 2;
     g.world = World::new(g.res.facts().air, 1);
     for x in -6..=6 {
         for z in -6..=6 {
@@ -267,7 +265,7 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
     let mut out = String::new();
     let mut rng = String::new();
     let fp: Vec<String> = g.fight_players().iter().map(|p| format!("{:?}/{}/{}", p.who, p.enemy(), bits(p.position))).collect();
-    let _ = writeln!(rng, "diag difficulty {} players {}", g.ui.difficulty, fp.join(";"));
+    let _ = writeln!(rng, "diag difficulty {} players {}", g.session.difficulty, fp.join(";"));
     // An earlier scenario of this same game may have broken the ground under the podium: the combat starts on a whole slab.
     let stone = g.pack.assets.registry.default_state("minecraft:stone").unwrap();
     for x in -90..=90 {

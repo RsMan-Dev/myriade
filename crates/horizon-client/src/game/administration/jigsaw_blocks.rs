@@ -108,7 +108,7 @@ impl Game<'_> {
         let position = [pos.0 + step[0], pos.1 + step[1], pos.2 + step[2]];
         // registry.getOrThrow(pool): an unknown pool throws, ending the packet.
         if !self
-            .ui
+            .session
             .registries
             .ids("minecraft:worldgen/template_pool")
             .contains(&pool)

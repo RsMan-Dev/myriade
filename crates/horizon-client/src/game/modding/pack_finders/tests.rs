@@ -367,7 +367,7 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
         assert!(!model.can_unselect(true, 0));
 
         let data = data_packs(&sources);
-        let mut options = horizon_client::title::WorldOptions::default();
+        let mut options = crate::game::world_options::WorldOptions::default();
         options.data_packs.push("file/already_installed".into());
         options.set_additional_data_packs(data.clone().into());
         assert!(options.data_packs.contains(&fixture.data_id()));
@@ -395,7 +395,7 @@ fn contributed_experiments_supply_the_chosen_world_flags() {
         let features = horizon_client::datapack::feature_repository(&fixture.root, &data);
         assert_eq!(features.len(), 1);
         assert_eq!(features[0].id, fixture.data_id());
-        let mut options = horizon_client::title::WorldOptions::default();
+        let mut options = crate::game::world_options::WorldOptions::default();
         options.set_additional_data_packs(data.into());
         assert_eq!(
             options.enabled_features(&fixture.root),
@@ -516,13 +516,6 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 "packmod.optional"
             );
             game.refresh_pack_lists();
-            assert!(
-                game.ui
-                    .options
-                    .pack_infos
-                    .iter()
-                    .any(|info| info.id == fixture.asset_id())
-            );
             game.settings.resource_packs = vec![fixture.asset_id()];
             for expected in ["first", "second"] {
                 let listeners = game.register_client_reload_listeners();

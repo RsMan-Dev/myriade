@@ -574,13 +574,13 @@ mod tests {
             // them; this headless game has no player for the give to reach, so
             // the parse, where the data's type is checked, is what runs.
             game.build_registries();
-            game.ui.registries.permission = 4;
-            let commands = game.ui.dispatcher.0.clone();
+            game.session.registries.permission = 4;
+            let commands = game.session.dispatcher.0.clone();
             let give = |kind: &str| {
                 let command =
                     format!("give @s {CRATE}[block_entity_data={{id:\"{kind}\",Amount:7}}]");
                 commands
-                    .parse(&command, &game.ui.registries)
+                    .parse(&command, &game.session.registries)
                     .executable()
                     .map(|_| ())
                     .map_err(|e| e.message.plain())

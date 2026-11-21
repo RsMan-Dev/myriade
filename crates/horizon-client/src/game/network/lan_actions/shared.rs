@@ -38,7 +38,7 @@ pub(super) struct GuestPlay {
     attack_ticks: u32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     attack_item: Option<std::sync::Arc<str>>,
-    swing: horizon_client::first_person::SwingState,
+    swing: crate::hand_use::SwingState,
     /// The block being dug and the face the client aimed at.
     digging: Option<([i32; 3], [i32; 3])>,
     /// The server tick the digging started (ServerPlayerGameMode.destroyProgressStart).
@@ -155,12 +155,10 @@ pub(super) struct GuestSwap {
     permission: u8,
     xp: Experience,
     level_up_sound: horizon_client::entities::LevelUpSound,
-    host_keys: horizon_client::held::HeldKeys,
+    host_sneak: bool,
     screen: Screen,
-    host_sign: Option<super::sign_edit::SignEditor>,
-    host_book: Option<super::books::BookScreen>,
     host_command_block: Option<super::command_blocks::CommandBlockScreen>,
-    host_mount_menu: super::mount_menu::MountMenu,
+    host_mount_menu: crate::game::mount_menu::MountMenu,
     craft_size: usize,
     craft_table: Option<[i32; 3]>,
     craft_grid: Vec<Option<ItemStack>>,
@@ -178,7 +176,6 @@ pub(super) struct GuestSwap {
     xp_delay: u32,
     attack_ticks: u32,
     attack_item: Option<std::sync::Arc<str>>,
-    swing: horizon_client::first_person::SwingState,
     left: bool,
     right: bool,
     riding: Option<u32>,
@@ -2442,13 +2439,11 @@ mod respawn_world_point_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -2601,13 +2596,11 @@ mod swing_echo_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2844,13 +2837,11 @@ mod guest_close_listener_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3109,13 +3100,11 @@ mod item_on_block_cooldown_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

@@ -72,7 +72,7 @@ impl Game<'_> {
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: self.level.spawn_dimension(),
-            difficulty: i32::from(self.ui.difficulty),
+            difficulty: i32::from(self.session.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
             tick_rate: self.clock.rate(),
@@ -148,13 +148,11 @@ pub(in crate::game) mod tests {
         let mut game = Game::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

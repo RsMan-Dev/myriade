@@ -298,7 +298,6 @@ impl Game<'_> {
             .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
         if self.drown_bubbles(at, v, bubbles) {
             self.lan_entity_event(mob as i32, DROWN_EVENT, at);
-            self.drown_particles(at, v, 8);
         }
     }
     /// `mob_drown` for the ECS mob `mob`.
@@ -306,7 +305,6 @@ impl Game<'_> {
         let v = self.ecs_mob_velocity(mob).map_or([0.0; 3], |v| [v.x, v.y, v.z]);
         if self.drown_bubbles(at, v, bubbles) {
             self.lan_entity_event(mob as i32, DROWN_EVENT, at);
-            self.drown_particles(at, v, 8);
         }
     }
     /// The display name of a mob: its custom name or its type's name.
@@ -320,7 +318,7 @@ impl Game<'_> {
     /// `mob_display_name` for the ECS mob `id`: its name and its type come from the bridge.
     pub(in crate::game) fn mob_display_name_ecs(&self, id: u32) -> Option<Text> {
         let kind = self.ecs.kind(id)?;
-        Some(match self.ecs.display_name(id) {
+        Some(match self.ecs.custom_name(id) {
             Some(name) => Text::literal(name),
             None => Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
         })
@@ -740,7 +738,7 @@ impl Game<'_> {
         let Some(owner) = self.ecs.tamable_values(id).and_then(|(_, uuid)| uuid).filter(|_| tamable && mob.tame) else {
             return;
         };
-        if !self.ui.rules.bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES) {
+        if !self.session.rules.bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES) {
             return;
         }
         let host = self.player.is_some()
@@ -852,7 +850,7 @@ impl Game<'_> {
             return;
         };
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
         {

@@ -2,7 +2,6 @@
 //! `ClockAdjustment` from `sleep_finished_time` (NeoForge's `SleepFinishedTimeEvent`), and the
 //! clock time markers both read.
 use super::{Dim, Game};
-use crate::game::chat::{OVERWORLD_CLOCK, TimeMarker};
 use mod_api::{ClockAdjustment, Identifier, LevelRef};
 
 /// Vanilla's wake-up time marker, where sleeping through the night moves the clock
@@ -10,6 +9,33 @@ use mod_api::{ClockAdjustment, Identifier, LevelRef};
 const WAKE_UP_FROM_SLEEP: &str = "minecraft:wake_up_from_sleep";
 /// A day on the clock, in ticks.
 const DAY: i64 = 24_000;
+
+/// The Overworld's world clock.
+pub(in crate::game) const OVERWORLD_CLOCK: &str = "minecraft:overworld";
+/// A clock time marker from the timelines (ClockTimeMarker); `resolve` is None past `i64::MAX`.
+#[derive(Clone, Copy, Debug)]
+pub struct TimeMarker {
+    pub ticks: i64,
+    pub period: Option<i64>,
+    pub show: bool,
+}
+impl TimeMarker {
+    pub fn occurs_at(&self, total: i64) -> bool {
+        match self.period {
+            Some(p) => self.ticks == total.rem_euclid(p),
+            None => self.ticks == total,
+        }
+    }
+    pub fn resolve(&self, total: i64) -> Option<i64> {
+        match self.period {
+            Some(p) => {
+                let d = self.ticks - total.rem_euclid(p);
+                total.checked_add(if d > 0 { d } else { p + d })
+            }
+            None => Some(self.ticks),
+        }
+    }
+}
 
 /// Why the game refused a mod's adjustment; the clock then moves to vanilla's morning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,7 +56,7 @@ impl Game<'_> {
             return None;
         }
         let id = format!("{}:{}", id.namespace(), id.path());
-        self.ui.markers.get(&id).copied()
+        self.session.markers.get(&id).copied()
     }
 
     /// The host read `level_clock_marker_time`: when the level's own clock next reaches `marker`
@@ -102,8 +128,7 @@ fn wake_time(
 
 #[cfg(test)]
 mod tests {
-    use super::{Refused, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
-    use crate::game::chat::TimeMarker;
+    use super::{OVERWORLD_CLOCK, Refused, TimeMarker, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
     use mod_api::{ClockAdjustment, Identifier};
 
     const NOW: i64 = 13_000;
@@ -223,7 +248,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_later_listener_reads_and_replaces_the_earlier_adjustment() {
-        use crate::game::chat::OVERWORLD_CLOCK;
         use std::sync::{Arc, Mutex};
         struct First;
         #[mod_api::__subscriptions]
@@ -256,7 +280,7 @@ mod tests {
                 period: Some(24_000),
                 show: false,
             };
-            game.ui.markers.insert("minecraft:noon".into(), noon);
+            game.session.markers.insert("minecraft:noon".into(), noon);
             let clock = game.level_clock_name(game.dim);
             assert_eq!(clock, OVERWORLD_CLOCK);
             game.set_command_clock_time(&clock, NOW);

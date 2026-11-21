@@ -2,7 +2,7 @@
 //! (`ecs_entities_meeting`, `ecs_mob_eye`), writes are requests the level applies (`ecs_add_effect`, `ecs_launch`). Nothing
 //! scans the level: the candidates of a box are the index's. The client keeps its `remote_entities` branch in each caller.
 use crate::game::Game;
-use horizon_client::{particles::ParticleLevel, potent_sulfur::can_be_reached_by_noxious_gas};
+use horizon_client::potent_sulfur::{Level, can_be_reached_by_noxious_gas};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::bridge::host::{Flag, HurtSource};
 
@@ -35,12 +35,10 @@ impl Game<'_> {
 
     /// The followed mobs of `area` alive and at the eyes of which the noxious gas of `source` reaches, with their kinds.
     pub(in crate::game) fn ecs_gas_reached(&self, source: [i32; 3], area: Aabb) -> Vec<(u32, String)> {
-        let level = ParticleLevel {
+        let level = Level {
             world: &self.world,
             facts: self.res.facts(),
             collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
         };
         self.ecs_entities_meeting(area)
             .into_iter()

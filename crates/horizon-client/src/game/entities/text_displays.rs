@@ -1,12 +1,6 @@
 //! Server text displays: metadata, interpolation, billboard transforms and world text.
 use super::Game;
-use horizon_assets::item_model::DisplayContext;
-use horizon_client::{
-    gfx::TEXT_POLYGON_OFFSET_OVERLAY,
-    items::ItemStack,
-    mesher::Vertex,
-    text_display::{self, CachedQuads, TextDisplayData},
-};
+use horizon_client::{items::ItemStack, text_display::TextDisplayData};
 use horizon_protocol::entity_data::Value;
 use horizon_world::registry::BlockStateId;
 
@@ -47,9 +41,6 @@ pub(super) struct RemoteTextDisplay {
     /// `Display.lastProgress`: the progress the last frame drew, where a new
     /// interpolation starts from.
     last_progress: f32,
-    /// Local text geometry from the last visited frame; world poses do not
-    /// invalidate `TextDisplay.clientDisplayCache` or the glyph vertices.
-    lines: Option<CachedQuads>,
     /// `Entity.vehicle`: the mob it rides (`SetPassengers`), which places it
     /// every tick (`positionRider`), as NPC plugins hang a name over a head.
     pub(super) vehicle: Option<u32>,
@@ -86,25 +77,7 @@ impl RemoteTextDisplay {
             duration_dirty: false,
             initialized: false,
             last_progress: 0.0,
-            lines: None,
             vehicle: None,
-        }
-    }
-    /// `Camera.alignWithEntity`'s view of a display, a server cutscene's
-    /// usual camera: its interpolated position and rotation (`Display`'s
-    /// `InterpolationHandler` moves both), with `EntityType.*_DISPLAY`'s
-    /// `sized(0.0F, 0.0F)` putting its eyes at its feet; it is not living.
-    pub(super) fn camera_view(&self) -> horizon_client::camera::CameraEntity {
-        horizon_client::camera::CameraEntity {
-            position: self.position.to_array(),
-            previous: self.previous.to_array(),
-            x_rot: self.rotation[1],
-            y_rot: self.rotation[0],
-            x_rot_o: self.old_rotation[1],
-            y_rot_o: self.old_rotation[0],
-            eye_height: 0.0,
-            living: None,
-            mount: None,
         }
     }
     /// Where a passenger of this display sits, this tick and the last
@@ -129,17 +102,6 @@ impl RemoteTextDisplay {
         } else {
             (((self.age - self.start) as f32 + partial) / self.duration as f32).clamp(0.0, 1.0)
         }
-    }
-    /// The casters this display adds to the shadow pass: its interpolated
-    /// shadow radius and strength (`DisplayRenderer.getShadowRadius` and
-    /// `DisplayRenderer.getShadowStrength`), if it has any.
-    pub(super) fn shadow(&self, partial: f64) -> Option<(glam::DVec3, f32, f32)> {
-        horizon_client::shadows::display_caster(
-            self.previous.lerp(self.position, partial),
-            &self.from,
-            &self.shown,
-            self.progress(partial as f32),
-        )
     }
     /// The entries after `Display`'s: a block state, or an item with its
     /// display context (the stack comes converted by the caller).
@@ -230,183 +192,11 @@ impl Game<'_> {
             display.tick();
         }
     }
-    /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
-    /// brightness override, else the light at the entity.
-    fn display_light(
-        world: &horizon_client::world::World,
-        d: &TextDisplayData,
-        position: glam::DVec3,
-    ) -> u32 {
-        if d.brightness == -1 {
-            let world_light = world.light(
-                position.x.floor() as i32,
-                position.y.floor() as i32,
-                position.z.floor() as i32,
-            );
-            horizon_client::block_entity_render::vertex_light(world_light)
-        } else {
-            ((d.brightness as u32 >> 20 & 15) * 16) | (((d.brightness as u32 >> 4 & 15) * 16) << 8)
-        }
-    }
-    /// `Display.shouldRenderAtSqrDistance` and, when width and height are set,
-    /// `EntityRenderer.shouldRender` with `Display.getInterpolatedBoundingBox`
-    /// inflated by 0.5. Width or height 0 is `noCulling`: distance only.
-    fn display_in_view(
-        &self,
-        camera: glam::DVec3,
-        origin: glam::DVec3,
-        data: &TextDisplayData,
-        view_scale: f64,
-    ) -> bool {
-        (self.display_sight(camera, origin, data, view_scale)).is_some_and(|s| s.camera)
-    }
-
-    /// `display_in_view`, and whether the ray scene's entity layer reaches the display
-    /// (`entity_sight`).
-    fn display_sight(
-        &self,
-        camera: glam::DVec3,
-        origin: glam::DVec3,
-        data: &TextDisplayData,
-        view_scale: f64,
-    ) -> Option<super::entity_culling::Sight> {
-        let range = f64::from(data.view_range) * 64.0 * view_scale;
-        if text_display::no_culling(data.width, data.height) {
-            let near = (origin - camera).length_squared() < range * range;
-            return near.then_some(super::entity_culling::Sight {
-                camera: true,
-                rays: false,
-            });
-        }
-        let (lo, hi) = text_display::culling_box(origin, data.width, data.height);
-        self.entity_sight(camera, origin, range, lo, hi)
-    }
-
-}
-
-/// Whether vanilla's built-in block models give this block a special model,
-/// drawn by its block-entity renderer.
-fn has_special_model(block: &str) -> bool {
-    matches!(
-        block,
-        "bell"
-            | "conduit"
-            | "decorated_pot"
-            | "enchanting_table"
-            | "end_gateway"
-            | "end_portal"
-            | "chest"
-            | "trapped_chest"
-            | "ender_chest"
-            | "shulker_box"
-    ) || block.ends_with("_banner")
-        || block.ends_with("_shulker_box")
-        || block.ends_with("_skull")
-        || (block.ends_with("_head") && block != "piston_head")
-        || block.contains("copper_chest")
-        || block.contains("copper_golem_statue")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn culled_display_keeps_quads_across_frame_rollover() {
-        let atlas = horizon_client::hud::HudAtlas::boot();
-        let mut display = RemoteTextDisplay::new(Shows::Text, [0.0, 0.0, 5.0], 0.0);
-        let d = TextDisplayData {
-            text: std::sync::Arc::new(horizon_client::text::Text::literal("Culled")),
-            ..Default::default()
-        };
-        let cache = CachedQuads::new(&atlas, &d, 0);
-        let allocation = cache.batch.vertices.as_ptr();
-        display.lines = Some(cache);
-        for _ in 0..2 {
-            let cached = display
-                .lines
-                .take()
-                .filter(|c| c.matches(&d, 0, atlas.font.epoch(), atlas.revision))
-                .unwrap_or_else(|| panic!("culled display rebuilt its glyphs"));
-            let cached = display.lines.insert(cached);
-            let matrix = glam::Mat4::from_translation(glam::Vec3::Z * 5.0) * cached.lines.pose();
-            let (lo, _) = cached.transformed_bounds(matrix);
-            assert!(lo.z > 0.0, "the display is behind the camera");
-            assert_eq!(cached.batch.vertices.as_ptr(), allocation);
-        }
-    }
-
-    #[test]
-    fn cached_text_quads_match_fresh_and_invalidate() {
-        let atlas = horizon_client::hud::HudAtlas::boot();
-        let mut d = TextDisplayData {
-            text: std::sync::Arc::new(horizon_client::text::Text::literal("Hologram")),
-            ..Default::default()
-        };
-        let cache = CachedQuads::new(&atlas, &d, 0);
-        let mut fresh = horizon_client::hud::HudBatch::scratch([1, 1]);
-        text_display::draw(&mut fresh, &atlas, &d, &cache.lines, 0);
-        let vertices = |b: &horizon_client::hud::HudBatch| {
-            b.vertices
-                .iter()
-                .map(|v| (v.pos, v.uv, v.color, v.depth))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(vertices(&cache.batch), vertices(&fresh));
-        let matches = |d: &TextDisplayData| cache.matches(d, 0, atlas.font.epoch(), atlas.revision);
-        assert!(matches(&d));
-        for change in 0..7 {
-            let mut changed = d.clone();
-            match change {
-                0 => {
-                    changed.text =
-                        std::sync::Arc::new(horizon_client::text::Text::literal("Changed"))
-                }
-                1 => changed.text = std::sync::Arc::new((*d.text).clone().bold()),
-                2 => changed.opacity = 40,
-                3 => changed.background = 0,
-                4 => changed.flags = 1,
-                5 => changed.flags = 2,
-                _ => changed.line_width = 10,
-            }
-            assert!(!matches(&changed));
-        }
-        assert!(!cache.matches(&d, 1, atlas.font.epoch(), atlas.revision));
-        assert!(!cache.matches(&d, 0, atlas.font.epoch() + 1, atlas.revision));
-        assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision + 1));
-        d.text = std::sync::Arc::new(horizon_client::text::Text::legacy("§kSecret"));
-        let cache = CachedQuads::new(&atlas, &d, 0);
-        assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
-        // A plugin hologram sends `§k` inside a literal JSON string: the font
-        // resolves it, so its glyphs still change every frame.
-        d.text = std::sync::Arc::new(horizon_client::text::Text::literal("§kSecret"));
-        let cache = CachedQuads::new(&atlas, &d, 0);
-        assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
-    }
-
-    #[test]
-    fn transformed_text_bounds_reach_into_view_but_not_from_behind() {
-        let atlas = horizon_client::hud::HudAtlas::boot();
-        let d = TextDisplayData {
-            text: std::sync::Arc::new(horizon_client::text::Text::literal("Wide hologram")),
-            ..Default::default()
-        };
-        let cache = CachedQuads::new(&atlas, &d, 0);
-        // A 90-degree camera looking down -Z has side planes x +/- z,
-        // y +/- z, and the near plane z = -0.05.
-        let visible = |matrix| {
-            let (lo, hi) = cache.transformed_bounds(matrix);
-            hi.x >= lo.z && lo.x <= -lo.z && hi.y >= lo.z && lo.y <= -lo.z && lo.z <= -0.05
-        };
-        let pose = |x, z, scale| {
-            glam::Mat4::from_translation(glam::Vec3::new(x, 0.0, z))
-                * glam::Mat4::from_scale(glam::Vec3::splat(scale))
-                * cache.lines.pose()
-        };
-        assert!(visible(pose(6.0, -5.0, 20.0)));
-        assert!(!visible(pose(100.0, -5.0, 1.0)));
-        assert!(!visible(pose(0.0, 5.0, 1.0)));
-    }
-
     #[test]
     fn metadata_and_position_interpolation_keep_their_separate_clocks() {
         let mut d = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);

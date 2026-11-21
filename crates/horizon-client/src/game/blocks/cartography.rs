@@ -8,7 +8,7 @@ use super::{
     Game,
     maps::{MapData, map_id, shown_on_frame},
 };
-use horizon_client::{hud::HudBatch, items::ItemStack, menu::Maps};
+use horizon_client::{items::ItemStack, menu::Maps};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,

@@ -189,13 +189,11 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let comparator = BlockPos::new(1, 64, 1);
@@ -675,13 +673,11 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     use horizon_mod_runtime::attachments::{AttachmentCodec, AttachmentError, AttachmentType};
@@ -822,13 +818,11 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let cloud = Tag::compound([
@@ -956,13 +950,11 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     let types = game.res.mob_types();

@@ -287,7 +287,7 @@ impl Game<'_> {
         victim: Option<&horizon_client_core::scoreboard::Team>,
         attacker: Option<&horizon_client_core::scoreboard::Team>,
     ) -> bool {
-        self.ui
+        self.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::PVP)
             && horizon_client::scoreboard::teams_allow_damage(victim, attacker)
@@ -656,7 +656,7 @@ impl Game<'_> {
             if sweep.skip == Some(id)
                 || horizon_client::scoreboard::teams_allied(team.as_ref(), sweep.team.as_ref())
                 || !self
-                    .ui
+                    .session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::PVP)
             {

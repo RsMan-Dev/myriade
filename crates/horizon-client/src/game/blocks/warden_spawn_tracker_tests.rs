@@ -21,7 +21,7 @@ fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> Option<Game<'_>>
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);
-    game.ui.registries.permission = 4;
+    game.session.registries.permission = 4;
     Some(game)
 }
 
@@ -29,7 +29,7 @@ fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> Option<Game<'_>>
 /// there, `SharedConstants.DEBUG_DEV_COMMANDS`) with `source`.
 fn run_with(game: &mut Game<'_>, line: &str, source: Source) -> R<i32> {
     let d = vanilla::build_with(true);
-    let parse = d.parse(line, &game.ui.registries);
+    let parse = d.parse(line, &game.session.registries);
     let (ctx, _) = parse.executable().expect(line);
     let (ctx, root) = (ctx.clone(), parse.context.clone());
     game.with_source(source, |g| g.run_chain(&root, &ctx))
@@ -38,7 +38,7 @@ fn run_with(game: &mut Game<'_>, line: &str, source: Source) -> R<i32> {
 /// The same, as the player's own command (no `execute` source).
 fn run(game: &mut Game<'_>, line: &str) -> R<i32> {
     let d = vanilla::build_with(true);
-    let parse = d.parse(line, &game.ui.registries);
+    let parse = d.parse(line, &game.session.registries);
     let (ctx, _) = parse.executable().expect(line);
     let (ctx, root) = (ctx.clone(), parse.context.clone());
     game.run_chain(&root, &ctx)

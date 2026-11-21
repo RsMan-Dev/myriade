@@ -20,7 +20,7 @@ pub struct SpriteRef {
 #[derive(horizon_mod_api_macros::Wire)]
 pub struct FaceSprite {
     pub sprite: SpriteRef,
-    /// Its texture by the name `BlockEntityDrawContext::cube` and `quad` take (`block/oak_log`: vanilla's
+    /// Its texture by the name `cube` and `quad` take (`block/oak_log`: vanilla's
     /// without its namespace, a mod's with it), to draw the face elsewhere: a copycat block drawing its
     /// material's faces on its own shape, with `uv` for the face's turn.
     pub texture: String,
@@ -44,7 +44,7 @@ pub struct FaceSprite {
 impl FaceSprite {
     /// This face drawn on side `side` of the box `from`..`to` (in blocks, 0 to 1 across a block) of
     /// another block, as a copycat draws its material: the corners and the UV rectangle (`[u0, v0, u1,
-    /// v1]` in texels of 16 per side) to give `BlockEntityDrawContext::quad`, with [`FaceSprite::texture`]
+    /// v1]` in texels of 16 per side) to give `quad`, with [`FaceSprite::texture`]
     /// as its sprite. The texture runs as it does on the material's own side, turned and mirrored as its
     /// model turns it (`uv`: a log on its side, glazed terracotta), and is cut where the box covers the
     /// side, so copycats side by side line up as the material's blocks would. The corners go
@@ -172,7 +172,7 @@ pub struct TextureAtlasRegistration {
 impl TextureAtlasRegistration {
     /// The GUI atlas name of this atlas's sprite `sprite` (`mymod:heart` in `mymod:icons` is
     /// `mymod:gui/atlases/icons/mymod/heart`): what `gui_sprite` looks it up by and
-    /// `DrawContext::sprite` draws.
+    /// a sprite draw takes.
     pub fn sprite_name(&self, sprite: &Identifier) -> Identifier {
         let path = format!(
             "gui/atlases/{}/{}/{}",

@@ -522,7 +522,6 @@ impl Game<'_> {
                 Target::Player if self.lan_acting.is_some() => {
                     self.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.audio.stop_sounds(sound, source),
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
@@ -578,7 +577,6 @@ impl Game<'_> {
                 self.item_particle(&horizon_client::items::ItemStack::new(&id, 1))
             }
             ParticleType::ItemSlime | ParticleType::ItemSnowball | ParticleType::ItemCobweb => {
-                self.ensure_item_particle_sprites();
                 ParticleOptions::simple(ty)
             }
             ParticleType::Block
@@ -610,22 +608,14 @@ impl Game<'_> {
                 };
                 let mut reader = horizon_client::command::Reader::new(&text);
                 let block = horizon_client::command::args::ArgType::BlockState
-                    .parse(&mut reader, &self.ui.registries);
+                    .parse(&mut reader, &self.session.registries);
                 match block {
                     Ok(Arg::Block(b)) => {
-                        let state = self.block_state(&b)?;
-                        block_state = Some(state);
-                        let at = self
-                            .position_arg(ctx, "pos")
-                            .unwrap_or_else(|| self.source_position())
-                            .map(|c| c.floor() as i32);
-                        let (sprite, tint) = self
-                            .particle_sprite(state, at)
-                            .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                        ParticleOptions::block(ty, sprite, tint)
+                        block_state = Some(self.block_state(&b)?);
                     }
-                    _ => ParticleOptions::simple(ty),
+                    _ => {}
                 }
+                ParticleOptions::simple(ty)
             }
             // Every other type with options decodes its own codec
             // (`ParticleTypes.CODEC`): dust, spells, sculk charge, shriek,
@@ -701,13 +691,11 @@ impl Game<'_> {
                     randomization: 0,
                 })
             });
-        let mut local = false;
         for &t in &reached {
             match (t, &packet) {
                 (Target::Player, Some(p)) if self.lan_acting.is_some() => {
                     self.guest_packets.push(p.clone());
                 }
-                (Target::Player, _) => local = true,
                 (Target::Guest(conn), Some(p)) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, p);
@@ -717,28 +705,6 @@ impl Game<'_> {
             }
         }
         let reached = reached.len() as i32;
-        if !local {
-        } else if count <= 0 {
-            // handleParticleEvent, count 0: one particle, the speed times
-            // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles
-                .create(&options, pos, delta.map(|d| f64::from(speed * d as f32)));
-        } else {
-            for _ in 0..count {
-                let r = self.particles.random();
-                let p = [
-                    pos[0] + r.next_gaussian() * delta[0],
-                    pos[1] + r.next_gaussian() * delta[1],
-                    pos[2] + r.next_gaussian() * delta[2],
-                ];
-                let v = [
-                    r.next_gaussian() * f64::from(speed),
-                    r.next_gaussian() * f64::from(speed),
-                    r.next_gaussian() * f64::from(speed),
-                ];
-                self.particles.create(&options, p, v);
-            }
-        }
         self.feedback(Text::translate(
             "commands.particle.success",
             // ParticleCommand.sendParticles: the type's registry key, not the
@@ -2147,13 +2113,11 @@ mod vehicle_damage_command_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2594,13 +2558,11 @@ mod attribute_modifier_command_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

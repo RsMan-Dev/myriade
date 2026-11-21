@@ -11,17 +11,16 @@ impl Game<'_> {
         player: PlayerRef,
         book: &RecipeBookTypeKey,
     ) -> Option<RecipeBookSettings> {
-        self.native_local_status(player)?;
+        None::<()>?;
         self.custom_book_settings(book)
     }
     pub(super) fn player_request_recipe_book_settings(
         &mut self,
-        player: PlayerRef,
-        book: &RecipeBookTypeKey,
-        settings: RecipeBookSettings,
+        _player: PlayerRef,
+        _book: &RecipeBookTypeKey,
+        _settings: RecipeBookSettings,
     ) -> bool {
-        self.native_local_status(player).is_some()
-            && self.request_custom_book_settings(book, settings)
+        false
     }
 
     pub(super) fn player_set_recipe_book_settings(

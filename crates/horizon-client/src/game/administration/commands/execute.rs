@@ -252,8 +252,8 @@ impl Game<'_> {
     /// Run one command line with `source` (no error reporting): the entry
     /// for functions and `execute run`.
     pub(in crate::game) fn execute_line(&mut self, line: &str, source: Source) -> R<i32> {
-        let d = self.ui.dispatcher.0.clone();
-        let parse = d.parse(line, &self.ui.registries);
+        let d = self.session.dispatcher.0.clone();
+        let parse = d.parse(line, &self.session.registries);
         let (ctx, _) = parse.executable()?;
         let ctx = ctx.clone();
         let root = parse.context.clone();
@@ -264,7 +264,7 @@ impl Game<'_> {
     pub(in crate::game) fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
         self.exec.commands += 1;
         let limit = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
@@ -353,7 +353,7 @@ impl Game<'_> {
     pub(in crate::game) fn run_execute(&mut self, ctx: &Context) -> R<i32> {
         // BuildContexts: a modifier may not bring the sources to this many.
         let fork_limit =
-            self.ui
+            self.session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::MAX_COMMAND_FORKS) as usize;
         let mut sources = vec![self.command_source.unwrap_or_else(|| self.player_source())];
@@ -1644,13 +1644,11 @@ mod terminal_fork_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

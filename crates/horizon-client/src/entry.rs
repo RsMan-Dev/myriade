@@ -107,27 +107,8 @@ pub fn start<G>(
     runtime_environment::capture(&launch);
     horizon_threads::configure_allocator();
     horizon_chat_filter::install();
-    horizon_look::give();
-    // OptiFine's and Polytone's pack formats (platform, docs/layers.md), before any pack loads.
-    horizon_client::pack_formats::install();
-    // The controller glyphs' pictures: Horizon's own art, until a platform crate registers its own.
-    horizon_client::pad_glyph::install();
-    // horizon-extras (docs/forking.md): without the feature, no Horizon Settings or Mods page.
-    if !cfg!(feature = "horizon-extras") {
-        horizon_client::options_ui::HORIZON_EXTRAS
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-    }
-    horizon_client::telemetry::mark_start();
-    // Opt-in telemetry keeps each crash report (docs/telemetry.md), whatever the mode.
-    crash::on_report(horizon_client::telemetry::keep_crash);
     // Crates above the engine registered their hooks before this (horizon-official's `main`),
     // then the Horizon parts still in this crate; none registers after this point.
-    game::player_hooks::register();
-    // `horizon-controller.txt` (platform, still in this crate's input until the controllers move
-    // out, layer plan M6), one player's side per seat.
-    if let Err(e) = horizon_hooks::settings::register(&horizon_client::gamepad::store::STORE) {
-        log::error!("Controllers: their settings came too late: {e}");
-    }
     horizon_hooks::engine::seal();
     // The text crates ship (`horizon_hooks::lang`), loaded with the game's own languages.
     horizon_client::lang::install_crate_files(horizon_hooks::lang::engine::all());
@@ -156,8 +137,6 @@ pub fn start<G>(
     );
     // The log's first line names the build, so a bug report that carries the log says which one it was.
     log::info!("Horizon {}", crash::version());
-    // Mods' startup bars and lines (`RegistrationContext::progress`), before they register.
-    game::startup_progress::install(side == "server");
     // Mod loading emits refusals; both client and dedicated logs must exist first.
     let (_ids, _loaded_code) = load(&native, &launch);
     crash::install(home.clone(), side);

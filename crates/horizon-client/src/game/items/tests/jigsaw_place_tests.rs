@@ -12,7 +12,7 @@ fn game() -> Option<Game<'static>> {
     std::env::var_os("HORIZON_TEST_RESOURCES")?;
     let mut game = server_game();
     game.set_mode_id(1);
-    game.ui.registries.permission = 2;
+    game.session.registries.permission = 2;
     Some(game)
 }
 

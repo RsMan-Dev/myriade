@@ -80,7 +80,7 @@ impl Game<'_> {
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the
     /// highest block in `blocks_motion_in_heightmap` or holding a fluid.
     pub(super) fn rain_height(&self, x: i32, z: i32) -> i32 {
-        render_tick::motion_blocking_height(&self.world, &self.pack.assets.properties, x, z)
+        self.mob_world_base(&[]).motion_blocking_height(x, z)
     }
 
     pub(super) fn tick_weather_effects(&mut self) {

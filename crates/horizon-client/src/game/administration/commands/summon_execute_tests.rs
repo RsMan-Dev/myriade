@@ -32,7 +32,7 @@ fn execute_summon_checks_and_finalizes_as_summon_does() {
         ] {
             assert!(!game.run_command(refused), "{refused}");
         }
-        game.ui.difficulty = 0;
+        game.session.difficulty = 0;
         assert!(!game.run_command("execute positioned 0.5 100 0.5 summon minecraft:zombie run say ok"));
         assert!(game.run_command("execute positioned 0.5 100 0.5 summon minecraft:pig run say ok"));
         assert_eq!(game.mobs.len(), count + 1, "only the Peaceful pig joined");

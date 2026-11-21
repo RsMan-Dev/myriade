@@ -257,7 +257,7 @@ impl<G: ChunkGenerator> ProtoAccess for G {
         self.proto_block(proto, pos)
     }
 }
-trait Saves: ProtoAccess {
+trait Saves: LodSource + ProtoAccess {
     fn save_protos(&self, protos: &[&Proto]);
     fn save_finished(&self, chunk: Chunk);
 }
@@ -1270,6 +1270,10 @@ impl Streaming {
             self.light_views.remove(&key);
             self.protos.insert(key, Some(proto));
         }
+    }
+    /// The far terrain served to clients: shares generation resources, with its own worker state.
+    pub fn lod_source(&self) -> Arc<dyn LodSource> {
+        self.saves.clone()
     }
     /// A read-only view of checked-out protos independent of the streaming borrow.
     pub fn proto_access(&self) -> Arc<dyn ProtoAccess> {

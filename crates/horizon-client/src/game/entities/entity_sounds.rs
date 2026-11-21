@@ -1,6 +1,5 @@
 //! The entity overload of level sounds, shared by mob and player call sites.
 use super::Game;
-use horizon_client::sound_engine::{SoundEntity, SoundEntityState};
 use horizon_core::nbt::Tag;
 
 fn saved_silent(extra: Option<&Tag>) -> bool {
@@ -25,14 +24,10 @@ impl Game<'_> {
         except_actor: bool,
     ) {
         let mob = &self.remote_entities[index];
-        let entity = horizon_client::sound_engine::SoundEntity::new(
-            mob.id,
-            [mob.position.x, mob.position.y, mob.position.z],
-            mob.silent,
-        );
+        let (id, position) = (mob.id, [mob.position.x, mob.position.y, mob.position.z]);
         let except = except_actor.then(|| self.native_acting_entity());
         self.audio
-            .play_bound(event, source, volume, pitch, entity, except);
+            .play_bound(event, source, volume, pitch, id, position, except);
     }
 
     fn sound_player_id(&self) -> u32 {
@@ -50,30 +45,25 @@ impl Game<'_> {
         except_actor: bool,
     ) {
         let id = self.sound_player_id();
-        let Some(state) = self.sound_entity_state(id) else {
+        let Some(position) = self.sound_entity_position(id) else {
             return;
         };
-        let entity = SoundEntity::new(id, state.position, state.silent);
-        entity.update(state);
         self.audio.play_bound(
             event,
             source,
             volume,
             pitch,
-            entity,
+            id,
+            position,
             except_actor.then_some(id),
         );
     }
 
-    pub(super) fn sound_entity_state(&mut self, id: u32) -> Option<SoundEntityState> {
+    pub(super) fn sound_entity_position(&self, id: u32) -> Option<[f64; 3]> {
         if id == self.sound_player_id()
             && let Some(player) = self.player.as_ref()
         {
-            return Some(SoundEntityState {
-                position: [player.position.x, player.position.y, player.position.z],
-                silent: saved_silent(self.level.player_extra.as_ref()),
-                removed: false,
-            });
+            return Some([player.position.x, player.position.y, player.position.z]);
         }
         if let Some(guest) = self.lan.as_ref().and_then(|host| {
             host.hub
@@ -81,26 +71,14 @@ impl Game<'_> {
                 .iter()
                 .find(|g| g.entity_id as u32 == id && g.placed && g.dimension == self.dim.id())
         }) {
-            return Some(SoundEntityState {
-                position: guest.position,
-                silent: saved_silent(guest.saved.as_ref()),
-                removed: false,
-            });
+            return Some(guest.position);
         }
         if let Some(t) = self.tridents.iter().find(|t| t.id == id) {
-            return Some(SoundEntityState {
-                position: [t.position.x, t.position.y, t.position.z],
-                silent: false,
-                removed: false,
-            });
+            return Some([t.position.x, t.position.y, t.position.z]);
         }
         self.remote_entities
             .iter()
             .find(|m| m.id == id)
-            .map(|m| SoundEntityState {
-                position: [m.position.x, m.position.y, m.position.z],
-                silent: m.silent,
-                removed: m.removed,
-            })
+            .map(|m| [m.position.x, m.position.y, m.position.z])
     }
 }

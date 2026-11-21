@@ -113,7 +113,7 @@ impl Game<'_> {
             self.bosses.bars = BossBars::unpack(data);
         }
         self.bosses.rebuild_listing();
-        self.ui.registries.bossbars = self.bosses.bars.ids();
+        self.session.registries.bossbars = self.bosses.bars.ids();
     }
     pub(super) fn save_bossbars(&self) {
         if !self.bosses.loaded {
@@ -171,7 +171,7 @@ impl Game<'_> {
     }
     /// The bars changed: refresh the command suggestions and tell the viewers.
     pub(super) fn bossbars_changed(&mut self) {
-        self.ui.registries.bossbars = self.bosses.bars.ids();
+        self.session.registries.bossbars = self.bosses.bars.ids();
         self.publish_boss_bars();
     }
     /// `CustomBossEvents.create`: a new bar with a UUID drawn from the level's

@@ -4,6 +4,7 @@
 pub mod assets;
 pub mod auth;
 pub mod biome;
+pub mod block_edit;
 pub mod block_entities;
 pub mod block_states;
 pub mod brewing;

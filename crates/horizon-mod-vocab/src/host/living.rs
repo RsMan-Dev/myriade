@@ -299,30 +299,6 @@ pub trait LivingBackend {
 }
 /// The handles' client reads of the `living` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[horizon_mod_api_macros::host_area]
-pub trait LivingClientBackend {
-    /// Side: client.
-    /// `LivingEntity.getEffectBlendFactor(effect, partialTick)` on a client:
-    /// how far the effect has faded in, from 0 to 1, between the last tick
-    /// and the next at `partial`. Darkness fades in and out over 22 ticks and
-    /// nausea in over 150 and out over 20 (`MobEffect.setBlendDuration`), the
-    /// fades the fog, lightmap and screen spin draw. Other effects start at
-    /// 0 after a blended add and interpolate to their post-countdown target
-    /// during each client tick: 1 while active, 0 once expired. An unblended
-    /// add starts at its target immediately; an update preserves the old blend.
-    /// `partial` is not clamped. The registration-slot key is resolved at load.
-    /// 0 when the entity lacks the effect. None before effect resolution, for a stale
-    /// handle, or an entity other than the local player: the client keeps no
-    /// other entity's effects.
-    #[access(WorldOnly)]
-    fn living_effect_blend_factor(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-        partial: f32,
-    ) -> Option<f32>;
-}
 /// The handles' writes of the `living` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]

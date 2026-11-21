@@ -311,7 +311,7 @@ impl Game<'_> {
             return finder;
         }
         let mut radius = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::RESPAWN_RADIUS)
             .max(0);

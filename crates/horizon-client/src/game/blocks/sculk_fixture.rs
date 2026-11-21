@@ -4,7 +4,7 @@
 //! game events and block changes) through its own sculk code on a fresh
 //! headless world, ticking in `ServerLevel.tick`'s order, and prints what
 //! changed after every tick in the format of `VanillaSculkOracle`.
-use super::{Game, dispense_fixture};
+use super::Game;
 use horizon_client::{
     Result,
     chunk::{Chunk, MIN_Y},
@@ -26,7 +26,6 @@ use std::{
     io::Write as _,
     sync::Arc,
 };
-use winit::keyboard::KeyCode;
 
 struct MobSpec {
     kind: String,
@@ -358,7 +357,7 @@ impl Game<'_> {
         self.dropped.clear();
         self.orbs.clear();
         self.level_events.clear();
-        self.ui.rules = Default::default();
+        self.session.rules = Default::default();
         for (rule, value) in [
             ("spawn_mobs", false),
             ("spawn_monsters", false),
@@ -370,11 +369,11 @@ impl Game<'_> {
             ("raids", false),
             ("spawn_wardens", s.wardens),
         ] {
-            self.ui
+            self.session
                 .rules
                 .set(rule, horizon_client::gamerules::Value::Bool(value));
         }
-        self.ui.rules.set(
+        self.session.rules.set(
             "random_tick_speed",
             horizon_client::gamerules::Value::Int(0),
         );
@@ -386,7 +385,7 @@ impl Game<'_> {
             _ => Difficulty::Normal,
         };
         self.world.health_rules.difficulty = difficulty;
-        self.ui.difficulty = match difficulty {
+        self.session.difficulty = match difficulty {
             Difficulty::Peaceful => 0,
             Difficulty::Easy => 1,
             Difficulty::Normal => 2,
@@ -420,9 +419,9 @@ impl Game<'_> {
         if s.trace_events {
             self.previous_position = Vec3::new(at[0], at[1], at[2]);
         }
-        self.keys.clear();
+        self.sneak_held = false;
         if s.sneak {
-            self.keys.insert(KeyCode::ShiftLeft);
+            self.sneak_held = true;
         }
         self.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
@@ -475,7 +474,7 @@ impl Game<'_> {
                 if spec.flags.iter().any(|f| f == "noai") {
                     self.ecs.set_ai_paused(id, true);
                 }
-                self.ecs.set_random_seed(id, spec.seed);
+                self.ecs.set_random_seed(id, spec.seed as u64);
                 names.insert(id, format!("m{}", sources.len()));
                 sources.push(id);
                 continue;
@@ -520,7 +519,6 @@ impl Game<'_> {
         let mut out = String::new();
         self.lan_entity_events.clear();
         for t in 0..=s.ticks {
-            dispense_fixture::start_recording();
             if t > 0 {
                 self.sculk_fixture_tick(t, s, &sources, &known, names.len(), &mut seeded)?;
             }
@@ -600,7 +598,7 @@ impl Game<'_> {
                 if seeded.insert(id) {
                     if self.ecs.is_active() {
                         // The ECS warden has no Mob brain: its shuffles draw on the entity's own generator.
-                        self.ecs.set_random_seed(id, seed);
+                        self.ecs.set_random_seed(id, seed as u64);
                     } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         seed_fresh(m, seed);
                     }
@@ -644,15 +642,6 @@ impl Game<'_> {
                 }
                 for (_, event) in self.lan_entity_events.drain(..) {
                     lines.push(format!("entity_event {event}"));
-                }
-            }
-            for line in dispense_fixture::stop_recording() {
-                if let Some(rest) = line.strip_prefix("L ") {
-                    lines.push(format!("level {rest}"));
-                } else if s.trace_events
-                    && let Some(rest) = line.strip_prefix("G ")
-                {
-                    lines.push(format!("game {rest}"));
                 }
             }
             // The sounds bound to an entity are the server's too.
@@ -846,7 +835,7 @@ impl Game<'_> {
             let seed = 0x5eed + (named + i + 1) as i64;
             if seeded.insert(id) {
                 if self.ecs.is_active() {
-                    self.ecs.set_random_seed(id, seed);
+                    self.ecs.set_random_seed(id, seed as u64);
                 } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     seed_fresh(m, seed);
                 }

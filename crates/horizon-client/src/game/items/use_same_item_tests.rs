@@ -12,7 +12,7 @@ fn eating(ticks: u32, f: impl FnOnce(&mut Game<'_>)) -> Vec<String> {
     let lines = with_game("minecraft:golden_apple", |game| {
         game.creative = false;
         game.build_registries();
-        game.ui.registries.permission = 4;
+        game.session.registries.permission = 4;
         game.right = true;
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
         assert!(game.start_using_item());

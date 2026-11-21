@@ -2,6 +2,9 @@
 //! then the game folder and the account it names.
 use super::*;
 
+/// The highest `--render-distance`, in chunks.
+const MAX_VIEW_DISTANCE: i32 = 32;
+
 #[derive(Clone)]
 pub(crate) struct Options {
     pub(super) resources: PathBuf,
@@ -131,9 +134,6 @@ impl Options {
             }
             Ok(None) => {}
             Err(e) => eprintln!("Horizon: not signed in: {e}"),
-        }
-        if !o.developer_single_player {
-            split::launcher::read_now();
         }
         if let Some(dir) = o.game_dir.take() {
             std::fs::create_dir_all(&dir)
@@ -287,7 +287,7 @@ impl Options {
                             "--render-distance" | "--radius" => {
                                 o.distance = value.parse()?;
                                 o.distance_override = Some(o.distance);
-                                let max = horizon_client::options_file::MAX_RENDER_DISTANCE;
+                                let max = MAX_VIEW_DISTANCE;
                                 if !(2..=max).contains(&o.distance) {
                                     return Err(format!("render distance must be 2..{max}").into());
                                 }
@@ -331,14 +331,6 @@ impl Options {
                             // main has set this player's own folder (logging::set_player_dir).
                             "--player-dir" => {}
 
-                            "--benchmark" => {
-                                horizon_client::benchmark::Scenario::parse(&value)?;
-                                o.benchmark = Some(value);
-                            }
-                            "--benchmark-set" => {
-                                o.benchmark_set =
-                                    Some(horizon_client::benchmark::parse_set(&value)?)
-                            }
                             "--server" | "--quickPlayMultiplayer" => o.server = Some(value),
                             "--name" => o.player_name = Some(value),
                             "--session-file" => o.session_file = Some(value),
@@ -375,7 +367,6 @@ impl Options {
         if o.benchmark_profile && o.benchmark.is_none() {
             return Err("--profile needs --benchmark".into());
         }
-        o.validate_developer_single_player()?;
         Ok(Some(o))
     }
 }

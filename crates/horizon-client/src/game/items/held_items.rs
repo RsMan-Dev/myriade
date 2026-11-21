@@ -2,6 +2,7 @@
 //! the item in use and running code with the other hand acting, `Inventory.add`, and the worn glider
 //! and freeze-immune gear.
 use super::*;
+use mod_api::client::first_person::Hand;
 
 impl Game<'_> {
     /// The stack in the hand that acts (`getItemInHand(hand)`).

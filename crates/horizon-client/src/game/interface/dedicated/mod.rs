@@ -45,6 +45,7 @@ pub(crate) use missing_mods::is_missing_mods_refusal;
 pub(super) mod events;
 mod management;
 pub(super) mod report;
+mod server_links;
 mod status;
 mod transfer;
 
@@ -1190,18 +1191,18 @@ impl Game<'_> {
         // (vanilla's forceDifficulty), including health_rules used for despawn (arismoko/horizon#4694).
         self.set_default_game_mode(game_mode);
         // MinecraftServer.setDifficulty: a hardcore world is always hard.
-        self.ui.difficulty = if self.level.hardcore {
+        self.session.difficulty = if self.level.hardcore {
             3
         } else {
             props.difficulty as u8
         };
-        self.level.set_difficulty(self.ui.difficulty);
+        self.level.set_difficulty(self.session.difficulty);
         self.sync_rules();
         // DedicatedServer.initServer: a legacy `announce-player-achievements`
         // sets the show_advancement_messages rule once, as the file is read.
         if let Some(announce) = props.announce_player_achievements {
             let value = horizon_client::gamerules::Value::Bool(announce);
-            if self.ui.rules.set("show_advancement_messages", value) {
+            if self.session.rules.set("show_advancement_messages", value) {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
         }
@@ -1300,7 +1301,7 @@ impl Game<'_> {
             ),
             server_links: if props.bug_report_link.is_empty() {
                 Vec::new()
-            } else if super::server_links::valid_untrusted_uri(&props.bug_report_link) {
+            } else if server_links::valid_untrusted_uri(&props.bug_report_link) {
                 vec![horizon_protocol::packets::configuration::ServerLink {
                     kind: horizon_protocol::packets::configuration::ServerLinkKind::Known(0),
                     link: props.bug_report_link.clone(),
@@ -1498,7 +1499,6 @@ impl Game<'_> {
                 while let Ok(line) = state.console.try_recv() {
                     self.console_line(&mut state, &line);
                 }
-                self.poll_server_control(&mut state);
             }));
             if let Err(payload) = prelude {
                 crashed = Some(panic_message(payload.as_ref()));
@@ -1574,9 +1574,7 @@ impl Game<'_> {
             if state.report.as_ref().is_some_and(report::Recording::done) {
                 self.finish_perf_capture(&mut state, StopReason::Normal);
             }
-            self.serve_perf_requests(&mut state);
-            let done = report::log_saved(&mut state.perf, false);
-            self.perf_captures_done(done);
+            report::log_saved(&mut state.perf, false);
             // DedicatedServer.sendLowDiskSpaceWarning: the operators hear of it
             // (no window drains the toasts here).
             if horizon_client::chunk_io::take().low_disk_space
@@ -1626,8 +1624,7 @@ impl Game<'_> {
             watchdog.running.store(false, Ordering::Relaxed);
         }
         self.finish_perf_capture(&mut state, StopReason::Shutdown);
-        let done = report::log_saved(&mut state.perf, true);
-        self.perf_captures_done(done);
+        report::log_saved(&mut state.perf, true);
         match crashed {
             Some(message) => std::panic::resume_unwind(Box::new(message)),
             None => Ok(()),
@@ -1700,7 +1697,7 @@ impl Game<'_> {
     /// ticket), an integrated one the spawn chunk's.
     pub(super) fn update_dedicated_streaming(&mut self) {
         let rule = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let guest = self.lan.as_ref().and_then(|h| {
@@ -3238,13 +3235,11 @@ mod console_source_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

@@ -213,7 +213,7 @@ impl Game<'_> {
     /// `SleepStatus.sleepersNeeded`.
     pub(super) fn sleepers_needed(&self, active: i64) -> i64 {
         let percent = i64::from(
-            self.ui
+            self.session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
                 .max(0),
@@ -247,7 +247,7 @@ impl Game<'_> {
         }
         // ServerLevel.canSleepThroughNights.
         if self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100

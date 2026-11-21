@@ -163,7 +163,7 @@ impl Game<'_> {
                     return Ok(0);
                 };
                 if !self
-                    .ui
+                    .session
                     .registries
                     .ids("minecraft:worldgen/template_pool")
                     .contains(&pool)
@@ -212,7 +212,7 @@ impl Game<'_> {
                     return Ok(0);
                 };
                 if !self
-                    .ui
+                    .session
                     .registries
                     .ids("minecraft:worldgen/structure")
                     .contains(&structure)
@@ -425,13 +425,11 @@ mod live_dungeon_spawner_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

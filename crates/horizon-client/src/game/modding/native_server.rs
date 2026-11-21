@@ -2003,7 +2003,7 @@ impl Game<'_> {
     pub(super) fn run_native_command(&mut self, context: Context) -> super::commands::R<i32> {
         use super::commands::err;
         let command = self.resolve_native_command(context)?;
-        let origin = self.native_command_origin(self.ui.registries.permission)?;
+        let origin = self.native_command_origin(self.session.registries.permission)?;
         let mut ran = false;
         self.native_run_mod_command(&origin, &command, &mut ran);
         if ran {
@@ -2046,7 +2046,7 @@ impl Game<'_> {
         use mod_api::{CommandArgument, CommandArgumentValue as Value};
         let mut arguments = Vec::with_capacity(context.args.len());
         for argument in context.args {
-            let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
+            let ty = parsed_type(&self.session.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
                 Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
                 Arg::Str(value) => Value::String(value),
@@ -2063,7 +2063,7 @@ impl Game<'_> {
                             if *range != argument.range {
                                 return None;
                             }
-                            match &self.ui.dispatcher.0.nodes[*node].kind {
+                            match &self.session.dispatcher.0.nodes[*node].kind {
                                 horizon_client::command::NodeKind::Argument {
                                     ty: ArgType::Entity { single, players },
                                     ..
@@ -2156,9 +2156,9 @@ impl Game<'_> {
         if host.hub.guest(conn).is_none() {
             return false;
         }
-        let previous = std::mem::replace(&mut self.ui.registries.permission, permission);
+        let previous = std::mem::replace(&mut self.session.registries.permission, permission);
         self.run_command(line);
-        self.ui.registries.permission = previous;
+        self.session.registries.permission = previous;
         true
     }
 }
@@ -3515,22 +3515,22 @@ mod tests {
                     let commands = game.native_commands.registered.as_ref().unwrap();
                     assert!(!commands.levels.contains_key("before"));
                     assert!(commands.levels.contains_key("after"));
-                    let dispatcher = &game.ui.dispatcher.0;
+                    let dispatcher = &game.session.dispatcher.0;
                     assert!(
                         dispatcher
-                            .parse("after 7", &game.ui.registries)
+                            .parse("after 7", &game.session.registries)
                             .executable()
                             .is_ok()
                     );
                     assert!(
                         dispatcher
-                            .parse("after nope", &game.ui.registries)
+                            .parse("after nope", &game.session.registries)
                             .executable()
                             .is_err()
                     );
                     assert!(
                         dispatcher
-                            .parse("before", &game.ui.registries)
+                            .parse("before", &game.session.registries)
                             .executable()
                             .is_err()
                     );
@@ -3907,7 +3907,7 @@ mod tests {
                         "functions suppress both success and failure"
                     );
                     assert!(game.exec.functions.is_empty());
-                    game.ui.registries.permission = 4;
+                    game.session.registries.permission = 4;
                     assert!(!game.run_command("unhandled"));
                     assert!(game.run_command(
                         "execute store result storage test:result value int 1 run origin"

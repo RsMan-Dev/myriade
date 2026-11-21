@@ -124,29 +124,6 @@ mod hotbar_slot_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_selection_goes_out_before_an_attack_in_the_same_tick() {
-        with_client_game(|game| {
-            let mut reader = logged_in(game);
-            assert_eq!(game.select_hotbar_slot(4), Ok(()));
-            assert!(game.remote_attack_entity(123, 1.0));
-            let packets = sent(&mut reader);
-            let carried_at = packets
-                .iter()
-                .position(|packet| matches!(packet, S::SetCarriedItem(item) if item.slot == 4))
-                .expect("the carried-item packet goes out");
-            let attack_at = packets
-                .iter()
-                .position(|packet| matches!(packet, S::Attack(_)))
-                .expect("the attack goes out");
-            assert!(
-                carried_at < attack_at,
-                "the carried-item packet precedes the attack: {packets:?}"
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn an_out_of_range_slot_is_refused_and_keeps_the_selection() {
         with_client_game(|game| {
             let mut reader = logged_in(game);

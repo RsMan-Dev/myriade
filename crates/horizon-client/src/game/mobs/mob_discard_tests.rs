@@ -27,13 +27,11 @@ fn discarded_mob_leaves_selectors_and_saves_while_frozen() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.native_lifecycle
@@ -61,7 +59,7 @@ fn discarded_mob_leaves_selectors_and_saves_while_frozen() {
     let selector = |game: &Game<'_>, text: &str| {
         horizon_client::command::selector::parse(
             &mut horizon_client::command::Reader::new(text),
-            &game.ui.registries,
+            &game.session.registries,
             true,
         )
         .unwrap()
@@ -212,11 +210,9 @@ fn a_killed_mob_leaves_at_e_at_once_with_death_time_zero() {
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(root.clone())),
-        None,
     )
     .unwrap();
     game.world = World::new(game.res.facts().air, 1);
@@ -232,7 +228,7 @@ fn a_killed_mob_leaves_at_e_at_once_with_death_time_zero() {
         .push(Mob::new(42, kind, Vec3::new(0.5, 64.0, 2.5), 0.0));
     let all = horizon_client::command::selector::parse(
         &mut horizon_client::command::Reader::new("@e[type=minecraft:pig]"),
-        &game.ui.registries,
+        &game.session.registries,
         true,
     )
     .unwrap();

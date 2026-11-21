@@ -34,7 +34,7 @@ fn a_phantom_bite_level_event_plays_the_bite_at_0_3_volume() {
         assert_eq!(bite.pitch, pitch);
         assert_eq!(bite.position, [0.5, 64.5, 0.5]);
         assert_eq!(
-            horizon_client::settings::SOUND_SOURCES[bite.source],
+            horizon_client_core::sound_source::SOUND_SOURCES[bite.source],
             "hostile"
         );
         // It goes to the guests as the level event itself, which they play.

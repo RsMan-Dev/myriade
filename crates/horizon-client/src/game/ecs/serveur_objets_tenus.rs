@@ -53,7 +53,8 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use crate::game::ecs::test_support::ecs_game_with;
-    use horizon_client::{first_person::Hand, items::ItemStack};
+    use horizon_client::{items::ItemStack};
+    use mod_api::client::first_person::Hand;
     use horizon_ecs_proto::goals::Slot;
 
     #[test]

@@ -68,11 +68,11 @@ impl Game<'_> {
     /// The main-hand stack has `minecraft:piercing_weapon` (a spear's).
     fn holds_piercing_weapon(&self) -> bool {
         self.held().is_some_and(|stack| {
-            self.pack
-                .item_renderer
-                .models
-                .components_view(&horizon_client::item_render::stack_view(stack))
-                .contains_key("minecraft:piercing_weapon")
+            self.res
+                .item_defaults()
+                .entries()
+                .get(stack.item.as_ref())
+                .is_some_and(|components| components.get("minecraft:piercing_weapon").is_some())
         })
     }
 }
@@ -175,13 +175,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();

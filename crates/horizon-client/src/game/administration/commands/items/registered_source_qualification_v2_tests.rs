@@ -34,7 +34,7 @@ mod registered_source_completion_qualification_v2 {
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
         assert!(
-            game.ui
+            game.session
                 .registries
                 .datapacks_enabled
                 .contains(&"file/complete".to_owned())
@@ -48,7 +48,7 @@ mod registered_source_completion_qualification_v2 {
             Some(&declared)
         );
         assert!(
-            game.ui.registries.by_registry["minecraft:slot_source"]
+            game.session.registries.by_registry["minecraft:slot_source"]
                 .ids
                 .iter()
                 .any(|id| id == "complete:first_three")

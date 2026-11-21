@@ -36,7 +36,7 @@ impl Game<'_> {
                     if let Some(at) = self.ecs.position(id) {
                         // Ravager.roar (event 69) also pushes the armor stands in reach, with mob griefing on. The box is the
                         // ravager's (1.95 wide, 2.2 high) inflated by 4, from its position: an approximation of its bounds.
-                        if code == 69 && self.ui.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) {
+                        if code == 69 && self.session.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) {
                             let (min, max) = (Vec3::new(at[0] - 4.975, at[1] - 4.0, at[2] - 4.975), Vec3::new(at[0] + 4.975, at[1] + 6.2, at[2] + 4.975));
                             self.roar_pushes_armor_stands(Aabb::new(min, max), at);
                         }
@@ -117,7 +117,6 @@ impl Game<'_> {
                 HostEvent::DeathAnimation { id, at } => self.lan_entity_event(id as i32, 3, at),
                 HostEvent::DeathSmoke { id, at, width, height } => {
                     self.lan_entity_event(id as i32, 60, at);
-                    self.death_poof(at, width, height);
                 }
                 HostEvent::ConversionAsk { entity, into } => self.ecs_conversion_asked(entity, into),
                 // The `Some` case reached the mob handler through `apply`; a cleared target is told to `living_change_target`.
@@ -138,7 +137,7 @@ impl Game<'_> {
                 HostEvent::HeldSwap { player, from, to } => self.ecs_held_swap(player, from, to),
                 HostEvent::PlayerGameEvent { player, name, at } => {
                     self.with_player(player, |g| {
-                        let ctx = g.who_context(Some(Who::Player), None);
+                        let ctx = g.who_context(Some(horizon_client::mobs::Who::Player), None);
                         g.post_game_event(name, at, ctx)
                     });
                 }
@@ -244,7 +243,7 @@ impl Game<'_> {
     /// has already rolled the endermite, so `endermite` is that roll.
     fn pearl_lands(&mut self, to: [f64; 3], damage: f32, endermite: bool) {
         let Some(from) = self.player.as_ref().map(|pl| pl.position) else { return };
-        if endermite && self.ui.rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS) && self.ui.difficulty != 0 {
+        if endermite && self.session.rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS) && self.session.difficulty != 0 {
             self.spawn_mob_raw("minecraft:endermite", [from.x, from.y, from.z], false);
         }
         teleport_player(self, Vec3::new(to[0], to[1], to[2]));

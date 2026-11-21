@@ -121,15 +121,7 @@ impl Game<'_> {
             return vanilla.map(|stack| Ammo { stack, slot });
         }
         let mut projectile = vanilla.clone();
-        // A client predicting its own use has the profile it logged in with.
-        let player = match self
-            .remote
-            .as_ref()
-            .filter(|_| self.lan_acting_uuid.is_none())
-        {
-            Some(r) => r.profile(),
-            None => horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-        };
+        let player = horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid());
         let name = self.own_profile_name();
         self.native_living_get_projectile(
             Some(player),
@@ -496,13 +488,11 @@ mod tests {
         let mut game = Game::new(
             res,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 (root).to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.creative = true;

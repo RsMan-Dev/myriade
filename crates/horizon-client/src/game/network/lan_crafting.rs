@@ -139,7 +139,7 @@ fn place_back(menu: &mut Menu, env: &Env, stacks: Vec<ItemStack>) {
 impl Game<'_> {
     /// `LocalPlayer.doLimitedCrafting`: whether limited crafting is active.
     pub fn limited_crafting(&self) -> bool {
-        self.ui
+        self.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::LIMITED_CRAFTING)
     }
@@ -353,7 +353,7 @@ impl Game<'_> {
             return;
         };
         let g = &host.hub.guests[gi];
-        let players = horizon_client::settings::SOUND_SOURCES
+        let players = horizon_client_core::sound_source::SOUND_SOURCES
             .iter()
             .position(|s| *s == "player")
             .unwrap_or(0) as i32;

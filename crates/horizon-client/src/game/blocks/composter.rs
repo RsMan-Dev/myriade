@@ -356,3 +356,21 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "composter/capability_tests.rs"]
 mod capability_tests;
+
+impl Game<'_> {
+    pub(super) fn composter_fill_event(&mut self, pos: BlockPos, success: bool) {
+        let center = [
+            f64::from(pos.x) + 0.5,
+            f64::from(pos.y) + 0.5,
+            f64::from(pos.z) + 0.5,
+        ];
+        let sound = if success {
+            "minecraft:block.composter.fill_success"
+        } else {
+            "minecraft:block.composter.fill"
+        };
+        // `handleFill` is `playLocalSound`: the client that receives event 1500
+        // plays it.
+        self.audio.play(sound, Some(center), 1.0, 1.0);
+    }
+}

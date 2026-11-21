@@ -20,14 +20,14 @@ type Signed = Vec<(String, ChatMessage)>;
 impl Game<'_> {
     /// CommandDispatcher.parse with the guest's permission level.
     fn parse_as(&mut self, permission: u8, command: &str) -> ParseResults {
-        let level = std::mem::replace(&mut self.ui.registries.permission, permission);
+        let level = std::mem::replace(&mut self.session.registries.permission, permission);
         let parse = self
-            .ui
+            .session
             .dispatcher
             .0
             .clone()
-            .parse(command, &self.ui.registries);
-        self.ui.registries.permission = level;
+            .parse(command, &self.session.registries);
+        self.session.registries.permission = level;
         parse
     }
 
@@ -39,7 +39,7 @@ impl Game<'_> {
         command: &str,
     ) -> Vec<(String, String)> {
         self.parse_as(permission, command)
-            .signable_arguments(&self.ui.dispatcher.0)
+            .signable_arguments(&self.session.dispatcher.0)
     }
 
     /// ServerGamePacketListenerImpl.detectRateSpam: a chat message or command adds 20 to the

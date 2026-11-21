@@ -43,13 +43,9 @@ pub(super) struct View {
 
 impl Game<'_> {
     pub(super) fn send_mod_book_placement(&mut self, frame: sync::Frame) {
-        if let Some(data) = settings_codec::encode(&Message::Placement(frame)) {
+        if settings_codec::encode(&Message::Placement(frame)).is_some() {
             self.native_net.placement.deadline =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
         }
     }
     pub(super) fn send_guest_mod_book_placement(&self, conn: u32, frame: sync::Frame) {
@@ -110,7 +106,6 @@ impl Game<'_> {
         }
         self.native_net.placement.client.close();
         self.native_net.placement.view = None;
-        self.reset_mod_book_placement_ui();
     }
     pub(super) fn ensure_mod_book_catalog(&mut self) {
         let Some(window) = self.native_book_placement_window() else {
@@ -121,7 +116,6 @@ impl Game<'_> {
         }
         if let Some(frame) = self.native_net.placement.client.open(window) {
             self.native_net.placement.view = None;
-            self.reset_mod_book_placement_ui();
             self.send_mod_book_placement(frame);
         }
     }

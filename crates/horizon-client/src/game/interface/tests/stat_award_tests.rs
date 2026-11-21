@@ -64,7 +64,7 @@ fn rewritten_awards_update_counts_criteria_and_dirty_values_atomically() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             assert!(
-                game.ui
+                game.session
                     .registries
                     .ids("minecraft:custom_stat")
                     .iter()

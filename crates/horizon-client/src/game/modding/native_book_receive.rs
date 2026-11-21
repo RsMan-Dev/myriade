@@ -119,7 +119,6 @@ impl Game<'_> {
                 if (started.is_ok() && !matches) || started == Err(sync::Refusal::TooLarge) {
                     self.native_net.placement.client.invalidate(epoch);
                     self.native_net.placement.view = None;
-                    self.reset_mod_book_placement_ui();
                     log::error!(
                         "remote recipe-book catalogue load refused: incompatible menu metadata or oversized catalogue"
                     );
@@ -158,8 +157,6 @@ impl Game<'_> {
                                     identity: data.identity,
                                     index,
                                 });
-                            self.reset_mod_book_placement_ui();
-                            self.build_screen();
                         }
                     }
                     Err(reason) => {
@@ -169,7 +166,6 @@ impl Game<'_> {
                         );
                         self.native_net.placement.client.invalidate(epoch);
                         self.native_net.placement.view = None;
-                        self.reset_mod_book_placement_ui();
                     }
                 }
             }
@@ -181,9 +177,7 @@ impl Game<'_> {
                 {
                     self.native_net.placement.deadline = None;
                     match outcome {
-                        sync::Outcome::MissingIngredients => {
-                            self.install_mod_book_ghost(&selection)
-                        }
+                        sync::Outcome::MissingIngredients => {}
                         sync::Outcome::Refused(
                             sync::Refusal::Stale | sync::Refusal::UnknownDisplay,
                         ) => {
@@ -209,7 +203,6 @@ impl Game<'_> {
                 {
                     self.native_net.placement.deadline = None;
                     self.native_net.placement.view = None;
-                    self.reset_mod_book_placement_ui();
                     log::error!("mod recipe-book placement load refused: {reason:?}");
                 }
             }

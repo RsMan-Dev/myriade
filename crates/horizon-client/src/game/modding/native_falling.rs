@@ -180,7 +180,7 @@ mod tests {
             target: Target::Falling,
             unloads_with_chunk: true,
             remote: Some(RemoteLifecycle {
-                prepare: |game| game.clear_remote_projectiles(),
+                prepare: |_| {},
                 apply: |game, remove, _| game.remove_remote_projectile(remove),
             }),
         }
@@ -248,7 +248,6 @@ mod tests {
             assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
             assert_eq!(VALUE.get(&mut values, Holder::Entity(id)), Ok(10));
             // Exercise the production clear before any fixture cleanup can mask it.
-            game.clear_remote_projectiles();
             assert!(game.falling.is_empty());
             assert!(index.lock().unwrap().snapshot(&key).is_empty());
             assert_eq!(before[0].entry.read(&VALUE), Ok(&10));

@@ -298,19 +298,6 @@ fn block_values_keep_frozen_ordinals_when_world_state_ids_reorder() {
     );
 }
 
-/// Prepare callback data before mesh construction; workers never convert engine records.
-pub(in crate::game) fn mod_tint_values(
-    _registry: &horizon_world::registry::BlockRegistry,
-) -> Result<Option<crate::mesher::ModTintValues>, String> {
-    if !crate::mesher::has_custom_block_tint_sources() && !crate::mesher::has_section_geometry() {
-        return Ok(None);
-    }
-    let metadata =
-        block_metadata_table().map_err(|error| format!("block tint metadata: {error:?}"))?;
-    let states = block_state::snapshot().map_err(|error| format!("block tint state: {error:?}"))?;
-    Ok(Some(crate::mesher::ModTintValues { states, metadata }))
-}
-
 impl super::Game<'_> {
     pub(in crate::game) fn block_metadata_name(
         &self,
@@ -1022,36 +1009,6 @@ impl super::Game<'_> {
         }
         if let Ok(api) = entity.try_into_api() {
             Self::native_block_entity_update_tag(pos, &api, tag);
-        }
-    }
-    pub(in crate::game) fn api_block_entity_submit(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: horizon_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
-        draw: &mut super::native_block_entity_draw::BlockEntityDraw,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySubmit) {
-            return;
-        }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_submit(pos, block, state, &api, draw);
-        }
-    }
-    pub(in crate::game) fn api_block_entity_render_bounding_box(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: horizon_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
-        bounds: &mut [f32; 6],
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityRenderBoundingBox) {
-            return;
-        }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_render_bounding_box(pos, block, state, &api, bounds);
         }
     }
     /// Shared click metadata borrows the already-converted API snapshot for this call.

@@ -24,7 +24,7 @@ mod test_log;
 #[cfg(any(test, feature = "proto"))]
 mod test_resources;
 pub use horizon_client_render::{
-    assets, auth, biome, block_entities, block_entity_anim, block_states, brewing, chunk,
+    assets, auth, biome, block_edit, block_entities, block_entity_anim, block_states, brewing, chunk,
     chunk_map, collisions, command_block, containers, crash, datapack, effects, environment,
     fast_hash, jigsaw_block, level_loading, light, lod, logging, mod_chunk_tickets, mod_list,
     pack_meta, poi_sections,

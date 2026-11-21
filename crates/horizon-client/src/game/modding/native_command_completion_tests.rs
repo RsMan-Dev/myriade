@@ -127,9 +127,9 @@ fn install_warps(game: &mut Game<'_>) {
     ];
     let (tree, _, problems) = command_tree(&commands, |_| false, &arguments);
     assert!(problems.is_empty(), "{problems:?}");
-    let mut dispatcher = (*game.ui.dispatcher.0).clone();
+    let mut dispatcher = (*game.session.dispatcher.0).clone();
     register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
-    game.ui.dispatcher.0 = Arc::new(dispatcher);
+    game.session.dispatcher.0 = Arc::new(dispatcher);
     let host = game.lan.as_mut().unwrap();
     host.hub.set_mod_commands(0, tree);
 }
@@ -237,9 +237,9 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
-        let mut dispatcher = (*game.ui.dispatcher.0).clone();
+        let mut dispatcher = (*game.session.dispatcher.0).clone();
         register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
-        game.ui.dispatcher.0 = Arc::new(dispatcher);
+        game.session.dispatcher.0 = Arc::new(dispatcher);
         game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
         last_tree(&rx);
 
@@ -275,7 +275,7 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
         applied.replace_range(start as usize..(start + length) as usize, &text);
         assert_eq!(applied, "probe example:stone");
         let completed = format!("{applied} 3");
-        let parsed = game.ui.dispatcher.0.parse(&completed, &game.ui.registries);
+        let parsed = game.session.dispatcher.0.parse(&completed, &game.session.registries);
         let (context, _) = parsed.executable().unwrap();
         assert_eq!(
             context.get("value"),
@@ -301,7 +301,7 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
         ..Registries::default()
     };
     assert!(
-        game.ui
+        game.session
             .dispatcher
             .0
             .parse("warp admin secret", &at_player)
@@ -326,7 +326,7 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
         ..Registries::default()
     };
     assert!(
-        game.ui
+        game.session
             .dispatcher
             .0
             .parse("warp admin secret", &at_owner)

@@ -10,10 +10,8 @@ use super::{
 use horizon_client::{
     containers::{Beacon, BlockEntity},
     effects::EffectInstance,
-    hud::HudBatch,
     items::ItemStack,
-    mesher::Vertex,
-    mobs::render::{DYE, DYE_NAMES},
+    mobs::DYE_NAMES,
     test_instance_block::Status,
     text::Text,
 };
@@ -24,6 +22,11 @@ use horizon_world::registry::BlockStateId;
 /// The beacon screen is 54 px wider than the 176-px menus it shares an origin with.
 pub(super) const SHIFT: f32 = -27.0;
 pub(super) const HEIGHT: f32 = 219.0;
+/// `DyeColor.getTextureDiffuseColor` (RGB), by dye index.
+const DYE: [u32; 16] = [
+    0xF9FFFE, 0xF9801D, 0xC74EBD, 0x3AB3DA, 0xFED83D, 0x80C71F, 0xF38BAA, 0x474F52, 0x9D9D97,
+    0x169C9C, 0x8932B8, 0x3C44AA, 0x835432, 0x5E7C16, 0xB02E26, 0x1D1D21,
+];
 /// `BEACON_EFFECTS` in order, with the pyramid level each needs.
 pub(super) const EFFECTS: [(&str, i32); 6] = [
     ("speed", 1),
@@ -483,8 +486,6 @@ impl Game<'_> {
     }
     fn close_beacon_screen(&mut self) {
         self.close_container();
-        self.set_screen(super::Screen::Playing);
-        self.capture(true);
     }
     /// `BeaconMenu.updateEffects`: spend the payment and set the powers. On
     /// a server, `BeaconScreen`'s confirm button sends them
@@ -508,91 +509,6 @@ impl Game<'_> {
             self.beacon_sound(pos, "minecraft:block.beacon.power_select");
         }
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-    }
-    /// `BeaconRenderer`: each section's rotating solid beam and its glow.
-    pub(super) fn beacon_geometry(
-        &mut self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(s) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/beacon/beacon_beam")
-            .copied()
-        else {
-            return;
-        };
-        let time = (self.world.game_time.rem_euclid(40)) as f32 + alpha as f32;
-        let scoping = self.scoping();
-        // `BeaconRenderer.shouldRender` culls at the render distance; far
-        // terrain extends that to its own distance.
-        let view = f64::from(self.terrain_distance() * 16);
-        let world = &self.world;
-        if self.lod.is_some() {
-            // The beam stays after its chunk unloads; once the chunk is back,
-            // its block entity decides whether the beam is still there.
-            self.far_beacons.retain(|&pos, _| {
-                let (x, _, z) = pos;
-                !world.chunks.contains_key(&(x >> 4, z >> 4))
-                    || world
-                        .block_entities
-                        .get(&pos)
-                        .is_some_and(|e| beam(e).is_some() || is_test_instance_beam(e))
-            });
-        } else {
-            self.far_beacons.clear();
-        }
-        let test_beams: Vec<_> = world
-            .block_entities
-            .boxes()
-            .filter_map(|(k, e)| Some((*k, self.test_instance_beam(e)?)))
-            .collect();
-        for (k, e) in world
-            .block_entities
-            .listed(horizon_client::block_entities::Listed::Beacon)
-        {
-            if let Some(sections) = beam(e) {
-                match self.far_beacons.get_mut(k) {
-                    Some(kept) if kept.as_slice() == sections => {}
-                    Some(kept) => {
-                        kept.clear();
-                        kept.extend_from_slice(sections);
-                    }
-                    None => {
-                        self.far_beacons.insert(*k, sections.to_vec());
-                    }
-                }
-            }
-        }
-        for (k, sections) in test_beams {
-            self.far_beacons.insert(k, sections);
-        }
-        for (k, sections) in &self.far_beacons {
-            let base = glam::DVec3::new(f64::from(k.0) + 0.5, f64::from(k.1), f64::from(k.2) + 0.5);
-            let offset = base - camera;
-            let horizontal = glam::DVec2::new(offset.x, offset.z).length();
-            if horizontal >= view {
-                continue;
-            }
-            let distance = horizontal as f32;
-            let scale = if scoping {
-                1.0
-            } else {
-                (distance / 96.0).max(1.0)
-            };
-            let origin = (glam::DVec3::new(f64::from(k.0), f64::from(k.1), f64::from(k.2))
-                - camera)
-                .as_vec3();
-            let start = out.len();
-            horizon_client::block_entity_render::beacon_beam(origin, sections, time, scale, s, out);
-            // HDR output: the beam shines (entity.wgsl hdr_entity_mark).
-            for v in &mut out[start..] {
-                v.layer |= u32::from(horizon_client::mesher::BRIGHT) << 16;
-            }
-        }
     }
 }
 /// Whether a test instance block shows a beam (`getBeamSections` not empty).

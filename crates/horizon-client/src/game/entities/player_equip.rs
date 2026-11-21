@@ -87,7 +87,7 @@ impl Game<'_> {
                 .as_deref()
                 .unwrap_or("minecraft:item.armor.equip_generic");
             // Player.getSoundSource: PLAYERS.
-            let players = horizon_client::settings::SOUND_SOURCES
+            let players = horizon_client_core::sound_source::SOUND_SOURCES
                 .iter()
                 .position(|s| *s == "player")
                 .unwrap_or(0);

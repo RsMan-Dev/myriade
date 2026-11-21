@@ -60,7 +60,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 whitelist_bypass: Vec::new(),
             })));
             game.build_registries();
-            game.ui.dispatcher = chat::SessionDispatcher(Arc::new(
+            game.session.dispatcher = crate::game::command_text::SessionDispatcher(Arc::new(
                 horizon_client::command::vanilla::build_for(false, true),
             ));
             game.world

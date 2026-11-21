@@ -9,8 +9,8 @@
 /// Generated dispatch entry points, not hand-written hook implementations.
 mod fire;
 pub(in crate::game) use fire::{
-    BlockDropsCall, BlockScreenEffectDrawCall, ConnectsToCall, EntityChangeBlockPreCall,
-    ItemAfterVerticalCollisionCall, UpdateShapeCall,
+    BlockDropsCall, ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall,
+    UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -19,40 +19,28 @@ use super::{
     Game, GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
-    native_block_entity_draw::BlockEntityDraw,
     native_configs::ConfigFile,
-    native_mob_draw::{MobRender, PlayerRender},
-    native_panel_recipes::RecipePage,
 };
 use horizon_client::block_contact::Pending;
 #[cfg(test)]
 use horizon_client::mobs::Damage;
 use horizon_client::{
-    atlas_sources::qualified,
     biome::{BiomeColors, SpawnEntry},
     block_entities::Pos,
-    chat::ChatSource,
     containers::{
         BlockEntity, MOD_MENUS, ModBlockEntityFields, ModContainer, ModEnergyBuffer, ModFluidTanks,
     },
-    crafting::{Ingredient, recipe_result},
-    extras::Corner,
-    extras_hud::Corners,
+    crafting::{Ingredient, qualified, recipe_result},
     fast_hash::FxHashMap,
-    first_person::Hand,
     health::{
         Attack, DamageContainer, DamageHooks, DamageLevel, HurtSource, Hurting, Knock, ShieldBlock,
         Victim,
     },
-    hud::{HudBatch, rgba},
-    hud_layout::GuiDraw,
     items::ItemStack,
-    keybinds,
     lan::menu::Slots,
     merchant::MerchantOffer,
     mobs::Who,
     mod_list::{self, Installed, KeyMapping, NativePage, NativeSetting, NativeSettingValue},
-    music::{Music, MusicLayer},
     particles::{ParticleOptions, ParticleType},
     text::Text,
 };
@@ -71,11 +59,11 @@ use mod_api::GameMode;
 use mod_api::GameTests;
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
 use mod_api::{
-    self, Answered, BlockPlacement, BlockTintSources, CameraDrawContext, CauldronFluidContents,
+    self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents,
     CauldronInteractions, ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions,
     ClientGuiOptions, ClientInputOptions, ClientMiningPrediction, ClientModifiers,
     ClientReloadListeners, ColorResolvers, CommandInvocation, EnchantmentDamageEffects,
-    EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, HandRender,
+    client::first_person::Hand, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, HandRender,
     InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType,
     LayerDefinition, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
     ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
@@ -106,7 +94,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use winit::{event::MouseButton, keyboard::KeyCode};
 use {
     horizon_core::{
         nbt::{Compound, Tag},
@@ -120,7 +107,6 @@ use {
 };
 
 include!(concat!(env!("OUT_DIR"), "/native_hook_modules.rs"));
-pub(in crate::game) use add_attribute_tooltips::HookedAttributeTooltips;
 pub(in crate::game) use bounce_restitution::install_block_contact_hooks;
 pub(in crate::game) use fishing_medium::NativeFishingMedium;
 pub(in crate::game) use living_change_target::NativeHookHost;

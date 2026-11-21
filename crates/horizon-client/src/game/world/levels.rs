@@ -939,7 +939,6 @@ impl Game<'_> {
         swap(&mut self.spawn_scratch, &mut p.spawn_scratch);
         swap(&mut self.border, &mut p.border);
         // What only the client draws starts over.
-        self.clear_client_particles();
     }
 
     /// Put `target`'s level in place, opening it first if it is not loaded.
@@ -980,7 +979,6 @@ impl Game<'_> {
             self.levels.parked.insert(left, p);
             if opened {
                 // The new streaming's radius and meshing options.
-                self.apply_settings();
                 // ServerLevel's constructor reads the level's raids.
                 self.read_raids();
                 self.native_level_opened(target);
@@ -1099,7 +1097,7 @@ impl Game<'_> {
         // (each `ServerLevel.tick` only reads `runsNormally`), and the native
         // `ServerTickStart` before that level work (NeoForge's
         // `ServerTickEvent.Pre`). A paused pass and a held server tick nothing.
-        let running = if !paused && !self.agent.hold_server {
+        let running = if !paused {
             self.clock.check_sprint_completion();
             if let Some(report) = self.clock.take_sprint_report() {
                 // ServerTickRateManager.finishTickSprint: the server's sendSuccess.
@@ -1197,7 +1195,6 @@ impl Game<'_> {
             }
             #[cfg(feature = "state-digest")]
             self.state_digest_tick(dim, running);
-            horizon_client::spans::time("server_debug", || self.publish_server_debug(dim));
             // An entity that crossed into a level that already ticked this
             // server tick is in it when the tick ends (`addDuringTeleport`).
             if running == Some(true) {
@@ -1310,10 +1307,8 @@ impl Game<'_> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
-        self.repro_tick();
         let window = !self.is_logical_server();
         if window {
-            self.track_experience_display();
             self.tick_enchanting_book();
         }
         // `/tick freeze` stops the world but not the player.
@@ -1324,7 +1319,6 @@ impl Game<'_> {
         if window {
             // GameRenderer.tick: a wither's bar darkens the world, then fades;
             // the activated item counts down.
-            self.boss_overlay.tick_darken(running);
             self.tick_item_activation();
         }
         span("mods_inventory_ticks", || self.native_inventory_ticks());
@@ -1338,7 +1332,7 @@ impl Game<'_> {
             span("tick_functions", || self.tick_functions());
             self.world.game_time += 1;
             if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::ADVANCE_WEATHER)
             {
@@ -1718,13 +1712,11 @@ mod tests {
         let mut game = Game::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -1853,13 +1845,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -1926,13 +1916,11 @@ mod tests {
         let mut game = Game::new(
             resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2320,5 +2308,26 @@ mod request_save_tests {
         assert_eq!(levels.requested_saves, [Dim::Nether, Dim::End]);
         levels.clear();
         assert!(levels.requested_saves.is_empty());
+    }
+}
+
+impl Game<'_> {
+    pub(in crate::game) fn level_min_y(&self) -> i32 {
+        self.world.shape.min_y
+    }
+
+    pub(in crate::game) fn eye_in_water(&self, x: f64, eye_y: f64, z: f64) -> bool {
+        let (bx, by, bz) = (x.floor() as i32, eye_y.floor() as i32, z.floor() as i32);
+        let f = self.res.facts().get(self.world.block(bx, by, bz));
+        if f.fluid != horizon_client::blocks::Fluid::Water {
+            return false;
+        }
+        let above = self.res.facts().get(self.world.block(bx, by + 1, bz));
+        let height = if above.fluid == horizon_client::blocks::Fluid::Water {
+            1.0
+        } else {
+            f64::from(f.fluid_level) / 9.0
+        };
+        eye_y <= f64::from(by) + height
     }
 }

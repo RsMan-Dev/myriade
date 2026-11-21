@@ -138,7 +138,7 @@ impl Game<'_> {
                 score: g.score,
             };
             let keep_inventory = self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::KEEP_INVENTORY)
                 || g.game_mode == SPECTATOR;
@@ -169,7 +169,7 @@ impl Game<'_> {
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: self.level.spawn_dimension(),
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
-            difficulty: i32::from(self.ui.difficulty),
+            difficulty: i32::from(self.session.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
             tick_rate: self.clock.rate(),
@@ -350,7 +350,7 @@ impl Game<'_> {
                 score: g.score,
             }
             .death_reward(
-                self.ui
+                self.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::KEEP_INVENTORY)
                     || g.game_mode == SPECTATOR,
@@ -384,7 +384,7 @@ impl Game<'_> {
             // the dying player's death screen and to everyone the team lets
             // see it; without it, the death screen gets an empty one.
             let message = if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
             {
@@ -424,7 +424,7 @@ impl Game<'_> {
                     && horizon_client::scoreboard::death_message_reaches(
                         board,
                         &name,
-                        crate::game::chat::PLAYER_NAME,
+                        crate::game::command_text::PLAYER_NAME,
                     )
                 {
                     self.system_message(text);

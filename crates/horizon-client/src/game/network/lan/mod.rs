@@ -641,7 +641,7 @@ pub(super) fn mob_meta_sync(
         }
         // Villager.DATA_VILLAGER_DATA and ZombieVillager's (after Zombie's three).
         "minecraft:villager" | "minecraft:zombie_villager" => {
-            use horizon_client::mobs::render::VILLAGER_TYPES;
+            use horizon_client::mobs::VILLAGER_TYPES;
             if kind == "minecraft:villager" {
                 unhappy_counter(m, meta, defaults);
             } else {
@@ -1340,9 +1340,6 @@ impl Game<'_> {
                 Some(server) => server.call(|g| g.unpublish()).unwrap_or(false),
                 None => self.unpublish(),
             };
-            if closed {
-                self.friends_lan_closed();
-            }
             if closed && announce && self.integrated.is_some() {
                 self.system_message(Text::translate(
                     "menu.multiplayerOptions.publish.stopped",
@@ -1351,7 +1348,6 @@ impl Game<'_> {
             }
             return;
         }
-        self.friends_lan_closed();
         self.native_players_leaving();
         if self.lan.is_none() {
             return;
@@ -2529,7 +2525,7 @@ impl Game<'_> {
                 spawn,
                 spawn_angle: self.level.world_spawn_angle,
                 spawn_dimension: self.level.spawn_dimension(),
-                difficulty: i32::from(self.ui.difficulty),
+                difficulty: i32::from(self.session.difficulty),
                 difficulty_locked: self.level.difficulty_locked,
                 clock_rate,
                 tick_rate: self.clock.rate(),
@@ -2540,10 +2536,10 @@ impl Game<'_> {
                 streaming: Some(&self.streaming),
             };
             host.hub.movement_checks = (
-                self.ui
+                self.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
-                self.ui
+                self.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
@@ -2856,7 +2852,7 @@ impl Game<'_> {
                     spawn,
                     spawn_angle: self.level.world_spawn_angle,
                     spawn_dimension: self.level.spawn_dimension(),
-                    difficulty: i32::from(self.ui.difficulty),
+                    difficulty: i32::from(self.session.difficulty),
                     difficulty_locked: self.level.difficulty_locked,
                     clock_rate,
                     tick_rate: self.clock.rate(),
@@ -2867,10 +2863,10 @@ impl Game<'_> {
                     streaming: Some(&self.streaming),
                 };
                 host.hub.movement_checks = (
-                    self.ui
+                    self.session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
-                    self.ui
+                    self.session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
                 );
@@ -2882,12 +2878,12 @@ impl Game<'_> {
                         (self.settings.entity_distance * 100.0).round() as i32;
                 }
                 host.hub.set_immediate_respawn(
-                    self.ui
+                    self.session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::IMMEDIATE_RESPAWN),
                 );
                 host.hub.set_limited_crafting(
-                    self.ui
+                    self.session
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::LIMITED_CRAFTING),
                 );
@@ -2975,7 +2971,6 @@ impl Game<'_> {
         }
         drop(holding);
         self.flush_attachment_sync();
-        self.flush_far_terrain();
         if let Some(host) = self.lan.as_ref() {
             lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
         }
@@ -3120,7 +3115,7 @@ impl Game<'_> {
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: self.level.spawn_dimension(),
-            difficulty: i32::from(self.ui.difficulty),
+            difficulty: i32::from(self.session.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
             tick_rate: self.clock.rate(),
@@ -3187,26 +3182,12 @@ impl Game<'_> {
         if self.audio.capture.is_some() || self.lan.is_some() {
             self.lan_entity_events.push((id, event));
         }
-        // Event 16: zombie villagers play their cure sound on each client.
-        if event == 16 && false {
-            self.zombie_villager_cure_sound(id as u32);
-        }
-        // Event 63: a sniffer's digging sound loop starts (ClientPacketListener.handleEntityEvent 63).
-        if event == 63 && false {
-            self.start_sniffer_digging_sound(id as u32);
-        }
-        // Event 21: a window that simulates the world itself is its own
-        // client, and hears the guardian's hum too.
-        if event == 21 && false {
-            self.start_guardian_sound(id as u32);
-        }
         // Events 53 and 54: honey crumbs while sliding, and the landing burst
         // (`HoneyBlock.showSlideParticles` / `showJumpParticles`), drawn by the
         // client that runs the world.
         if false
             && horizon_client::landing::honey_particle_count(event).is_some()
         {
-            self.honey_entity_particles(at, event);
         }
         // Event 2: a mob's spear hit felt; the same window hears its own mob's hit.
         if event == 2 && false {
@@ -3215,12 +3196,6 @@ impl Game<'_> {
         // Fox.handleEntityEvent 45: the same window draws the eating crumbs.
         if event == 45 && false {
             self.fox_eat_particles(id as u32);
-        }
-        // Entity event 35: a mob's death protection fired
-        // (`LivingEntity.checkTotemDeathProtection`); the clients draw the
-        // totem particles and play its sound.
-        if event == 35 && false {
-            self.remote_totem(id);
         }
     }
     /// `ServerPlayer.onEquippedItemBroken` for the acting player (the guest whose turn it
@@ -3441,7 +3416,7 @@ impl Game<'_> {
         // lit neighbours. The viewed areas (arismoko/horizon#3716) are squares of their own.
         let radius = host.hub.config.view_distance + 1;
         let rule = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         // The held players are sent the level, so their chunks are kept as the placed ones'.
@@ -3697,13 +3672,11 @@ mod tests {
         let mut game = super::Game::new(
             &res,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         let render = game
@@ -4467,7 +4440,7 @@ mod tests {
         }
     }
 
-    pub(super) use crate::game::villager_client::tests::meta_hub;
+    pub(super) use crate::game::villager_client_tests::meta_hub;
 
     /// `LivingEntity.startUsingItem` sets flag 1 for the use and flag 2 for
     /// the off hand, so an off-hand use is 3, not 2. A reader takes bit 0 as
@@ -5468,10 +5441,8 @@ mod mob_pickup_sync_tests {
 #[cfg(test)]
 mod mob_swing_sync_tests {
     use super::*;
-    use horizon_client::{
-        first_person::SwingAnimation,
-        lan::{Joined, Out, PlayerSender, guest::Guest},
-    };
+    use horizon_client::{lan::{Joined, Out, PlayerSender, guest::Guest}};
+    use crate::hand_use::SwingAnimation;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
     /// A server with one placed guest beside the mobs.
@@ -5723,8 +5694,8 @@ mod connected_statistics_save_tests {
             // Match dedicated registration without changing the process-wide
             // tree used by unrelated integrated-server tests.
             let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-            game.ui.registries.permission = 4;
-            let parsed = dispatcher.parse(command, &game.ui.registries);
+            game.session.registries.permission = 4;
+            let parsed = dispatcher.parse(command, &game.session.registries);
             let (ctx, _) = parsed.executable().expect("registered dedicated command");
             let (root, ctx) = (parsed.context.clone(), ctx.clone());
             assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1);

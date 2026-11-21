@@ -8,7 +8,7 @@ use horizon_core::geometry::Vec3;
 fn select(game: &mut Game<'_>, text: &str) -> HashSet<Target> {
     let selector = horizon_client::command::selector::parse(
         &mut horizon_client::command::Reader::new(text),
-        &game.ui.registries,
+        &game.session.registries,
         true,
     )
     .unwrap();

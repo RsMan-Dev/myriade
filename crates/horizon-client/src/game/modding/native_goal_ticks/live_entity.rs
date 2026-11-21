@@ -210,6 +210,19 @@ impl GoalCx<'_, '_> {
         self.lookup_entity(id).or_else(|| self.host.entity(id))
     }
 
+    pub(super) fn r_entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
+        self.entity_mob(entity).map(|_| false)
+    }
+    pub(super) fn r_entity_sound_source(&self, entity: EntityRef) -> Option<mod_api::SoundSource> {
+        let mob = self.entity_mob(entity)?;
+        let evil = mob.species() == crate::mobs::Species::Rabbit
+            && mob.extra.variant == crate::mobs::rabbit::EVIL;
+        Some(if evil || hostile_species(mob.species()) {
+            mod_api::SoundSource::Hostile
+        } else {
+            mod_api::SoundSource::Neutral
+        })
+    }
     pub(super) fn r_entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
         self.entity_mob(entity)?;
         Some(self.r_entity_vehicle(entity).is_some())

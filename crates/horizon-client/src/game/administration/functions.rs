@@ -349,7 +349,7 @@ impl Game<'_> {
         // `ServerFunctionLibrary` compiles its functions: an item or block
         // argument's `#tag` resolves against them.
         self.sync_pack_tag_ids();
-        let mut registries = self.ui.registries.clone();
+        let mut registries = self.session.registries.clone();
         registries.permission = self.fns.command_level();
         registries.functions = store.functions.keys().cloned().collect();
         registries.function_tags = store.function_tags.keys().cloned().collect();
@@ -420,7 +420,7 @@ impl Game<'_> {
         };
         let item_tags = tags(&self.items().item_tags);
         let block_tags = tags(&self.items().block_tags);
-        let reg = &mut self.ui.registries;
+        let reg = &mut self.session.registries;
         reg.item_tags.clone_from(&item_tags);
         reg.block_tags.clone_from(&block_tags);
         // `Registries::tags` reads an exported registry's entry first. Only
@@ -449,7 +449,7 @@ impl Game<'_> {
     pub(super) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
-        let reg = &mut self.ui.registries;
+        let reg = &mut self.session.registries;
         reg.functions = self.fns.store.functions.keys().cloned().collect();
         reg.function_tags = self.fns.store.function_tags.keys().cloned().collect();
         reg.predicates = self.fns.store.predicates.keys().cloned().collect();
@@ -523,7 +523,7 @@ impl Game<'_> {
     }
 
     fn sync_schedule_registry(&mut self) {
-        self.ui.registries.schedules = self.fns.schedule.iter().map(|s| s.id.clone()).collect();
+        self.session.registries.schedules = self.fns.schedule.iter().map(|s| s.id.clone()).collect();
     }
 
     // ---- scheduled events ------------------------------------------------------
@@ -712,7 +712,7 @@ impl Game<'_> {
         }
         self.exec.functions.push(f.id.clone());
         let outer = self.exec.returned.take();
-        let level = std::mem::replace(&mut self.ui.registries.permission, self.fns.command_level());
+        let level = std::mem::replace(&mut self.session.registries.permission, self.fns.command_level());
         let inner = Source {
             silent: true,
             store: None,
@@ -725,7 +725,7 @@ impl Game<'_> {
             }
             if self.exec.commands
                 > self
-                    .ui
+                    .session
                     .rules
                     .int_at(horizon_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
                     .max(1) as u32
@@ -733,7 +733,7 @@ impl Game<'_> {
                 break;
             }
         }
-        self.ui.registries.permission = level;
+        self.session.registries.permission = level;
         let returned = std::mem::replace(&mut self.exec.returned, outer);
         self.exec.functions.pop();
         Ok(match returned {
@@ -754,12 +754,12 @@ impl Game<'_> {
         if !f.is_macro() {
             return Ok(());
         }
-        let level = std::mem::replace(&mut self.ui.registries.permission, self.fns.command_level());
+        let level = std::mem::replace(&mut self.session.registries.permission, self.fns.command_level());
         let d = self.function_dispatcher();
         let mut out = Ok(());
         for (line, entry) in lines.iter().zip(&f.lines) {
             if matches!(entry, datapack::FunctionLine::Macro(_))
-                && let Err(error) = d.parse(line, &self.ui.registries).executable()
+                && let Err(error) = d.parse(line, &self.session.registries).executable()
             {
                 out = Err((
                     "commands.function.error.parse".into(),
@@ -768,14 +768,14 @@ impl Game<'_> {
                 break;
             }
         }
-        self.ui.registries.permission = level;
+        self.session.registries.permission = level;
         out
     }
     /// The tree every function line is checked against, a plain line at load and a macro line
     /// after substitution: the session's (live rules, enabled features and the mods' commands,
     /// registered before functions load), as the server's own dispatcher compiles functions.
     fn function_dispatcher(&self) -> Arc<horizon_client::command::Dispatcher> {
-        self.ui.dispatcher.0.clone()
+        self.session.dispatcher.0.clone()
     }
     /// The functions a `FunctionArgument` names: a function or a tag.
     pub(in crate::game) fn functions_named(&mut self, name: &str) -> R<Vec<Function>> {
@@ -970,7 +970,7 @@ impl Game<'_> {
             return None;
         }
         let limit = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
@@ -1124,15 +1124,6 @@ impl Game<'_> {
             .any(|pack| pack.id == id && pack.is_feature())
         {
             "pack.source.feature"
-        } else if self
-            .fns
-            .packs
-            .iter()
-            .find(|pack| pack.id == id)
-            .and_then(|pack| pack.selection.as_ref())
-            .is_some_and(|info| info.source == horizon_client::pack_screen::Source::BuiltIn)
-        {
-            "pack.source.builtin"
         } else {
             "pack.source.world"
         };
@@ -1323,18 +1314,6 @@ impl Game<'_> {
                             return Err(err("commands.datapack.unknown", &[e]));
                         };
                         if ctx.has("before") { i } else { i + 1 }
-                    } else if !ctx.has("last")
-                        && self
-                            .fns
-                            .packs
-                            .iter()
-                            .find(|pack| pack.id == name)
-                            .and_then(|pack| pack.selection.as_ref())
-                            .is_some_and(|info| {
-                                info.position == horizon_client::packs::Position::Bottom
-                            })
-                    {
-                        0
                     } else {
                         self.fns.enabled.len()
                     };
@@ -1359,9 +1338,7 @@ impl Game<'_> {
                     .fns
                     .packs
                     .iter()
-                    .find(|pack| pack.id == name)
-                    .and_then(|pack| pack.selection.as_ref())
-                    .is_some_and(|info| info.required)
+                    .any(|pack| pack.id == name && pack.required)
                 {
                     return Err(err("horizon.datapack.required", &[&name]));
                 }
@@ -1684,7 +1661,7 @@ mod tests {
                         .unwrap()
                         .starts_with("Invalid command \"nosuchmodcommand\": ")
                 );
-                game.ui.registries.permission = 4;
+                game.session.registries.permission = 4;
                 assert!(game.run_command("function fnmod:plain"));
                 assert!(game.run_command("function fnmod:macro {n:3}"));
                 assert_eq!(ran.load(Ordering::Relaxed), 2);
@@ -2064,7 +2041,7 @@ mod tests {
                         .contains_key(&format!("h155:{name}"))
                 );
                 assert!(
-                    game.ui
+                    game.session
                         .registries
                         .functions
                         .contains(&format!("h155:{name}"))
@@ -2481,7 +2458,7 @@ mod tests {
 
             // World-open selection and completions must both use the incoming
             // level's flags, even while `self.level` is still the old level.
-            game.ui.registries.by_registry.clear();
+            game.session.registries.by_registry.clear();
             game.level.enabled_features = Default::default();
             std::fs::write(
                 pack.join("pack.mcmeta"),
@@ -2492,7 +2469,7 @@ mod tests {
                 .reload_datapacks(false, &["test:feature".into()])
                 .unwrap();
             assert!(
-                game.ui.registries.by_registry["minecraft:worldgen/biome"]
+                game.session.registries.by_registry["minecraft:worldgen/biome"]
                     .tags
                     .contains(&"test:feature_marker".to_owned())
             );
@@ -2530,13 +2507,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2615,7 +2590,7 @@ mod tests {
             );
             assert!(
                 !game
-                    .ui
+                    .session
                     .registries
                     .functions
                     .contains(&format!("h144:{name}"))
@@ -2638,7 +2613,7 @@ mod tests {
             game.score.board.score("sequence", "h144").unwrap().value,
             17
         );
-        assert_eq!(game.ui.registries.permission, 4);
+        assert_eq!(game.session.registries.permission, 4);
         // A fresh same-pack predicate must be in the compilation snapshot on reload.
         std::fs::write(
             predicates.join("reloaded.json"),
@@ -2656,7 +2631,7 @@ mod tests {
         assert!(!game.fns.store.functions.contains_key("h144:forbidden"));
         assert!(
             !game
-                .ui
+                .session
                 .registries
                 .functions
                 .contains(&"h144:forbidden".into())
@@ -2702,13 +2677,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -2809,13 +2782,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3066,13 +3037,11 @@ mod entity_score_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3169,13 +3138,11 @@ mod entity_score_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.build_registries();
@@ -3252,7 +3219,7 @@ mod entity_score_tests {
                     valid
                 );
                 assert_eq!(
-                    game.ui
+                    game.session
                         .registries
                         .functions
                         .contains(&format!("h146:{name}")),
@@ -3302,13 +3269,11 @@ mod required_tag_tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         let dir = std::env::temp_dir().join(format!(
@@ -3556,7 +3521,7 @@ mod required_tag_tests {
             game.reload_datapacks(false, &[]).unwrap();
             assert!(game.fns.store.predicates.contains_key("h121:reference"));
             assert!(
-                game.ui
+                game.session
                     .registries
                     .predicates
                     .contains(&"h121:reference".into())

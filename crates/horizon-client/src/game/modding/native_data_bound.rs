@@ -128,7 +128,7 @@ mod tests {
             with_game(|game| {
                 let scratch = tempfile::tempdir().unwrap();
                 let registry = Arc::new(horizon_client::gamerules::RuleRegistry::vanilla());
-                let create = horizon_client::title::WorldOptions::default();
+                let create = crate::game::world_options::WorldOptions::default();
                 let mut request = crate::game::world_loading::WorldRequest::new(
                     "defaults",
                     Some("defaults"),

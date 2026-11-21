@@ -327,7 +327,7 @@ impl Game<'_> {
     pub(super) fn may_enter(&self, target: Dim) -> bool {
         target != Dim::Nether
             || self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS)
     }
@@ -915,7 +915,7 @@ impl Game<'_> {
     pub(super) fn tnt_can_use_portal(&self, id: u32) -> bool {
         // Id 0: not tracked yet, nothing to key its portal state by.
         if self.ecs.is_active() {
-            return id != 0 && !self.ecs.has_rider(id);
+            return id != 0 && self.ecs.riders_of(id).is_empty();
         }
         id != 0 && !self.remote_entities.iter().any(|m| m.extra.mount == Some(id))
     }

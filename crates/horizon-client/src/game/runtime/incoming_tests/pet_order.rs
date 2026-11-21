@@ -35,13 +35,11 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();
@@ -84,7 +82,7 @@ fn the_collars_own_dye_leaves_a_wolf_as_it_was() {
     let mut game = game(&mut resources);
     let red = game.mobs[0].extra.color;
     assert_eq!(
-        horizon_client::mobs::render::DYE_NAMES[usize::from(red)],
+        horizon_client::mobs::DYE_NAMES[usize::from(red)],
         "red",
         "a tamed wolf's collar starts red"
     );
@@ -94,7 +92,7 @@ fn the_collars_own_dye_leaves_a_wolf_as_it_was() {
     let (sitting, color, left) = use_on_wolf(&mut game, "minecraft:blue_dye");
     assert!(!sitting);
     assert_eq!(
-        horizon_client::mobs::render::DYE_NAMES[usize::from(color)],
+        horizon_client::mobs::DYE_NAMES[usize::from(color)],
         "blue"
     );
     assert_eq!(left, 0);

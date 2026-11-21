@@ -35,13 +35,11 @@ fn floored_game(root: &std::path::Path) -> Game<'static> {
     let mut game = Game::new(
         resources,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     for cx in -2..=2 {

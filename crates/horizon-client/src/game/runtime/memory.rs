@@ -571,19 +571,8 @@ impl Game<'_> {
                 bytes,
             }
         });
-        let far = self.lod.as_ref().map(|lod| {
-            let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
-            let tiles = FarTiles {
-                active,
-                cached,
-                kept,
-                kept_mb: mb(kept_bytes),
-            };
-            (tiles, kept_bytes)
-        });
         let named = window.as_ref().map_or(0, ColumnCensus::total_bytes)
-            + server.as_ref().map_or(0, ServerSide::bytes)
-            + far.as_ref().map_or(0, |f| f.1);
+            + server.as_ref().map_or(0, ServerSide::bytes);
         let named = named.saturating_sub(shared.as_ref().map_or(0, |s| s.bytes));
         let mut report = MemoryReport {
             process: Process {
@@ -608,7 +597,7 @@ impl Game<'_> {
             chunk_send: None,
             light_queue: None,
             generation_queue: None,
-            far_tiles: far.map(|f| f.0),
+            far_tiles: None,
             heap_by_tag_mb: horizon_threads::HEAP_CENSUS.then(|| {
                 horizon_threads::heap_census::census()
                     .into_iter()

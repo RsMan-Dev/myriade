@@ -134,13 +134,11 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
         game.native_lifecycle

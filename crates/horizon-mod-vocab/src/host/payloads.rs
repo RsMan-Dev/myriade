@@ -19,18 +19,3 @@ pub trait PayloadsBackendMut {
     ) -> Result<PayloadAccepted, PayloadSendError>;
 }
 
-/// Client connection sends, available during configuration as well as play.
-#[horizon_mod_api_macros::host_area]
-pub trait PayloadsClientHost {
-    /// Side: client.
-    /// Queue exact application bytes to the connected server, using the frozen
-    /// declaration for its current protocol. Optional absent channels return
-    /// UnsupportedPeer. Frame refusal and Backpressure write no application bytes.
-    /// The root transaction owns publication and cancellation on both native and wasm.
-    #[access(ClientSetup)]
-    fn send_payload_to_server(
-        &mut self,
-        id: &PayloadId,
-        bytes: PayloadBytes,
-    ) -> Result<PayloadAccepted, PayloadSendError>;
-}

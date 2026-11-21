@@ -47,7 +47,7 @@ impl Game<'_> {
             self.inventory.get(slot)?.as_ref()
         }
     }
-    pub(super) fn stack_in_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn stack_in_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
         if slot == OFFHAND_SLOT {
             &mut self.offhand
         } else {

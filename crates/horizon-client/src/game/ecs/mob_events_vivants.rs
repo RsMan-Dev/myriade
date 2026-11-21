@@ -17,7 +17,7 @@ impl Game<'_> {
     /// `MobEvent::EntityEvent` of an ECS creature: the roar's push on the armor stands (with the raw mob-griefing rule), then the
     /// entity event for the clients.
     pub(in crate::game) fn ecs_mob_entity_event(&mut self, mob: u32, event: i8, at: [f64; 3]) {
-        if event == ROAR_END_EVENT && self.ui.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) {
+        if event == ROAR_END_EVENT && self.session.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) {
             let (rx, down, up) = ROAR_REACH;
             let area = Aabb::new(Vec3::new(at[0] - rx, at[1] - down, at[2] - rx), Vec3::new(at[0] + rx, at[1] + up, at[2] + rx));
             self.roar_pushes_armor_stands(area, at);

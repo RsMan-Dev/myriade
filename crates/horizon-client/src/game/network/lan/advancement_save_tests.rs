@@ -5,8 +5,8 @@ mod connected_advancement_save_tests {
     fn command(game: &mut Game<'_>, text: &str) -> Vec<horizon_client::text::Text> {
         game.chat_capture = Some(Vec::new());
         let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-        game.ui.registries.permission = 4;
-        let parsed = dispatcher.parse(text, &game.ui.registries);
+        game.session.registries.permission = 4;
+        let parsed = dispatcher.parse(text, &game.session.registries);
         let (ctx, _) = parsed
             .executable()
             .expect("actual registered dedicated command");
@@ -179,8 +179,8 @@ mod connected_advancement_preservation_tests {
     fn command(game: &mut Game<'_>, text: &str) -> Vec<horizon_client::text::Text> {
         game.chat_capture = Some(Vec::new());
         let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-        game.ui.registries.permission = 4;
-        let parsed = dispatcher.parse(text, &game.ui.registries);
+        game.session.registries.permission = 4;
+        let parsed = dispatcher.parse(text, &game.session.registries);
         let (ctx, _) = parsed
             .executable()
             .expect("actual registered dedicated command");
@@ -383,7 +383,7 @@ mod connected_advancement_preservation_tests {
         for role in [ExecutionRole::IntegratedServer, ExecutionRole::Client] {
             game.options.execution_role = role;
             let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-            let parsed = dispatcher.parse("save-all", &game.ui.registries);
+            let parsed = dispatcher.parse("save-all", &game.session.registries);
             let (ctx, _) = parsed.executable().unwrap();
             let error = game.run_chain(&parsed.context, ctx).unwrap_err();
             assert_eq!(error.key, "command.unknown.command", "{role:?}");

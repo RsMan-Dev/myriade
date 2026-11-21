@@ -385,7 +385,7 @@ fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
             super::super::native_guest_turn_tests::with_guests(|game| {
                 game.build_registries();
                 game.register_native_commands();
-                game.ui.registries.permission = 4;
+                game.session.registries.permission = 4;
                 assert!(game.run_command(r#"summon minecraft:cow 4 64 5 {Tags:["over"]}"#));
                 assert!(game.run_command(
                     r#"execute in minecraft:the_nether run summon minecraft:cow 4 64 5 {Tags:["under"]}"#
@@ -393,7 +393,7 @@ fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
                 game.lan_assign_ids();
                 game.as_guest(12, |game| {
                     for (line, argument, expected) in lines {
-                        game.ui.registries.permission = 4;
+                        game.session.registries.permission = 4;
                         let before = heard.lock().unwrap().len();
                         assert!(game.run_command(line), "{line}");
                         let calls = heard.lock().unwrap();

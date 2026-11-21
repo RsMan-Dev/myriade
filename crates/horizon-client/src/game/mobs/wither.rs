@@ -110,7 +110,7 @@ impl Game<'_> {
     /// any orientation, becomes a wither.
     pub(super) fn check_wither_spawn(&mut self, placed: [i32; 3]) -> horizon_client::Result<()> {
         // Nothing is built in Peaceful (`level.getDifficulty() != PEACEFUL`).
-        if self.ui.difficulty == 0 || !self.is_wither_skull(placed) {
+        if self.session.difficulty == 0 || !self.is_wither_skull(placed) {
             return Ok(());
         }
         let Some(found) = self.find_wither_pattern(WITHER_FULL, placed) else {

@@ -583,8 +583,6 @@ impl Game<'_> {
         if self.player.is_some()
             && let Some(types) = self.recipe_tables.received.take()
         {
-            self.native_recipes_received(&types);
-            self.build_screen();
         }
     }
     /// A `horizon:recipe_content` part the server sent the window. On the

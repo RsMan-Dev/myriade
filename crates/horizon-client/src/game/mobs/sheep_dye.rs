@@ -1,5 +1,6 @@
 use super::Game;
-use horizon_client::{first_person::Hand, mobs::sheep_dye};
+use horizon_client::{mobs::sheep_dye};
+use mod_api::client::first_person::Hand;
 
 impl Game<'_> {
     /// Whether `interact_sheep_dye` would act on a client, on a copy of the sheep.

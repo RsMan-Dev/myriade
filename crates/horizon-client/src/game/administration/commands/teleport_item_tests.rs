@@ -5,7 +5,7 @@ use horizon_core::geometry::Vec3;
 #[ignore = "daily"]
 fn relative_item_teleports_keep_only_relative_horizontal_motion() {
     with_game(|game| {
-        game.ui.registries.permission = 4;
+        game.session.registries.permission = 4;
         game.spawn_item_own(
             horizon_client::items::ItemStack::new("minecraft:stone", 1),
             [0.0, 64.0, 0.0],
@@ -29,7 +29,7 @@ fn relative_item_teleports_keep_only_relative_horizontal_motion() {
 #[ignore = "daily"]
 fn an_item_teleported_into_another_level_arrives_there_still() {
     with_game(|game| {
-        game.ui.registries.permission = 4;
+        game.session.registries.permission = 4;
         game.spawn_item_own(
             horizon_client::items::ItemStack::new("minecraft:stick", 3),
             [0.0, 64.0, 0.0],

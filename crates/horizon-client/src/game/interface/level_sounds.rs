@@ -24,7 +24,7 @@ impl<'a> LevelSound<'a> {
     /// A sound at `at` in the source its event name belongs to.
     pub fn new(name: &'a str, at: [f64; 3], volume: f32, pitch: f32) -> Self {
         let source = SoundSource::ALL
-            .get(horizon_client::settings::sound_source(name))
+            .get(horizon_client_core::sound_source::sound_source(name))
             .copied()
             .unwrap_or(SoundSource::Master);
         Self {

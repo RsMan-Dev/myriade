@@ -4,25 +4,14 @@
 use super::*;
 
 impl Game<'_> {
+    /// Forgets the server's far terrain state: the next frame asks the source again.
     pub(super) fn clear_lod(&mut self) {
-        // The samplers waiting on the server stop first: dropping the far
-        // terrain joins them.
-        self.lod = None;
         self.lod_source_attempted = false;
         self.lod_observe.clear();
         self.far_beacons.clear();
         self.lod_covered_at = None;
     }
     pub(in crate::game) fn update_world(&mut self) {
-        if let Err(e) = horizon_client::spans::time("poll_remote", || self.poll_remote()) {
-            log::warn!("Horizon: {e}");
-        }
-        if let Err(e) = self.advance_studio_replay() {
-            log::warn!("Horizon Studio replay: {e}");
-        }
-        // The columns the single-player server changed in bulk without sending them, which far terrain still drew
-        // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
-        self.observe_light_edits();
         self.ask_edited_light_emission();
         if let Some(p) = &self.player {
             self.streaming.center = (
@@ -52,7 +41,7 @@ impl Game<'_> {
         let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
         self.native_proto_snapshots(&protos);
         self.streaming.submit_protos(protos);
-        let (_, unloaded) = horizon_client::spans::time("streaming", || {
+        let unloaded = horizon_client::spans::time("streaming", || {
             self.streaming.complete_commit(&mut self.world, commit)
         });
         self.streaming.extra.truncate(areas);

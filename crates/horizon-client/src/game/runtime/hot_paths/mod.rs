@@ -88,7 +88,7 @@ impl Game<'_> {
         // No world opens here: the command tree's registries and the console's rights come
         // from the resources, as a world's opening sets them.
         self.build_registries();
-        self.ui.registries.permission = 4;
+        self.session.registries.permission = 4;
         // The levels' handles, which a world's opening publishes to mods.
         self.reset_entity_residency();
         self.native_lifecycle

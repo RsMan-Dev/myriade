@@ -4,26 +4,11 @@
 //! (`LivingEntity.SwingState`) and the first-person equip heights
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
 use super::{Game, Mining, Screen, minecarts::CartKind};
-use horizon_client::{
-    Result,
-    attack_strength::HeldStack,
-    first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
-    input_queue::{ClickQueue, QueueLimits},
-    interaction_input::{Button, click_queue},
-    items::ItemStack,
-};
+use horizon_client::{Result, attack_strength::HeldStack, items::ItemStack};
+use mod_api::client::first_person::Hand;
+use crate::hand_use::{HandWorld, Hit, UseResult};
+use crate::hand_use::SwingAnimation;
 
-/// The local player's empty attack and use click queues, bounded as a server's client's are
-/// (`CLICK_QUEUES`).
-pub(super) const ATTACK_CLICKS: ClickQueue = click_queue(Button::Attack);
-pub(super) const USE_CLICKS: ClickQueue = click_queue(Button::Use);
-/// The bounds of `Game::hotbar_presses`: each selection from the queue takes 64 number keys, oldest
-/// first, and 1024 wait at most. A player presses a few a tick.
-pub(super) const HOTBAR_PRESSES: QueueLimits = QueueLimits {
-    name: "number keys",
-    max_len: 1024,
-    per_tick: 64,
-};
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
@@ -153,11 +138,6 @@ impl Game<'_> {
     /// A stack's `minecraft:attack_range` component, falling back to the spear's
     /// default reach (`spear::REACH`) for spear items unless explicitly removed.
     fn attack_range_component(&self, stack: &ItemStack) -> Option<serde_json::Value> {
-        let view_stack = horizon_client::item_render::stack_view(stack);
-        let view = self.pack.item_renderer.models.components_view(&view_stack);
-        if let Some(val) = view.get("minecraft:attack_range") {
-            return Some(val.clone());
-        }
         if stack
             .data()
             .is_some_and(|d| d.other("!minecraft:attack_range").is_some())
@@ -199,14 +179,7 @@ impl Game<'_> {
         creative: bool,
         default: f64,
     ) -> mod_api::ItemAttackRange {
-        let range = stack.and_then(|stack| {
-            self.pack
-                .item_renderer
-                .models
-                .components_view(&horizon_client::item_render::stack_view(stack))
-                .get("minecraft:attack_range")
-                .cloned()
-        });
+        let range = stack.and_then(|stack| self.attack_range_component(stack));
         let (mut min, mut max, hitbox_margin) = range
             .as_ref()
             .map_or((0.0, default as f32, 0.0), |r| attack_reach(r, creative));
@@ -245,18 +218,6 @@ impl Game<'_> {
     }
     /// Opening a screen stops breaking before the next game tick (which may pause).
     pub(super) fn stop_mining(&mut self) {
-        if self.clicks.destroying.active {
-            let pos = self.clicks.destroying.pos;
-            let state = self.world.block(pos[0], pos[1], pos[2]);
-            self.tutorial_destroy(state, -1.0);
-        }
-        let mut destroying = std::mem::take(&mut self.clicks.destroying);
-        destroying.stop(&mut GameHands {
-            game: self,
-            error: None,
-        });
-        self.clicks.destroying = destroying;
-        self.request_remote_mining_stop();
         self.mining = None;
     }
     /// `LivingEntity.swing` with `getModifiedSwingDuration`: the item's
@@ -265,19 +226,11 @@ impl Game<'_> {
         self.try_swing_hand(hand, animation);
     }
     /// Returns false when the interaction policy or item vetoes the swing and its packet.
-    pub(super) fn try_swing_hand(&mut self, hand: Hand, animation: SwingAnimation) -> bool {
+    pub(super) fn try_swing_hand(&mut self, hand: Hand, _animation: SwingAnimation) -> bool {
         if self.native_entity_swing_event(hand) {
             return false;
         }
-        let effects = &self.potions.effects;
-        let dig_speed = effects
-            .amplifier("haste")
-            .max(effects.amplifier("conduit_power"));
-        let fatigue = effects.amplifier("mining_fatigue");
-        let duration = swing_duration(animation, dig_speed, fatigue);
-        if self.swing.start_if_able(hand, animation, duration) {
-            self.swings_started += 1;
-        }
+        self.swings_started += 1;
         true
     }
     /// `swing(hand)` for the hand that acts, with the default animation.
@@ -346,9 +299,8 @@ impl Game<'_> {
         let eye = v3(self.eye_position()?);
         let look = v3(super::view_vector(self.yaw, self.pitch));
         let reach = attack_reach(range, self.creative);
-        let camera = self.remote_camera_id();
         let boxes: Vec<(usize, Aabb)> = (self.remote_entities.iter().enumerate())
-            .filter(|(_, m)| !m.removed && Some(m.id) != self.riding && Some(m.id) != camera)
+            .filter(|(_, m)| !m.removed && Some(m.id) != self.riding)
             .map(|(i, m)| (i, m.bounds()))
             .collect();
         let clip = |from: Vec3, to: Vec3| {
@@ -385,12 +337,11 @@ impl Game<'_> {
         let eye = v3(self.eye_position()?);
         let look = v3(super::view_vector(self.yaw, self.pitch));
         let reach = attack_reach(range, self.creative);
-        let camera = self.remote_camera_id();
         let ids: Vec<u32> = self
             .ecs
             .ids_near([eye.x, eye.y, eye.z], f64::from(reach.1) + 8.0)
             .into_iter()
-            .filter(|&id| Some(id) != self.riding && Some(id) != camera)
+            .filter(|&id| Some(id) != self.riding)
             .collect();
         let boxes: Vec<(usize, Aabb)> = ids
             .iter()
@@ -526,25 +477,11 @@ impl Game<'_> {
             (Some(a), Some(b)) => a.item == b.item && a.extra == b.extra,
             _ => false,
         };
-        let Some(began) = began else {
-            return same;
-        };
-        if !mod_api::__private::item_listens(
-            mod_api::HookId::ShouldCauseBlockBreakReset,
-            &began.item,
-        ) {
-            return same;
-        }
-        let mut reset = !same;
-        self.native_should_cause_block_break_reset(began, held, &mut reset);
-        !reset
+        same
     }
     /// Whether an attack would hit an entity rather than the block behind
     /// it: the crosshair's `EntityHitResult`.
     pub(super) fn entity_targeted(&self) -> bool {
-        if let Some(entity) = self.targeting().entity {
-            return self.targeting_entity_hit(entity).is_some();
-        }
         let before = |d: Option<f64>| d.is_some_and(|d| self.before_block(d));
         before(self.aimed_painting().map(|h| h.1))
             || before(self.aimed_frame().map(|h| h.1))
@@ -564,20 +501,11 @@ impl Game<'_> {
     /// (`getControlledVehicle`: its first passenger, on a server's client).
     pub(super) fn hands_busy(&self) -> bool {
         self.riding
-            .is_some_and(|id| self.controls_boat(id) && self.ecs.boat_status(id).is_some())
-            && [
-                winit::keyboard::KeyCode::KeyW,
-                winit::keyboard::KeyCode::KeyS,
-                winit::keyboard::KeyCode::KeyA,
-                winit::keyboard::KeyCode::KeyD,
-            ]
-            .iter()
-            .any(|k| self.movement_key_held(*k))
+            .is_some_and(|id| self.ecs.boat_status(id).is_some())
     }
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
     /// strength and item swap tickers (`Player.tick`).
     pub(super) fn tick_hand(&mut self) {
-        self.swing.tick();
         let main = self.inventory[self.selected].clone();
         // Player.tick: a different item resets the attack strength; any change
         // of the stack (`!ItemStack.matches`, e.g. another Efficiency level on
@@ -794,29 +722,6 @@ impl Game<'_> {
             .unwrap_or(1.0) as f32
     }
 
-    /// `evaluateWhichHandsToRender`: which of the main and off hand show.
-    pub(super) fn hands_to_render(&self) -> [bool; 2] {
-        let held = |slot| {
-            self.stack_in(slot)
-                .map(|s: &ItemStack| (&*s.item, s.data().is_some_and(|d| !d.charged.is_empty())))
-        };
-        let using = self.used_hand().zip(
-            self.using
-                .and_then(|(slot, _)| self.stack_in(slot))
-                .map(|s| &*s.item),
-        );
-        horizon_client::first_person::hands_to_render(
-            [held(self.selected), held(super::shield::OFFHAND_SLOT)],
-            using,
-        )
-    }
-    /// The visible main- and off-hand items.
-    pub(super) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
-        [
-            self.visible_hands[0].1.clone(),
-            self.visible_hands[1].1.clone(),
-        ]
-    }
 }
 
 /// The game as `first_person`'s world: the crosshair, breaking and attacking.
@@ -907,7 +812,10 @@ impl HandWorld for GameHands<'_, '_> {
     }
     fn attack_animation(&mut self) -> SwingAnimation {
         self.attack_kinetic()
-            .map_or(SwingAnimation::DEFAULT, |k| k.attack_animation())
+            .map_or(SwingAnimation::DEFAULT, |k| {
+                let a = k.attack_animation();
+                SwingAnimation { kind: a.kind, duration: a.duration }
+            })
     }
     fn interact_animation(&mut self, _: Hand) -> SwingAnimation {
         SwingAnimation::DEFAULT
@@ -930,8 +838,6 @@ impl HandWorld for GameHands<'_, '_> {
         true
     }
     fn attack_block(&mut self, pos: [i32; 3]) {
-        // RedStoneOreBlock.interact: the dust comes whether or not the ore was lit.
-        self.game.redstone_ore_particles(pos);
         let result = self.game.attack_block(pos);
         self.keep(result);
     }
@@ -952,8 +858,6 @@ impl HandWorld for GameHands<'_, '_> {
         {
             return false;
         }
-        let state = self.game.world.block(pos[0], pos[1], pos[2]);
-        self.game.tutorial_destroy(state, 1.0);
         let r = self.game.break_block(pos);
         self.keep(r);
         true
@@ -983,9 +887,7 @@ impl HandWorld for GameHands<'_, '_> {
     fn use_item(&mut self, _: Hand) -> UseResult {
         UseResult::Pass
     }
-    fn item_used(&mut self, hand: Hand) {
-        self.game.heights.item_used(hand);
-    }
+    fn item_used(&mut self, _: Hand) {}
     fn release_using(&mut self) {}
 }
 

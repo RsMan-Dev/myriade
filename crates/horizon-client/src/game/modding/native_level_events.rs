@@ -403,7 +403,7 @@ mod tests {
             assert_eq!(game.lan_global_events.len(), 1, "refusals send nothing");
 
             // ServerLevel.globalLevelEvent without global_sound_events: levelEvent(null, ...).
-            assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
+            assert!(game.session.rules.set("global_sound_events", Value::Bool(false)));
             game.lan_global_events.clear();
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
             assert!(game.lan_global_events.is_empty());
@@ -513,7 +513,7 @@ mod tests {
             events(&near);
             events(&far);
             game.audio.capture = Some(Vec::new());
-            assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
+            assert!(game.session.rules.set("global_sound_events", Value::Bool(false)));
             let level = game.level(game.dim.id()).unwrap();
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
             game.lan_flush_effects();

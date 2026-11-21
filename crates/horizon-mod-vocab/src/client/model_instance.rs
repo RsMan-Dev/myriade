@@ -137,45 +137,6 @@ impl InstanceGroupRef {
         }
         Ok(Self(generation, slot))
     }
-    /// Atomically overwrite a range, extending length up to reserved capacity.
-    /// Newly exposed unwritten slots are identity, white, full-bright copies at world origin.
-    /// Invalid coordinates/light or an out-of-capacity range change nothing; a retired or
-    /// foreign handle returns [`GroupError::Stale`] before inspecting the range or values.
-    /// That range and any newly exposed gap are converted again. Visible copies still
-    /// enter the shared per-view GPU upload on every frame.
-    pub fn write(
-        self,
-        host: &dyn crate::ClientHost,
-        first: u32,
-        instances: &[ModelInstance],
-    ) -> Result<(), GroupError> {
-        host.instance_group_write(self, first, instances)
-    }
-    /// Atomically change the drawn length. Unwritten slots contain identity, full-bright copies.
-    /// Zero draws nothing and does not release capacity. Shrinking preserves hidden copies;
-    /// growing exposes them again. A length above capacity returns [`GroupError::OutOfRange`].
-    /// Growth converts the newly exposed range using the current group pose.
-    pub fn set_len(self, host: &dyn crate::ClientHost, len: u32) -> Result<(), GroupError> {
-        host.instance_group_set_len(self, len)
-    }
-    /// Atomically replace the row-major 3x4 group pose (identity by default).
-    /// World position = origin + group_transform * (copy_transform * local).
-    /// The origin stays in world space; transformed bounds are used for culling.
-    /// Non-finite components return [`GroupError::NonFinite`]. Rebuilds the drawn
-    /// copies' cached render records; it does not allocate or rewrite the API copies.
-    pub fn set_group_transform(
-        self,
-        host: &dyn crate::ClientHost,
-        transform: [f32; 12],
-    ) -> Result<(), GroupError> {
-        host.instance_group_set_transform(self, transform)
-    }
-    /// Retire this handle and release its reserved copies and CPU caches immediately.
-    /// Already accepted copies remain in the current view. Later operations, including another
-    /// destroy, return [`GroupError::Stale`]; a new group cannot revive this handle.
-    pub fn destroy(self, host: &dyn crate::ClientHost) -> Result<(), GroupError> {
-        host.instance_group_destroy(self)
-    }
 }
 
 /// Why a persistent group operation was refused. Errors leave storage and view unchanged.

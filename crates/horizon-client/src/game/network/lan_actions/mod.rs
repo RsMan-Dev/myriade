@@ -13,19 +13,13 @@ use super::{
     level_sounds::LevelSound,
     respawn_anchor::RespawnConfig,
 };
-use horizon_client::{
-    containers::BlockEntity,
-    entities::Experience,
-    first_person::{Hand, SwingAnimation},
-    items::ItemStack,
-    lan::{
+use horizon_client::{containers::BlockEntity, entities::Experience, items::ItemStack, lan::{
         guest::SPECTATOR,
         hub::TickCtx,
         menu::{Rules, Slots},
-    },
-    motion::{MotionEvent, MotionWorld, PlayerMotion},
-    pose::Dimensions,
-};
+    }, motion::{MotionEvent, MotionWorld, PlayerMotion}, pose::Dimensions};
+use mod_api::client::first_person::Hand;
+use crate::hand_use::SwingAnimation;
 use horizon_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -36,7 +30,6 @@ use horizon_protocol::{
 };
 use horizon_world::entity_move::EntityMoveWorld;
 use mod_api::{ActionRefused, GameMode, SoundSource};
-use winit::keyboard::KeyCode;
 
 include!(concat!(env!("OUT_DIR"), "/lan_action_modules.rs"));
 include!("shared.rs");

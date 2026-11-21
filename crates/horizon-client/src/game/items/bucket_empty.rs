@@ -1,7 +1,7 @@
 //! Emptying a filled bucket from a player's hand: the `empty_contents` Part's say, the guest's
 //! sounds and the client's prediction.
 use super::{Game, Hit};
-use horizon_client::first_person::UseResult;
+use crate::hand_use::{UseResult};
 use horizon_client::items::ItemStack;
 use horizon_core::{geometry::Direction, position::BlockPos};
 use horizon_world::level::BucketContent;

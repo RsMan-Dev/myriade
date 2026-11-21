@@ -1,6 +1,6 @@
 //! Merchant handles for native server mods: villagers and wandering traders.
 use super::{Game, commands::Target};
-use horizon_client::{merchant::MerchantOffer, mobs::render::VILLAGER_TYPES};
+use horizon_client::{merchant::MerchantOffer, mobs::VILLAGER_TYPES};
 use horizon_core::identifier::Identifier;
 use mod_api::{EntityRef, MerchantRef, PlayerRef};
 

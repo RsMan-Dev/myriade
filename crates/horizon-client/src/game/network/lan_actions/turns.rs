@@ -163,7 +163,7 @@ impl Game<'_> {
         // `ServerPlayer.permissions()`: the guest's own command level for its
         // turn, so game-master checks see it (not the host's).
         let permission = std::mem::replace(
-            &mut self.ui.registries.permission,
+            &mut self.session.registries.permission,
             host.hub.guests[i].permission,
         );
         let mut play = host.play.remove(&conn).unwrap_or_default();
@@ -264,18 +264,12 @@ impl Game<'_> {
             },
         );
         let level_up_sound = std::mem::replace(&mut self.level_up_sound, play.level_up_sound);
-        // The host's held keys stay theirs: the guest holds only sneak, and a
-        // screen the guest opens (`keys.clear()`) leaves the host walking.
-        let host_keys = std::mem::take(&mut self.keys);
-        if g.sneaking {
-            self.keys.insert(KeyCode::ShiftLeft);
-        }
-        // The window's screens are the host's: a sign, book, command block or
-        // mount menu the guest's action opens is not drawn over the host's
-        // world (arismoko/horizon#687). The guest's client opens its own.
+        // The acting player's sneak is the guest's for the turn.
+        let host_sneak = std::mem::replace(&mut self.sneak_held, g.sneaking);
+        // The window's screens are the host's: a command block or mount menu
+        // the guest's action opens is not drawn over the host's world
+        // (arismoko/horizon#687). The guest's client opens its own.
         let screen = std::mem::replace(&mut self.screen, Screen::Playing);
-        let host_sign = self.sign_edit.take();
-        let host_book = self.book.take();
         let host_command_block = self.command_block_screen.take();
         let host_mount_menu = std::mem::take(&mut self.mount_menu);
         // The host's crafting grid stays theirs; a crafting table the guest
@@ -298,7 +292,6 @@ impl Game<'_> {
         let xp_delay = std::mem::replace(&mut self.xp_delay, play.xp_delay);
         let attack_ticks = std::mem::replace(&mut self.attack_ticks, play.attack_ticks);
         let attack_item = std::mem::replace(&mut self.attack_item, play.attack_item.take());
-        let swing = std::mem::replace(&mut self.swing, play.swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
         std::mem::swap(&mut self.portals.player, &mut play.portal);
@@ -368,7 +361,7 @@ impl Game<'_> {
         let last_inventory = std::mem::replace(&mut self.adv.last_inventory, play.last_inventory);
         let levitation = std::mem::replace(&mut self.adv.levitation, play.levitation);
         let marks = std::mem::replace(&mut self.adv.marks, std::mem::take(&mut play.marks));
-        let death_cause = std::mem::replace(&mut self.ui.death_cause, play.death_cause.take());
+        let death_cause = std::mem::replace(&mut self.session.death_cause, play.death_cause.take());
         let [x, y, z] = g.known_movement;
         let known_movement = std::mem::replace(&mut self.known_movement, Vec3::new(x, y, z));
         let acting = (
@@ -436,10 +429,8 @@ impl Game<'_> {
             permission,
             xp,
             level_up_sound,
-            host_keys,
+            host_sneak,
             screen,
-            host_sign,
-            host_book,
             host_command_block,
             host_mount_menu,
             craft_size,
@@ -458,7 +449,6 @@ impl Game<'_> {
             xp_delay,
             attack_ticks,
             attack_item,
-            swing,
             left,
             right,
             riding,
@@ -576,10 +566,8 @@ impl Game<'_> {
             permission,
             xp,
             level_up_sound,
-            host_keys,
+            host_sneak,
             screen,
-            host_sign,
-            host_book,
             host_command_block,
             host_mount_menu,
             craft_size,
@@ -598,7 +586,6 @@ impl Game<'_> {
             xp_delay,
             attack_ticks,
             attack_item,
-            swing,
             left,
             right,
             riding,
@@ -630,7 +617,7 @@ impl Game<'_> {
             block_sounds,
         } = swap;
         // `ServerPlayer.permissions()` back to the host's after the turn.
-        self.ui.registries.permission = permission;
+        self.session.registries.permission = permission;
         self.sculk.swap_player(&mut play.sculk);
         // The guest's damage record back into their slot, the host's in place.
         let guest_combat = std::mem::replace(&mut self.combat, combat);
@@ -746,7 +733,7 @@ impl Game<'_> {
         self.lan_acting_fake = acting_fake;
         self.known_movement = known_movement;
         self.lan_building_boxes = building_boxes;
-        play.death_cause = std::mem::replace(&mut self.ui.death_cause, death_cause);
+        play.death_cause = std::mem::replace(&mut self.session.death_cause, death_cause);
         // An ender chest the guest opened: the menu shows their inventory
         // itself (lan_open_container), not a stand-in block entity.
         self.close_ender_chest();
@@ -780,27 +767,17 @@ impl Game<'_> {
         play.xp_delay = std::mem::replace(&mut self.xp_delay, xp_delay);
         play.attack_ticks = std::mem::replace(&mut self.attack_ticks, attack_ticks);
         play.attack_item = std::mem::replace(&mut self.attack_item, attack_item);
-        play.swing = std::mem::replace(&mut self.swing, swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
         self.screen = screen;
-        // A sign the guest's placement opened (SignBlock.openTextEdit).
-        let guest_sign = std::mem::replace(&mut self.sign_edit, host_sign);
-        // A lectern the guest's use opened (LecternBlock.openScreen).
-        let guest_lectern = match std::mem::replace(&mut self.book, host_book) {
-            Some(crate::game::books::BookScreen::View {
-                lectern: Some(key), ..
-            }) => Some(key),
-            _ => None,
-        };
         // A command block the guest's use opened (Player.openCommandBlock).
         let guest_command_block =
             std::mem::replace(&mut self.command_block_screen, host_command_block).map(|s| s.pos());
         // A mount inventory the guest's action opened (shift + use, or the
         // inventory key while riding).
         let guest_mount = std::mem::replace(&mut self.mount_menu, host_mount_menu).opened_mob();
-        self.keys = host_keys;
+        self.sneak_held = host_sneak;
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.acting_abilities, outer_abilities);
@@ -978,12 +955,9 @@ impl Game<'_> {
         });
         // LivingEntity.checkTotemDeathProtection's entity event, to every
         // client tracking the guest and its own; this window draws it too.
-        if let Some(body) = totem {
+        if totem.is_some() {
             let id = host.hub.guests[i].entity_id;
             host.hub.entity_event(id, crate::game::totem::TOTEM_EVENT);
-            if self.player.is_some() {
-                self.totem_event(horizon_client::particles::TrackingTarget::Entity(id), body);
-            }
         }
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
@@ -1025,12 +999,6 @@ impl Game<'_> {
         }
         if let Some(station) = opened_station {
             self.lan_station_opened(conn, station);
-        }
-        if let Some(edit) = guest_sign {
-            self.lan_open_sign_editor(conn, edit);
-        }
-        if let Some(key) = guest_lectern {
-            self.lan_open_lectern(conn, key);
         }
         if let Some(pos) = guest_command_block {
             self.lan_open_command_block(conn, pos);

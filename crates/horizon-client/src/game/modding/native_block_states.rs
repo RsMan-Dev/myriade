@@ -370,7 +370,7 @@ pub(super) fn block_registries(registry: &'static BlockRegistry) -> Arc<Registri
         return reg.clone();
     }
     let reg = Arc::new(Registries {
-        blocks: (*super::chat::block_properties(registry)).clone(),
+        blocks: (*crate::game::command_text::block_properties(registry)).clone(),
         ..Registries::default()
     });
     cache.push((key, reg.clone()));

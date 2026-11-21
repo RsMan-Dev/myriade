@@ -3,11 +3,9 @@
 use super::creatures::SpawnSite;
 use super::native_entity_refs::tests::with_game;
 use super::native_guest_turn_tests::with_guests;
-use horizon_client::{
-    first_person::{Hand, SwingAnimation},
-    items::ItemStack,
-    motion::PlayerMotion,
-};
+use horizon_client::{items::ItemStack, motion::PlayerMotion};
+use mod_api::client::first_person::Hand;
+use crate::hand_use::SwingAnimation;
 use horizon_core::geometry::Vec3;
 use mod_api::{
     self, Flow, Hooks, HostSide, HurtEnemyEvent, ItemPart, OnEntitySwingEvent,

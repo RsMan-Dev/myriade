@@ -127,7 +127,7 @@ impl Game<'_> {
         if creative
             && filled_hive
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
             && let Some(stack) = self.picked_stack(pos, true)

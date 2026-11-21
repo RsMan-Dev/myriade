@@ -2,7 +2,7 @@
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
 use super::Game;
-use horizon_client::{Result, items::ItemStack, mesher::Vertex, mobs::Who, text::Text};
+use horizon_client::{Result, items::ItemStack, mobs::Who, text::Text};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -22,7 +22,7 @@ impl Game<'_> {
         // redstone, fire and an unstable block breaking alike.
         !cancel
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
     }
@@ -88,7 +88,7 @@ impl Game<'_> {
     /// With `tnt_explodes` off there is no blast.
     pub(in crate::game) fn tnt_blast(&mut self, at: [f64; 3], power: f32, owner: Option<Who>) -> Result<()> {
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -157,7 +157,7 @@ impl Game<'_> {
         }
         let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -941,13 +941,11 @@ mod tests {
             Game::new(
                 res,
                 loaded.pack,
-                loaded.gui.unwrap(),
                 options,
                 settings,
                 Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                     root.clone(),
                 )),
-                None,
             )
             .unwrap(),
         );

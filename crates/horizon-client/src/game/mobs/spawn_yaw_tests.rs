@@ -36,13 +36,11 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.clone(),
         )),
-        None,
     )
     .unwrap();
     game.build_registries();
@@ -96,7 +94,7 @@ fn a_spawn_eggs_yaw_is_the_wrapped_level_draw() {
             )
             .expect("pig");
         let yaw = yaw_of(&game, id);
-        assert_eq!(yaw, horizon_client::camera::wrap_degrees(draw));
+        assert_eq!(yaw, mod_api::client::camera::wrap_degrees(draw));
         assert!((-180.0..180.0).contains(&yaw), "{yaw}");
         if draw >= 180.0 {
             checked = true;
@@ -116,7 +114,7 @@ fn a_dispensed_mob_takes_the_wrapped_draw_too() {
     let id = game.spawn_mob_at("pig", (4, 100, 8), false).expect("pig");
     assert_eq!(
         yaw_of(&game, id),
-        horizon_client::camera::wrap_degrees(draw)
+        mod_api::client::camera::wrap_degrees(draw)
     );
 }
 

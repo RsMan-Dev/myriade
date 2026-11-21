@@ -9,7 +9,7 @@ pub(super) struct WorldRequest {
     pub name: Option<String>,
     pub seed: Option<i64>,
     pub creative: bool,
-    pub create: Option<horizon_client::title::WorldOptions>,
+    pub create: Option<crate::game::world_options::WorldOptions>,
     pub rule_registry: Arc<horizon_client::gamerules::RuleRegistry>,
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
@@ -54,7 +54,7 @@ impl WorldRequest {
         name: Option<&str>,
         seed: Option<i64>,
         creative: bool,
-        create: Option<&horizon_client::title::WorldOptions>,
+        create: Option<&crate::game::world_options::WorldOptions>,
         rule_registry: Arc<horizon_client::gamerules::RuleRegistry>,
     ) -> Result<Self> {
         Ok(Self {
@@ -135,10 +135,6 @@ impl WorldRequest {
         } = self;
         let name = name.as_deref();
         horizon_client::biome::Biomes::forget_missing_warnings();
-        let create = create.map(|mut create| {
-            create.set_additional_data_packs(pack.additional_data.clone());
-            create
-        });
         let create = create.as_ref();
         // openWorldLoadLevelData: level data that does not read is RecoverWorldDataScreen's to
         // handle (the title screen shows it); a world opened another way must not become a
@@ -219,7 +215,7 @@ impl WorldRequest {
         // CreateWorldScreen's choices, before streaming reads the generator.
         if created && let Some(o) = create {
             level.hardcore = o.hardcore;
-            level.difficulty = horizon_client::title::DIFFICULTIES[o.difficulty()].into();
+            level.difficulty = crate::game::world_options::DIFFICULTIES[o.difficulty()].into();
             level.allow_commands = Some(o.commands(creative));
             o.write_world_gen(&save_root, level.seed)?;
             // The DataPackConfig the screen chose: the picked packs on,
@@ -228,22 +224,12 @@ impl WorldRequest {
             // every pack of the folder, selected or not).
             let packs = horizon_client::datapack::feature_packs(&options.resources);
             level.data_packs = Some({
-                let mut disabled: Vec<String> = packs
+                // The Data Packs screen's folder packs are the client's: none is copied here.
+                let disabled: Vec<String> = packs
                     .iter()
                     .map(|p| p.id.clone())
                     .filter(|f| !o.data_packs.contains(f))
                     .collect();
-                if let Some(dir) = o.pack_dir.as_deref() {
-                    disabled.extend(
-                        horizon_client::packs::folder(
-                            std::path::Path::new(dir),
-                            horizon_core::version::DATA_PACK_FORMAT,
-                        )
-                        .into_iter()
-                        .map(|p| p.id)
-                        .filter(|id| !o.data_packs.contains(id)),
-                    );
-                }
                 (o.data_packs.clone(), disabled)
             });
             // WorldDataConfiguration's `enabled_features`: the flags of the
@@ -470,10 +456,6 @@ pub(super) fn preload_world_data(
                         // seed shares: about 140 ms off opening the world.
                         let _ = data.prepare_decoration("minecraft:normal", "minecraft:overworld");
                     }
-                    // The loot data's item tables and the server's data both
-                    // read the recipe folder: held here, it is read once.
-                    let _recipe_files =
-                        horizon_client::json_folder::read(&resources.join("data/minecraft/recipe"));
                     // The preload is the game's own data; the world's packs'
                     // tables are built when it opens (finish_open_world).
                     let _ = horizon_client::structure_blocks::loot_data(
@@ -557,11 +539,7 @@ pub(super) fn preload_launch_world(
                 let preset = horizon_client::save::WorldGen::preset(&world_root);
                 let _ = data.prepare_decoration(preset, "minecraft:overworld");
             }
-            // As in `preload_world_data`: the loot data and the server's
-            // data share one read of the recipe folder.
-            let _recipe_files =
-                horizon_client::json_folder::read(&resources.join("data/minecraft/recipe"));
-            let _ = horizon_client::structure_blocks::loot_data(
+            let _ =horizon_client::structure_blocks::loot_data(
                 &resources,
                 &horizon_world::loot::PackOverlay::NONE,
                 item_data.defaults(),
@@ -1335,23 +1313,10 @@ pub(super) fn make_streaming(
         save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
     );
     streaming.radius = settings.render_distance;
-    streaming.biome_blend = settings.biome_blend;
-    streaming.smooth_lighting = settings.smooth_lighting;
-    streaming.cutout_leaves = settings.cutout_leaves;
-    streaming.opaque_ice = settings.horizon.opaque_ice;
-    streaming.leaf_culling = settings
-        .horizon
-        .leaf_culling_effective(&settings.resource_packs);
-    streaming.biome_zoom = BiomeZoom::new(obfuscate_seed(seed));
     let facts = horizon_world::dimension_type::DimensionFacts::of_builtin_level(
         horizon_core::LevelKey::builtin_or_overworld(dim.id()),
     );
     streaming.sky_light = facts.height.has_skylight;
-    streaming.nether_shading =
-        facts.cardinal_light == horizon_world::dimension_type::CardinalLight::Nether;
-    // A server draws nothing: neither the integrated server nor the
-    // dedicated one meshes sections.
-    streaming.mesh = false;
     Ok((streaming, save, locator))
 }
 
@@ -1452,7 +1417,7 @@ mod tests {
         };
         let registry =
             Arc::new(RuleRegistry::with_mod_rules(&["example:machines".into()], &[rule]).unwrap());
-        let mut create = horizon_client::title::WorldOptions {
+        let mut create = crate::game::world_options::WorldOptions {
             rules: GameRules::with_registry(registry.clone(), &[]),
             ..Default::default()
         };
@@ -1479,7 +1444,7 @@ mod tests {
             ));
             game.load_world(request).unwrap();
             assert_eq!(
-                game.ui.rules.get("example:enabled"),
+                game.session.rules.get("example:enabled"),
                 Some(Value::Bool(false))
             );
             assert!(Arc::ptr_eq(&game.level.rule_registry, &registry));

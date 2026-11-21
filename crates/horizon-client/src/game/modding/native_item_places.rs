@@ -5,7 +5,8 @@
 //! a stack inside an item and a mod's own places go through their handlers.
 use super::Game;
 use super::transactions::After;
-use horizon_client::{first_person::Hand, items::ItemStack};
+use horizon_client::{items::ItemStack};
+use mod_api::client::first_person::Hand;
 use mod_api::__private::game::*;
 use mod_api::{EquipmentSlot, ItemPlace, LivingRef, Transaction};
 
@@ -51,7 +52,7 @@ impl Game<'_> {
                 .remote_entities
                 .iter_mut()
                 .find(|m| m.id == id && m.extra.chested)?;
-            let size = super::mount_menu::mount_columns(m) * 3;
+            let size = crate::game::mount_inventory::mount_columns(m) * 3;
             if m.extra.items.len() < size {
                 if let Some(level) = self.transactions.last_mut() {
                     level.keep_mob_length(id, m.extra.items.len());
@@ -125,7 +126,7 @@ impl Game<'_> {
                 .remote_entities
                 .iter()
                 .find(|m| m.id == entity && m.extra.chested)?;
-            Some(super::mount_menu::mount_columns(m) * 3)
+            Some(crate::game::mount_inventory::mount_columns(m) * 3)
         })
     }
     /// How many slots the container entity `entity` of the level in place shows automation

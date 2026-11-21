@@ -38,13 +38,11 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'static>) -> R) -> Option<R> {
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     game.options.dedicated = Some(Vec::new());
@@ -195,7 +193,7 @@ fn a_mobs_burst_leaves_vehicles_alone_with_mob_griefing_off() {
         assert!(game.run_command("gamerule mob_griefing false"));
         assert!(
             !game
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
         );

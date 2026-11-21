@@ -2,6 +2,7 @@
 //! bucket that picks it up (`BucketItem.use` on a `BucketPickup` block). The
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
+use crate::game::cosmetic_random::cosmetic_random;
 use super::Game;
 use horizon_client::{Result, cauldron, items::ItemStack, mobs::Who};
 use horizon_core::{position::BlockPos, random::RandomSource};
@@ -14,7 +15,7 @@ pub(super) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
 impl Game<'_> {
     /// Entity.playEntityOnFireExtinguishedSound
     pub(super) fn extinguish_sound(&mut self, at: [f64; 3]) {
-        let pitch = extinguish_pitch(self.particles.random());
+        let pitch = extinguish_pitch(&mut cosmetic_random());
         self.audio.play(
             "minecraft:entity.generic.extinguish_fire",
             Some(at),

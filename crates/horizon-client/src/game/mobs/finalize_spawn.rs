@@ -446,7 +446,7 @@ mod tests {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             // The gate reads the difficulty setting (`ui.difficulty`), which a
             // fresh test game leaves peaceful; the rules default on.
-            game.ui.difficulty = 2;
+            game.session.difficulty = 2;
             let difficulty = game.local_difficulty([8.0, 65.0, 8.0]);
             let piglins = |game: &Game<'_>| {
                 game.mobs
@@ -460,7 +460,7 @@ mod tests {
             }
             assert!(piglins(game) > 0, "riders with the rules on");
             // `spawn_monsters` off: no rider, though the difficulty allows it.
-            assert!(game.ui.rules.set("spawn_monsters", RuleValue::Bool(false)));
+            assert!(game.session.rules.set("spawn_monsters", RuleValue::Bool(false)));
             let before = piglins(game);
             for id in 1000..=1400u32 {
                 let mut s = mob_of(game, id, "minecraft:strider");

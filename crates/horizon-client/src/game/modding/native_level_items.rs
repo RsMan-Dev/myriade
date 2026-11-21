@@ -58,7 +58,7 @@ impl Game<'_> {
         // Block.popResource's private overload checks these after the draws.
         if !self.stack_spawns(&stack)
             || !self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
         {
@@ -188,7 +188,7 @@ mod tests {
                 game.level_pop_resource(level, [0; 3], ItemStack::new("minecraft:air", 1))
                     .is_none()
             );
-            game.ui.rules.set("block_drops", RuleValue::Bool(false));
+            game.session.rules.set("block_drops", RuleValue::Bool(false));
             assert!(
                 game.level_pop_resource(level, [4, 64, -2], stone())
                     .is_none()

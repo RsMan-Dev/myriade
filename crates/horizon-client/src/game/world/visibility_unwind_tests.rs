@@ -32,7 +32,7 @@ pub(super) fn with_save_game(root: &std::path::Path, test: impl FnOnce(&mut Game
             whitelist_bypass: Vec::new(),
         })));
         game.build_registries();
-        game.ui.dispatcher = chat::SessionDispatcher(Arc::new(
+        game.session.dispatcher = crate::game::command_text::SessionDispatcher(Arc::new(
             horizon_client::command::vanilla::build_for(false, true),
         ));
         game.world

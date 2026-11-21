@@ -75,7 +75,7 @@ fn a_placed_lectern_takes_has_book_from_its_item() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
     game.set_mode_id(1);
-    game.ui.registries.permission = 2;
+    game.session.registries.permission = 2;
     *game.held_mut() = Some(lectern_item());
     assert!(game.use_hand(Some(&click([8, 64, 8]))).unwrap());
     assert!(
@@ -86,7 +86,7 @@ fn a_placed_lectern_takes_has_book_from_its_item() {
 
     // The same item from a placer who may not use game-master blocks gains
     // neither the state nor the block entity book, so the comparator reads 0.
-    game.ui.registries.permission = 0;
+    game.session.registries.permission = 0;
     *game.held_mut() = Some(lectern_item());
     assert!(game.use_hand(Some(&click([10, 64, 8]))).unwrap());
     assert!(

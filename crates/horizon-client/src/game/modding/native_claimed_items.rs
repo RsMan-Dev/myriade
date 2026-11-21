@@ -21,14 +21,12 @@ struct ModUse {
     ticks: u32,
 }
 
-/// The items client mods claim, their events waiting for a poll, the use under way, and the
-/// keys they register (`native_key_mappings.rs`).
+/// The items client mods claim, their events waiting for a poll, and the use under way.
 #[derive(Default)]
 pub(super) struct ModInput {
     claims: BTreeMap<String, Vec<String>>,
     events: BTreeMap<String, Vec<ModEvent>>,
     using: Option<ModUse>,
-    pub(super) mappings: horizon_client::keymapping::ModKeys,
 }
 
 impl ModInput {
@@ -117,7 +115,7 @@ impl Game<'_> {
                 hit.point,
                 self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]),
             ),
-            None => self.lod_ray(eye, dir, reach)?,
+            None => return None,
         };
         let distance = (0..3)
             .map(|i| (point[i] - eye[i]).powi(2))
@@ -135,32 +133,6 @@ impl Game<'_> {
                 block: mod_api::__private::block_key(&self.res.facts().get(state).name)?,
             },
         ))
-    }
-    /// A ray over the distant terrain (`Lod::ground`) past the loaded chunks, a block at a time.
-    fn lod_ray(
-        &self,
-        eye: [f64; 3],
-        dir: [f64; 3],
-        reach: f64,
-    ) -> Option<([i32; 3], [f64; 3], horizon_world::registry::BlockStateId)> {
-        let lod = self.lod.as_ref()?;
-        let mut t = 0.0;
-        while t <= reach {
-            let p = [
-                eye[0] + dir[0] * t,
-                eye[1] + dir[1] * t,
-                eye[2] + dir[2] * t,
-            ];
-            let (x, z) = (p[0].floor() as i32, p[2].floor() as i32);
-            if !self.world.loaded(x, z)
-                && let Some((height, state)) = lod.ground(x, z)
-                && p[1] <= f64::from(height)
-            {
-                return Some(([x, height - 1, z], [p[0], f64::from(height), p[2]], state));
-            }
-            t += 1.0;
-        }
-        None
     }
     /// Right-clicks with these items (at most 64 ids) are mod `mod_id`'s; a later call replaces the list.
     pub(super) fn claim_items(&mut self, mod_id: &str, ids: &[String]) {

@@ -1,4 +1,5 @@
 use super::*;
+use mod_api::client::first_person::Hand;
 
 impl Game<'_> {
     /// The game mode's item-phase trigger is separate from item-internal triggers.

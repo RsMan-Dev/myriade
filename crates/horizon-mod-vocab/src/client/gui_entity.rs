@@ -1,11 +1,11 @@
-//! A living entity drawn in a screen (`DrawContext::entity`): vanilla's
+//! A living entity drawn in a screen (a GUI entity): vanilla's
 //! `InventoryScreen.renderEntityInInventoryFollowsMouse` and
 //! `renderEntityInInventory`, which recipe viewers' mob pages, Jade's entity
 //! icon and Hostile Neural Networks' deep learner draw their mobs with.
 
 use crate::Compound;
 
-/// Which living entity [`DrawContext::entity`](crate::DrawContext::entity) draws.
+/// Which living entity a GUI entity draws.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(horizon_mod_api_macros::Wire)]
@@ -99,7 +99,7 @@ impl GuiEntityView {
     }
 }
 
-/// Why [`DrawContext::entity`](crate::DrawContext::entity) drew nothing.
+/// Why a GUI entity drew nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(horizon_mod_api_macros::Wire)]

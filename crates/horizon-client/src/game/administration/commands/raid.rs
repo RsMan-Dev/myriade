@@ -114,10 +114,10 @@ impl Game<'_> {
                     _ => "",
                 };
                 if matches!(kind, "local" | "\"local\"" | "'local'") {
-                    let seed = self.world.random.next_long();
+                    let _seed = self.world.random.next_long();
                     let at = [player.x + 5.0, player.y, player.z];
                     self.audio
-                        .play_seeded("minecraft:event.raid.horn", Some(at), 2.0, 1.0, seed);
+                        .play("minecraft:event.raid.horn", Some(at), 2.0, 1.0);
                 }
                 Ok(1)
             }
@@ -136,7 +136,7 @@ mod tests {
     /// Runs a line of the dev tree (`/raid` is registered only there).
     fn run_dev(game: &mut Game<'_>, line: &str) -> i32 {
         let d = vanilla::build_with(true);
-        let parse = d.parse(line, &game.ui.registries);
+        let parse = d.parse(line, &game.session.registries);
         let (ctx, _) = parse.executable().expect(line);
         let (ctx, root) = (ctx.clone(), parse.context.clone());
         game.run_chain(&root, &ctx).expect(line)
@@ -148,7 +148,7 @@ mod tests {
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // RaidCommand needs the owner's permission level (3).
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             game.chat_capture = Some(Vec::new());
             game.audio.capture = Some(Vec::new());
             let (id, _) = game.raiding.raids.create_or_extend([0, 64, 0], 2, None, 3);
@@ -201,7 +201,7 @@ mod tests {
     fn raid_start_absorbs_the_players_raid_omen() {
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             game.chat_capture = Some(Vec::new());
             let stat = |g: &Game<'_>| g.stats.get("custom", "minecraft:raid_trigger");
 

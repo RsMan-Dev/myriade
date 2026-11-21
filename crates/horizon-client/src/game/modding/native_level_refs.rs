@@ -220,7 +220,10 @@ impl Game<'_> {
         } else {
             self.levels.parked_streaming_of(level.dimension_id())?
         };
-        let [qx, qy, qz] = streaming.biome_zoom.quart_at_block(block_pos(pos));
+        let [qx, qy, qz] = horizon_core::biome::BiomeZoom::new(horizon_core::biome::obfuscate_seed(
+            self.level.seed,
+        ))
+        .quart_at_block(block_pos(pos));
         let chunk = world.chunks.get(&(qx >> 2, qz >> 2))?;
         // ChunkAccess clamps to the dimension's height, not our padded storage.
         // Clamp before conversion to preserve signed block-coordinate extremes.
@@ -2369,8 +2372,8 @@ mod tests {
 
     /// The result `/forceload query` gives: the chunks listed, or 0 when it reports none.
     fn query_result(game: &mut super::super::Game<'_>, command: &str) -> Option<i32> {
-        let d = game.ui.dispatcher.0.clone();
-        let parse = d.parse(command, &game.ui.registries);
+        let d = game.session.dispatcher.0.clone();
+        let parse = d.parse(command, &game.session.registries);
         let (ctx, _) = parse.executable().ok()?;
         let (ctx, root) = (ctx.clone(), parse.context.clone());
         game.run_chain(&root, &ctx).ok()
@@ -2380,7 +2383,7 @@ mod tests {
     #[ignore = "daily"]
     fn forceload_add_returns_with_each_new_column_loaded() {
         with_chunk_streaming(|game| {
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             assert!(!game.world.chunks.contains_key(&(8, -4)));
             assert!(!game.world.chunks.contains_key(&(9, -4)));
             assert_eq!(query_result(game, "forceload add 128 -64 144 -64"), Some(2));
@@ -2405,7 +2408,7 @@ mod tests {
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [3, 3]).unwrap();
-            game.ui.registries.permission = 4;
+            game.session.registries.permission = 4;
             let _guard = in_mod("machines");
             let owner = mod_api::TicketOwner::Block([48, 64, 48]);
             assert!(game.chunk_set_mod_forced(chunk, quarry(), owner, true, false));

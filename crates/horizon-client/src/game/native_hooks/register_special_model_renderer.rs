@@ -7,9 +7,7 @@ impl Game<'_> {
     /// registration of a type replaces the earlier one. Asked once at start on the client, before
     /// resources load.
     pub(in crate::game) fn native_register_special_model_renderer(
-        context: &mod_api::RegistrationContext,
-        renderers: &mut dyn SpecialModelRenderers,
-    ) {
-        Self::fire_register_special_model_renderer(context, renderers);
-    }
+        _context: &mod_api::RegistrationContext,
+        _renderers: &mut dyn SpecialModelRenderers,
+    ) {}
 }

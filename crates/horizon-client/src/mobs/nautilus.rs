@@ -1158,3 +1158,11 @@ mod feed_heal_tests {
         assert_eq!(feed_heal(None), 1.0);
     }
 }
+/// `getEquipSound(SADDLE)`.
+pub fn saddle_sound(m: &Mob) -> &'static str {
+    if m.fluids.eye_in_water {
+        "item.nautilus_saddle_underwater_equip"
+    } else {
+        "item.nautilus_saddle_equip"
+    }
+}

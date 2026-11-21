@@ -1,6 +1,6 @@
 //! Merchant handles for villagers temporarily lent to an AI tick.
 use super::GoalCx;
-use crate::mobs::{Mob, Species, render::VILLAGER_TYPES};
+use crate::mobs::{Mob, Species, VILLAGER_TYPES};
 use mod_api::{MerchantOffer, MerchantRef, PlayerRef};
 
 impl GoalCx<'_, '_> {

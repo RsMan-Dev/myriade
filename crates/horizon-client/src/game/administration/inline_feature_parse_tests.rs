@@ -32,13 +32,11 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     let mut game = Game::new(
         res,
         loaded.pack,
-        loaded.gui.unwrap(),
         options,
         settings,
         Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
             root.to_path_buf(),
         )),
-        None,
     )
     .unwrap();
     // As a world opens: the live features are installed while it is
@@ -147,7 +145,7 @@ fn the_parse_check_is_the_live_feature_codec_and_only_where_it_exists() {
     assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
     assert!(game.run_command("scoreboard objectives add h171 dummy"));
     assert!(
-        game.ui.registries.inline_feature.is_some(),
+        game.session.registries.inline_feature.is_some(),
         "the server has it"
     );
     let malformed = "{type:\"minecraft:simple_block\"}";
@@ -181,7 +179,7 @@ fn the_parse_check_is_the_live_feature_codec_and_only_where_it_exists() {
         "{type:\"minecraft:simple_block\",to_place:{type:\"minecraft:simple_state_provider\"}}";
     assert_eq!(stored(&mut game, deep), (-1, -1, true));
     // No live features: the static check still refuses at parse time what it covers.
-    game.ui.registries.inline_feature = None;
+    game.session.registries.inline_feature = None;
     assert_eq!(stored(&mut game, malformed), (-1, -1, true));
     // What it does not cover is decoded when the command runs: the old run-time failure.
     assert_eq!(stored(&mut game, deep), (0, 0, true));

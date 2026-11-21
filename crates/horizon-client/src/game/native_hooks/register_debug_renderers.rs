@@ -6,9 +6,7 @@ impl Game<'_> {
     /// `RegisterDebugRenderersEvent`): push a `DebugRenderer` per renderer. Asked at each
     /// renderer list refresh (`Game::refresh_debug_renderers`), on the client.
     pub(in crate::game) fn native_register_debug_renderers(
-        context: &mod_api::RegistrationContext,
-        renderers: &mut Vec<DebugRenderer>,
-    ) {
-        Self::fire_register_debug_renderers(context, renderers);
-    }
+        _context: &mod_api::RegistrationContext,
+        _renderers: &mut Vec<DebugRenderer>,
+    ) {}
 }

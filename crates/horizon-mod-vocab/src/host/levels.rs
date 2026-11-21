@@ -1570,29 +1570,3 @@ pub trait LevelsBackendMut {
     #[access(WorldOnly)]
     fn level_set_biome(&mut self, level: LevelRef, pos: [i32; 3], biome: &str) -> bool;
 }
-/// The handles' client writes of the `levels` area, implemented by the game and reached through [`ClientBackendMut`].
-// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[horizon_mod_api_macros::host_area]
-pub trait LevelsClientBackendMut {
-    /// Side: client.
-    /// Show or clear the crack of `breaker` on the block at `pos` in this client's own view
-    /// (`LevelRenderer.destroyBlockProgress`): stages 0..9 show a crack, any other stage removes
-    /// it. Nothing is sent to the server or to other players, and a crack not updated for 400
-    /// ticks goes away. False for a stale or foreign level or before login.
-    ///
-    /// ```compile_fail
-    /// use mod_api::{LevelRef, ServerHost};
-    /// fn wrong_side(level: LevelRef, host: &mut dyn ServerHost) {
-    ///     level.set_client_break_progress(host, -1, [0, 64, 0], 3);
-    /// }
-    /// ```
-    #[access(WorldOnly)]
-    fn level_set_client_break_progress(
-        &mut self,
-        level: LevelRef,
-        breaker: i32,
-        pos: [i32; 3],
-        progress: i32,
-    ) -> bool;
-}

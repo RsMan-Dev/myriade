@@ -6,7 +6,6 @@
 use super::Game;
 use horizon_client::{
     blocks::{Fluid, MAP_COLORS},
-    hud::MAP_SLOTS,
     items::ItemStack,
 };
 use horizon_core::nbt::{JavaString, Tag};
@@ -654,8 +653,6 @@ pub(super) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
     last_id: Option<i32>,
-    /// The atlas slots holding map textures.
-    pub slots: super::atlas_slots::AtlasSlots<i32>,
     missing: std::collections::HashSet<i32>,
 }
 impl Default for Maps {
@@ -663,7 +660,6 @@ impl Default for Maps {
         Self {
             data: HashMap::new(),
             last_id: None,
-            slots: super::atlas_slots::AtlasSlots::new(MAP_SLOTS),
             missing: Default::default(),
         }
     }
@@ -1025,7 +1021,7 @@ impl Game<'_> {
             return;
         };
         let dim = self.dimension_id();
-        let zoom = self.streaming.biome_zoom;
+        let zoom = horizon_core::biome::BiomeZoom::new(horizon_core::biome::obfuscate_seed(self.level.seed));
         let watery_biomes: std::collections::HashSet<String> = self
             .tag_entries("worldgen/biome", "minecraft:water_on_map_outlines")
             .into_iter()
@@ -1799,13 +1795,11 @@ mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .unwrap();
 

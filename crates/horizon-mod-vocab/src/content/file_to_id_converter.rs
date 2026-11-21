@@ -72,11 +72,13 @@ impl FileToIdConverter {
         Self::new(directory, ".json")
     }
 
-    pub(crate) fn directory(&self) -> &str {
+    /// The directory the files are listed under.
+    pub fn directory(&self) -> &str {
         &self.directory
     }
 
-    pub(crate) fn file_to_id(&self, file: &str) -> Option<Identifier> {
+    /// The identifier a file path under the directory stands for.
+    pub fn file_to_id(&self, file: &str) -> Option<Identifier> {
         let (namespace, path) = file.split_once('/')?;
         let path = path
             .strip_prefix(&self.prefix)?

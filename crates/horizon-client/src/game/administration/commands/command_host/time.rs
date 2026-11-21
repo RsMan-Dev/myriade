@@ -38,10 +38,10 @@ impl TimeHost for Game<'_> {
         cancel
     }
     fn time_marker(&self, marker: &str, total: i64) -> Option<(i64, bool)> {
-        let m = self.ui.markers.get(marker).copied()?;
+        let m = self.session.markers.get(marker).copied()?;
         Some((m.resolve(total)?, m.occurs_at(total)))
     }
     fn timeline_period(&self, timeline: &str) -> Option<Option<i64>> {
-        self.ui.timelines.get(timeline).copied()
+        self.session.timelines.get(timeline).copied()
     }
 }

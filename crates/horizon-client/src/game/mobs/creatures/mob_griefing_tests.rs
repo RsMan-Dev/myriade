@@ -41,7 +41,7 @@ fn a_mod_denies_one_entity_griefing() {
         with_game(|game| {
             open_to_lan(game);
             assert!(
-                game.ui
+                game.session
                     .rules
                     .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
             );

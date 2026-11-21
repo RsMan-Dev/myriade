@@ -366,7 +366,6 @@ impl Game<'_> {
         let m = &self.remote_entities[index];
         // AbstractHorse.mobInteract: shift + use opens a tamed adult's inventory.
         if !m.is_baby() && m.extra.tame && sneaking {
-            self.open_mount_menu(index);
             return true;
         }
         if self.feed_mount(index, item) {
@@ -431,7 +430,7 @@ impl Game<'_> {
             let feet = [m.position.x, m.position.y, m.position.z];
             if !silent {
                 match seed {
-                    Some(seed) => self.audio.play_seeded(sound, Some(feet), 1.0, pitch, seed),
+                    Some(_) => self.audio.play(sound, Some(feet), 1.0, pitch),
                     None => self.audio.play(sound, Some(feet), 1.0, pitch),
                 }
             }
@@ -480,24 +479,11 @@ impl Game<'_> {
             used = true;
         }
         if m.is_baby() && age_up > 0 && !m.extra.age_locked {
-            // AbstractHorse.handleEating (Camel's too): the HAPPY_VILLAGER's
-            // `getRandomX(1.0)`, `getRandomY() + 0.5` and `getRandomZ(1.0)`
-            // each draw a double from the mount's own random before it ages
-            // up. A server's `Level.addParticle` shows nothing: the client
-            // draws its own sparkle (`remote_feed_particles`).
-            let (feet, width, height) = (
-                [m.position.x, m.position.y, m.position.z],
-                f64::from(m.width()),
-                f64::from(m.height()),
-            );
-            horizon_client::particles::around_self(
-                &mut m.random,
-                feet,
-                width,
-                height,
-                horizon_client::particles::Burst::HORSE_EATING,
-                |_, _| {},
-            );
+            // AbstractHorse.handleEating: `getRandomX(1.0)`, `getRandomY() + 0.5` and `getRandomZ(1.0)` of the
+            // HAPPY_VILLAGER each draw a double from the mount's own random; the client draws the sparkle.
+            for _ in 0..3 {
+                let _ = m.random.next_double();
+            }
             m.extra.age = (m.extra.age + age_up * 20).min(0);
             used = true;
         }
@@ -815,7 +801,7 @@ impl Game<'_> {
             yaw,
             width: p.dimensions.width,
             poses: rider_poses(p),
-            main_arm_left: self.settings.main_hand_left,
+            main_arm_left: false,
         };
         dismount_location(mount, &rider, &GameDismountWorld(self))
     }
@@ -1089,9 +1075,6 @@ impl Game<'_> {
     pub(super) fn mount_jumping(&self) -> bool {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
     }
-    /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
-    /// layer, only while riding a mount). Returns the mount's heart count
-    /// (`getVehicleMaxHearts`).
 }
 
 /// The mount a rider gets off: its kind, where it stands, its box,
@@ -1841,13 +1824,11 @@ mod tests {
         let mut game = Game::new(
             res,
             loaded.pack,
-            loaded.gui?,
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )),
-            None,
         )
         .ok()?;
         game.reset_entity_residency();

@@ -142,10 +142,10 @@ fn refused_body_construction_does_not_begin_guest_loans() {
             .hub
             .guests
             .update_connection(12, |g| g.motion = None);
-        let permission = game.ui.registries.permission;
+        let permission = game.session.registries.permission;
         assert!(game.as_guest(12, |_| panic!("refused turn ran")).is_none());
         game.motion = original;
-        assert_eq!(game.ui.registries.permission, permission);
+        assert_eq!(game.session.registries.permission, permission);
         assert!(game.lan_guest_swaps.is_empty());
         assert!(matches!(
             game.server_resident_entity(12),

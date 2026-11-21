@@ -46,7 +46,7 @@ fn tick_breeding(
     mob_drops: bool,
 ) -> Bred {
     game.mobs.clear();
-    game.ui.rules.set(
+    game.session.rules.set(
         "mob_drops",
         horizon_client::gamerules::Value::Bool(mob_drops),
     );

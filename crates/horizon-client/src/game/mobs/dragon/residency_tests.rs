@@ -161,7 +161,7 @@ fn singleton_death_fight_scan_and_resets_discard_owners() {
         game.clear_entities();
         assert!(game.dragon.is_none(), "world reset");
         game.spawn_remote_dragon(604, [1.0, 80.0, 1.0], 0.0);
-        game.clear_remote_projectiles();
+
         assert!(game.dragon.is_none(), "remote reset");
         game.spawn_remote_dragon(605, [1.0, 80.0, 1.0], 0.0);
         game.set_allow_commands(true);

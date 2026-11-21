@@ -181,7 +181,7 @@ impl Game<'_> {
             let burning = item.burning_tick_with_hook(
                 start_in_lava,
                 &native_components::item_damage_resolver(
-                    &self.pack.item_renderer.models,
+                    &self.res.item_defaults().entries(),
                     &self.health_resources.damage,
                 ),
                 |damage| item_refuses!(self, item_id, saved, &mut self.world, damage),
@@ -244,7 +244,7 @@ impl Game<'_> {
                     self.res.facts(),
                     self.pack.assets.registry,
                     &native_components::item_damage_resolver(
-                        &self.pack.item_renderer.models,
+                        &self.res.item_defaults().entries(),
                         &self.health_resources.damage,
                     ),
                     |world, damage| item_refuses!(self, item_id, saved, world, damage),
@@ -711,7 +711,7 @@ impl Game<'_> {
     pub(super) fn drop_inventory(&mut self, at: [f64; 3], dying: &creatures::DyingDrops<'_>) {
         let mut stacks: Vec<ItemStack> = Vec::new();
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::KEEP_INVENTORY)
         {
@@ -810,7 +810,7 @@ impl Game<'_> {
         let p = spill::pop_position(&mut self.world.random, pos);
         // Block.popResource draws its offsets before the private overload checks the gamerule.
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
         {
@@ -851,7 +851,7 @@ impl Game<'_> {
         let (p, v) = spill::pop_position_from_face(&mut self.world.random, pos, face);
         // The private overload checks the gamerule after the offsets are drawn.
         if !self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
         {

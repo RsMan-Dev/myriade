@@ -8,7 +8,6 @@ impl Game<'_> {
         request: super::world_loading::WorldRequest,
     ) -> crate::Result<PreparedWorld> {
         self.join_world_rest()?;
-        self.perf.world_opening();
         let prepared = request.prepare(
             &self.res,
             &self.pack,
@@ -44,6 +43,6 @@ impl Game<'_> {
             };
             rules.set(id, value);
         }
-        self.ui.rules = rules;
+        self.session.rules = rules;
     }
 }

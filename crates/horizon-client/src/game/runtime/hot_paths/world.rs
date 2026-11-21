@@ -46,10 +46,10 @@ impl Game<'_> {
         self.orbs.clear();
         self.hoppers.clear();
         self.level_events.clear();
-        self.ui.rules = Default::default();
+        self.session.rules = Default::default();
         self.dim = super::super::Dim::Overworld;
         self.world.shape = self.dim.shape();
-        self.ui.difficulty = 2;
+        self.session.difficulty = 2;
         self.level.seed = seed;
         self.rand_sequences = Default::default();
         self.world.game_time = 0;

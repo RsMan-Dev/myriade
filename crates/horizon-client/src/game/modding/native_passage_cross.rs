@@ -99,19 +99,6 @@ impl Game<'_> {
         if !within_reach(&p, from) {
             return Err(Error::TooFar { limit: REACH });
         }
-        // Sent first: a mod's `client_packet_send` may cancel it, and then nothing moves.
-        let data = encode_cross(&Cross {
-            id: passage.raw(),
-            from,
-        });
-        let payload = S::CustomPayload(CustomPayload {
-            channel: CROSS_CHANNEL.into(),
-            data,
-        });
-        if !self.send_play(payload) {
-            return Err(Error::Cancelled);
-        }
-        // The send hook's listeners only read the host: the player is still there.
         let player = self.player.as_mut().expect("checked above");
         let [x, y, z] = carried(&p, from);
         player.position = Motion::new(x, y, z);

@@ -52,19 +52,19 @@ impl Game<'_> {
             landing: &self.motion.landing,
             biomes: world_biomes!(self),
             mob_griefing: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING),
             universal_anger: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::UNIVERSAL_ANGER),
             mob_drops: self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS),
             max_entity_cramming: self
-                .ui
+                .session
                 .rules
                 .int_at(horizon_client::gamerules::vanilla::MAX_ENTITY_CRAMMING),
             dimension_type: self.dimension_type(),

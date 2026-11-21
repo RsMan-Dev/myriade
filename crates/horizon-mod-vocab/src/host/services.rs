@@ -35,25 +35,6 @@ pub trait ServicesServerHost {
     #[service]
     fn runtime_levels(&mut self) -> &mut dyn RuntimeLevels;
 }
-/// The client host's methods of the `services` area, implemented by the game and reached through [`crate::ClientHost`].
-#[horizon_mod_api_macros::host_area]
-pub trait ServicesClientHost {
-    /// Persistent model groups.
-    /// Not on wasm: a frame resource; its methods are the imports.
-    #[access(PublishedResources)]
-    #[service]
-    fn instance_groups(&self) -> &dyn InstanceGroups;
-    /// The client_session service.
-    /// Not on wasm: a frame resource; its methods are the imports.
-    #[access(WorldOnly)]
-    #[service]
-    fn client_session(&self) -> &dyn ClientSession;
-    /// The render_assets service.
-    /// Not on wasm: a frame resource; its methods are the imports.
-    #[access(PublishedResources)]
-    #[service]
-    fn render_assets(&self) -> &dyn RenderAssets;
-}
 /// The client_session service, reached through its host.
 pub trait ClientSession {
     /// Side: client.

@@ -1,4 +1,5 @@
 use super::*;
+use crate::hand_use::SwingAnimation;
 
 impl Game<'_> {
     /// DedicatedServer.isUnderSpawnProtection: no operators, an operator or a
@@ -645,9 +646,7 @@ impl Game<'_> {
                 self.as_guest(conn, |g| {
                     // HasCustomInventoryScreen: a tamed mount's horse
                     // inventory, or a chest boat's chest.
-                    if !g.open_ridden_mount_menu() {
-                        g.open_ridden_chest_boat();
-                    }
+                    g.open_ridden_chest_boat();
                 });
             }
             S::PlayerCommand(p) if p.action == 6 => self.lan_start_gliding(conn),
@@ -815,9 +814,6 @@ impl Game<'_> {
             S::CustomPayload(p) if p.channel == horizon_client::lan::recipes::CHECK_CHANNEL => {
                 self.guest_recipe_check(conn, &p.data);
             }
-            S::CustomPayload(p) if p.channel == horizon_client::perf_net::CHANNEL => {
-                self.guest_perf(conn, &p.data)
-            }
             S::CustomPayload(p) if p.channel == horizon_client::lod_net::CHANNEL => {
                 self.guest_far_terrain(conn, &p.data)
             }
@@ -849,14 +845,14 @@ impl Game<'_> {
             }
             S::ChangeDifficulty(p) if permission >= 2 => {
                 if !self.level.difficulty_locked && (0..=3).contains(&p.difficulty) {
-                    self.ui.difficulty = if self.level.hardcore {
+                    self.session.difficulty = if self.level.hardcore {
                         3
                     } else {
                         p.difficulty as u8
                     };
                     // The level data holds the world's difficulty: it
                     // survives the reopen, so it follows the change.
-                    self.level.set_difficulty(self.ui.difficulty);
+                    self.level.set_difficulty(self.session.difficulty);
                     // `sync_rules` hands the difficulty to the ECS, which discards what peaceful does not allow.
                     self.sync_rules();
                     let Some(host) = self.lan.as_mut() else {
@@ -864,7 +860,7 @@ impl Game<'_> {
                     };
                     host.hub
                         .broadcast(&C::ChangeDifficulty(play::ChangeDifficulty {
-                            difficulty: i32::from(self.ui.difficulty),
+                            difficulty: i32::from(self.session.difficulty),
                             locked: self.level.difficulty_locked,
                         }));
                 }
@@ -876,7 +872,7 @@ impl Game<'_> {
                 };
                 host.hub
                     .broadcast(&C::ChangeDifficulty(play::ChangeDifficulty {
-                        difficulty: i32::from(self.ui.difficulty),
+                        difficulty: i32::from(self.session.difficulty),
                         locked: self.level.difficulty_locked,
                     }));
             }
@@ -888,12 +884,12 @@ impl Game<'_> {
                     conn,
                     &C::GameRuleValues(play::GameRuleValues {
                         entries: self
-                            .ui
+                            .session
                             .rules
                             .available_rules()
                             .map(|r| play::GameRuleEntry {
                                 name: r.name.clone(),
-                                value: self.ui.rules.get(&r.name).unwrap_or(r.default).to_string(),
+                                value: self.session.rules.get(&r.name).unwrap_or(r.default).to_string(),
                             })
                             .collect(),
                     }),
@@ -901,9 +897,9 @@ impl Game<'_> {
             }
             S::SetGameRule(p) if permission >= 2 => {
                 for entry in p.entries {
-                    if self.ui.rules.set_string(&entry.name, &entry.value) {
-                        if let Some(rule) = self.ui.rules.rule(&entry.name).cloned()
-                            && let Some(value) = self.ui.rules.get(&rule.name)
+                    if self.session.rules.set_string(&entry.name, &entry.value) {
+                        if let Some(rule) = self.session.rules.rule(&entry.name).cloned()
+                            && let Some(value) = self.session.rules.get(&rule.name)
                         {
                             let Some(host) = self.lan.as_ref() else {
                                 return;

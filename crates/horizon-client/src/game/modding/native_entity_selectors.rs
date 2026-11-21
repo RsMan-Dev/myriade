@@ -41,7 +41,7 @@ impl Game<'_> {
         let Some(selector) = mod_api::__private::entity_selector_type(token) else {
             return Vec::new();
         };
-        let Ok(source) = self.native_command_origin(self.ui.registries.permission) else {
+        let Ok(source) = self.native_command_origin(self.session.registries.permission) else {
             return Vec::new();
         };
         selected

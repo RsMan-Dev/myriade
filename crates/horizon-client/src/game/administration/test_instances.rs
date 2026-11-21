@@ -8,11 +8,8 @@ use super::{
     test_entities::{aabb_of, inflate},
 };
 use horizon_client::{
-    block_entity_render::vertex_light,
     component::name_text,
     containers::BlockEntity,
-    hud::HudBatch,
-    mesher::Vertex,
     structure_block::rotation_from_ordinal,
     test_instance_block::{Data, Status, TestInstanceBlock},
     text::{self, Text},
@@ -250,7 +247,7 @@ impl Game<'_> {
         }
         let mut ids: Vec<String> = defs.keys().cloned().collect();
         ids.sort();
-        self.ui
+        self.session
             .registries
             .by_registry
             .entry("minecraft:test_instance".into())

@@ -18,7 +18,7 @@ impl Game<'_> {
         pos: [i32; 3],
         held: Option<&ItemStack>,
     ) -> horizon_client::cauldron::Outcome {
-        self.client_cauldron_prediction(pos, held).0
+        horizon_client::cauldron::Outcome::Pass
     }
     /// `CauldronInteractions` for the held item aimed at a cauldron.
     pub(super) fn use_on_cauldron(&mut self, pos: [i32; 3]) -> Result<bool> {

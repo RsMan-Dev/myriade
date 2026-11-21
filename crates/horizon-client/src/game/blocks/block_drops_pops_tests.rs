@@ -144,7 +144,7 @@ fn block_drops_on_keeps_the_pop() {
     let mut resources = None;
     let mut game = game(&mut resources);
     assert!(
-        game.ui
+        game.session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::BLOCK_DROPS)
     );

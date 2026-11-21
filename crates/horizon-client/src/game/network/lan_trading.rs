@@ -408,8 +408,6 @@ impl Game<'_> {
             .is_some_and(|m| m.mob == Some(id))
         {
             self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
         }
         if let Some(conn) = self.lan_trade_conn(id) {
             let window = self

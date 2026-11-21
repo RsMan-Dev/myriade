@@ -163,9 +163,9 @@ fn a_wildcard_reset_names_tracked_holders_without_their_team_formatting() {
     // `Scoreboard.getTrackedPlayers` hands out `ScoreHolder.forNameOnly`, which has no display name.
     let swap = game.enter_guest(2).unwrap();
     game.chat_capture = Some(Vec::new());
-    let permission = std::mem::replace(&mut game.ui.registries.permission, 4);
+    let permission = std::mem::replace(&mut game.session.registries.permission, 4);
     let ok = game.run_command("scoreboard players reset *");
-    game.ui.registries.permission = permission;
+    game.session.registries.permission = permission;
     let lines = game.chat_capture.take().unwrap();
     game.leave_guest(swap);
     assert!(ok);

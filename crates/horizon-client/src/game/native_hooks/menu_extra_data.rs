@@ -20,27 +20,3 @@ impl Game<'_> {
         self.fire_menu_extra_data(player, menu, block, pos, data);
     }
 }
-
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Horizon does.
-#[allow(dead_code)]
-impl Game<'_> {
-    /// The block of the mod screen that is open (`native_screen`), as the
-    /// server named it when the block opened its menu type; None when no mod
-    /// screen is open. 401.
-    pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
-        self.shown_native_screen()?.pos()
-    }
-    /// What the block's mod wrote for the mod screen that is open
-    /// (`native_menu_extra_data` on the server), empty when it wrote nothing;
-    /// None when no mod screen is open. @API:menu_extra_data@.
-    pub(in crate::game) fn screen_extra_data(&self) -> Option<Vec<u8>> {
-        let screen = self.shown_native_screen()?;
-        Some(
-            screen
-                .extra
-                .as_ref()
-                .map_or_else(Vec::new, |e| e.data.clone()),
-        )
-    }
-}

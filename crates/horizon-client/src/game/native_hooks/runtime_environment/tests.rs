@@ -273,7 +273,6 @@ fn run(wasm: bool) {
                 let _phase =
                     mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 if role.is_client() {
-                    game.native_client_tick_pre();
                     // A client process's integrated logical server must read that same snapshot.
                     game.options.execution_role = ExecutionRole::IntegratedServer;
                 }

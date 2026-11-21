@@ -80,7 +80,6 @@ impl Game<'_> {
         };
         let mut player = PlayerMotion::new(self.motion, feet)?;
         player.yaw = self.yaw;
-        let entering = self.restore_player_state;
         player.load_saved_state_once(&mut self.restore_player_state, &self.level)?;
         let spectator = self.mode == horizon_client::command::args::GameMode::Spectator;
         player.may_fly = self.creative || spectator;
@@ -98,31 +97,18 @@ impl Game<'_> {
         player.glider = self.glider_worn();
         // A saved death already dropped inventory/XP and counted the death.
         if player.health.dead_or_dying() {
-            self.set_screen(Screen::Dead);
             self.death_focus = None;
-            self.ui.died_at = Some(Instant::now());
-            self.ui.death_text = None;
-            self.ui.death_confirm = None;
-            self.capture(false);
         }
         self.previous_position = feet;
-        if entering {
-            // The world's first player: a server's client gets it with its
-            // level (Minecraft.setLevel), which stops every sound.
-            self.stop_sounds_for_new_level();
-        }
         self.hook.discard();
         self.player_state.attachments.retire();
         self.resident_entities.local_player.renew();
         self.player = Some(player);
         self.bind_local_player_residency();
-        self.input_player_replaced();
-        self.sway = Default::default();
         self.apply_equipment();
         self.eye = 1.62;
         self.previous_eye = 1.62;
         self.clock.reset();
-        self.capture_loaded_world();
         Ok(())
     }
 }

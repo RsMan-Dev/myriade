@@ -479,33 +479,10 @@ impl Game<'_> {
             };
             return Some(at + glam::DVec3::Y * height);
         }
-        {
-            let bounds = self.local_passenger_vehicle_bounds(vehicle)?;
-            let target = self.level_entity(vehicle as i32)?;
-            let at = self.target_position(target)?;
-            return Some(glam::DVec3::new(at[0], bounds.max_position().y, at[2]));
-        }
-        // Any other tracked entity sits on its feet; an area effect cloud is
-        // 0.5 tall, and ModelEngine parks a model's pivot half a block below
-        // its feet for exactly that.
-        let remote = self.remote.as_ref()?;
-        let (kind, position) = remote.tracked(vehicle as i32)?;
-        let position = if let Some(&parent) = remote.passenger_vehicles.get(&vehicle) {
-            let at = self.passenger_riding_position_inner(parent, me, own_seat, index, path)?;
-            [at.x, at.y, at.z]
-        } else {
-            position
-        };
-        let lift = if kind == "minecraft:area_effect_cloud" {
-            0.5
-        } else {
-            0.0
-        };
-        Some(glam::DVec3::new(
-            position[0],
-            position[1] + lift,
-            position[2],
-        ))
+        let bounds = self.local_passenger_vehicle_bounds(vehicle)?;
+        let target = self.level_entity(vehicle as i32)?;
+        let at = self.target_position(target)?;
+        Some(glam::DVec3::new(at[0], bounds.max_position().y, at[2]))
     }
 }
 

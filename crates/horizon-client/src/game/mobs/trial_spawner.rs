@@ -30,7 +30,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
     }
     fn mob_spawning(&self) -> bool {
         self.game
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
     }

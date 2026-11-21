@@ -4,12 +4,9 @@
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
 use super::{Game, commands::execute::Source};
 use horizon_client::{
-    chat::{ChatScreen, Commands},
     command_block::{self, CommandBlock, Mode},
     containers::BlockEntity,
-    screen_draw::Measure,
     text::Text,
-    ui::{self, EditBox},
     world::World,
 };
 use horizon_core::position::BlockPos;
@@ -31,11 +28,8 @@ pub(super) struct CommandBlockScreen {
     /// The command block minecart being edited (`MinecartCommandBlockEditScreen`);
     /// `pos` is unused then.
     cart: Option<u32>,
-    /// The command box with its `CommandSuggestions`.
-    pub(super) command: ChatScreen,
-    /// When the command box was focused, for its cursor's blink.
-    opened: std::time::Instant,
-    previous: EditBox,
+    /// The command the block runs.
+    pub(super) command: String,
     pub(super) track_output: bool,
     mode: Mode,
     conditional: bool,
@@ -52,77 +46,7 @@ pub(super) struct CommandBlockEdit {
     pub(super) auto: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Button {
-    Output,
-    Mode,
-    Conditional,
-    Auto,
-    Done,
-    Cancel,
-}
-
-/// `AbstractCommandBlockEditScreen.getPreviousY`.
-fn previous_y(cart: bool) -> f32 {
-    if cart { 150.0 } else { 135.0 }
-}
-
-/// `EditBox.textColorUneditable`.
-const UNEDITABLE: u32 = 0xFF70_7070;
-
 impl CommandBlockScreen {
-    /// `AbstractCommandBlockEditScreen.init` and `CommandBlockEditScreen`'s
-    /// buttons, in GUI pixels of a `w`×`h` screen.
-    /// A minecart's screen has no mode buttons (`getPreviousY` 150).
-    /// Laid out once per build (`CommandBlockLayout`), not per frame.
-    pub(super) fn buttons(w: f32, h: f32, cart: bool) -> Vec<(Button, f32, f32, f32)> {
-        let mid = (w / 2.0).floor();
-        let low = (h / 4.0).floor() + 132.0;
-        let mut out = vec![(Button::Output, mid + 130.0, previous_y(cart), 20.0)];
-        if !cart {
-            out.extend([
-                (Button::Mode, mid - 154.0, 165.0, 100.0),
-                (Button::Conditional, mid - 50.0, 165.0, 100.0),
-                (Button::Auto, mid + 54.0, 165.0, 100.0),
-            ]);
-        }
-        out.extend([
-            (Button::Done, mid - 154.0, low, 150.0),
-            (Button::Cancel, mid + 4.0, low, 150.0),
-        ]);
-        out
-    }
-    /// What button `b` narrates: the switches are `CycleButton`s that show
-    /// only their value (`displayOnlyValue`), "<name>: <value> button" and
-    /// the value a click moves to.
-    fn narration(
-        &self,
-        b: Button,
-        rect: [f32; 4],
-        tr: super::screen_info::Tr<'_>,
-    ) -> horizon_client::widgets::Narratable {
-        let state = (self.track_output, self.mode, self.conditional, self.auto);
-        button_narration(b, state, rect, tr)
-    }
-    fn label(&self, b: Button) -> Text {
-        let tr = |key: &str| Text::translate(key, &[]);
-        match b {
-            Button::Output => Text::literal(if self.track_output { "O" } else { "X" }),
-            Button::Mode => tr(self.mode.label()),
-            Button::Conditional => tr(if self.conditional {
-                "advMode.mode.conditional"
-            } else {
-                "advMode.mode.unconditional"
-            }),
-            Button::Auto => tr(if self.auto {
-                "advMode.mode.autoexec.bat"
-            } else {
-                "advMode.mode.redstoneTriggered"
-            }),
-            Button::Done => tr("gui.done"),
-            Button::Cancel => tr("gui.cancel"),
-        }
-    }
     pub(super) fn pos(&self) -> Pos {
         self.pos
     }
@@ -130,70 +54,6 @@ impl CommandBlockScreen {
     pub(super) fn cart(&self) -> bool {
         self.cart.is_some()
     }
-    /// The previous output box's rectangle.
-    pub(super) fn previous(&self) -> [f32; 4] {
-        let p = &self.previous;
-        [p.x, p.y, p.width, p.height]
-    }
-    /// `AbstractCommandBlockEditScreen.resize`: the command box is made
-    /// again at the new size with its text (`ChatScreen::resize`), and the
-    /// previous output box is centred on it. The screen's build calls it,
-    /// never the draw.
-    pub(super) fn resize(&mut self, m: &Measure, c: &Commands, w: f32, h: f32) {
-        self.command.resize(m, c, w as i32, h as i32);
-        self.previous.x = (w / 2.0).floor() - 150.0;
-    }
-    /// `updatePreviousOutput`.
-    fn show_previous(&mut self, block: &CommandBlock) {
-        let shown = if self.track_output {
-            block.last_output_string()
-        } else {
-            "-".to_owned()
-        };
-        self.previous.set_value(&shown);
-    }
-}
-
-/// [`CommandBlockScreen::narration`] of the switches' state (track output,
-/// mode, conditional, automatic).
-fn button_narration(
-    b: Button,
-    (track_output, mode, conditional_on, auto_on): (bool, Mode, bool, bool),
-    rect: [f32; 4],
-    tr: super::screen_info::Tr<'_>,
-) -> horizon_client::widgets::Narratable {
-    use horizon_client::widgets::Narratable;
-    let full_tr = tr;
-    let tr = |key: &str| full_tr(key, &[]);
-    let o_x = |on: bool| if on { "O" } else { "X" }.to_owned();
-    let conditional = |on: bool| {
-        tr(if on {
-            "advMode.mode.conditional"
-        } else {
-            "advMode.mode.unconditional"
-        })
-    };
-    let auto = |on: bool| {
-        tr(if on {
-            "advMode.mode.autoexec.bat"
-        } else {
-            "advMode.mode.redstoneTriggered"
-        })
-    };
-    let (name, value, next) = match b {
-        Button::Output => ("advMode.trackOutput", o_x(track_output), o_x(!track_output)),
-        Button::Mode => ("advMode.mode", tr(mode.label()), tr(mode.next().label())),
-        Button::Conditional => (
-            "advMode.type",
-            conditional(conditional_on),
-            conditional(!conditional_on),
-        ),
-        Button::Auto => ("advMode.triggering", auto(auto_on), auto(!auto_on)),
-        Button::Done => return Narratable::button(tr("gui.done"), rect, true),
-        Button::Cancel => return Narratable::button(tr("gui.cancel"), rect, true),
-    };
-    let full = full_tr("options.generic_value", &[&tr(name), &value]);
-    Narratable::cycle(full, next, rect, true)
 }
 
 fn state_of(registry: &BlockRegistry, state: BlockStateId) -> Option<&BlockState> {
@@ -284,23 +144,28 @@ pub(super) fn analog_signal(world: &World, pos: Pos) -> Option<i32> {
     }
 }
 
+/// Blocks whose class implements `GameMasterBlock`: the command blocks, structure
+/// block, jigsaw and the test blocks.
+pub(in crate::game) fn is_game_master_block(name: &str) -> bool {
+    horizon_client::command_block::Mode::of_block(name).is_some()
+        || matches!(
+            name,
+            "minecraft:structure_block"
+                | "minecraft:jigsaw"
+                | "minecraft:test_block"
+                | "minecraft:test_instance_block"
+        )
+}
+
 impl Game<'_> {
     /// `Player.canUseGameMasterBlocks`: creative with game master commands.
     pub(super) fn can_use_game_master_blocks(&self) -> bool {
-        self.creative && self.ui.registries.permission >= 2
+        self.creative && self.session.registries.permission >= 2
     }
     fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::CommandBlock(c) => Some(c),
             _ => None,
-        }
-    }
-    /// The `BaseCommandBlock` an edit screen shows: the block entity's or the
-    /// minecart's.
-    fn edit_base(&self, s: &CommandBlockScreen) -> Option<CommandBlock> {
-        match s.cart {
-            Some(id) => self.ecs.cart_command(id),
-            None => self.command_block(s.pos).cloned(),
         }
     }
     fn block_state_at(&self, pos: Pos) -> Option<&'static BlockState> {
@@ -344,7 +209,7 @@ impl Game<'_> {
     /// the block's own automatic flag; then the block takes the signal around it.
     pub(super) fn command_block_placed(&mut self, pos: Pos, defaults: bool) {
         let feedback = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         let Some(name) = self.block_state_at(pos).map(|s| s.name.as_str()) else {
@@ -417,7 +282,7 @@ impl Game<'_> {
     fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
         let registry = self.pack.assets.registry;
         let limit = self
-            .ui
+            .session
             .rules
             .int_at(horizon_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH);
         let mut remaining = limit;
@@ -474,7 +339,7 @@ impl Game<'_> {
         c.success_count = 0;
         let command = c.command.clone();
         if self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             && !command.is_empty()
@@ -524,9 +389,9 @@ impl Game<'_> {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
         let outer = self.cmds.results.replace(Vec::new());
-        let level = std::mem::replace(&mut self.ui.registries.permission, 2);
+        let level = std::mem::replace(&mut self.session.registries.permission, 2);
         self.with_source(source, |g| g.run_command(&line));
-        self.ui.registries.permission = level;
+        self.session.registries.permission = level;
         let results = std::mem::replace(&mut self.cmds.results, outer).unwrap_or_default();
         results.iter().filter(|(success, _)| *success).count() as i32
     }
@@ -553,7 +418,7 @@ impl Game<'_> {
             return;
         };
         let feedback = self
-            .ui
+            .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         if feedback {
@@ -562,7 +427,7 @@ impl Game<'_> {
         if broadcast
             && feedback
             && self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
         {
@@ -692,7 +557,7 @@ impl Game<'_> {
         }
         if !command.is_empty() {
             let key = if self
-                .ui
+                .session
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             {

@@ -6,7 +6,7 @@
 //! `#piglin_loved`) admired and kept instead of bartered. Expected values follow vanilla's
 //! `PiglinAi` flow by hand; the world is ticked for real, `ADMIRE_DURATION` (119) ticks.
 use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
-use horizon_client::first_person::Hand;
+use mod_api::client::first_person::Hand;
 use horizon_client::items::ItemStack;
 use horizon_client::mobs::{Mob, Species, piglin};
 use horizon_core::nbt::{Compound, JavaString, Tag};

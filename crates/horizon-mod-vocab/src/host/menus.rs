@@ -58,14 +58,6 @@ pub trait MenusServerHost {
         items: Vec<Option<ItemStack>>,
     ) -> Result<(), MenuItemsRefusal>;
 }
-/// The client host's methods of the `menus` area, implemented by the game and reached through [`crate::ClientHost`].
-#[horizon_mod_api_macros::host_area]
-pub trait MenusClientHost {
-    /// Side: client.
-    /// The local player in a logged-in client world.
-    #[access(ClientSetup)]
-    fn local_player(&self) -> Option<PlayerRef>;
-}
 /// The handles' reads of the `menus` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]
@@ -116,65 +108,8 @@ pub trait MenusBackend {
 }
 /// The handles' client reads of the `menus` area, implemented by the game and reached through [`ClientBackend`].
 // hidden: a handle's backend, reached through `ClientBackend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[horizon_mod_api_macros::host_area]
-pub trait MenusClientBackend {
-    /// Side: client.
-    /// The open inventory screen's slot boxes in menu slot order
-    /// (`AbstractContainerScreen.leftPos`/`topPos` plus each `Slot.x`/`Slot.y`, 16x16). A box
-    /// is `[x, y, width, height]` in GUI pixels, with `None` for a hidden slot.
-    /// Returns `None` for a stale menu, another screen, or an inventory covered
-    /// by the recipe book. The boxes follow the actual layout, including GUI
-    /// scale and the recipe book's horizontal offset.
-    #[access(WorldOnly)]
-    fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>>;
-    /// Side: client.
-    /// Slot roles from the client layout and content menu declaration, in menu order.
-    /// The length equals `slot_count`. Unknown roles are `Other`; these describe
-    /// neither server backing nor rules for accepting items. Returns `None` outside
-    /// a world, without an open menu, for stale/foreign menus or missing content types.
-    /// Game types with no known slot count return `None`; workstations without
-    /// classified layouts give all `Other` when their count is known. Creative returns the underlying inventory menu, not tab wrappers:
-    /// read the screen type to distinguish them. Stable until the menu changes.
-    /// Built per call with one Vec allocation and a table lookup; cache for the menu.
-    #[access(WorldOnly)]
-    fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>>;
-}
 /// The handles' client writes of the `menus` area, implemented by the game and reached through [`ClientBackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
-#[doc(hidden)]
-#[horizon_mod_api_macros::host_area]
-pub trait MenusClientBackendMut {
-    /// Side: client.
-    /// Submit clicks on the local player's live menu through normal prediction
-    /// and `ContainerClick`. Slots use the same menu order as `slot`; `None`
-    /// is outside (-999). All clicks are validated before any prediction or send.
-    /// A drag expands to one complete quick-craft gesture.
-    /// Refuses stale menus, invalid slots/hotbar indices, spectators, non-client hosts,
-    /// the creative inventory screen and empty batches without changing items.
-    /// True means submitted, not accepted by the server: its corrections win.
-    #[access(WorldOnly)]
-    fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool;
-    /// Side: client.
-    /// Close the local player's open container screen as Escape does
-    /// (`AbstractContainerScreen.onClose`, `LocalPlayer.closeContainer`): the
-    /// server is told (`ContainerClose`) and the screen goes. Refuses stale
-    /// menus, non-client hosts and a menu whose screen is not open, such as
-    /// the inventory menu while playing. A server closes a menu with `close_container`.
-    #[access(WorldOnly)]
-    fn menu_close(&mut self, menu: MenuRef) -> bool;
-    /// Side: client.
-    /// Press button `button` of the local player's open menu as a click on
-    /// one of its buttons does (`MultiPlayerGameMode.handleInventoryButtonClick`,
-    /// `ContainerButtonClick`): the server's menu decides what it does
-    /// (`clickMenuButton`, and `menu_button` for a mod's menu). For a client
-    /// mod's own input on a menu's screen where `screen_click` doesn't come,
-    /// such as a key or the wheel; no sound, that is the screen's. Refuses
-    /// stale menus, non-client hosts and the inventory menu, which no server
-    /// opened. True means sent, not that the menu took it.
-    #[access(WorldOnly)]
-    fn menu_click_button(&mut self, menu: MenuRef, button: i32) -> bool;
-}
 /// The handles' server writes of the `menus` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]

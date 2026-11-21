@@ -670,7 +670,6 @@ impl Game<'_> {
             clip_data: Some(super::explosion::ClipData {
                 facts: self.res.facts(),
                 behaviours: self.res.behaviours(),
-                tables: &self.pack.context.tables,
                 registry: self.pack.assets.registry,
             }),
         };
@@ -1210,13 +1209,11 @@ pub(super) mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.reset_entity_residency();
@@ -3855,13 +3852,11 @@ pub(super) mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.world
@@ -3997,13 +3992,11 @@ pub(super) mod tests {
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
-            loaded.gui.unwrap(),
             options,
             settings,
             Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             )),
-            None,
         )
         .unwrap();
         game.world
