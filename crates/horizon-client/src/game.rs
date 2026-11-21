@@ -925,13 +925,7 @@ struct Game<'a> {
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
     pending_entry: Option<PendingWorldEntry>,
-    /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
-    /// again only when the feet block (or the dimension) changes.
-    debug_density: RefCell<debug_keys::DensityCache>,
     pending_pack_reload: bool,
-    /// HDR, picked path and outcome at the last frame attempt, including a failed replacement
-    /// (`follow_frame`).
-    frame_attempted: render_settings::FrameAttempt,
     /// When `resourcepacks/` was last looked at for the open pack screen, and what it held
     /// (`watch_pack_folder`).
     pack_folder: Option<(
@@ -950,10 +944,8 @@ struct Game<'a> {
     command_prompt: Option<remote_chat::CommandPrompt>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
     code_of_conduct: Option<code_of_conduct::Prompt>,
-    dialogs: dialogs::DialogState,
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
     integrated_starting: Option<integrated::Starting>,
-    world_renderer_ready: bool,
     collision: &'a BlockCollisionRegistry<'a>,
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
@@ -970,11 +962,9 @@ struct Game<'a> {
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     fog: horizon_client::fog::FogState,
-    screen_fx: horizon_client::screen_effects::ScreenEffects,
     /// `LocalPlayer.itemActivation`: the totem flying up to the screen.
     item_activation: horizon_client::item_activation::ItemActivation,
     weather_parameters: horizon_client::weather::ParameterCache,
-    panorama_rotation: horizon_client::gfx::panorama::Rotation,
     world: World,
     /// The biome table the world plays with: the game's own with the world's
     /// packs over it (`Biomes::with_packs`), `None` before a world opens.
@@ -987,9 +977,6 @@ struct Game<'a> {
     lod_observe: horizon_client::fast_hash::FxHashSet<(i32, i32)>,
     /// The server level far terrain keeps the chunks of.
     lod_level: Option<String>,
-    /// The server's BlueMap far terrain draws from, when the player named one
-    /// or Find BlueMap found it.
-    lod_blue_map: Option<Arc<horizon_client::bluemap::BlueMap>>,
     /// Beacon beam sections kept after their chunk unloads, so far terrain
     /// LOD still draws their beams (`beacon_geometry` refreshes them).
     far_beacons: HashMap<(i32, i32, i32), Vec<(u32, i32)>>,
@@ -1018,16 +1005,8 @@ struct Game<'a> {
     craft_size: usize,
     /// The crafting table the 3x3 grid belongs to (`CraftingMenu.access`).
     craft_table: Option<[i32; 3]>,
-    /// A quick craft drag over inventory slots: (button, game slots so far).
-    inv_drag: Option<(i32, Vec<usize>)>,
-    /// `AbstractContainerScreen`'s quick craft and skip-release state.
-    inv_clicks: horizon_client::container_screen::Clicks,
     /// The Mouse Tweaks extra's drag and wheel (`tweaks`).
     tweaks: extras::mouse_tweaks::Tweaks,
-    /// The wheel and hovered slot of `BundleMouseActions`.
-    bundle_mouse: bundles::BundleMouse,
-    /// The last inventory click, for the double click that gathers a stack.
-    last_inv_click: Option<(std::time::Instant, Option<usize>, bool)>,
     /// `lastQuickMoved`: what the last Shift click moved, which a Shift
     /// double click moves every stack of.
     last_quick_moved: Option<ItemStack>,
@@ -1055,17 +1034,10 @@ struct Game<'a> {
     keys: horizon_client::held::HeldKeys,
     // Physical input is separate from remapped and toggled movement keys.
     physical_keys: HashSet<KeyCode>,
-    /// Keys whose first press a mod cancelled (`key_mapping_pre`): their repeats are never held.
-    rejected_keys: HashSet<KeyCode>,
     physical_buttons: HashSet<MouseButton>,
-    drag_button: Option<MouseButton>,
-    /// Control + left click as a right click (macOS).
-    right_click_emulation: horizon_client_input::mouse::RightClickEmulation,
     left: bool,
     right: bool,
     cursor: (f32, f32),
-    /// The cursor icon the window shows (`widgets::take_cursor` each frame).
-    cursor_icon: horizon_client::widgets::Cursor,
     captured: bool,
     /// Native grab mode used by winit. Linux window managers can drop the
     /// grab without a focus event, leaving `captured` true but stale.
@@ -1075,30 +1047,16 @@ struct Game<'a> {
     /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
     /// outlives the window's focus).
     regrab_on_refocus: bool,
-    /// Only the local player owning keyboard and mouse changes the native pointer.
-    keyboard_mouse: bool,
-    /// Offscreen rendering into a visible splitscreen window still accepts native input.
-    split_window: bool,
     /// This view's corner in its shared window; cursor warps include the offset.
     view_at: [u32; 2],
-    /// Splitscreen: what it draws over this player's view (its badge, questions, notices).
-    split_hud: split::Hud,
     /// Splitscreen: this player's own Microsoft account session (one of the launcher's other
     /// accounts), in place of the process's (P1's) for its connections and skin.
     split_auth: Option<std::sync::Arc<horizon_client::auth::AuthSession>>,
     focused: bool,
-    /// The visible window of a game an agent started, until a person clicks into it: its
-    /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
-    /// never taken, hidden or moved, and their keys and mouse don't reach the game.
-    unclaimed_window: bool,
     /// The modifiers the person last held at it, applied at the claim (`held_modifiers`).
     unclaimed_modifiers: Option<winit::event::Modifiers>,
     /// The window's last focus change during a scripted run, applied once the run ends.
     focus_after_run: Option<bool>,
-    /// Whether the window currently accepts input method events.
-    ime_allowed: bool,
-    /// The candidate window's area last given to the window, in pixels.
-    ime_area: Option<[i32; 4]>,
     /// When the window lost focus, while it is still without
     /// (`Minecraft.lastActiveTime`: pausing waits 500 ms).
     focus_lost: Option<Instant>,
@@ -1113,10 +1071,6 @@ struct Game<'a> {
     /// An agent moved the mouse (`mouse-move`) since the pointer was last
     /// grabbed or released: its motion turns the view like a grabbed pointer.
     agent_pointer: bool,
-    /// `Options.smoothCamera` (cinematic camera), not persisted.
-    smooth_camera: bool,
-    /// Sneak, sprint, attack and use as ToggleKeyMappings.
-    toggles: horizon_client::keymapping::ToggleKeys,
     /// A world screen with the pointer captured was open last frame.
     was_playing: bool,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
@@ -1127,28 +1081,21 @@ struct Game<'a> {
     /// `horizon-ctl gpu-passes detail`: also dispatch times and counters.
     gpu_pass_detail: bool,
     screen: Screen,
-    screen_state: screen_build::ScreenState,
     window: Option<Arc<Window>>,
     /// What `window_resize` last reported: the physical size and the GUI settings behind the scaled size.
     resize_state: Option<ResizeState>,
     renderer: Option<Renderer>,
     /// Avoid an endless rebuild loop if the new device is lost as well.
     last_device_recovery: Option<Instant>,
-    /// Whether this run wrote a device-loss marker, and when it may go (`gfx::safe_start`).
-    safe_start_proof: horizon_client::gfx::safe_start::Proof,
     /// CPU geometry storage retained across frames, including empty/title frames.
     entity_vertices: Vec<Vertex>,
     /// Horizon Extras' dynamic lights this frame (`dynamic_lights.rs`), and how brightly each
     /// item glows (built the first time the extra is on).
     dynamic_lights: Vec<[f32; 4]>,
-    luminance: std::cell::OnceCell<horizon_client::dynamic_light::Luminance>,
     /// Name tags drawn over everything (`RenderPipelines.TEXT_SEE_THROUGH`).
     see_through_vertices: Vec<Vertex>,
     /// The first-person player's model, which only a native pack's shadow pass draws.
     shadow_only_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
-    /// while `pack_ids` is set (game/interface/shader_packs.rs).
-    entity_spans: std::cell::RefCell<Vec<horizon_client::gfx::pack_draw::EntitySpan>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
@@ -1159,40 +1106,21 @@ struct Game<'a> {
     skin_frame: std::cell::RefCell<horizon_client::gfx::entity_skin::SkinFrame>,
     /// The glowing entities' silhouettes this frame (game/entities/glowing.rs).
     glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// Client mods' sounds (`play_local_sound`): those waiting for the next audio update
-    /// (`tick_sound_engine`), the stops and fades asked of them, and their handles.
-    mod_sounds: native_local_sounds::ModSounds,
-    /// A client mod asked to clear the particles (`clear_particles`), done before
-    /// the next frame or particle tick (`apply_mod_particle_clear`).
-    mod_clear_particles: std::cell::Cell<bool>,
     /// The shader pack's entity and block entity ids, while one draws entities.
     pack_ids: Option<shader_packs::PackIds>,
     started: Instant,
-    /// `SpectatorGui`: the menu a spectator opens with the hotbar keys.
-    spectator_gui: horizon_client::spectator_menu::SpectatorGui,
     previous: Instant,
     /// FramerateLimitTracker.latestInputTime.
     last_input: Instant,
     /// Controllers (Horizon's own).
     pad: pad::Pads,
     frames: u64,
-    /// The glint clock and options, read once per frame (game/interface/item_draw.rs).
-    glint_frame: horizon_client::item_render::GlintFrame,
     /// Mod block entities' kept geometry (game/modding/native_block_entity_draw.rs).
     kept_block_entities: std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
     live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
     /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
     text_patches: std::cell::RefCell<Vec<horizon_client::font::Patch>>,
-    /// Prepared block-entity copies for this frame, in entity-stream order.
-    prepared_model_draws: std::cell::RefCell<Vec<horizon_client::gfx::PreparedModelDraw>>,
-    world_geometry: Option<horizon_client::world_geometry::WorldGeometry>,
-    /// `DebugRenderer.renderers`: the ids `debug_renderer_draw` is asked about.
-    debug_renderers: Vec<String>,
-    /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
-    debug_renderers_version: Option<u64>,
-    /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
-    hud_layer_next: Option<usize>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// `item_level` for one frame, game time, day time and dimension.
@@ -1204,14 +1132,7 @@ struct Game<'a> {
     >,
     /// Frames drawn with the player in the world, for `--world-frames`.
     world_frames: u64,
-    fps: f32,
-    fps_frames: u64,
-    fps_at: Instant,
     ticks: u64,
-    /// The sprite animation clock (`TextureManager.tick`): counts only the ticks the level
-    /// runs normally, so `/tick freeze` holds it and `/tick step` moves it on.
-    texture_ticks: u64,
-    health_hud: hud_layout::HealthHud,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
     message: Option<(String, Instant)>,
@@ -1232,28 +1153,13 @@ struct Game<'a> {
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: horizon_client::health::DamageHooks,
     music: horizon_client::music::MusicManager,
-    /// The tracks native mods play over the music (`native_music_layers`).
-    music_layers: horizon_client::music::MusicLayers,
-    /// `ToastManager.nowPlayingToast`: there while Music Toast is not Never.
-    now_playing: Option<horizon_client::toasts::NowPlayingToast>,
-    /// The Music Toast option the toast was last set up for.
-    music_toast_state: u8,
-    music_notes: horizon_client::toasts::MusicNotes,
     ambience: horizon_client::ambience::Ambience,
-    /// The sound engine was told the game paused (pauseAllExcept).
-    sound_paused: bool,
     /// Minecarts whose `MinecartSoundInstance` is playing.
     cart_sounds: HashSet<u32>,
     /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
     riding_cart_sounds: Option<u32>,
-    /// The happy ghast its riding sound was started for (`LocalPlayer.startRiding`).
-    riding_sound: Option<u32>,
     /// `LocalPlayer.wasFallFlying` for the elytra's flying sound.
     was_fall_flying: bool,
-    /// Bees whose buzz is playing, and whether it is the aggressive one.
-    bee_sounds: HashMap<u32, bool>,
-    /// Guardians whose attack hum is playing.
-    guardian_sounds: HashSet<u32>,
     /// Remote guardian eye targets reused between ticks.
     guardian_look_scratch: Vec<(usize, [f64; 3])>,
     dropped: horizon_client::join_seq::JoinList<ItemEntity>,
@@ -1276,8 +1182,6 @@ struct Game<'a> {
     sign_edit: Option<sign_edit::SignEditor>,
     /// An open book, book and quill or lectern screen.
     book: Option<books::BookScreen>,
-    /// The last click on the book screen, for double clicks.
-    book_last_click: Option<std::time::Instant>,
     /// Lecterns whose page-turn pulse is running (ticks left).
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
@@ -1342,13 +1246,8 @@ struct Game<'a> {
     /// Camera.oldFovModifier / fovModifier.
     /// `Camera` (eye height and field-of-view easing, view placement).
     view: horizon_client::camera::Camera,
-    /// `FramerateLimiter` and its clock.
-    limiter: horizon_client::window::FramerateLimiter,
-    frame_clock: horizon_client::window::SystemClock,
     /// Hud.scopeScale (spyglass overlay size).
     scope_scale: f32,
-    /// Duration of the last frame in ticks (GUI easing).
-    frame_ticks: f32,
     title: Option<Title>,
     /// The save a native mod asked the title to open (`request_world`), taken by the title's next frame, which
     /// asks the player first.
@@ -1362,9 +1261,6 @@ struct Game<'a> {
     /// the fields above. Nothing in the game reads these yet; they are kept
     /// for mods and saves.
     equipment: horizon_items::equipment::Equipment,
-    /// `ItemStack.popTime` of the nine hotbar stacks, then the off hand: set to 5
-    /// when a slot gains items, counted down each tick.
-    hotbar_pop: [u8; 10],
     /// The hand an item use acts with (`InteractionHand`): the off hand only
     /// for its turn in `use_item` and while its item is being used.
     hand: Hand,
@@ -1378,10 +1274,6 @@ struct Game<'a> {
     command_source: Option<commands::execute::Source>,
     native_command_filter: bool,
     titles: titles::Titles,
-    /// `Hud.toolHighlightTimer`: the selected item name.
-    tool_highlight: horizon_client::hud_overlays::ToolHighlight,
-    /// `Hud.autosaveIndicatorValue`.
-    saving_indicator: horizon_client::hud_overlays::SavingIndicator,
     /// This game's world is autosaving this tick (`MinecraftServer.isSaving`).
     autosaving: bool,
     /// `MinecraftServer.ticksUntilAutosave`: the ticks left before the next
@@ -1412,27 +1304,14 @@ struct Game<'a> {
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
     clicks: horizon_client::first_person::Clicks<Option<ItemStack>>,
-    attack_clicks: horizon_client::input_queue::ClickQueue,
-    /// Use clicks since the last tick; `handleKeybinds` consumes them after the attack clicks.
-    use_clicks: horizon_client::input_queue::ClickQueue,
     hand_strength: horizon_client::attack_strength::AttackStrength,
     settings: Settings,
-    tutorial: tutorial::Tutorial,
-    tutorial_toasts: Vec<tutorial::HintToast>,
-    /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
-    narrator_toast: Option<horizon_client::toasts::SystemToast>,
-    /// The open screen's narration (`Screen`'s narration state and timing).
-    narration: horizon_client::screen_narrator::ScreenNarrator,
-    /// Where the options screen returns: true = title, false = pause menu.
-    options_from_title: bool,
     dragging: bool,
     /// `ClientAvatarState`: walked distance and view bob.
     avatar: horizon_client::camera::AvatarBob,
     flash: u32,
     /// OptiFine custom sky layers' eased brightness (`custom_sky.rs`).
     custom_sky: custom_sky::CustomSkyView,
-    /// `ClientLevel.rainSoundTime`: ticks of rain since the last rain sound.
-    rain_sound_time: i32,
     /// Bolts that struck here and sky flashes they made, in total (`status`).
     lightning_seen: [u32; 2],
     /// The head of the bed while sleeping; the visual timer also survives waking.
@@ -1513,21 +1392,12 @@ struct Game<'a> {
     waypoint_styles: horizon_client::locator_bar::WaypointStyles,
     /// `ClientWaypointManager`: the locator bar's waypoints.
     waypoints: horizon_client::locator_bar::ClientWaypoints,
-    /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
-    locator_camera: Option<([f64; 3], f32, f32, f32)>,
-    native_camera_frame: Option<mod_api::Camera>,
     /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
     /// none when it drew from vanilla's.
     posed_rotation: Option<(f32, f32)>,
     /// The roll, in degrees, a native mod's camera drew the last frame with (`native_camera_roll`),
     /// 0 when none rolled it.
     posed_roll: f32,
-    /// Roll already resolved by `render_sequence_frame` for the next `render_frame` call so
-    /// sequence validation and rendering share one `camera_roll` dispatch.
-    sequence_frame_roll: Option<f32>,
-    /// Set by `render_sequence_frame` for its `sequence_scene` call: the frame about to be
-    /// drawn, and whether mods are asked for its roll.
-    sequence_frame_asks: Option<bool>,
     /// `LocalPlayer.postEffects`: the chains the server has the screen run
     /// (`ClientboundPostEffectsPacket`), in order.
     post_effects: Vec<String>,
@@ -1581,11 +1451,6 @@ struct Game<'a> {
     skin_slots: horizon_client::skins::SkinSlots,
     /// Cosmetics on players (game/cosmetics.rs), off by default.
     cosmetics: cosmetics::Cosmetics,
-    /// 3D skin layers: each player's outer layer as one slab per painted
-    /// texel, built once per (skin, slim) (`mobs::skin_layers`).
-    skin_3d: RefCell<skin_models::SkinModels>,
-    /// Runtime trim slots and the last completed preparation for this atlas.
-    trim_slots: horizon_client::trims::TrimSlots,
     cart_models: minecarts::CartModels,
     /// The boat the player rides.
     riding: Option<u32>,
@@ -1637,8 +1502,6 @@ struct Game<'a> {
     transactions: transactions::OpenTransactions,
     /// Backing blocks whose contents notice is on the call stack, innermost last.
     contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
-    /// The screen of a mod block's menu open on this client (`native_screen`).
-    mod_screen: Option<native_hooks::OpenNativeScreen>,
     /// The players with each mod container open, by level (`tick_mod_container_viewers`).
     mod_container_viewers: HashMap<(&'static str, (i32, i32, i32)), u32>,
     /// Where item entities are, while the block entities tick (hoppers).
@@ -1663,7 +1526,6 @@ struct Game<'a> {
     agent_control_on: bool,
     /// When an agent's last command came.
     agent_last: Option<Instant>,
-    frame_stats: horizon_client::control::FrameStats,
     /// This thread's and all threads' allocation counts at the last rendered frame.
     alloc_mark: Option<(
         horizon_threads::alloc_count::Counts,
@@ -1671,15 +1533,7 @@ struct Game<'a> {
     )>,
     /// This play session's frame and tick times, for opt-in performance statistics.
     perf: horizon_client::telemetry::Session,
-    /// Control replies waiting for a rendered frame or a benchmark deadline.
-    pending_screenshot: Option<std::sync::mpsc::Sender<String>>,
-    /// `screenshot-sequence` while it runs.
-    screenshot_sequence: Option<screenshot_sequence::Sequence>,
-    /// `render-capture DIR`: replied once the renderer wrote the scene.
-    pending_render_capture: Option<std::sync::mpsc::Sender<String>>,
     pending_bench: Option<(Instant, std::sync::mpsc::Sender<String>, bool)>,
-    /// Recent frame times for the performance overlay.
-    frame_graph: horizon_client::perf_overlay::FrameGraph,
     /// Horizon's extras (minimap, auto-reconnect; mods' counters): `game/interface/extras.rs`.
     extras: extras::ExtrasState,
     /// The PvP & HUD options' state (`game/entities/pvp.rs`).
@@ -1709,27 +1563,15 @@ struct Game<'a> {
     mod_phase: mod_api::__private::PhaseOwner,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
-    /// The mod whose own screen is open (`Screen::Mod`).
-    native_mod_screen: Option<String>,
     /// Meshed sections waiting for an upload budget (Horizon settings).
     pending_uploads: Vec<((i32, i32, i32), horizon_client::mesher::SectionMesh)>,
-    upload_pace: upload_pace::UploadPace,
-    /// This frame's view frustum, for culling entities and block entities.
-    view_frustum: Option<horizon_client::gfx::JoinedFrusta>,
     occlusion: entity_culling::EntityOcclusion,
-    async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
     /// A scripted flight from the control socket (`fly`).
     flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
     agent: agent::Agent,
-    /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
-    ui_wait: ui_control::UiWait,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
-    /// Who caused each input event: a person, an agent or the game (game/runtime/input_trace.rs).
-    input_trace: input_trace::InputTrace,
-    /// A repro recording, export or replay (game/runtime/repro.rs).
-    repro: repro::Repro,
     /// The health history and client captures (game/profile_capture.rs).
     profile: profile_capture::Profile,
     /// `HORIZON_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
@@ -1756,7 +1598,6 @@ struct Game<'a> {
     realm_session: bool,
     /// Replay playback (game/replay.rs), and Horizon Studio's editor on it (game/studio.rs).
     pub(super) replay: replay::Replay,
-    pub(super) studio: studio::Studio,
     /// This world is open to the network (game/lan.rs).
     lan: Option<lan::LanHost>,
     /// Single player's server thread, which `remote` is connected to.
@@ -1765,16 +1606,10 @@ struct Game<'a> {
     level_shapes: horizon_client::chunk::LevelShapes,
     /// This game is that server thread's (game/world/integrated.rs).
     serving: Option<integrated::Serving>,
-    /// The open world is shared behind an invite code (game/network/friends.rs).
-    #[cfg(feature = "friends")]
-    friends: Option<friends::Sharing>,
-    /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
-    social: social::Social,
     world_options: Option<lan_screen::WorldOptions>,
     /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
     options_to_world_options: bool,
     command_block_screen: Option<command_blocks::CommandBlockScreen>,
-    block_editor: Option<block_editor::BlockEditScreen>,
     /// `StructureTemplateManager.structureRepository`: the templates in memory
     /// by id, a miss included (game/administration/structure_blocks.rs).
     structure_templates: HashMap<String, Option<structure_blocks::TemplateEntry>>,
@@ -1788,33 +1623,11 @@ struct Game<'a> {
     test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
     game_tests: game_tests::GameTests,
-    /// KeyboardHandler's debug key state (game/interface/debug_keys.rs), the physical
-    /// keys held, and the debug renderers F3+B and F3+G switch on.
-    debug_keys: horizon_client::debug_keys::DebugKeys,
     /// The F3 overlay's charts (F3+2, F3+3).
     debug_charts: horizon_client::debug_chart::DebugCharts,
-    /// `Minecraft.debugEntries`: what the overlay and the debug renderers
-    /// show (`debug-profile.json`, F3+F6).
-    debug_entries: horizon_client::debug_entries::DebugEntries,
-    /// `DebugOptionsScreen` while it is open (game/interface/debug_options.rs).
-    debug_options: Option<debug_options::DebugOptionsUi>,
-    /// `DebugEntryMemory`'s readings (game/interface/debug_lines.rs).
-    memory_meter: std::cell::RefCell<horizon_client::debug_overlay::MemoryMeter>,
-    /// The F3 overlay's vertices between rebuilds (`draw_debug_overlay_under`).
-    debug_paint: RefCell<horizon_client::debug_overlay::PaintCache>,
-    /// The F3 overlay's last reading of the refresh rate, and when it was taken.
-    debug_refresh: std::cell::Cell<Option<(Instant, Option<u32>)>>,
     /// `Minecraft.gpuUtilization`: the last timed frame's GPU time over its
     /// CPU time, in percent.
     gpu_utilization: f64,
-    /// GPU Culling's Auto mode: what it has decided from the frames' CPU and GPU times.
-    gpu_culling_auto: horizon_client::autotune::GpuCullingAuto,
-    /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
-    dynamic_resolution: horizon_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_geometry` drew last frame (`lastEntityRenderStateCount`).
-    rendered_mobs: std::cell::Cell<usize>,
-    /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
-    screen_blur_requested: std::cell::Cell<bool>,
     /// `ServerChunkCache.lastSpawnState` of each level: its spawnable chunks
     /// and each `MobCategory`'s count.
     spawn_counts: HashMap<Dim, (i32, [i32; 8])>,
@@ -1823,24 +1636,13 @@ struct Game<'a> {
     spawn_policies: HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
-    /// PauseScreen.showPauseMenu (false after F3+Escape).
-    pause_menu: bool,
-    pause_focus: Option<u8>,
     death_focus: Option<u8>,
-    /// The screen ([`Game::key_screen`]) the menu focus belongs to. Another
-    /// screen in front drops it, as `Gui.setScreen` drops the focus of the
-    /// screen it leaves (`Screen.clearFocus`).
-    focus_screen: u64,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
     previous_mode: Option<horizon_client::command::args::GameMode>,
     gamemode_switcher: Option<horizon_client::game_mode_switcher::GameModeSwitcher>,
-    /// The system clipboard (`KeyboardHandler.clipboardManager`).
-    clipboard: horizon_client::clipboard::SystemClipboard,
     /// The game is handling a key, mouse or typed-text event, from the window or the
     /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
     user_input: std::cell::Cell<bool>,
-    /// Select All in the append-only text fields.
-    text_selection: horizon_client::clipboard::AppendSelection,
     /// The world was saved for the application ending (`save_for_exit`).
     saved_for_exit: bool,
     /// A mod's read-only screen hook can queue the primary client's quit.
@@ -1848,9 +1650,6 @@ struct Game<'a> {
     pending_save: Option<saving::ClosingSave>,
     /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
     server_tick_deadline: Option<Instant>,
-    /// The last world frame reached the swap chain. A window the compositor
-    /// stops showing gets no frames, and the event loop must not spin on it.
-    frame_drawn: bool,
     /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
     /// `None` without a local world, or once the save has its icon.png.
     world_icon: Option<WorldIcon>,
@@ -1864,9 +1663,6 @@ struct Game<'a> {
     /// (`LocalPlayer.raycastHitResult`: a spear's `attack_range`), before the
     /// tick's number keys change it.
     tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
-    /// Number keys since the last tick (`keyHotbarSlots[i].consumeClick`):
-    /// `Minecraft.handleKeybinds` selects them after the tick's pick.
-    hotbar_presses: horizon_client::input_queue::InputQueue<usize>,
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
@@ -2019,22 +1815,16 @@ struct Game<'a> {
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     brushing: brush::Brushing,
     border: horizon_client::worldborder::WorldBorder,
-    /// `WorldBorderRenderer` and its render state.
-    border_renderer: horizon_client::border_render::BorderRenderer,
     /// The camera's 16-block section when the wall was last invalidated.
     border_section: Option<[i32; 3]>,
     border_state: horizon_client::border_render::BorderRenderState,
     /// `Hud.tabList`: the player list's header, footer and heart states.
     tab_list: horizon_client::tab_list::TabList,
-    subtitles: subtitle_hud::SubtitleState,
     adv: advancements::AdvState,
     restore_player_state: bool,
-    stats_ui: stats_screen::StatsUi,
-    adv_ui: advancements_screen::AdvUi,
     /// The Server Links screens' state (game/network/server_links.rs).
     links_ui: server_links::LinksUi,
     camera_type: horizon_client::camera::CameraType,
-    requested_camera_type: std::cell::Cell<Option<horizon_client::camera::CameraType>>,
     fangs: fangs::FangState,
     /// The local player as a model (third person, the inventory).
     player_model: Option<Mob>,
@@ -6374,18 +6164,14 @@ impl<'a> Game<'a> {
             res: res.clone(),
             rest_loader: None,
             pending_entry: None,
-            debug_density: RefCell::default(),
             pending_pack_reload: false,
-            frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
             pack_reload: None,
             server_packs: Default::default(),
             link_prompt: None,
             command_prompt: None,
             code_of_conduct: None,
-            dialogs: Default::default(),
             integrated_starting: None,
-            world_renderer_ready: false,
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
@@ -6396,10 +6182,8 @@ impl<'a> Game<'a> {
             instance_groups: Default::default(),
             standalone_geometry,
             fog: Default::default(),
-            screen_fx: Default::default(),
             item_activation: Default::default(),
             weather_parameters: Default::default(),
-            panorama_rotation: Default::default(),
             world,
             streaming,
             lod: None,
@@ -6407,7 +6191,6 @@ impl<'a> Game<'a> {
             far_beacons: HashMap::new(),
             lod_observe: Default::default(),
             lod_level: None,
-            lod_blue_map: None,
             lod_covered_at: None,
             view_arrival: Default::default(),
             options,
@@ -6426,11 +6209,7 @@ impl<'a> Game<'a> {
             craft_grid: vec![None; 9],
             craft_size: 2,
             craft_table: None,
-            inv_drag: None,
             tweaks: Default::default(),
-            bundle_mouse: Default::default(),
-            inv_clicks: Default::default(),
-            last_inv_click: None,
             last_quick_moved: None,
             container: None,
             open_container_slots: None,
@@ -6449,86 +6228,56 @@ impl<'a> Game<'a> {
             },
             keys: Default::default(),
             physical_keys: HashSet::new(),
-            rejected_keys: HashSet::new(),
             physical_buttons: HashSet::new(),
-            drag_button: None,
-            right_click_emulation: Default::default(),
             left: false,
             right: false,
             cursor: (0.0, 0.0),
-            cursor_icon: horizon_client::widgets::Cursor::Arrow,
             captured: false,
             capture_mode: None,
             regrab_on_refocus: false,
-            keyboard_mouse: true,
-            split_window: false,
             view_at: [0, 0],
-            split_hud: Default::default(),
             split_auth: None,
             focused: true,
-            unclaimed_window: false,
             unclaimed_modifiers: None,
             focus_after_run: None,
-            ime_allowed: false,
-            ime_area: None,
             focus_lost: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
             fullscreen: horizon_client::window::FullscreenState::new(false),
             video_modes: Default::default(),
             mouse: MouseLook::default(),
             agent_pointer: false,
-            smooth_camera: false,
-            toggles: Default::default(),
             was_playing: false,
             pause: false,
             debug: false,
             gpu_passes: false,
             gpu_pass_detail: false,
             screen: Screen::Playing,
-            screen_state: screen_build::ScreenState::default(),
             window: None,
             resize_state: None,
             renderer: None,
             last_device_recovery: None,
-            safe_start_proof: Default::default(),
             entity_vertices: Vec::new(),
             dynamic_lights: Vec::new(),
-            luminance: Default::default(),
             see_through_vertices: Vec::new(),
             shadow_only_vertices: Default::default(),
-            entity_spans: Default::default(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
             skin_models: Default::default(),
             skin_frame: Default::default(),
             glowing_vertices: Default::default(),
-            mod_sounds: Default::default(),
-            mod_clear_particles: Default::default(),
             pack_ids: None,
-            health_hud: hud_layout::HealthHud::default(),
             started: now,
-            spectator_gui: Default::default(),
             previous: now,
             last_input: now,
             pad: Default::default(),
             frames: 0,
-            glint_frame: Default::default(),
             kept_block_entities: Default::default(),
             live_scenes: Default::default(),
             text_patches: Default::default(),
-            prepared_model_draws: Default::default(),
-            world_geometry: Some(Default::default()),
-            debug_renderers: Vec::new(),
-            debug_renderers_version: None,
-            hud_layer_next: None,
             mod_view_distances: Default::default(),
             item_level_cache: Default::default(),
             world_frames: 0,
-            fps: 0.0,
-            fps_frames: 0,
-            fps_at: now,
             ticks: 0,
-            texture_ticks: 0,
             error: None,
             message: None,
             save,
@@ -6548,19 +6297,11 @@ impl<'a> Game<'a> {
                 );
                 music
             },
-            music_layers: Default::default(),
             // ToastManager.initializeMusicToast: Pause and Pause and Toast make the toast.
-            now_playing: (settings.file.int("musicToast").clamp(0, 2) != 0).then(Default::default),
-            music_toast_state: settings.file.int("musicToast").clamp(0, 2) as u8,
-            music_notes: Default::default(),
             ambience: Default::default(),
-            sound_paused: false,
             cart_sounds: HashSet::new(),
             riding_cart_sounds: None,
-            riding_sound: None,
             was_fall_flying: false,
-            bee_sounds: HashMap::new(),
-            guardian_sounds: HashSet::new(),
             guardian_look_scratch: Vec::new(),
             dropped: Default::default(),
             next_entity: 0,
@@ -6571,7 +6312,6 @@ impl<'a> Game<'a> {
             pickups: Default::default(),
             sign_edit: None,
             book: None,
-            book_last_click: None,
             lectern_pulses: Vec::new(),
             loading_progress: 0.0,
             creation_job: None,
@@ -6605,24 +6345,18 @@ impl<'a> Game<'a> {
             use_start: Default::default(),
             crossbow_sounds: [false; 2],
             view: Default::default(),
-            limiter: horizon_client::window::FramerateLimiter::new(0),
-            frame_clock: Default::default(),
             scope_scale: 0.5,
-            frame_ticks: 0.0,
             title: None,
             native_world_request: None,
             armor: [None, None, None, None],
             offhand: None,
             equipment: Default::default(),
-            hotbar_pop: [0; 10],
             hand: Hand::Main,
             shield_cooldown: 0,
             cooldowns: Default::default(),
             command_source: None,
             native_command_filter: false,
             titles: Default::default(),
-            tool_highlight: Default::default(),
-            saving_indicator: Default::default(),
             autosaving: false,
             // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
             ticks_until_autosave: 6000,
@@ -6640,20 +6374,12 @@ impl<'a> Game<'a> {
             visible_hands: [(0, None), (0, None)],
             hands_replaced: [false; 2],
             clicks: Default::default(),
-            attack_clicks: hand::ATTACK_CLICKS,
-            use_clicks: hand::USE_CLICKS,
             hand_strength: Default::default(),
             settings,
-            tutorial,
-            tutorial_toasts: Vec::new(),
-            narrator_toast: None,
-            narration: Default::default(),
-            options_from_title: false,
             dragging: false,
             avatar: Default::default(),
             flash: 0,
             custom_sky: Default::default(),
-            rain_sound_time: 0,
             lightning_seen: [0; 2],
             sleeping: None,
             sleep_timer: 0,
@@ -6698,12 +6424,8 @@ impl<'a> Game<'a> {
             armor_stand_assets: prepared.armor_stand_assets,
             waypoint_styles: prepared.waypoint_styles,
             waypoints: Default::default(),
-            locator_camera: None,
-            native_camera_frame: None,
             posed_rotation: None,
             posed_roll: 0.0,
-            sequence_frame_roll: None,
-            sequence_frame_asks: None,
             post_effects: Vec::new(),
             polytone_post_ticks: 0.0,
             spectated_post_effect: None,
@@ -6743,8 +6465,6 @@ impl<'a> Game<'a> {
             skin_profiles: RefCell::new(horizon_client::skins::Resolver::new()),
             skin_slots: horizon_client::skins::SkinSlots::new(horizon_client::hud::SKIN_SLOTS),
             cosmetics: Default::default(),
-            skin_3d: Default::default(),
-            trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             riding: None,
             started_riding: Vec::new(),
@@ -6776,7 +6496,6 @@ impl<'a> Game<'a> {
             wasm_dispatch_failures:
                 horizon_mod_runtime::dispatch_failures::dispatch_failure_counter(),
             contents_changing: Vec::new(),
-            mod_screen: None,
             mod_container_viewers: HashMap::new(),
             item_columns: None,
             pickup_columns: None,
@@ -6789,27 +6508,16 @@ impl<'a> Game<'a> {
             control: None,
             agent_control_on: false,
             agent_last: None,
-            frame_stats: Default::default(),
             alloc_mark: None,
             perf: Default::default(),
-            pending_screenshot: None,
-            screenshot_sequence: None,
-            pending_render_capture: None,
             pending_bench: None,
             flight: None,
-            ui_wait: Default::default(),
             events: Default::default(),
-            input_trace: Default::default(),
-            repro: Default::default(),
             profile: profile_capture::Profile::new(slow_frame_ms),
             tick_script: tick_script::TickScript::from_env(),
             agent: agent::Agent::default(),
-            view_frustum: None,
             occlusion: Default::default(),
-            async_particle_culler: RefCell::new(Default::default()),
             pending_uploads: Vec::new(),
-            upload_pace: Default::default(),
-            frame_graph: Default::default(),
             extras: Default::default(),
             pvp: Default::default(),
             mods: mod_sources,
@@ -6825,7 +6533,6 @@ impl<'a> Game<'a> {
             native_configs: Default::default(),
             mod_phase,
             native_net: Default::default(),
-            native_mod_screen: None,
             sky_darken_memo: Default::default(),
             water_plane_memo: Default::default(),
             water_plane_scan: Default::default(),
@@ -6838,7 +6545,6 @@ impl<'a> Game<'a> {
             remote: None,
             realm_session: false,
             replay: Default::default(),
-            studio: Default::default(),
             lan: None,
             integrated: None,
             level_shapes: Default::default(),
@@ -6846,51 +6552,29 @@ impl<'a> Game<'a> {
             world_options: None,
             options_to_world_options: false,
             command_block_screen: None,
-            block_editor: None,
             structure_templates: HashMap::new(),
             test_defs: std::cell::RefCell::new(HashMap::new()),
             test_defs_snapshot: false,
             test_highlights: HashMap::new(),
             game_tests: game_tests::GameTests::default(),
             #[cfg(feature = "friends")]
-            friends: None,
-            social: Default::default(),
-            debug_keys: Default::default(),
             debug_charts: Default::default(),
-            debug_entries: horizon_client::debug_entries::DebugEntries::load(
-                &std::env::current_dir().unwrap_or_default(),
-            ),
-            debug_options: None,
-            memory_meter: Default::default(),
-            debug_paint: Default::default(),
-            debug_refresh: Default::default(),
             gpu_utilization: 0.0,
-            gpu_culling_auto: horizon_client::autotune::GpuCullingAuto::new(),
-            dynamic_resolution: Default::default(),
-            rendered_mobs: Default::default(),
-            screen_blur_requested: Default::default(),
             spawn_counts: HashMap::new(),
             spawn_policies: HashMap::new(),
             passages: Default::default(),
-            pause_menu: true,
-            pause_focus: None,
             death_focus: None,
-            focus_screen: 0,
             previous_mode: None,
             gamemode_switcher: None,
-            clipboard: Default::default(),
             user_input: Default::default(),
-            text_selection: Default::default(),
             saved_for_exit: false,
             client_quit: std::cell::Cell::new(ClientQuit::Running),
             pending_save: None,
             server_tick_deadline: None,
-            frame_drawn: true,
             world_icon: None,
             forced_hit: None,
             tick_hit: Default::default(),
             tick_mob: None,
-            hotbar_presses: horizon_client::input_queue::InputQueue::new(hand::HOTBAR_PRESSES),
             entity_reach: 3.0,
             block_reach: 4.5,
             client_targeting: Default::default(),
@@ -6960,18 +6644,13 @@ impl<'a> Game<'a> {
             rand_sequences: Default::default(),
             brushing: Default::default(),
             border: Default::default(),
-            border_renderer: Default::default(),
             border_section: None,
             border_state: Default::default(),
             tab_list: Default::default(),
-            subtitles: Default::default(),
             adv: Default::default(),
             restore_player_state: true,
-            stats_ui: Default::default(),
-            adv_ui: Default::default(),
             links_ui: Default::default(),
             camera_type: Default::default(),
-            requested_camera_type: Default::default(),
             fangs: Default::default(),
             player_model: None,
         };
