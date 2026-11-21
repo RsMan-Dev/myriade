@@ -43,7 +43,7 @@ fn mob_ref() -> MobRef {
     r
 }
 /// The activity of the ECS brain: `describe` gives `activity <name> running [...] memories [...]`.
-fn ecs_act(w: &World, e: Entity) -> String {
+pub(super) fn ecs_act(w: &World, e: Entity) -> String {
     horizon_ecs_proto::brain::describe(w, e).and_then(|d| d.split_whitespace().nth(1).map(str::to_string)).unwrap_or_default()
 }
 /// Whole-token match on the `Mob`'s describe: `raid` does not match `pre_raid`, `walk_target` matches `minecraft:walk_target=...`.
@@ -136,6 +136,7 @@ fn brownian_walk_under_a_roof_awake() {
     roof_ecs(&mut h);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 4);
     h.tick();
+    erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (village_brownian_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&BROWN));
     let mut r = mob_ref();
     roof_mob(&mut r);
@@ -162,6 +163,7 @@ fn go_to_village_awake() {
     let e = spawn(&mut h, "minecraft:villager", -30.5, 0.5, 5);
     set(&mut h.world, e, &JOB_SITE, MemValue::Block(SITE), None);
     h.tick();
+    erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (village_go_to_village::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&VILLAGE));
     let mut r = mob_ref();
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");

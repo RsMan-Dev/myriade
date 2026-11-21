@@ -53,7 +53,7 @@ fn the_villager_walks_to_a_wanted_item_within_four_blocks_awake() {
     for _ in 0..200 {
         // A villager with no job idles (jar: WORK needs JOB_SITE): its stroll sets walk targets that the item's behaviour (core,
         // starts only with none) never gets to replace; the test clears every target that is not the item's.
-        if walk_target(&h.world, e).is_some_and(|t| t.target.position(&h.world).is_some_and(|p| (p[0] - 3.0).abs() > 0.6)) {
+        if walk_target(&h.world, e).is_some_and(|t| t.target.position(&h.world).is_some_and(|p| (p[0] - 3.0).abs() > 0.6 || (p[2] - 0.5).abs() > 0.6)) {
             erase(&mut h.world, e, &WALK_TARGET);
         }
         h.tick();

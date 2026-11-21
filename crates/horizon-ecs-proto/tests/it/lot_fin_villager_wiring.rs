@@ -27,7 +27,7 @@ fn the_villager_celebrates_a_victory_for_600_ticks_awake() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = villager(&mut h);
-    set(&mut h.world, e, &raid::RAID_STATUS, MemValue::Int(raid::RAID_VICTORY), None);
+    raid::set_status(&mut h.world, [0.5, 1.0, 0.5], 64.0, raid::RAID_VICTORY);
     // `SetRaidStatus` poses the `raid` activity one tick in twenty; the celebration starts with it.
     for _ in 0..400 {
         h.tick();
