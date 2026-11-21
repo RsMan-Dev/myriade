@@ -37,6 +37,7 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
     crate::nbt::mark_saved(w, e, crate::species::lists::FALLING_BLOCK);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::FALLING_BLOCK));
     after(w, e, LIMIT + 1, expire);
+    crate::zone::settle(w, e);
     e
 }
 

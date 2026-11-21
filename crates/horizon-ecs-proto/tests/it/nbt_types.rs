@@ -107,3 +107,30 @@ fn populate_builds_only_the_just_declared_id_and_clears_the_flag() {
     assert_eq!(count_of(&mut h.world, "minecraft:late"), 1);
     assert!(!nbt::has_unknown(&h.world, 0, 0), "nothing unknown left: the flag goes");
 }
+
+/// A reloaded armor stand is a stand: its flags and its pose come back and are written again (they were kept as inert free keys).
+#[test]
+fn an_armor_stand_keeps_its_flags_and_pose_through_a_reload() {
+    if !super::common::have_data() {
+        return;
+    }
+    let mut h = Herd::new(0, 1.0, true, false, 1);
+    let d = |v: f64| Tag::Double(v.to_bits());
+    let f = |v: f32| Tag::Float(v.to_bits());
+    let pose = Tag::compound([("Head", Tag::List(vec![f(10.0), f(20.0), f(30.0)]))]);
+    let Tag::Compound(c) = Tag::compound([
+        ("id", Tag::String("minecraft:armor_stand".into())),
+        ("Pos", Tag::List(vec![d(0.5), d(1.0), d(0.5)])),
+        ("ShowArms", Tag::Byte(1)),
+        ("Small", Tag::Byte(1)),
+        ("Pose", pose.clone()),
+    ]) else {
+        unreachable!()
+    };
+    let e = nbt::restore(&mut h.world, &c).expect("a stand");
+    assert!(h.world.get::<horizon_ecs_proto::stand::Stand>(e).is_some_and(|s| s.flags != 0), "the flags did not reach the component");
+    let saved = nbt::save(&h.world, e).expect("saved");
+    assert_eq!(saved.get(&JavaString::from("Pose")), Some(&pose));
+    assert_eq!(saved.get(&JavaString::from("ShowArms")), Some(&Tag::Byte(1)));
+    assert_eq!(saved.get(&JavaString::from("Small")), Some(&Tag::Byte(1)));
+}

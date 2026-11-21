@@ -8,14 +8,13 @@ use horizon_ecs_proto::{cow::Herd, nbt};
 use std::fmt::Write as _;
 
 /// (identifier, key): known differences, with the reason in the report of the branch.
-const KNOWN: &[(&str, &str)] = &[("minecraft:armor_stand", "Pose")];
+const KNOWN: &[(&str, &str)] = &[];
 
 /// Identifiers not compared by round trip, with why.
 const SKIPPED: &[(&str, &str)] = &[
     ("minecraft:ender_dragon", "no Horizon writer: its keys are the ecs's own (`dragon::save`: DragonPhase and the living ones)"),
     ("minecraft:fishing_bobber", "not persisted by the game (a hook is discarded with its chunk); the ecs has no builder from a compound"),
     ("minecraft:leash_knot", "the ecs has no builder from a compound (the knot is a block position of a lead)"),
-    ("minecraft:falling_block", "`restore` returns nothing in the test world: the block state does not resolve against its registry"),
 ];
 
 fn d(v: f64) -> Tag {
@@ -34,7 +33,7 @@ fn item(id: &str, n: i32) -> Tag {
     Tag::compound([("id", s(id)), ("count", Tag::Int(n))])
 }
 fn state(name: &str) -> Tag {
-    Tag::compound([("Name", s(name))])
+    Tag::compound([("id", s(name))])
 }
 
 /// The keys `Base::tag` writes for any non-creature entity, then the ones of its own writer.

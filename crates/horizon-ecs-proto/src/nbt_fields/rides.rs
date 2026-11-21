@@ -19,7 +19,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("NoBasePlate"), write: write_no_base_plate, read: read_no_base_plate, accepts: byte, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("Marker"), write: write_marker, read: read_marker, accepts: byte, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("Invisible"), write: write_invisible, read: read_invisible, accepts: byte, owner: Some(owner::<Stand>) },
-    Field { key: Cow::Borrowed("Pose"), write: write_pose, read: read_pose, accepts: compound, owner: Some(owner::<Pose>) },
+    Field { key: Cow::Borrowed("Pose"), write: write_pose, read: read_pose, accepts: compound, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("DisabledSlots"), write: write_disabled, read: read_disabled, accepts: crate::nbt::accept::int, owner: Some(owner::<DisabledSlots>) },
     Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Frame>) },
     Field { key: Cow::Borrowed("ItemRotation"), write: write_rotation, read: read_rotation, accepts: byte, owner: Some(owner::<Frame>) },
@@ -143,8 +143,12 @@ fn read_marker(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `Pose`: a compound of the parts that differ from the default, as `ArmorStand.addAdditionalSaveData` writes them.
 fn write_pose(w: &World, e: Entity, c: &mut Compound) {
-    let Some(p) = w.get::<Pose>(e) else { return };
-    let parts: Vec<(&str, Tag)> = POSE_KEYS.into_iter().zip(*p.0).zip(DEFAULT_POSE).filter(|((_, r), d)| r != d).map(|((k, r), _)| (k, floats(&r))).collect();
+    // Always written for a stand (the game stores the codec's compound, empty for the default pose).
+    if w.get::<Stand>(e).is_none() {
+        return;
+    }
+    let pose = crate::stand::pose_of(w, e);
+    let parts: Vec<(&str, Tag)> = POSE_KEYS.into_iter().zip(pose).zip(DEFAULT_POSE).filter(|((_, r), d)| r != d).map(|((k, r), _)| (k, floats(&r))).collect();
     c.insert("Pose".into(), Tag::compound(parts));
 }
 

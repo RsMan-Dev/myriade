@@ -275,8 +275,8 @@ pub fn zone_step(world: &mut World) {
     });
 }
 
-/// The objects that have a tick of their own and no row in the creature index: a projectile, a fishing hook, an eye of ender.
-type Loose = Or<(With<crate::projectile::Projectile>, With<crate::fishing_hook::Hook>, With<crate::eye::Eye>)>;
+/// The objects that have a tick of their own and no row in the creature index: a projectile, a fishing hook, an eye of ender, a primed TNT, a falling block.
+type Loose = Or<(With<crate::projectile::Projectile>, With<crate::fishing_hook::Hook>, With<crate::eye::Eye>, With<crate::tnt::Primed>, With<crate::falling_block::FallingBlock>)>;
 
 /// Freezes an object whose chunk does not tick (`ServerLevel.tick`: `inEntityTickingRange` gates `Entity.tick`): out of the queries
 /// (`Disabled`), its flight markers and its wheel entries (a stuck projectile's life) put aside, its own time stopped.
@@ -294,7 +294,18 @@ pub fn freeze(world: &mut World, e: Entity, now: u64) {
     if em.take::<crate::trident::TridentFlying>().is_some() {
         stash.push(Stashed::TridentFlying);
     }
+    if em.take::<crate::cow::Moving>().is_some() {
+        stash.push(Stashed::Moving);
+    }
     em.insert((Disabled, Dormant { since: now, wheel, stash }));
+}
+
+/// A loose object just made: it waits at once when its chunk does not tick.
+pub fn settle(world: &mut World, e: Entity) {
+    if world.get_resource::<Index>().is_some_and(|i| world.get::<crate::cow::Pos>(e).is_some_and(|p| !i.zone.simulated_at(p.0.x, p.0.z))) {
+        let now = world.resource::<Clock>().0;
+        freeze(world, e, now);
+    }
 }
 
 /// Thaws a frozen object: its own time resumes, the markers and the entries come back where they were, and a stuck projectile looks
@@ -308,6 +319,7 @@ pub fn thaw(world: &mut World, e: Entity, now: u64) {
         match s {
             Stashed::Flying => drop(em.insert(crate::projectile::Flying)),
             Stashed::TridentFlying => drop(em.insert(crate::trident::TridentFlying)),
+            Stashed::Moving => drop(em.insert(Moving)),
             _ => {}
         }
     }
@@ -405,6 +417,7 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
             Stashed::Crowded => drop(em.insert(Crowded)),
             Stashed::Flying => drop(em.insert(crate::projectile::Flying)),
             Stashed::TridentFlying => drop(em.insert(crate::trident::TridentFlying)),
+            Stashed::Moving => drop(em.insert(Moving)),
         }
     }
     // The world may have changed under it while it slept (a block, a fluid): its physics looks again.

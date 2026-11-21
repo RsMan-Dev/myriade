@@ -205,10 +205,7 @@ pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner
     let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, id);
     // Launched in a chunk that does not tick: it waits there (`ServerLevel.tick` does not tick it).
-    if world.get_resource::<Index>().is_some_and(|i| !i.zone.simulated_at(at.x, at.z)) {
-        let now = world.resource::<Clock>().0;
-        crate::zone::freeze(world, e, now);
-    }
+    crate::zone::settle(world, e);
     e
 }
 /// The builder of every projectile identifier (`nbt::Builder`): the kind of its saved `id` in `KINDS`, launched at the saved `Pos` with no

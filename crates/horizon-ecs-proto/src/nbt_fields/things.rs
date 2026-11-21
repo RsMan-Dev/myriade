@@ -67,6 +67,7 @@ pub fn builders() -> &'static [(&'static str, crate::nbt::Builder)] {
         (crate::species::lists::TNT, build_tnt),
         (crate::species::lists::END_CRYSTAL, build_end_crystal),
         (crate::species::lists::FALLING_BLOCK, build_falling_block),
+        (crate::species::armor_stand::ITEM, build_stand),
         (crate::species::lists::TRIDENT, build_trident),
         (crate::species::lists::OMINOUS_ITEM_SPAWNER, build_ominous),
     ]
@@ -565,7 +566,15 @@ fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 fn build_falling_block(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let state = world_of(w).registry.saved_state_id(tag(c, "BlockState")?)?;
     let cell = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
-    Some(falling_block::fall(w, cell, state, None))
+    // `DropItem` defaults to true: the block's own item is what it drops when it cannot land (`read_drop_item` clears it for 0).
+    let name = world_of(w).registry.state(state).map(|s| s.name.clone())?;
+    Some(falling_block::fall(w, cell, state, Some(ItemStack::new(&name, 1))))
+}
+
+/// A stand made by its own creation (`stand::spawn`: the flags, the fire intake, the physics), the keys then set the flags and the pose.
+fn build_stand(w: &mut World, at: Vec3, _: &Compound) -> Option<Entity> {
+    let sp = crate::cow::species_table().0.into_iter().find(|sp| sp.name == crate::species::armor_stand::ITEM)?;
+    Some(crate::stand::spawn(w, &sp, at, 0, 0))
 }
 
 fn build_trident(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {

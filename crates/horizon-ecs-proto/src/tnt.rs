@@ -31,6 +31,7 @@ pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -
     let fuse_at = now_of(w, e) + fuse.max(0) as u64;
     w.entity_mut(e).insert(Primed { fuse_at, power });
     after(w, e, fuse, primed_due);
+    crate::zone::settle(w, e);
     e
 }
 

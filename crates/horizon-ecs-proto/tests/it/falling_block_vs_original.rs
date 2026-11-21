@@ -163,7 +163,7 @@ fn an_anvil_hurts_the_creature_under_it_and_wears_as_the_jar_says() {
     }
     use horizon_core::random::{LegacyRandom, RandomSource};
     for seed in 0..40i64 {
-        let mut h = Herd::with_slab(16, true, false);
+        let mut h = Herd::with_slab_awake(16, true, false);
         let top = floor_under(&h, 0, 0, 40);
         let sp = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").unwrap();
         let cow = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);

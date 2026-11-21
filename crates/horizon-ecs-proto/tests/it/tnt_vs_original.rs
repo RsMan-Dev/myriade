@@ -48,7 +48,7 @@ fn a_fall_and_bounce_follow_the_jar_tick_by_tick() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let start = f64::from(top) + 10.0;
     let e = spawn_primed(&mut h.world, Vec3::new(0.5, start, 0.5), Vec3::ZERO, FUSE, POWER);
@@ -65,7 +65,7 @@ fn the_fuse_blows_it_on_its_tick_and_not_before() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let e = spawn_primed(&mut h.world, Vec3::new(0.5, f64::from(top) + 1.0, 0.5), Vec3::ZERO, FUSE, POWER);
     let mut gone = None;
@@ -84,7 +84,7 @@ fn a_tnt_in_water_blows_on_the_same_tick() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     h.set_block(0, top, 0, "minecraft:water");
     h.tick();
@@ -118,7 +118,7 @@ fn blast_primes(exact: bool) {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     h.set_block(3, top, 0, "minecraft:tnt");
     h.tick();

@@ -116,3 +116,50 @@ fn a_stuck_arrow_keeps_its_life_while_frozen() {
     }
     assert!(h.world.get_entity(e).is_err(), "it never expired");
 }
+
+/// Every loose object that moves on its own (items, orbs, primed TNT, falling blocks, vehicles) stands still where no player is near,
+/// and goes on when one comes: the position after the wait is the one before it.
+#[test]
+fn loose_objects_stand_still_without_a_player() {
+    if !super::common::have_data() {
+        return;
+    }
+    use horizon_core::nbt::Tag;
+    let d = |v: f64| Tag::Double(v.to_bits());
+    let ids = ["minecraft:item", "minecraft:experience_orb", "minecraft:tnt", "minecraft:falling_block", "minecraft:minecart", "minecraft:oak_boat"];
+    let mut moved = Vec::new();
+    for (id, player) in ids.iter().flat_map(|i| [(*i, false), (*i, true)]) {
+        let mut h = Herd::with_slab(40, true, false);
+        h.set_players(if player { vec![(0.5, 0.5)] } else { vec![] });
+        let Tag::Compound(c) = Tag::compound([
+            ("id", Tag::String(id.into())),
+            ("Pos", Tag::List(vec![d(0.5), d(70.0), d(0.5)])),
+            ("Motion", Tag::List(vec![d(0.2), d(0.5), d(0.2)])),
+            ("Item", Tag::compound([("id", Tag::String("minecraft:stone".into())), ("count", Tag::Int(1))])),
+            ("Value", Tag::Short(3)),
+            ("Count", Tag::Int(1)),
+            ("fuse", Tag::Short(80)),
+            ("explosion_power", Tag::Float(4.0f32.to_bits())),
+            ("BlockState", Tag::compound([("id", Tag::String("minecraft:sand".into()))])),
+        ]) else {
+            unreachable!()
+        };
+        let Some(e) = horizon_ecs_proto::nbt::restore(&mut h.world, &c) else {
+            eprintln!("NOT RESTORED {id}");
+            continue;
+        };
+        for _ in 0..3 {
+            h.tick();
+        }
+        let at = h.world.get::<Pos>(e).map(|p| p.0);
+        for _ in 0..60 {
+            h.tick();
+        }
+        let went = h.world.get::<Pos>(e).map(|p| p.0) != at;
+        eprintln!("LOOSE {id} player={player} moved={went} at={at:?} now={:?} dormant={}", h.world.get::<Pos>(e).map(|p| p.0), h.world.get::<horizon_ecs_proto::zone::Dormant>(e).is_some());
+        if went && !player {
+            moved.push(id);
+        }
+    }
+    assert!(moved.is_empty(), "these moved with no player near: {moved:?}");
+}
