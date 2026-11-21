@@ -12,8 +12,18 @@ pub struct BlockWatch {
     sets: HashMap<&'static str, HashSet<[i32; 3]>>,
     /// The names that got their first block since the last run of the system.
     pub appeared: Vec<&'static str>,
+    /// The entities that wait on a cell, and the ones whose cell changed in the last run (forgotten once listed).
+    cells: HashMap<[i32; 3], Vec<Entity>>,
+    pub woken: Vec<Entity>,
 }
 impl BlockWatch {
+    /// `e` waits on the block at `cell`: it is listed in `woken` when that block changes.
+    pub fn watch_cell(&mut self, cell: [i32; 3], e: Entity) {
+        let list = self.cells.entry(cell).or_default();
+        if !list.contains(&e) {
+            list.push(e);
+        }
+    }
     /// Starts to follow `names` (the slab is read once for each new one).
     pub fn watch(&mut self, level: &Level, names: &[&'static str]) {
         for &n in names {
@@ -57,13 +67,22 @@ pub fn insert_resources(w: &mut World) {
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(block_watch.after(crate::cow::block_changes).before(crate::targeting::sight_eval));
 }
-fn block_watch(level: Res<Level>, changed: Res<ChangedBlocks>, mut bw: ResMut<BlockWatch>) {
+pub(crate) fn block_watch(level: Res<Level>, changed: Res<ChangedBlocks>, mut bw: ResMut<BlockWatch>) {
     bw.appeared.clear();
-    if changed.0.is_empty() || bw.sets.is_empty() {
+    bw.woken.clear();
+    if changed.0.is_empty() {
+        return;
+    }
+    let BlockWatch { sets, appeared, cells, woken } = &mut *bw;
+    for &(x, y, z) in &changed.0 {
+        if let Some(list) = cells.remove(&[x, y, z]) {
+            woken.extend(list);
+        }
+    }
+    if sets.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    let BlockWatch { sets, appeared } = &mut *bw;
     for &(x, y, z) in &changed.0 {
         let name = mw.block_name(x, y, z);
         for (k, set) in sets.iter_mut() {

@@ -105,3 +105,67 @@ fn the_shulker_teleports_after_hits_below_half_health_as_a_mob_does() {
     eprintln!("teleports after half health: mob {mob_moves}, ecs {ecs_moves}");
     assert!(mob_moves > 0 && ecs_moves > 0, "mob {mob_moves}, ecs {ecs_moves}");
 }
+
+struct Open<'a>(&'a MobRef, Vec<(horizon_client_lib::mobs::Who, horizon_core::geometry::Aabb)>);
+impl horizon_client_lib::projectiles::ProjectileWorld for Open<'_> {
+    fn clip(&self, from: Vec3, to: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
+        let mw = self.0.w;
+        let movement = Vec3::new(to.x - from.x, to.y - from.y, to.z - from.z);
+        horizon_client_lib::arrows::clip_block_hit(mw.world, mw.facts, mw.collision, from, movement).map(|(at, p, n)| (at, [p.x, p.y, p.z], n))
+    }
+    fn in_water(&self, _: horizon_core::geometry::Aabb) -> bool {
+        false
+    }
+    fn targets(&self) -> &[(horizon_client_lib::mobs::Who, horizon_core::geometry::Aabb)] {
+        &self.1
+    }
+}
+
+/// The first bullet, tick by tick: the ECS bullet stays on the Mob's bullet's path toward the player's box (under 0.05 apart), and ends
+/// within a tick of it.
+#[test]
+fn the_bullet_homes_on_the_player_tick_by_tick_as_the_mob_s_does() {
+    if skip() {
+        return;
+    }
+    let (mut r, mut h, _, _) = scene();
+    let view = player_view(Vec3::new(12.5, 1.0, 0.5), None);
+    let player = Player { id: 1, x: 12.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() };
+    let boxes = vec![(horizon_client_lib::mobs::Who::Player, horizon_ecs_proto::targeting::player_box(&player))];
+    let (mut mob, mut ecs) = (None, None);
+    for _ in 0..200 {
+        let from = r.events.len();
+        r.step(Some(&view));
+        h.tick();
+        mob = r.events.drain(from..).find_map(|e| match e {
+            MobEvent::Projectile(p) => Some(p),
+            _ => None,
+        });
+        ecs = h.world.query::<(Entity, &horizon_client_lib::projectiles::Projectile)>().iter(&h.world).map(|x| x.0).next();
+        if mob.is_some() {
+            break;
+        }
+    }
+    let mut mob = mob.expect("the Mob fires a bullet");
+    let ecs = ecs.expect("the ECS fires a bullet");
+    let (mut mob_end, mut ecs_end, mut worst) = (None, None, 0.0_f64);
+    for t in 1..=60i64 {
+        r.step(Some(&view));
+        h.tick();
+        let (keep, _) = mob.tick(&Open(&r, boxes.clone()));
+        if !keep && mob_end.is_none() {
+            mob_end = Some(t);
+        }
+        match h.world.get::<horizon_client_lib::projectiles::Projectile>(ecs) {
+            Some(p) if ecs_end.is_none() => worst = worst.max((p.position.x - mob.position.x).abs().max((p.position.y - mob.position.y).abs()).max((p.position.z - mob.position.z).abs())),
+            Some(_) => {}
+            None => {
+                ecs_end.get_or_insert(t);
+            }
+        }
+    }
+    eprintln!("bullet: worst gap {worst:.4}, ends mob {mob_end:?} ecs {ecs_end:?}");
+    assert!(worst < 0.05, "the path drifts by {worst}");
+    assert!(mob_end.is_some() && ecs_end.is_some(), "both end: mob {mob_end:?}, ecs {ecs_end:?}");
+    assert!((mob_end.unwrap() - ecs_end.unwrap()).abs() <= 1, "the end: mob {mob_end:?}, ecs {ecs_end:?}");
+}

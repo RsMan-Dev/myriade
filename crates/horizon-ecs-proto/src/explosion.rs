@@ -47,7 +47,7 @@ pub fn seen_percent(level: &Level, center: Vec3, b: Aabb) -> f32 {
     hits as f32 / count as f32
 }
 /// `ServerExplosion.calculateExplodedPositions`.
-fn exploded_positions(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
+fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[i32; 3]> {
     let level = *w.resource::<Level>();
     let mw = level.mw.0;
     let (min_y, max_y) = (mw.world.bottom_y(), mw.world.top_y());
@@ -73,7 +73,12 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32) -> Vec<[i32; 3]> {
                     let f = mw.facts.get(state);
                     let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
                     if !mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None {
-                        power -= (f.explosion_resistance.max(fluid) + 0.3) * 0.3;
+                        let mut res = f.explosion_resistance.max(fluid);
+                        // `WitherSkull.getBlockExplosionResistance`: a blue skull's blast gives the wither-destroyable blocks at most 0.8.
+                        if skull && !mw.facts.is_air(state) && !crate::level::has_block_tag(w, "minecraft:wither_immune", pos) {
+                            res = res.min(0.8);
+                        }
+                        power -= (res + 0.3) * 0.3;
                     }
                     if power > 0.0 && (!mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None) && !set.contains(&pos) {
                         set.push(pos);
@@ -125,6 +130,7 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
         if let Ok(mut m) = w.get_entity_mut(c) {
             m.insert(Moving);
         }
+        crate::stand::unsettle(w, c);
     }
 }
 pub fn explode(w: &mut World, b: Blast) {
@@ -137,6 +143,14 @@ pub fn explode_tnt(w: &mut World, b: Blast) {
 }
 /// `explode` with `breaks_blocks` false for `ExplosionInteraction.NONE` / `BlockInteraction.KEEP`: the creatures are hurt, the blocks stay.
 pub fn explode_with(w: &mut World, b: Blast, breaks_blocks: bool) {
+    explode_full(w, b, breaks_blocks, false);
+}
+/// A wither skull's blast (`level.explode` with power 1, no fire); a blue one (`dangerous`) caps the blocks' resistance at 0.8.
+pub fn explode_wither(w: &mut World, b: Blast, dangerous: bool) {
+    let griefs = mob_griefing(w);
+    explode_full(w, b, griefs, dangerous);
+}
+fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
     if b.radius < 1.0e-5 {
         return;
     }
@@ -146,7 +160,9 @@ pub fn explode_with(w: &mut World, b: Blast, breaks_blocks: bool) {
     let mut near: Vec<Entity> = Vec::new();
     w.resource::<Index>().for_radius(b.at.x, b.at.z, diameter, |c| near.push(c));
     for c in near {
-        if Some(c) == b.source || w.get::<Health>(c).is_none() {
+        // `ArmorStand.ignoreExplosion`: an invisible stand is no target.
+        let spared = w.get::<crate::stand::Stand>(c).is_some_and(|s| crate::stand::ignores_explosion(*s));
+        if Some(c) == b.source || w.get::<Health>(c).is_none() || spared {
             continue;
         }
         let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
@@ -167,6 +183,7 @@ pub fn explode_with(w: &mut World, b: Blast, breaks_blocks: bool) {
         if let Ok(mut m) = w.get_entity_mut(c) {
             m.insert(Moving);
         }
+        crate::stand::unsettle(w, c);
     }
     // The players around.
     let tick = w.resource::<Clock>().0;
@@ -189,20 +206,25 @@ pub fn explode_with(w: &mut World, b: Blast, breaks_blocks: bool) {
     }
     // The blocks.
     if breaks_blocks {
-        let blocks = exploded_positions(w, b.at, b.radius);
+        let blocks = exploded_positions(w, b.at, b.radius, skull);
         let mw = level.mw.0;
+        let tnt = crate::blocks::resolve(mw, "minecraft:tnt", &[]);
+        let mut rng = w.resource::<ExplosionRng>().0;
         for p in &blocks {
+            // `TntBlock.wasExploded`: a TNT block the blast destroys is primed in its place.
+            if Some(mw.world.block(p[0], p[1], p[2])) == tnt {
+                crate::tnt::spawn_from_blast(w, *p, &mut rng);
+            }
             w.resource_mut::<BlockChanges>().0.push((p[0], p[1], p[2], "minecraft:air"));
         }
         if b.fire {
-            let mut rng = w.resource::<ExplosionRng>().0;
             for p in &blocks {
                 if rng.next_int(3) == 0 && mw.facts.is_air(mw.world.block(p[0], p[1], p[2])) && mw.facts.get(mw.world.block(p[0], p[1] - 1, p[2])).solid_render {
                     w.resource_mut::<BlockChanges>().0.push((p[0], p[1], p[2], "minecraft:fire"));
                 }
             }
-            w.resource_mut::<ExplosionRng>().0 = rng;
         }
+        w.resource_mut::<ExplosionRng>().0 = rng;
     }
 }
 

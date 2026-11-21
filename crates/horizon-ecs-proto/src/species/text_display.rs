@@ -1,4 +1,4 @@
-//! `Display.TextDisplay` : passif, sans but ni tick (le serveur ne fait rien à chaque tick).
+//! `Display.TextDisplay` : passif, sans but ni tick. Données : `display::{Transform, Shown, TextData}`.
 use crate::behaviours::Cap;
 use crate::species::Def;
 

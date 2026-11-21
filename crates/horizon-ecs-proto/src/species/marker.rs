@@ -1,4 +1,4 @@
-//! `Marker` : passif, `tick` ne fait rien ; ses données restent dans `Raw`.
+//! `Marker` : passif, `tick` ne fait rien ; ses données restent dans `passive::Raw`.
 use crate::behaviours::Cap;
 use crate::species::Def;
 

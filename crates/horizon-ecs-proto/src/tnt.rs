@@ -32,6 +32,21 @@ pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -
     e
 }
 
+/// The push of a TNT primed by a block (`PrimedTnt`'s constructor): a random direction `d` (`nextDouble * 2π`), 0.02 along it, 0.2 up.
+pub fn push_of(rng: &mut Rng) -> Vec3 {
+    let d = rng.next_f64() * f64::from(std::f32::consts::TAU);
+    Vec3::new(-d.sin() * 0.02, f64::from(0.2_f32), -d.cos() * 0.02)
+}
+
+/// A block of TNT an explosion destroys (`TntBlock.wasExploded`): a TNT at its centre, pushed as its constructor pushes, with the fuse
+/// `nextInt(fuse / 4) + fuse / 8` (10 to 29 ticks for 80).
+pub fn spawn_from_blast(w: &mut World, block: [i32; 3], rng: &mut Rng) -> Entity {
+    let at = Vec3::new(f64::from(block[0]) + 0.5, f64::from(block[1]), f64::from(block[2]) + 0.5);
+    let vel = push_of(rng);
+    let fuse = rng.next_int(FUSE / 4) + FUSE / 8;
+    spawn_primed(w, at, vel, fuse, POWER)
+}
+
 /// The deadline: the TNT is removed and explodes at 0.0625 of its height (`PrimedTnt.explode`, `getY(0.0625)`).
 fn primed_due(w: &mut World, e: Entity) {
     let (Some(p), Some(at)) = (w.get::<Primed>(e).copied(), w.get::<Pos>(e).map(|x| x.0)) else { return };

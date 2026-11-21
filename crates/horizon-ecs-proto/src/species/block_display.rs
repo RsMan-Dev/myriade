@@ -1,4 +1,4 @@
-//! `Display.BlockDisplay` : passif, sans but ni tick (le serveur ne fait rien à chaque tick).
+//! `Display.BlockDisplay` : passif, sans but ni tick. Données : `display::{Transform, Shown, BlockState}`.
 use crate::behaviours::Cap;
 use crate::species::Def;
 

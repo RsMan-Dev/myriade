@@ -32,6 +32,14 @@ pub struct Flight {
     pub max_age: u32,
     /// What it does where it ends, after the damage.
     pub hit: OnHit,
+    /// `WitherSkull.onHitEntity`: a creature it hits takes wither II for 10 s on normal, 40 s on hard, none on easy.
+    pub wither: bool,
+    /// `LlamaSpit.tick`: gone once its box holds no air (it is inside blocks), and where it is in water.
+    pub spit_end: bool,
+    /// `ShulkerBullet`: its end (a creature hit, a block) plays its sound and particles (`shulker_bullet`).
+    pub bullet: bool,
+    /// A blue (dangerous) wither skull: its blast caps the blocks' resistance at 0.8 (`explode_wither`).
+    pub blue: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Order {
@@ -53,6 +61,10 @@ pub enum OnHit {
     Explode { power: i32, fire: bool },
     /// A thrown potion breaks and splashes these brews (`effects::splash`).
     Splash(&'static [crate::effects::Brew]),
+    /// A thrown potion whose brews are its `PotionId`'s in `effects::POTIONS`, splashed where it ends.
+    Potion,
+    /// A lingering potion breaks: an area cloud of its `PotionId` where it ends (`ThrownLingeringPotion.onHit`).
+    LingeringPotion,
     /// A wind charge bursts where it ends: knockback only, no damage, on the creatures within `radius` (`explosion::wind_burst`).
     WindBurst { radius: f32 },
     /// A dragon's fireball ends: the breath cloud (`dragon::fireball::burst`).
@@ -86,11 +98,13 @@ pub enum Damage {
     BySpeed(f64),
     /// A fixed amount (a snowball hurts for 0, a blaze's for 3).
     Fixed(f32),
+    /// A fixed amount that only a living owner deals (`LlamaSpit.onHitEntity`): without one it does nothing.
+    Owned(f32),
 }
 /// `0.99F`, the way vanilla multiplies the velocity of a projectile.
 const INERTIA: f64 = 0.99_f32 as f64;
 impl Flight {
-    const BASE: Flight = Flight { gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing };
+    const BASE: Flight = Flight { gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing, wither: false, spit_end: false, bullet: false, blue: false };
     pub const ARROW: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
     /// `SmallFireball`: 5 damage and fire for 5 seconds; no explosion.
     pub const SMALL_FIREBALL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(5.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Ignite(100), ..Self::BASE };
@@ -98,21 +112,22 @@ impl Flight {
     pub const fn large_fireball(power: i32) -> Flight {
         Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(6.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power, fire: true }, ..Self::BASE }
     }
-    /// `LlamaSpit`: 1 damage, gravity 0.06. Not done: it flies on through a creature, and goes at a block its box touches.
-    pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Fixed(1.0), ..Self::BASE };
+    /// `LlamaSpit`: 1 damage from a living owner, gravity 0.06; gone once its box is inside blocks, or in water.
+    pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Owned(1.0), spit_end: true, ..Self::BASE };
     /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
     /// `BreezeWindCharge`: straight flight at constant speed (inertia 1, no acceleration), one point of damage, a burst of radius 3.
     pub const BREEZE_WIND_CHARGE: Flight = Flight { inertia: 1.0, damage: Damage::Fixed(1.0), size: 0.3125, order: Order::Hurting, accel: 0.0, hit: OnHit::WindBurst { radius: 3.0 }, ..Self::BASE };
-    pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, ..Self::BASE };
+    pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, hit: OnHit::Potion, ..Self::BASE };
+    pub const LINGERING_POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, hit: OnHit::LingeringPotion, ..Self::BASE };
     /// `ThrownTrident` as a mob throws it: gravity 0.05, `ceil(speed * 8)`; no pierce, no return (the item and the loyalty are not modelled).
     pub const TRIDENT: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
-    /// `WitherSkull` (not dangerous): inertia 0.95, 8 damage, wither effect on a hit; the blue skull's blast is `wither_skull_blue`.
-    pub const WITHER_SKULL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Effect(crate::effects::Kind::Wither, 1, 200), ..Self::BASE };
+    /// `WitherSkull` (not dangerous): inertia 0.95, 8 damage, the wither effect on a hit, then a blast of power 1.
+    pub const WITHER_SKULL: Flight = Self::wither_skull(false);
     pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
     /// `WitherSkull`: a blue (dangerous) skull keeps 0.73 of its speed a tick, the others 0.95; 8 damage, then a power 1 blast without fire.
     pub const fn wither_skull(dangerous: bool) -> Flight {
         let inertia = if dangerous { 0.73_f32 as f64 } else { 0.95_f32 as f64 };
-        Flight { inertia, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power: 1, fire: false }, ..Self::BASE }
+        Flight { inertia, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power: 1, fire: false }, wither: true, blue: dangerous, ..Self::BASE }
     }
 }
 /// The six steps a projectile or a path takes from a block, by direction: down, up, north, south, west, east (the 3D data order).
@@ -191,6 +206,9 @@ pub fn fly(
     mut stuck: ResMut<StuckIndex>,
     creatures: Query<&Bounds, With<Health>>,
     dodgers: Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
+    hurts: Query<&crate::cow::health::HurtAt>,
+    potion: Query<&crate::effects::PotionId>,
+    healths: Query<&Health>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
     mut commands: Commands,
 ) {
@@ -263,10 +281,15 @@ pub fn fly(
             }
             let amount = match f.damage {
                 Damage::BySpeed(base) => (movement.length() * base).clamp(0.0, f64::from(i32::MAX)).ceil() as f32,
-                Damage::Fixed(a) => a,
+                Damage::Fixed(a) | Damage::Owned(a) => a,
             };
+            // `WitherSkull.onHitEntity`: without a living owner the skull is a magic blow of 5.
+            let amount = if f.wither && p.owner.is_none() { 5.0 } else { amount };
             let from = (original.x, original.z);
+            let unowned_spit = matches!(f.damage, Damage::Owned(_)) && p.owner.is_none();
             match (who, p.owner) {
+                _ if unowned_spit => {}
+                (Who::Entity(t), None) if f.wither => dq.add(t, amount, Cause::Magic),
                 (Who::Entity(t), Some(o)) => dq.add_via(t, amount, from, o),
                 (Who::Entity(t), None) => dq.add_from(t, amount, Cause::Entity, from),
                 (Who::Player(id), owner) => ps.hurt(clock.0, id, amount, from, owner),
@@ -281,11 +304,31 @@ pub fn fly(
                         crate::effects::add(w, t, kind, amp, ticks);
                     });
                 }
+                // The wither comes only when the blow hurts: outside the 10-tick window, or a larger blow in it (`HurtAt`).
+                let now = clock.of(t);
+                let hurting = !hurts.get(t).is_ok_and(|h| h.at != 0 && now < h.at + 10 && amount <= h.last);
+                if f.wither && hurting {
+                    commands.queue(move |w: &mut World| wither_hit(w, t));
+                    // `WitherSkull.onHitEntity`: a blow that kills heals its living owner by 5 (the health is read before the blow lands).
+                    if let (Some(Who::Entity(o)), true) = (p.owner, healths.get(t).is_ok_and(|h| h.0 <= amount)) {
+                        commands.queue(move |w: &mut World| heal_owner(w, o, 5.0));
+                    }
+                }
+                if matches!(f.hit, OnHit::LingeringPotion) {
+                    commands.queue(move |w: &mut World| linger(w, e, at));
+                }
+            }
+            if let (Who::Player(id), true) = (who, f.wither) {
+                commands.queue(move |w: &mut World| wither_player(w, id));
+            }
+            if f.bullet && matches!(who, Who::Entity(_)) {
+                commands.queue(move |w: &mut World| crate::shulker_bullet::hurt(w, at));
             }
             if let OnHit::Explode { power, fire } = f.hit {
                 let blast = Blast { at, radius: power as f32, fire, owner: p.owner, source: None };
+                let blue = f.blue;
                 events.exploded.push(blast);
-                commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                commands.queue(move |w: &mut World| explode_hit(w, blast, blue));
             }
             if matches!(f.hit, OnHit::DragonBurst) {
                 commands.queue(move |w: &mut World| { crate::dragon::fireball::burst(w, at); });
@@ -294,7 +337,7 @@ pub fn fly(
                 let owner = p.owner;
                 commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
             }
-            if let OnHit::Splash(brews) = f.hit {
+            if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                 let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
                 commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
             }
@@ -320,8 +363,9 @@ pub fn fly(
                 } else {
                     if let OnHit::Explode { power, fire } = f.hit {
                         let blast = Blast { at: pos.0, radius: power as f32, fire, owner: p.owner, source: None };
+                        let blue = f.blue;
                         events.exploded.push(blast);
-                        commands.queue(move |w: &mut World| crate::explosion::explode(w, blast));
+                        commands.queue(move |w: &mut World| explode_hit(w, blast, blue));
                     }
                     if matches!(f.hit, OnHit::DragonBurst) {
                         let at = pos.0;
@@ -331,9 +375,17 @@ pub fn fly(
                         let (at, owner) = (pos.0, p.owner);
                         commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
                     }
-                    if let OnHit::Splash(brews) = f.hit {
+                    if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                         let (at, owner) = (pos.0, p.owner);
                         commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, brews, owner));
+                    }
+                    if matches!(f.hit, OnHit::LingeringPotion) {
+                        let at = pos.0;
+                        commands.queue(move |w: &mut World| linger(w, e, at));
+                    }
+                    if f.bullet {
+                        let at = pos.0;
+                        commands.queue(move |w: &mut World| crate::shulker_bullet::ends(w, at));
                     }
                     if f.hit.thrown() {
                         let (h, o, at, prev) = (f.hit, p.owner, pos.0, original);
@@ -343,7 +395,23 @@ pub fn fly(
                 }
                 continue;
             }
-            None => pos.0 = end,
+            None => {
+                pos.0 = end;
+                if f.spit_end && boxed_in_blocks(mw, bounds(pos.0, f.size)) {
+                    commands.entity(e).despawn();
+                    continue;
+                }
+                if f.spit_end {
+                    // `LlamaSpit.tick`: its water check (`Entity.isInWater`, on the box) comes after the move, in the same tick; the world is read at the end of the frame.
+                    let (lo, hi) = (bounds(pos.0, f.size).min_position(), bounds(pos.0, f.size).max_position());
+                    let cells = [lo.x.floor() as i32, lo.y.floor() as i32, lo.z.floor() as i32, hi.x.floor() as i32, hi.y.floor() as i32, hi.z.floor() as i32];
+                    commands.queue(move |w: &mut World| {
+                        if boxed_in_liquid(w, cells) {
+                            w.despawn(e);
+                        }
+                    });
+                }
+            }
         }
         // The end of the tick in flight: inertia, then gravity (an arrow; a thrown item did both before its move).
         if f.order == Order::MoveThenDrag {
@@ -389,6 +457,96 @@ fn stuck_wake(changed: Res<ChangedBlocks>, level: Res<Level>, mut stuck: ResMut<
             }
         }
     }
+}
+/// `WitherSkull.onHitEntity` on a creature: wither II for 10 s on normal, 40 s on hard (`Difficulty` ids 2 and 3), none otherwise.
+/// Vanilla gives it only when the hit hurt; the hit is taken as hurting here.
+fn wither_hit(w: &mut World, t: Entity) {
+    let ticks = wither_ticks(w);
+    if ticks > 0 && w.get::<Health>(t).is_some() {
+        crate::effects::add(w, t, crate::effects::Kind::Wither, 1, ticks);
+    }
+}
+/// The brews a thrown potion splashes: its own `OnHit::Splash`, or the table's for its `PotionId`.
+fn splash_of(hit: OnHit, id: Option<&crate::effects::PotionId>) -> Option<&'static [crate::effects::Brew]> {
+    match hit {
+        OnHit::Splash(brews) => Some(brews),
+        OnHit::Potion => id.and_then(|p| crate::effects::potion_brews(p.0)),
+        _ => None,
+    }
+}
+/// The blast of a hit: a blue wither skull's caps the blocks' resistance (`explosion::explode_wither`).
+fn explode_hit(w: &mut World, b: Blast, blue: bool) {
+    if blue {
+        crate::explosion::explode_wither(w, b, true);
+    } else {
+        crate::explosion::explode(w, b);
+    }
+}
+/// `ThrownLingeringPotion.onHit` (`AreaEffectCloud`: radius 3, -0.5 a use, 600 ticks, wait 10; `radiusPerTick` = -radius / duration).
+const LINGERING_CLOUD: crate::effect_cloud::EffectCloud = crate::effect_cloud::EffectCloud {
+    radius: 3.0,
+    radius_per_tick: -3.0 / 600.0,
+    radius_on_use: -0.5,
+    duration_on_use: 0,
+    age: 0,
+    wait: 10,
+    duration: 600,
+    reapplication_delay: 20,
+    duration_scale: 1.0,
+};
+/// A cloud of the flask's potion where it broke; a flask without a `PotionId` makes none.
+fn linger(w: &mut World, e: Entity, at: Vec3) {
+    if let Some(p) = w.get::<crate::effects::PotionId>(e).copied() {
+        crate::effect_cloud::spawn(w, [at.x, at.y, at.z], p, LINGERING_CLOUD);
+    }
+}
+/// `WitherSkull.onHitEntity`: the living owner heals 5 when its skull kills.
+fn heal_owner(w: &mut World, o: Entity, amount: f32) {
+    let max = w.get::<MaxHealth>(o).map_or(f32::MAX, |m| m.0);
+    if let Some(mut h) = w.get_mut::<Health>(o) {
+        h.0 = (h.0 + amount).min(max);
+    }
+}
+/// A potion a player throws (the player is outside the ECS): its owner, its id, a splash or a lingering flask.
+pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, potion: crate::effects::PotionId, lingering: bool) -> Entity {
+    let flight = if lingering { Flight::LINGERING_POTION } else { Flight::POTION };
+    let e = launch(w, flight, at, velocity, Some(Who::Player(owner)));
+    w.entity_mut(e).insert(potion);
+    e
+}
+/// The same effect on a player (`effects::add_player`, its end counted from now).
+fn wither_player(w: &mut World, id: u32) {
+    let ticks = wither_ticks(w);
+    if ticks > 0 {
+        crate::effects::add_player(w, id, crate::effects::Kind::Wither, 1, ticks);
+    }
+}
+fn wither_ticks(w: &World) -> i32 {
+    match crate::effects::difficulty(w) {
+        2 => 200,
+        3 => 800,
+        _ => 0,
+    }
+}
+/// `Entity.isInWater` on the box: any liquid cell among the box's floor range (`cells`: lo and hi corners).
+fn boxed_in_liquid(w: &World, cells: [i32; 6]) -> bool {
+    let [x0, y0, z0, x1, y1, z1] = cells;
+    (x0..=x1).any(|x| (y0..=y1).any(|y| (z0..=z1).any(|z| crate::level::is_liquid(w, [x, y, z]))))
+}
+/// `findBlocksIn(box).filterState(isAir).noneMatched()`: every block the box touches is not air.
+fn boxed_in_blocks(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {
+    let (lo, hi) = (b.min_position(), b.max_position());
+    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
+    for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+        for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
+            for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+                if mw.facts.is_air(cursor.block(x, y, z)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 /// `CollisionGetter.noCollision(null, box)` over blocks.
 fn no_block_collision(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {

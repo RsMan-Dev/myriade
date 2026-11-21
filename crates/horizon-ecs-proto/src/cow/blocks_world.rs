@@ -188,6 +188,8 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     }
     let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());
+    // LEVER en attente : la racine est lue ici comme par `leaked_test_world_mut` ; elle devrait venir de `TestResources`.
+    crate::type_tags::install(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES")), &table);
     let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
     (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), occ: Box::leak(Box::default()), half }, species, chosen_kind.expect("a known species"))

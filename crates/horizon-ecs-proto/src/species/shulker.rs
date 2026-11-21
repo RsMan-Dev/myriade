@@ -12,7 +12,7 @@ const SHELLS: &[&str] = &["minecraft:shulker"];
 
 /// The projectile: 4 damage and levitation for 10 s where it hits; its steering sets the velocity (no drag, no frame gravity).
 const SHOT: homing_projectile::Config = homing_projectile::Config {
-    flight: Flight { gravity: 0.0, inertia: 1.0, order: Order::MoveThenDrag, damage: Damage::Fixed(4.0), size: 0.3125, hit: OnHit::Effect(Kind::Levitation, 0, 200), ..Flight::SNOWBALL },
+    flight: Flight { gravity: 0.0, inertia: 1.0, order: Order::MoveThenDrag, damage: Damage::Fixed(4.0), size: 0.3125, hit: OnHit::Effect(Kind::Levitation, 0, 200), bullet: true, ..Flight::SNOWBALL },
     gravity: 0.04,
     speed: 0.15,
     grow: 1.025,

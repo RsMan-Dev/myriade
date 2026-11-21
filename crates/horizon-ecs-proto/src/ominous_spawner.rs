@@ -72,7 +72,11 @@ fn drop_now(w: &mut World, e: Entity) {
                 w.resource_mut::<Events>().host.level_event(event, at, 0);
             }
             let v = shoot_down(w, power, uncertainty);
-            launch(w, flight, p, v, None);
+            let e = launch(w, flight, p, v, None);
+            // A potion's contents (its item data) name the brews it splashes or lingers.
+            if let Some(potion) = item.potion().and_then(crate::effects::potion_id) {
+                w.entity_mut(e).insert(potion);
+            }
         }
         None => {
             w.resource_scope(|w, mut rng: Mut<SpawnerRng>| {
