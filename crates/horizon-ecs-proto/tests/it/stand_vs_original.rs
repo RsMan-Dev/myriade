@@ -48,7 +48,7 @@ fn a_piece_is_put_on_and_taken_off_a_stand() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let e = h.world.spawn_empty().id();
     assert_eq!(equipment::set_slot(&mut h.world, e, Slot::Main, 7), 0);
     assert_eq!(equipped(&h.world, e, Slot::Main), 7);
@@ -93,7 +93,7 @@ fn a_broken_stand_drops_its_item_where_it_stood() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let e = h.world.spawn(Pos(Vec3::new(4.5, 2.0, 4.5))).id();
     let item = stand::break_drop(&mut h.world, e);
     assert!(h.world.get_entity(e).is_err(), "the stand is gone");
@@ -144,7 +144,7 @@ fn a_stand_falls_and_rests_as_the_jar_does_tick_by_tick() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let start = f64::from(top) + 6.0;
     let e = spawn_stand(&mut h, Vec3::new(0.5, start, 0.5), 0);
@@ -162,7 +162,7 @@ fn a_stand_that_lands_in_fire_is_lit() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     h.set_block(0, top, 0, "minecraft:fire");
     h.tick();
@@ -179,7 +179,7 @@ fn a_block_removed_under_a_resting_stand_makes_it_fall() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), 0);
     // The first tick moves by a speed of zero (no contact), the second falls the 0.0784 onto the floor: `onGround` comes from that contact.
@@ -201,7 +201,7 @@ fn a_burning_stand_takes_four_every_twenty_ticks_then_breaks() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), 0);
     set_on_fire(&mut h.world, e, 100);
@@ -221,7 +221,7 @@ fn an_invisible_stand_takes_no_burn() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), INVISIBLE);
     set_on_fire(&mut h.world, e, 100);
