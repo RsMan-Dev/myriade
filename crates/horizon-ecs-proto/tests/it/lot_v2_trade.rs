@@ -122,6 +122,96 @@ fn a_villager_with_excess_food_throws_the_surplus_to_a_hungry_partner_awake() {
     assert_eq!(left, 24, "le surplus de 6 pains n'a pas été jeté");
 }
 
+/// A profession by name (resolved once the level exists: the table is empty before) or by index.
+#[derive(Clone, Copy)]
+enum P {
+    Name(&'static str),
+    Idx(usize),
+}
+impl P {
+    fn get(self) -> u8 {
+        match self {
+            P::Name(n) => horizon_client_lib::mobs::villager::profession_index(n).unwrap_or_else(|| panic!("no profession {n}")),
+            P::Idx(i) => i as u8,
+        }
+    }
+}
+
+/// A villager that trades with a partner, both with a profession (index) and the first one holding `stock`, at the trade hour; the
+/// partner's items are not touched. Rends what is left of `item` in the first one's inventory.
+fn left_after_trade(mine: P, theirs: P, item: &str, n: u8) -> u32 {
+    use horizon_ecs_proto::behaviours::food_inventory::{insert, Stock};
+    use horizon_ecs_proto::behaviours::trade_offers::Merchant;
+    let mut h = Herd::with_slab_awake(60, true, false);
+    let e = villager(&mut h);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
+    let other = spawn_species(&mut h.world, &sp, 2.5, 0.5, 2);
+    h.world.get_mut::<ActiveUntil>(other).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(other);
+    super::villager_misc_vs_mob::insert_trade_data(&mut h);
+    // With no experience and no job site the brain resets the profession (`ResetProfession`): both have some.
+    for (x, p) in [(e, mine), (other, theirs)] {
+        let mut m = Merchant::new(false, p.get(), 0);
+        m.trade.xp = 1;
+        h.world.entity_mut(x).insert(m);
+    }
+    insert(&mut h.world, e, item, n);
+    for _ in 0..30 {
+        h.tick();
+    }
+    horizon_ecs_proto::behaviours::schedule::Times::set(&mut h.world, 10500);
+    set(&mut h.world, e, &play_tag::INTERACTION_TARGET, MemValue::Who(Who::Entity(other)), None);
+    for _ in 0..10 {
+        h.tick();
+    }
+    h.world.get::<Stock>(e).map_or(0, |s| s.0.iter().filter(|(k, _)| k == item).map(|(_, c)| u32::from(*c)).sum())
+}
+
+/// `TradeWithVillager.tick` (jar) : un fermier jette la moitié de son blé au-delà de 32 (40 blés : 20 restent) ; à 32 il garde tout.
+#[test]
+fn a_farmer_throws_half_of_its_wheat_above_thirty_two_awake() {
+    if skip() {
+        return;
+    }
+    let (farmer, none) = (P::Name("farmer"), P::Name("armorer"));
+    assert_eq!(left_after_trade(farmer, none, "minecraft:wheat", 40), 20, "40 blés : la moitié jetée");
+    assert_eq!(left_after_trade(farmer, none, "minecraft:wheat", 32), 32, "32 blés : rien jeté");
+    // Not a farmer, but the partner's profession requests wheat: the wares rule gives the same half.
+    assert_eq!(left_after_trade(none, farmer, "minecraft:wheat", 40), 20, "blé demandé par le métier du partenaire");
+}
+
+/// `TradeWithVillager.tick` (jar) : les denrées que demande le métier du partenaire et pas le nôtre sont jetées (une moitié de pile).
+#[test]
+fn a_villager_throws_the_wares_its_partners_profession_requests_awake() {
+    if skip() {
+        return;
+    }
+    let (a, b, item) = {
+        let mut h = Herd::with_slab_awake(60, true, false);
+        let _ = villager(&mut h);
+        super::villager_misc_vs_mob::insert_trade_data(&mut h);
+        let td = h.world.resource::<horizon_ecs_proto::behaviours::trade_offers::TradeData>();
+        let mut found = None;
+        for a in 0..30usize {
+            for b in 0..30usize {
+                let (Some(pa), Some(pb)) = (td.trades.professions.entry(a), td.trades.professions.entry(b)) else { continue };
+                if let Some(i) = pb.requested.iter().find(|i| i.as_str() != "minecraft:wheat" && !pa.requested.contains(i) && td.items.get(i.as_str()).is_some_and(|d| d.max_stack >= 16)) {
+                    found = Some((a, b, i.to_string()));
+                    break;
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+        found.expect("two professions with different requested wares")
+    };
+    let left = left_after_trade(P::Idx(a), P::Idx(b), &item, 40);
+    assert!(left < 40, "{item}: rien n'a été jeté au partenaire (métier {b})");
+    assert_eq!(left_after_trade(P::Idx(b), P::Idx(a), &item, 40), 40, "{item}: demandé par mon métier, il reste");
+}
+
 /// `GiveGiftToHero` (`villager_brain.rs:1579`) : un héros visible n'obtient le cadeau qu'après le délai de 600 tics, une seule fois.
 #[test]
 fn the_gift_to_a_hero_waits_600_ticks_awake() {
