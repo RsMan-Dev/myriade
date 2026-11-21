@@ -30,7 +30,9 @@ thousands.
 > Myriade is under heavy development and is **not playable yet**.
 > **The first playable builds are coming soon.**
 
-What exists today lives in [`crates/horizon-ecs-proto`](crates/horizon-ecs-proto):
+What exists today lives in [`crates/horizon-ecs-proto`](crates/horizon-ecs-proto). It is a proving
+ground, not something to use on its own: the place where the ECS is written and tested before it
+is plugged into the game. It holds:
 
 - the behaviour of the game's mobs and other non-player entities, rewritten as components and systems;
 - a test suite that runs each of them next to Horizon's original implementation and compares what the player would see;
