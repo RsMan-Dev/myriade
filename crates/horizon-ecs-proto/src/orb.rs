@@ -151,6 +151,7 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
         Resist(0.0),
         Immune(BREATHES_WATER | NO_HURT_COOLDOWN),
         TypeName("minecraft:experience_orb"),
+        crate::species::saved("minecraft:experience_orb").then_some(crate::nbt::Saved),
     ));
     let now = now_of(world, e);
     world.entity_mut(e).insert(OrbAwake);

@@ -30,7 +30,7 @@ pub struct OminousSpawner {
 /// `OminousItemSpawner.create` at `at`, dropping `item` after `after_ticks` (the trial draws 60 to 120).
 pub fn spawn(w: &mut World, item: ItemStack, at: Vec3, after_ticks: u32) -> Entity {
     crate::spawn_spawner::ensure(w, 0);
-    let e = w.spawn((Pos(at), OwnTime, Uid(next_uid()), OminousSpawner { item, after: after_ticks })).id();
+    let e = w.spawn((Pos(at), OwnTime, Uid(next_uid()), OminousSpawner { item, after: after_ticks }, crate::species::saved("minecraft:ominous_item_spawner").then_some(crate::nbt::Saved))).id();
     if after_ticks > ABOUT_TO_SPAWN {
         after(w, e, (after_ticks - ABOUT_TO_SPAWN) as i32, about_to_spawn);
     }

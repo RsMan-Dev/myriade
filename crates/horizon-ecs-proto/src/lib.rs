@@ -49,6 +49,7 @@ pub mod species;
 pub mod tame;
 pub mod type_tags;
 pub mod nbt_tag;
+pub mod nbt_fields;
 pub mod vehicle;
 pub mod targeting;
 pub mod touch;

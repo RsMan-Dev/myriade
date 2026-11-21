@@ -24,7 +24,7 @@ pub struct Primed {
 pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -> Entity {
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
     let e = w
-        .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), Moving))
+        .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), Moving, crate::species::saved("minecraft:tnt").then_some(crate::nbt::Saved)))
         .id();
     let fuse_at = now_of(w, e) + fuse.max(0) as u64;
     w.entity_mut(e).insert(Primed { fuse_at, power });

@@ -115,6 +115,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &endermite::DEF, &ender_dragon::DEF, &end_crystal::DEF, &dragon_fireball::DEF,
     &enderman::DEF,
     &fishing_bobber::DEF,
+    &item::DEF, &experience_orb::DEF, &trident::DEF, &firework_rocket::DEF, &area_effect_cloud::DEF, &evoker_fangs::DEF, &ominous_item_spawner::DEF,
     &silverfish::DEF,
     &piglin_brute::DEF,
     &panda::DEF,
@@ -578,6 +579,10 @@ pub fn build() -> Result<Registry, Error> {
 pub fn registry() -> &'static Registry {
     REGISTRY.get_or_init(|| build().unwrap_or_else(|e| panic!("species registry: {e}")))
 }
+/// Whether the species `name` is saved with its world (`Def.saved`): what a creation reads to pose `nbt::Saved` in its insert.
+pub fn saved(name: &str) -> bool {
+    registry().by_name(name).is_ok_and(|s| s.saved)
+}
 /// The configuration of a species by its type name; an unknown name is an error, not a default.
 pub fn config(name: &str) -> Config {
     registry().by_name(name).unwrap_or_else(|e| panic!("{e}")).config
@@ -869,6 +874,13 @@ pub mod falling_block;
 pub mod egg;
 pub mod ender_pearl;
 pub mod fishing_bobber;
+pub mod item;
+pub mod experience_orb;
+pub mod trident;
+pub mod firework_rocket;
+pub mod area_effect_cloud;
+pub mod evoker_fangs;
+pub mod ominous_item_spawner;
 pub mod experience_bottle;
 pub mod wind_charge;
 pub mod piglin;
