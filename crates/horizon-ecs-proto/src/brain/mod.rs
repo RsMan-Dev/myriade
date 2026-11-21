@@ -487,6 +487,13 @@ pub fn start(w: &mut World, e: Entity) {
     arm(w, e);
     wake(w, e);
 }
+/// `Brain.setActivity` by name: the activity holds until `update_activity` picks the next one. Costs nothing unless called.
+pub fn set_activity(w: &mut World, e: Entity, name: &str) {
+    let Some(mut b) = w.get_mut::<Brain>(e) else { return };
+    if let Some(a) = b.plan.acts.iter().position(|a| a.name == name) {
+        b.activity = a as u8;
+    }
+}
 /// Starts the instances of behaviour `b` again on `e` (the host changed what they read) and wakes the brain.
 pub fn restart(w: &mut World, e: Entity, b: &'static Behaviour) {
     let Some(plan) = w.get::<Brain>(e).map(|x| x.plan) else { return };

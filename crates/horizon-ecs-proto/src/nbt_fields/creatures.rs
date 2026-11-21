@@ -13,6 +13,7 @@ use crate::cow::{now_of, GrowAt};
 use crate::explosion::{Charged, Fuse};
 use crate::nbt::{accept, owner, Field};
 use crate::size::Size;
+use crate::species::goat::Screaming;
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::borrow::Cow;
@@ -28,6 +29,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Charged>) },
     Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Invulnerable>) },
+    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Screaming>) },
     Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<LlamaStrength>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Attached>) },
@@ -117,6 +119,23 @@ fn write_invul(w: &World, e: Entity, c: &mut Compound) {
 fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     w.entity_mut(e).insert(Invulnerable(*v));
+    true
+}
+
+/// `Goat.addAdditionalSaveData`: `IsScreamingGoat` is written as a byte only when the marker is there (`false` is the default).
+fn write_screaming(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Screaming>(e).is_some() {
+        c.insert("IsScreamingGoat".into(), Tag::Byte(1));
+    }
+}
+
+fn read_screaming(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Screaming);
+    } else {
+        w.entity_mut(e).remove::<Screaming>();
+    }
     true
 }
 

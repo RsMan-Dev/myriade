@@ -1,6 +1,6 @@
 //! `FollowTemptation` (`AnimalBrain` `B::FollowTemptation`, the tadpole's idle activity, priority 1; `animal_brain.rs:1688-1730`,
 //! `:1841-1846`): while a player tempts the entity it looks at him and walks to him, unless it is within `close` blocks. When it
-//! stops, the temptation cooldown starts (100 ticks, counted down by `count_down`). The start conditions (the temptation is
+//! stops, the temptation cooldown starts (100 ticks: the memory expires by its deadline). The start conditions (the temptation is
 //! present, no cooldown, no breed target, not panicking) are the entry's `needs`; its duration (60) is the entry's.
 use crate::behaviours::Cap;
 use crate::brain::*;

@@ -12,6 +12,8 @@ pub struct Params {
     /// Bits that must be clear to start (sleeping, pouncing, crouching) and the bit set while sitting.
     pub blocked: u8,
     pub sit: u8,
+    /// `Fox.alertable`: true when a creature or a player near refuses the lookout (the species' own check).
+    pub alarm: Option<fn(&World, Entity) -> bool>,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -54,15 +56,16 @@ fn tick(w: &mut World) {
 
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(g) = w.get::<Lookout>(e).copied() else { return false };
+    let alarmed = g.p.alarm.is_some_and(|f| f(w, e));
     if g.slot != inst.slot
         || w.get::<LastHurtBy>(e).is_some()
         || w.get::<crate::targeting::Target>(e).is_some()
         || pose::has(w, e, g.p.blocked)
         || w.get::<Nav>(e).is_some_and(|n| n.path.is_some())
+        || alarmed
     {
         return false;
     }
-    // DOUBT: vanilla also refuses while `alertable` (a player close to a sleeper); that check lives in `fox_sleep` and is not shared yet.
     with_rng(w, e, |r| r.next_f64()) < f64::from(g.p.chance)
 }
 

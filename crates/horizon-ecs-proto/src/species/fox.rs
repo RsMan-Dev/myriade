@@ -67,7 +67,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 11, &stroll::Params::DEFAULT),
         Entry::new(&fox_search_for_items::MODULE, 11, &fox_search_for_items::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 24.0, ..look_at_player::Params::DEFAULT }).when(&LOOK_FREE),
-        Entry::new(&lookout::MODULE, 13, &lookout::Params { chance: 0.02, blocked: SLEEPING | POUNCING | CROUCHING, sit: SITTING }),
+        Entry::new(&lookout::MODULE, 13, &lookout::Params { chance: 0.02, blocked: SLEEPING | POUNCING | CROUCHING, sit: SITTING, alarm: Some(fox_sleep::alarmed) }),
         Entry::new(&fox_pick_up_loot::MODULE, 0, &fox_pick_up_loot::Params { foods: FOOD, ..fox_pick_up_loot::Params::DEFAULT }),
     ],
     changes: &[],

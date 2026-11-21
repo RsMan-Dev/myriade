@@ -1,11 +1,14 @@
-//! `CopperGolem` and `CopperGolemAi` WITHOUT the transport between containers (a module to come): two sensors, the core and idle
-//! activities, and the generic behaviours. The transport's cooldown starts as the constructor sets it and is a memory that expires (no countdown); the
-//! stroll waits for it (as the `Mob` does), so a golem walks while it lasts.
+//! `CopperGolem` and `CopperGolemAi`: two sensors, the core and idle activities, the door (`interact_with_door`, core 3), the transport between
+//! chests (`transport_items`, idle 0) and the generic behaviours. The transport's cooldown is a memory that expires by its deadline (the
+//! constructor's value, then 140 after a trip that finds no chest); the stroll waits for it (as the `Mob` does), so a golem walks while it lasts.
+//! Left out: the countdown of the gaze (the `Mob` never sets it).
 use super::Def;
 use crate::behaviours::Cap;
-use crate::brain::behaviours::{do_nothing, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll};
+use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, transport_items};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
+
+const DOOR: interact_with_door::Params = interact_with_door::Params { cooldown: 0, ..interact_with_door::Params::DEFAULT };
 
 pub static DEF: Def = Def {
     name: "minecraft:copper_golem",
@@ -20,6 +23,8 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
+            BEntry { behaviour: &transport_items::BEHAVIOUR, activity: "idle", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &interact_with_door::BEHAVIOUR, activity: "core", priority: 3, params: &DOOR, needs: &[], duration: None, kids: &[] },
             BEntry {
                 behaviour: &run_one::BEHAVIOUR,
                 activity: "idle",

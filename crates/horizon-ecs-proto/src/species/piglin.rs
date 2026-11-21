@@ -2,7 +2,7 @@
 //! The behaviours are generic; this file only holds the piglin's names and numbers. Not ported (see the notes): the baby's hoglin ride.
 use crate::behaviours::{
     admire, admire_seen, ambient_sound, back_up_if_too_close, celebrate, convert_timer, flee_repellent, float, go_to_wanted, hunt_prey, hurt_by, look_at_held,
-    interact_with_door, look_at_player, melee, nearest_target, random_look, ranged_bow, spear_use, stroll, walk_away, Entry,
+    interact_with_door, look_at_player, melee, nearest_target, random_look, ranged_crossbow, spear_use, stroll, walk_away, Entry,
 };
 use crate::species::{predicates::Cond, Def};
 
@@ -30,8 +30,8 @@ pub static DEF: Def = Def {
             species: &[],
             ..flee_repellent::Params::DEFAULT
         }),
-        // `crossbow_goal(1.0, 8.0)`: the bow module with a charge of 25 ticks and the fixed power of the crossbow (1.6).
-        Entry::new(&ranged_bow::MODULE, 3, &ranged_bow::Params { speed: 1.0, radius: 8.0, charge: 25, fixed_power: Some(1.6), crossbow: true, ..ranged_bow::Params::DEFAULT }).when(&HOLDS_CROSSBOW),
+        // `crossbow_goal(1.0, 8.0)` (`illager::crossbow_goal`): the crossbow's goal, charge 25 ticks, the difficulty of the illagers.
+        Entry::new(&ranged_crossbow::MODULE, 3, &ranged_crossbow::Params { speed: 1.0, radius: 8.0, charge: 25, ..ranged_crossbow::Params::PILLAGER }).when(&HOLDS_CROSSBOW),
         // `BackUpIfTooClose.create(5, 0.75)` behind `hasCrossbow` (`PiglinAi.initFightActivity`): backs off from a target too close.
         Entry::new(&back_up_if_too_close::MODULE, 3, &back_up_if_too_close::Params::DEFAULT).when(&HOLDS_CROSSBOW),
         // `g.add(3, PiglinSpear)` (`mobs/piglin.rs:1346`): the spear in hand takes the fight, the melee keeps the rest.

@@ -2,8 +2,8 @@
 //! modules hold the mechanics only; their parameters have no default. Priorities: the lower number runs first (the brain's order).
 use super::{templates::monster, Def};
 use crate::behaviours::{
-    darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom,
-    suspect_anger, vibration_listen, Cap, Entry,
+    darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
+    vibration_listen, warden_drop_invalid_target, warden_look_target, Cap, Entry,
 };
 
 pub static DEF: Def = Def {
@@ -51,7 +51,14 @@ pub static DEF: Def = Def {
         Entry::new(&go_to_disturbance::MODULE, 6, &go_to_disturbance::Params { speed: 0.7 }),
         Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff", radius: 24.0 }),
         Entry::new(&darkness_pulse::MODULE, 8, &darkness_pulse::Params { radius: 20.0, interval: 120 }),
+        // The idle activity's RunOne: the pause (weight 1 of 3) before the stroll (weight 2 of 3, speed 0.5 as `RandomStroll.stroll(0.5)`).
+        // DOUBT: the wait between two asks (120, the stroll's own) is not read in the `Mob`.
+        Entry::new(&timed_idle::MODULE, 10, &timed_idle::Params { min: 30, max: 60, interval: 120, chance: 1.0 / 3.0 }),
+        Entry::new(&stroll::MODULE, 11, &stroll::Params { speed: 0.5, ..stroll::Params::DEFAULT }),
         Entry::new(&float::MODULE, 9, &float::Params::DEFAULT),
+        // lot V4 : `SetWardenLookTarget` (core 1), `StopAttackingIfTargetInvalid` (Fight 11, `set_dig_cooldown` 1200)
+        Entry::new(&warden_look_target::MODULE, 1, &()),
+        Entry::new(&warden_drop_invalid_target::MODULE, 11, &warden_drop_invalid_target::Params { dig_cooldown: 1200 }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     ..Def::EMPTY
