@@ -42,7 +42,6 @@ pub fn main_with(
             std::process::exit(1);
         }
     };
-    mod_render::render::install();
     horizon_client::entry::start(
         native,
         |native, launch| {
