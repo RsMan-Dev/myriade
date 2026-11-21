@@ -2,10 +2,9 @@
 //! off hand make the animal walk to it for `duration` ticks; it gives up when the item is too far, after `tired` ticks of trying
 //! (then no goal for `walk_off` ticks), or when the off hand is filled. Woken by `arm` and by a dropped item (`item_dropped`).
 use super::*;
+use crate::rules::admire_seen::{self, Step, EYE, RANGE, SPEED};
 use crate::{cow::*, goals::*, item};
-use horizon_core::geometry::{Aabb, Vec3};
-
-const RANGE: f64 = 14.0; const EYE: f64 = 1.62; const SPEED: f64 = 1.0;
+use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -52,8 +51,7 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(SeenParams(p));
-    if p.disabled > 0 {
-        let until = now_of(w, e) + p.disabled as u64;
+    if let Some(until) = admire_seen::disabled_until(now_of(w, e), p.disabled) {
         w.entity_mut(e).insert(WalkOff { until });
     }
 }
@@ -74,21 +72,20 @@ fn after_change(w: &mut World, e: Entity, c: Change) {
         return;
     }
     let now = now_of(w, e);
-    let wait = w.get::<WalkOff>(e).map_or(1, |x| x.until.saturating_sub(now).max(1));
-    arm_module(w, e, &MODULE, wait as i32);
+    let wait = admire_seen::wait_after_end(now, w.get::<WalkOff>(e).map(|x| x.until));
+    arm_module(w, e, &MODULE, wait);
 }
 /// The nearest wanted item in reach and in sight, with its squared distance.
 fn nearest_wanted(w: &World, e: Entity, p: &Params) -> Option<(Entity, f64)> {
     let at = w.get::<Pos>(e)?.0;
-    let area = Aabb::new(Vec3::new(at.x - RANGE, at.y - RANGE, at.z - RANGE), Vec3::new(at.x + RANGE, at.y + RANGE, at.z + RANGE));
-    let eye = Vec3::new(at.x, at.y + EYE, at.z);
-    item::items_in(w, area)
+    let eye = admire_seen::eye_of(at);
+    item::items_in(w, admire_seen::search_area(at))
         .into_iter()
         .filter(|&it| item::pickable(w, it) && item::kind_of(w, it).is_some_and(|k| p.items.contains(&k)))
         .filter_map(|it| {
             let q = w.get::<Pos>(it)?.0;
             let d = q.distance_squared(at);
-            (d <= RANGE * RANGE && crate::dragon::fight::line_of_sight(w, eye, q)).then_some((it, d))
+            (admire_seen::in_reach(d) && crate::dragon::fight::line_of_sight(w, eye, q)).then_some((it, d))
         })
         .min_by(|a, b| a.1.total_cmp(&b.1))
 }
@@ -96,11 +93,11 @@ fn nearest_wanted(w: &World, e: Entity, p: &Params) -> Option<(Entity, f64)> {
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let p = w.get::<SeenParams>(e).unwrap().0;
     let now = now_of(w, e);
-    equipped(w, e, Slot::Off) == 0 && w.get::<WalkOff>(e).is_none_or(|x| now >= x.until) && nearest_wanted(w, e, p).is_some()
+    admire_seen::can_start(equipped(w, e, Slot::Off) == 0, now, w.get::<WalkOff>(e).map(|x| x.until)) && nearest_wanted(w, e, p).is_some()
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let p = w.get::<SeenParams>(e).unwrap().0;
-    let until = now_of(w, e) + p.duration as u64;
+    let until = admire_seen::until(now_of(w, e), p.duration);
     w.entity_mut(e).insert(SeenAdmire { until, reach: None });
     if let Some((it, _)) = nearest_wanted(w, e, p) {
         let at = w.get::<Pos>(it).unwrap().0;
@@ -116,7 +113,7 @@ fn tick(w: &mut World) {
     let dropped: Vec<Vec3> = w.resource::<Events>().item_dropped.iter().filter_map(|i| w.get::<Pos>(i).map(|p| p.0)).collect();
     if !dropped.is_empty() {
         let mut q = w.query_filtered::<(Entity, &Pos), (With<SeenParams>, Without<SeenAdmire>)>();
-        let near: Vec<Entity> = q.iter(w).filter(|(_, p)| dropped.iter().any(|s| s.distance_squared(p.0) <= RANGE * RANGE)).map(|(e, _)| e).collect();
+        let near: Vec<Entity> = q.iter(w).filter(|(_, p)| dropped.iter().any(|s| admire_seen::in_reach(s.distance_squared(p.0)))).map(|(e, _)| e).collect();
         for e in near {
             arm_module(w, e, &MODULE, 1);
         }
@@ -132,20 +129,23 @@ fn step(w: &mut World, e: Entity) {
     let s = *w.get::<SeenAdmire>(e).unwrap();
     let p = w.get::<SeenParams>(e).unwrap().0;
     let now = now_of(w, e);
-    let Some((it, _)) = nearest_wanted(w, e, p).filter(|&(_, d)| d < p.too_far_sqr) else { return end(w, e, &MODULE) };
+    let near = nearest_wanted(w, e, p);
     let reach = s.reach.unwrap_or(0);
-    if now >= s.until {
-        return end(w, e, &MODULE);
-    }
-    if reach > p.tired as u32 {
-        w.entity_mut(e).insert(WalkOff { until: now + p.walk_off as u64 });
-        return end(w, e, &MODULE);
-    }
-    if let Some(mut r) = w.get_mut::<SeenAdmire>(e) {
-        r.reach = Some(reach + 1);
-    }
-    if w.get::<Nav>(e).and_then(|n| n.path.as_ref()).is_none_or(|path| path.is_done()) {
-        let at = w.get::<Pos>(it).unwrap().0;
-        go_to_at(w, e, [at.x, at.y, at.z], SPEED, 1);
+    match admire_seen::step(now, s.until, reach, p.tired, p.walk_off, near.map(|(_, d)| d), p.too_far_sqr) {
+        Step::End => end(w, e, &MODULE),
+        Step::GiveUp { walk_off_until } => {
+            w.entity_mut(e).insert(WalkOff { until: walk_off_until });
+            end(w, e, &MODULE)
+        }
+        Step::Go => {
+            let Some((it, _)) = near else { return };
+            if let Some(mut r) = w.get_mut::<SeenAdmire>(e) {
+                r.reach = Some(reach + 1);
+            }
+            if w.get::<Nav>(e).and_then(|n| n.path.as_ref()).is_none_or(|path| path.is_done()) {
+                let at = w.get::<Pos>(it).unwrap().0;
+                go_to_at(w, e, [at.x, at.y, at.z], SPEED, 1);
+            }
+        }
     }
 }

@@ -9,6 +9,7 @@ use crate::cow::*;
 use crate::effects::{self, Kind, PlayerEffects};
 use crate::goals::*;
 use crate::behaviours::move_towards_restriction::Restriction;
+use crate::rules::elder_curse::{in_curse_range, takes_curse, wait_to_curse};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -53,9 +54,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Curse>(e).unwrap().p;
     let now = w.resource::<Clock>().of(e) as i64;
-    let phase = (now + i64::from(e.index().index())).rem_euclid(p.period);
     // On the firing tick itself (the stop that follows the curse), the next one is a period away, not the next tick.
-    let wait = if phase == 0 { p.period } else { p.period - phase };
+    let wait = wait_to_curse(now, i64::from(e.index().index()), p.period);
     crate::goals::arm(w, e, inst.slot, wait as i32);
 }
 /// The curse: the players within range that the effect reaches (`MobEffectUtil`'s test), then the sound.
@@ -66,10 +66,8 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let mut hit = Vec::new();
     let ps = w.get_resource::<crate::hostile::PlayerState>();
     let alive = |id: u32| ps.is_none_or(|p| !p.creative(id) && !p.spectator(id) && p.health.get(id as usize).is_none_or(|h| *h > 0.0));
-    let r2 = c.p.range * c.p.range;
     w.resource::<Online>().for_near(at.x, at.z, c.p.range, |q| {
-        let d2 = (q.x - at.x).powi(2) + (q.y - at.y).powi(2) + (q.z - at.z).powi(2);
-        if alive(q.id) && d2 < r2 && takes(w, q.id, now, &c.p) {
+        if alive(q.id) && in_curse_range(q.x - at.x, q.y - at.y, q.z - at.z, c.p.range) && takes(w, q.id, now, &c.p) {
             hit.push(q.id);
         }
     });
@@ -89,6 +87,6 @@ fn takes(w: &World, id: u32, now: u64, p: &Params) -> bool {
     let left = w.get_resource::<PlayerEffects>().and_then(|r| r.0.get(&id)).and_then(|l| l.iter().find(|x| x.0 == Kind::MiningFatigue && x.2 > now)).copied();
     match left {
         None => true,
-        Some((_, amp, ends)) => amp < p.amp || ends - now <= p.refresh,
+        Some((_, amp, ends)) => takes_curse(amp, p.amp, ends - now, p.refresh),
     }
 }

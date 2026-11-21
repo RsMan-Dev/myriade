@@ -9,6 +9,7 @@ use super::swallow_hold::Held;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::bounce_drag::{bounce_vy, bounces, drag_factor};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params;
@@ -55,11 +56,11 @@ fn physics(
 ) {
     for (e, held, contact, mut vel, airborne) in &mut q {
         let a = held.archetype;
-        let factor = if contact.on_ground { a.friction_modifier } else { a.air_drag_modifier };
-        vel.0.x *= f64::from(factor);
-        vel.0.z *= f64::from(factor);
-        if contact.on_ground && airborne.is_some() && vel.0.y < 0.0 {
-            vel.0.y = -vel.0.y * f64::from(a.bounciness);
+        let factor = drag_factor(contact.on_ground, a.friction_modifier, a.air_drag_modifier);
+        vel.0.x *= factor;
+        vel.0.z *= factor;
+        if bounces(contact.on_ground, airborne.is_some(), vel.0.y) {
+            vel.0.y = bounce_vy(vel.0.y, a.bounciness);
         }
         if contact.on_ground {
             commands.entity(e).remove::<WasAirborne>();

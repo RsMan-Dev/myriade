@@ -4,6 +4,7 @@
 //! (`Sensor.wasEntityAttackableLastNTicks(100)`) needs a sensor that the frame does not have: not ported (DOUTE).
 use crate::behaviours::Cap;
 use crate::brain::*;
+use crate::rules::stop_attacking_if_target_invalid::{is_stale, is_tired};
 use crate::targeting::{self, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -39,14 +40,14 @@ fn invalid(w: &mut World, e: Entity, p: &Params) -> bool {
         _ => return false,
     };
     let alive = targeting::info(w, target).is_some();
-    let tired = int(w, e, &CANT_REACH_WALK_TARGET_SINCE).is_some_and(|since| now_of(w, e) as i64 - since > p.tired_ticks);
+    let tired = int(w, e, &CANT_REACH_WALK_TARGET_SINCE).is_some_and(|since| is_tired(now_of(w, e) as i64, since, p.tired_ticks));
     let still = !p.still_visible || matches!(get(w, e, &NEAREST_VISIBLE_TARGETABLE_PLAYERS), Some(MemValue::Whos(l)) if l.contains(&target));
     // A new target counts as attackable from its first look here (the `Mob`'s counter starts at 100); the sensor's scans keep it up.
     let stale = match p.attackable {
         Some(window) => {
             let now = now_of(w, e);
             match w.get::<crate::brain::sensors::attackable::LastAttackable>(e) {
-                Some(l) => now.saturating_sub(l.0) as i64 > window,
+                Some(l) => is_stale(now, l.0, window),
                 None => {
                     w.entity_mut(e).insert(crate::brain::sensors::attackable::LastAttackable(now));
                     false

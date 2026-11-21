@@ -5,8 +5,9 @@
 use crate::cow::*;
 use crate::goals::*;
 use crate::item::{self, Item, ItemIndex};
+use crate::rules::touch::reach_box;
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Aabb;
 
 /// The box of this entity, grown by `reach` (x, y, z), is where the entities that touch it are looked for.
 #[derive(Component, Clone, Copy, Debug)]
@@ -48,7 +49,7 @@ pub(crate) fn touch_events(
         let (Some(b), Ok(p)) = (box_of(e, &bounds, &poses), poses.get(e)) else { continue };
         if let Ok(t) = touchers.get(e) {
             // (a) the mover is a toucher: the neighbours whose box meets its grown box.
-            let area = b.inflate(Vec3::new(t.reach[0], t.reach[1], t.reach[2]));
+            let area = reach_box(b, t.reach);
             index.for_radius(p.0.x, p.0.z, t.reach[0] + 2.0, |o| {
                 if o != e && bounds.get(o).is_ok_and(|ob| ob.0.intersects(area)) {
                     push_once(&mut creatures, (e, o));
@@ -65,7 +66,7 @@ pub(crate) fn touch_events(
             index.for_radius(p.0.x, p.0.z, crate::goals::SCAN, |o| {
                 let Ok(t) = touchers.get(o) else { return };
                 let Some(ob) = bounds.get(o).ok().map(|x| x.0) else { return };
-                let area = ob.inflate(Vec3::new(t.reach[0], t.reach[1], t.reach[2]));
+                let area = reach_box(ob, t.reach);
                 if area.intersects(b) {
                     push_once(if is_object { &mut objects } else { &mut creatures }, (o, e));
                 }

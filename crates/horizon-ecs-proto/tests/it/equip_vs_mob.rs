@@ -4,7 +4,7 @@ use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_ecs_proto::{
     equipment_drop::roll_piece,
     equipment_spawn::{populate, Spawn, ZOMBIE, SKELETON},
-    equipment_wear::{hurt, wear_amount},
+    rules::equipment_wear::{hurt, wear_amount},
     goals::Slot,
 };
 

@@ -4,6 +4,7 @@
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::GrowAt;
+use crate::rules::schedule::time_of_day;
 
 /// The time of day, set by the host when it changes (`/time`, sleep) and carried by the world's clock in between.
 #[derive(Resource, Default, Clone, Copy)]
@@ -34,7 +35,7 @@ impl Times {
     }
     /// The time of day now (0..24000).
     pub fn now(w: &World) -> i64 {
-        Self::absolute(w).rem_euclid(24000)
+        time_of_day(Self::absolute(w))
     }
 }
 

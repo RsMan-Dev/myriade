@@ -3,6 +3,7 @@
 //! the walk to the spot are `stroll`'s (the same state), only the pick differs. A school (`FollowFlockLeader`) is not ported.
 use super::*;
 use crate::{cow::*, goals::*};
+use crate::rules::fly_stroll::view_vector;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -64,7 +65,6 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     use crate::spots::{spotter, Pick};
-    use horizon_core::geometry::trig;
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let level = *w.resource::<Level>();
     let (Some(mut s), Some(rng), Some(nav)) = (w.get::<Stroll>(e).copied(), w.get::<Rng>(e).map(|r| r.0), w.get::<NavParams>(e).copied()) else { return false };
@@ -77,8 +77,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     } else {
         // The view of the head (`Mob.view_vector`): the heading and the pitch.
         let (yaw, pitch) = (w.get::<Yaw>(e).map_or(0.0, |y| y.0), w.get::<crate::goals::Head>(e).map_or(0.0, |h| h.pitch));
-        let (yr, pr) = (-yaw * trig::DEG_TO_RAD, pitch * trig::DEG_TO_RAD);
-        let view = (f64::from(trig::sin(f64::from(yr)) * trig::cos(f64::from(pr))), f64::from(trig::cos(f64::from(yr)) * trig::cos(f64::from(pr))));
+        let view = view_vector(yaw, pitch);
         let (xd, zd) = w.get::<FlyStrollGoal>(e).and_then(|g| g.toward).and_then(|f| f(w, e)).unwrap_or(view);
         let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut r);
         sp.pick(Pick::Flying { xd, zd })

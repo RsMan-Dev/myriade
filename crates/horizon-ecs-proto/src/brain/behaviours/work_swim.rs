@@ -4,6 +4,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::FluidState;
 use crate::goals::{with_rng, Jump};
+use crate::rules::work_swim as rules;
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:villager_swim", requires: &[Cap::Body], can_start, tick, ..Behaviour::DEFAULT };
 
@@ -20,7 +21,7 @@ fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if !in_water(w, e) {
         return false;
     }
-    let jump = with_rng(w, e, |r| r.next_f64()) < 0.8;
+    let jump = rules::jumps(with_rng(w, e, |r| r.next_f64()));
     if let Some(mut j) = w.get_mut::<Jump>(e) {
         j.0 = jump;
     }

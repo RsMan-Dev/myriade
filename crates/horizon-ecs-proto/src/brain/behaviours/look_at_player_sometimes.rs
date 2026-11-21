@@ -4,6 +4,7 @@
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::d2;
+use crate::rules::look_at_player_sometimes::wait_ticks;
 use crate::targeting::Who;
 
 #[derive(Component, Clone, Copy)]
@@ -48,7 +49,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     match t.due {
         None => {
             // `Ticker.tickDownAndCheck`: the first tick draws the count, the next ones count it down; here the end is a deadline.
-            let n = if t.left == 0 { p.min + with_rng(w, e, |r| r.next_int(p.spread)) - 1 } else { t.left };
+            let n = wait_ticks(t.left, p.min, || with_rng(w, e, |r| r.next_int(p.spread)));
             let due = now + n.max(1) as u64;
             *w.get_mut::<Ticker>(e).unwrap() = Ticker { left: 0, due: Some(due) };
             arm_at(w, e, due, Due::BrainWake);

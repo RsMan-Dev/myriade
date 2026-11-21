@@ -8,6 +8,7 @@ use crate::goals::{sparse_any, Events, Online};
 use crate::hostile::PlayerState;
 use crate::item::{Item, ItemIndex};
 use crate::projectile::entity_hit;
+use crate::rules::fishing_hook::{bite_impulse, buoyancy_force, lure_tease, lure_wait, path_margin, pull_toward, reel_damage};
 use crate::targeting::player_box;
 use crate::type_tags::TagId;
 use bevy_ecs::prelude::*;
@@ -141,18 +142,6 @@ fn cell(p: Vec3) -> [i32; 3] {
 fn sync_random(e: Entity, time: u64) -> LegacyRandom {
     LegacyRandom::new(e.to_bits() as i64 ^ time as i64)
 }
-/// `FishingHook.onSyncedDataUpdated` on the bite: the plunge `-0.4 * nextFloat(0.6, 1.0)`, in float as vanilla.
-fn bite_impulse(r: &mut impl RandomSource) -> f64 {
-    f64::from(-0.4_f32 * (0.6_f32 + r.next_float() * (1.0_f32 - 0.6_f32)))
-}
-/// The lure's wait: 100 to 600 ticks less the rod's Lure (`lureWait` with no medium).
-fn lure_wait(rng: &mut LegacyRandom, lure: i32) -> i32 {
-    100 + rng.next_int_bound(501).unwrap_or(0) - lure
-}
-/// The margin of a target's box for the path (`ProjectileUtil.computeMargin`): 0 to 0.3 over the first eight ticks.
-fn margin(tick_count: u8) -> f64 {
-    f64::from(i32::from(tick_count).saturating_sub(2).clamp(0, 6)) / 20.0
-}
 /// The surface of a block cell: the fluid's height (1 over water, the level over 9 otherwise), or none when it holds no water.
 fn water_height(w: &World, b: [i32; 3]) -> Option<f32> {
     let mw = w.resource::<Level>().mw.0;
@@ -268,15 +257,7 @@ fn catching_fish(w: &mut World, e: Entity, h: &mut Hook, pos: Vec3, vel: &mut Ve
         }
     } else if h.time_until_lured > 0 {
         h.time_until_lured -= speed;
-        let mut tease = 0.15_f32;
-        let t = h.time_until_lured;
-        if t < 20 {
-            tease += (20 - t) as f32 * 0.05;
-        } else if t < 40 {
-            tease += (40 - t) as f32 * 0.02;
-        } else if t < 60 {
-            tease += (60 - t) as f32 * 0.01;
-        }
+        let tease = lure_tease(h.time_until_lured);
         if h.rng.next_float() < tease {
             let angle = (h.rng.next_float() * 360.0) * (std::f64::consts::PI / 180.0) as f32;
             let distance = h.rng.next_float() * 35.0 + 25.0;
@@ -418,7 +399,7 @@ fn step(w: &mut World, e: Entity) {
     if h.phase == Phase::Flying {
         let block = clip_block_hit(mw.world, mw.facts, mw.collision, pos, vel);
         let end = block.map_or(pos.add_vector(vel), |hit| hit.0);
-        match first_hit(w, h.owner, pos, end, margin(h.tick_count)) {
+        match first_hit(w, h.owner, pos, end, path_margin(h.tick_count)) {
             Some((_, Target::Entity(c))) if h.deflect.is_some_and(|tag| crate::type_tags::has(w, tag, c)) => {
                 // `hit_entity(deflects)`: the velocity turns back at half, the sound plays once per deflecting entity.
                 if h.last_deflected != Some(c.to_bits()) {
@@ -437,10 +418,7 @@ fn step(w: &mut World, e: Entity) {
     }
     if h.phase == Phase::Bobbing {
         // The floating force: the hook is pushed up to the surface (`surface`), the water fights its fall.
-        let mut force = pos.y + vel.y - f64::from(b[1]) - f64::from(liquid);
-        if force.abs() < 0.01 {
-            force += force.signum() * 0.1;
-        }
+        let force = buoyancy_force(pos.y, vel.y, b[1], liquid);
         let r = f64::from(h.rng.next_float());
         vel = Vec3::new(vel.x * 0.9, vel.y - force * r * 0.2, vel.z * 0.9);
         if h.nibble <= 0 && h.time_until_hooked <= 0 {
@@ -484,21 +462,21 @@ pub fn reel(w: &mut World, owner: u32) {
     for e in hooks {
         let Some(mut h) = take(w, e) else { continue };
         let at = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
-        let mut damage = if h.on_ground { 2 } else { 0 };
+        let hooked = match h.phase {
+            Phase::Hooked(Target::Entity(c)) => Some(w.get::<Item>(c).is_some()),
+            Phase::Hooked(Target::Player(_)) => Some(false),
+            _ => None,
+        };
+        let damage = reel_damage(hooked, h.nibble > 0, h.on_ground);
         match h.phase {
             Phase::Hooked(target) => {
                 let pull = pull_offset(w, owner, at);
-                damage = match target {
-                    Target::Entity(c) if w.get::<Item>(c).is_some() => 3,
-                    _ => 5,
-                };
                 match target {
                     Target::Entity(c) => w.resource_mut::<Events>().host.pull_entity(c, pull),
                     Target::Player(id) => w.resource_mut::<Events>().host.push_player(id, pull),
                 }
             }
             _ if h.nibble > 0 => {
-                damage = if h.on_ground { 2 } else { 1 };
                 let xp = h.rng.next_int_bound(6).unwrap_or(0) as u32 + 1;
                 w.resource_mut::<Events>().host.fishing_catch(owner, [at.x, at.y, at.z], h.on_ground, h.open_water, h.luck, xp);
             }
@@ -511,6 +489,5 @@ pub fn reel(w: &mut World, owner: u32) {
 /// The pull of a hooked target towards its owner: the offset from the hook to the owner times 0.1 (`pullEntity`).
 fn pull_offset(w: &World, owner: u32, at: Vec3) -> [f64; 3] {
     let Some(p) = w.resource::<Online>().get(owner) else { return [0.0; 3] };
-    let k = PARAMS.pull;
-    [(p.x - at.x) * k, (p.y - at.y) * k, (p.z - at.z) * k]
+    pull_toward([p.x, p.y, p.z], at, PARAMS.pull)
 }

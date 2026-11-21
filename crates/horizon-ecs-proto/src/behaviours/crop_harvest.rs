@@ -5,6 +5,7 @@ use super::block_reach::{block_at, look_block, pick_in_reach, walk_to, Pred};
 use crate::behaviours::Cap;
 use crate::blocks;
 use crate::brain::*;
+use crate::rules::bonemeal::near_crop;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
@@ -46,7 +47,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return false;
     }
     let Some(here) = block_at(w, e) else { return false };
-    if (0..3).all(|i| (here[i] - q[i]).abs() <= 1) {
+    if near_crop(here, q) {
         if let Some(id) = (p.replant)(mw, q) {
             blocks::set_state_id(w, q, id);
         }

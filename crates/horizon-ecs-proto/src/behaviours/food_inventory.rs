@@ -3,11 +3,10 @@
 use crate::behaviours::food_stock::{self as stock, Food};
 use crate::brain::*;
 use bevy_ecs::prelude::*;
+use crate::rules::food_inventory as rule;
 use horizon_client_lib::{items::Items, mobs::villager::food_points};
 
 pub const SLOTS: usize = 8;
-/// Taille d'une pile (`Item.getMaxStackSize`) : la donnée des objets est lue ailleurs, ici 64 (le blé, les graines, le pain).
-const STACK: u8 = 64;
 
 #[derive(Component, Clone, Debug, Default)]
 #[component(storage = "SparseSet")]
@@ -22,12 +21,12 @@ pub fn points(items: &Items, s: &Stock) -> i32 {
 pub fn insert(w: &mut World, e: Entity, item: &str, mut count: u8) -> u8 {
     let mut s = w.get::<Stock>(e).cloned().unwrap_or_default();
     for (_, n) in s.0.iter_mut().filter(|(name, _)| name == item) {
-        let fill = (STACK - *n).min(count);
+        let fill = rule::fill(*n, count);
         *n += fill;
         count -= fill;
     }
     while count > 0 && s.0.len() < SLOTS {
-        let put = count.min(STACK);
+        let put = rule::put(count);
         s.0.push((item.to_string(), put));
         count -= put;
     }

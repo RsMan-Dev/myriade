@@ -8,6 +8,7 @@ use crate::brain::sensors::secondary_job_site::SECONDARY_JOB_SITE;
 use crate::brain::*;
 use crate::cow::{now_of, Pos};
 use crate::goals::with_rng;
+use crate::rules::poi_strolls::{next_try, too_far};
 use crate::species::villager::JOB_SITE;
 use bevy_ecs::prelude::*;
 
@@ -34,13 +35,13 @@ fn to_poi(w: &mut World, e: Entity, _: &Ctx) -> bool {
     }
     let Some(p) = site(w, e) else { return false };
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    if centre_dist_sq(p, at) >= 100.0 {
+    if too_far(centre_dist_sq(p, at), 100.0) {
         return false;
     }
     let now = now_of(w, e);
     if now > w.get::<NextToPoi>(e).map_or(0, |n| n.0) {
         walk_to(w, e, p, 0.4, 1);
-        w.entity_mut(e).insert(NextToPoi(now + 80));
+        w.entity_mut(e).insert(NextToPoi(next_try(now, 80)));
     }
     true
 }
@@ -55,13 +56,13 @@ fn to_list(w: &mut World, e: Entity, _: &Ctx) -> bool {
     }
     let target = list[with_rng(w, e, |r| r.next_int(list.len() as i32)) as usize];
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    if centre_dist_sq(p, at) >= 36.0 {
+    if too_far(centre_dist_sq(p, at), 36.0) {
         return false;
     }
     let now = now_of(w, e);
     if now > w.get::<NextToPoiList>(e).map_or(0, |n| n.0) {
         walk_to(w, e, target, 0.5, 1);
-        w.entity_mut(e).insert(NextToPoiList(now + 100));
+        w.entity_mut(e).insert(NextToPoiList(next_try(now, 100)));
     }
     true
 }

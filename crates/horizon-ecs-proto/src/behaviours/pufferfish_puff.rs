@@ -5,6 +5,7 @@
 use super::*;
 use crate::{cow::*, goals::*, hostile::PlayerState};
 use horizon_core::geometry::Vec3;
+use crate::rules::pufferfish_puff::{puff_scale, puffed_body};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -62,12 +63,8 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
 /// `Pufferfish.getScale`: 0.5, 0.7, 1.0 by puff state, over the box and the eye height (`refreshDimensions`: the box keeps its feet and its axis).
 fn rescale(w: &mut World, e: Entity) {
     let p = *w.get::<Puff>(e).unwrap();
-    let s = match p.size {
-        0 => 0.5_f32,
-        1 => 0.7,
-        _ => 1.0,
-    };
-    let (bw, bh, eye) = (p.base.0 * s, p.base.1 * s, p.base.2 * f64::from(s));
+    let s = puff_scale(p.size);
+    let (bw, bh, eye) = puffed_body(p.base, s);
     let mut b = w.get_mut::<Body>(e).unwrap();
     b.width = bw;
     b.height = bh;

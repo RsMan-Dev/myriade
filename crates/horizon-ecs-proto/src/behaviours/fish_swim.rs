@@ -2,6 +2,7 @@
 //! `DefaultRandomPos(10, 7)` drawn again, up to 10 times, until the block of the spot can be swum through. The wait, the arming and
 //! the walk to the spot are `stroll`'s (the same state), only the pick differs. The school is `follow_flock_leader`'s, configured beside it.
 use super::*;
+use crate::rules::fish_swim::{fired_idle, keeps_spot};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -57,7 +58,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     let Some(mut s) = w.get_mut::<Stroll>(e) else { return false };
     s.scheduled = false;
-    !(s.walking || now >= active)
+    fired_idle(s.walking, now, active)
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     use crate::spots::{spotter, Pick};
@@ -78,7 +79,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         let mut count = 0;
         while let Some(q) = p {
             let state = mw.world.block(q[0].floor() as i32, q[1].floor() as i32, q[2].floor() as i32);
-            if mw.data.pathfindable(state, PathComputationType::Water) || count >= 10 {
+            if keeps_spot(mw.data.pathfindable(state, PathComputationType::Water), count) {
                 break;
             }
             count += 1;

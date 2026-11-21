@@ -4,6 +4,8 @@
 use super::turtle_state as ts;
 use super::*;
 use crate::move_to_block::MoveToBlock;
+use crate::rules::teleport_on::cell_of;
+use crate::rules::turtle_go_to_water::{reduced, search_wait};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::MobWorld;
 
@@ -86,20 +88,13 @@ pub fn wants_water(w: &World, e: Entity) -> bool {
 fn is_water(mw: &MobWorld, p: [i32; 3]) -> bool {
     mw.facts.get(mw.world.block(p[0], p[1], p[2])).name.as_ref() == "minecraft:water"
 }
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
-fn feet(w: &World, e: Entity) -> [i32; 3] {
-    let p = w.get::<Pos>(e).unwrap().0;
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
 /// `canUse`: the countdown is drawn, the search runs; a search that finds nothing arms the next one.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !wants_water(w, e) {
         return false;
     }
     let countdown = with_rng(w, e, |r| reduced(200 + r.next_int(200)));
-    let base = feet(w, e);
+    let base = cell_of(w.get::<Pos>(e).unwrap().0);
     let mut s = w.get::<Seek>(e).unwrap().clone();
     let found = {
         let mw = w.resource::<Level>().mw.0;
@@ -108,7 +103,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     s.countdown = countdown;
     *w.get_mut::<Seek>(e).unwrap() = s;
     if !found {
-        schedule(w, e, 2 * (countdown + 1));
+        schedule(w, e, search_wait(countdown));
     }
     found
 }
@@ -123,7 +118,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<GoingToWater>();
     let n = w.get::<Seek>(e).map_or(0, |s| s.countdown);
-    schedule(w, e, 2 * (n + 1));
+    schedule(w, e, search_wait(n));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((water_events, water_run).chain().in_set(slot));
@@ -144,7 +139,7 @@ fn water_events(ev: Res<Events>, running: Query<&Seek, With<GoingToWater>>, idle
 fn rearm(w: &mut World, e: Entity) {
     if wants_water(w, e) && !w.get::<Seek>(e).is_some_and(|s| s.armed) {
         let n = w.get::<Seek>(e).map_or(0, |s| s.countdown);
-        schedule(w, e, 2 * (n + 1));
+        schedule(w, e, search_wait(n));
     }
 }
 /// The walk, each tick of the goal: it ends in the water, on a lost block or after `give_up` ticks; the path is asked again

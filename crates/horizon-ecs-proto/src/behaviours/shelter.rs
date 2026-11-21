@@ -11,6 +11,7 @@ use crate::hostile::Daylight;
 use crate::poi::PoiRegistry;
 use crate::spots::{WalkValue, walk_target_value};
 use crate::targeting::Target;
+use crate::rules::shelter::{hide_offset, next_interval};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -85,10 +86,8 @@ fn hide_pos(w: &mut World, e: Entity) -> Option<[f64; 3]> {
     let mw = w.resource::<Level>().mw.0;
     let wv = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
     for _ in 0..10 {
-        let (dx, dy, dz) = with_rng(w, e, |r| {
-            (r.next_int(20) - 10, r.next_int(6) - 3, r.next_int(20) - 10)
-        });
-        let q = [b[0] + dx, b[1] + dy, b[2] + dz];
+        let d = with_rng(w, e, |r| hide_offset(&mut |n| r.next_int(n)));
+        let q = [b[0] + d[0], b[1] + d[1], b[2] + d[2]];
         if !mw.can_see_sky(q[0], q[1], q[2]) && walk_target_value(mw, wv, q) < 0.0 {
             return Some([f64::from(q[0]) + 0.5, f64::from(q[1]), f64::from(q[2]) + 0.5]);
         }
@@ -116,7 +115,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     } else {
         let left = g.interval - 1;
         if let Some(mut s) = w.get_mut::<SeekShelter>(e) {
-            s.interval = if left > 0 { left } else { g.p.interval };
+            s.interval = next_interval(left, g.p.interval);
         }
         left <= 0 && w.get_resource::<Daylight>().is_some_and(|d| d.0) && sees_sky && in_village(w, at)
     };

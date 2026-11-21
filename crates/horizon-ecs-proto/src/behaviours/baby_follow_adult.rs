@@ -5,6 +5,7 @@ use super::armadillo_state::{self as st, IDLE};
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::baby_follow_adult::{keeps_following, starts_at, walk_reach, WAIT};
 use crate::targeting::Eye;
 use horizon_core::geometry::Vec3;
 
@@ -68,7 +69,6 @@ fn rearm(w: &mut World, e: Entity) {
 }
 /// The ask of a baby that has no adult to follow: the adult comes into range by a column change (the baby's own move wakes it, in
 /// `follow_run`), and a slow poll (`WAIT` ticks) covers the crossing of the range inside one column, instead of an ask every 2 ticks.
-const WAIT: i32 = 20;
 fn rearm_in(w: &mut World, e: Entity, ticks: i32) {
     let Some(f) = w.get::<Follow>(e).copied() else { return };
     if f.armed || !is_baby(w, e) {
@@ -135,7 +135,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     let Some(f) = w.get::<Follow>(e).copied() else { return false };
     let p = *f.params;
-    match nearest_adult(w, e, p).filter(|(_, d)| *d >= p.min * p.min && *d < (p.max + 1.0) * (p.max + 1.0)) {
+    match nearest_adult(w, e, p).filter(|(_, d)| starts_at(*d, p.min, p.max)) {
         Some((a, _)) => {
             if let Some(mut g) = w.get_mut::<Follow>(e) {
                 g.adult = Some(a);
@@ -155,7 +155,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     if let Some(f) = w.get::<Follow>(e).copied()
         && let Some(a) = f.adult
     {
-        crate::goals::go_to_entity(w, e, a, f.params.speed, f.params.min as i32 - 1);
+        crate::goals::go_to_entity(w, e, a, f.params.speed, walk_reach(f.params.min));
     }
 }
 /// `stop` : arrête la marche, oublie l'adulte, rend le regard, et redemande le but à +2 si le bébé l'attend encore.
@@ -188,7 +188,7 @@ fn follow_run(
         let adult = f.adult.and_then(|a| others.get(a).ok().map(|(p, ce, g, h, s)| (p, ce, g, h, s, a)));
         let stays = baby
             && adult.is_some_and(|(ap, _, grown, h, s, _)| {
-                !grown && h.is_none_or(|h| h.0 > 0.0) && s.0 == sp.0 && d2(pos.0, ap.0) > (f.params.min - 1.0).powi(2)
+                !grown && h.is_none_or(|h| h.0 > 0.0) && s.0 == sp.0 && keeps_following(d2(pos.0, ap.0), f.params.min)
             });
         let Some((ap, ce, _, _, _, _)) = adult.filter(|_| stays) else {
             reqs.0.push(Req::End(e, f.slot));

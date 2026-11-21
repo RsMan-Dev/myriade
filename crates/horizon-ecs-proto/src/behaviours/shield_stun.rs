@@ -3,6 +3,7 @@
 //! the caller flings the defender, as vanilla does.
 use super::*;
 use crate::goals::*;
+use crate::rules::shield_stun::stun_stars;
 
 /// The busy reason of a stun (`Ravager.counter2`).
 pub const OCC_STUNNED: u32 = 128;
@@ -41,7 +42,7 @@ pub fn on_blocked(w: &mut World, e: Entity) -> bool {
     host.entity_event(e, 39);
     host.sound("entity.ravager.stunned", at, 1.0, 1.0);
     // The vanilla stars (one tick in six over the stun) come as one burst of their count, at the stun: no tick reads them.
-    host.particles("entity_effect", at, [0.3, 0.5, 0.3], 0.0, s.ticks as u32 / 6);
+    host.particles("entity_effect", at, [0.3, 0.5, 0.3], 0.0, stun_stars(s.ticks));
     crate::cow::after(w, e, s.ticks, end_stun);
     true
 }

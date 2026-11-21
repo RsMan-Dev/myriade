@@ -5,6 +5,7 @@ use super::data;
 use super::fight;
 use super::phases::{self, Next, PhaseDef, PhaseId, PhaseState};
 use crate::cow::Pos;
+use crate::rules::dragon_perch as rule;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
@@ -24,7 +25,7 @@ pub fn sitting_hurt(w: &mut World, e: Entity, lost: f32) {
         return;
     }
     let total = w.get::<SittingDamage>(e).map_or(0.0, |s| s.0) + lost;
-    if total > data::PERCH_LIMIT {
+    if rule::takes_off(total) {
         w.entity_mut(e).insert(SittingDamage(0.0));
         phases::set_phase(w, e, data::TAKEOFF);
     } else {
@@ -70,11 +71,11 @@ impl PhaseDef for Flaming {
     fn on_wake(&self, w: &mut World, e: Entity) -> Next {
         let t = time(w, e) + 1;
         set_time(w, e, t);
-        if t >= 200 {
-            let to = if w.get::<FlameCount>(e).map_or(0, |c| c.0) >= 4 { data::TAKEOFF } else { data::SITTING_SCANNING };
+        if rule::flame_ends(t) {
+            let to = rule::flame_next(w.get::<FlameCount>(e).map_or(0, |c| c.0));
             return Some((to, PhaseState::default()));
         }
-        if t == 10 {
+        if rule::flame_fires(t) {
             let at = flame_origin(w, e);
             breath::spawn_flame(w, at);
         }
@@ -97,13 +98,13 @@ impl PhaseDef for Scanning {
         set_time(w, e, t);
         let origin = w.get::<Pos>(e).map_or(Vec3::new(0.0, 0.0, 0.0), |p| p.0);
         if let Some((_, pp)) = fight::nearest_enemy(w, origin, Some(20.0), Some(10.0)) {
-            if t > 25 {
+            if rule::attack_starts(t) {
                 return Some((data::SITTING_ATTACKING, PhaseState::default()));
             }
             fight::turn_head(w, e, pp);
             return None;
         }
-        if t < 100 {
+        if !rule::charge_starts(t) {
             return None;
         }
         Some(match fight::nearest_enemy(w, origin, Some(150.0), None) {
@@ -125,6 +126,6 @@ impl PhaseDef for Attacking {
     fn on_wake(&self, w: &mut World, e: Entity) -> Next {
         let t = time(w, e) + 1;
         set_time(w, e, t);
-        (t > 40).then(|| (data::SITTING_FLAMING, PhaseState::default()))
+        rule::attack_ends(t).then(|| (data::SITTING_FLAMING, PhaseState::default()))
     }
 }

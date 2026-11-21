@@ -1,6 +1,7 @@
 //! `BreedGoal`: an animal in love walks to the nearest other animal in love of its species and, after the delay,
 //! gives birth to a baby. Love is given by `feed`.
 use super::*;
+use crate::rules::breed::{birth_due, birth_orbs, gives_up, inherited_deadline, is_selector_tick, love_ticks};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -215,13 +216,11 @@ fn breed_run(
         // `BreedGoal` counts `loveTime` once per selector tick (its `tick` runs then): it breeds when the count reaches
         // `reducedTickDelay(60)` and the partner is within 3 blocks, and gives up at 60.
         let phase = phase.map_or(0, |p| p.0);
-        let selector = |t: u64| (t + phase) % 2 == 0;
-        let first = if selector(b.since) { b.since } else { b.since + 1 };
-        let love_time = if now >= first { (now - first) / 2 + 1 } else { 0 };
-        if selector(now) && love_time >= data.delay / 2 && d < 9.0 {
+        let love_time = love_ticks(now, b.since, phase);
+        if birth_due(is_selector_tick(now, phase), love_time, data.delay, d) {
             let partner = b.partner;
             births.push((e, partner));
-        } else if love_time > data.delay {
+        } else if gives_up(love_time, data.delay) {
             reqs.0.push(Req::End(e, data.slot));
         }
     }
@@ -265,7 +264,7 @@ pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
     crate::species::goat::inherit_screaming(w, baby, a, b);
     // The parent's deadline is in its own time: the baby's own time is the world's.
-    let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
+    let active_baby = inherited_deadline(active, now, crate::cow::now_of(w, baby));
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;
     make_baby(w, baby, data.baby_age);
     birth_experience(w, a, pos);
@@ -296,7 +295,7 @@ pub fn finish_birth(w: &mut World, a: Entity, b: Entity) {
 fn birth_experience(w: &mut World, a: Entity, pos: horizon_core::geometry::Vec3) {
     let Some(data) = w.get::<BreedData>(a).copied() else { return };
     if data.xp && w.get_resource::<crate::orb::NoXp>().is_none() && w.get_resource::<Level>().is_some_and(|l| l.mw.0.mob_drops) {
-        let amount = (1 + with_rng(w, a, |r| r.next_int(7))) as u32;
+        let amount = birth_orbs(with_rng(w, a, |r| r.next_int(7)));
         let orb_seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
         crate::orb::award(w, pos, amount, &mut horizon_core::random::LegacyRandom::new(orb_seed as i64));
     }

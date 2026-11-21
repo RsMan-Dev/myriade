@@ -6,6 +6,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::goals::d2;
+use crate::rules::follow_temptation::{self as rules, COOLDOWN_TICKS, WALK_CLOSE};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:follow_temptation",
@@ -15,11 +16,6 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
     stop,
     ..Behaviour::DEFAULT
 };
-
-/// The walk's close-enough distance in blocks (the `WalkTarget` of the `Mob`: `close: 2`).
-const WALK_CLOSE: i32 = 2;
-/// The cooldown left when it stops (`temptation_cooldown_ticks.set(100)`).
-const COOLDOWN_TICKS: i64 = 100;
 
 /// The species' values: the walk speed (1.25 for the tadpole), how close is close enough in blocks (`follow_temptation_close`:
 /// 2.5 for the tadpole, `animal_brain.rs:2027`), and whether the walk and the look aim at the player's eyes.
@@ -45,13 +41,13 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(player, true)), None);
     let Some(me) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    let near = crate::targeting::info(w, player).is_some_and(|i| d2(me, i.pos) < p.close * p.close);
+    let near = crate::targeting::info(w, player).is_some_and(|i| rules::is_near(d2(me, i.pos), p.close));
     if near {
         erase(w, e, &WALK_TARGET);
     } else {
         let target = Tracker::Entity(player, p.look_in_the_eyes);
         let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
-        let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+        let speed = rules::walk_speed(wet, p.speed, p.dry_speed);
         set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target, speed, close: WALK_CLOSE }), None);
     }
     true

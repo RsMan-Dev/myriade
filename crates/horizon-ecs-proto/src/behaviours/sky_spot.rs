@@ -4,6 +4,7 @@ use super::block_reach::{block_at, no_blocks_above, walk_to};
 use crate::blocks;
 use crate::brain::*;
 use crate::goals::with_rng;
+use crate::rules::sky_spot::sky_offset;
 use bevy_ecs::prelude::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -25,10 +26,8 @@ fn spot(w: &mut World, e: Entity, tries: usize) -> Option<[i32; 3]> {
     let c = block_at(w, e)?;
     let mw = blocks::world_of(w);
     for _ in 0..tries {
-        let mut q = c;
-        for (k, d) in [10, 3, 10].into_iter().enumerate() {
-            q[k] += with_rng(w, e, |r| r.next_int(2 * d + 1)) as i32 - d;
-        }
+        let o = with_rng(w, e, |r| sky_offset(&mut |n| r.next_int(n)));
+        let q = [c[0] + o[0], c[1] + o[1], c[2] + o[2]];
         if no_blocks_above(mw, q, f64::from(c[1])) {
             return Some(q);
         }

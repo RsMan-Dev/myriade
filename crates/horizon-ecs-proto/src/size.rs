@@ -3,6 +3,7 @@
 //! body with `split` leaves smaller ones where it dies (`2 + nextInt(3)` of half its size). The rule is a rule of the species
 //! (`SIZE`, `SizeParams`); the size of a body is the component `Size`, set at creation (`spawn_sized`) or by `set_size`.
 use crate::cow::*;
+use crate::rules::size::{box_of, damage_of, health_of, speed_of, split_offset};
 use crate::rules::{no_attrs, no_interact, params, Rule};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -44,19 +45,18 @@ pub fn set_size(w: &mut World, e: Entity, size: i32) {
     w.get_mut::<Size>(e).unwrap().0 = size;
     let s = size as f32;
     if let Some(mut b) = w.get_mut::<Body>(e) {
-        b.width = r.base.0 * s;
-        b.height = r.base.1 * s;
-        b.speed = f64::from(r.p.speed_base as f32 + r.p.speed_per_size as f32 * s);
+        (b.width, b.height) = box_of(r.base, s);
+        b.speed = speed_of(r.p.speed_base, r.p.speed_per_size, s);
     }
     if let (Some(at), Some(b)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Body>(e).copied()) {
         w.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
         w.entity_mut(e).insert(Recheck);
     }
     if let Some(mut h) = w.get_mut::<Health>(e) {
-        h.0 = r.p.health_per_sq * s * s;
+        h.0 = health_of(r.p.health_per_sq, s);
     }
     if let Some(mut d) = w.get_mut::<AttackDamage>(e) {
-        d.0 = r.p.damage_per_size * s;
+        d.0 = damage_of(r.p.damage_per_size, s);
     }
     if let Some(mut h) = w.get_mut::<crate::locomotion::hop::Hop>(e) {
         h.p.delay_mul = r.p.delay_mul;
@@ -77,7 +77,7 @@ pub fn split_on_death(w: &mut World, e: Entity) {
     let sp = w.resource::<SpeciesTable>().0[sid as usize];
     let offset = body.width / 2.0;
     for i in 0..count as u32 {
-        let (xd, zd) = ((i % 2) as f32 - 0.5, (i / 2) as f32 - 0.5);
+        let (xd, zd) = split_offset(i);
         let seed = crate::goals::with_rng(w, e, |r| r.next_u32()) as u64 | 1;
         let child = spawn_sized(w, &sp, at.x, at.z, seed, size / 2);
         teleport(w, child, Vec3::new(at.x + f64::from(xd * offset), at.y + 0.5, at.z + f64::from(zd * offset)));

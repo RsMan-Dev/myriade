@@ -8,8 +8,7 @@ use crate::goals::{equipped, Slot};
 use bevy_ecs::prelude::*;
 use horizon_core::random::RandomSource;
 
-/// `Mob.DEFAULT_EQUIPMENT_DROP_CHANCE`.
-pub const DEFAULT: f32 = 0.085;
+pub use crate::rules::equipment_drop::{roll_piece, DEFAULT};
 
 /// The drop chance of each slot, by `index` (main hand, off hand, feet, legs, chest, head, body, saddle). Absent: `DEFAULT` everywhere.
 #[derive(Component, Clone, Copy, Debug)]
@@ -31,26 +30,6 @@ fn index(slot: Slot) -> usize {
 /// `DropChances.byEquipment`: the stored chance of a slot.
 pub fn chance_of(w: &World, e: Entity, slot: Slot) -> f32 {
     w.get::<DropChances>(e).map_or(DEFAULT, |c| c.0[index(slot)])
-}
-
-/// The roll of one piece. `chance` is the stored value, `raised` the one after Looting. Returns the damage the piece falls with, or None
-/// when it stays. `own` is the damage it has (kept when preserved); `max` its durability (0: none).
-pub fn roll_piece(chance: f32, raised: f32, killed_by_player: bool, prevented: bool, max: i32, own: i32, random: &mut impl RandomSource) -> Option<i32> {
-    if chance == 0.0 {
-        return None;
-    }
-    let preserved = chance > 1.0;
-    if prevented || !(killed_by_player || preserved) {
-        return None;
-    }
-    if random.next_float() >= raised {
-        return None;
-    }
-    if preserved || max <= 0 {
-        return Some(own);
-    }
-    let inner = random.next_int_bound((max - 3).max(1)).unwrap_or(0);
-    Some(max - random.next_int_bound(1 + inner).unwrap_or(0))
 }
 
 /// The pieces `e` leaves at death, as (slot, item, damage), each taken off its slot. `looting` raises a chance (the identity without the

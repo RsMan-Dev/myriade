@@ -2,6 +2,8 @@
 //! back), the eating counter `acts` reads, the gene. Not a module: data and the helpers that read it, nothing else.
 use super::*;
 use crate::cow::{geometric, GrowAt};
+use crate::rules::neutral_anger::ticks_until;
+use crate::rules::panda_state::asks_until_success;
 
 pub const FLAG_SNEEZE: u8 = 2;
 pub const FLAG_ROLL: u8 = 4;
@@ -69,11 +71,11 @@ pub fn acts(w: &World, e: Entity) -> bool {
 /// Asks until the first success of a 1-in-`n` ask, the first ask counting as 1: `geometric` gives the failures, so
 /// `geometric + 1`. The goal asks every 2 ticks (the selector's phase), hence the wait is `2 * asks_until`.
 pub fn asks_until(w: &mut World, e: Entity, n: i32) -> i32 {
-    crate::goals::with_rng(w, e, |r| geometric(r, n)) + 1
+    crate::goals::with_rng(w, e, |r| asks_until_success(|k| geometric(r, k), n))
 }
 /// Arms the goal's deadline at `at` (the entity's own time). The wheel holds at most `WHEEL_MAX` ticks: a later deadline
 /// comes early and the goal's `fired` arms the rest.
 pub fn arm_to(w: &mut World, e: Entity, slot: u8, at: u64) {
     let now = crate::cow::now_of(w, e);
-    crate::goals::arm(w, e, slot, at.saturating_sub(now).min(i32::MAX as u64) as i32);
+    crate::goals::arm(w, e, slot, ticks_until(at, now));
 }

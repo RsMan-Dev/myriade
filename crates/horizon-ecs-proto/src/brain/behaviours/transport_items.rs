@@ -4,22 +4,21 @@
 //! The visited and unreachable chests are memories that expire 6000 ticks after their last change; a trip that finds no chest, or that
 //! visits more than 10 (50 unreachable), enters the cooldown. The contents are read from the world's block entities; the changes, the lid
 //! and the animation state are host events. Left out: the path search (a travel is tested with the path memory only, not a path end)
-//! and the golem's leash. The chests come from `ChestIndex` (by chunk, kept by block events).
+//! and the golem's leash. The chests come from `ChestIndex` (by chunk, kept by block events). The calculations are in `rules::transport_items`.
 use crate::behaviours::Cap;
 use crate::blocks;
 use crate::chest_index::ChestIndex;
 use crate::brain::*;
 use crate::cow::{Bounds, Pos};
 use crate::goals::{d2, main_hand, set_main_hand, Events};
+use crate::rules::transport_items::{self as rules, Half, Interaction, COOLDOWN_TICKS, MEM_TTL};
 use bevy_ecs::prelude::Component;
-use horizon_client_lib::containers::BlockEntity;
 use horizon_client_lib::items::ItemStack;
 use horizon_client_lib::mobs::copper_golem as cg;
-use horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR;
 use horizon_client_lib::mobs::transport_items::chest_hinge_sound;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
-use horizon_core::java_hash_map::{JavaHashMap, JavaKey};
+use horizon_core::java_hash_map::JavaHashMap;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:transport_items",
@@ -35,16 +34,6 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
 /// The visited and unreachable chests: their memories, expiring 6000 ticks after the last change (`set_visited`).
 static VISITED: MemKey = MemKey::new("minecraft:visited_block_positions", Shape::Blocks);
 static UNREACHABLE: MemKey = MemKey::new("minecraft:unreachable_transport_block_positions", Shape::Blocks);
-const MEM_TTL: u64 = 6000;
-/// The cooldown after a trip that found no chest, or too many (`enter_cooldown`).
-const COOLDOWN_TICKS: i64 = 140;
-const VISITED_MAX: usize = 10;
-const UNREACHABLE_MAX: usize = 50;
-/// The search box around the golem's block (`find_target`).
-const SEARCH_H: i32 = 32;
-const SEARCH_V: i32 = 8;
-/// The ticks spent in front of the chest before the trade (`on_reached`).
-const WORK_TICKS: u32 = 60;
 
 /// `Transport.State`: travelling, queuing behind another golem at the chest, working in front of it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -53,15 +42,6 @@ pub enum State {
     Travelling,
     Queuing,
     Interacting,
-}
-
-/// `Transport.Interaction`: what the golem does at the chest once it has reached it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Interaction {
-    PickupItem,
-    PickupNoItem,
-    PlaceItem,
-    PlaceNoItem,
 }
 
 /// The trip's chest: its position, its name and its halves (two for a double chest, in slot order).
@@ -110,11 +90,11 @@ fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
         walk_towards(w, e, &t);
     }
     if state(w, e) == State::Travelling {
-        let c = centre_of(me, size);
-        if within(mw, size, 3.0, &t, c) && another_interacting(w, e, mw, &t) {
+        let c = rules::centre_of(me, size);
+        if rules::within(mw, size, 3.0, t.pos, c) && another_interacting(w, e, mw, &t) {
             erase(w, e, &WALK_TARGET);
             set_state(w, e, State::Queuing);
-        } else if within(mw, size, range(w, e), &t, c) {
+        } else if rules::within(mw, size, range(w, e), t.pos, c) {
             let it = reached_interaction(w, e, mw, &t.halves);
             if let Some(mut c) = w.get_mut::<Carry>(e) {
                 c.interaction = Some(it);
@@ -149,7 +129,7 @@ fn target_of(w: &World, e: Entity) -> Option<Target> {
 
 /// `range`: the reach of a travel, 1 once the path is done (here: no path memory), else 0.5.
 fn range(w: &World, e: Entity) -> f64 {
-    if present(w, e, &PATH) { 0.5 } else { 1.0 }
+    rules::reach(present(w, e, &PATH))
 }
 
 /// `CopperGolemAi.onTravelling`: the opened chest is forgotten and the animation is idle.
@@ -197,30 +177,20 @@ fn mem_list(w: &World, e: Entity, k: &MemKey) -> Vec<[i32; 3]> {
 
 /// `set_visited`: the chest is remembered at its pick; more than `VISITED_MAX` of them enter the cooldown.
 fn set_visited(w: &mut World, e: Entity, p: [i32; 3]) {
-    let mut list = mem_list(w, e, &VISITED);
-    if !list.contains(&p) {
-        list.push(p);
-    }
-    if list.len() > VISITED_MAX {
-        enter_cooldown(w, e);
-    } else {
-        set(w, e, &VISITED, MemValue::Blocks(list), Some(MEM_TTL));
+    match rules::with_visited(mem_list(w, e, &VISITED), p) {
+        Some(list) => set(w, e, &VISITED, MemValue::Blocks(list), Some(MEM_TTL)),
+        None => enter_cooldown(w, e),
     }
 }
 
 /// `mark_unreachable`: the chest leaves the visited list for the unreachable one.
 fn mark_unreachable(w: &mut World, e: Entity, p: [i32; 3]) {
-    let mut visited = mem_list(w, e, &VISITED);
-    visited.retain(|q| *q != p);
-    let mut unreachable = mem_list(w, e, &UNREACHABLE);
-    if !unreachable.contains(&p) {
-        unreachable.push(p);
-    }
-    if unreachable.len() > UNREACHABLE_MAX {
-        enter_cooldown(w, e);
-    } else {
-        set(w, e, &VISITED, MemValue::Blocks(visited), Some(MEM_TTL));
-        set(w, e, &UNREACHABLE, MemValue::Blocks(unreachable), Some(MEM_TTL));
+    match rules::mark_unreachable(mem_list(w, e, &VISITED), mem_list(w, e, &UNREACHABLE), p) {
+        Some((visited, unreachable)) => {
+            set(w, e, &VISITED, MemValue::Blocks(visited), Some(MEM_TTL));
+            set(w, e, &UNREACHABLE, MemValue::Blocks(unreachable), Some(MEM_TTL));
+        }
+        None => enter_cooldown(w, e),
     }
 }
 
@@ -249,9 +219,8 @@ fn update_invalid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size
 /// `has_valid_target`: the chest is still a chest of the kind wanted, not blocked; a travel that cannot reach it marks it unreachable.
 fn has_valid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3) -> bool {
     let Some(t) = target_of(w, e) else { return false };
-    let unchanged = matches!(mw.world.block_entities.get(&(t.pos[0], t.pos[1], t.pos[2])), Some(BlockEntity::Chest(_)))
-        && is_chest_block(mw.block_name(t.pos[0], t.pos[1], t.pos[2]));
-    if !(wanted(w, e, mw, &t.name) && unchanged) || blocked(mw, t.pos) {
+    let unchanged = rules::is_chest_entity(mw, t.pos) && rules::is_chest_block(mw.block_name(t.pos[0], t.pos[1], t.pos[2]));
+    if !(wanted(w, e, mw, &t.name) && unchanged) || rules::blocked(mw, t.pos) {
         return false;
     }
     if state(w, e) != State::Travelling {
@@ -277,101 +246,43 @@ fn valid_travelling_path(w: &World, e: Entity, mw: &MobWorld, me: Vec3, size: Ve
     });
     let no_path = found.is_none();
     let from = match found.as_ref().and_then(|p| p.nodes.last()) {
-        Some(n) => centre_of(Vec3::new(f64::from(n.x) + 0.5, f64::from(n.y), f64::from(n.z) + 0.5), size),
-        None => centre_of(me, size),
+        Some(n) => rules::centre_of(Vec3::new(f64::from(n.x) + 0.5, f64::from(n.y), f64::from(n.z) + 0.5), size),
+        None => rules::centre_of(me, size),
     };
-    let reach = within(mw, size, range(w, e), t, from);
-    (no_path && !reach) || reach && sees_a_side(mw, t.pos, from)
-}
-
-/// `within`: the golem's box at `from`, grown by `distance` sideways and 0.5 up and down, meets the collision shape of the chest.
-fn within(mw: &MobWorld, size: Vec3, distance: f64, t: &Target, from: [f64; 3]) -> bool {
-    let moved = Aabb::new(
-        Vec3::new(from[0] - size.x / 2.0, from[1] - size.y / 2.0, from[2] - size.z / 2.0),
-        Vec3::new(from[0] + size.x / 2.0, from[1] + size.y / 2.0, from[2] + size.z / 2.0),
-    );
-    let Some(shape) = mw.collision_bounds(t.pos) else { return false };
-    let p = Vec3::new(f64::from(t.pos[0]), f64::from(t.pos[1]), f64::from(t.pos[2]));
-    shape.inflate(Vec3::new(distance, 0.5, distance)).move_by(p).intersects(moved)
-}
-
-/// `Entity.getEyePosition`-like centre of the golem: the middle of its height.
-fn centre_of(me: Vec3, size: Vec3) -> [f64; 3] {
-    [me.x, me.y + size.y / 2.0, me.z]
-}
-
-/// `sees_a_side`: a clip from `eye` to the middle of any face of the chest's block hits that block.
-fn sees_a_side(mw: &MobWorld, p: [i32; 3], eye: [f64; 3]) -> bool {
-    let c = Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5);
-    // Direction order: down, up, north, south, west, east.
-    let steps = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
-    let from = Vec3::new(eye[0], eye[1], eye[2]);
-    steps.iter().any(|s| {
-        let to = Vec3::new(c.x + 0.5 * f64::from(s[0]), c.y + 0.5 * f64::from(s[1]), c.z + 0.5 * f64::from(s[2]));
-        mw.clip_block_at(from, to) == Some(p)
-    })
-}
-
-const CHEST: &str = "minecraft:chest";
-const TRAPPED_CHEST: &str = "minecraft:trapped_chest";
-/// The block tag of the copper chests.
-const COPPER_CHESTS: &str = "minecraft:copper_chests";
-
-fn is_chest_block(name: &str) -> bool {
-    matches!(name, CHEST | TRAPPED_CHEST) || name.ends_with("copper_chest")
+    let reach = rules::within(mw, size, range(w, e), t.pos, from);
+    rules::path_valid(no_path, reach, || rules::sees_a_side(mw, t.pos, from))
 }
 
 /// `wanted`: an empty hand takes from a copper chest, a full one puts into a chest.
 fn wanted(w: &World, e: Entity, mw: &MobWorld, name: &str) -> bool {
-    if main_hand(w, e).is_none() {
-        mw.has_tag(COPPER_CHESTS, name)
-    } else {
-        matches!(name, CHEST | TRAPPED_CHEST)
-    }
-}
-
-/// `blocked` (`ChestBlock.isChestBlockedAt`): a redstone conductor above.
-fn blocked(mw: &MobWorld, p: [i32; 3]) -> bool {
-    let above = mw.world.block(p[0], p[1] + 1, p[2]);
-    mw.data.state(above).flags & REDSTONE_CONDUCTOR != 0
+    rules::wanted(mw, main_hand(w, e).is_none(), name)
 }
 
 /// `connected`: the other half of a double chest, from its `type` and `facing`.
 fn connected(mw: &MobWorld, p: [i32; 3]) -> Option<[i32; 3]> {
-    let kind = blocks::property(mw, p, "type")?;
-    if kind == "single" {
-        return None;
-    }
-    let facing = blocks::property(mw, p, "facing")?;
-    let order = ["north", "east", "south", "west"];
-    let i = order.iter().position(|f| *f == facing)?;
-    let dir = order[if kind == "left" { (i + 1) % 4 } else { (i + 3) % 4 }];
-    let (dx, dz) = match dir {
-        "north" => (0, -1),
-        "south" => (0, 1),
-        "east" => (1, 0),
-        _ => (-1, 0),
-    };
-    Some([p[0] + dx, p[1], p[2] + dz])
+    rules::other_half(blocks::property(mw, p, "type").as_deref(), blocks::property(mw, p, "facing").as_deref(), p)
 }
 
 /// `ChestBlock.getContainer`: the chest's halves in slot order, none when either half is blocked.
 fn container(mw: &MobWorld, p: [i32; 3]) -> Option<Vec<[i32; 3]>> {
-    if blocked(mw, p) {
+    if rules::blocked(mw, p) {
         return None;
     }
     let mut halves = vec![p];
     if let Some(other) = connected(mw, p) {
-        let same = mw.world.block(other[0], other[1], other[2]) == mw.world.block(p[0], p[1], p[2])
-            || mw.block_name(other[0], other[1], other[2]) == mw.block_name(p[0], p[1], p[2])
-                && blocks::property(mw, other, "facing") == blocks::property(mw, p, "facing")
-                && blocks::property(mw, other, "type").is_some_and(|t| t != "single")
-                && blocks::property(mw, other, "type") != blocks::property(mw, p, "type");
-        if same && matches!(mw.world.block_entities.get(&(other[0], other[1], other[2])), Some(BlockEntity::Chest(_))) {
-            if blocked(mw, other) {
+        let (p_kind, p_facing) = (blocks::property(mw, p, "type"), blocks::property(mw, p, "facing"));
+        let (o_kind, o_facing) = (blocks::property(mw, other, "type"), blocks::property(mw, other, "facing"));
+        let same_state = mw.world.block(other[0], other[1], other[2]) == mw.world.block(p[0], p[1], p[2]);
+        let pair = rules::is_pair(
+            same_state,
+            Half { name: mw.block_name(p[0], p[1], p[2]), facing: p_facing.as_deref(), kind: p_kind.as_deref() },
+            Half { name: mw.block_name(other[0], other[1], other[2]), facing: o_facing.as_deref(), kind: o_kind.as_deref() },
+        );
+        if pair && rules::is_chest_entity(mw, other) {
+            if rules::blocked(mw, other) {
                 return None;
             }
-            if blocks::property(mw, p, "type").as_deref() == Some("right") {
+            if p_kind.as_deref() == Some("right") {
                 halves.push(other);
             } else {
                 halves.insert(0, other);
@@ -381,37 +292,23 @@ fn container(mw: &MobWorld, p: [i32; 3]) -> Option<Vec<[i32; 3]>> {
     Some(halves)
 }
 
-/// `PosKey`: a chest position in the `Mob`'s Java hash order.
-#[derive(PartialEq, Eq)]
-struct PosKey([i32; 3]);
-impl JavaKey for PosKey {
-    fn java_hash(&self) -> i32 {
-        // Vec3i.hashCode.
-        (self.0[1].wrapping_add(self.0[2].wrapping_mul(31))).wrapping_mul(31).wrapping_add(self.0[0])
-    }
-    fn tie_break(&self, _: &Self) -> std::cmp::Ordering {
-        std::cmp::Ordering::Less
-    }
-}
-
 /// `find_target`: the chunks around the golem's chunk that the search box reaches, each one's chests in Java hash order; the nearest
 /// wanted one wins, a tie keeps the first found. The chests of a chunk come from `ChestIndex`.
 fn find_target(w: &World, e: Entity, mw: &MobWorld, me: Vec3) -> Option<Target> {
-    let (bx, by, bz) = (me.x.floor() as i32, me.y.floor() as i32, me.z.floor() as i32);
-    let (h, v) = (SEARCH_H, SEARCH_V);
+    let b = [me.x.floor() as i32, me.y.floor() as i32, me.z.floor() as i32];
     let visited = mem_list(w, e, &VISITED);
     let unreachable = mem_list(w, e, &UNREACHABLE);
-    let (cx, cz) = (bx >> 4, bz >> 4);
-    let r = h.div_euclid(16) + 1;
+    let (cx, cz) = (b[0] >> 4, b[2] >> 4);
+    let r = rules::chunk_radius();
     let index = w.get_resource::<ChestIndex>()?;
     let mut best: Option<(f64, Target)> = None;
     for z in cz - r..=cz + r {
         for x in cx - r..=cx + r {
             let mut list = index.chunk(x, z).to_vec();
             list.sort();
-            let mut map: JavaHashMap<PosKey, ()> = JavaHashMap::default();
+            let mut map: JavaHashMap<rules::ChestPos, ()> = JavaHashMap::default();
             for p in list.iter() {
-                map.put(PosKey(*p), ());
+                map.put(rules::ChestPos(*p), ());
             }
             for (key, _) in map.entries() {
                 let p = key.0;
@@ -419,8 +316,7 @@ fn find_target(w: &World, e: Entity, mw: &MobWorld, me: Vec3) -> Option<Target> 
                 if best.as_ref().map_or(f64::from(f32::MAX), |b| b.0) <= d {
                     continue;
                 }
-                let inside = (bx - h..bx + 1 + h).contains(&p[0]) && (by - v..by + 1 + v).contains(&p[1]) && (bz - h..bz + 1 + h).contains(&p[2]);
-                if !inside {
+                if !rules::in_search_box(p, b) {
                     continue;
                 }
                 let Some(halves) = container(mw, p) else { continue };
@@ -468,11 +364,7 @@ fn has_open(w: &World, e: Entity, mw: &MobWorld, p: [i32; 3]) -> bool {
 
 /// The box a golem opens a chest from (`ChestBlockEntity.getOpenersAround`): the counter's range plus 4.
 fn opener_area(mw: &MobWorld, p: [i32; 3]) -> Aabb {
-    let range = mw.world.chest_openers.get(&(p[0], p[1], p[2])).map_or(0.0, |o| o.1) + 4.0;
-    Aabb::new(
-        Vec3::new(f64::from(p[0]) - range, f64::from(p[1]) - range, f64::from(p[2]) - range),
-        Vec3::new(f64::from(p[0]) + 1.0 + range, f64::from(p[1]) + 1.0 + range, f64::from(p[2]) + 1.0 + range),
-    )
+    rules::opener_area(p, mw.world.chest_openers.get(&(p[0], p[1], p[2])).map_or(0.0, |o| o.1))
 }
 
 /// `ChestBlockEntity.startOpen` / `stopOpen` by a golem: the lid event; the hinge sound of the block.
@@ -491,24 +383,15 @@ fn walk_towards(w: &mut World, e: Entity, t: &Target) {
 
 /// `reached_interaction`: what the golem does at the chest, by its hand and the chest's items.
 fn reached_interaction(w: &World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]]) -> Interaction {
-    let items = slots(mw, halves);
-    if main_hand(w, e).is_none() {
-        if items.iter().any(Option::is_some) {
-            Interaction::PickupItem
-        } else {
-            Interaction::PickupNoItem
-        }
-    } else if leaving_ok(w, e, &items) {
-        Interaction::PlaceItem
-    } else {
-        Interaction::PlaceNoItem
-    }
+    let items = rules::chest_slots(mw, halves);
+    let carried = main_hand(w, e);
+    rules::interaction(carried.is_none(), items.iter().any(Option::is_some), rules::leaving_ok(carried, &items))
 }
 
 /// `on_reached`: a golem that drifted off leaves the visit; else the lid opens on the first tick, the sound comes on the 9th, the lid
 /// shuts on the 60th (single chest), and the trade is made.
 fn on_reached(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: &Target) {
-    if !within(mw, size, 2.0, t, centre_of(me, size)) {
+    if !rules::within(mw, size, 2.0, t.pos, rules::centre_of(me, size)) {
         on_start_travelling(w, e);
         return;
     }
@@ -518,15 +401,11 @@ fn on_reached(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: 
     });
     erase(w, e, &WALK_TARGET);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Block(t.pos)), None);
+    let phase = rules::phase(ticks);
     let interaction = w.get::<Carry>(e).and_then(|c| c.interaction);
     if let Some(i) = interaction {
-        let (state, sound) = match i {
-            Interaction::PickupItem => (cg::GETTING_ITEM, "entity.copper_golem.no_item_get"),
-            Interaction::PickupNoItem => (cg::GETTING_NO_ITEM, "entity.copper_golem.no_item_no_get"),
-            Interaction::PlaceItem => (cg::DROPPING_ITEM, "entity.copper_golem.item_drop"),
-            Interaction::PlaceNoItem => (cg::DROPPING_NO_ITEM, "entity.copper_golem.item_no_drop"),
-        };
-        if ticks == 1 {
+        let (state, sound) = rules::feedback(i);
+        if phase.open {
             for h in &t.halves {
                 open_or_close(w, mw, *h, true, e);
             }
@@ -535,10 +414,10 @@ fn on_reached(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: 
             }
             w.resource_mut::<Events>().host.golem_state(e, state);
         }
-        if ticks == 9 {
+        if phase.sound {
             w.resource_mut::<Events>().host.sound(sound, [me.x, me.y, me.z], 1.0, 1.0);
         }
-        if ticks == WORK_TICKS {
+        if phase.shut {
             if t.halves.len() == 1 && has_open(w, e, mw, t.pos) {
                 open_or_close(w, mw, t.pos, false, e);
             }
@@ -547,26 +426,21 @@ fn on_reached(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: 
             }
         }
     }
-    if ticks >= WORK_TICKS {
-        let items = slots(mw, &t.halves);
+    if phase.trade {
+        let items = rules::chest_slots(mw, &t.halves);
         if main_hand(w, e).is_none() {
             if items.iter().any(Option::is_some) {
                 pick_up(w, e, mw, &t.halves, &items);
             } else {
                 stop_targeting(w, e);
             }
-        } else if leaving_ok(w, e, &items) {
-            put_down(w, e, mw, &t.halves, items);
+        } else if rules::leaving_ok(main_hand(w, e), &items) {
+            put_down(w, e, mw, &t.halves, &items);
         } else {
             stop_targeting(w, e);
         }
         on_start_travelling(w, e);
     }
-}
-
-/// The slots of the halves, one after the other.
-fn slots(mw: &MobWorld, halves: &[[i32; 3]]) -> Vec<Option<ItemStack>> {
-    halves.iter().filter_map(|h| mw.world.block_entities.get(&(h[0], h[1], h[2]))).flat_map(|b| b.slots().to_vec()).collect()
 }
 
 /// Where slot `n` of the container is: the half and its own slot.
@@ -581,20 +455,11 @@ fn slot_at(mw: &MobWorld, halves: &[[i32; 3]], mut n: usize) -> Option<([i32; 3]
     None
 }
 
-fn max_stack(mw: &MobWorld, s: &ItemStack) -> u32 {
-    mw.items.and_then(|i| i.get(&s.item)).map_or(64, |i| i.max_stack).max(1)
-}
-
 /// `pickUpItems`: up to 16 of the first non-empty slot; the trip's memories are cleared.
 fn pick_up(w: &mut World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]], items: &[Option<ItemStack>]) {
-    if let Some((n, s)) = items.iter().enumerate().find_map(|(n, s)| s.as_ref().map(|s| (n, s.clone()))) {
-        let take = s.count.min(16);
-        let mut left = s.clone();
-        left.count -= take;
-        let mut got = s;
-        got.count = take;
+    if let Some((n, got, left)) = rules::pick_up(items) {
         if let Some((h, slot)) = slot_at(mw, halves, n) {
-            w.resource_mut::<Events>().host.chest_slot(h, slot, (left.count > 0).then_some(left));
+            w.resource_mut::<Events>().host.chest_slot(h, slot, left);
         }
         set_main_hand(w, e, Some(got));
     }
@@ -603,33 +468,11 @@ fn pick_up(w: &mut World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]], items: 
 
 /// `putDownItem`: the carried stack fills the matching slots up to their room, then the first empty one; the trip's memories are
 /// cleared when the hand is empty, else the trip stops at this chest.
-fn put_down(w: &mut World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]], items: Vec<Option<ItemStack>>) {
-    let mut carried = main_hand(w, e).cloned();
-    for (n, slot) in items.into_iter().enumerate() {
-        let Some(stack) = carried.clone() else { break };
-        let Some((h, at)) = slot_at(mw, halves, n) else { break };
-        match slot {
-            None => {
-                w.resource_mut::<Events>().host.chest_slot(h, at, Some(stack));
-                carried = None;
-                break;
-            }
-            Some(mut there) => {
-                let max = max_stack(mw, &there);
-                if there.item == stack.item && there.extra == stack.extra && there.damage == stack.damage && there.count < max {
-                    let room = max - there.count;
-                    there.count += room.min(stack.count);
-                    w.resource_mut::<Events>().host.chest_slot(h, at, Some(there));
-                    let left = i64::from(stack.count) - i64::from(room);
-                    if left <= 0 {
-                        carried = None;
-                        break;
-                    }
-                    let mut rest = stack;
-                    rest.count = left as u32;
-                    carried = Some(rest);
-                }
-            }
+fn put_down(w: &mut World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]], items: &[Option<ItemStack>]) {
+    let (writes, carried) = rules::put_down(main_hand(w, e).cloned(), items, |s| rules::max_stack(mw, s));
+    for (n, stack) in writes {
+        if let Some((h, at)) = slot_at(mw, halves, n) {
+            w.resource_mut::<Events>().host.chest_slot(h, at, Some(stack));
         }
     }
     let emptied = carried.is_none();
@@ -639,10 +482,4 @@ fn put_down(w: &mut World, e: Entity, mw: &MobWorld, halves: &[[i32; 3]], items:
     } else {
         stop_targeting(w, e);
     }
-}
-
-/// `leaving_ok`: an empty chest, or one holding the carried item.
-fn leaving_ok(w: &World, e: Entity, items: &[Option<ItemStack>]) -> bool {
-    let carried = main_hand(w, e);
-    items.iter().all(Option::is_none) || items.iter().flatten().any(|s| carried.is_some_and(|c| c.item == s.item))
 }

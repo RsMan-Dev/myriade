@@ -9,6 +9,8 @@
 //! host's), the item of a spawner that displays one, the client's delay.
 use crate::cow::{species_table, Clock, Index, Pos, Species, SpeciesId};
 use crate::goals::{Events, Online};
+use crate::rules::spawn_spawner::{attempt_position, spawn_delay};
+pub use crate::rules::spawn_spawner::{weighted, weighted_index};
 use bevy_ecs::prelude::*;
 use horizon_core::random::{LegacyRandom, RandomSource};
 use std::collections::{BTreeMap, HashMap};
@@ -91,7 +93,7 @@ pub fn near_changed(w: &mut World, pos: Block3, near: bool) {
         let Some(b) = s.at.get_mut(&pos) else { return };
         match (near, b.phase) {
             (true, Phase::Idle) => {
-                let due = now + draw(b.cfg, &mut rng.0) as u64;
+                let due = now + spawn_delay(b.cfg.min_delay, b.cfg.max_delay, &mut rng.0) as u64;
                 b.phase = Phase::Running(due);
                 schedule(&mut s.wakes, due, pos, b.generation);
             }
@@ -135,12 +137,7 @@ fn attempt(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, valid: 
     };
     let mut spawned = 0usize;
     for _ in 0..cfg.count {
-        let r = f64::from(cfg.spawn_range);
-        let at = [
-            f64::from(pos[0]) + (rng.next_double() - rng.next_double()) * r + 0.5,
-            f64::from(pos[1] + rng.next_int_bound(3).unwrap_or(0) - 1),
-            f64::from(pos[2]) + (rng.next_double() - rng.next_double()) * r + 0.5,
-        ];
+        let at = attempt_position(pos, cfg.spawn_range, rng);
         if !valid(w, &sp, at) {
             continue;
         }
@@ -167,7 +164,7 @@ fn delay(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, spawned: 
     let mut s = w.resource_mut::<Spawners>();
     let Some(b) = s.at.get_mut(&pos) else { return };
     let due = if spawned {
-        let d = draw(b.cfg, rng) as u64;
+        let d = spawn_delay(b.cfg.min_delay, b.cfg.max_delay, rng) as u64;
         b.next = weighted(&b.potentials, rng);
         now + 1 + d
     } else {
@@ -176,47 +173,6 @@ fn delay(w: &mut World, rng: &mut LegacyRandom, pos: Block3, now: u64, spawned: 
     b.phase = Phase::Running(due);
     let generation = b.generation;
     schedule(&mut s.wakes, due, pos, generation);
-}
-
-/// `MobSpawner.spawnDelay`: a draw in `[min, max)`, or `min` when the range is empty.
-fn draw(cfg: Config, rng: &mut LegacyRandom) -> i32 {
-    if cfg.max_delay <= cfg.min_delay {
-        cfg.min_delay
-    } else {
-        cfg.min_delay + rng.next_int_bound(cfg.max_delay - cfg.min_delay).unwrap_or(0)
-    }
-}
-
-/// `WeightedRandom.getRandomItem`: one draw of `[0, total)` walked down the weights.
-pub fn weighted(potentials: &[(u8, i32)], rng: &mut LegacyRandom) -> Option<u8> {
-    let total: i32 = potentials.iter().map(|p| p.1).sum();
-    if total <= 0 {
-        return potentials.first().map(|p| p.0);
-    }
-    let mut r = rng.next_int_bound(total).ok()?;
-    for &(id, wt) in potentials {
-        if r < wt {
-            return Some(id);
-        }
-        r -= wt;
-    }
-    None
-}
-
-/// `WeightedList.getRandom` over plain weights: one draw of `[0, total)` walked down them; the index drawn, none when the total is 0.
-pub fn weighted_index(weights: &[i32], rng: &mut LegacyRandom) -> Option<usize> {
-    let total: i32 = weights.iter().sum();
-    if total <= 0 {
-        return None;
-    }
-    let mut r = rng.next_int_bound(total).ok()?;
-    for (i, &wt) in weights.iter().enumerate() {
-        if r < wt {
-            return Some(i);
-        }
-        r -= wt;
-    }
-    None
 }
 
 fn schedule(wakes: &mut BTreeMap<u64, Vec<(Block3, u32)>>, due: u64, pos: Block3, generation: u32) {

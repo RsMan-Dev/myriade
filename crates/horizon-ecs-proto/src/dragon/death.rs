@@ -4,9 +4,8 @@ use crate::cow::*;
 use crate::dragon::fight::{DragonKilled, EndFight, FightEvents};
 use crate::goals::Events;
 use crate::dragon::flight::DragonRng;
+use crate::rules::dragon_death::{self as rule, DEATH_TICKS};
 use bevy_ecs::prelude::*;
-
-const DEATH_TICKS: i32 = 200;
 
 /// `death_time` of Horizon: the ticks the dragon has been dying (saved as `DragonDeathTime`); rare state, so a sparse component.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -16,12 +15,7 @@ pub struct DeathTime(pub i32);
 /// The experience of the death: the fight's first kill gives 12 000, any other 500 (`tick_dragon_death`).
 fn xp_of(w: &World, e: Entity) -> u32 {
     let f = w.resource::<EndFight>();
-    if f.dragon == Some(e) && !f.previously_killed { 12_000 } else { 500 }
-}
-
-/// A draw in -0.5..0.5 times `k` of the dragon's own generator (`(next_float() - 0.5) * k`).
-fn jitter(rng: &mut DragonRng, k: [f32; 3]) -> [f64; 3] {
-    k.map(|k| f64::from((rng.0.next_float() - 0.5) * k))
+    rule::death_xp(f.dragon == Some(e), f.previously_killed)
 }
 
 /// `tick_dragon_death`, called by the flight in place of the flight while the health is 0: one tick of the 200, the rise included.
@@ -30,14 +24,14 @@ pub fn tick(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(DeathTime(t));
     let at = w.get::<Pos>(e).unwrap().0;
     let mut rng = w.entity_mut(e).take::<DragonRng>().expect("dragon rng");
-    if (180..=DEATH_TICKS).contains(&t) {
-        let o = jitter(&mut rng, [8.0, 4.0, 8.0]);
+    if rule::is_blast_tick(t) {
+        let o = rule::jitter(&mut rng.0, [8.0, 4.0, 8.0]);
         w.resource_mut::<Events>().host.particles("explosion_emitter", [at.x + o[0], at.y + 2.0 + o[1], at.z + o[2]], [0.0; 3], 0.0, 1);
     }
     let xp = xp_of(w, e);
     let drops = crate::blocks::world_of(w).mob_drops;
-    if t > 150 && t % 5 == 0 && drops {
-        crate::orb::award(w, at, (xp as f32 * 0.08) as u32, &mut rng.1);
+    if rule::is_orb_tick(t) && drops {
+        crate::orb::award(w, at, rule::orb_share(xp, 0.08), &mut rng.1);
     }
     if t == 1 {
         w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z].map(|v| v.floor() as i32), 0);
@@ -53,7 +47,7 @@ pub fn tick(w: &mut World, e: Entity) {
     }
     if drops {
         let mut rng = w.entity_mut(e).take::<DragonRng>().unwrap();
-        crate::orb::award(w, at, (xp as f32 * 0.2) as u32, &mut rng.1);
+        crate::orb::award(w, at, rule::orb_share(xp, 0.2), &mut rng.1);
     }
     let fight = w.resource::<EndFight>().dragon == Some(e);
     w.despawn(e);

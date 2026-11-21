@@ -6,6 +6,7 @@
 //! A creature asks "is it in a village" by the named predicate `horizon:in_village`.
 use crate::cow::*;
 use crate::hostile::ChangedBlocks;
+use crate::rules::poi::{is_village, nearby_order, section, within_cube, NearbyKey};
 use bevy_ecs::prelude::*;
 use horizon_world::poi::{saved_poi, PoiType};
 use std::collections::HashMap;
@@ -27,13 +28,6 @@ pub struct PoiRegistry {
     /// The points that appeared / went this tick, and the ones of the tick before (what the modules read).
     now: (Vec<[i32; 3]>, Vec<[i32; 3]>),
     last: (Vec<[i32; 3]>, Vec<[i32; 3]>),
-}
-fn section(p: [i32; 3]) -> [i32; 3] {
-    [p[0] >> 4, p[1] >> 4, p[2] >> 4]
-}
-/// `PoiTypes.IS_VILLAGE`: the points a village is made of.
-fn is_village(k: PoiType) -> bool {
-    k.is_job() || matches!(k, PoiType::Home | PoiType::Meeting)
 }
 impl PoiRegistry {
     /// The points that appeared / went in the last tick.
@@ -116,28 +110,28 @@ impl PoiRegistry {
     /// `PoiManager.getInRange` (with `HAS_SPACE` when `free`): the points of the accepted types within `radius` blocks of `center` on each axis,
     /// nearest first, ties by chunk (z, then x) then y, z, x.
     pub fn in_range(&self, center: [i32; 3], radius: i32, free: bool, accept: impl Fn(PoiType) -> bool) -> Vec<([i32; 3], PoiType)> {
-        let mut v: Vec<(i64, i32, i32, [i32; 3], PoiType)> = Vec::new();
+        let mut v: Vec<(NearbyKey, [i32; 3], PoiType)> = Vec::new();
         for s in self.sections_near(center, radius) {
             for &(p, poi) in &self.by_section[&s] {
-                if (0..3).all(|i| (p[i] - center[i]).abs() <= radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()) {
-                    v.push(((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, p, poi.kind));
+                if within_cube(p, center, radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()) {
+                    v.push((nearby_order(p, center), p, poi.kind));
                 }
             }
         }
-        v.sort_by_key(|x| (x.0, x.1, x.2, x.3[1], x.3[2], x.3[0]));
-        v.into_iter().map(|x| (x.3, x.4)).collect()
+        v.sort_by_key(|x| x.0);
+        v.into_iter().map(|x| (x.1, x.2)).collect()
     }
     /// The reference scan of `in_range` (every point), kept to check the index against it.
     #[cfg(test)]
     fn in_range_scan(&self, center: [i32; 3], radius: i32, free: bool, accept: impl Fn(PoiType) -> bool) -> Vec<([i32; 3], PoiType)> {
-        let mut v: Vec<(i64, i32, i32, [i32; 3], PoiType)> = self
+        let mut v: Vec<(NearbyKey, [i32; 3], PoiType)> = self
             .points
             .iter()
-            .filter(|(p, poi)| (0..3).all(|i| (p[i] - center[i]).abs() <= radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()))
-            .map(|(p, poi)| ((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, *p, poi.kind))
+            .filter(|(p, poi)| within_cube(**p, center, radius) && accept(poi.kind) && (!free || poi.taken < poi.kind.max_tickets()))
+            .map(|(p, poi)| (nearby_order(*p, center), *p, poi.kind))
             .collect();
-        v.sort_by_key(|x| (x.0, x.1, x.2, x.3[1], x.3[2], x.3[0]));
-        v.into_iter().map(|x| (x.3, x.4)).collect()
+        v.sort_by_key(|x| x.0);
+        v.into_iter().map(|x| (x.1, x.2)).collect()
     }
     /// `PoiManager.take`: a ticket of the point, if one is free.
     pub fn acquire(&mut self, p: [i32; 3]) -> bool {
@@ -246,8 +240,8 @@ fn poi_changes(level: Res<Level>, changed: Res<ChangedBlocks>, mut reg: ResMut<P
 impl PoiRegistry {
     /// `occupied_pois_in_range`: the points within `radius` of `center` (a cube, as `getInRange`) that someone holds a ticket of.
     pub fn occupied_in_range(&self, center: [i32; 3], radius: i32) -> Vec<[i32; 3]> {
-        let mut v: Vec<[i32; 3]> = self.points.iter().filter(|(p, poi)| poi.taken > 0 && (0..3).all(|i| (p[i] - center[i]).abs() <= radius)).map(|(p, _)| *p).collect();
-        v.sort_by_key(|p| ((0..3).map(|i| i64::from(p[i] - center[i]).pow(2)).sum::<i64>(), p[2] >> 4, p[0] >> 4, p[1], p[2], p[0]));
+        let mut v: Vec<[i32; 3]> = self.points.iter().filter(|(p, poi)| poi.taken > 0 && within_cube(**p, center, radius)).map(|(p, _)| *p).collect();
+        v.sort_by_key(|p| nearby_order(*p, center));
         v
     }
     /// The sections that hold a village point.

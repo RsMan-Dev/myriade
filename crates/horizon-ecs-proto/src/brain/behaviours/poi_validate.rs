@@ -9,7 +9,7 @@ use crate::brain::*;
 use crate::cow::Pos;
 use crate::poi::PoiRegistry;
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::Vec3;
+use crate::rules::poi_validate as rules;
 use horizon_world::poi::PoiType;
 
 pub struct Params {
@@ -19,11 +19,8 @@ pub struct Params {
     pub bed: bool,
 }
 
-const RANGE: f64 = 16.0;
-
 fn near(w: &World, e: Entity, p: [i32; 3]) -> bool {
-    let centre = Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5);
-    w.get::<Pos>(e).is_some_and(|at| at.0.distance_squared(centre) < RANGE * RANGE)
+    w.get::<Pos>(e).is_some_and(|at| rules::near(p, at.0))
 }
 
 fn stale(w: &World, e: Entity, c: &Params, p: [i32; 3]) -> bool {

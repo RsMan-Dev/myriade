@@ -5,8 +5,8 @@
 use super::*;
 use crate::pocket::{self, Pocket};
 use crate::{cow::*, goals::*, item};
+use crate::rules::go_to_wanted::{MAX_PICK, WAKE_RANGE, in_wake_box, out_of_reach, search_area};
 use horizon_client_lib::items::ItemStack;
-use horizon_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -25,10 +25,6 @@ pub struct Wanted {
     pub item: Option<Entity>,
     slot: u8,
 }
-/// The most a pocket takes of one stack: the stack size of the items the allay takes (64 here, the registry is not read).
-const MAX_PICK: u32 = 64;
-/// The widest `range` of the goals that use `hand`: a dropped item farther than this does not wake anyone.
-const WAKE_RANGE: f64 = 32.0;
 
 pub static MODULE: Module = Module {
     name: "go_to_wanted",
@@ -55,7 +51,7 @@ fn wake_on_drop(ev: Res<Events>, items: Query<&Pos, With<item::Item>>, idx: Res<
         idx.for_radius(at.0.x, at.0.z, WAKE_RANGE, |c| {
             let Ok((wd, me)) = q.get(c) else { return };
             let r = wd.p.range;
-            if wd.p.hand && (me.0.x - at.0.x).abs() <= r && (me.0.y - at.0.y).abs() <= r && (me.0.z - at.0.z).abs() <= r {
+            if wd.p.hand && in_wake_box([me.0.x, me.0.y, me.0.z], [at.0.x, at.0.y, at.0.z], r) {
                 reqs.0.push(Req::Start(c, wd.slot));
             }
         });
@@ -76,9 +72,7 @@ fn accepts(w: &World, e: Entity, p: &Params, it: Entity) -> bool {
 /// The nearest pickable item the goal wants within `range`.
 fn wanted_near(w: &World, e: Entity, p: &Params) -> Option<Entity> {
     let at = w.get::<Pos>(e)?.0;
-    let r = p.range;
-    let area = Aabb::new(Vec3::new(at.x - r, at.y - r, at.z - r), Vec3::new(at.x + r, at.y + r, at.z + r));
-    item::items_in(w, area)
+    item::items_in(w, search_area(at, p.range))
         .into_iter()
         .filter(|&it| item::pickable(w, it) && accepts(w, e, p, it))
         .min_by(|&a, &b| {
@@ -102,7 +96,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     stop_nav(w, e);
     let Some((it, p)) = w.get_mut::<Wanted>(e).and_then(|mut wd| wd.item.take().map(|it| (it, wd.p))) else { return };
     let (Some(me), Some(q)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Pos>(it).map(|p| p.0)) else { return };
-    if q.distance_squared(me) > 2.25 || !item::pickable(w, it) || (p.hand && !accepts(w, e, p, it)) {
+    if out_of_reach(q.distance_squared(me)) ||!item::pickable(w, it) || (p.hand && !accepts(w, e, p, it)) {
         return;
     }
     if p.hand {

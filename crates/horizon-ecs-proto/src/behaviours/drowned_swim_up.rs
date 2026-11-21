@@ -8,6 +8,7 @@ use super::*;
 use crate::locomotion::swim::WantsToSwim;
 use crate::spots::Pick;
 use crate::hostile::Daylight;
+use crate::rules::drowned_swim_up::{below_surface, close_to_target, deep_enough, rise_target};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -77,7 +78,7 @@ fn in_water(w: &World, e: Entity) -> bool {
 fn up_ok(w: &World, e: Entity) -> bool {
     let sea = w.resource::<Level>().mw.0.sea_level;
     let y = w.get::<Pos>(e).unwrap().0.y;
-    !w.resource::<Daylight>().0 && in_water(w, e) && y < f64::from(sea - 2)
+    !w.resource::<Daylight>().0 && in_water(w, e) && deep_enough(y, sea)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if up_ok(w, e) {
@@ -127,16 +128,13 @@ fn tick(w: &mut World) {
         let p = w.get::<Pos>(e).unwrap().0;
         let nav = w.get::<Nav>(e).unwrap();
         let done = nav.path.as_ref().is_none_or(|path| path.is_done());
-        let close = nav.path.as_ref().is_some_and(|path| {
-            let t = path.target;
-            (p.x - f64::from(t[0])).powi(2) + (p.y - f64::from(t[1])).powi(2) + (p.z - f64::from(t[2])).powi(2) < 4.0
-        });
-        if p.y < sea - 1.0 && (done || close) {
+        let close = nav.path.as_ref().is_some_and(|path| close_to_target(p, path.target.map(f64::from)));
+        if below_surface(p.y, sea) && (done || close) {
             let (h, v) = {
                 let r = w.get::<Rising>(e).unwrap();
                 (r.h, r.v)
             };
-            let to = [p.x, sea - 1.0, p.z];
+            let to = rise_target(p, sea);
             match crate::spots::pick_for(w, e, Pick::DefaultTowards { h, v, to, max_rad: std::f64::consts::FRAC_PI_2 }) {
                 None => w.get_mut::<Rising>(e).unwrap().stuck = true,
                 Some(at) => go_to_at(w, e, at, 1.0, 1),

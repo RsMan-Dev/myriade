@@ -10,6 +10,8 @@ use crate::projectile::Blast;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
+use crate::rules::dragon_crystals as rule;
+pub use crate::rules::dragon_crystals::bounds;
 use horizon_world::worldgen::end_spike::EndSpike;
 
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -25,11 +27,6 @@ pub struct Beam(pub [i32; 3]);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Shielded;
 
-/// The crystal's box: 2 by 2, from its feet up 2 (`EndCrystal.getBoundingBox`).
-pub fn bounds(p: Vec3) -> Aabb {
-    Aabb::new(Vec3::new(p.x - 1.0, p.y, p.z - 1.0), Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0))
-}
-
 /// A crystal at `at` (feet), counted in the spike total. Its own time starts now, so a respawn can arm its timer on it.
 pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
     w.resource_mut::<EndFight>().crystals_alive += 1;
@@ -38,7 +35,7 @@ pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
 
 /// The crystals of a spike (`place_spike_crystals`): one at the centre, a block above the top, unless one already stands there.
 pub fn place_spike(w: &mut World, spike: &EndSpike) {
-    let at = Vec3::new(f64::from(spike.center_x) + 0.5, f64::from(spike.height + 1), f64::from(spike.center_z) + 0.5);
+    let at = rule::spike_crystal_at(f64::from(spike.center_x), f64::from(spike.height), f64::from(spike.center_z));
     let mut q = w.query::<&Pos>();
     if q.iter(w).any(|p| p.0.distance_squared(at) < 1.0) {
         return;
@@ -88,13 +85,11 @@ fn strafe_after_crystal(w: &mut World, d: Entity, by: Option<u32>) {
 
 /// A hit on crystal `e` (`hit_special`): fire is refused; a shielded crystal takes only a creative player's hit, which unshields it.
 pub fn hit(w: &mut World, e: Entity, by: Option<u32>, fire: bool, creative: bool) -> bool {
-    if fire {
+    let shielded = w.get::<Shielded>(e).is_some();
+    if !rule::hit_takes(fire, shielded, creative) {
         return false;
     }
-    if w.get::<Shielded>(e).is_some() {
-        if !creative {
-            return false;
-        }
+    if shielded {
         w.entity_mut(e).remove::<Shielded>();
     }
     destroy(w, e, by, true);

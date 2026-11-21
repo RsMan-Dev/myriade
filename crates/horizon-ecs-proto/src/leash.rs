@@ -11,6 +11,7 @@ use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
+use crate::rules::leash::{center_of, follow_target, is_stretched, spin_friction, spin_step};
 use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
@@ -101,21 +102,7 @@ pub fn is_leashed(w: &World, e: Entity) -> bool {
 pub fn held_by(w: &World, h: Holder) -> Vec<Entity> {
     w.get_resource::<Leashes>().map_or_else(Vec::new, |l| l.held_by(h).to_vec())
 }
-/// Where the other end of the lead is this tick.
-#[derive(Clone, Copy, Debug)]
-pub struct HolderState {
-    pub position: Vec3,
-    pub center: Vec3,
-    pub width: f64,
-    pub height: f64,
-    pub yaw: f32,
-    pub velocity: Vec3,
-}
-/// `LeashFenceKnotEntity`: 0,375 wide, 0,5 tall, centred a quarter block above its base.
-pub fn knot_state(p: [i32; 3]) -> HolderState {
-    let position = Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.375, f64::from(p[2]) + 0.5);
-    HolderState { position, center: Vec3::new(position.x, position.y + 0.25, position.z), width: 0.375, height: 0.5, yaw: 0.0, velocity: Vec3::ZERO }
-}
+pub use crate::rules::leash::{HolderState, elastic_pull, knot_state};
 fn player_state(p: Player) -> HolderState {
     // The bench keeps no box for its players: the standing one (0,6 by 1,8).
     let position = Vec3::new(p.x, p.y, p.z);
@@ -134,8 +121,7 @@ pub fn attach(w: &mut World, e: Entity, holder: Holder) -> bool {
         Holder::Knot(p) => Some(knot_state(p)),
     };
     let Some(state) = state else { return false };
-    let (lo, hi) = (b.min_position(), b.max_position());
-    let mine = Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0);
+    let mine = center_of(b);
     if mine.distance(state.center) > l.snap {
         return false;
     }
@@ -157,41 +143,12 @@ fn entity_state(w: &World, h: Entity) -> Option<HolderState> {
     let (lo, hi) = (b.min_position(), b.max_position());
     Some(HolderState {
         position: p,
-        center: Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0),
+        center: center_of(b),
         width: hi.x - lo.x,
         height: hi.y - lo.y,
         yaw: w.get::<Yaw>(h).map_or(0.0, |y| y.0),
         velocity: w.get::<Vel>(h).map_or(Vec3::ZERO, |v| v.0),
     })
-}
-/// `Vec3.yRot` with a float angle.
-fn rotate(v: [f64; 3], a: f64) -> [f64; 3] {
-    let r = Vec3::new(v[0], v[1], v[2]).rotate_y(a as f32);
-    [r.x, r.y, r.z]
-}
-/// `Leashable.computeElasticInteraction` for the single attachment of a creature (0, 0,5, 0,5 of its box) and its holder (0, 0,5, 0): the
-/// force toward the holder and the torque, or `None` while slack.
-pub fn elastic_pull(pos: Vec3, yaw: f32, size: (f64, f64), holder: &HolderState, motion: Vec3, elastic: f64) -> Option<([f64; 3], f64)> {
-    let (w, h) = size;
-    let lever = rotate([0.0, 0.5 * h, 0.5 * w], -f64::from(yaw.to_radians()));
-    let object = [pos.x + lever[0], pos.y + lever[1], pos.z + lever[2]];
-    let arm = rotate([0.0, 0.5 * holder.height, 0.0], -f64::from(holder.yaw.to_radians()));
-    let pivot = [holder.position.x + arm[0], holder.position.y + arm[1], holder.position.z + arm[2]];
-    let d = [pivot[0] - object[0], pivot[1] - object[1], pivot[2] - object[2]];
-    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    if distance < elastic {
-        return None;
-    }
-    let unit = if distance < 1.0e-5 { [0.0; 3] } else { [d[0] / distance, d[1] / distance, d[2] / distance] };
-    let pull = distance - elastic;
-    let mut f = [unit[0] * pull, unit[1] * pull, unit[2] * pull];
-    let torque = lever[2] * f[0] - lever[0] * f[2];
-    if motion.x * f[0] + motion.y * f[1] + motion.z * f[2] >= 0.0 {
-        for v in &mut f {
-            *v *= f64::from(0.3_f32);
-        }
-    }
-    Some((f, torque))
 }
 /// `PathfinderMob.closeRangeLeashBehaviour`: the slack lead walks the creature to within two blocks of the holder.
 fn walk_to_holder(w: &mut World, e: Entity, target: [f64; 3], speed: f64) {
@@ -226,7 +183,7 @@ pub(crate) fn tick(
                 let (lo, hi) = (b.0.min_position(), b.0.max_position());
                 HolderState {
                     position: p.0,
-                    center: Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0),
+                    center: center_of(b.0),
                     width: hi.x - lo.x,
                     height: hi.y - lo.y,
                     yaw: y.map_or(0.0, |y| y.0),
@@ -249,8 +206,7 @@ pub(crate) fn tick(
         if home.is_none_or(|h| h.center != center || h.radius != radius) {
             commands.entity(e).insert(crate::spots::Home { center, radius });
         }
-        let (lo, hi) = (bounds.0.min_position(), bounds.0.max_position());
-        let mine = Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0);
+        let mine = center_of(bounds.0);
         let distance = mine.distance(state.center);
         if distance > k.snap {
             commands.queue(move |w: &mut World| {
@@ -258,7 +214,7 @@ pub(crate) fn tick(
             });
             continue;
         }
-        let stretched = distance > k.elastic - state.width - f64::from(body.width);
+        let stretched = is_stretched(distance, k.elastic, state.width, body.width);
         let pulled = stretched
             && elastic_pull(pos.0, yaw.0, (f64::from(body.width), f64::from(body.height)), &state, vel.0, k.elastic).is_some_and(|(force, torque)| {
                 l.spin += 10.0 * torque;
@@ -274,10 +230,7 @@ pub(crate) fn tick(
                 true
             });
         if !pulled && !panicking {
-            let d = Vec3::new(state.position.x - pos.0.x, state.position.y - pos.0.y, state.position.z - pos.0.z);
-            let len = d.length();
-            let scale = if len > 0.0 { (len - 2.0).max(0.0) / len } else { 0.0 };
-            let target = [pos.0.x + d.x * scale, pos.0.y + d.y * scale, pos.0.z + d.z * scale];
+            let target = follow_target(pos.0, state.position);
             let speed = k.follow_speed;
             commands.queue(move |w: &mut World| walk_to_holder(w, e, target, speed));
         }
@@ -289,19 +242,12 @@ pub(crate) fn tick(
                     y.0 = turned;
                 }
             });
-            let friction = if c.on_ground {
+            let ground = c.on_ground.then(|| {
                 let mw = level.mw.0;
                 let below = mw.world.block(pos.0.x.floor() as i32, (pos.0.y - 0.500_001).floor() as i32, pos.0.z.floor() as i32);
-                mw.facts.get(below).friction * 0.91_f32
-            } else if fs.in_water {
-                0.8_f32
-            } else {
-                0.91_f32
-            };
-            l.spin *= f64::from(friction);
-            if l.spin.abs() < 1.0e-9 {
-                l.spin = 0.0;
-            }
+                mw.facts.get(below).friction
+            });
+            l.spin = spin_step(l.spin, spin_friction(ground, fs.in_water));
         }
     }
 }

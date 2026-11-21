@@ -3,6 +3,7 @@
 //! to the world is ported here: no drops, and no stone with griefing off (DOUTE in the notes).
 use super::*;
 use crate::{cow::*, goals::*};
+use crate::rules::silverfish_wake_up_friends::{is_infested, offsets};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -101,10 +102,6 @@ fn tick(w: &mut World, e: Entity) {
     }
     sweep(w, e);
 }
-/// The offsets 0, 1, -1, 2, -2 ... up to `limit`.
-fn offsets(limit: i32) -> impl Iterator<Item = i32> {
-    std::iter::once(0).chain((1..=limit).flat_map(|i| [i, -i]))
-}
 /// The sweep: y within 5, x and z within 10, in the order of the Mob; each infested block found is broken, and a coin flip
 /// after it stops the sweep.
 fn sweep(w: &mut World, e: Entity) {
@@ -117,7 +114,7 @@ fn sweep(w: &mut World, e: Entity) {
         for x in offsets(10) {
             for z in offsets(10) {
                 let q = [p[0] + x, p[1] + y, p[2] + z];
-                if !mw.block_name(q[0], q[1], q[2]).starts_with("minecraft:infested_") {
+                if !is_infested(mw.block_name(q[0], q[1], q[2])) {
                     continue;
                 }
                 if griefing {

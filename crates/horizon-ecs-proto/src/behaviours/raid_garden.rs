@@ -6,6 +6,8 @@
 use super::*;
 use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
 use horizon_client_lib::mobs::MobWorld;
+use crate::rules::cat_state::reduced;
+use crate::rules::raid_garden::{asks_ticks, ripe_carrot};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -50,7 +52,6 @@ static AGES: [&[(&str, &str)]; 8] = [
     &[("age", "6")],
     &[("age", "7")],
 ];
-const CARROT_MAX_AGE: i32 = 7;
 
 pub static MODULE: Module = Module {
     name: "raid_garden",
@@ -93,11 +94,7 @@ fn arm_in(w: &mut World, e: Entity, ticks: i32) {
 /// Arms the next search after `asks` asks (a selector asks every 2 ticks of a goal with no flag asking, here the MOVE flag
 /// is free so it is every 2 ticks too).
 fn arm_asks(w: &mut World, e: Entity, asks: i32) {
-    arm_in(w, e, 2 * (asks.max(0) + 1));
-}
-/// `reduced(n)`.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
+    arm_in(w, e, asks_ticks(asks));
 }
 /// `RaidGarden.isValidTarget`: `#supports_crops` under a carrot at its maximum age, while the rabbit wants food and has not
 /// found one (`can_raid` must be false here, as the `Mob` writes it).
@@ -106,7 +103,7 @@ fn raid_target(mw: &MobWorld, p: [i32; 3], wants: bool, can_raid: bool) -> bool 
         && wants
         && !can_raid
         && mw.block_name(p[0], p[1] + 1, p[2]) == "minecraft:carrots"
-        && mw.prop(p[0], p[1] + 1, p[2], "age").and_then(|a| a.parse::<i32>().ok()).is_some_and(|age| age >= CARROT_MAX_AGE)
+        && ripe_carrot(mw.prop(p[0], p[1] + 1, p[2], "age").and_then(|a| a.parse::<i32>().ok()))
 }
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;

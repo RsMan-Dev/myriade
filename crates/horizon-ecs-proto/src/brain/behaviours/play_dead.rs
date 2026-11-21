@@ -10,6 +10,7 @@ use crate::brain::sensors::attackables::HAS_HUNTING_COOLDOWN;
 use crate::brain::*;
 use crate::cow::{FluidState, Health, SpeciesId, SpeciesTable};
 use crate::effects;
+use crate::rules::play_dead::{hurt_enough, is_first_roll};
 
 pub static PLAY_DEAD_TICKS: MemKey = MemKey::new("minecraft:play_dead_ticks", Shape::Int);
 
@@ -76,11 +77,11 @@ fn damaged(w: &mut World, e: Entity, c: &Ctx, d: &crate::behaviours::Damaged) {
     let (Some(after), Some(sp)) = (w.get::<Health>(e).map(|h| h.0), w.get::<SpeciesId>(e)) else { return };
     let max = w.resource::<SpeciesTable>().0[sp.0 as usize].max_health;
     let before = after + d.amount;
-    let first = crate::goals::with_rng(w, e, |r| r.next_int(3)) == 0;
+    let first = is_first_roll(crate::goals::with_rng(w, e, |r| r.next_int(3)));
     if !first {
         return;
     }
-    let second = (crate::goals::with_rng(w, e, |r| r.next_int(3)) as f32) < d.amount || before / max < 0.5;
+    let second = hurt_enough(crate::goals::with_rng(w, e, |r| r.next_int(3)), d.amount, before, max);
     let by_entity = w.get::<LastDamage>(e).is_some_and(|l| l.by.is_some());
     if !(second && d.amount < before && in_water(w, e) && by_entity && !is_playing_dead(w, e)) {
         return;

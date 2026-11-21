@@ -5,6 +5,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::projectile::Blast;
+use crate::rules::invulnerable_charge::{blast_at, charge_until};
 use crate::targeting::{Eye, Who};
 use horizon_core::geometry::Vec3;
 
@@ -50,7 +51,7 @@ pub fn ends_at(w: &World, e: Entity) -> Option<u64> {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    let until = now_of(w, e) + p.ticks.max(0) as u64;
+    let until = charge_until(now_of(w, e), p.ticks);
     w.entity_mut(e).insert(Charge { until, slot: inst.slot, p, done: false });
     arm_at(w, e, until, Due::Goal(inst.slot));
     crate::goals::arm(w, e, inst.slot, 0);
@@ -72,7 +73,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let eye = w.get::<Eye>(e).map_or(1.6, |l| l.0);
     let mut ev = w.resource_mut::<Events>();
     ev.exploded.push(Blast {
-        at: Vec3::new(pos.x, pos.y + eye, pos.z),
+        at: blast_at(pos, eye),
         radius: c.p.radius,
         fire: false,
         owner: Some(Who::Entity(e)),

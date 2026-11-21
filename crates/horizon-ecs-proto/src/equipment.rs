@@ -6,6 +6,7 @@
 use crate::cow::*;
 use crate::goals::*;
 use crate::items::{self, worn_in};
+use crate::rules::equipment as rule;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
 
@@ -64,15 +65,9 @@ pub fn base_armor(sp: &crate::cow::Species) -> (f32, f32) {
 fn refresh_armor(w: &mut World, e: Entity) {
     let q = *w.get::<Equipment>(e).unwrap();
     let base = w.get::<SpeciesId>(e).map_or((0.0, 0.0), |s| w.resource::<SpeciesTable>().0[s.0 as usize].armor);
-    let (mut armor, mut toughness, mut worn) = (f64::from(base.0), f64::from(base.1), false);
-    for it in [q.head, q.chest, q.legs, q.feet, q.body] {
-        let (a, t) = items::armor_of(it);
-        worn |= a != 0.0 || t != 0.0;
-        armor += a;
-        toughness += t;
-    }
-    // `armor::values`: the armor value is floored.
-    let now = Armor { armor: armor.floor() as f32, toughness: toughness as f32 };
+    let pieces = [q.head, q.chest, q.legs, q.feet, q.body].map(items::armor_of);
+    let (armor, toughness, worn) = rule::armor_totals(base, &pieces);
+    let now = Armor { armor, toughness };
     if !worn {
         w.entity_mut(e).remove::<Armor>();
     } else if now == Armor::default() {

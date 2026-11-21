@@ -7,6 +7,7 @@ use crate::goals::TARGET;
 use crate::cow::{Clock, LastHurtBy};
 use crate::hostile::PlayerState;
 use crate::targeting::{self, Target, Who};
+use crate::rules::defend_trusted::{hit_is_fresh, target_memory, within_reach};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -44,7 +45,7 @@ fn hurt_by(w: &World, who: Who) -> Option<(Who, u64)> {
     match who {
         Who::Player(id) => {
             let r = w.resource::<PlayerState>().hurt_by.get(id as usize).copied().flatten()?;
-            (w.resource::<Clock>().0.saturating_sub(r.1) <= 100).then_some(r)
+            hit_is_fresh(w.resource::<Clock>().0, r.1).then_some(r)
         }
         Who::Entity(t) => w.get::<LastHurtBy>(t).map(|h| (h.who, h.at)),
     }
@@ -62,8 +63,7 @@ fn can_defend(w: &World, e: Entity, who: Who, range: f64) -> bool {
         return false;
     }
     let me = pose::feet(w, e);
-    let (dx, dy, dz) = (t.pos.x - me.x, t.pos.y - me.y, t.pos.z - me.z);
-    dx * dx + dy * dy + dz * dz <= range * range
+    within_reach(t.pos.x - me.x, t.pos.y - me.y, t.pos.z - me.z, range)
 }
 
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
@@ -97,7 +97,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         d.timestamp = d.hurt_at;
     }
     if let Some(by) = g.attacker {
-        targeting::set_target(w, e, Target::new(by, ((g.p.unseen_memory + 1) / 2) as u16, inst.slot));
+        targeting::set_target(w, e, Target::new(by, target_memory(g.p.unseen_memory), inst.slot));
     }
     let at = pose::feet(w, e);
     w.resource_mut::<crate::goals::Events>().host.sound(g.p.sound, [at.x, at.y, at.z], 1.0, 1.0);

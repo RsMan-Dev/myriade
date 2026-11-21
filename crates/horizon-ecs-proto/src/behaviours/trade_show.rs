@@ -6,6 +6,7 @@ use super::*;
 use horizon_client_lib::merchant::MerchantOffer;
 use crate::cow::{GrowAt, Pos};
 use crate::goals::*;
+use crate::rules::trade_show::{cycle_done, in_show_range, next_index, CYCLE, LOOK_TICKS};
 
 /// The trades shown to one player: `items` are the offers' results for the held item, `index` the one in hand.
 #[derive(Component)]
@@ -18,9 +19,6 @@ pub struct Showing {
     pub index: usize,
     pub look: u32,
 }
-
-const CYCLE: i32 = 40;
-const LOOK_TICKS: u32 = 900;
 
 pub static MODULE: Module = Module {
     name: "trade_show",
@@ -44,7 +42,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(p) = w.resource::<Online>().get(player) else { return false };
     let pos = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
     let d2 = (p.x - pos[0]).powi(2) + (p.y - pos[1]).powi(2) + (p.z - pos[2]).powi(2);
-    look > 0 && w.get::<GrowAt>(e).is_none() && d2 <= 17.0
+    look > 0 && w.get::<GrowAt>(e).is_none() && in_show_range(d2)
 }
 
 /// One cycle: the held item is compared with the offers when it changes, the shown result moves on every 40 ticks.
@@ -53,9 +51,9 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     s.look = s.look.saturating_sub(CYCLE as u32);
     if s.items.len() >= 2 {
         s.cycle += 1;
-        if s.cycle >= 40 {
+        if cycle_done(s.cycle) {
             s.cycle = 0;
-            s.index = (s.index + 1) % s.items.len();
+            s.index = next_index(s.index, s.items.len());
         }
     }
     let shown = s.items.get(s.index).copied();

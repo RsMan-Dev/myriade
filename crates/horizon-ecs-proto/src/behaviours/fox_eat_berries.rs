@@ -10,6 +10,7 @@ use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
 use horizon_client_lib::items::ItemStack;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
+use crate::rules::fox_eat_berries::{ask_ticks, pick_count, search_delay};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -86,10 +87,6 @@ fn has_berries(mw: &MobWorld, p: [i32; 3]) -> bool {
         _ => false,
     }
 }
-/// `Goal.reducedTickDelay`.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
@@ -104,7 +101,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if w.get::<BerrySearch>(e).is_some_and(|s| now < s.due) {
         return false;
     }
-    let next = with_rng(w, e, |r| reduced(200 + r.next_int(200)));
+    let next = with_rng(w, e, |r| search_delay(r.next_int(200)));
     let base = feet(w, e);
     let mut m = w.get::<MoveToBlock>(e).unwrap().clone();
     let found = {
@@ -116,7 +113,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if found {
         return true;
     }
-    let wait = 2 * (next + 1);
+    let wait = ask_ticks(next);
     w.get_mut::<BerrySearch>(e).unwrap().due = now + wait as u64;
     crate::goals::arm(w, e, inst.slot, wait);
     false
@@ -137,7 +134,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Picking>();
     let next = w.get::<BerrySearch>(e).unwrap().next;
-    let wait = 2 * (next + 1);
+    let wait = ask_ticks(next);
     let now = now_of(w, e);
     w.get_mut::<BerrySearch>(e).unwrap().due = now + wait as u64;
     crate::goals::arm(w, e, inst.slot, wait);
@@ -202,7 +199,7 @@ fn pick(w: &mut World, e: Entity, b: [i32; 3]) {
     let delay = w.get::<BerryDef>(e).unwrap().drop_delay;
     let center = Vec3::new(f64::from(b[0]) + 0.5, f64::from(b[1]) + 0.5, f64::from(b[2]) + 0.5);
     if sweet {
-        let count = 1 + with_rng(w, e, |r| r.next_int(2)) + i32::from(age == 3);
+        let count = pick_count(with_rng(w, e, |r| r.next_int(2)), age);
         let mut rest = count;
         if main_hand(w, e).is_none() {
             set_main_hand(w, e, Some(ItemStack::new("minecraft:sweet_berries", 1)));

@@ -7,6 +7,7 @@ use super::*;
 use crate::{cow::*, goals::*, spots::{Pick, spotter}};
 use crate::targeting::Target;
 use horizon_client_lib::mobs::spawn_selection::infested_host;
+use crate::rules::silverfish_merge::{asks_until_success, feet_cell, host_cells, infested, merge_pick, odds};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -36,10 +37,6 @@ pub struct Merge {
 #[component(storage = "SparseSet")]
 pub struct Strolling;
 
-/// `RandomStrollGoal`'s odds per ask: `reduced(10)` = 5.
-const ODDS: f64 = 0.2;
-const DIRECTIONS: [[i32; 3]; 6] = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
-
 pub static MODULE: Module = Module {
     name: "silverfish_merge",
     flags: MOVE,
@@ -66,17 +63,11 @@ fn weights(w: &World, e: Entity) -> (Vec<[i32; 3]>, f64, f64) {
     let hosts: Vec<[i32; 3]> = if mob_griefing(w) {
         let p = w.get::<Pos>(e).unwrap().0;
         let mw = w.resource::<Level>().mw.0;
-        let base = [p.x.floor() as i32, (p.y + 0.5).floor() as i32, p.z.floor() as i32];
-        DIRECTIONS
-            .iter()
-            .map(|d| [base[0] + d[0], base[1] + d[1], base[2] + d[2]])
-            .filter(|q| infested_host(mw.block_name(q[0], q[1], q[2])))
-            .collect()
+        host_cells(feet_cell(p)).into_iter().filter(|q| infested_host(mw.block_name(q[0], q[1], q[2]))).collect()
     } else {
         Vec::new()
     };
-    let per_dir = ODDS / 6.0;
-    let stroll = (1.0 - per_dir * hosts.len() as f64) * ODDS;
+    let (per_dir, stroll) = odds(hosts.len());
     (hosts, per_dir, stroll)
 }
 /// The wait of the next success: asks until one succeeds, each ask 2 ticks, the success probability being the sum of the
@@ -84,10 +75,7 @@ fn weights(w: &World, e: Entity) -> (Vec<[i32; 3]>, f64, f64) {
 fn arm_next(w: &mut World, e: Entity, slot: u8) {
     let (hosts, per_dir, stroll) = weights(w, e);
     let p = per_dir * hosts.len() as f64 + stroll;
-    let asks = with_rng(w, e, |r| {
-        let u = r.next_f64().max(1.0e-12);
-        (u.ln() / (1.0 - p).ln()).ceil().max(1.0) as i32
-    });
+    let asks = asks_until_success(with_rng(w, e, |r| r.next_f64()), p);
     crate::goals::arm(w, e, slot, 2 * asks);
 }
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a walking animal has none.
@@ -104,17 +92,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let (hosts, per_dir, stroll) = weights(w, e);
     let total = per_dir * hosts.len() as f64 + stroll;
     let u = with_rng(w, e, |r| r.next_f64()) * total;
-    let mut acc = 0.0;
-    let mut choice = None;
-    for h in &hosts {
-        acc += per_dir;
-        if u < acc {
-            choice = Some(Choice::Merge(*h));
-            break;
-        }
-    }
-    let choice = match choice {
-        Some(c) => c,
+    let choice = match merge_pick(u, per_dir, hosts.len()) {
+        Some(i) => Choice::Merge(hosts[i]),
         None => {
             let (level, pos, nav, walk, in_water) = {
                 let p = w.get::<Pos>(e).unwrap().0;
@@ -172,18 +151,6 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Strolling>();
     stop_nav(w, e);
     arm_next(w, e, inst.slot);
-}
-/// The infested block of a host (`InfestedBlock`: the same stone with the `infested_` prefix).
-fn infested(host: &str) -> &'static str {
-    match host {
-        "minecraft:cobblestone" => "minecraft:infested_cobblestone",
-        "minecraft:stone_bricks" => "minecraft:infested_stone_bricks",
-        "minecraft:mossy_stone_bricks" => "minecraft:infested_mossy_stone_bricks",
-        "minecraft:cracked_stone_bricks" => "minecraft:infested_cracked_stone_bricks",
-        "minecraft:chiseled_stone_bricks" => "minecraft:infested_chiseled_stone_bricks",
-        "minecraft:deepslate" => "minecraft:infested_deepslate",
-        _ => "minecraft:infested_stone",
-    }
 }
 /// The silverfish leaves the world: its cell leaves the index, then the entity goes.
 fn remove(w: &mut World, e: Entity) {

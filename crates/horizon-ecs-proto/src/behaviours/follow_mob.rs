@@ -7,6 +7,7 @@ use super::*;
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::path::PathType;
 use horizon_core::geometry::Vec3;
+use crate::rules::follow_mob::{recalc_after, scan_reach, step_back};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -90,7 +91,7 @@ fn wake_on_moves(
         if !idx.watched_near(crate::cow::WATCH_FOLLOW_MOB, idx.cell_of(at.x, at.z)) {
             continue;
         }
-        let reach = SCAN_AREA + mbox.size().x / 2.0 + 1.0;
+        let reach = scan_reach(SCAN_AREA, mbox.size().x);
         idx.for_radius(at.x, at.z, reach, |c| {
             if c == m {
                 return;
@@ -115,7 +116,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let (Some(pos), Some(bx)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Bounds>(e).map(|b| b.0)) else { return false };
     let me = w.get::<SpeciesId>(e).map(|s| s.0);
     let area = bx.inflate(Vec3::new(f.p.area, f.p.area, f.p.area));
-    let reach = SCAN_AREA + bx.size().x / 2.0 + 1.0;
+    let reach = scan_reach(SCAN_AREA, bx.size().x);
     let world: &World = w;
     let mut found = None;
     world.resource::<Index>().for_radius(pos.x, pos.z, reach, |c| {
@@ -199,15 +200,14 @@ fn follow_step(w: &mut World, e: Entity) {
         if st.recalc > 0 {
             return;
         }
-        st.recalc = (f.p.recalc + 1) / 2;
+        st.recalc = recalc_after(f.p.recalc);
     }
     if d > stop2 {
         go_to_entity(w, e, target, f.p.speed, 1);
     } else {
         stop_nav(w, e);
         if d <= f.p.stop {
-            let (dx, dz) = (tp.x - pos.x, tp.z - pos.z);
-            go_to_at(w, e, [pos.x - dx, pos.y, pos.z - dz], f.p.speed, 1);
+            go_to_at(w, e, [step_back(pos.x, tp.x), pos.y, step_back(pos.z, tp.z)], f.p.speed, 1);
         }
     }
 }

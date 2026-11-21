@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Pos, Rng};
 use super::profession::Profession;
 use crate::poi::PoiRegistry;
+use crate::rules::poi_claim::retry_after;
 use horizon_world::poi::PoiType;
 use std::collections::HashMap;
 
@@ -71,12 +72,8 @@ fn mark_retry(w: &mut World, e: Entity, key: &MemKey) {
     let now = now_of(w, e) as i64;
     let jitter = w.get_mut::<Rng>(e).map_or(0, |mut r| (r.next_u32() % 40) as i32);
     let mut r = retry_of(w, e, key).unwrap_or_default();
-    if now - r.previous >= 400 {
-        r.delay = 0;
-    }
+    (r.delay, r.next) = retry_after(now, r.previous, r.delay, jitter);
     r.previous = now;
-    r.delay = (r.delay + jitter + 40).min(400);
-    r.next = now + i64::from(r.delay);
     let mut all = w.get::<Retries>(e).cloned().unwrap_or_default();
     all.0.retain(|(k, _)| *k != key.name);
     all.0.push((key.name, r));

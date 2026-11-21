@@ -2,6 +2,7 @@
 //! (`EatBlockGoal`) and wool, and the hen's egg and wings. A species takes a behaviour by having its rule in
 //! the `rules` of its configuration (`rules.rs`); nothing here knows a species by name.
 use crate::cow::*;
+use crate::rules::farm::{wing_settle, wing_step};
 use crate::rules::Rule;
 pub use crate::behaviours::eat_block::{Graze, Grazing};
 use bevy_ecs::prelude::*;
@@ -120,12 +121,7 @@ pub struct Flap {
     pub settled: bool,
 }
 fn flap_one(f: &mut Flap, on_ground: bool) {
-    f.speed = (f.speed + if on_ground { -1.0 } else { 4.0 } * 0.3).clamp(0.0, 1.0);
-    if !on_ground && f.flapping < 1.0 {
-        f.flapping = 1.0;
-    }
-    f.flapping *= 0.9;
-    f.flap += f.flapping * 2.0;
+    (f.speed, f.flapping, f.flap) = wing_step(f.speed, f.flapping, f.flap, on_ground);
     f.settled = false;
 }
 /// The hen's wings, one step, before the physics of the tick (`Chicken.aiStep` runs before `travel`).
@@ -144,7 +140,7 @@ pub fn flap_system(
             && !f.settled
         {
             f.speed = 0.0;
-            f.flap += f.flapping * 0.9 * 2.0 / (1.0 - 0.9);
+            f.flap = wing_settle(f.flap, f.flapping);
             f.flapping = 0.0;
             f.settled = true;
         }

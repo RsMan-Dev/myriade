@@ -5,9 +5,8 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::guardian_thorns::{spikes_strike, THORNS};
 use crate::targeting::Who;
-
-pub const THORNS: f32 = 2.0;
 
 /// The guardian carries its spikes: `cow::apply_damage` returns them for every blow that reaches it, before the guards (`Guardian.hurtServer`
 /// runs the spikes before `super.hurtServer`: a blow the invulnerability window refuses and the blow that kills draw them too).
@@ -23,7 +22,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Syn
 pub fn blow(w: &mut World, e: Entity, by: Option<Who>, direct: bool, cause: Cause) {
     // `Guardian.hurtServer`: `randomStrollGoal.trigger()` at every blow, before the spikes' own test and whatever the guards decide.
     crate::behaviours::stroll::trigger(w, e);
-    if w.get::<Drive>(e).is_some_and(|d| d.moving) || !direct || cause != Cause::Entity {
+    if !spikes_strike(w.get::<Drive>(e).is_some_and(|d| d.moving), direct, cause == Cause::Entity) {
         return;
     }
     if let Some(who @ (Who::Player(_) | Who::Entity(_))) = by {

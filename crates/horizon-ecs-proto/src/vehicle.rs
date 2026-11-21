@@ -3,6 +3,7 @@
 //! Event: `Events.vehicle_moved` (the player's id) when the vehicle moved in its last tick, or stopped, or went away: the modules that follow it
 //! (`behaviours/follow_player_vehicle.rs`) are woken by it, never by a scan.
 use crate::goals::Events;
+use crate::rules::vehicle::horizontally_moved;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
 
@@ -20,7 +21,7 @@ pub struct Vehicle {
 impl Vehicle {
     /// `Entity.hasMovedHorizontallyRecently` of the rider: the horizontal speed is over 1e-5.
     pub fn moved(&self) -> bool {
-        (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt() > 1.0e-5
+        horizontally_moved(self.velocity)
     }
 }
 #[derive(Resource, Default)]

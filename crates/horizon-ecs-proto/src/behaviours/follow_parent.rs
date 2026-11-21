@@ -1,6 +1,7 @@
 //! `FollowParentGoal`: a baby 3 blocks or more from the nearest adult of its species walks to it. Woken by events: the
 //! adult it watches moves (`Mother`), or the baby or an adult near it changes column of the spatial index.
 use super::*;
+use crate::rules::follow_parent::{apart, beyond_nine, follows, in_watch_box, near_adult, next_repath};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -95,7 +96,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     for c in near {
         let Some(cp) = w.get::<Pos>(c) else { continue };
         let (dx, dy, dz) = ((cp.0.x - pos.x).abs(), (cp.0.y - pos.y).abs(), (cp.0.z - pos.z).abs());
-        if c != e && w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<GrowAt>(c).is_none() && dx <= 8.0 && dy <= 4.0 && dz <= 8.0 {
+        if c != e && w.get::<SpeciesId>(c) == w.get::<SpeciesId>(e) && w.get::<GrowAt>(c).is_none() && near_adult(dx, dy, dz) {
             let d = d2(pos, cp.0);
             if best.is_none_or(|b| d <= b.1) {
                 best = Some((c, d));
@@ -106,7 +107,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if let Some(b) = best {
         watch(w, b.0, e);
     }
-    match best.filter(|b| b.1 >= 9.0) {
+    match best.filter(|b| beyond_nine(b.1)) {
         Some(b) => {
             w.get_mut::<FollowParent>(e).unwrap().parent = Some(b.0);
             true
@@ -135,7 +136,7 @@ fn mother_moved(
         m.0.retain(|&b| babies.get(b).is_ok_and(|(_, baby, _)| baby));
         for &b in &m.0 {
             let (bp, _, f) = babies.get(b).unwrap();
-            if (bp.0.x - pos.0.x).powi(2) + (bp.0.z - pos.0.z).powi(2) >= 9.0 {
+            if apart(bp.0.x - pos.0.x, bp.0.z - pos.0.z) {
                 reqs.0.push(Req::Start(b, f.slot));
             }
         }
@@ -172,7 +173,7 @@ fn cell_moves(
             }
             let (Ok(f), Ok((bp, _))) = (follow.get(b), pos.get(b)) else { return };
             // The goal's `can_use` draws nothing: one ask a tick per baby answers all the movers around it.
-            if (at.x - bp.0.x).abs() <= 9.0 && (at.z - bp.0.z).abs() <= 9.0 && asked.insert(b) {
+            if in_watch_box(at.x - bp.0.x, at.z - bp.0.z) && asked.insert(b) {
                 reqs.0.push(Req::Start(b, f.slot));
             }
         });
@@ -187,13 +188,13 @@ fn follow_parent_run(
     mut cmd: Commands,
 ) {
     for (e, pos, mut f, t, baby) in &mut q {
-        let parent = parents.get(t.parent).ok().filter(|(pp, pb)| !pb && (9.0..=256.0).contains(&d2(pos.0, pp.0)));
+        let parent = parents.get(t.parent).ok().filter(|(pp, pb)| !pb && follows(d2(pos.0, pp.0)));
         let (Some((pp, _)), true) = (parent, baby) else {
             reqs.0.push(Req::End(e, f.slot));
             continue;
         };
         if clock.of(e) >= f.recalc {
-            f.recalc = clock.of(e) + 10;
+            f.recalc = next_repath(clock.of(e));
             go_to(&mut cmd, e, pp.0.x, pp.0.z, f.speed, 4);
         }
     }

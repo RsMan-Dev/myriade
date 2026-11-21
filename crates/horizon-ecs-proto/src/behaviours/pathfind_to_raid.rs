@@ -4,6 +4,7 @@
 //! `raids::spawn_wave` asks it to start for the raiders it spawns. Not done: the recruitment of the raiders around it every 20 ticks.
 use super::*;
 use crate::poi::PoiRegistry;
+use crate::rules::move_towards_restriction::home_target;
 use crate::raids::{raid_centre, Raider};
 use crate::spots::{pick_for, Pick};
 use crate::targeting::Target;
@@ -62,7 +63,7 @@ fn run(q: Query<(Entity, &ToRaid, Has<Following>, Has<NeedsPath>), With<Walking>
             if following || asked {
                 return;
             }
-            let to = [f64::from(c[0]) + 0.5, f64::from(c[1]), f64::from(c[2]) + 0.5];
+            let to = home_target(c);
             // A test gives the ECS the Mob's draws (`ImposedSpots`, absent in the normal state): the next one, or none yet.
             let at = match w.get_resource_mut::<super::turtle_go_home::ImposedSpots>() {
                 Some(mut q) => q.0.pop_front(),

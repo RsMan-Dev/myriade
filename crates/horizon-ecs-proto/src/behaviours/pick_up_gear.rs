@@ -9,6 +9,7 @@
 //! not move (the `Mob` looks every tick; here a creature looks when it changes column).
 use super::*;
 use crate::items::{self, worn_in};
+use crate::rules::pick_up_gear::{drop_chance, drops_old};
 use crate::{cow::*, goals::*, item};
 use horizon_client_lib::mobs::equip::{can_replace_current_item, Facts, Slot as MSlot};
 use horizon_core::geometry::Vec3;
@@ -132,8 +133,8 @@ pub fn look(w: &mut World, e: Entity) {
         let Some(taken) = item::pick_up(w, e, it, 1) else { continue };
         let old = equipped(w, e, slot);
         let looted = w.get::<Looted>(e).copied().unwrap_or_default().0;
-        let chance = if looted & slot_bit(slot) != 0 { 2.0 } else { g.p.drop_chance };
-        let drop_old = old != 0 && (with_rng(w, e, |r| r.next_float()) - 0.1).max(0.0) < chance;
+        let chance = drop_chance(looted & slot_bit(slot) != 0, g.p.drop_chance);
+        let drop_old = old != 0 && drops_old(with_rng(w, e, |r| r.next_float()), chance);
         crate::equipment::set_slot(w, e, slot, id);
         if slot == Slot::Main {
             set_main_hand(w, e, Some(taken));

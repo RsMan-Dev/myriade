@@ -4,7 +4,7 @@
 //! goal's tick while it runs.
 use super::*;
 use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
-use horizon_client_lib::mobs::MobWorld;
+use crate::rules::attack_turtle_egg::{egg_breaks, egg_target, egg_under, found_search_ticks, search_ticks, stamp_hop_y};
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -87,8 +87,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         w.entity_mut(e).insert(Parked);
         return false;
     }
-    let k = reduced(200 + with_rng(w, e, |r| r.next_int(200)));
-    crate::goals::arm(w, e, inst.slot, 2 * (k + 1));
+    let draw = with_rng(w, e, |r| r.next_int(200));
+    crate::goals::arm(w, e, inst.slot, search_ticks(draw));
     false
 }
 /// `start`: the walk's draws, the path to the block above it; the goal's tick follows in the same tick (the Mob ticks a
@@ -112,7 +112,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     if let Some(mut c) = w.get_mut::<Contact>(e) {
         c.fall_distance = 1.0;
     }
-    crate::goals::arm(w, e, inst.slot, 2 * (reduced(20) + 1));
+    crate::goals::arm(w, e, inst.slot, found_search_ticks());
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(trample_run.in_set(slot));
@@ -127,8 +127,8 @@ fn parked_wake(w: &mut World, q: &mut QueryState<Entity, With<Parked>>) {
     for e in parked {
         w.entity_mut(e).remove::<Parked>();
         let Some(slot) = slot_of(w, e, &MODULE) else { continue };
-        let k = reduced(200 + with_rng(w, e, |r| r.next_int(200)));
-        crate::goals::arm(w, e, slot, 2 * (k + 1));
+        let draw = with_rng(w, e, |r| r.next_int(200));
+        crate::goals::arm(w, e, slot, search_ticks(draw));
     }
 }
 /// The tick of every running goal of this kind (a query of the marker only: nothing when no zombie runs).
@@ -153,63 +153,22 @@ fn trample_tick(w: &mut World, e: Entity) {
         crate::goals::go_to_at(w, e, at, speed, 1);
     }
     let at = feet(w, e);
-    let eat = [
-        at,
-        [at[0], at[1] - 1, at[2]],
-        [at[0] - 1, at[1], at[2]],
-        [at[0] + 1, at[1], at[2]],
-        [at[0], at[1], at[2] - 1],
-        [at[0], at[1], at[2] + 1],
-        [at[0], at[1] - 2, at[2]],
-    ]
-    .into_iter()
-    .find(|p| mw.block_name(p[0], p[1], p[2]) == "minecraft:turtle_egg");
+    let eat = egg_under(mw, at);
     if let (true, Some(eat)) = (h.walk.reached, eat) {
         let v = w.get::<Vel>(e).unwrap().0;
-        let mut vy = None;
-        if h.since_reached > 0 {
-            vy = Some(0.3);
-        }
-        if h.since_reached % 2 == 0 {
-            vy = Some(-0.3);
-        }
-        if let Some(vy) = vy {
+        if let Some(vy) = stamp_hop_y(h.since_reached) {
             set_velocity(w, e, Vec3::new(v.x, vy, v.z));
         }
-        if h.since_reached > 60 {
+        if egg_breaks(h.since_reached) {
             w.resource_mut::<BlockChanges>().0.push((eat[0], eat[1], eat[2], "minecraft:air"));
         }
         h.since_reached += 1;
     }
     *w.get_mut::<EggHunt>(e).unwrap() = h;
 }
-/// `RemoveBlockGoal.isValidTarget` without `canEntityDestroy` (no such service: taken as true, DOUTE): an egg in a loaded
-/// chunk with two air blocks above it.
-/// The state ids of the turtle egg block, read once from the facts of the process (the states of a block are contiguous): the
-/// search compares numbers, not names (a 24-block search reads some 16 000 cells).
-fn egg_states(mw: &MobWorld) -> (u32, u32) {
-    static IDS: std::sync::OnceLock<(u32, u32)> = std::sync::OnceLock::new();
-    *IDS.get_or_init(|| {
-        let mut it = mw.facts.states.iter().enumerate().filter(|(_, s)| &*s.name == "minecraft:turtle_egg").map(|(i, _)| i as u32);
-        let first = it.next();
-        first.map_or((1, 0), |f| (f, it.last().unwrap_or(f)))
-    })
-}
-fn egg_target(mw: &MobWorld, p: [i32; 3]) -> bool {
-    if !mw.world.loaded(p[0], p[2]) {
-        return false;
-    }
-    let (lo, hi) = egg_states(mw);
-    let id = mw.world.block(p[0], p[1], p[2]).0;
-    id >= lo && id <= hi && mw.facts.is_air(mw.world.block(p[0], p[1] + 1, p[2])) && mw.facts.is_air(mw.world.block(p[0], p[1] + 2, p[2]))
-}
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
-/// `reducedTickDelay`.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
 }
 
 #[cfg(test)]

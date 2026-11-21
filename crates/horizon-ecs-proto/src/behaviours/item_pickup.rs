@@ -8,6 +8,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::item::{self, Item};
+use crate::rules::item_pickup::take_count;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -73,7 +74,7 @@ pub fn look(w: &mut World, e: Entity) {
             continue;
         }
         let Some(stack) = w.get::<Item>(it).map(|i| i.stack.count) else { continue };
-        let count = if p.whole_stack { stack } else { 1 };
+        let count = take_count(stack, p.whole_stack);
         let Some(taken) = item::pick_up(w, e, it, count) else { continue };
         set_main_hand(w, e, Some(taken));
         return;

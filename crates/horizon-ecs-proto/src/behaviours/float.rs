@@ -2,6 +2,7 @@
 use super::*;
 use crate::behaviours::still_under_riders::{Above, Leaving, StillUntil};
 use crate::{cow::*, goals::*};
+use crate::rules::float::{buoyancy, is_deep, jumps};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -36,14 +37,14 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let eye = w.get::<FluidParams>(e).map_or(0.0, |p| p.eye_height);
-    w.entity_mut(e).insert(Buoyancy(if eye < 0.4 { 0.0 } else { 0.4 }));
+    w.entity_mut(e).insert(Buoyancy(buoyancy(eye)));
     if params::<Params>(p).unless_still {
         w.entity_mut(e).insert(UnlessStill);
     }
 }
 fn floats(w: &World, e: Entity) -> bool {
     let (f, b) = (w.get::<FluidState>(e).unwrap(), w.get::<Buoyancy>(e).unwrap());
-    f.water > b.0 || f.in_lava
+    is_deep(f.water, b.0, f.in_lava)
 }
 /// `canUse`: floats, unless the still timeout holds (`still_under_riders`: a rider, or the countdown after one left).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -70,7 +71,7 @@ fn float_events(
 ) {
     for (e, f, b, g, floating) in &q {
         let Some(slot) = g.slot_of(&MODULE) else { continue };
-        let deep = f.water > b.0 || f.in_lava;
+        let deep = is_deep(f.water, b.0, f.in_lava);
         if deep != floating {
             reqs.0.push(if deep { Req::Start(e, slot) } else { Req::End(e, slot) });
         }
@@ -84,6 +85,6 @@ fn float_events(
 /// `FloatGoal.tick`: a jump with 80 % each tick.
 fn float_run(mut q: Query<(&mut Rng, &mut Jump), With<Floating>>) {
     for (mut r, mut j) in &mut q {
-        j.0 = f64::from(r.next_u32() >> 8) / f64::from(1u32 << 24) < 0.8;
+        j.0 = jumps(r.next_u32());
     }
 }

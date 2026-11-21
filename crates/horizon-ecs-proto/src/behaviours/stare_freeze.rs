@@ -12,6 +12,7 @@
 use super::*;
 use crate::brain::{self, MemKey, MemValue, Shape};
 use crate::hostile::PlayerState;
+use crate::rules::stare_freeze as rules;
 use crate::targeting::{self, Eye, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -113,17 +114,12 @@ fn asked(ev: Res<Events>, on: Res<Online>, idx: Res<Index>, moves: Res<CellMoves
     }
 }
 
-fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len < f64::from(1.0e-5_f32) { [0.0; 3] } else { [v[0] / len, v[1] / len, v[2] / len] }
-}
 /// `LivingEntity.isLookingAtMe(player, 0.5, false, true, eyeY, y + 0.5, (eyeY + y) / 2)`.
 fn looked_at(w: &World, pos: Vec3, eye_y: f64, p: Player, p_: &Params) -> bool {
-    let look = normalize(w.resource::<PlayerState>().gaze(p.id));
+    let look = rules::normalize(w.resource::<PlayerState>().gaze(p.id));
     let mw = w.resource::<Level>().mw.0;
-    [eye_y, pos.y + 0.5, (eye_y + pos.y) / 2.0].into_iter().any(|y| {
-        let d = normalize([pos.x - p.x, y - p.eye(), pos.z - p.z]);
-        if look[0] * d[0] + look[1] * d[1] + look[2] * d[2] <= p_.dot_min {
+    rules::sight_heights(eye_y, pos.y).into_iter().any(|y| {
+        if !rules::in_cone(look, [pos.x - p.x, y - p.eye(), pos.z - p.z], p_.dot_min) {
             return false;
         }
         let (from, to) = (Vec3::new(p.x, p.eye(), p.z), Vec3::new(pos.x, y, pos.z));
@@ -147,7 +143,7 @@ pub fn evaluate(w: &mut World, e: Entity) {
             if (!roused || !disguised) && looked_at(w, pos, pos.y + eye, player, &p) {
                 if roused {
                     still = true;
-                } else if (pos.x - player.x).powi(2) + (pos.y - player.y).powi(2) + (pos.z - player.z).powi(2) < p.wake_range_sqr {
+                } else if rules::dist_sq([pos.x, pos.y, pos.z], [player.x, player.y, player.z]) < p.wake_range_sqr {
                     wake = Some(id);
                     still = true;
                 }

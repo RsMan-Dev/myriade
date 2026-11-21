@@ -4,6 +4,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::boss_bar::bar_progress;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -34,5 +35,5 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 pub fn progress(w: &mut World, e: Entity) {
     let (Some(b), Some(h)) = (w.get::<Bar>(e).copied(), w.get::<Health>(e).map(|h| h.0)) else { return };
     let max = w.get::<MaxHealth>(e).map_or(h, |m| m.0);
-    w.resource_mut::<Events>().host.boss_bar(e.index().index(), b.name, (h / max).clamp(0.0, 1.0), b.color);
+    w.resource_mut::<Events>().host.boss_bar(e.index().index(), b.name, bar_progress(h, max), b.color);
 }

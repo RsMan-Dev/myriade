@@ -2,9 +2,10 @@
 //! not sitting by order searches a block of `cats_can_sit_on` with air above (a lit furnace, a bed's foot, a chest) and sits there while
 //! reached. Each search draws `reduced(200 + nextInt(200))` asks before the next one (2 ticks per ask): the countdown is a deadline.
 //! Absent: the open-chest check (the chests are taken as closed: DOUTE, the openers are not in the frame).
-use super::cat_state::{self as cs, empty_above, reduced};
+use super::cat_state::{self as cs, empty_above};
 use super::*;
 use crate::move_to_block::MoveToBlock;
+use crate::rules::cat_sit_on_block::{countdown, search_ticks};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::MobWorld;
 
@@ -93,13 +94,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     let base = cs::feet(w, e);
     let delay = w.get::<Sit>(e).unwrap().delay;
-    let next = with_rng(w, e, |r| reduced(delay + r.next_int(delay)));
+    let next = with_rng(w, e, |r| countdown(delay, r.next_int(delay)));
     let mut s = w.get::<Sit>(e).unwrap().clone();
     s.countdown = next;
     let found = s.walk.find_nearest(base, cs::level(w), can_sit_on);
     *w.get_mut::<Sit>(e).unwrap() = s;
     if !found {
-        schedule(w, e, 2 * (next + 1));
+        schedule(w, e, search_ticks(next));
     }
     found
 }
@@ -116,7 +117,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<SittingOn>();
     cs::set(w, e, |c| c.sitting_pose = false);
     let n = w.get::<Sit>(e).map_or(0, |s| s.countdown);
-    schedule(w, e, 2 * (n + 1));
+    schedule(w, e, search_ticks(n));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(sit_run.in_set(slot));

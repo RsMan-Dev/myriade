@@ -41,7 +41,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         }
     }
     let wet = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
-    let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+    let speed = crate::rules::follow_adult::walk_speed(wet, p.speed, p.dry_speed);
     set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: look, speed, close: p.close }), None);
     true
 }

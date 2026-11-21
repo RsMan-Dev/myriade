@@ -7,6 +7,7 @@ use super::*;
 use crate::targeting::{TargetWatchers, Who, clear_target};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::fox_pounce::{keeps_flying, next_tilt, unit_xz};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -97,7 +98,7 @@ fn can_continue(w: &World, e: Entity) -> bool {
     }
     let (vel, on_ground) = (w.get::<Vel>(e).unwrap().0, w.get::<Contact>(e).unwrap().on_ground);
     let tilt = w.get::<HeadTilt>(e).unwrap().0;
-    (vel.y * vel.y >= f64::from(0.05f32) || tilt.abs() >= 15.0 || !on_ground) && !fs::has(w, e, FACEPLANTED)
+    keeps_flying(vel.y, tilt, on_ground) && !fs::has(w, e, FACEPLANTED)
 }
 
 fn start(w: &mut World, e: Entity, _: Inst) {
@@ -109,8 +110,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
         let at = fs::feet(w, e);
         fs::aim_at(w, e, [info.pos.x, info.eye, info.pos.z], Some(60.0));
         let (dx, dy, dz) = (info.pos.x - at.x, info.pos.y - at.y, info.pos.z - at.z);
-        let len = (dx * dx + dy * dy + dz * dz).sqrt();
-        let (ux, uz) = if len > 0.0 { (dx / len, dz / len) } else { (0.0, 0.0) };
+        let (ux, uz) = unit_xz(dx, dy, dz);
         let v = w.get::<Vel>(e).unwrap().0;
         w.get_mut::<Vel>(e).unwrap().0 = Vec3::new(v.x + ux * lunge.0, v.y + lunge.1, v.z + uz * lunge.2);
         // The physics visits only the moving animals: the leap wakes it (as a push does).
@@ -163,7 +163,7 @@ fn body(w: &mut World, e: Entity) {
     let jumping = w.get::<Drive>(e).is_some_and(|d| d.jump);
     let mut tilt = w.get::<HeadTilt>(e).unwrap().0;
     if !fs::has(w, e, FACEPLANTED) {
-        tilt = next_tilt(tilt, vel, jumping);
+        tilt = next_tilt(tilt, [vel.x, vel.y, vel.z], jumping);
     }
     w.get_mut::<HeadTilt>(e).unwrap().0 = tilt;
     let bite_sqr = w.get::<Lunge>(e).unwrap().bite_sqr;
@@ -180,44 +180,6 @@ fn body(w: &mut World, e: Entity) {
             fs::set(w, e, FACEPLANTED, true);
         }
         _ => {}
-    }
-}
-
-/// The head's tilt of one tick, as `FoxPounceGoal.tick` computes it.
-fn next_tilt(pitch: f32, v: Vec3, jumping: bool) -> f32 {
-    if v.y * v.y < f64::from(0.03f32) && pitch != 0.0 {
-        return pitch + 0.2 * wrap(-pitch);
-    }
-    let horizontal = (v.x * v.x + v.z * v.z).sqrt();
-    let bias = if jumping && v.y > 0.0 { 6.5 } else { 1.0 };
-    let y = v.y * bias;
-    let len = (horizontal * horizontal + y * y).sqrt();
-    if len > f64::from(1.0e-5f32) {
-        let angle = signum(-y) * (horizontal / len).acos() * 180.0 / f64::from(std::f32::consts::PI);
-        return ((angle as f32) % 360.0).clamp(-90.0, 90.0);
-    }
-    pitch
-}
-
-/// `Mth.wrapDegrees` as the goals' helper (`goals.rs`, private there).
-fn wrap(a: f32) -> f32 {
-    let mut a = if a.abs() < 360.0 { a } else { a % 360.0 };
-    if a >= 180.0 {
-        a -= 360.0;
-    }
-    if a < -180.0 {
-        a += 360.0;
-    }
-    a
-}
-
-fn signum(x: f64) -> f64 {
-    if x > 0.0 {
-        1.0
-    } else if x < 0.0 {
-        -1.0
-    } else {
-        0.0
     }
 }
 

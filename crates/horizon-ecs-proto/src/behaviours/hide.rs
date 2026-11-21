@@ -7,6 +7,7 @@ use super::{raid, schedule};
 use crate::brain::*;
 use crate::cow::{now_of, Pos};
 use crate::goals::with_rng;
+use crate::rules::hide::{arrived_at_place, home_reach_sq, hiding_over};
 use bevy_ecs::prelude::*;
 
 /// Present from the bell to the end of the hiding: the requirement of the `hide` activity (the jar poses it with `setActiveActivityIfPossible`).
@@ -51,7 +52,7 @@ fn locate(w: &mut World, e: Entity, c: &Ctx) -> bool {
     }
     let p = c.get::<Params>();
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    let r2 = f64::from(p.close * p.close);
+    let r2 = home_reach_sq(p.close);
     let near = (p.homes)(w, e, p.close + 1).into_iter().next().filter(|q| centre_dist_sq(*q, at) < r2);
     let place = near.or_else(|| {
         let mut all = (p.homes)(w, e, p.radius);
@@ -81,12 +82,12 @@ fn hidden(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
     let now = now_of(w, e) as i64;
     let arrived = present(w, e, &ARRIVED);
-    if heard + 300 <= now || (arrived && !present(w, e, &HIDDEN)) {
+    if hiding_over(heard, now) || (arrived && !present(w, e, &HIDDEN)) {
         for k in [&HEARD_BELL, &HIDING_PLACE, &HIDDEN, &ARRIVED, &HIDE_ON] {
             erase(w, e, k);
         }
         restart(w, e, &schedule::BEHAVIOUR);
-    } else if !arrived && centre_dist_sq(place, at) < 9.0 {
+    } else if !arrived && arrived_at_place(centre_dist_sq(place, at)) {
         set(w, e, &ARRIVED, MemValue::Unit, None);
         set(w, e, &HIDDEN, MemValue::Bool(true), Some(300));
     }

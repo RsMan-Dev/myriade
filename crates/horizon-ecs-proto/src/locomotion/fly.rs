@@ -15,6 +15,8 @@ use crate::{
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
+use crate::rules::fly::{aim_push, air_velocity, bank, drag_velocity, face_motion, float_push, free_speed_drag, mean_size, noclip_drag, rest_vy, steer, EPSILON};
+use crate::rules::swim::{arrived, is_stuck, moved_sq, node_close, node_reach_xz};
 
 /// How the flier is steered.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -201,21 +203,17 @@ fn follow(
             Some(path) => {
                 let mob = pos.0;
                 let width = body.width;
-                let max = f64::from(if width > 0.75 { width / 2.0 } else { 0.75 - width / 2.0 });
+                let max = node_reach_xz(width);
                 let n = path.next_node();
                 let (xd, yd, zd) = ((pos.0.x - (f64::from(n.x) + 0.5)).abs(), (pos.0.y - f64::from(n.y)).abs(), (pos.0.z - (f64::from(n.z) + 0.5)).abs());
-                let close = xd < max && zd < max && yd < 1.0;
+                let close = node_close(xd, yd, zd, max, 1.0);
                 let direct = |from: Vec3, to: Vec3| mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), true);
-                if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && crate::locomotion::swim::target_next_node(path, mob, &direct, width)) {
+                if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && crate::rules::swim::target_next_node(path, mob, &direct, width)) {
                     path.advance();
                 }
                 let mut stuck = false;
                 if now - nav.last_check > 100 {
-                    let speed = drive.speed;
-                    let effective = if speed >= 1.0 { speed } else { speed * speed };
-                    let threshold = f64::from(effective * 100.0 * 0.25);
-                    let d = (mob.x - nav.last_pos.x).powi(2) + (mob.y - nav.last_pos.y).powi(2) + (mob.z - nav.last_pos.z).powi(2);
-                    stuck = d < threshold * threshold;
+                    stuck = is_stuck(drive.speed, moved_sq(mob, nav.last_pos));
                     nav.last_check = now;
                     nav.last_pos = mob;
                 }
@@ -246,8 +244,6 @@ fn follow(
 /// attribute (the flying speed off the ground), and the vertical input is the speed up or down.
 #[allow(clippy::type_complexity)]
 fn move_control(mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &Contact, &FlyParams, Option<&mut crate::goals::Head>), With<FlyMode>>) {
-    const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
-    const EPSILON: f64 = 1.0e-5;
     for (pos, mut yaw, mut m, mut d, body, c, fp, head) in &mut q {
         if fp.control != Control::Path {
             continue;
@@ -256,7 +252,7 @@ fn move_control(mut q: Query<(&Pos, &mut Yaw, &mut MoveTo, &mut Drive, &Body, &C
             m.active = false;
             d.no_gravity = true;
             let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
-            if xd * xd + yd * yd + zd * zd < ARRIVED {
+            if arrived(xd, yd, zd) {
                 d.yya = 0.0;
                 d.zza = 0.0;
                 continue;
@@ -309,7 +305,6 @@ pub fn fly_controls(
     level: Res<Level>,
     mut q: Query<(&Pos, &Bounds, &mut Vel, &mut MoveTo, &mut Yaw, &mut Drive, &Contact, &FlyParams, Option<&mut FloatState>, &mut Rng), (With<FlyMode>, With<Moving>)>,
 ) {
-    use horizon_core::geometry::trig::Mth;
     for (pos, b, mut v, mut m, mut yaw, mut d, c, fp, st, mut rng) in &mut q {
         match fp.control {
             Control::Float => {
@@ -337,8 +332,7 @@ pub fn fly_controls(
                     level.no_collision(horizon_core::geometry::Aabb::new(b.0.min_position().add_vector(dd), b.0.max_position().add_vector(dd)))
                 });
                 if clear {
-                    let speed = 0.06 * 5.0 / 3.0;
-                    v.0 = v.0.add_vector(Vec3::new(t.x / len * speed, t.y / len * speed, t.z / len * speed));
+                    v.0 = float_push(v.0, t, len);
                 } else {
                     m.active = false;
                 }
@@ -351,15 +345,15 @@ pub fn fly_controls(
                 let dv = Vec3::new(m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
                 let len = (dv.x * dv.x + dv.y * dv.y + dv.z * dv.z).sqrt();
                 let (lo, hi) = (b.0.min_position(), b.0.max_position());
-                let size = ((hi.x - lo.x) + (hi.y - lo.y) + (hi.z - lo.z)) / 3.0;
+                let size = mean_size(lo, hi);
                 if len < size {
                     m.active = false;
                     v.0 = v.0.scale(0.5);
                     continue;
                 }
-                v.0 = v.0.add_vector(dv.scale(m.speed_modifier * 0.05 / len));
+                v.0 = aim_push(v.0, dv, m.speed_modifier, len);
                 // Faces along the motion (the `Mob` faces its target when it has one: the heading is not what moves it).
-                yaw.0 = -(v.0.x.atan2(v.0.z) as f32).to_degrees();
+                yaw.0 = face_motion(v.0);
             }
             Control::Bank => {
                 drop_tiny_motion(&mut v);
@@ -368,33 +362,10 @@ pub fn fly_controls(
                     yaw.0 += 180.0;
                     speed = 0.1;
                 }
-                let (mut dx, dy, mut dz) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
-                let mut sd = (dx * dx + dz * dz).sqrt();
-                if sd.abs() > 1.0e-5 {
-                    let scale = 1.0 - (dy * 0.7).abs() / sd;
-                    dx *= scale;
-                    dz *= scale;
-                    sd = (dx * dx + dz * dz).sqrt();
-                    let sd2 = (dx * dx + dz * dz + dy * dy).sqrt();
-                    let prev = yaw.0;
-                    let angle = dz.atan2(dx) as f32;
-                    let a = wrap_degrees(yaw.0 + 90.0);
-                    let bb = wrap_degrees(angle.to_degrees());
-                    let diff = wrap_degrees(bb - a);
-                    yaw.0 = a + diff.clamp(-4.0, 4.0) - 90.0;
-                    if wrap_degrees(prev - yaw.0).abs() < 3.0 {
-                        speed = approach(speed, 1.8, 0.005 * (1.8 / speed));
-                    } else {
-                        speed = approach(speed, 0.2, 0.025);
-                    }
-                    let x_rot = -((-dy).atan2(sd) as f32).to_degrees();
-                    let move_angle = (yaw.0 + 90.0).to_radians();
-                    let tx = f64::from(speed * move_angle.mcos()) * (dx / sd2).abs();
-                    let tz = f64::from(speed * move_angle.msin()) * (dz / sd2).abs();
-                    let ty = f64::from(speed * x_rot.to_radians().msin()) * (dy / sd2).abs();
-                    let u = v.0;
-                    v.0 = Vec3::new(u.x + (tx - u.x) * 0.2, u.y + (ty - u.y) * 0.2, u.z + (tz - u.z) * 0.2);
-                }
+                let (yaw_v, speed_v, u) = bank(yaw.0, speed, m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z, v.0);
+                yaw.0 = yaw_v;
+                speed = speed_v;
+                v.0 = u;
                 d.speed = speed;
             }
             Control::Steer { speed, accel } => {
@@ -407,9 +378,8 @@ pub fn fly_controls(
                 if len < 1.0e-6 {
                     continue;
                 }
-                let (want, u) = (dv.scale(speed / len), v.0);
-                v.0 = Vec3::new(u.x + (want.x - u.x) * accel, u.y + (want.y - u.y) * accel, u.z + (want.z - u.z) * accel);
-                yaw.0 = -(v.0.x.atan2(v.0.z) as f32).to_degrees();
+                v.0 = steer(v.0, dv, speed, len, accel);
+                yaw.0 = face_motion(v.0);
             }
             Control::Path | Control::None => {}
         }
@@ -422,20 +392,6 @@ pub fn steer_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
     }
     w.entity_mut(e).insert(Moving);
 }
-fn wrap_degrees(d: f32) -> f32 {
-    // `Mth.wrapDegrees`: the remainder keeps its sign (`%`), then both bounds.
-    let mut r = d % 360.0;
-    if r >= 180.0 {
-        r -= 360.0;
-    }
-    if r < -180.0 {
-        r += 360.0;
-    }
-    r
-}
-fn approach(from: f32, to: f32, step: f32) -> f32 {
-    if from < to { (from + step).min(to) } else { (from - step).max(to) }
-}
 /// `LivingEntity.travelInAir` of a flier: the walk's with the vertical input and, while the move control says so, no gravity; in a
 /// fluid it is the walk's travel. Then the glide of a parrot (`Parrot.calculateFlapping`).
 #[allow(clippy::type_complexity)]
@@ -446,8 +402,8 @@ pub(crate) fn travel(
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fluid, imm, fp, following, wanted) in &mut q {
         // A flier at rest on the ground (perched) is at rest as a walker is: no sweep, and it leaves the physics until something moves it.
-        let rest_vy = (0.0 - b.gravity) * f64::from(fp.vertical_drag);
-        if !fs.in_water && !fs.in_lava && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && d.yya == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest_vy {
+        let rest = rest_vy(b.gravity, fp.vertical_drag);
+        if !fs.in_water && !fs.in_lava && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && d.yya == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest {
             if !following {
                 par.command_scope(e, |mut cmd| {
                     cmd.entity(e).remove::<Moving>();
@@ -461,8 +417,7 @@ pub(crate) fn travel(
             // `noPhysics`: straight through the blocks, the air's friction.
             p.0 = p.0.add_vector(v.0);
             bb.0 = bb.0.move_by(v.0);
-            let u = v.0;
-            v.0 = Vec3::new(u.x * 0.91, u.y * 0.98, u.z * 0.91);
+            v.0 = noclip_drag(v.0);
             c.on_ground = false;
             // Nothing wanted and no motion left: out of the physics until a goal steers it (a resting vex costs nothing).
             if !wanted.active && v.0 == Vec3::ZERO {
@@ -475,11 +430,11 @@ pub(crate) fn travel(
         if fp.free {
             // `LivingEntity.travelFlying`: no gravity, the drag of the medium (0.91 in the air, 0.8 in water, 0.5 in lava).
             drop_tiny(&mut v, fp);
-            let (speed, drag) = if fs.in_water { (0.02_f32, f64::from(0.8_f32)) } else if fs.in_lava { (0.02_f32, 0.5) } else { (if fp.drive_air { d.speed } else { fp.air_speed }, f64::from(0.91_f32)) };
+            let (speed, drag) = free_speed_drag(fs.in_water, fs.in_lava, fp.drive_air, d.speed, fp.air_speed);
             move_relative_3d(&mut v, y.0, speed, d.xxa, d.yya, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
-            v.0 = Vec3::new(m.x * drag, m.y * drag, m.z * drag);
+            v.0 = drag_velocity(m, drag);
         } else if fs.in_water || fs.in_lava {
             travel_one(&level, fluid, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
         } else {
@@ -490,8 +445,7 @@ pub(crate) fn travel(
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
             let gravity = if d.no_gravity { 0.0 } else { b.gravity };
-            let f = friction * 0.91_f32;
-            v.0 = Vec3::new(m.x * f64::from(f), (m.y - gravity) * f64::from(fp.vertical_drag), m.z * f64::from(f));
+            v.0 = air_velocity(m, friction, fp.vertical_drag, gravity);
         }
         if fp.damp_y != 1.0 {
             v.0.y *= fp.damp_y;

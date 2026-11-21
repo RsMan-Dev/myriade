@@ -3,6 +3,7 @@
 //! ground gets the table component `Asleep` and leaves every movement query until its timer wakes it.
 //! Not a cow: no pushes, no vanilla goals, no fluids, no blocks (the ground is the plane y = 0), no
 //! health, no age, no collisions between cows. Nothing here is compared with `Mob` field by field.
+use crate::rules::flat::{friction_axis, gravity_step};
 use bevy_ecs::{
     prelude::*,
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
@@ -128,10 +129,10 @@ fn wander(cfg: Res<Config>, mut q: Query<(&Pos, &mut Vel, &mut Wander, &mut Rng)
 
 fn gravity(cfg: Res<Config>, mut q: Query<&mut Vel, Without<Asleep>>) {
     if cfg.parallel {
-        q.par_iter_mut().for_each(|mut v| v.y = (v.y - 0.08) * 0.98);
+        q.par_iter_mut().for_each(|mut v| v.y = gravity_step(v.y));
     } else {
         for mut v in &mut q {
-            v.y = (v.y - 0.08) * 0.98;
+            v.y = gravity_step(v.y);
         }
     }
 }
@@ -172,15 +173,8 @@ fn movement(cfg: Res<Config>, mut q: Query<(&mut Pos, &mut Vel, &mut Body), With
 }
 
 fn friction_one(v: &mut Vel, b: &Body) {
-    let f = if b.on_ground { 0.91 * 0.6 } else { 0.91 };
-    v.x *= f;
-    v.z *= f;
-    if v.x.abs() < 0.003 {
-        v.x = 0.0;
-    }
-    if v.z.abs() < 0.003 {
-        v.z = 0.0;
-    }
+    v.x = friction_axis(v.x, b.on_ground);
+    v.z = friction_axis(v.z, b.on_ground);
 }
 fn friction(cfg: Res<Config>, mut q: Query<(&mut Vel, &Body), Without<Asleep>>) {
     if cfg.parallel {

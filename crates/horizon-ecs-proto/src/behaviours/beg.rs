@@ -5,6 +5,7 @@ use super::*;
 use crate::hostile::PlayerState;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::beg::{beg_ticks, dist_sqr, in_range, REACH};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -18,8 +19,6 @@ pub struct Params {
 impl Params {
     pub const DEFAULT: Self = Self { foods: &[], range_sqr: 64.0, asks: 40 };
 }
-/// The wake-up radius of the players' changes: the widest `range_sqr` a configuration may give.
-const REACH: f64 = 8.0;
 
 /// The state of the animal's beg goal: what it finds interesting (a bit per item id), its range, its duration parameter,
 /// and the player `can_use` chose for `start`.
@@ -61,11 +60,11 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((wake_on_player, beg_run).chain().in_set(slot));
 }
 fn d3(a: Vec3, p: &Player) -> f64 {
-    (p.x - a.x).powi(2) + (p.y - a.y).powi(2) + (p.z - a.z).powi(2)
+    dist_sqr(a, p.x, p.y, p.z)
 }
 /// `BegGoal.canUse`: alive, not a spectator, holding something interesting, within the range.
 fn wanted(ps: &PlayerState, p: &Player, b: &Begger, at: Vec3) -> bool {
-    ps.alive(p.id) && !ps.spectator(p.id) && p.holds_any(b.items) && d3(at, p) <= b.range_sqr
+    ps.alive(p.id) && !ps.spectator(p.id) && p.holds_any(b.items) && in_range(d3(at, p), b.range_sqr)
 }
 /// A player took an item, put it away, came or went: the wolves he newly draws start their beg (those that already saw him
 /// holding it do not start again).
@@ -103,7 +102,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let b = *w.get::<Begger>(e).unwrap();
     let n = with_rng(w, e, |r| r.next_int(b.asks));
-    w.entity_mut(e).insert(Begging { player: b.pick, ticks: (b.asks + n + 1) / 2 });
+    w.entity_mut(e).insert(Begging { player: b.pick, ticks: beg_ticks(b.asks, n) });
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Begging>();
@@ -118,7 +117,7 @@ fn beg_run(
     mut cmd: Commands,
 ) {
     for ((e, pos, mut look, looking, _, _), mut g, b) in &mut q {
-        let p = on.get(g.player).filter(|p| ps.alive(p.id) && p.holds_any(b.items) && d3(pos.0, p) <= b.range_sqr);
+        let p = on.get(g.player).filter(|p| ps.alive(p.id) && p.holds_any(b.items) && in_range(d3(pos.0, p), b.range_sqr));
         match p {
             Some(p) if g.ticks > 0 => {
                 aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], Some(10.0));

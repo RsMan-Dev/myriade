@@ -6,10 +6,8 @@
 use super::door_interact::{self as door, BreakSeeker, DoorAt, RaidBreakSeeker};
 use super::*;
 use crate::raids::{difficulty, has_active_raid};
+use crate::rules::break_door::{self as rules, BREAK_TIME, RAID_START_ODDS, SOUND_ODDS};
 use crate::{cow::*, goals::*};
-
-/// `DefaultDoorBreakTime`: `BreakDoorGoal.getDoorBreakTime` is `max(240, doorBreakTime)`, and the vindicator's 6 is below it.
-const BREAK_TIME: i32 = 240;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -50,7 +48,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     can_break(w, e, false)
 }
 fn can_use_raid(w: &mut World, e: Entity, _: Inst) -> bool {
-    has_active_raid(w, e) && with_rng(w, e, |r| r.next_int(10)) == 0 && can_break(w, e, true)
+    has_active_raid(w, e) && with_rng(w, e, |r| rules::hit(r.next_int(RAID_START_ODDS))) && can_break(w, e, true)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     if let Some(mut b) = w.get_mut::<BreakDoor>(e) {
@@ -81,13 +79,20 @@ fn run<const RAID: bool>(q: Query<(Entity, &BreakDoor), With<Breaking>>, mut cmd
             let at = w.get::<DoorAt>(e).copied().unwrap_or_default();
             let pos = w.get::<Pos>(e).map(|p| p.0);
             let time = w.get::<BreakDoor>(e).map_or(0, |b| b.time);
-            let keep = (!raid || has_active_raid(w, e)) && time <= BREAK_TIME && !door::is_open(w, e) && pos.is_some_and(|p| door::closer_to_center(at.pos, p, 2.0)) && difficulty_ok(w, raid);
+            let keep = rules::keeps_breaking(
+                raid,
+                has_active_raid(w, e),
+                time,
+                door::is_open(w, e),
+                pos.is_some_and(|p| door::closer_to_center(at.pos, p, 2.0)),
+                difficulty_ok(w, raid),
+            );
             if !keep {
                 w.resource_mut::<Requests>().0.push(Req::End(e, slot));
                 return;
             }
             // The door's sound is a 1-in-20 draw, kept so the stream of draws is the `Mob`'s.
-            let _ = with_rng(w, e, |r| r.next_int(20));
+            let _ = with_rng(w, e, |r| r.next_int(SOUND_ODDS));
             let time = time + 1;
             w.get_mut::<BreakDoor>(e).unwrap().time = time;
             if time == BREAK_TIME && difficulty_ok(w, raid) {

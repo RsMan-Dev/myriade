@@ -10,8 +10,9 @@ use crate::goals::mob_griefing;
 use crate::projectile::Blast;
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::arrows::clip_block_hit;
+use crate::rules::explosion::{charged_radius, distance_share, fuse_arm_tick, fuse_value, push_power, seen_share};
 use horizon_core::geometry::{Aabb, Vec3};
+pub use crate::rules::explosion::blast_damage;
 
 #[derive(Resource)]
 pub struct ExplosionRng(pub Rng);
@@ -21,30 +22,7 @@ pub fn insert_resources(w: &mut World) {
 
 /// `ServerExplosion.getSeenPercent` for a box: the share of the grid's rays to the centre that no block collider stops.
 pub fn seen_percent(level: &Level, center: Vec3, b: Aabb) -> f32 {
-    let (lo, hi) = (b.min_position(), b.max_position());
-    let (xs, ys, zs) = (1.0 / ((hi.x - lo.x) * 2.0 + 1.0), 1.0 / ((hi.y - lo.y) * 2.0 + 1.0), 1.0 / ((hi.z - lo.z) * 2.0 + 1.0));
-    let (xo, zo) = ((1.0 - (1.0 / xs).floor() * xs) / 2.0, (1.0 - (1.0 / zs).floor() * zs) / 2.0);
-    let mw = level.mw.0;
-    let (mut hits, mut count) = (0, 0);
-    let mut xx = 0.0;
-    while xx <= 1.0 {
-        let mut yy = 0.0;
-        while yy <= 1.0 {
-            let mut zz = 0.0;
-            while zz <= 1.0 {
-                let from = Vec3::new(lo.x + (hi.x - lo.x) * xx + xo, lo.y + (hi.y - lo.y) * yy, lo.z + (hi.z - lo.z) * zz + zo);
-                let to = Vec3::new(center.x - from.x, center.y - from.y, center.z - from.z);
-                if clip_block_hit(mw.world, mw.facts, mw.collision, from, to).is_none() {
-                    hits += 1;
-                }
-                count += 1;
-                zz += zs;
-            }
-            yy += ys;
-        }
-        xx += xs;
-    }
-    hits as f32 / count as f32
+    seen_share(level.mw.0, center, b)
 }
 /// `ServerExplosion.calculateExplodedPositions`.
 fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[i32; 3]> {
@@ -115,11 +93,6 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
     w.resource_mut::<ExplosionRng>().0 = rng;
     set
 }
-/// The damage a creature takes at `dist` (a share of the diameter) with `exposure`.
-pub fn blast_damage(dist: f64, exposure: f32, diameter: f64) -> f32 {
-    let pow = (1.0 - dist) * f64::from(exposure);
-    ((pow * pow + pow) / 2.0 * 7.0 * diameter + 1.0) as f32
-}
 /// The explosion: the creatures, then the blocks (and their fire).
 /// A wind charge's burst (`ServerExplosion` with `TRIGGER_BLOCK`): no damage, no block; every creature within the diameter is pushed
 /// away from the centre by `(1 - distance / diameter) * exposure`, its distance from its feet and its direction from its eyes, as
@@ -135,7 +108,7 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
             continue;
         }
         let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
-        let dist = ((feet.x - at.x).powi(2) + (feet.y - at.y).powi(2) + (feet.z - at.z).powi(2)).sqrt() / diameter;
+        let dist = distance_share(feet, at, diameter);
         if dist > 1.0 || w.get::<Vel>(c).is_none() {
             continue;
         }
@@ -144,7 +117,7 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
         let (dx, dy, dz) = (feet.x - at.x, eye - at.y, feet.z - at.z);
         let l = (dx * dx + dy * dy + dz * dz).sqrt();
         let dir = if l < 1.0e-5 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
-        let pow = (1.0 - dist) * f64::from(exposure);
+        let pow = push_power(dist, exposure);
         if let Some(mut v) = w.get_mut::<Vel>(c) {
             v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);
         }
@@ -187,7 +160,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
             continue;
         }
         let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
-        let dist = ((feet.x - b.at.x).powi(2) + (feet.y - b.at.y).powi(2) + (feet.z - b.at.z).powi(2)).sqrt() / diameter;
+        let dist = distance_share(feet, b.at, diameter);
         if dist > 1.0 {
             continue;
         }
@@ -196,7 +169,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         let (dx, dy, dz) = (feet.x - b.at.x, eye - b.at.y, feet.z - b.at.z);
         let l = (dx * dx + dy * dy + dz * dz).sqrt();
         let dir = if l < 1.0e-4 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
-        let pow = (1.0 - dist) * f64::from(exposure);
+        let pow = push_power(dist, exposure);
         w.resource_mut::<DamageQueue>().add_from(c, blast_damage(dist, exposure, diameter), Cause::Blast, (b.at.x, b.at.z));
         if let Some(mut v) = w.get_mut::<Vel>(c) {
             v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);
@@ -216,7 +189,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
     };
     for (id, bx) in players {
         let feet = bx.min_position();
-        let dist = ((feet.x - b.at.x).powi(2) + (feet.y - b.at.y).powi(2) + (feet.z - b.at.z).powi(2)).sqrt() / diameter;
+        let dist = distance_share(feet, b.at, diameter);
         if dist > 1.0 {
             continue;
         }
@@ -268,7 +241,7 @@ pub struct Fuse {
 pub struct Charged;
 impl Fuse {
     pub fn value_at(&self, now: u64) -> i32 {
-        (self.value + i32::from(self.dir) * (now - self.at) as i32).clamp(0, self.max)
+        fuse_value(self.value, self.dir, self.at, now, self.max)
     }
 }
 /// The swell direction changed (`Swell.tick` sets +1 or -1): the fuse is brought up to now and the deadline is armed or dropped.
@@ -285,7 +258,7 @@ pub fn set_dir(w: &mut World, e: Entity, dir: i8) {
     // The creeper's own tick comes before its goals' (`pre_tick`): the direction written now counts from the next tick.
     f.armed = 0;
     if f.dir > 0 {
-        let due = now + (f.max - f.value).max(1) as u64;
+        let due = fuse_arm_tick(now, f.value, f.max);
         f.armed = due;
         let at = w.resource::<Clock>().at(e, due);
         w.resource_mut::<Wheel>().push(at, e, Due::Fuse);
@@ -300,7 +273,7 @@ pub fn fuse_due(w: &mut World, e: Entity) {
         return;
     }
     let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let radius = f.radius * if w.get::<Charged>(e).is_some() { 2.0 } else { 1.0 };
+    let radius = charged_radius(f.radius, w.get::<Charged>(e).is_some());
     let blast = Blast { at, radius, fire: false, owner: None, source: Some(e) };
     w.resource_mut::<crate::goals::Events>().exploded.push(blast);
     explode(w, blast);

@@ -5,6 +5,7 @@
 use super::*;
 use crate::move_to_block::MoveToBlock;
 use crate::{blocks::resolve, cow::*, goals::*};
+use crate::rules::lay_egg::{halved_up, near_anchor};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
@@ -115,7 +116,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 /// The first test of `canUse`: a load, and the anchor within `radius`.
 fn wants_laying(w: &World, e: Entity) -> bool {
     let (Some(l), Some(a), Some(p)) = (w.get::<Lay>(e), w.get::<Anchor>(e), w.get::<Pos>(e)) else { return false };
-    w.get::<Carrying>(e).is_some() && near(a.0, [p.0.x, p.0.y, p.0.z], l.def.radius)
+    w.get::<Carrying>(e).is_some() && near_anchor(a.0, [p.0.x, p.0.y, p.0.z], l.def.radius)
 }
 /// The spot: air above it, the floor tag under it.
 fn floor_ok(tag: &'static str) -> impl Fn(&MobWorld, [i32; 3]) -> bool {
@@ -124,14 +125,6 @@ fn floor_ok(tag: &'static str) -> impl Fn(&MobWorld, [i32; 3]) -> bool {
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
-/// `closerToCenterThan`: the centre of the anchor block is nearer than `d`.
-fn near(a: [i32; 3], p: [f64; 3], d: f64) -> bool {
-    let v = [f64::from(a[0]) + 0.5 - p[0], f64::from(a[1]) + 0.5 - p[1], f64::from(a[2]) + 0.5 - p[2]];
-    v[0] * v[0] + v[1] * v[1] + v[2] * v[2] < d * d
-}
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
 }
 /// `canUse`: skip the countdown, or draw the next one and search; a search that finds nothing keeps the chain going.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -145,7 +138,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         chain(w, e, 2 * left);
         return false;
     }
-    let countdown = with_rng(w, e, |r| reduced(200 + r.next_int(200)));
+    let countdown = with_rng(w, e, |r| halved_up(200 + r.next_int(200)));
     let base = feet(w, e);
     let tag = w.get::<Lay>(e).unwrap().def.floor;
     let mut l = w.get::<Lay>(e).unwrap().clone();
@@ -190,7 +183,7 @@ fn dig_run(
     for (e, mut l, mut rng, p, f, anchor, load) in &mut q {
         let pos = [p.0.x, p.0.y, p.0.z];
         let tag = l.def.floor;
-        if !(l.walk.can_continue(mw, floor_ok(tag)) && load.is_some() && near(anchor.0, pos, l.def.radius)) {
+        if !(l.walk.can_continue(mw, floor_ok(tag)) && load.is_some() && near_anchor(anchor.0, pos, l.def.radius)) {
             reqs.0.push(Req::End(e, l.slot));
             continue;
         }

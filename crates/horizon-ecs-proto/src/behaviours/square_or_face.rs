@@ -6,6 +6,7 @@ use super::still_under_riders::{Above, StillUntil};
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::square_or_face as rules;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params;
@@ -46,17 +47,9 @@ fn look_run(clock: Res<Clock>, mut q: Query<(Entity, &Vel, &mut Yaw, &mut Head, 
     for (e, vel, mut yaw, mut head, still, above) in &mut q {
         let stilled = above.is_some() || still.is_some_and(|u| clock.of(e) < u.0);
         if stilled {
-            let mut close = yaw.0 % 90.0;
-            if close >= 45.0 {
-                close -= 90.0;
-            }
-            if close < -45.0 {
-                close += 90.0;
-            }
-            yaw.0 -= close;
+            yaw.0 = rules::square_yaw(yaw.0);
         } else {
-            let to_deg = 180.0_f32 / std::f32::consts::PI;
-            yaw.0 = -(horizon_core::geometry::trig::atan2(vel.0.x, vel.0.z) as f32) * to_deg;
+            yaw.0 = rules::heading_yaw(vel.0.x, vel.0.z);
         }
         head.yaw = yaw.0;
         head.body = yaw.0;

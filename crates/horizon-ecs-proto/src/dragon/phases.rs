@@ -8,6 +8,7 @@ use super::flight::DragonRng;
 use super::nodes::{self, FlightNodes, Path};
 use super::perch;
 use crate::cow::{now_of, Health, Pos};
+use crate::rules::dragon_phases as rule;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -258,8 +259,7 @@ fn strafe(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
     let Some(pp) = fight::player_pos(w, q) else { return hold() };
     let here = pos(w, e);
     if s.path.as_ref().is_some_and(Path::done) {
-        let ho = (0.4 + (pp.x - here.x).hypot(pp.z - here.z) / 80.0 - 1.0).min(10.0);
-        s.target = Some(Vec3::new(pp.x, pp.y + ho, pp.z));
+            s.target = Some(rule::strafe_target(pp, here));
     }
     if out_of_reach(s.target.map_or(0.0, |t| d2(t, here))) {
         if s.path.as_ref().is_none_or(Path::done) {
@@ -279,12 +279,8 @@ fn strafe(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
     let yaw = f64::from(fight::yaw(w, e).to_radians());
     let dir = unit2(yaw.sin(), -yaw.cos());
     let aim = unit2(pp.x - here.x, pp.z - here.z);
-    let angle = (dir.0 * aim.0 + dir.1 * aim.1).clamp(-1.0, 1.0).acos().to_degrees() + 0.5;
-    if s.charge >= 5 && (0.0..10.0).contains(&angle) {
-        let head = fight::head(w, e);
-        let view = fight::view(w, e);
-        let start = Vec3::new(head.x - view.x, head.y + 1.0, head.z - view.z);
-        let to = Vec3::new(pp.x - start.x, pp.y + 0.9 - start.y, pp.z - start.z);
+    if rule::fires(s.charge, rule::aim_angle(dir, aim)) {
+        let (start, to) = rule::fire_line(fight::head(w, e), fight::view(w, e), pp);
         fireball::shoot(w, Who::Entity(e), start, to);
         s.charge = 0;
         return hold();
@@ -371,9 +367,8 @@ fn take_off(w: &mut World, e: Entity, s: &mut PhaseState) -> Next {
     let g = w.resource::<FlightNodes>().clone();
     let current = g.closest(crystals, here);
     let look = fight::look(w, e);
-    let t0 = g.closest(crystals, Vec3::new(-look.x * 40.0, 105.0, -look.z * 40.0)) as i32;
-    let t = if crystals > 0 { t0.rem_euclid(12) } else { ((t0 - 12) & 7) + 12 };
-    let mut p = nodes::find_path(&g, crystals, current, t as usize, None);
+    let t = rule::takeoff_node(g.closest(crystals, Vec3::new(-look.x * 40.0, 105.0, -look.z * 40.0)), crystals);
+    let mut p = nodes::find_path(&g, crystals, current, t, None);
     if let Some(p) = p.as_mut() {
         p.advance();
     }
@@ -390,7 +385,7 @@ impl PhaseDef for Charging {
         let now = now_of(w, e);
         let r = match (s.target, s.since) {
             (None, _) => hold(),
-            (Some(_), Some(since)) if now.saturating_sub(since) >= 9 => hold(),
+            (Some(_), Some(since)) if rule::charge_expired(now, since) => hold(),
             (Some(t), None) if out_of_reach(d2(t, here)) => {
                 s.since = Some(now);
                 None

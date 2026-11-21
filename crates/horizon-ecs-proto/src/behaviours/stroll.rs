@@ -1,6 +1,7 @@
 //! `RandomStrollGoal`: now and then (one chance in `interval` per ask, one ask every 2 ticks) walk to a random spot.
 //! The attempt is a deadline of the wheel; the spot is the kernel's `pick_spot`.
 use super::*;
+use crate::rules::{spear_use::halved_use, stroll as rules};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -48,7 +49,7 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
     a.0 = a.0.max(now + 100);
     let Some(mut s) = w.get::<Stroll>(e).copied() else { return };
     if !s.scheduled && !s.walking {
-        let mut own = Rng((uid << 32 ^ now ^ 0x9e37_79b9_7f4a_7c15) | 1);
+        let mut own = Rng(rules::after_hurt_seed(uid, now));
         w.resource_scope(|w: &mut World, mut wheel: Mut<Wheel>| {
             let clock = w.resource::<Clock>();
             crate::cow::arm_stroll(&mut wheel, clock, e, &mut s, &mut own);
@@ -61,7 +62,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     w.entity_mut(e).insert(StrollGoal { speed: p.speed });
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         if let Some(n) = p.interval {
-            s.interval = (n + 1) / 2;
+            s.interval = halved_use(n, true);
         }
         s.plain = p.water_avoiding;
     }

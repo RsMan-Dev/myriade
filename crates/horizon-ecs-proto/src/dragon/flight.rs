@@ -6,6 +6,7 @@ use crate::cow::{Health, Pos, Vel, Yaw};
 use crate::dragon::{crystals, data, death, fight::NearestCrystal, hurt, nodes, parts, phases};
 use crate::goals::Events;
 use crate::host_out::HostOut;
+use crate::rules::flight::{flap_increment, steer, wrap, Steer};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -123,31 +124,6 @@ impl FlightHistory {
     }
 }
 
-/// `Mth.wrapDegrees(float)`.
-pub fn wrap(d: f32) -> f32 {
-    let mut r = d % 360.0;
-    if r >= 180.0 {
-        r -= 360.0;
-    }
-    if r < -180.0 {
-        r += 360.0;
-    }
-    r
-}
-
-/// `Vec3.normalize` on doubles: zero below the length 1e-5.
-fn unit(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len < f64::from(1.0e-5_f32) {
-        [0.0; 3]
-    } else {
-        [v[0] / len, v[1] / len, v[2] / len]
-    }
-}
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
 /// Before the phases: the ambient sound, the flap and its sound, the growl, the crystal-scan roll, the yaw wrap.
 pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32, rng: &mut DragonRng, host: &mut HostOut) {
     let p = f.cfg;
@@ -162,15 +138,7 @@ pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32
         host.sound(p.ambient.name, at, p.ambient.volume, pitch);
     }
     let flap_was = trig::cos(f64::from(f.old_flap * TAU));
-    let mut flap_speed = 0.2 / (((vel.x * vel.x + vel.z * vel.z).sqrt() as f32) * 10.0 + 1.0);
-    flap_speed *= 2f64.powf(vel.y) as f32;
-    f.flap += if order.sitting {
-        0.1
-    } else if f.in_wall {
-        flap_speed * 0.5
-    } else {
-        flap_speed
-    };
+    f.flap += flap_increment(vel, order.sitting, f.in_wall);
     let flap_now = trig::cos(f64::from(f.flap * TAU));
     if flap_was <= -0.3 && flap_now >= -0.3 {
         let pitch = 0.8 + rng.1.next_float() * 0.3;
@@ -186,47 +154,6 @@ pub fn pre(f: &mut Flight, order: &FlyOrder, pos: Vec3, vel: Vec3, yaw: &mut f32
     }
     f.scan_due = rng.0.next_int_bound(10).unwrap_or(1) == 0;
     *yaw = wrap(*yaw);
-}
-
-/// After the phases: the steering toward `order.target`, the move, and the slide. `in_wall` shortens the move (0.8).
-pub fn steer(order: &FlyOrder, f: &Flight, pos: &mut Vec3, vel: &mut Vec3, yaw: &mut f32, yaw_accel: &mut f32) {
-    let Some(t) = order.target else { return };
-    let (xd, mut yd, zd) = (t.x - pos.x, t.y - pos.y, t.z - pos.z);
-    let dist2 = xd * xd + yd * yd + zd * zd;
-    let max = f64::from(order.speed);
-    let horizontal = (xd * xd + zd * zd).sqrt();
-    if horizontal > 0.0 {
-        yd = (yd / horizontal).clamp(-max, max);
-    }
-    vel.y += yd * 0.01;
-    *yaw = wrap(*yaw);
-    let aim = unit([xd, t.y - pos.y, zd]);
-    let r = f64::from(*yaw * trig::DEG_TO_RAD);
-    let dir = unit([f64::from(trig::sin(r)), vel.y, f64::from(-trig::cos(r))]);
-    let facing = ((dot(dir, aim) as f32 + 0.5) / 1.5).max(0.0);
-    if xd.abs() > f64::from(1.0e-5_f32) || zd.abs() > f64::from(1.0e-5_f32) {
-        let rot = (vel.x * vel.x + vel.z * vel.z).sqrt() as f32 + 1.0;
-        let turn = if order.landing { rot.min(40.0) / rot } else { 0.7 / rot.min(40.0) / rot };
-        let delta = wrap(180.0 - trig::atan2(xd, zd) as f32 * trig::RAD_TO_DEG - *yaw).clamp(-50.0, 50.0);
-        *yaw_accel *= 0.8;
-        *yaw_accel += delta * turn;
-        *yaw += *yaw_accel * 0.1;
-    }
-    let span = (2.0 / (dist2 + 1.0)) as f32;
-    let speed = 0.06 * (facing * span + (1.0 - span));
-    let r = f64::from(*yaw * trig::DEG_TO_RAD);
-    vel.x += f64::from(speed) * f64::from(trig::sin(r));
-    vel.z += -f64::from(speed) * f64::from(trig::cos(r));
-    let step = if f.in_wall { 0.800000011920929 } else { 1.0 };
-    // The move goes through the level's move gate in Horizon; here the position takes the step as it is.
-    pos.x += vel.x * step;
-    pos.y += vel.y * step;
-    pos.z += vel.z * step;
-    let actual = unit([vel.x, vel.y, vel.z]);
-    let slide = 0.8 + 0.15 * (dot(actual, dir) + 1.0) / 2.0;
-    vel.x *= slide;
-    vel.y *= 0.9100000262260437;
-    vel.z *= slide;
 }
 
 /// One tick of a dragon (`tick_dragon`, D:2677): the single wake of its flight. Its random stream is observable every tick (ambient
@@ -290,7 +217,8 @@ fn steer_sys(w: &mut World, e: Entity) {
     let mut vel = w.get::<Vel>(e).expect("vel").0;
     let mut yaw = w.get::<Yaw>(e).expect("yaw").0;
     let mut accel = w.get::<YawAccel>(e).map_or(0.0, |a| a.0);
-    steer(&order, w.get::<Flight>(e).expect("flight"), &mut pos, &mut vel, &mut yaw, &mut accel);
+    let s = Steer { target: order.target, speed: order.speed, landing: order.landing, in_wall: w.get::<Flight>(e).expect("flight").in_wall };
+    steer(s, &mut pos, &mut vel, &mut yaw, &mut accel);
     w.get_mut::<Pos>(e).expect("pos").0 = pos;
     w.get_mut::<Vel>(e).expect("vel").0 = vel;
     w.get_mut::<Yaw>(e).expect("yaw").0 = yaw;

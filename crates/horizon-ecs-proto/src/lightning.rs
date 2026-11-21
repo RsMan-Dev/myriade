@@ -9,6 +9,7 @@ use crate::cow::{self, Body, Cause, DamageQueue, Health, Pos, SpeciesId, Species
 use crate::goals::Events;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+use crate::rules::lightning::{fire_spots, strike_hit, under, MAX_HALF_WIDTH};
 use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_world::registry::BlockStateId;
 
@@ -54,9 +55,6 @@ pub fn strike(w: &mut World, at: Vec3, visual: bool, rng_seed: u64) -> Entity {
     cow::after(w, e, 1, step);
     e
 }
-
-/// Half the widest body a bolt can strike (the index is by centre).
-const MAX_HALF_WIDTH: f64 = 4.0;
 
 /// `LightningBolt.tick` for one bolt.
 fn step(w: &mut World, e: Entity) {
@@ -107,11 +105,7 @@ fn spawn_fire(w: &mut World, at: [f64; 3], extra: i32, rng: &mut LegacyRandom) -
     if !level.may_spread_fire(base) {
         return 0;
     }
-    let mut spots = vec![base];
-    for _ in 0..extra {
-        let mut d = || rng.next_int_bound(3).unwrap_or(1) - 1;
-        spots.push([base[0] + d(), base[1] + d(), base[2] + d()]);
-    }
+    let spots = fire_spots(base, extra, rng);
     let mut set = Vec::new();
     for p in spots {
         if let Some(s) = level.fire_state(p) {
@@ -140,10 +134,6 @@ fn clear_copper(w: &mut World, at: [f64; 3]) {
     w.resource_mut::<Events>().host.set_block(p, s);
 }
 
-fn under(at: [f64; 3]) -> [i32; 3] {
-    [at[0].floor() as i32, (at[1] - 1.0e-6).floor() as i32, at[2].floor() as i32]
-}
-
 /// `Entity.thunderHit` for the living entities whose box meets the strike box (3 around, 3 down, 9 up).
 fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
     let peaceful = crate::effects::difficulty(w) == 0;
@@ -153,13 +143,7 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
     w.resource::<crate::cow::Index>().for_radius(at[0], at[2], 3.0 + MAX_HALF_WIDTH, |e| near.push(e));
     for e in near {
         let (Some(p), Some(b), Some(h)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Health>(e)) else { continue };
-        let (hw, hh) = (f64::from(b.width) / 2.0, f64::from(b.height));
-        let hit = p.0.x - hw < at[0] + 3.0
-            && p.0.x + hw > at[0] - 3.0
-            && p.0.y < at[1] + 9.0
-            && p.0.y + hh > at[1] - 3.0
-            && p.0.z - hw < at[2] + 3.0
-            && p.0.z + hw > at[2] - 3.0;
+        let hit = strike_hit(p.0, b.width, b.height, at);
         if hit && h.0 > 0.0 {
             struck.push((e, p.0));
         }

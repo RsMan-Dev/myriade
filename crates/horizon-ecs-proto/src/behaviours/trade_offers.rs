@@ -9,9 +9,10 @@ use horizon_client_lib::{
     entity_nbt::{offers_from_nbt, offers_to_nbt},
     items::Items,
     merchant::{self, MerchantOffer, Trader, TradeContext, Trades},
-    mobs::render::VILLAGER_TYPES,
 };
 use crate::nbt::{owner, Field};
+use crate::rules::trade_offers::WANDERING_SETS;
+pub use crate::rules::trade_offers::variant_name;
 use horizon_core::{
     nbt::{Compound, Tag},
     random::XoroshiroRandom,
@@ -45,13 +46,6 @@ impl Merchant {
     pub fn new(wandering: bool, profession: u8, variant: u8) -> Self {
         Self { trade: Trader { unset: true, ..Default::default() }, level: 1, profession, variant, wandering }
     }
-}
-
-const WANDERING_SETS: [&str; 3] = ["buying", "uncommon", "common"];
-
-/// Identifiant `minecraft:` d'un type de villageois (`VILLAGER_TYPES`, par index).
-pub fn variant_name(variant: u8) -> String {
-    format!("minecraft:{}", VILLAGER_TYPES[usize::from(variant) % VILLAGER_TYPES.len()])
 }
 
 /// `Villager.getOffers` / `WanderingTrader.getOffers` : fait les offres d'un marchand qui ne les a pas encore, à partir de

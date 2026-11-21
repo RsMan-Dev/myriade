@@ -179,7 +179,7 @@ impl Herd {
             let o = -f64::from(side) * spacing / 2.0;
             let s = u64::from(rng.next_u32()) << 32 | u64::from(rng.next_u32());
             let table = species_table();
-            let sp = if other_every > 0 { table.0[usize::from(i % other_every == 0)] } else { species };
+            let sp = if other_every > 0 { table.0[usize::from(i % other_every == 0)] } else { *species() };
             spawn_species(&mut world, &sp, o + cx * spacing + 0.5, o + cz * spacing + 0.5, s);
         }
         {

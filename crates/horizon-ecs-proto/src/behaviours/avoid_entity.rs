@@ -2,6 +2,7 @@
 //! spot away from it, walking, or sprinting while the target is within 7 blocks. Woken by events only: a player that comes
 //! within range, an animal of a listed species that changes column of the index, and the animal's own column change.
 use super::*;
+use crate::rules::avoid_entity::{in_reach, run_speed};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::{Vec3, trig};
 use horizon_core::jmath;
@@ -139,11 +140,6 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
     // Each wake-up system returns at once in a world with no avoider (a move of any animal would scan 24 blocks of index).
     s.add_systems((wake_on_player, cell_moves, avoid_run).chain().in_set(slot));
 }
-/// Whether `to` is within the range of the avoid goal from `from`: the distance and the height (`|dy| <= max + 3`).
-fn in_reach(a: &Avoider, from: Vec3, to: Vec3) -> bool {
-    let r = a.max_dist.max(2.0);
-    (to.y - from.y).abs() <= a.max_dist + 3.0 && d2(from, to) <= r * r
-}
 /// A player came within range (or was within it and moved out of it: no wake, the goal decides).
 fn wake_on_player(on: Res<Online>, ps: Res<crate::hostile::PlayerState>, idx: Res<Index>, q: Query<(&Pos, &Avoiders)>, any: Query<(), With<Avoiders>>, mut reqs: ResMut<Requests>) {
     if any.is_empty() {
@@ -156,8 +152,8 @@ fn wake_on_player(on: Res<Online>, ps: Res<crate::hostile::PlayerState>, idx: Re
             let Ok((pos, avs)) = q.get(c) else { return };
             for a in avs.0.iter().filter(|a| matches!(a.what, Avoid::Player)) {
                 let wanted = |p: Player| a.player_when.is_none_or(|f| f(&ps, &p));
-                let was = old.is_some_and(|o| wanted(o) && in_reach(a, pos.0, Vec3::new(o.x, o.y, o.z)));
-                if wanted(n) && in_reach(a, pos.0, at) && !was {
+                let was = old.is_some_and(|o| wanted(o) && in_reach(a.max_dist, pos.0, Vec3::new(o.x, o.y, o.z)));
+                if wanted(n) && in_reach(a.max_dist, pos.0, at) && !was {
                     reqs.0.push(Req::Start(c, a.slot));
                 }
             }
@@ -203,7 +199,7 @@ fn cell_moves(
             for a in &avs.0 {
                 if !matches!(a.what, Avoid::Player)
                     && a.mask.contains(sid.0)
-                    && in_reach(a, pos.0, at)
+                    && in_reach(a.max_dist, pos.0, at)
                 {
                     reqs.0.push(Req::Start(c, a.slot));
                 }
@@ -300,7 +296,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     true
 }
 fn speed_at(a: &Avoider, d2_to_target: f64) -> f64 {
-    if d2_to_target < 49.0 { a.sprint } else { a.walk }
+    run_speed(a.sprint, a.walk, d2_to_target)
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let a = w.get::<Avoiders>(e).unwrap().0[inst.nth as usize];

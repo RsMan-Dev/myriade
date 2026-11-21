@@ -6,6 +6,7 @@
 //! Two modules with the same code, the flags differing (a `Module` has static flags): `MODULE` (MOVE, the trader) and `MODULE_LOOK`
 //! (MOVE | LOOK, the guardian).
 use super::*;
+use crate::rules::move_towards_restriction::{home_target, within_home};
 use crate::{cow::*, goals::*, spots::Pick};
 
 #[derive(Clone, Copy, Debug)]
@@ -61,14 +62,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     w.entity_mut(e).insert(Speed(params::<Params>(p).speed));
 }
 /// `Mob.isWithinHome` (`goals::within_home` of the `Mob`): the floored position against the restriction, `d^2 < radius^2`.
-fn within(r: &Restriction, p: [f64; 3]) -> bool {
-    let pos = [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
-    let d = |i: usize| f64::from(r.center[i]) - f64::from(pos[i]);
-    d(0) * d(0) + d(1) * d(1) + d(2) * d(2) < f64::from(r.radius.wrapping_mul(r.radius))
-}
 fn out_of_home(w: &World, e: Entity) -> bool {
     let (Some(r), Some(p)) = (w.get::<Restriction>(e), w.get::<Pos>(e)) else { return false };
-    !within(r, [p.0.x, p.0.y, p.0.z])
+    !within_home(r.center, r.radius, [p.0.x, p.0.y, p.0.z])
 }
 /// Asks `canUse` again two ticks on, while the animal is out of its restriction.
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
@@ -87,10 +83,10 @@ fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(r) = w.get::<Restriction>(e).copied() else { return false };
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    if within(&r, [p.x, p.y, p.z]) {
+    if within_home(r.center, r.radius, [p.x, p.y, p.z]) {
         return false;
     }
-    let to = [f64::from(r.center[0]) + 0.5, f64::from(r.center[1]), f64::from(r.center[2]) + 0.5];
+    let to = home_target(r.center);
     let pick = crate::spots::pick_for(w, e, Pick::DefaultTowards { h: 16, v: 7, to, max_rad: std::f64::consts::FRAC_PI_2 });
     match pick {
         Some(point) => {

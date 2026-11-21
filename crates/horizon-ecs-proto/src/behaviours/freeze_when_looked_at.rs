@@ -9,6 +9,7 @@ use crate::targeting::{Eye, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
+use crate::rules::freeze_when_looked_at::{beyond_range, in_cone};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -60,17 +61,12 @@ fn stare(on: &Online, ps: &PlayerState, mw: &MobWorld, pos: Vec3, eye_y: f64, f:
     if !ps.alive(id) || (!f.disguise.is_empty() && f.disguise.contains(&ps.helmet(id))) {
         return None;
     }
-    if (pos.x - p.x).powi(2) + (pos.y - p.y).powi(2) + (pos.z - p.z).powi(2) > f.range_sqr {
+    if beyond_range(pos.x - p.x, pos.y - p.y, pos.z - p.z, f.range_sqr) {
         return None;
     }
     let look = ps.gaze(id);
     let dir = [pos.x - p.x, eye_y - p.eye(), pos.z - p.z];
-    let dist = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
-    if dist < 1.0e-6 {
-        return None;
-    }
-    let dot = (look[0] * dir[0] + look[1] * dir[1] + look[2] * dir[2]) / dist;
-    (dot > 1.0 - f.gaze_k / dist && mw.line_of_sight(Vec3::new(p.x, p.eye(), p.z), Vec3::new(pos.x, eye_y, pos.z))).then_some(p)
+    (in_cone(dir, look, f.gaze_k) && mw.line_of_sight(Vec3::new(p.x, p.eye(), p.z), Vec3::new(pos.x, eye_y, pos.z))).then_some(p)
 }
 fn watched(w: &World, e: Entity) -> Option<Player> {
     let Who::Player(id) = w.get::<Target>(e)?.who else { return None };

@@ -9,13 +9,8 @@ use crate::goals::*;
 use crate::mount::Mount;
 use crate::spots::{self, Pick};
 use crate::targeting::Who;
-
-/// Which rider holds the panic back: a player (`m.rider`, the camel), or any rider (the husk: `extra.rider` too).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Riders {
-    Player,
-    Any,
-}
+use crate::rules::animal_panic as rules;
+pub use crate::rules::animal_panic::Riders;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -76,7 +71,7 @@ fn hurt_run(ev: Res<Events>, clock: Res<Clock>, mut reqs: ResMut<Requests>, q: Q
         if running {
             continue;
         }
-        if last.is_some_and(|d| d.panic && clock.of(e).saturating_sub(d.at) <= f.p.window) {
+        if last.is_some_and(|d| rules::in_window(d.panic, clock.of(e), d.at, f.p.window)) {
             reqs.0.push(Req::Start(e, f.slot));
         }
     }
@@ -96,7 +91,7 @@ fn next_spot(w: &mut World, e: Entity) {
 /// `panic_pos`: the water within reach while burning, else a land spot.
 fn spot(w: &mut World, e: Entity, p: &Params) -> Option<[f64; 3]> {
     let now = now_of(w, e);
-    if w.get::<Burning>(e).is_some_and(|b| b.until > now)
+    if rules::wants_water(w.get::<Burning>(e).map(|b| b.until), now)
         && let Some(s) = water_spot(w, e, p.water)
     {
         return Some(s);
@@ -108,27 +103,20 @@ fn spot(w: &mut World, e: Entity, p: &Params) -> Option<[f64; 3]> {
 fn water_spot(w: &mut World, e: Entity, range: i32) -> Option<[f64; 3]> {
     use horizon_client_lib::blocks::Fluid;
     let pos = w.get::<Pos>(e)?.0;
-    let wide = w.get::<Body>(e).is_some_and(|b| f64::from(b.width).ceil() == 2.0);
+    let wide = w.get::<Body>(e).is_some_and(|b| rules::is_wide(f64::from(b.width)));
     let mw = w.resource::<Level>().mw.0;
-    let at = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
+    let at = rules::block_of(pos.x, pos.y, pos.z);
     if mw.data.state(mw.world.block(at[0], at[1], at[2])).top != 0.0 {
         return None;
     }
     let water = |x: i32, y: i32, z: i32| mw.fluid(x, y, z) == Fluid::Water;
-    mw.nearest_block(at, range, 1, |p, _| {
-        water(p[0], p[1], p[2]) && (!wide || (water(p[0], p[1], p[2] + 1) && water(p[0] + 1, p[1], p[2]) && water(p[0] + 1, p[1], p[2] + 1)))
-    })
-    .map(|p| [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5])
+    mw.nearest_block(at, range, 1, |p, _| rules::water_spot_ok(wide, p, &water)).map(|p| rules::spot_centre(p))
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let now = now_of(w, e);
     let Some(f) = w.get::<Fleeing>(e).copied() else { return false };
-    let rider = w.get::<Mount>(e).and_then(|m| m.rider);
-    let held = match (f.p.riders, rider) {
-        (Riders::Player, Some(Who::Player(_))) | (Riders::Any, Some(_)) => true,
-        _ => false,
-    };
-    !held && w.get::<LastDamage>(e).is_some_and(|d| d.panic && now.saturating_sub(d.at) <= f.p.window)
+    let rider = w.get::<Mount>(e).and_then(|m| m.rider).map(|r| matches!(r, Who::Player(_)));
+    !rules::held(f.p.riders, rider) && w.get::<LastDamage>(e).is_some_and(|d| rules::in_window(d.panic, now, d.at, f.p.window))
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let now = now_of(w, e);
@@ -136,8 +124,8 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     if f.p.stand_up {
         super::posture::stand_up_instantly(w, e);
     }
-    let dur = f.p.min + with_rng(w, e, |r| r.next_int(f.p.spread)) as u64;
-    w.entity_mut(e).insert((Fleeing { end: now + dur, ..f }, AnimalPanicking));
+    let dur = rules::duration(f.p.min, with_rng(w, e, |r| r.next_int(f.p.spread)));
+    w.entity_mut(e).insert((Fleeing { end: rules::ends_at(now, dur), ..f }, AnimalPanicking));
     stop_nav(w, e);
     if let Some(p) = spot(w, e, &f.p) {
         go_to_at(w, e, p, f.p.speed, 1);

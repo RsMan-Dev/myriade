@@ -9,6 +9,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::goals::d2;
+use crate::rules::make_love as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -114,7 +115,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     gaze_and_walk(w, e, other, p);
     gaze_and_walk(w, other, e, p);
     let (Some(me), Some(them)) = (w.get::<Pos>(e).map(|q| q.0), info(w, Who::Entity(other)).map(|i| i.pos)) else { return true };
-    if d2(me, them) < 9.0 && now >= at {
+    if rules::meet(d2(me, them)) && now >= at {
         match p.birth {
             Birth::Baby => {
                 give_birth(w, e, other);

@@ -4,6 +4,7 @@
 //! Move and look flags. Woken when the raider gets a target.
 use super::*;
 use crate::raids::{Aggressive, Patrol, Raider};
+use crate::rules::hold_ground_attack::{beyond_radius, hold_may_start, in_shout};
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
 
@@ -36,11 +37,13 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     w.entity_mut(e).insert(HoldGround { p: *params::<Params>(p), slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Raider>(e).is_some_and(|r| r.raid.is_none())
-        && w.get::<Patrol>(e).is_some_and(|p| p.patrolling)
-        && w.get::<Target>(e).is_some()
-        && !w.get::<Aggressive>(e).is_some()
-        && !w.get::<LastHurtBy>(e).is_some_and(|h| matches!(h.who, Who::Player(_)))
+    hold_may_start(
+        w.get::<Raider>(e).is_some_and(|r| r.raid.is_none()),
+        w.get::<Patrol>(e).is_some_and(|p| p.patrolling),
+        w.get::<Target>(e).is_some(),
+        w.get::<Aggressive>(e).is_some(),
+        w.get::<LastHurtBy>(e).is_some_and(|h| matches!(h.who, Who::Player(_))),
+    )
 }
 /// The raiders within 8 blocks (`shoutTargeting`), nearest first.
 fn shout_range(w: &World, e: Entity) -> Vec<Entity> {
@@ -53,7 +56,7 @@ fn shout_range(w: &World, e: Entity) -> Vec<Entity> {
         .filter_map(|o| {
             let q = w.get::<Pos>(o)?.0;
             let d = (q.x - p.x).powi(2) + (q.y - p.y).powi(2) + (q.z - p.z).powi(2);
-            (d <= 64.0).then_some((d, o))
+            in_shout(d).then_some((d, o))
         })
         .collect();
     near.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -87,7 +90,7 @@ fn run(tg: targeting::Targets, mut q: Query<(Aim, &HoldGround, Option<&Target>, 
     for ((e, pos, mut look, looking, ..), h, t, mut rng) in &mut q {
         let Some(i) = t.and_then(|t| tg.info(t.who)) else { continue };
         let d = (i.pos.x - pos.0.x).powi(2) + (i.pos.y - pos.0.y).powi(2) + (i.pos.z - pos.0.z).powi(2);
-        if d > h.p.radius * h.p.radius {
+        if beyond_radius(d, h.p.radius) {
             aim(&mut cmd, e, &mut look, looking, [i.pos.x, i.eye, i.pos.z], None);
             let _voice = rng.next_int(50) == 0;
         } else {

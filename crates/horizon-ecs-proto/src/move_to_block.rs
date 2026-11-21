@@ -4,6 +4,7 @@
 //! (`goals.rs`) ported line by line; a module keeps one in its state component, draws its `next_start` from the wheel (the
 //! search is a deadline, not a poll) and asks `invalid_after_change` when blocks changed in its zone.
 use bevy_ecs::prelude::*;
+use crate::rules::move_to_block::{any_in_box, can_continue_ticks, first_valid, is_far, reach_point, search_zone, target_point};
 use horizon_client_lib::mobs::MobWorld;
 
 #[derive(Component, Clone, Debug, Default)]
@@ -32,40 +33,13 @@ impl MoveToBlock {
             None => false,
         }
     }
-    fn walk(&self, base: [i32; 3], mut valid: impl FnMut([i32; 3]) -> bool) -> Option<[i32; 3]> {
-        let next = |v: i32| if v > 0 { -v } else { 1 - v };
-        let mut y = self.vertical_start;
-        while y <= self.vertical_range {
-            for r in 0..self.range {
-                let mut x = 0;
-                while x <= r {
-                    let mut z = if x < r && x > -r { r } else { 0 };
-                    while z <= r {
-                        let p = [base[0] + x, base[1] + y - 1, base[2] + z];
-                        if valid(p) {
-                            return Some(p);
-                        }
-                        z = next(z);
-                    }
-                    x = next(x);
-                }
-            }
-            y = next(y);
-        }
-        None
+    fn walk(&self, base: [i32; 3], valid: impl FnMut([i32; 3]) -> bool) -> Option<[i32; 3]> {
+        first_valid(base, self.range, self.vertical_start, self.vertical_range, valid)
     }
     /// The box of cells the search reaches from `base` (inclusive), or `None` when it walks none: a block change inside it
     /// invalidates a found block (and may make a failed search succeed).
     pub fn zone(&self, base: [i32; 3]) -> Option<([i32; 3], [i32; 3])> {
-        if self.range <= 0 || self.vertical_start > self.vertical_range {
-            return None;
-        }
-        let reach = self.range - 1;
-        let height = self.vertical_start.saturating_abs().max(self.vertical_range.saturating_abs()).saturating_add(1);
-        Some((
-            [base[0].saturating_sub(reach), base[1].saturating_sub(height).saturating_sub(1), base[2].saturating_sub(reach)],
-            [base[0].saturating_add(reach), base[1].saturating_add(height), base[2].saturating_add(reach)],
-        ))
+        search_zone(base, self.range, self.vertical_start, self.vertical_range)
     }
     /// `MoveToBlockGoal` of the `Mob`: whether the search from `base` may find a block whose state `matches` (false when no section of
     /// the cells it walks holds such a state in its palette: the walk would find nothing, and is not made).
@@ -74,15 +48,15 @@ impl MoveToBlock {
     }
     /// A block of `blocks` (changed positions) lies in the zone of the search from `base`.
     pub fn invalid_after_change(&self, base: [i32; 3], blocks: &[(i32, i32, i32)]) -> bool {
-        self.zone(base).is_some_and(|(lo, hi)| blocks.iter().any(|&(x, y, z)| (lo[0]..=hi[0]).contains(&x) && (lo[1]..=hi[1]).contains(&y) && (lo[2]..=hi[2]).contains(&z)))
+        self.zone(base).is_some_and(|(lo, hi)| any_in_box(lo, hi, blocks))
     }
     /// `canContinueToUse`: not tired, not too long, the block still valid.
     pub fn can_continue(&self, mw: &MobWorld, valid: impl Fn(&MobWorld, [i32; 3]) -> bool) -> bool {
-        self.try_ticks >= -self.max_stay && self.try_ticks <= 1200 && valid(mw, self.block)
+        can_continue_ticks(self.try_ticks, self.max_stay) && valid(mw, self.block)
     }
     /// The point the walk aims at (the block above, its middle).
     pub fn target(&self) -> [f64; 3] {
-        [f64::from(self.block[0]) + 0.5, f64::from(self.block[1] + 1), f64::from(self.block[2]) + 0.5]
+        target_point(self.block)
     }
     /// `start`: the two draws of the stay (the walk is asked of the framework: `goals::go_to_at(w, e, self.target(), speed, reach)`).
     pub fn start(&mut self, rng: &mut crate::cow::Rng) {
@@ -92,9 +66,7 @@ impl MoveToBlock {
     }
     /// `tick` with the goal's accepted distance: reached or not; true when the path must be asked again (every 40 ticks of walking).
     pub fn tick(&mut self, pos: [f64; 3], accepted: f64) -> bool {
-        let t = [f64::from(self.block[0]) + 0.5, f64::from(self.block[1] + 1) + 0.5, f64::from(self.block[2]) + 0.5];
-        let d2 = (pos[0] - t[0]).powi(2) + (pos[1] - t[1]).powi(2) + (pos[2] - t[2]).powi(2);
-        if d2 >= accepted * accepted {
+        if is_far(pos, reach_point(self.block), accepted) {
             self.reached = false;
             self.try_ticks += 1;
             self.try_ticks % 40 == 0

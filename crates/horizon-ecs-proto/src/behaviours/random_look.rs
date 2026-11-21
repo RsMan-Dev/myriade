@@ -1,5 +1,6 @@
 //! `RandomLookAroundGoal`: now and then (one chance in `period` per ask) look in a random direction for 20 to 40 ticks.
 use super::*;
+use crate::rules::random_look::{scan_dir, scan_until};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -85,7 +86,8 @@ fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let now = crate::cow::now_of(w, e);
     let (a, n) = with_rng(w, e, |r| (std::f64::consts::TAU * r.next_f64(), r.next_int(20)));
-    w.entity_mut(e).insert(Scanning { dx: a.cos(), dz: a.sin(), until: now + 20 + n as u64 + 1 });
+    let (dx, dz) = scan_dir(a);
+    w.entity_mut(e).insert(Scanning { dx, dz, until: scan_until(now, n) });
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Scanning>();

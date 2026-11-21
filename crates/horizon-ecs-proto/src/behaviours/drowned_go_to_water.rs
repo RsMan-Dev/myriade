@@ -6,6 +6,7 @@
 //! (a recorded gap: `suivi/ecs-ecarts.md`). In the water nothing is armed: `left_fluid` wakes it.
 use super::*;
 use crate::hostile::Daylight;
+use crate::rules::drowned_go_to_water::{block_centre, candidate};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -81,11 +82,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let p = w.get::<Pos>(e).unwrap().0;
     let (bx, by, bz) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
     for _ in 0..10 {
-        let q = with_rng(w, e, |r| [bx + r.next_int(20) - 10, by + 2 - r.next_int(8), bz + r.next_int(20) - 10]);
+        let q = with_rng(w, e, |r| candidate([bx, by, bz], [r.next_int(20), r.next_int(8), r.next_int(20)]));
         let mw = w.resource::<Level>().mw.0;
         // `getBlockState(pos).is(Blocks.WATER)`: kelp, seagrass and waterlogged blocks hold water but are not the water block.
         if &*mw.facts.get(mw.world.block(q[0], q[1], q[2])).name == "minecraft:water" {
-            w.get_mut::<ToWater>(e).unwrap().wanted = [f64::from(q[0]) + 0.5, f64::from(q[1]), f64::from(q[2]) + 0.5];
+            w.get_mut::<ToWater>(e).unwrap().wanted = block_centre(q);
             return true;
         }
     }

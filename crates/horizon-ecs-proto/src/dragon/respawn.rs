@@ -8,6 +8,7 @@ use crate::dragon::fight::{EndFight, RespawnStage};
 use crate::explosion::{explode, explode_with};
 use crate::goals::Events;
 use crate::projectile::Blast;
+use crate::rules::dragon_respawn as rule;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use horizon_world::worldgen::end_spike::{spikes_for_seed, EndSpike};
@@ -43,8 +44,7 @@ pub fn try_respawn(w: &mut World) -> bool {
     let mut q = w.query_filtered::<(Entity, &Pos), Or<(With<EndCrystal>, With<crate::end_crystal::EndCrystal>)>>();
     let all: Vec<(Entity, Vec3)> = q.iter(w).map(|(e, p)| (e, p.0)).collect();
     for d in [[0, -1], [0, 1], [-1, 0], [1, 0]] {
-        let lo = Vec3::new(f64::from(origin[0] + d[0] * 3), f64::from(origin[1] + 1), f64::from(origin[2] + d[1] * 3));
-        let cell = horizon_core::geometry::Aabb::new(lo, Vec3::new(lo.x + 1.0, lo.y + 1.0, lo.z + 1.0));
+        let cell = rule::side_cell(origin, d);
         let hits: Vec<Entity> = all.iter().filter(|(_, p)| crate::dragon::crystals::bounds(*p).intersects(cell)).map(|(e, _)| *e).collect();
         if hits.is_empty() {
             return false;
@@ -123,7 +123,7 @@ fn tick(w: &mut World, c: Entity) {
         }
         RespawnStage::Preparing => {
             if time < 100 {
-                if matches!(time, 0 | 50..=52) || time >= 95 {
+                if rule::preparing_growl(time) {
                     growl(w);
                 }
             } else {
@@ -131,10 +131,10 @@ fn tick(w: &mut World, c: Entity) {
             }
         }
         RespawnStage::Pillars => {
-            let (start, end) = (time % 40 == 0, time % 40 == 39);
+            let (start, end) = rule::pillar_edges(time);
             if start || end {
                 let spikes = spikes_for_seed(crate::blocks::world_of(w).world_seed);
-                match spikes.get((time / 40) as usize) {
+                match spikes.get(rule::spike_index(time)) {
                     Some(spike) if start => set_beams(w, Some([spike.center_x, spike.height + 1, spike.center_z])),
                     Some(spike) => rebuild(w, spike),
                     None if start => set_stage(w, RespawnStage::Summoning),
@@ -146,7 +146,7 @@ fn tick(w: &mut World, c: Entity) {
             if time >= 100 {
                 finish(w);
                 return;
-            } else if time >= 80 || (1..5).contains(&time) {
+            } else if rule::summoning_growl(time) {
                 growl(w);
             } else if time == 0 {
                 set_beams(w, Some(CENTER));
@@ -173,12 +173,10 @@ fn rebuild(w: &mut World, spike: &EndSpike) {
     }
     let at = Vec3::new(f64::from(cx) + 0.5, f64::from(h), f64::from(cz) + 0.5);
     explode(w, Blast { at, radius: 5.0, fire: false, owner: None, source: None });
-    let r = f64::from(spike.radius);
     for y in 0..=h + 10 {
         for z in cz - spike.radius..=cz + spike.radius {
             for x in cx - spike.radius..=cx + spike.radius {
-                let (dx, dz) = (f64::from(x - cx), f64::from(z - cz));
-                if dx * dx + dz * dz <= r * r + 1.0 && y < h {
+                if rule::in_disc(x - cx, z - cz, spike.radius) && y < h {
                     set_state(w, [x, y, z], "minecraft:obsidian", &[]);
                 }
             }
@@ -200,12 +198,7 @@ fn pillar_bars(w: &mut World, spike: &EndSpike) {
     for dx in -2i32..=2 {
         for dz in -2i32..=2 {
             for dy in 0..=3 {
-                let top = dy == 3;
-                if !(dx.abs() == 2 || dz.abs() == 2 || top) {
-                    continue;
-                }
-                let (x_edge, z_edge) = (dx.abs() == 2 || top, dz.abs() == 2 || top);
-                let sides = [x_edge && dz != -2, x_edge && dz != 2, z_edge && dx != -2, z_edge && dx != 2];
+                let Some(sides) = rule::cage_sides(dx, dz, dy) else { continue };
                 let props: Vec<(&str, &str)> = ["north", "south", "west", "east"].into_iter().zip(sides).map(|(k, on)| (k, if on { "true" } else { "false" })).collect();
                 if let Some(id) = resolve(world_of(w), "minecraft:iron_bars", &props) {
                     set_state_id(w, [spike.center_x + dx, spike.height + dy, spike.center_z + dz], id);
@@ -221,7 +214,7 @@ fn finish(w: &mut World) {
     let spikes = spikes_for_seed(world_of(w).world_seed);
     let on_spike: Vec<Entity> = {
         let mut q = w.query_filtered::<(Entity, &Pos), With<EndCrystal>>();
-        let on = |p: Vec3| spikes.iter().any(|s| (p.x - f64::from(s.center_x) - 0.5).abs() <= f64::from(s.radius) && (p.z - f64::from(s.center_z) - 0.5).abs() <= f64::from(s.radius) && p.y >= f64::from(s.height));
+        let on = |p: Vec3| spikes.iter().any(|s| rule::is_on_spike([p.x, p.y, p.z], s.center_x, s.center_z, s.radius, s.height));
         q.iter(w).filter(|(_, p)| on(p.0)).map(|(e, _)| e).collect()
     };
     for e in on_spike {

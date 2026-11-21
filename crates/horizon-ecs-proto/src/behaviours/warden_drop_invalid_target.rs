@@ -2,6 +2,7 @@
 //! ou non attaquable (plus angry) est lâchée. Si elle n'est plus attaquable, sa colère est effacée ; le creusement
 //! reprend après `dig_cooldown` ticks. (Le remplacement par une autre cible du Mob n'est pas porté.)
 use super::act_phase::ActPhase;
+use crate::rules::warden_drop_invalid_target::cooldown_end;
 use super::suspect_anger::{self, Level, Suspects};
 use super::{params, Inst, Module};
 use crate::{cow::*, goals::*, targeting::{self, Target}};
@@ -37,5 +38,5 @@ fn start(w: &mut World, e: Entity, _: Inst) {
         }
     }
     let now = now_of(w, e);
-    w.get_mut::<ActPhase>(e).unwrap().dig_cooldown_until = now + c.dig_cooldown;
+    w.get_mut::<ActPhase>(e).unwrap().dig_cooldown_until = cooldown_end(now, c.dig_cooldown);
 }

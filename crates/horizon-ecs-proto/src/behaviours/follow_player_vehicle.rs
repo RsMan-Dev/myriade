@@ -7,6 +7,7 @@
 //! move is the frame's one.
 use super::*;
 use crate::vehicle::Vehicles;
+use crate::rules::follow_player_vehicle::{ahead, behind, motion_step};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -124,15 +125,6 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     with_state(w, e, inst.slot, |s| s.following = false);
     w.entity_mut(e).remove::<Escorting>();
 }
-/// `Entity.getMotionDirection` / `Direction.fromYRot`: the horizontal step of the yaw (south, west, north, east).
-fn motion_step(yaw: f32) -> [i32; 2] {
-    match (yaw / 90.0 + 0.5).floor() as i32 & 3 {
-        0 => [0, 1],
-        1 => [-1, 0],
-        2 => [0, -1],
-        _ => [1, 0],
-    }
-}
 /// `canContinueToUse`, then `tick`.
 fn escort_step(w: &mut World, e: Entity) {
     let Some(Escorting(slot)) = w.get::<Escorting>(e).copied() else { return };
@@ -159,13 +151,13 @@ fn escort_step(w: &mut World, e: Entity) {
     let dist = d2(pos, Vec3::new(p.x, p.y, p.z));
     let mut leading = s.leading;
     if !s.leading {
-        let at = [f64::from(block[0] - dx), f64::from(block[1] - 1), f64::from(block[2] - dz)];
+        let at = behind(block, [dx, dz]);
         go_to_at(w, e, at, s.p.speed, 1);
         if dist < s.p.close_sqr {
             (left, leading) = (0, true);
         }
     } else {
-        let at = [f64::from(block[0] + dx * s.p.lead_distance), f64::from(block[1] - 1), f64::from(block[2] + dz * s.p.lead_distance)];
+        let at = ahead(block, [dx, dz], s.p.lead_distance);
         go_to_at(w, e, at, s.p.speed, 1);
         if dist > s.p.far_sqr {
             (left, leading) = (0, false);

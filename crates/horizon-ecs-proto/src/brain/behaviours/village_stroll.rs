@@ -2,6 +2,7 @@
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::poi::PoiRegistry;
+use crate::rules::village_stroll::{roams_freely, section_centre};
 use crate::spots::Pick;
 
 pub struct Params {
@@ -23,10 +24,10 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         let poi = w.resource::<PoiRegistry>();
         (poi.sections_to_village(section), poi.closest_section(section, 2))
     };
-    let spot = if poi <= 1 || best == section {
+    let spot = if roams_freely(poi, best, section) {
         pick(w, e, Pick::Land { h: p.xz, v: p.y })
     } else {
-        let to = [f64::from(best[0] * 16 + 8) + 0.5, f64::from(best[1] * 16 + 8), f64::from(best[2] * 16 + 8) + 0.5];
+        let to = section_centre(best);
         pick(w, e, Pick::DefaultTowards { h: p.xz, v: p.y, to, max_rad: f64::from(std::f32::consts::FRAC_PI_2) })
     };
     match spot {

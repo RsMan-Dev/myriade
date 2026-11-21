@@ -5,6 +5,7 @@ use crate::cow::Pos;
 use super::*;
 use crate::behaviours::{attached_face::{Attached, Sounds, set_peek}, fox_state::aim_at, homing_projectile};
 use crate::goals::*;
+use crate::rules::homing_shot::{next_wait, pitch_of};
 use crate::targeting::{self, Target};
 
 #[derive(Clone, Copy, Debug)]
@@ -103,13 +104,16 @@ fn step(w: &mut World, e: Entity) {
     if wait > 0 {
         return;
     }
-    let next = cfg.wait_base + cfg.wait_step * with_rng(w, e, |r| r.next_int(cfg.wait_count));
+    let next = next_wait(cfg.wait_base, cfg.wait_step, with_rng(w, e, |r| r.next_int(cfg.wait_count)));
     w.get_mut::<Volley>(e).unwrap().wait = next;
     // `Entity.random` of the bullet: `RandomSource.create()`, unseeded; it draws nothing from the shooter's random.
     let seed = horizon_client_render::random_source::unique_seed() as u64 | 1;
     let axis = homing_projectile::axis_of(w.get::<Attached>(e).map_or(0, |a| a.face));
     homing_projectile::spawn(w, e, t.who, axis, seed, cfg.shot);
-    let pitch = with_rng(w, e, |r| (r.next_f64() - r.next_f64()) as f32 * cfg.pitch_spread + 1.0);
+    let pitch = with_rng(w, e, |r| {
+        let (a, b) = (r.next_f64(), r.next_f64());
+        pitch_of(a, b, cfg.pitch_spread)
+    });
     let at = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]).unwrap_or([0.0; 3]);
     w.resource_mut::<Events>().host.sound(cfg.sound, at, cfg.volume, pitch);
 }

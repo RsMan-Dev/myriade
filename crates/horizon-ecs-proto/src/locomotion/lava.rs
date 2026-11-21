@@ -7,6 +7,7 @@ use crate::{
     behaviours::{Cap, Inst, Module},
     cow::*,
 };
+use crate::rules::lava::{at_surface, lifted};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::blocks::Fluid;
 
@@ -87,12 +88,10 @@ fn float(level: Res<Level>, mut q: Query<(&Pos, &mut Vel, &mut Contact, &FluidSt
             continue;
         }
         let (x, y, z) = (p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32);
-        let above = p.0.y > f64::from(y) + 0.5 - f64::from(1.0e-5_f32);
-        if above && level.mw.0.fluid(x, y + 1, z) != Fluid::Lava {
+        if at_surface(p.0.y, y) && level.mw.0.fluid(x, y + 1, z) != Fluid::Lava {
             c.on_ground = true;
         } else {
-            let u = v.0;
-            v.0 = horizon_core::geometry::Vec3::new(u.x * 0.5, u.y * 0.5 + 0.05, u.z * 0.5);
+            v.0 = lifted(v.0);
         }
     }
 }

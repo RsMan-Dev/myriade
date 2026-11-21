@@ -6,6 +6,7 @@
 use crate::behaviours::Interaction;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::tame::{can_stand_on, teleport_ring, teleport_spot};
 use crate::rules::{no_attrs, params, Rule};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
@@ -153,11 +154,11 @@ pub fn teleport_to_owner(w: &mut World, e: Entity) {
     let base = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
     for _ in 0..10 {
         let (xd, zd) = with_rng(w, e, |r| (r.next_int(7) - 3, r.next_int(7) - 3));
-        if xd.abs() < 2 && zd.abs() < 2 {
+        if !teleport_ring(xd, zd) {
             continue;
         }
         let yd = with_rng(w, e, |r| r.next_int(3) - 1);
-        let p = [base[0] + xd, base[1] + yd, base[2] + zd];
+        let p = teleport_spot(base, [xd, yd, zd]);
         if can_teleport_to(w, e, p) {
             crate::behaviours::ender_teleport::land(w, e, Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5));
             stop_nav(w, e);
@@ -169,10 +170,8 @@ pub fn teleport_to_owner(w: &mut World, e: Entity) {
 fn can_teleport_to(w: &World, e: Entity, p: [i32; 3]) -> bool {
     let mw = w.resource::<Level>().mw.0;
     let below = mw.facts.get(mw.world.block(p[0], p[1] - 1, p[2]));
-    if !below.full_collision || below.name.ends_with("_leaves") {
-        return false;
-    }
-    if mw.facts.get(mw.world.block(p[0], p[1], p[2])).fluid != horizon_client_lib::blocks::Fluid::None {
+    let fluid = mw.facts.get(mw.world.block(p[0], p[1], p[2])).fluid != horizon_client_lib::blocks::Fluid::None;
+    if !can_stand_on(below.full_collision, &below.name, fluid) {
         return false;
     }
     let Some(b) = w.get::<Body>(e) else { return false };

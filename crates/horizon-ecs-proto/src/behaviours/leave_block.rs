@@ -6,7 +6,7 @@
 use super::*;
 use crate::behaviours::take_block::{Carried, CarriedProps};
 use crate::{blocks, cow::*, goals::*};
-use horizon_core::geometry::{Aabb, Vec3};
+use crate::rules::leave_block::{cell_box, cell_of, due_at, leave_wait};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -52,9 +52,9 @@ pub fn arm_leave(w: &mut World, e: Entity) {
     if l.armed || w.get::<Carried>(e).is_none_or(|c| c.0.is_none()) || !mob_griefing(w) {
         return;
     }
-    let wait = with_rng(w, e, |r| 2 * geometric(r, l.asks));
+    let wait = with_rng(w, e, |r| leave_wait(geometric(r, l.asks)));
     crate::goals::arm(w, e, l.slot, wait);
-    let due = now_of(w, e) + wait.max(1) as u64;
+    let due = due_at(now_of(w, e), wait);
     let mut l = w.get_mut::<Leaving>(e).unwrap();
     l.armed = true;
     l.due = due;
@@ -87,14 +87,12 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         return;
     };
     let (u0, u1, u2) = with_rng(w, e, |r| (r.next_f64(), r.next_f64(), r.next_f64()));
-    let x = (p.x - 1.0 + u0 * 2.0).floor() as i32;
-    let y = (p.y + u1 * 2.0).floor() as i32;
-    let z = (p.z - 1.0 + u2 * 2.0).floor() as i32;
+    let [x, y, z] = cell_of(p, [u0, u1, u2]);
     let (air, solid_below) = {
         let mw = w.resource::<Level>().mw.0;
         (&*mw.facts.get(mw.world.block(x, y, z)).name == "minecraft:air", mw.solid(x, y - 1, z))
     };
-    let cell = Aabb::new(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)));
+    let cell = cell_box([x, y, z]);
     let mut occupied = false;
     let mut found = Vec::new();
     w.resource::<Index>().for_radius(p.x, p.z, 2.0, |c| found.push(c));

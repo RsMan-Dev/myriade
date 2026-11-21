@@ -2,6 +2,7 @@
 //! tick; while busy (`BUSY`) the base is 0. Not ticked: the state is `(base, since, max, busy)`, written when the target or the busy
 //! reasons change (`TargetWatchers`), and `speed_at` closes the formula over the ticks elapsed since, exact for the 10 % step.
 use super::*;
+use crate::rules::hunt_speed::{pace_max, paced_speed};
 use crate::{goals::*, targeting::TargetWatchers};
 
 /// The busy reasons that stop a ravager (`Mob.isImmobile`): biting, stunned, roaring.
@@ -58,7 +59,7 @@ pub fn refresh(w: &mut World, e: Entity) {
     p.base = speed_from(&p, now);
     p.since = now;
     p.busy = busy;
-    p.max = if hunting { p.hunting } else { p.idle };
+    p.max = pace_max(hunting, p.hunting, p.idle);
 }
 /// The speed the locomotion moves at this tick.
 pub fn speed_at(w: &World, e: Entity) -> f64 {
@@ -66,12 +67,5 @@ pub fn speed_at(w: &World, e: Entity) -> f64 {
     if p.busy { 0.0 } else { speed_from(p, now) }
 }
 fn speed_from(p: &Pace, now: u64) -> f64 {
-    let n = now.saturating_sub(p.since);
-    if p.busy {
-        0.0
-    } else if n == 0 {
-        p.base
-    } else {
-        p.max - (p.max - p.base) * 0.9_f64.powi(n as i32)
-    }
+    paced_speed(p.base, p.max, p.busy, now.saturating_sub(p.since))
 }

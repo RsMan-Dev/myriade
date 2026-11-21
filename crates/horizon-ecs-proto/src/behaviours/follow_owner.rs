@@ -3,6 +3,7 @@
 //! What wakes it: the owner leaving the `start` radius (`PlayerWatch`), nothing else; while it runs a system visits it each tick.
 use super::*;
 use crate::{cow::*, goals::*, tame};
+use crate::rules::follow_owner::{beyond_start, beyond_stop, repath_ticks, teleports};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -66,7 +67,7 @@ fn owner_left(ev: Res<Events>, q: Query<(&tame::Owner, &FollowOwner)>, mut reqs:
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(f) = w.get::<FollowOwner>(e).map(|f| f.p) else { return false };
     let Some(d) = tame::owner_distance_sqr(w, e) else { return false };
-    !tame::unable_to_move_to_owner(w, e) && d >= f.start * f.start
+    !tame::unable_to_move_to_owner(w, e) && beyond_start(d, f.start)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let mut f = w.get_mut::<FollowOwner>(e).unwrap();
@@ -90,12 +91,12 @@ fn follow_step(world: &mut World, e: Entity) {
         let Some(f) = world.get::<FollowOwner>(e).copied() else { return };
         let done = !matches!((world.get::<Following>(e), world.get::<NeedsPath>(e)), (Some(_), _) | (_, Some(_)));
         let d = tame::owner_distance_sqr(world, e);
-        if !f.fresh && (done || tame::unable_to_move_to_owner(world, e) || !d.is_some_and(|d| d > f.p.stop * f.p.stop)) {
+        if !f.fresh && (done || tame::unable_to_move_to_owner(world, e) || !d.is_some_and(|d| beyond_stop(d, f.p.stop))) {
             world.resource_mut::<Requests>().0.push(Req::End(e, f.slot));
             return;
         }
         let (Some(owner), Some(d)) = (tame::owner_player(world, e), d) else { return };
-        let far = d >= 144.0;
+        let far = teleports(d);
         if !far {
             crate::brain::look_at(world, e, [owner.x, owner.y + 1.62, owner.z]);
         }
@@ -103,7 +104,7 @@ fn follow_step(world: &mut World, e: Entity) {
         st.fresh = false;
         st.recalc -= 1;
         if st.recalc <= 0 {
-            st.recalc = (10 + 1) / 2;
+            st.recalc = repath_ticks();
             if far {
                 tame::teleport_to_owner(world, e);
             } else {

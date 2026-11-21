@@ -12,6 +12,8 @@
 use super::*;
 use crate::{cow::*, goals::*};
 use std::collections::HashMap;
+use crate::rules::bee::{close_to_hive, exit_point, front_of, hop_plan, hover_offset, manhattan_box, may_stop_hover, unit_toward_xz, within_blocks};
+use crate::rules::nearest_target::reduced;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {}
@@ -75,9 +77,6 @@ pub struct GoingToFlower {
 #[component(storage = "SparseSet")]
 pub struct GrowingCrops;
 
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 fn bee(w: &World, e: Entity) -> Option<&Bee> {
     w.get::<Bee>(e)
 }
@@ -87,9 +86,7 @@ fn block_of(w: &World, e: Entity) -> [i32; 3] {
 }
 use horizon_core::geometry::Vec3;
 fn closer_than(w: &World, e: Entity, p: [i32; 3], dist: i32) -> bool {
-    let b = block_of(w, e);
-    let d = |i: usize| f64::from(p[i] - b[i]);
-    d(0) * d(0) + d(1) * d(1) + d(2) * d(2) < f64::from(dist * dist)
+    within_blocks(block_of(w, e), p, dist)
 }
 fn too_far(w: &World, e: Entity, p: [i32; 3]) -> bool {
     !closer_than(w, e, p, 48)
@@ -110,11 +107,7 @@ fn ensure(w: &mut World, e: Entity) {
 /// `Bee.pathfindRandomlyTowards`: a hop of a few blocks towards `p` (a flying spot nearer to it), then the path to that spot.
 fn hop_towards(w: &mut World, e: Entity, p: [i32; 3]) {
     let target = [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5];
-    let here = block_of(w, e);
-    let y_delta = target[1] as i32 - here[1];
-    let y_adjust = if y_delta > 2 { 4 } else if y_delta < -2 { -4 } else { 0 };
-    let dist = (p[0] - here[0]).abs() + (p[1] - here[1]).abs() + (p[2] - here[2]).abs();
-    let (h, v) = if dist < 15 { (dist / 2, dist / 2) } else { (6, 8) };
+    let (y_adjust, h, v) = hop_plan(block_of(w, e), p);
     let max_rad = f64::from((std::f64::consts::PI / 10.0) as f32);
     if let Some(at) = crate::spots::pick_for(w, e, crate::spots::Pick::AirTowards { h, v, fly: y_adjust, to: target, max_rad }) {
         crate::goals::go_to_at(w, e, at, 1.0, 1);
@@ -123,10 +116,7 @@ fn hop_towards(w: &mut World, e: Entity, p: [i32; 3]) {
 /// `BeeWanderGoal.start`'s direction: towards a valid hive farther than 24 blocks (the normalised vector), else the view.
 pub fn toward_far_hive(w: &World, e: Entity) -> Option<(f64, f64)> {
     let h = bee(w, e)?.hive.filter(|_| hive_valid(w, e) && !closer_than(w, e, bee(w, e).and_then(|b| b.hive).unwrap_or([0; 3]), 24))?;
-    let p = w.get::<Pos>(e)?.0;
-    let v = [f64::from(h[0]) + 0.5 - p.x, f64::from(h[1]) + 0.5 - p.y, f64::from(h[2]) + 0.5 - p.z];
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len < 1.0e-5 { Some((0.0, 0.0)) } else { Some((v[0] / len, v[2] / len)) }
+    Some(unit_toward_xz(h, w.get::<Pos>(e)?.0))
 }
 /// The bee has stung: it will die, one chance in `1200 - t` every 5 ticks (`Bee.customServerAiStep`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -371,16 +361,9 @@ fn release(w: &mut World, e: Entity, h: [i32; 3], stay: u64) {
     }
     let (wd, ht) = w.get::<Body>(e).map_or((0.7, 0.6), |b| (b.width, b.height));
     let mw = w.resource::<Level>().mw.0;
-    let f = mw.prop(h[0], h[1], h[2], "facing").map_or([0, 0], |f| match f {
-        "north" => [0, -1],
-        "south" => [0, 1],
-        "west" => [-1, 0],
-        "east" => [1, 0],
-        _ => [0, 0],
-    });
+    let f = front_of(mw.prop(h[0], h[1], h[2], "facing"));
     let blocked = mw.solid(h[0] + f[0], h[1], h[2] + f[1]);
-    let delta = if blocked { 0.0 } else { 0.55 + f64::from(wd / 2.0) };
-    let p = Vec3::new(f64::from(h[0]) + 0.5 + delta * f64::from(f[0]), f64::from(h[1]) + 0.5 - f64::from(ht / 2.0), f64::from(h[2]) + 0.5 + delta * f64::from(f[1]));
+    let p = exit_point(h, f, blocked, wd, ht);
     if let Some(mut pos) = w.get_mut::<Pos>(e) {
         pos.0 = p;
     }
@@ -466,26 +449,6 @@ fn find_flower(w: &mut World, e: Entity) -> Option<[i32; 3]> {
         b.unreachable = cache;
     }
     found
-}
-/// `BlockPos.withinBoxByManhattanDistance`: nearest first by Manhattan distance, then x, y, and +z before -z.
-fn manhattan_box(o: [i32; 3], rx: i32, ry: i32, rz: i32) -> Vec<[i32; 3]> {
-    let mut out = Vec::new();
-    for depth in 0..=rx + ry + rz {
-        let max_x = rx.min(depth);
-        for x in -max_x..=max_x {
-            let max_y = ry.min(depth - x.abs());
-            for y in -max_y..=max_y {
-                let z = depth - x.abs() - y.abs();
-                if z <= rz {
-                    out.push([o[0] + x, o[1] + y, o[2] + z]);
-                    if z != 0 {
-                        out.push([o[0] + x, o[1] + y, o[2] - z]);
-                    }
-                }
-            }
-        }
-    }
-    out
 }
 fn pollinate_can_use(w: &mut World, e: Entity, i: Inst) -> bool {
     match find_flower(w, e) {
@@ -587,8 +550,7 @@ fn pollinate_tick(w: &mut World) {
         let mut set_wanted = true;
         if arrived {
             if with_rng(w, e, |r| r.next_int(25)) == 0 {
-                let o = |r: &mut Rng| f64::from((r.next_float() * 2.0 - 1.0) * 0.333_333_34);
-                let (ox, oz) = with_rng(w, e, |r| (o(r), o(r)));
+                let (ox, oz) = with_rng(w, e, |r| (hover_offset(r.next_float()), hover_offset(r.next_float())));
                 p.hover = Some([flower[0] + ox, flower[1], flower[2] + oz]);
                 crate::goals::stop_nav(w, e);
             } else {
@@ -601,7 +563,7 @@ fn pollinate_tick(w: &mut World) {
         p.successful += 1;
         *w.get_mut::<Pollinating>(e).unwrap() = p;
         // `canContinueToUse`: after 400 ticks one chance in five each ask (every other tick).
-        if p.successful > 400 && p.successful % 2 == 0 && with_rng(w, e, |r| r.next_float()) < 0.2 {
+        if may_stop_hover(p.successful) && with_rng(w, e, |r| r.next_float()) < 0.2 {
             end(w, e, &POLLINATE);
         }
     }
@@ -732,7 +694,7 @@ pub static ENTER_HIVE: Module = Module { name: "bee_enter_hive", tick: Some(hive
 fn enter_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(h) = bee(w, e).and_then(|b| b.hive) else { return false };
     let p = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
-    let close = (f64::from(h[0]) + 0.5 - p.x).powi(2) + (f64::from(h[1]) + 0.5 - p.y).powi(2) + (f64::from(h[2]) + 0.5 - p.z).powi(2) < 4.0;
+    let close = close_to_hive(h, p, 4.0);
     if !(close && wants_to_enter_hive(w, e)) {
         return false;
     }

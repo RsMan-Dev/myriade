@@ -6,6 +6,7 @@ use super::panda_state::{self as ps, Gene, FLAG_ROLL};
 use super::*;
 use crate::cow::{Level, Pos, Yaw, Contact};
 use crate::goals::{Req, Requests, JUMP, LOOK, MOVE};
+use crate::rules::panda_roll::front_below;
 
 /// `reduced(60)` = 30 for a playful panda, `reduced(500)` = 250 otherwise.
 #[derive(Clone, Copy, Debug)]
@@ -108,11 +109,7 @@ fn arm_ask(w: &mut World, e: Entity) {
 /// The yaw is in degrees, as the `Mob`'s.
 fn front_is_air(w: &World, e: Entity) -> bool {
     let p = w.get::<Pos>(e).unwrap().0;
-    let a = f64::from(w.get::<Yaw>(e).unwrap().0).to_radians();
-    let step = |d: f64| if d.abs() > 0.5 { d.signum() as i32 } else { 0 };
-    let x = p.x.floor() as i32 + step(-a.sin());
-    let z = p.z.floor() as i32 + step(a.cos());
-    let below = p.y.floor() as i32 - 1;
+    let (x, below, z) = front_below(p.x, p.y, p.z, f64::from(w.get::<Yaw>(e).unwrap().0));
     let mw = w.resource::<Level>().mw.0;
     mw.facts.is_air(mw.world.block(x, below, z))
 }

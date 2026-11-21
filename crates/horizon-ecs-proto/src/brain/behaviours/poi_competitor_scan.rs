@@ -6,6 +6,7 @@ use crate::behaviours::trade_offers::Merchant;
 use crate::brain::behaviours::poi_validate::forget;
 use crate::brain::*;
 use crate::poi::PoiRegistry;
+use crate::rules::poi_competitor_scan::loses_to;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 
@@ -31,19 +32,11 @@ fn loses(w: &World, e: Entity, job: &MemKey) -> bool {
         return false;
     }
     let Some(MemValue::Whos(list)) = get(w, e, &MOBS) else { return false };
-    let mut best = xp(w, e);
-    let mut lost = false;
-    for &who in list {
-        let Who::Entity(s) = who else { continue };
-        if s == e || w.get::<Profession>(s) != Some(&prof) || site(w, s, job) != Some(p) {
-            continue;
-        }
-        if best <= xp(w, s) {
-            lost = true;
-            best = xp(w, s);
-        }
-    }
-    lost
+    let rivals = list.iter().filter_map(|&who| {
+        let Who::Entity(s) = who else { return None };
+        (s != e && w.get::<Profession>(s) == Some(&prof) && site(w, s, job) == Some(p)).then(|| xp(w, s))
+    });
+    loses_to(xp(w, e), rivals)
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {

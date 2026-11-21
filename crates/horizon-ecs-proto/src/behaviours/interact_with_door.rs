@@ -4,6 +4,7 @@
 //! Not done: another creature coming through the door is not looked for (as in the `Mob`).
 use super::door_interact::{self as door};
 use super::*;
+use crate::rules::interact_with_door::step_gate;
 use crate::{cow::*, goals::*};
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -58,14 +59,11 @@ fn run(q: Query<(Entity, &InteractSeeker), With<Interacting>>, mut cmd: Commands
                 return;
             };
             let mut st = w.entity_mut(e).take::<Interacting>().unwrap_or_default();
-            if st.last == Some(to) {
-                st.cooldown = 20;
-            } else {
-                st.cooldown -= 1;
-                if st.cooldown > 0 {
-                    w.entity_mut(e).insert(st);
-                    return;
-                }
+            let (cooldown, go) = step_gate(st.last, to, i64::from(st.cooldown), 20);
+            st.cooldown = cooldown as i32;
+            if !go {
+                w.entity_mut(e).insert(st);
+                return;
             }
             st.last = Some(to);
             for (p, always) in [(from, true), (to, false)] {

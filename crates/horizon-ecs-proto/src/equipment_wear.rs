@@ -5,6 +5,7 @@
 use crate::equipment::{set_slot, take_slot};
 use crate::goals::{equipped, Slot};
 use crate::items;
+use crate::rules::equipment_wear::{hurt, wear_amount};
 use bevy_ecs::prelude::*;
 
 /// The armour slots, in the order `Wear` keeps them.
@@ -13,21 +14,6 @@ pub const ARMOR: [Slot; 4] = [Slot::Head, Slot::Chest, Slot::Legs, Slot::Feet];
 /// The damage each armour piece took, by `ARMOR` index.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct Wear(pub [i32; 4]);
-
-/// The amount a hurt of `damage` wears off each piece: none for no damage (or NaN), else `max(1, damage / 4)`.
-pub fn wear_amount(damage: f32) -> i32 {
-    if damage.is_nan() || damage <= 0.0 {
-        0
-    } else {
-        (damage / 4.0).max(1.0) as i32
-    }
-}
-
-/// `ItemStack.hurtAndBreak` on one piece: its damage takes `amount`; true when it reaches `max`, the piece breaks.
-pub fn hurt(damage: &mut i32, amount: i32, max: i32) -> bool {
-    *damage += amount;
-    *damage >= max
-}
 
 /// `LivingEntity.doHurtEquipment` over the armour of `e` for a hurt of `damage`. The pieces that break leave their slot; their slots are
 /// returned.

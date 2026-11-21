@@ -6,6 +6,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::posture::{refuses, sat, since_standing, transition_ticks};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -45,21 +46,21 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let now = now_of(w, e) as i64;
-    w.entity_mut(e).insert(Posture { sitting: false, since: now - p.stand_up as i64 - 1, sit_down: p.sit_down, stand_up: p.stand_up });
+    w.entity_mut(e).insert(Posture { sitting: false, since: since_standing(now, p.stand_up), sit_down: p.sit_down, stand_up: p.stand_up });
 }
 
 impl Posture {
     /// `refuse_to_move` at own time `now`: sitting, or in a transition.
     pub fn refuses(&self, now: i64) -> bool {
-        self.sitting || now - self.since < transition(self)
+        refuses(self.sitting, now - self.since, transition(self))
     }
     /// Sitting with the sit-down over (the camel may stand up).
     pub fn sat(&self, now: i64) -> bool {
-        self.sitting && now - self.since >= transition(self)
+        sat(self.sitting, now - self.since, transition(self))
     }
 }
 fn transition(p: &Posture) -> i64 {
-    if p.sitting { p.sit_down as i64 } else { p.stand_up as i64 }
+    transition_ticks(p.sitting, p.sit_down, p.stand_up)
 }
 /// `pose_time` (`camel.rs:72-74`): own ticks since the last change of pose.
 pub fn pose_time(w: &World, e: Entity) -> i64 {
@@ -95,7 +96,7 @@ pub fn stand_up_instantly(w: &mut World, e: Entity) {
     let now = now_of(w, e) as i64;
     let Some(mut p) = w.get_mut::<Posture>(e) else { return };
     p.sitting = false;
-    p.since = now - p.stand_up as i64 - 1;
+    p.since = since_standing(now, p.stand_up);
     drop(p);
     release(w, e, OCC_SITTING);
     w.entity_mut(e).remove::<Holding>();
@@ -120,7 +121,7 @@ fn water_run(ev: Res<Events>, clock: Res<Clock>, mut cmds: Commands, mut q: Quer
             continue;
         }
         p.sitting = false;
-        p.since = clock.of(e) as i64 - p.stand_up as i64 - 1;
+        p.since = since_standing(clock.of(e) as i64, p.stand_up);
         if let Some(mut o) = occ {
             o.0 &= !OCC_SITTING;
         }
@@ -135,7 +136,7 @@ fn holding_run(clock: Res<Clock>, mut cmds: Commands, mut q: Query<(Entity, &mut
             d.zza = 0.0;
             d.xxa = 0.0;
         }
-        if (clock.of(e) as i64) - p.since < transition(&p) {
+        if (clock.of(e) as i64) - p.since < transition_ticks(p.sitting, p.sit_down, p.stand_up) {
             continue;
         }
         if !p.sitting

@@ -6,6 +6,7 @@ use crate::cow::{Cause, DamageQueue, Health, Pos, SpeciesId, SpeciesTable};
 use crate::effects::{self, Brew, Kind, PotionId};
 use crate::goals::Events;
 use crate::hostile::PlayerState;
+use crate::rules::effect_cloud as rule;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -54,18 +55,16 @@ pub fn spawn(w: &mut World, at: [f64; 3], potion: PotionId, c: EffectCloud) -> E
 /// One tick: ages the cloud, grows it once its wait is over (kept in 0..=32). False once it is gone.
 pub fn step(c: &mut EffectCloud) -> bool {
     c.age = c.age.wrapping_add(1);
-    if c.duration != -1 && c.age.wrapping_sub(c.wait) >= c.duration {
+    if rule::over(c.age, c.wait, c.duration) {
         return false;
     }
     if c.age < c.wait {
         return true;
     }
     if c.radius_per_tick != 0.0 {
-        c.radius += c.radius_per_tick;
-        if c.radius < 0.5 {
-            return false;
-        }
-        c.radius = c.radius.clamp(0.0, 32.0);
+        let (radius, alive) = rule::grow(c.radius, c.radius_per_tick);
+        c.radius = radius;
+        return alive;
     }
     true
 }
@@ -104,21 +103,22 @@ fn dose(w: &mut World, e: Entity, c: &mut EffectCloud) -> bool {
                 Victim::Creature(k) => area::creature_xz(w, k),
             };
             let (dx, dz) = (x - at.x, z - at.z);
-            if victims.iter().any(|(k, _)| *k == v) || dx * dx + dz * dz > f64::from(c.radius * c.radius) || !affect(w, e, at, v, brews, c) {
+            if victims.iter().any(|(k, _)| *k == v) || rule::outside(dx, dz, c.radius) || !affect(w, e, at, v, brews, c) {
                 continue;
             }
             victims.push((v, c.age.wrapping_add(c.reapplication_delay)));
             if c.radius_on_use != 0.0 {
-                c.radius += c.radius_on_use;
-                if c.radius < 0.5 {
+                let (radius, live) = rule::grow(c.radius, c.radius_on_use);
+                c.radius = radius;
+                if !live {
                     alive = false;
                     break;
                 }
-                c.radius = c.radius.clamp(0.0, 32.0);
             }
             if c.duration_on_use != 0 && c.duration != -1 {
-                c.duration = c.duration.wrapping_add(c.duration_on_use);
-                if c.duration <= 0 {
+                let (duration, live) = rule::extend(c.duration, c.duration_on_use);
+                c.duration = duration;
+                if !live {
                     alive = false;
                     break;
                 }
@@ -140,7 +140,7 @@ fn affect(w: &mut World, cloud: Entity, at: Vec3, v: Victim, brews: &[Brew], c: 
     for &brew in brews {
         let (harm, level) = match brew {
             Brew::Timed(kind, amp, ticks) => {
-                let (ticks, flags) = (scaled(ticks, c.duration_scale), flags(c, kind));
+                let (ticks, flags) = (rule::scaled(ticks, c.duration_scale), flags(c, kind));
                 match v {
                     Victim::Player(id) => effects::add_player_flagged(w, id, kind, amp, ticks, flags),
                     Victim::Creature(k) => {
@@ -153,7 +153,7 @@ fn affect(w: &mut World, cloud: Entity, at: Vec3, v: Victim, brews: &[Brew], c: 
             Brew::Heal(level) => (false, level),
         };
         // `HealOrHarmMobEffect.applyInstantaneousEffect`: `6 << level` harms, `4 << level` heals, at half strength.
-        let amount = instant(if harm { 6 } else { 4 }, level);
+        let amount = rule::instant(if harm { 6 } else { 4 }, level);
         match v {
             Victim::Player(id) if harm => area::hurt_player(w, id, amount, source_entity(c, cloud)),
             Victim::Player(id) => heal_player(w, id, amount),
@@ -180,11 +180,6 @@ fn flags(c: &EffectCloud, kind: Kind) -> u8 {
     (if c.hidden.contains(&kind) { effects::HIDDEN } else { 0 }) | (if c.ambient.contains(&kind) { effects::AMBIENT } else { 0 })
 }
 
-/// The amount of an instantaneous brew of `base` at `level` at half strength (`base << level`, as `instant` of the client).
-fn instant(base: i32, level: i32) -> f32 {
-    (0.5 * f64::from(base.wrapping_shl(level as u32)) + 0.5) as i32 as f32
-}
-
 /// A player healed by `amount`: its health as the host reads it (`PlayerState`), at most 20.
 fn heal_player(w: &mut World, id: u32, amount: f32) {
     let mut ps = w.resource_mut::<PlayerState>();
@@ -200,14 +195,5 @@ fn heal(w: &mut World, k: Entity, amount: f32) {
     let max = w.get::<SpeciesId>(k).map_or(f32::MAX, |s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
     if let Some(mut h) = w.get_mut::<Health>(k) {
         h.0 = (h.0 + amount).min(max);
-    }
-}
-
-/// `MobEffectInstance.withScaledDuration`: -1 and 0 are kept, else the duration times the scale, floored, at least one tick.
-fn scaled(ticks: i32, scale: f32) -> i32 {
-    if ticks == -1 || ticks == 0 {
-        ticks
-    } else {
-        ((ticks as f32 * scale).floor() as i32).max(1)
     }
 }

@@ -3,7 +3,7 @@
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::Pos;
-use horizon_core::geometry::Vec3;
+use crate::rules::bed::lie_spot;
 
 pub static NEAREST_BED: MemKey = MemKey::new("minecraft:nearest_bed", Shape::Block);
 
@@ -19,7 +19,7 @@ pub fn bed_taken(w: &mut World, me: Entity, p: [i32; 3]) -> bool {
 /// Pose le corps au-dessus du lit (`setPosToBed`, hauteur 0,5625 ; approximé faute de `pos_to_bed`).
 pub fn lie_down(w: &mut World, e: Entity, p: [i32; 3]) {
     if let Some(mut pos) = w.get_mut::<Pos>(e) {
-        pos.0 = Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5625, f64::from(p[2]) + 0.5);
+        pos.0 = lie_spot(p);
     }
     w.entity_mut(e).insert(Sleeping(p));
 }

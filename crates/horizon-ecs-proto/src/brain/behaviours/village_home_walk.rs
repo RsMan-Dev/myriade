@@ -3,6 +3,7 @@ use crate::behaviours::block_reach::block_at;
 use crate::brain::*;
 use crate::goals::with_rng;
 use crate::poi::PoiRegistry;
+use crate::rules::village_home_walk as rules;
 use horizon_world::poi::PoiType;
 
 /// The wait after an attempt (`lastUpdate`): a memory that lasts this long.
@@ -27,12 +28,12 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let homes = w.resource::<PoiRegistry>().in_range(here, p.range, false, |k| k == PoiType::Home);
     let home = homes.into_iter().map(|(q, _)| q).filter(|q| dist2(*q, here) <= r2).min_by(|a, b| dist2(*a, here).total_cmp(&dist2(*b, here)));
     let Some(home) = home else { return false };
-    if dist2(home, here) <= 4.0 {
+    if rules::at_home(dist2(home, here)) {
         return false;
     }
     let wait = p.retry + with_rng(w, e, |r| r.next_int(20)) as u64;
     set(w, e, &RETRY, MemValue::Unit, Some(wait));
-    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Block(home), speed: 0.5, close: 1 }), None);
+    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Block(home), speed: rules::SPEED, close: 1 }), None);
     true
 }
 

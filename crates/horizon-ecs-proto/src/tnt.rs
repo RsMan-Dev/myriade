@@ -5,6 +5,7 @@
 use crate::cow::*;
 use crate::explosion::explode_tnt;
 use crate::projectile::Blast;
+use crate::rules::tnt::{blast_point, drag};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
@@ -53,7 +54,7 @@ pub fn spawn_from_blast(w: &mut World, block: [i32; 3], rng: &mut Rng) -> Entity
 /// The deadline: the TNT is removed and explodes at 0.0625 of its height (`PrimedTnt.explode`, `getY(0.0625)`).
 fn primed_due(w: &mut World, e: Entity) {
     let (Some(p), Some(at)) = (w.get::<Primed>(e).copied(), w.get::<Pos>(e).map(|x| x.0)) else { return };
-    let blast = Blast { at: Vec3::new(at.x, at.y + f64::from(SIZE) * 0.0625, at.z), radius: p.power, fire: false, owner: None, source: Some(e) };
+    let blast = Blast { at: blast_point(at, SIZE), radius: p.power, fire: false, owner: None, source: Some(e) };
     w.entity_mut(e).despawn();
     w.resource_mut::<crate::goals::Events>().exploded.push(blast);
     explode_tnt(w, blast);
@@ -69,11 +70,6 @@ pub(crate) fn travel_tnt(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
     }
     vel.0.y -= body.gravity;
     do_move(level, pos, vel, c, body, bounds, fall_damage);
-    let drag = f64::from(0.98_f32);
-    let v = vel.0;
-    vel.0 = Vec3::new(v.x * drag, v.y * drag, v.z * drag);
-    if c.on_ground {
-        vel.0 = Vec3::new(vel.0.x * 0.7, vel.0.y * -0.5, vel.0.z * 0.7);
-    }
+    vel.0 = drag(vel.0, c.on_ground);
     false
 }

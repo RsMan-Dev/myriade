@@ -4,6 +4,7 @@
 //! Not ported: the target's knockback resistance (not read here) and a player target (no ECS velocity hook for players).
 use super::*;
 use crate::hostile::Attack;
+use crate::rules::headbutt::throw_velocity;
 use crate::targeting::{Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -79,12 +80,10 @@ fn throw(w: &mut World, e: Entity) {
         return;
     }
     let away = Vec3::new(to.x - from.x, 0.0, to.z - from.z);
-    let angle = ((unit(w, e) * 21.0).floor().min(20.0) - 10.0).to_radians();
-    let scale = knockback * (unit(w, e) * 0.5 + 0.2);
-    let up = knockback * unit(w, e) * 0.5;
-    let push = away.normalize().scale(scale).rotate_y(angle as f32);
+    let u = [unit(w, e), unit(w, e), unit(w, e)];
+    let velocity = throw_velocity(away, knockback, u);
     if let Some(mut v) = w.get_mut::<Vel>(t) {
-        v.0 = Vec3::new(push.x, up, push.z);
+        v.0 = velocity;
     }
     w.entity_mut(t).insert(Moving);
 }

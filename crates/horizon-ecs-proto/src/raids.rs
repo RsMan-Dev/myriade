@@ -8,6 +8,7 @@
 use crate::cow::*;
 use crate::goals::{Entered, Online, Req, Requests};
 use crate::poi::PoiRegistry;
+use crate::rules::raids::spawn_seed;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::raid::{self, Action, RaidLevel, RaidPlayer, RaiderInfo, Raids};
 use std::collections::HashMap;
@@ -211,8 +212,7 @@ fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[r
     for sp in spawns {
         let Some(species) = table.iter().find(|s| s.name == sp.kind.entity()).copied() else { continue };
         let at = (f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5);
-        let seed = u64::from(pos[0] as u32) << 32 ^ u64::from(pos[2] as u32) ^ (wave as u64) << 8 ^ 0x9E37_79B9_7F4A_7C15;
-        let e = spawn_species(w, &species, at.0, at.1, seed);
+        let e = spawn_species(w, &species, at.0, at.1, spawn_seed(pos, wave));
         teleport(w, e, horizon_core::geometry::Vec3::new(at.0, f64::from(pos[1]) + 1.0, at.1));
         enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, w.get::<crate::behaviours::break_door::BreakDoor>(e).is_some_and(|b| b.p.raid));
         w.resource_mut::<Entered>().0.push(e);

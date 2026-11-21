@@ -7,6 +7,7 @@
 //! column (the Mob traces at every tick of movement).
 use super::*;
 use crate::{cow::*, goals::*};
+use crate::rules::snow_trail as rules;
 use horizon_client_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
@@ -59,7 +60,7 @@ fn run(
     let mw = level.mw.0;
     for (e, tr, p, moving) in &mut q {
         let (x, y, z) = (p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32);
-        let hot = mw.dimension_type.snow_golem_melts || f64::from(mw.temperature(x, y, z)) > tr.def.melt_temperature;
+        let hot = rules::melts(mw.dimension_type.snow_golem_melts, f64::from(mw.temperature(x, y, z)), tr.def.melt_temperature);
         if hot {
             damage.add(e, 1.0, Cause::OnFire);
         }
@@ -75,26 +76,14 @@ fn run(
 fn trail(mw: &MobWorld, x: f64, z: f64, y: i32, corner: f64, changes: &mut BlockChanges) {
     let mut placed = [[i32::MIN; 3]; 4];
     let mut n = 0;
-    for i in 0..4 {
-        let xx = (x + f64::from(i % 2 * 2 - 1) * corner).floor() as i32;
-        let zz = (z + f64::from(i / 2 % 2 * 2 - 1) * corner).floor() as i32;
-        let cell = [xx, y, zz];
-        if mw.facts.is_air(mw.world.block(xx, y, zz)) && supports(mw, [xx, y - 1, zz]) && !placed[..n].contains(&cell) {
+    for cell in rules::corner_cells(x, z, y, corner) {
+        let [xx, _, zz] = cell;
+        if mw.facts.is_air(mw.world.block(xx, y, zz)) && rules::supports(mw, [xx, y - 1, zz]) && !placed[..n].contains(&cell) {
             placed[n] = cell;
             n += 1;
             changes.0.push((xx, y, zz, "minecraft:snow"));
         }
     }
-}
-/// `SnowLayerBlock.canSurvive`: the tags decide first, then a full top face or a full snow layer.
-fn supports(mw: &MobWorld, below: [i32; 3]) -> bool {
-    let name = mw.block_name(below[0], below[1], below[2]);
-    if mw.has_tag("minecraft:cannot_support_snow_layer", name) {
-        return false;
-    }
-    mw.has_tag("minecraft:support_override_snow_layer", name)
-        || mw.top_face_full(below)
-        || (name == "minecraft:snow" && mw.prop(below[0], below[1], below[2], "layers") == Some("8"))
 }
 
 #[cfg(test)]

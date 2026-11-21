@@ -7,6 +7,7 @@ use super::door_interact::closer_to_center;
 use super::*;
 use crate::hostile::Daylight;
 use crate::poi::PoiRegistry;
+use crate::rules::move_through_village::{arm_wait, crossing_end_radius, is_close_to_village, remember_visited, section_of};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -30,16 +31,15 @@ pub struct Village {
 pub struct Crossing;
 
 pub static MODULE: Module = Module { name: "move_through_village", flags: MOVE, equip, arm, fired, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
-const PERIOD: i32 = 60;
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Village { p: *params::<Params>(p), slot: inst.slot, poi: [0; 3], visited: Vec::new() });
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
-    let wait = with_rng(w, e, |r| 1 + r.next_int(PERIOD));
+    let wait = with_rng(w, e, |r| arm_wait(|bound| r.next_int(bound)));
     crate::goals::arm(w, e, inst.slot, wait);
 }
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    crate::goals::arm(w, e, inst.slot, PERIOD);
+    crate::goals::arm(w, e, inst.slot, crate::rules::move_through_village::PERIOD);
     // No village point anywhere: `can_use` could only say no (`sectionsToVillage` is 7), so the goal is not even asked.
     w.resource::<PoiRegistry>().village_sections().next().is_some()
 }
@@ -52,7 +52,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let here = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
     let reg = w.resource::<PoiRegistry>();
     // `ServerLevel.isCloseToVillage(pos, 6)`.
-    if reg.sections_to_village([here[0] >> 4, here[1] >> 4, here[2] >> 4]) > 6 {
+    if !is_close_to_village(reg.sections_to_village(section_of(here))) {
         return false;
     }
     let visited = v.visited.clone();
@@ -74,10 +74,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     if let (Some(pos), Some(mut v)) = (pos, w.get_mut::<Village>(e)) {
         let (poi, d) = (v.poi, f64::from(v.p.distance));
         if done || closer_to_center(poi, pos, d) {
-            v.visited.push(poi);
-            if v.visited.len() > 16 {
-                v.visited.remove(0);
-            }
+            remember_visited(&mut v.visited, poi);
         }
     }
 }
@@ -87,7 +84,7 @@ fn tick(w: &mut World) {
 fn run(q: Query<(Entity, &Village, &Pos, &Bounds, Has<Following>, Has<NeedsPath>), With<Crossing>>, mut reqs: ResMut<Requests>) {
     for (e, v, pos, b, following, asked) in &q {
         // `canContinue`: the walk goes on and the point is farther than `width + distance`.
-        if !(following || asked) || closer_to_center(v.poi, pos.0, b.0.size().x + f64::from(v.p.distance)) {
+        if !(following || asked) || closer_to_center(v.poi, pos.0, crossing_end_radius(b.0.size().x, v.p.distance)) {
             reqs.0.push(Req::End(e, v.slot));
         }
     }

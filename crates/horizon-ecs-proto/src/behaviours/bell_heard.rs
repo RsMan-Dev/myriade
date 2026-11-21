@@ -3,15 +3,15 @@
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Index};
+use crate::rules::bell_heard::{centre, RANGE};
 
 pub static HEARD_BELL: MemKey = MemKey::new("minecraft:heard_bell_time", Shape::Int);
-
-const RANGE: f64 = 32.0;
 
 /// La cloche du bloc `pos` vient d'être sonnée : seules les entités proches écrivent l'heure.
 pub fn ring(w: &mut World, pos: [i32; 3]) {
     let mut near = Vec::new();
-    w.resource::<Index>().for_radius(f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5, RANGE, |o| near.push(o));
+    let (x, z) = centre(pos);
+    w.resource::<Index>().for_radius(x, z, RANGE, |o| near.push(o));
     for o in near {
         if w.get::<Brain>(o).is_some() {
             let now = now_of(w, o) as i64;

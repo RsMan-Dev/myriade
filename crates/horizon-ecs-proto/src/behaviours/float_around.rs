@@ -7,6 +7,7 @@
 //! fallback is the last point drawn, without the surface clamp of `start` (`motion_blocking_height`: DOUTE, no service).
 use crate::IFloor as _;
 use super::*;
+use crate::rules::float_around as rule;
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -39,11 +40,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 }
 /// `!hasWanted() || distance to it outside 1..=3600 (squared)`.
 fn wants_a_spot(m: &MoveTo, p: horizon_core::geometry::Vec3) -> bool {
-    if !m.active {
-        return true;
-    }
-    let d = (m.x - p.x).powi(2) + (m.y - p.y).powi(2) + (m.z - p.z).powi(2);
-    !(1.0..=3600.0).contains(&d)
+    !m.active || rule::wants_spot([m.x, m.y, m.z], p)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let (Some(m), Some(p)) = (w.get::<MoveTo>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { return false };
@@ -71,7 +68,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let mut t = [p.x, p.y, p.z];
     for _ in 0..64 {
         t = with_rng(w, e, |r| {
-            let mut f = || f64::from(r.next_float() * 2.0 - 1.0) * 16.0;
+            let mut f = || rule::spot_offset(r.next_float());
             [p.x + f(), p.y + f(), p.z + f()]
         });
         if good(w, blocks, t) {

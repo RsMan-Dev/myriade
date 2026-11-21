@@ -5,6 +5,7 @@ use super::*;
 use crate::behaviours::{boss_bar, invulnerable_charge};
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::regen as rules;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Boost {
@@ -79,7 +80,7 @@ fn heal(w: &mut World, e: Entity, amount: f32) {
         let Some(cur) = w.get::<Health>(e).map(|h| h.0) else { return };
         let max = w.get::<MaxHealth>(e).map_or(cur, |m| m.0);
         let mut h = w.get_mut::<Health>(e).unwrap();
-        h.0 = (h.0 + amount).min(max);
+        h.0 = rules::healed(h.0, amount, max);
     }
     boss_bar::progress(w, e);
 }
@@ -96,7 +97,7 @@ fn damaged(w: &mut World, e: Entity, inst: Inst, _: &Damaged) {
     }
     let step = r.p.period.max(1);
     r.asleep = false;
-    r.due += (now.saturating_sub(r.due)) / step * step + if now.saturating_sub(r.due) % step == 0 { 0 } else { step };
+    r.due = rules::realigned_due(r.due, now, step);
     *w.get_mut::<Regen>(e).unwrap() = r;
     arm_at(w, e, r.due, Due::Goal(r.slot));
 }

@@ -11,6 +11,7 @@ use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::*;
 use crate::cow::{Pos, SpeciesId};
 use crate::goals::d2;
+use crate::rules::trade_with_villager::{is_thrown, thrown_count, toss_velocity};
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -78,9 +79,7 @@ fn share(w: &mut World, e: Entity, other: Entity, me: horizon_core::geometry::Ve
     let eye = w.get::<crate::goals::Look>(e).map_or(1.62, |l| l.eye);
     let k = f64::from(0.3_f32);
     let from = horizon_core::geometry::Vec3::new(me.x, me.y + eye - k, me.z);
-    let d = horizon_core::geometry::Vec3::new(at.x - me.x, at.y - me.y, at.z - me.z);
-    let len = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt().max(1e-9);
-    let v = horizon_core::geometry::Vec3::new(d.x / len * k, d.y / len * k, d.z / len * k);
+    let v = toss_velocity(me, at, k);
     for (name, n) in thrown {
         crate::item::drop_item(w, horizon_client_lib::items::ItemStack::new(&name, u32::from(n)), from, v, 10);
     }
@@ -88,9 +87,9 @@ fn share(w: &mut World, e: Entity, other: Entity, me: horizon_core::geometry::Ve
 
 fn take_half(w: &mut World, e: Entity, wanted: impl Fn(&str) -> bool, max: &dyn Fn(&str) -> u32) -> Option<(String, u8)> {
     let mut s = w.get::<Stock>(e)?.clone();
-    let i = s.0.iter().position(|(n, c)| *c > 0 && wanted(n) && (u32::from(*c) > max(n) / 2 || *c > 24))?;
+    let i = s.0.iter().position(|(n, c)| *c > 0 && wanted(n) && is_thrown(*c, max(n)))?;
     let (name, c) = s.0[i].clone();
-    let n = if u32::from(c) > max(&name) / 2 { c / 2 } else { c - 24 };
+    let n = thrown_count(c, max(&name));
     s.0[i].1 -= n;
     s.0.retain(|(_, c)| *c > 0);
     if s.0.is_empty() {

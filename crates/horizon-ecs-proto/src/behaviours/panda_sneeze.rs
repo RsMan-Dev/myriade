@@ -4,6 +4,7 @@ use super::panda_state::{self as ps, Gene, FLAG_SNEEZE};
 use super::*;
 use crate::cow::now_of;
 use crate::goals::{Req, Requests};
+use crate::rules::panda_sneeze::sneeze_at;
 
 /// The values are the `reduced` ones of the `Mob`: `rnd(reduced(500))` = 250 for a weak cub, `rnd(reduced(6000))` = 3000.
 #[derive(Clone, Copy, Debug)]
@@ -83,7 +84,7 @@ fn arm_sneeze(w: &mut World, e: Entity) {
     if ps::gene(w, e) == Gene::Weak {
         k = k.min(ps::asks_until(w, e, s.def.weak_asks));
     }
-    let at = now_of(w, e) + 2 * k as u64;
+    let at = sneeze_at(now_of(w, e), k);
     ps::arm_to(w, e, s.slot, at);
     let mut m = w.get_mut::<Sneeze>(e).unwrap();
     m.armed = true;

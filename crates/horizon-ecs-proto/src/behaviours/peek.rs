@@ -3,7 +3,7 @@
 //! A target ends it at once. The clock is a count down through `tick_state`.
 use super::*;
 use crate::behaviours::attached_face::{Sounds, set_peek};
-use crate::behaviours::cat_state::reduced;
+use crate::rules::peek::{peek_roll, peek_time};
 use crate::goals::*;
 use crate::targeting::Target;
 
@@ -47,11 +47,12 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let one_in = w.get::<Peek>(e).unwrap().cfg.one_in;
-    w.get::<Target>(e).is_none() && with_rng(w, e, |r| r.next_int(reduced(one_in))) == 0 && crate::behaviours::teleport_on::can_stay(w, e)
+    w.get::<Target>(e).is_none() && peek_roll(one_in, |k| with_rng(w, e, |r| r.next_int(k))) && crate::behaviours::teleport_on::can_stay(w, e)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let p = w.get::<Peek>(e).unwrap().cfg;
-    let time = reduced(p.ticks * (1 + with_rng(w, e, |r| r.next_int(p.spread))));
+    let draw = with_rng(w, e, |r| r.next_int(p.spread));
+    let time = peek_time(p.ticks, draw);
     w.get_mut::<Peek>(e).unwrap().time = time;
     w.entity_mut(e).insert(Peeking);
     set_peek(w, e, p.open, &p.sounds, p.covered);

@@ -10,6 +10,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::targeting::{self, Target, TargetWatchers};
 use horizon_core::geometry::Vec3;
+use crate::rules::leap_at_target::ask_wait;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -82,9 +83,7 @@ fn on_target(w: &mut World, e: Entity) {
 fn draw(w: &mut World, e: Entity, slot: u8) {
     let (now, phase) = (now_of(w, e), phase_of(w, e));
     let failures = with_rng(w, e, |r| geometric(r, 3)).max(0) as u64;
-    // Les demandes tombent aux ticks de phase (`now + phase` pair) : la première est au tick suivant ou dans deux ticks.
-    let first = if (now + 1 + phase) % 2 == 0 { 1 } else { 2 };
-    let wait = first + 2 * failures;
+    let wait = ask_wait(now, phase, failures);
     if let Some(mut l) = w.get_mut::<Leap>(e) {
         l.due = Some(now + wait);
     }

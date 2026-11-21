@@ -4,6 +4,7 @@ use crate::IFloor as _;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::stop_nav;
+use crate::rules::move_to_target_sink as rules;
 
 #[derive(Component)]
 pub struct Sink {
@@ -58,7 +59,7 @@ fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     }
     let (Some(last), Some(now)) = (w.get::<Sink>(e).unwrap().last_target, walk.target.block(w)) else { return false };
     let d = (0..3).map(|i| i64::from(now[i] - last[i]).pow(2)).sum::<i64>();
-    if d > 4 {
+    if rules::moved_far(d) {
         ask(w, e, now, walk.speed);
         w.get_mut::<Sink>(e).unwrap().last_target = Some(now);
     }

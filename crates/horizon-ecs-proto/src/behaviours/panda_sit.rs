@@ -5,6 +5,8 @@ use super::panda_state::{self as ps, Gene, FLAG_SIT};
 use super::*;
 use crate::cow::{now_of, FluidState};
 use crate::goals::{equipped, stop_nav, Equipment, Req, Requests, Slot, MOVE};
+use crate::rules::neutral_anger::ticks_until;
+use crate::rules::panda_sit::{sit_cooldown_end, sit_retry_at};
 
 /// `reduced(600)` = 300 (a non-lazy panda stops with one chance in 300 per ask), `reduced(2000)` = 1000 (one in 1000),
 /// `wait` (`nextInt(150) + 10`, `nextInt(50) + 10` for a lazy one) times 20 ticks of cooldown.
@@ -56,7 +58,7 @@ fn in_water(w: &World, e: Entity) -> bool {
 }
 fn arm_to(w: &mut World, e: Entity, slot: u8, at: u64) {
     let now = now_of(w, e);
-    crate::goals::arm(w, e, slot, at.saturating_sub(now).min(i32::MAX as u64) as i32);
+    crate::goals::arm(w, e, slot, ticks_until(at, now));
 }
 
 /// A sitting panda asks its continuation every 2 ticks (`rest_goes_on`); otherwise the goal is asked (true).
@@ -96,7 +98,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         return true;
     }
     if held(w, e) {
-        let at = if s.cooldown > now { s.cooldown } else { now + 2 };
+        let at = sit_retry_at(s.cooldown, now);
         arm_to(w, e, s.slot, at);
     }
     false
@@ -121,8 +123,8 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
         let s = *w.get::<Sit>(e).unwrap();
         let lazy = ps::gene(w, e) == Gene::Lazy;
         let n = if lazy { s.def.wait_lazy } else { s.def.wait };
-        let wait = crate::goals::with_rng(w, e, |r| r.next_int(n)) + 10;
-        w.get_mut::<Sit>(e).unwrap().cooldown = now_of(w, e) + wait as u64 * 20;
+        let draw = crate::goals::with_rng(w, e, |r| r.next_int(n));
+        w.get_mut::<Sit>(e).unwrap().cooldown = sit_cooldown_end(now_of(w, e), draw);
     }
     ps::set_flag(w, e, FLAG_SIT, false);
     w.entity_mut(e).remove::<Sitting>();

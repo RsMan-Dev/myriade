@@ -2,6 +2,7 @@
 use crate::cow::{Bounds, Clock, DamageQueue, Index, Moving, Pos, SpeciesId, Vel};
 use crate::goals::Online;
 use crate::hostile::PlayerState;
+use crate::rules::area::centre_radius;
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -9,10 +10,6 @@ use horizon_core::geometry::{Aabb, Vec3};
 /// The box of `e` inflated by `by` blocks on each axis (`Mob.bounds().inflate`).
 pub fn reach_box(w: &World, e: Entity, by: f64) -> Aabb {
     w.get::<Bounds>(e).map_or_else(|| Aabb::new(Vec3::ZERO, Vec3::ZERO), |b| b.0.inflate(Vec3::new(by, by, by)))
-}
-fn centre_radius(a: Aabb) -> ((f64, f64), f64) {
-    let (c, d) = (a.center(), a.size());
-    ((c.x, c.z), d.x.max(d.z) / 2.0)
 }
 /// The living players whose box meets `area`.
 pub fn players_in(w: &World, area: Aabb) -> Vec<u32> {

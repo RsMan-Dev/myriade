@@ -2,6 +2,8 @@
 //! other turtle goals read and write the fields through these functions (as `panda_state.rs`).
 use super::*;
 use crate::cow::Pos;
+use crate::rules::teleport_on::cell_of;
+use crate::rules::turtle_state::near_home_centre;
 
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Turtle {
@@ -18,8 +20,7 @@ pub struct Turtle {
 /// Gives the animal its state if it has none; its home is the block it stands in (`homePos` when it is set at spawn).
 pub fn ensure(w: &mut World, e: Entity) {
     if w.get::<Turtle>(e).is_none() {
-        let p = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-        let home = [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
+        let home = w.get::<Pos>(e).map_or([0; 3], |p| cell_of(p.0));
         w.entity_mut(e).insert(Turtle { home, ..Default::default() });
     }
 }
@@ -41,13 +42,11 @@ pub fn update(w: &mut World, e: Entity, f: impl FnOnce(&mut Turtle)) {
 
 /// The same test as `close_to_home`, for a state already read (a system that holds the turtle's query, not the world).
 pub fn is_near_home(t: &Turtle, p: [f64; 3], distance: f64) -> bool {
-    let d = [f64::from(t.home[0]) + 0.5 - p[0], f64::from(t.home[1]) + 0.5 - p[1], f64::from(t.home[2]) + 0.5 - p[2]];
-    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < distance * distance
+    near_home_centre(t.home, p, distance)
 }
 
 /// `homePos.closerToCenterThan(position, distance)`: the centre of the home block is nearer than `distance`.
 pub fn close_to_home(w: &World, e: Entity, distance: f64) -> bool {
     let (Some(t), Some(p)) = (w.get::<Turtle>(e), w.get::<Pos>(e)) else { return false };
-    let d = [f64::from(t.home[0]) + 0.5 - p.0.x, f64::from(t.home[1]) + 0.5 - p.0.y, f64::from(t.home[2]) + 0.5 - p.0.z];
-    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < distance * distance
+    near_home_centre(t.home, [p.0.x, p.0.y, p.0.z], distance)
 }

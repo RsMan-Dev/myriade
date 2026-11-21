@@ -5,6 +5,7 @@
 //! The failed hop is read the tick after: the walk was asked and nothing follows a path. Move flag.
 use super::*;
 use crate::raids::{Patrol, Raider};
+use crate::rules::long_distance_patrol::{hop_speed, hop_xz, in_companion_box, patrol_target};
 use crate::targeting::Target;
 use crate::{blocks, cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -93,17 +94,9 @@ fn run(q: Query<(Entity, &Walker, Has<Following>, Has<NeedsPath>), With<Hopping>
             } else if pt.leader && super::door_interact::closer_to_center(target, own, 10.0) {
                 find_target(w, e, [own.x.floor() as i32, own.y.floor() as i32, own.z.floor() as i32]);
             } else {
-                let to = Vec3::new(f64::from(target[0]) + 0.5, f64::from(target[1]), f64::from(target[2]) + 0.5);
-                let d = Vec3::new(own.x - to.x, own.y - to.y, own.z - to.z);
-                // `Vec3.yRot(90)`: the angle is in radians and the goal passes 90, as in the `Mob`.
-                let (c, s) = (f64::from(90.0_f32.cos()), f64::from(90.0_f32.sin()));
-                let r = Vec3::new(d.x * c + d.z * s, d.y, d.z * c - d.x * s);
-                let to = Vec3::new(r.x * 0.4 + to.x, r.y * 0.4 + to.y, r.z * 0.4 + to.z);
-                let (hx, hy, hz) = (to.x - own.x, to.y - own.y, to.z - own.z);
-                let len = (hx * hx + hy * hy + hz * hz).sqrt().max(1.0e-9);
-                let (hx, hz) = (hx / len * 10.0 + own.x, hz / len * 10.0 + own.z);
+                let (hx, hz) = hop_xz(own, target);
                 let at = ground(w, hx.floor() as i32, hz.floor() as i32);
-                let speed = if pt.leader { p.leader_speed } else { p.speed };
+                let speed = hop_speed(pt.leader, p.speed, p.leader_speed);
                 go_to_at(w, e, [f64::from(at[0]), f64::from(at[1]), f64::from(at[2])], speed, 0);
                 w.get_mut::<Hopping>(e).unwrap().asked = true;
                 if pt.leader {
@@ -132,7 +125,7 @@ fn companions(w: &World, e: Entity, own: Vec3) -> Vec<Entity> {
             o != e
                 && w.get::<Raider>(o).is_some_and(|r| r.raid.is_none())
                 && w.get::<Health>(o).is_some_and(|h| h.0 > 0.0)
-                && w.get::<Pos>(o).is_some_and(|q| (q.0.x - own.x).abs() <= 16.5 && (q.0.y - own.y).abs() <= 17.0 && (q.0.z - own.z).abs() <= 16.5)
+                && w.get::<Pos>(o).is_some_and(|q| in_companion_box(q.0.x - own.x, q.0.y - own.y, q.0.z - own.z))
         })
         .collect()
 }

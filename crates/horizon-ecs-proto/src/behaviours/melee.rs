@@ -1,6 +1,7 @@
 //! `MeleeAttackGoal`: chase the target the target goal picked and strike it. `canUse` runs on a 20-tick grid, armed in
 //! the wheel; the goal ticks (look, path every 4 to 10 ticks, strike) only while it runs.
 use super::*;
+use crate::rules::melee::off_grid;
 use crate::targeting::{self, Target};
 use crate::{cow::*, goals::*, hostile};
 
@@ -90,7 +91,7 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 /// `canUse` is asked only on the ticks where tick + id is even; the 20-tick wait counts from the last ask.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
     let now = crate::cow::now_of(w, e);
-    if now > 1 && (now + phase_of(w, e)) % 2 == 1 {
+    if off_grid(now, phase_of(w, e)) {
         arm(w, e, inst.slot, 1);
         return false;
     }

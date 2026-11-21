@@ -7,7 +7,8 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::projectile::{Flight, launch};
 use crate::targeting::{self, Eye, Target, TargetWatchers, Who};
-use horizon_core::geometry::{trig, Axis, Vec3};
+use crate::rules::ranged_attack::{self as rules, WitchBrew};
+use horizon_core::geometry::{Axis, Vec3};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -162,7 +163,7 @@ fn shoot_run(
         let d = d2(pos.0, i.pos);
         s.see_time = if t.seen { s.see_time + 1 } else { 0 };
         let r = s.p.radius;
-        if d <= f64::from(r * r) && s.see_time >= 5 {
+        if rules::in_stop_range(d, r, s.see_time) {
             cmd.queue(move |w: &mut World| stop_nav(w, e));
         } else {
             let cell = (i.pos.x.floor() as i32, i.pos.z.floor() as i32);
@@ -176,15 +177,13 @@ fn shoot_run(
         s.attack_time -= 1;
         if s.attack_time == 0 {
             if t.seen {
-                let dist = (d.sqrt() as f32) / r;
                 let who = t.who;
                 let p = *s.p;
                 cmd.queue(move |w: &mut World| shoot(w, e, who, p));
-                s.attack_time = (dist * (s.p.max - s.p.min) as f32 + s.p.min as f32).floor() as i32;
+                s.attack_time = rules::gap_after_shot(d, r, s.p.min, s.p.max);
             }
         } else if s.attack_time < 0 {
-            let f = d.sqrt() / f64::from(r);
-            s.attack_time = (f64::from(s.p.min) + f * f64::from(s.p.max - s.p.min)).floor() as i32;
+            s.attack_time = rules::gap_before_first_shot(d, r, s.p.min, s.p.max);
         }
     }
 }
@@ -196,19 +195,19 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     }
     let Some(i) = targeting::info(w, who) else { return };
     let (Some(pos), Some(eye)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Eye>(e).map(|x| x.0)) else { return };
-    let start = if p.front > 0.0 {
+    let (width, yaw) = if p.front > 0.0 {
         let (Some(width), Some(yaw)) = (w.get::<Body>(e).map(|b| f64::from(b.width)), w.get::<Yaw>(e).map(|y| f64::from(y.0))) else { return };
-        let (yaw, reach) = (yaw.to_radians(), (width + 1.0) * p.front);
-        Vec3::new(pos.x - reach * f64::from(trig::sin(yaw)), pos.y + eye - p.start_down, pos.z + reach * f64::from(trig::cos(yaw)))
+        (width, yaw)
     } else {
-        Vec3::new(pos.x, pos.y + eye - p.start_down, pos.z)
+        (0.0, 0.0)
     };
+    let start = rules::muzzle(pos, eye, p.start_down, p.front, width, yaw);
     let motion = match who {
         Who::Entity(t) if p.witch => w.get::<Vel>(t).map_or(Vec3::ZERO, |v| v.0),
         _ => Vec3::ZERO,
     };
     let (xd, zd) = (i.pos.x + motion.x - pos.x, i.pos.z + motion.z - pos.z);
-    let (mut p, dist) = (p, (xd * xd + zd * zd).sqrt());
+    let (mut p, dist) = (p, rules::ground_dist(xd, zd));
     if p.witch {
         let health = match who {
             Who::Entity(t) => w.get::<Health>(t).map_or(20.0, |h| h.0),
@@ -224,32 +223,21 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
         static POISON: [Brew; 1] = [Brew::Timed(Kind::Poison, 0, 900)];
         static WEAK: [Brew; 1] = [Brew::Timed(Kind::Weakness, 0, 1800)];
         static HARM: [Brew; 1] = [Brew::Harm(0)];
-        // `Witch.performRangedAttack`: slowness from afar, poison on the healthy, weakness up close (a quarter of the time), else harming.
-        let brews: &'static [Brew] = if dist >= 8.0 && !slow {
-            &SLOW
-        } else if health >= 8.0 && !poison {
-            &POISON
-        } else if dist <= 3.0 && !weak && w.get_mut::<Rng>(e).unwrap().next_float() < 0.25 {
-            &WEAK
-        } else {
-            &HARM
+        let brews: &'static [Brew] = match rules::witch_brew(dist, f64::from(health), slow, poison, weak, || w.get_mut::<Rng>(e).unwrap().next_float()) {
+            WitchBrew::Slowness => &SLOW,
+            WitchBrew::Poison => &POISON,
+            WitchBrew::Weakness => &WEAK,
+            WitchBrew::Harm => &HARM,
         };
         p.flight.hit = crate::projectile::OnHit::Splash(brews);
-        p.shot_speed = if dist <= 2.0 { 0.45 } else { 0.75 };
+        p.shot_speed = rules::witch_speed(dist);
     }
     let p = p;
-    let yd = if p.aim_fraction > 0.0 {
-        let bottom = i.bounds.min(Axis::Y);
-        bottom + (i.bounds.max(Axis::Y) - bottom) * p.aim_fraction
-    } else {
-        i.eye - p.aim_down
-    };
-    let yo = (xd * xd + zd * zd).sqrt() * p.lift;
-    let dir = Vec3::new(xd, yd + yo - start.y, zd).normalize();
-    let spread = 0.017_227_5 * p.uncertainty;
+    let yd = rules::aim_height(p.aim_fraction, i.bounds.min(Axis::Y), i.bounds.max(Axis::Y), i.eye, p.aim_down);
+    let dir = rules::aim_dir(xd, zd, yd, p.lift, start.y);
+    let spread = rules::spread_of(p.uncertainty);
     let mut rng = w.get_mut::<Rng>(e).unwrap();
-    let mut triangle = |mean: f64, spread: f64| mean + spread * (rng.next_f64() - rng.next_f64());
-    let v = Vec3::new((dir.x + triangle(0.0, spread)) * p.shot_speed, (dir.y + triangle(0.0, spread)) * p.shot_speed, (dir.z + triangle(0.0, spread)) * p.shot_speed);
+    let v = rules::shot_velocity(dir, spread, p.shot_speed, || rng.next_f64());
     if let Some(name) = p.sound {
         w.resource_mut::<Events>().host.sound(name, [pos.x, pos.y, pos.z], 2.0, 1.0);
     }

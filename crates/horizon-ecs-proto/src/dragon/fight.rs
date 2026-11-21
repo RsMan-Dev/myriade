@@ -8,8 +8,9 @@ use super::phases::{self, PhaseId};
 use crate::cow::{Cause, Pos, Yaw};
 use crate::goals::{Ev, Online};
 use crate::hostile::PlayerState;
+use crate::rules::fight::{off_heading, turn_accel, view_vector};
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::{trig, Vec3};
+use horizon_core::geometry::Vec3;
 
 pub const GATEWAYS: i32 = 20;
 /// The players of the fight are looked at every 20 ticks (`fight_has_players`, D:1329).
@@ -177,12 +178,6 @@ pub fn yaw(w: &World, e: Entity) -> f32 {
     w.get::<Yaw>(e).map_or(0.0, |y| y.0)
 }
 
-/// `view_vector(yaw, pitch)` of Horizon's `game.rs`: plain `f64` trigonometry.
-fn view_vector(yaw: f32, pitch: f32) -> Vec3 {
-    let (y, p) = (f64::from(yaw).to_radians(), f64::from(pitch).to_radians());
-    Vec3::new(-y.sin() * p.cos(), -p.sin(), y.cos() * p.cos())
-}
-
 /// The view vector at pitch 0 (the fireball leaves one block back along it).
 pub fn view(w: &World, e: Entity) -> Vec3 {
     view_vector(yaw(w, e), 0.0)
@@ -204,38 +199,12 @@ pub fn look(w: &World, e: Entity) -> Vec3 {
     view_vector(yaw(w, e), pitch)
 }
 
-fn unit3(x: f64, y: f64, z: f64) -> [f64; 3] {
-    let len = (x * x + y * y + z * z).sqrt();
-    if len < f64::from(1.0e-5_f32) { [0.0; 3] } else { [x / len, y / len, z / len] }
-}
-
-fn wrap64(d: f64) -> f64 {
-    let mut r = d % 360.0;
-    if r >= 180.0 {
-        r -= 360.0;
-    }
-    if r < -180.0 {
-        r += 360.0;
-    }
-    r
-}
-
 /// The scanning dragon turns toward `pp` while it is more than 10 degrees off its heading (`Scanning`, D:2290-2330).
 pub fn turn_head(w: &mut World, e: Entity, pp: Vec3) {
     let (Some(pos), Some(yaw)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Yaw>(e).map(|y| y.0)) else { return };
-    let aim = unit3(pp.x - pos.x, 0.0, pp.z - pos.z);
-    let r = f64::from(yaw * trig::DEG_TO_RAD);
-    let dir = unit3(f64::from(trig::sin(r)), 0.0, f64::from(-trig::cos(r)));
-    let dot = (dir[0] * aim[0] + dir[1] * aim[1] + dir[2] * aim[2]) as f32;
-    let angle = (f64::from(dot).acos() * 180.0 / f64::from(std::f32::consts::PI)) as f32 + 0.5;
-    if !(0.0..=10.0).contains(&angle) {
+    if !(0.0..=10.0).contains(&off_heading(yaw, pos, pp)) {
         let h = head(w, e);
-        let (xd, zd) = (pp.x - h.x, pp.z - h.z);
-        let delta = wrap64(180.0 - trig::atan2(xd, zd) * 180.0 / f64::from(std::f32::consts::PI) - f64::from(yaw)).clamp(-100.0, 100.0);
-        let mut accel = w.get::<YawAccel>(e).map_or(0.0, |a| a.0);
-        accel *= 0.8;
-        let dist = ((xd * xd + zd * zd).sqrt() as f32 + 1.0).min(40.0);
-        accel += delta as f32 * (0.7 / dist / dist);
+        let accel = turn_accel(yaw, w.get::<YawAccel>(e).map_or(0.0, |a| a.0), pp.x - h.x, pp.z - h.z);
         w.entity_mut(e).insert((YawAccel(accel), Yaw(yaw + accel)));
     }
 }

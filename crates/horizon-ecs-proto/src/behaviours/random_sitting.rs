@@ -7,6 +7,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::mount::Mount;
 use crate::targeting::Who;
+use crate::rules::random_sitting as rules;
 use super::posture;
 
 #[derive(Clone, Copy, Debug)]
@@ -64,9 +65,8 @@ fn schedule(w: &mut World, e: Entity, inst: Inst) {
     if s.armed || !free(w, e) {
         return;
     }
-    let left = (s.min_pose_time as i64 - posture::pose_time(w, e)).max(0);
-    let draw = with_rng(w, e, |r| idle_wait(r, s.one_in));
-    crate::goals::arm(w, e, inst.slot, (left + i64::from(draw)).max(1) as i32);
+    let delay = rules::change_delay(s.min_pose_time, posture::pose_time(w, e), with_rng(w, e, |r| idle_wait(r, s.one_in)));
+    crate::goals::arm(w, e, inst.slot, delay);
     if let Some(mut m) = w.get_mut::<Sitter>(e) {
         m.armed = true;
     }
@@ -80,7 +80,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(s) = w.get::<Sitter>(e).copied() else { return false };
-    free(w, e) && posture::pose_time(w, e) >= s.min_pose_time as i64
+    rules::can_change(free(w, e), posture::pose_time(w, e), s.min_pose_time)
 }
 /// `start`: a sitting camel stands; a standing one sits, unless it panics (a hit within 40 ticks, or burning).
 fn start(w: &mut World, e: Entity, inst: Inst) {
@@ -95,7 +95,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 /// `should_panic` (`goals.rs:1089-1093`): a recent panic-cause hit, or burning (the fire-immunity is not read: DOUTE).
 fn should_panic(w: &World, e: Entity) -> bool {
     let now = now_of(w, e);
-    w.get::<crate::brain::LastDamage>(e).is_some_and(|d| d.panic && now.saturating_sub(d.at) <= 40) || w.get::<Burning>(e).is_some_and(|b| b.until > now)
+    rules::should_panic(w.get::<crate::brain::LastDamage>(e).map(|d| (d.panic, d.at)), w.get::<Burning>(e).map(|b| b.until), now)
 }
 /// The goal is instant: the next cycle is armed after it.
 fn stop(w: &mut World, e: Entity, inst: Inst) {

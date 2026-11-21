@@ -5,7 +5,7 @@
 //! (air through `BlockChanges`), the block is carried, and the drop goal is armed.
 use super::*;
 use crate::{blocks, cow::*, goals::*};
-use horizon_core::geometry::Vec3;
+use crate::rules::take_block::{reach_line, take_cell, take_wait};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 use std::{collections::BTreeMap, sync::Mutex};
@@ -64,7 +64,7 @@ pub fn arm_take(w: &mut World, e: Entity) {
     if t.armed || w.get::<Carried>(e).is_some_and(|c| c.0.is_some()) || !mob_griefing(w) {
         return;
     }
-    let wait = with_rng(w, e, |r| 2 * geometric(r, t.asks));
+    let wait = with_rng(w, e, |r| take_wait(geometric(r, t.asks)));
     crate::goals::arm(w, e, t.slot, wait);
     w.get_mut::<Taking>(e).unwrap().armed = true;
 }
@@ -107,16 +107,13 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         (t.holdable, t.keep_props)
     };
     let (u0, u1, u2) = with_rng(w, e, |r| (r.next_f64(), r.next_f64(), r.next_f64()));
-    let x = (p.x - 2.0 + u0 * 4.0).floor() as i32;
-    let y = (p.y + u1 * 3.0).floor() as i32;
-    let z = (p.z - 2.0 + u2 * 4.0).floor() as i32;
+    let [x, y, z] = take_cell(p, [u0, u1, u2]);
     let mw = w.resource::<Level>().mw.0;
     let id = mw.world.block(x, y, z);
     let name: &'static str = &mw.facts.get(id).name;
     if mw.has_tag(tag, name) {
         // Reachable: the outline clip from the column's centre at the block's height hits this block first.
-        let from = Vec3::new(p.x.floor() + 0.5, f64::from(y) + 0.5, p.z.floor() + 0.5);
-        let to = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
+        let (from, to) = reach_line(p, [x, y, z]);
         if !mw.outline_hit(from, to).is_some_and(|hit| hit != [x, y, z]) {
             w.resource_mut::<BlockChanges>().0.push((x, y, z, "minecraft:air"));
             let props = if keep_props { held_props(mw, id) } else { &[] };

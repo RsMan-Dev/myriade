@@ -8,6 +8,8 @@ use crate::block_events::BlockEvents;
 use crate::cow::*;
 use crate::goals::Events;
 use crate::item::drop_item;
+pub use crate::rules::hanging::CHECK_PERIOD;
+use crate::rules::hanging::{cells, check_delay, support};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
@@ -16,8 +18,6 @@ use std::collections::HashMap;
 pub const ITEM_FRAME: u8 = 0;
 pub const GLOW_ITEM_FRAME: u8 = 1;
 pub const PAINTING: u8 = 2;
-/// `BlockAttachedEntity.tick`: the checks fall on the 101st tick after the birth.
-pub const CHECK_PERIOD: u64 = 101;
 /// Ticks of the dropped item's pickup delay (`Entity.spawnAtLocation`).
 const DROP_DELAY: i64 = 10;
 
@@ -72,35 +72,6 @@ fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
     }
 }
 
-/// The face's outward step (`Direction.getStep`, the order of `Direction.get3DDataValue`).
-fn step(face: u8) -> [i32; 3] {
-    [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]][usize::from(face % 6)]
-}
-/// The block the entity is fixed to: one step behind its cell.
-fn support(pos: [i32; 3], face: u8) -> [i32; 3] {
-    let s = step(face);
-    [pos[0] - s[0], pos[1] - s[1], pos[2] - s[2]]
-}
-/// The direction a painting's width runs in (`Direction.getCounterClockWise`), per face.
-fn left(face: u8) -> [i32; 3] {
-    [[0, 0, 0], [0, 0, 0], [-1, 0, 0], [1, 0, 0], [0, 0, 1], [0, 0, -1]][usize::from(face % 6)]
-}
-/// The cells a footprint of `n` cells spans from its cell: `Painting.calculateBoundingBox` centres an odd size on the cell and an
-/// even one on its edge, so the first offset is `-(n-1)/2` and the last `n/2`.
-fn span(n: u8) -> std::ops::RangeInclusive<i32> {
-    -((i32::from(n) - 1) / 2)..=(i32::from(n) / 2)
-}
-/// The cells of the footprint of a hanging entity on `face` at `pos` (in front of the wall).
-fn cells(pos: [i32; 3], face: u8, size: (u8, u8)) -> Vec<[i32; 3]> {
-    let l = left(face);
-    let mut out = Vec::new();
-    for a in span(size.0) {
-        for b in span(size.1) {
-            out.push(std::array::from_fn(|i| pos[i] + a * l[i] + b * i32::from(i == 1)));
-        }
-    }
-    out
-}
 fn size_of(w: &World, e: Entity) -> (u8, u8) {
     w.get::<Size>(e).map_or((1, 1), |s| (s.width, s.height))
 }
@@ -150,12 +121,11 @@ fn overlapping(w: &World, e: Entity) -> Vec<Entity> {
     found
 }
 
-/// Arms the entity's next survival check: the first multiple of 101 after its birth that is strictly after now.
+/// Arms the entity's next survival check.
 pub fn arm(w: &mut World, e: Entity) {
     let Some(a) = w.get::<Attached>(e).copied() else { return };
     let now = now_of(w, e);
-    let next = a.born + CHECK_PERIOD * ((now - a.born) / CHECK_PERIOD + 1);
-    after(w, e, (next - now) as i32, check);
+    after(w, e, check_delay(a.born, now), check);
 }
 
 /// The survival check (`BlockAttachedEntity.tick`'s `survives`): an entity that no longer survives breaks.

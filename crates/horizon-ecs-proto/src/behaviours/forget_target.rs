@@ -4,6 +4,7 @@
 //! the `target_roll` of `avoid_entity::Params`).
 use super::*;
 use crate::behaviours::avoid_entity::Avoiding;
+use crate::rules::forget_target::strength_passes;
 use crate::targeting::clear_target;
 use crate::{cow::*, goals::*};
 
@@ -75,7 +76,7 @@ fn clear(w: &mut World, e: Entity) {
 /// never passes (the `Mob` returns false).
 pub fn strength_roll(w: &World, target: Entity, u: f64) -> bool {
     let Some(s) = w.get::<LlamaStrength>(target) else { return false };
-    u < f64::from(s.0 + 1) / 5.0
+    strength_passes(s.0, u)
 }
 
 #[cfg(test)]

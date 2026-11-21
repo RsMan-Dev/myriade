@@ -9,6 +9,7 @@ use crate::cow::Pos;
 use crate::goals::with_rng;
 use crate::item::drop_item;
 use crate::loot::roll_table;
+use crate::rules::social_gift_hero as rules;
 use horizon_core::geometry::Vec3;
 use crate::targeting::{info, Who};
 
@@ -38,13 +39,6 @@ fn hero(w: &World, e: Entity) -> Option<u32> {
     w.get_resource::<Heroes>().filter(|h| h.0.contains(id)).map(|_| *id)
 }
 
-/// The blocks of both are within 5 blocks (25 squared, `BlockPos.closerThan`).
-fn close(me: Vec3, at: Vec3) -> bool {
-    let block = |v: Vec3| [v.x.floor() as i32, v.y.floor() as i32, v.z.floor() as i32];
-    let (a, b) = (block(me), block(at));
-    (0..3).map(|i| (a[i] - b[i]).pow(2)).sum::<i32>() < 25
-}
-
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if hero(w, e).is_none() || present(w, e, &GIFT_WAIT) {
         return false;
@@ -53,7 +47,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
         return true;
     }
     set(w, e, &GIFT_DELAYED, MemValue::Unit, None);
-    set(w, e, &GIFT_WAIT, MemValue::Unit, Some(600));
+    set(w, e, &GIFT_WAIT, MemValue::Unit, Some(rules::GIFT_WAIT_TICKS));
     false
 }
 
@@ -61,7 +55,7 @@ fn start(w: &mut World, e: Entity, _: &Ctx) {
     let Some(p) = hero(w, e) else { return };
     set(w, e, &INTERACTION_TARGET, MemValue::Who(Who::Player(p)), None);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(Who::Player(p), true)), None);
-    set(w, e, &GIFT_READY, MemValue::Unit, Some(20));
+    set(w, e, &GIFT_READY, MemValue::Unit, Some(rules::GIFT_READY_TICKS));
 }
 
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -69,8 +63,8 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let who = Who::Player(p);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
     let (Some(me), Some(at)) = (w.get::<Pos>(e).map(|q| q.0), info(w, who).map(|i| i.pos)) else { return false };
-    if !close(me, at) {
-        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, true), speed: 0.5, close: 5 }), None);
+    if !rules::within_five(me, at) {
+        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, true), speed: rules::HERO_SPEED, close: rules::HERO_CLOSE }), None);
         return true;
     }
     if present(w, e, &GIFT_READY) {
@@ -81,9 +75,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     // `BehaviorUtils.throwItem`: from the eye minus 0.3, at 0.3 blocks per tick toward the player, a pickup delay of 10 ticks.
     let eye = w.get::<crate::goals::Look>(e).map_or(1.62, |l| l.eye);
     let from = Vec3::new(me.x, me.y + eye - 0.3, me.z);
-    let d = Vec3::new(at.x - from.x, at.y - from.y, at.z - from.z);
-    let len = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt().max(1e-9);
-    let v = Vec3::new(d.x / len * 0.3, d.y / len * 0.3, d.z / len * 0.3);
+    let v = rules::throw_velocity(from, at);
     for stack in roll_table(w, &table, i64::from(seed)) {
         drop_item(w, stack, from, v, 10);
     }

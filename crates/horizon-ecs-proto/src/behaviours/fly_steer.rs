@@ -5,6 +5,7 @@
 //! DOUTE : le sens « avant » suit le lacet (`-sin`, `cos`), comme `Entity.getViewVector` ; à vérifier au test de pilotage.
 use crate::cow::*;
 use crate::mount::Mount;
+use crate::rules::fly_steer::steer_velocity;
 use bevy_ecs::prelude::*;
 
 /// Marks a mount that flies under its rider's steer.
@@ -29,13 +30,7 @@ pub fn drive_one(mount: &Mount, yaw: &Yaw, vel: &mut Vel, p: &Params) {
         return;
     }
     let input = mount.input;
-    let rad = f64::from(yaw.0).to_radians();
-    let (sin, cos) = (rad.sin(), rad.cos());
-    let forward = f64::from(input.forward);
-    let strafe = f64::from(input.strafe);
-    vel.0.x = (-sin * forward + cos * strafe) * p.speed;
-    vel.0.z = (cos * forward + sin * strafe) * p.speed;
-    vel.0.y = if input.jump > 0.0 { p.climb } else { -p.sink };
+    vel.0 = steer_velocity(f64::from(input.forward), f64::from(input.strafe), f64::from(input.jump), f64::from(yaw.0), p.speed, p.climb, p.sink);
 }
 
 /// The rule that makes a mount fly under its rider's steer, with the species' constants.

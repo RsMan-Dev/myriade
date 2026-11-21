@@ -35,7 +35,8 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
         set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(target, true)), None);
         let p = c.get::<Params>();
         let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
-        let walk = WalkTarget { target: Tracker::Entity(target, false), speed: if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) }, close: 0 };
+        let speed = crate::rules::follow_adult::walk_speed(wet, p.speed, p.dry_speed);
+        let walk = WalkTarget { target: Tracker::Entity(target, false), speed, close: 0 };
         set(w, e, &WALK_TARGET, MemValue::Walk(walk), None);
     }
 }

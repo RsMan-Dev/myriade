@@ -5,6 +5,7 @@
 use super::*;
 use crate::{cow::*, equipment, goals::*, item, loot};
 use crate::goals::Slot;
+use crate::rules::admire;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -55,7 +56,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let a = w.get::<Admire>(e).copied().unwrap();
-    let until = now_of(w, e) + a.0.duration as u64;
+    let until = admire::until(now_of(w, e), a.0.duration);
     w.entity_mut(e).insert(Admiring { until });
     let at = w.get::<Pos>(e).unwrap().0;
     w.resource_mut::<Events>().host.sound("minecraft:entity.piglin.admiring_item", [at.x, at.y, at.z], 1.0, 1.0);

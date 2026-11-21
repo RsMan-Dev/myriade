@@ -76,16 +76,16 @@ fn a_rider_pressing_left_turns_the_boat_and_paddles_the_second_row() {
 fn a_chest_boat_seats_one_and_a_boat_two() {
     let boat = Kind { raft: false, chest: false };
     let chest = Kind { raft: false, chest: true };
-    assert_eq!(max_passengers(boat), 2);
-    assert_eq!(max_passengers(chest), 1);
-    near(f64::from(seat_z(chest, 0, 1, false)), 0.15);
-    near(f64::from(seat_z(boat, 0, 2, false)), 0.2);
-    near(f64::from(seat_z(boat, 1, 2, false)), -0.6);
-    near(f64::from(seat_z(boat, 0, 2, true)), 0.4);
+    assert_eq!(max_passengers(boat.chest), 2);
+    assert_eq!(max_passengers(chest.chest), 1);
+    near(f64::from(seat_z(chest.chest, 0, 1, false)), 0.15);
+    near(f64::from(seat_z(boat.chest, 0, 2, false)), 0.2);
+    near(f64::from(seat_z(boat.chest, 1, 2, false)), -0.6);
+    near(f64::from(seat_z(boat.chest, 0, 2, true)), 0.4);
 }
 
 #[test]
 fn a_boat_sits_a_third_of_its_height_up_and_a_raft_eight_ninths() {
-    near(ride_height(Kind { raft: false, chest: false }), HEIGHT / 3.0);
-    near(ride_height(Kind { raft: true, chest: false }), HEIGHT * 8.0 / 9.0);
+    near(ride_height(false), HEIGHT / 3.0);
+    near(ride_height(true), HEIGHT * 8.0 / 9.0);
 }

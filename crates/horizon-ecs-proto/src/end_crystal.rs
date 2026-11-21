@@ -4,6 +4,7 @@
 use crate::blocks::{set_state, world_of};
 use crate::cow::{after, Bounds, OwnTime, Pos};
 use crate::projectile::Blast;
+use crate::rules::end_crystal as rule;
 use crate::targeting::Who;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
@@ -60,23 +61,18 @@ pub fn insert_resources(w: &mut World) {
     w.init_resource::<CrystalEvents>();
 }
 
-/// The block at the feet: where the crystal stands and where its fire goes (`blockPosition`).
-fn cell(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
-
 /// The crystal's box: 2 by 2, from its feet up 2 (`EndCrystal` is `EntityType.END_CRYSTAL`).
 pub fn bounds(p: Vec3) -> Aabb {
     Aabb::new(Vec3::new(p.x - 1.0, p.y, p.z - 1.0), Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0))
 }
 
 fn index_add(mut world: DeferredWorld, ctx: HookContext) {
-    let Some(c) = world.get::<Pos>(ctx.entity).map(|p| cell(p.0)) else { return };
+    let Some(c) = world.get::<Pos>(ctx.entity).map(|p| rule::cell(p.0)) else { return };
     world.resource_mut::<CrystalCells>().0.insert(c, ctx.entity);
 }
 
 fn index_remove(mut world: DeferredWorld, ctx: HookContext) {
-    let Some(c) = world.get::<Pos>(ctx.entity).map(|p| cell(p.0)) else { return };
+    let Some(c) = world.get::<Pos>(ctx.entity).map(|p| rule::cell(p.0)) else { return };
     let cells = &mut world.resource_mut::<CrystalCells>().0;
     if cells.get(&c) == Some(&ctx.entity) {
         cells.remove(&c);
@@ -95,7 +91,7 @@ pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
 }
 
 fn first_tick(w: &mut World, e: Entity) {
-    if let Some(c) = w.get::<Pos>(e).map(|p| cell(p.0)) {
+    if let Some(c) = w.get::<Pos>(e).map(|p| rule::cell(p.0)) {
         fire_at(w, c);
     }
 }
@@ -122,7 +118,7 @@ pub fn block_changed(w: &mut World, c: [i32; 3]) {
 /// goes at once, a blast of 6 unless the blow is an explosion, and the fight hears of it.
 pub fn hurt(w: &mut World, e: Entity, blow: Blow) -> bool {
     let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    if blow.fire || blow.dragon || (w.get::<Shielded>(e).is_some() && !blow.creative) {
+    if rule::refused(blow.fire, blow.dragon, w.get::<Shielded>(e).is_some(), blow.creative) {
         return false;
     }
     w.despawn(e);

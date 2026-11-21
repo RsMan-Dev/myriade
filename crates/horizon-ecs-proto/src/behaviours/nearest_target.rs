@@ -6,6 +6,7 @@
 //! (armed when the animal enters the active zone, when a refused ask is over, and when its target ends); nothing else.
 //! The candidates come from the spatial index, only when the ask comes up.
 use super::*;
+use crate::rules::nearest_target::{arm_wait, dist2, heal_chance, in_box, in_sphere, INVISIBLE, reach_range, reduced, watch_polled, watch_radius};
 use crate::targeting::{self, FollowRange, Target, Who};
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
@@ -93,8 +94,6 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-/// `LivingEntity.getVisibilityPercent` of an invisible target with no armour: `0.7 * 0.1`.
-const INVISIBLE: f64 = 0.07;
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
     let mw = w.resource::<Level>().mw.0;
@@ -135,10 +134,6 @@ fn edit(w: &mut World, e: Entity, inst: Inst, f: impl FnOnce(&mut Nearest)) {
         f(n);
     }
 }
-/// `reducedTickDelay`.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let Some(n) = state(w, e, inst) else { return };
     if n.armed || n.inert() || n.parked {
@@ -154,27 +149,27 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         edit(w, e, inst, |n| n.parked = true);
         return;
     }
-    let wait = with_rng(w, e, |r| 2 * geometric(r, reduced(n.p.interval)));
+    let wait = with_rng(w, e, |r| arm_wait(|k| geometric(r, k), n.p.interval));
     crate::goals::arm(w, e, inst.slot, wait);
     edit(w, e, inst, |n| n.armed = true);
 }
 /// The reach of a player goal: the follow range scaled, as `can_use` reads it.
 fn reach_of(w: &World, e: Entity, n: &Nearest) -> f64 {
-    n.p.range.unwrap_or_else(|| w.get::<FollowRange>(e).map_or(16.0, |f| f.0) * n.p.follow_scale)
+    reach_range(n.p.range, w.get::<FollowRange>(e).map(|f| f.0), n.p.follow_scale)
 }
 /// Some player is within reach (the watch is laid or widened to cover it, so that one coming in wakes the goal).
 fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return true };
     let range = reach_of(w, e, n);
     // The watch sees 64 blocks at most: a longer reach is polled.
-    if range + 1.0 > 64.0 {
+    if watch_polled(range) {
         return true;
     }
-    let any = w.resource::<Online>().any_near(pos.x, pos.z, range, |p| (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= range * range);
+    let any = w.resource::<Online>().any_near(pos.x, pos.z, range, |p| in_sphere(p.x - pos.x, p.y - pos.y, p.z - pos.z, range));
     if any {
         return true;
     }
-    let radius = (range + 1.0) as f32;
+    let radius = watch_radius(range);
     match w.get_mut::<PlayerWatch>(e) {
         Some(mut pw) => pw.radius = pw.radius.max(radius),
         None => {
@@ -242,7 +237,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if (n.p.after_heal || n.p.heal) && super::heal_raiders::waiting(w, e) {
         return false;
     }
-    if n.p.heal && (!crate::raids::has_active_raid(w, e) || !with_rng(w, e, |r| r.next_int(2) == 0)) {
+    if n.p.heal && (!crate::raids::has_active_raid(w, e) || !with_rng(w, e, |r| heal_chance(|k| r.next_int(k)))) {
         return false;
     }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
@@ -290,8 +285,8 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return;
             }
             let (dx, dy, dz) = ((cp.0.x - from.x).abs(), (cp.0.y - from.y).abs(), (cp.0.z - from.z).abs());
-            if dx <= range && dy <= range && dz <= range && n.p.max_dy.is_none_or(|m| (cp.0.y - pos.y).abs() <= m) {
-                let d = dx * dx + dy * dy + dz * dz;
+            if in_box(dx, dy, dz, range) && n.p.max_dy.is_none_or(|m| (cp.0.y - pos.y).abs() <= m) {
+                let d = dist2(dx, dy, dz);
                 cands.push((d, c, cp.0, w.get::<targeting::Eye>(c).map_or(1.0, |l| l.0)));
             }
         });

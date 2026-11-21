@@ -4,6 +4,7 @@
 //! The whole wait is drawn once, at arming, with the same law (the Mob draws one value per ask, the asks being every
 //! other tick).
 use super::*;
+use crate::rules::random_stand::{asks_until_draw, stand_at};
 use crate::{cow::*, goals::*};
 
 /// `AbstractHorse`: `resetStandInterval` puts the counter at `-getAmbientStandInterval` (400 for every horse).
@@ -49,22 +50,6 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let interval = params::<Params>(p).interval;
     w.entity_mut(e).insert(Stand { next: -interval, interval, armed: false });
 }
-/// The asks until the first draw of a cycle comes up, from the counter `next`: the counter goes up by one per ask and
-/// the draw is made only above 0 (the Mob draws nothing before).
-fn asks_until_draw(r: &mut Rng, next: i32) -> i32 {
-    let (mut asks, mut n) = (0, next);
-    if n <= 0 {
-        asks -= n;
-        n = 0;
-    }
-    loop {
-        asks += 1;
-        n += 1;
-        if r.next_int(1000) < n {
-            return asks;
-        }
-    }
-}
 /// The next deadline of the cycle: its draw comes up at the `asks`-th ask, the asks being on the selector's ticks
 /// (tick + phase even), the first at the next one.
 fn arm(w: &mut World, e: Entity, inst: Inst) {
@@ -72,11 +57,11 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     if s.armed {
         return;
     }
-    let asks = with_rng(w, e, |r| asks_until_draw(r, s.next));
+    let asks = with_rng(w, e, |r| asks_until_draw(s.next, |k| r.next_int(k)));
     let now = crate::cow::now_of(w, e);
     let phase = crate::goals::phase_of(w, e);
     let first = if (now + 1 + phase) % 2 == 0 { now + 1 } else { now + 2 };
-    let at = first + 2 * (asks as u64 - 1);
+    let at = stand_at(first, asks);
     crate::goals::arm(w, e, inst.slot, (at - now) as i32);
     let mut st = w.get_mut::<Stand>(e).unwrap();
     st.armed = true;
@@ -136,7 +121,7 @@ mod tests {
         let mut r = Rng(12345);
         let mut total = 0i64;
         for _ in 0..2000 {
-            let asks = asks_until_draw(&mut r, -400);
+            let asks = asks_until_draw(-400, |k| r.next_int(k));
             assert!(asks >= 401, "a draw before the counter passed 0: {asks}");
             total += i64::from(asks);
         }

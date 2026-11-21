@@ -5,6 +5,7 @@
 //! celle de la cible et la vitesse de la cible est nulle (voir les notes, section 5).
 use super::*;
 use crate::{brain, cow::*, goals::*, hostile::strike, mount::Riding, spots::{self, Pick}, targeting::{info, Target, Who}};
+use crate::rules::spear_use as rules;
 use horizon_client_lib::spear::{hits_in_reach, Kinetic, REACH};
 use horizon_core::geometry::Vec3;
 
@@ -121,15 +122,11 @@ fn kinetic(w: &World, e: Entity) -> Option<Kinetic> {
 }
 /// `getKineticWeaponUseDuration`: the delay and the damage window, halved for the zombies.
 fn use_duration(k: &Kinetic, def: &Params) -> i32 {
-    let n = k.damage_use_duration();
-    if def.reduced_use { (n + 1) / 2 } else { n }
+    rules::halved_use(k.damage_use_duration(), def.reduced_use)
 }
 /// The charge speed and the distance bonus of a mount (none without one).
 fn mount_terms(w: &World, e: Entity, def: &Params) -> (f64, i32) {
-    if w.get::<Riding>(e).is_some() { (def.mount_speed, def.mount_distance) } else { (1.0, 0) }
-}
-fn dist(a: Vec3, b: [f64; 3]) -> f64 {
-    ((a.x - b[0]).powi(2) + (a.y - b[1]).powi(2) + (a.z - b[2]).powi(2)).sqrt()
+    rules::mount_bonus(w.get::<Riding>(e).is_some(), def.mount_speed, def.mount_distance)
 }
 fn tick(w: &mut World) {
     let list = crate::goals::entities::<With<Spearing>>(w);
@@ -146,7 +143,7 @@ fn step(w: &mut World, e: Entity) {
     s.moved = if s.last == Vec3::ZERO { Vec3::ZERO } else { Vec3::new(me.x - s.last.x, me.y - s.last.y, me.z - s.last.z) };
     s.last = me;
     w.get_mut::<Spear>(e).unwrap().last = me;
-    let d = dist(me, [t.pos.x, t.pos.y, t.pos.z]);
+    let d = rules::dist(me, [t.pos.x, t.pos.y, t.pos.z]);
     let (mount_speed, bonus) = mount_terms(w, e, &s.def);
     let at = [t.pos.x, t.pos.y, t.pos.z];
     if s.phase == Phase::Approach {
@@ -163,7 +160,8 @@ fn step(w: &mut World, e: Entity) {
         s.engage -= 1;
         if s.engage == 0 {
             // The use is over: the spear is lowered and the retreat starts toward a spot 9 to 11 blocks from the target.
-            s.away = spot(w, e, at, f64::from(9 + bonus) - d, f64::from(11 + bonus) - d, 0.0, 1.0);
+            let (lo, hi) = rules::ring(9, 11, bonus, d);
+            s.away = spot(w, e, at, lo, hi, 0.0, 1.0);
             s.fleeing = 1;
             s.phase = Phase::Retreat;
         }
@@ -191,7 +189,8 @@ fn step(w: &mut World, e: Entity) {
         None => {
             go_to_at(w, e, at, s.def.speed_charge * mount_speed, 1);
             if d < s.def.target_radius || brain::nav_done(w, e) {
-                s.away = spot(w, e, at, f64::from(6 + bonus) - d, f64::from(7 + bonus) - d, f64::NEG_INFINITY, f64::NEG_INFINITY);
+                let (lo, hi) = rules::ring(6, 7, bonus, d);
+                s.away = spot(w, e, at, lo, hi, f64::NEG_INFINITY, f64::NEG_INFINITY);
             }
         }
     }
@@ -210,8 +209,7 @@ fn finish(w: &mut World, e: Entity, mut s: Spear) {
 /// A spot at a distance between `min` and `max` of the target, as `land_random_pos_away_between` (the minimum is at least
 /// `floor` and the maximum at least `ceil`, the vertical reach 7).
 fn spot(w: &mut World, e: Entity, at: [f64; 3], min: f64, max: f64, floor: f64, ceil: f64) -> Option<[f64; 3]> {
-    let h_min = min.max(floor).floor();
-    let h_max = max.max(ceil).floor();
+    let (h_min, h_max) = rules::away_band(min, max, floor, ceil);
     spots::pick_for(w, e, Pick::LandAway { min_h: h_min, max_h: h_max, v: 7, from: at })
 }
 /// The stab of the window: the targets the reach allows, once in their contact cooldown; each one gets its damage.
@@ -220,9 +218,7 @@ fn stab(w: &mut World, e: Entity, s: &mut Spear, k: &Kinetic, who: Who, ticks_us
     let Some(t) = info(w, who) else { return };
     let Some(me) = info(w, Who::Entity(e)) else { return };
     let eye = Vec3::new(me.pos.x, me.eye, me.pos.z);
-    let to = Vec3::new(t.pos.x - eye.x, t.eye - eye.y, t.pos.z - eye.z);
-    let len = (to.x * to.x + to.y * to.y + to.z * to.z).sqrt().max(1e-9);
-    let look = Vec3::new(to.x / len, to.y / len, to.z / len);
+    let look = rules::look_dir(eye, t.pos, t.eye);
     let vel = s.moved;
     // The attacker's speed per second along its view; the target's speed is not read here (zero).
     let attacker_speed = look.dot(vel.scale(20.0));

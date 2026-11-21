@@ -4,6 +4,7 @@
 use super::*;
 use crate::raids::{raid_of, Celebrating, Raider};
 use crate::targeting::Target;
+use crate::rules::celebration::{can_celebrate, hit, CHEER_ODDS, JUMP_ODDS};
 use crate::{cow::*, goals::*};
 
 /// The jumps drawn (a test inserts it to count them; the jump itself is the physics' affair).
@@ -18,7 +19,10 @@ fn equip(w: &mut World, e: Entity, inst: Inst, _: &'static (dyn std::any::Any + 
     w.entity_mut(e).insert(Celebrate { slot: inst.slot });
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Health>(e).is_some_and(|h| h.0 > 0.0) && w.get::<Target>(e).is_none() && w.get::<Raider>(e).is_some_and(|r| r.raid.is_some()) && raid_of(w, e).is_some_and(|r| r.is_loss())
+    let alive = w.get::<Health>(e).is_some_and(|h| h.0 > 0.0);
+    let in_raid = w.get::<Raider>(e).is_some_and(|r| r.raid.is_some());
+    let lost = raid_of(w, e).is_some_and(|r| r.is_loss());
+    can_celebrate(alive, w.get::<Target>(e).is_some(), in_raid, lost)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Celebrating);
@@ -33,8 +37,8 @@ fn tick(w: &mut World) {
         if (now_of(w, e) + phase_of(w, e)) % 2 != 0 {
             continue;
         }
-        let _cheer = with_rng(w, e, |r| r.next_int(50) == 0);
-        if !w.entity(e).contains::<crate::mount::Riding>() && with_rng(w, e, |r| r.next_int(25) == 0) {
+        let _cheer = with_rng(w, e, |r| hit(r.next_int(CHEER_ODDS)));
+        if !w.entity(e).contains::<crate::mount::Riding>() && with_rng(w, e, |r| hit(r.next_int(JUMP_ODDS))) {
             if let Some(mut j) = w.get_mut::<Jump>(e) {
                 j.0 = true;
             }

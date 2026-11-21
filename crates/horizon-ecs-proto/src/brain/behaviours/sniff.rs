@@ -6,12 +6,12 @@
 //! dig: a memory that lasts that long wakes the brain, where it is dropped. Not done: the sounds of the transitions (no sound event in the
 //! frame), the path test of `can_dig_at` (`create_path_to(.., 1).reached`: the frame has no path query), the leash and the head pitch of
 //! `head_block`.
-use crate::IFloor as _;
 use crate::behaviours::breed::Love;
 use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::{is_occupied, OCC_MOUNTED};
+use crate::rules::sniff as rules;
 use horizon_client_lib::blocks::Fluid;
 
 pub static SNIFFER_DIGGING: MemKey = MemKey::new("minecraft:sniffer_digging", Shape::Bool);
@@ -90,17 +90,14 @@ pub fn can_sniff(w: &World, e: Entity) -> bool {
 }
 /// `Sniffer.getHeadBlock`: 2.25 blocks along the facing, at its feet plus 0.2 (the head pitch is not read).
 fn head_block(w: &World, e: Entity) -> [i32; 3] {
-    use horizon_core::geometry::trig::Mth;
     let p = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
     let yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
-    let y = -yaw * (std::f32::consts::PI / 180.0) - std::f32::consts::PI;
-    let (fx, fz) = (f64::from(-y.msin()), f64::from(-y.mcos()));
-    [(p[0] + fx * 2.25).ifloor(), (p[1] + f64::from(0.2_f32)).ifloor(), (p[2] + fz * 2.25).ifloor()]
+    rules::head_cell(p, yaw)
 }
 /// `Sniffer.getOnPos`: the block under its feet.
 fn on_pos(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-    [p[0].ifloor(), (p[1] - f64::from(0.2_f32)).ifloor(), p[2].ifloor()]
+    rules::on_cell(p)
 }
 /// `Sniffer.canDig(BlockPos)` without the path test: a diggable block that is not explored.
 fn can_dig_at(w: &World, e: Entity, p: [i32; 3], tag: &str) -> bool {
@@ -119,7 +116,7 @@ fn can_dig(w: &World, e: Entity, tag: &str) -> bool {
 fn dig_position(w: &mut World, e: Entity, tag: &str) -> Option<[i32; 3]> {
     for idx in 0..5 {
         let Some(p) = pick(w, e, crate::spots::Pick::Land { h: 10 + 2 * idx, v: 3 }) else { continue };
-        let below = [p[0].ifloor(), p[1].ifloor() - 1, p[2].ifloor()];
+        let below = rules::below_cell(p);
         if can_dig_at(w, e, below, tag) {
             return Some(below);
         }
@@ -245,7 +242,8 @@ fn drop_seed(w: &mut World, e: Entity, p: &Params) {
         return;
     }
     let at = head_block(w, e);
-    let seed = crate::goals::with_rng(w, e, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32())) as i64;
+    let (hi, lo) = crate::goals::with_rng(w, e, |r| (r.next_u32(), r.next_u32()));
+    let seed = rules::loot_seed(hi, lo);
     for stack in crate::loot::roll_table(w, p.table, seed) {
         crate::item::drop_item(w, stack, horizon_core::geometry::Vec3::new(f64::from(at[0]), f64::from(at[1]), f64::from(at[2])), horizon_core::geometry::Vec3::ZERO, 10);
     }
@@ -269,8 +267,8 @@ fn stop_finish(w: &mut World, e: Entity, c: &Ctx) {
         let p = on_pos(w, e);
         let max = c.get::<Params>().explored_max;
         if let Some(mut s) = w.get_mut::<State>(e) {
-            s.explored.truncate(max);
-            s.explored.insert(0, p);
+            let list = std::mem::take(&mut s.explored);
+            s.explored = rules::explored_after(list, p, max);
         }
     }
     erase(w, e, &SNIFFER_DIGGING);

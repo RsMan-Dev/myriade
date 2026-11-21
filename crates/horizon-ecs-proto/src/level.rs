@@ -4,13 +4,11 @@ use crate::IFloor as _;
 use crate::blocks::{set_state, world_of};
 use crate::cow::{Bounds, Contact, Level, Vel};
 use crate::goals::mob_griefing;
+use crate::rules::level::{full_face_of, jump_speed};
 use bevy_ecs::prelude::*;
 use horizon_client_render::collisions::projectile_can_stand_on;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
-
-/// `LivingEntity.getJumpPower` with the default jump strength and no boost.
-const JUMP_POWER: f64 = 0.42;
 
 pub fn block_name(w: &World, p: [i32; 3]) -> &'static str {
     world_of(w).block_name(p[0], p[1], p[2])
@@ -57,7 +55,7 @@ pub fn is_on_ground(w: &World, e: Entity) -> bool {
 }
 pub fn jump(w: &mut World, e: Entity) {
     if let Some(mut v) = w.get_mut::<Vel>(e) {
-        v.0.y = JUMP_POWER.max(v.0.y);
+        v.0.y = jump_speed(v.0.y);
     }
 }
 /// The jump after a break waits for the host's answer on each block, which `HostOut` does not give yet: no jump here.
@@ -102,13 +100,5 @@ pub fn box_free_of_crowd(w: &World, e: Entity, b: Aabb) -> bool {
 /// collision bounding box stands for the shape: an approximation of `isFaceSturdy`.
 pub fn full_face(w: &World, p: [i32; 3], face: u8) -> bool {
     let Some(b) = world_of(w).collision_bounds(p) else { return false };
-    let (lo, hi) = (b.min_position(), b.max_position());
-    let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-    let axis = match face {
-        0 | 1 => 1,
-        2 | 3 => 2,
-        _ => 0,
-    };
-    let touches = if face & 1 == 1 { hi[axis] >= 1.0 } else { lo[axis] <= 0.0 };
-    touches && (0..3).filter(|&a| a != axis).all(|a| lo[a] <= 0.0 && hi[a] >= 1.0)
+    full_face_of(b, face)
 }

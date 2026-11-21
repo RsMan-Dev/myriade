@@ -7,16 +7,11 @@ use crate::goals::{next_uid, Events, Uid};
 use crate::item::spawn_at_location;
 use crate::projectile::{launch, Flight};
 use crate::projectile_more;
+use crate::rules::ominous_spawner::{about_to_spawn_delay, drop_delay, particle_count, particle_wait, shoot_down};
 use crate::spawn_spawner::SpawnerRng;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
-use horizon_core::random::RandomSource;
-
-/// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
-const ABOUT_TO_SPAWN: u32 = 36;
-/// The particles are drawn on the game ticks that are multiples of this (`getGameTime() % 5 == 0`).
-const PARTICLES_EVERY: u64 = 5;
 /// The level event of the spawn (`spawnItem`), and the game event that follows it.
 const SPAWN_EVENT: i32 = 3021;
 
@@ -34,10 +29,10 @@ pub fn spawn(w: &mut World, item: ItemStack, at: Vec3, after_ticks: u32) -> Enti
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::OMINOUS_ITEM_SPAWNER);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::OMINOUS_ITEM_SPAWNER));
-    if after_ticks > ABOUT_TO_SPAWN {
-        after(w, e, (after_ticks - ABOUT_TO_SPAWN) as i32, about_to_spawn);
+    if let Some(delay) = about_to_spawn_delay(after_ticks) {
+        after(w, e, delay, about_to_spawn);
     }
-    after(w, e, after_ticks.max(1) as i32, drop_now);
+    after(w, e, drop_delay(after_ticks), drop_now);
     arm_particles(w, e);
     e
 }
@@ -74,7 +69,7 @@ fn drop_now(w: &mut World, e: Entity) {
             if let Some(event) = event {
                 w.resource_mut::<Events>().host.level_event(event, at, 0);
             }
-            let v = shoot_down(w, power, uncertainty);
+            let v = shoot_down(&mut w.resource_mut::<SpawnerRng>().0, power, uncertainty);
             let e = launch(w, flight, p, v, None);
             // A potion's contents (its item data) name the brews it splashes or lingers.
             if let (Some(potion), Ok(mut m)) = (item.potion().and_then(crate::effects::potion_id), w.get_entity_mut(e)) {
@@ -96,22 +91,10 @@ fn drop_now(w: &mut World, e: Entity) {
 /// Eggs and the trident take the default (power 1.1, uncertainty 6.0); the bottles and the potions take the default with
 /// power x1.25 and uncertainty x0.5. Any other item falls as an item.
 
-/// `Projectile.shoot` towards `Direction.DOWN`: the unit vector, plus a triangle spread per axis (`0.0172275 * uncertainty`), all
-/// times the power. Draws in the order x, y, z, two per axis, each triangle being the difference of two draws.
-fn shoot_down(w: &mut World, power: f32, uncertainty: f32) -> Vec3 {
-    let spread = 0.017_227_5 * f64::from(uncertainty);
-    let power = f64::from(power);
-    let mut rng = w.resource_mut::<SpawnerRng>();
-    let x = (spread * (rng.0.next_double() - rng.0.next_double())) * power;
-    let y = (-1.0 + spread * (rng.0.next_double() - rng.0.next_double())) * power;
-    let z = (spread * (rng.0.next_double() - rng.0.next_double())) * power;
-    Vec3::new(x, y, z)
-}
-
 /// `OminousItemSpawner.addParticles`, on a wake-up of the chain: the particles at the spawner's position, then the next wake-up.
 fn particles(w: &mut World, e: Entity) {
     let Some((p, _, local)) = live(w, e) else { return };
-    let count = 1 + (local % 3) as u32;
+    let count = particle_count(local);
     w.resource_mut::<Events>().host.particles("ominous_spawning", [p.x, p.y, p.z], [0.4; 3], 0.0, count);
     arm_particles(w, e);
 }
@@ -119,7 +102,7 @@ fn particles(w: &mut World, e: Entity) {
 /// The next wake-up of the particle chain: the next game tick that is a multiple of 5, if the drop has not come by then.
 fn arm_particles(w: &mut World, e: Entity) {
     let Some((_, drop_at, local)) = live(w, e) else { return };
-    let wait = PARTICLES_EVERY - w.resource::<Clock>().0 % PARTICLES_EVERY;
+    let wait = particle_wait(w.resource::<Clock>().0);
     if u64::from(local) + wait < u64::from(drop_at) {
         after(w, e, wait as i32, particles);
     }

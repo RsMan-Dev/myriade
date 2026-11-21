@@ -4,6 +4,7 @@ use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::d2;
+use crate::rules::look_and_interact as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -19,7 +20,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
         return false;
     }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    let found = find_closest(w, e, |w, who| matches!(who, Who::Player(_)) && info(w, who).is_some_and(|i| d2(pos, i.pos) <= 16.0));
+    let found = find_closest(w, e, |w, who| matches!(who, Who::Player(_)) && info(w, who).is_some_and(|i| rules::in_reach(d2(pos, i.pos))));
     let Some(who) = found else { return false };
     set(w, e, &INTERACTION_TARGET, MemValue::Who(who), None);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);

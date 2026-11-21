@@ -6,6 +6,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::{Pos, GrowAt};
 use crate::goals::d2;
+use crate::rules::follow_adult as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -46,12 +47,11 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     }
     let Some(at) = info(w, who).map(|i| i.pos) else { return false };
     let Some(me) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    let d = d2(me, at);
-    if !(d >= p.min * p.min && d < p.max * p.max) {
+    if !rules::in_follow_range(d2(me, at), p.min, p.max) {
         return false;
     }
     let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water);
-    let speed = if wet { p.speed } else { p.dry_speed.unwrap_or(p.speed) };
+    let speed = rules::walk_speed(wet, p.speed, p.dry_speed);
     set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, p.eyes), speed, close: p.close }), None);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
     true

@@ -5,6 +5,7 @@
 use super::door_interact::closer_to_center;
 use super::*;
 use crate::poi::PoiRegistry;
+use crate::rules::move_towards_restriction::home_target;
 use crate::raids::has_active_raid;
 use crate::spots::{pick_for, Pick};
 use crate::targeting::Target;
@@ -91,7 +92,7 @@ fn run(q: Query<(Entity, &Through, &Visiting, Has<Following>, Has<NeedsPath>)>, 
             if following || asked {
                 return;
             }
-            let to = [f64::from(poi[0]) + 0.5, f64::from(poi[1]), f64::from(poi[2]) + 0.5];
+            let to = home_target(poi);
             let next = pick_for(w, e, Pick::DefaultTowards { h: 16, v: 7, to, max_rad: std::f64::consts::PI / 10.0 }).or_else(|| pick_for(w, e, Pick::DefaultTowards { h: 8, v: 7, to, max_rad: std::f64::consts::FRAC_PI_2 }));
             match next {
                 Some(at) => go_to_at(w, e, at, p.speed, 1),

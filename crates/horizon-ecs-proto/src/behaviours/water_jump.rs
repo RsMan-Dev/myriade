@@ -5,6 +5,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::water_jump::{jump_impulse, motion_step, next_pitch};
 use horizon_client_lib::blocks::Fluid;
 use horizon_core::geometry::Vec3;
 
@@ -94,12 +95,12 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let Some(p) = w.get::<Leaper>(e).map(|l| l.p) else { return };
     let (sx, sz) = motion_step(w.get::<Yaw>(e).map_or(0.0, |y| y.0));
-    impulse(w, e, Vec3::new(f64::from(sx) * p.push, p.lift, f64::from(sz) * p.push));
+    impulse(w, e, jump_impulse((sx, sz), p.push, p.lift));
     stop_nav(w, e);
     w.entity_mut(e).insert(Leaping);
     let (v, pitch) = (w_vel(w, e), w.get::<Drive>(e).map_or(0.0, |d| d.pitch));
     if let Some(mut d) = w.get_mut::<Drive>(e) {
-        d.pitch = next_pitch(v, pitch, &p);
+        d.pitch = next_pitch(v, pitch, p.pitch_threshold, p.lerp);
     }
 }
 /// `stop` : l'inclinaison revient à 0 ; une attente fraîche pour le prochain saut.
@@ -123,31 +124,11 @@ fn leap_run(mut reqs: ResMut<Requests>, mut q: Query<(Entity, &Leaper, &Vel, &Co
             reqs.0.push(Req::End(e, l.slot));
             continue;
         }
-        drive.pitch = next_pitch(vel.0, drive.pitch, &l.p);
+        drive.pitch = next_pitch(vel.0, drive.pitch, l.p.pitch_threshold, l.p.lerp);
     }
 }
 fn w_vel(w: &World, e: Entity) -> Vec3 {
     w.get::<Vel>(e).map_or(Vec3::new(0.0, 0.0, 0.0), |v| v.0)
-}
-/// L'inclinaison du tick (`dolphin.rs:263-269`), en degrés : retour vers 0 quand la montée est faible, sinon l'angle de la vitesse.
-fn next_pitch(v: Vec3, pitch: f32, p: &Params) -> f32 {
-    let horizontal = (v.x * v.x + v.z * v.z).sqrt();
-    if v.y * v.y < p.pitch_threshold && pitch != 0.0 {
-        pitch + p.lerp * crate::cow::wrap(0.0 - pitch)
-    } else if (v.x * v.x + v.y * v.y + v.z * v.z).sqrt() > 1e-5 {
-        (-v.y).atan2(horizontal).to_degrees() as f32
-    } else {
-        pitch
-    }
-}
-/// La direction de nage du `motion_step` (`dolphin.rs:14-23`) : sud, ouest, nord, est selon `yaw / 90 + 0,5`.
-fn motion_step(yaw: f32) -> (i32, i32) {
-    match ((f64::from(yaw) / 90.0 + 0.5).floor() as i32) & 3 {
-        0 => (0, 1),
-        1 => (-1, 0),
-        2 => (0, -1),
-        _ => (1, 0),
-    }
 }
 /// `dolphin.rs:216-230` : pour chaque décalage, l'eau libre au pied, sans le tag interdit, avec deux blocs d'air au-dessus.
 fn geometry_ok(w: &World, e: Entity, p: &Params) -> bool {
