@@ -675,7 +675,8 @@ fn step(w: &mut World, e: Entity) {
     update_activity(w, e, plan);
     any = false;
     // The running flags are read in place (one lookup of the brain); the deadlines to arm are applied after the walk.
-    let mut arm: Vec<(usize, u64)> = Vec::new();
+    let mut arm: Option<(usize, u64)> = None;
+    let mut more: Vec<(usize, u64)> = Vec::new();
     if let Some(b) = w.get::<Brain>(e) {
         for (i, x) in plan.insts.iter().enumerate() {
             if x.b.gate.is_some() || x.b.passive || !b.run[i].running {
@@ -686,11 +687,12 @@ fn step(w: &mut World, e: Entity) {
                 break;
             }
             if x.duration.is_some() && !b.run[i].armed {
-                arm.push((i, b.run[i].end));
+                let t = (i, b.run[i].end);
+                if arm.is_none() { arm = Some(t) } else { more.push(t) }
             }
         }
     }
-    for (i, end) in arm {
+    for (i, end) in arm.into_iter().chain(more) {
         w.get_mut::<Brain>(e).unwrap().run[i].armed = true;
         arm_at(w, e, end + 1, Due::BrainWake);
     }
