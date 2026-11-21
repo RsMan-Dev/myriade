@@ -6,11 +6,22 @@ use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::*, goals::Entered, effects::{self, Kind}, species::goat::Screaming};
 
-/// The horizontal length of the first leap (from take-off to landing, in blocks) on the `Mob` and on the ECS: a stroll never leaves the
-/// ground, so only the leap counts. `None` when no leap came within the time given.
-fn leap_length(boost: Option<i32>) -> (Option<f64>, Option<f64>) {
+/// A goat on a 3 x 3 island in a ring of void, on the `Mob` and in the ECS, its ram cooling down (the long jump holds). The two goats, their indexes.
+fn island() -> (MobRef, Herd, usize, bevy_ecs::entity::Entity) {
     let mut r = MobRef::new(60, false);
     let mut h = Herd::with_slab_awake(60, true, false);
+    // The Mob's long jump leaps only to a spot it cannot reach on foot (`create_path_raw` of the target not `reached`): on a flat ground
+    // every spot is walkable and the goat never leaps. The goat stands on a 3 x 3 island in a ring of void two blocks wide.
+    for x in -3..=3i32 {
+        for z in -3..=3i32 {
+            if x.abs().max(z.abs()) >= 2 {
+                for y in -3..=0 {
+                    r.set_block(x, y, z, "minecraft:air");
+                    h.set_block(x, y, z, "minecraft:air");
+                }
+            }
+        }
+    }
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
     let sp = *species();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 6100);
@@ -21,6 +32,13 @@ fn leap_length(boost: Option<i32>) -> (Option<f64>, Option<f64>) {
     let now = horizon_ecs_proto::cow::now_of(&h.world, e);
     h.world.get_mut::<horizon_ecs_proto::behaviours::ram::RamCooldown>(e).unwrap().0 = now + 5000;
     horizon_ecs_proto::goals::wake(&mut h.world, e, &horizon_ecs_proto::behaviours::long_jump::MODULE);
+    (r, h, i, e)
+}
+
+/// The horizontal length of the first leap (from take-off to landing, in blocks) on the `Mob` and on the ECS: a stroll never leaves the
+/// ground, so only the leap counts. `None` when no leap came within the time given.
+fn leap_length(boost: Option<i32>) -> (Option<f64>, Option<f64>) {
+    let (mut r, mut h, i, e) = island();
     if let Some(amp) = boost {
         r.mobs[i].add_effect("minecraft:jump_boost", 6000, amp);
         assert!(effects::add(&mut h.world, e, Kind::JumpBoost, amp, 6000));
@@ -47,7 +65,6 @@ fn leap_length(boost: Option<i32>) -> (Option<f64>, Option<f64>) {
 }
 
 #[test]
-#[ignore = "no leap is measured: on the flat harness world the Mob's long jump goal starts (32 ticks) and ends without leaping within 4000 ticks, and the ECS one does not leap either; the boost formula (0.1 x (level + 1) in f32) is the same code line on both sides, read not measured; the former version passed vacuously (0 = 0)"]
 fn a_jump_boost_lengthens_the_goats_leap_as_the_mob_does() {
     if !have_data() || wrong_species(&["minecraft:goat"]) {
         return;
@@ -91,4 +108,38 @@ fn a_species_without_the_chance_never_screams() {
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 300 + seed);
         assert!(h.world.get::<Screaming>(e).is_none());
     }
+}
+
+/// A player who holds food keeps the goat from leaping (`GoatAi.longJumpActivity` wants no tempting player); when the item is put away the
+/// activity comes back by itself (the ECS wakes it by the event of the player, no poll) and the goat leaps, on the `Mob` as in the ECS.
+/// The tick at which the player puts the food away: past the longest cooldown of the long jump (1200).
+const RELEASE: u32 = 1400;
+
+#[test]
+fn a_goat_leaps_again_once_the_player_puts_the_food_away() {
+    if !have_data() || wrong_species(&["minecraft:goat"]) {
+        return;
+    }
+    let (mut r, mut h, i, e) = island();
+    let (item, name) = tempt_item();
+    let (mut mob_leap, mut ecs_leap) = (None, None);
+    for t in 0..1700u32 {
+        let held = t < RELEASE;
+        let view = player_view(Vec3::new(1.5, 1.0, 0.5), held.then_some(name));
+        h.world.resource_mut::<horizon_ecs_proto::goals::Online>().set(horizon_ecs_proto::goals::Player { id: 1, x: 1.5, y: 1.0, z: 0.5, main: if held { item } else { 0 }, off: 0, ..Default::default() });
+        r.mobs[i].ai.no_action_time = 0;
+        r.step(Some(&view));
+        h.tick();
+        if mob_leap.is_none() && r.mobs[i].position.y > 1.05 {
+            mob_leap = Some(t);
+        }
+        if ecs_leap.is_none() && h.world.get::<Pos>(e).unwrap().0.y > 1.05 {
+            ecs_leap = Some(t);
+        }
+    }
+    eprintln!("goat leaps after the food is put away: mob {mob_leap:?} ecs {ecs_leap:?} (food held until tick {RELEASE})");
+    let (m, c) = (mob_leap.expect("the Mob goat never leaps"), ecs_leap.expect("the ECS goat never leaps"));
+    // The ECS cooldown of the long jump (600 to 1200 from the spawn) ran out while the goat was tempted: the leap that follows within 150 ticks
+    // is the wake by the player's event (a goal asked again by a poll would have missed or delayed it), as on the Mob.
+    assert!((RELEASE..RELEASE + 150).contains(&m) && (RELEASE..RELEASE + 150).contains(&c), "mob {m} ecs {c}, food put away at {RELEASE}");
 }

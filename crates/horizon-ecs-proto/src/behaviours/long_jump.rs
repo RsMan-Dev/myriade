@@ -45,6 +45,13 @@ impl Params {
     };
 }
 
+impl LongJumpState {
+    /// The activity holds only during the ram's cooldown (a goat).
+    pub fn gated(&self) -> bool {
+        self.p.gated_by_ram
+    }
+}
+
 /// `LONG_JUMP_COOLDOWN` et la boîte de la phase de préparation, par entrée : `ready_at` est la date (temps propre) à partir de
 /// laquelle le but peut être demandé ; `armed` : la date de l'échéance déjà armée (une seule par date).
 #[derive(Component, Clone, Copy, Debug)]
@@ -180,6 +187,37 @@ fn navigating(w: &World, e: Entity) -> bool {
     w.get::<Following>(e).is_some() || w.get::<NeedsPath>(e).is_some()
 }
 
+/// A navigation ended (`Following` or `NeedsPath` removed) or a love was spent (`Love` removed): the goat's long jump activity, held by
+/// them, is asked again. An event, not a poll; only for an animal whose activity is gated by the ram.
+pub fn wake_gated(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
+    if !world.get::<LongJumpState>(e).is_some_and(|s| s.p.gated_by_ram) {
+        return;
+    }
+    world.commands().queue(move |w: &mut World| {
+        if w.get_entity(e).is_ok() {
+            crate::goals::wake(w, e, &MODULE);
+        }
+    });
+}
+
+/// `GoatAi.longJumpActivity` wants no breed target: the goat is in love and an adult of its species in love is within 8 blocks
+/// (`AnimalMakeLove.checkExtraStartConditions`). The date its love ends, when it holds.
+fn breeding_until(w: &World, e: Entity) -> Option<u64> {
+    let until = w.get::<super::breed::Love>(e).map(|l| l.0).filter(|&u| u > now_of(w, e))?;
+    let p = w.get::<Pos>(e)?.0;
+    let kind = w.get::<SpeciesId>(e);
+    let mut found = false;
+    w.resource::<Index>().for_radius(p.x, p.z, 8.0, |c| {
+        found |= c != e
+            && w.get::<SpeciesId>(c) == kind
+            && w.get::<GrowAt>(c).is_none()
+            && w.get::<super::breed::Love>(c).is_some_and(|l| l.0 > now_of(w, c))
+            && w.get::<Pos>(c).is_some_and(|q| (q.0.x - p.x).powi(2) + (q.0.y - p.y).powi(2) + (q.0.z - p.z).powi(2) <= 64.0);
+    });
+    found.then_some(until)
+}
+
 /// `LongJumpToRandomPos.canUse` et l'activité (`FrogAi`, `GoatAi.longJumpActivity`) : pas de départ dans l'eau pour la grenouille,
 /// activité du bélier pour la chèvre ; puis sur le sol, pas dans l'eau ni la lave ni sur le miel (sinon compte à rebours / 2).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -196,18 +234,21 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if st.p.gated_by_ram {
         let Some(ram) = w.get::<crate::behaviours::ram::RamCooldown>(e).copied() else { return false };
         if super::tempt::tempted(w, e) {
-            // A player feeds the goat: the activity is the tempt's (`GoatAi.longJumpActivity` wants no tempting player); the ask comes back
-            // at the next deadline.
-            schedule(w, e, now + 20);
+            // A player feeds the goat: the activity is the tempt's (`GoatAi.longJumpActivity` wants no tempting player); `tempt` wakes this
+            // goal when the player puts the item away or goes (`wake_on_untempt`).
             return false;
         }
         if ram.0 <= now {
             // The ram is on: the activity wakes when the ram sets its cooldown (`ram::set_cooldown` wakes this goal), no polling.
             return false;
         }
+        if let Some(until) = breeding_until(w, e) {
+            // A breed target (`AnimalMakeLove`): the goal is asked again at the end of the love, or when it is spent (`Love` removed: `wake_gated`).
+            schedule(w, e, until);
+            return false;
+        }
         if navigating(w, e) {
-            // Repli (GUIDE règle 4) : aucun événement ne dit quand la navigation finit : une redemande à +2, un seul fil par animal.
-            schedule(w, e, now + 2);
+            // `Mob.ai.nav.isDone()` false: the path ends by the removal of `Following` / `NeedsPath`, which wakes this goal (`wake_gated`).
             return false;
         }
     }

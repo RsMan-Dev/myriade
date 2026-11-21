@@ -14,7 +14,10 @@ use horizon_ecs_proto::{
     poi::PoiRegistry,
     species::villager::{JOB_SITE, POTENTIAL_JOB_SITE},
 };
-use horizon_client_lib::mobs::villager;
+use horizon_client_lib::mobs::{villager, MobWorld};
+
+/// Mid-morning: the villager works (by night it rests).
+const DAY: i64 = 4000;
 use horizon_world::poi::PoiType;
 
 const SITE: [i32; 3] = [3, 1, 3];
@@ -251,12 +254,13 @@ fn ecs_go_to_site_walks_then_stops_by_clearing_the_site() {
 
 /// The `Mob`: a villager that has the composter in range walks to it.
 #[test]
-#[ignore = "the Mob villager does not approach a composter 9 blocks away in 300 steps (time of day or schedule of the harness not established): the ECS walk is tested above through its start and stop"]
 fn mob_go_to_site_walks_to_the_potential_site() {
     if !have_data() {
         return;
     }
     let mut r = MobRef::new(40, false);
+    // By night the villager rests (activity `rest`): the walk to a site is of the day.
+    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
     let i = r.add_kind(Vec3::new(12.5, 1.0, 3.5), mob_kind("minecraft:villager"));
     let start = r.mobs[i].position;
@@ -264,5 +268,43 @@ fn mob_go_to_site_walks_to_the_potential_site() {
         r.step(None);
     }
     let goal = Vec3::new(3.5, 1.0, 3.5);
-    assert!(r.mobs[i].position.distance_squared(goal) < start.distance_squared(goal));
+    // Moved at least 3 blocks closer (a villager that stays still, or wanders, fails).
+    assert!(r.mobs[i].position.distance(goal) + 3.0 < start.distance(goal), "from {start:?} to {:?}", r.mobs[i].position);
+}
+
+/// The same walk by the whole ECS brain, no module started by hand: a jobless villager 9 blocks from a composter, by day, acquires the
+/// point, walks to it and takes its profession; the `Mob` one does the same at the same tick (within 3).
+#[test]
+fn ecs_villager_walks_to_the_site_and_takes_its_profession_as_the_mob() {
+    if !have_data() {
+        return;
+    }
+    let mut h = scene();
+    let e = villager_at(&mut h, 12.5, 3.5, 11);
+    horizon_ecs_proto::behaviours::schedule::Times::set(&mut h.world, DAY);
+    let goal = Vec3::new(3.5, 1.0, 3.5);
+    let start = h.world.get::<horizon_ecs_proto::cow::Pos>(e).unwrap().0;
+    let mut got_at = None;
+    for t in 0..600 {
+        h.tick();
+        if got_at.is_none() && h.world.get::<Profession>(e).is_some() {
+            got_at = Some(t);
+        }
+    }
+    let end = h.world.get::<horizon_ecs_proto::cow::Pos>(e).unwrap().0;
+    assert!(end.distance(goal) + 3.0 < start.distance(goal), "the ECS villager did not walk: {start:?} -> {end:?}");
+    assert!(matches!(h.world.get::<Profession>(e), Some(Profession(PoiType::Farmer))), "no farmer after 600 ticks");
+    let mut r = MobRef::new(40, false);
+    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
+    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
+    let i = r.add_kind(Vec3::new(12.5, 1.0, 3.5), mob_kind("minecraft:villager"));
+    let mut mob_got = None;
+    for t in 0..600 {
+        r.step(None);
+        if mob_got.is_none() && r.mobs[i].extra.profession.index() == villager::profession_index("farmer") {
+            mob_got = Some(t);
+        }
+    }
+    let (a, b) = (got_at.expect("no profession in the ECS"), mob_got.expect("the Mob villager takes no profession in 600 steps"));
+    assert!((a as i64 - b as i64).abs() <= 3, "profession taken at tick {a} (ECS) against {b} (Mob)");
 }

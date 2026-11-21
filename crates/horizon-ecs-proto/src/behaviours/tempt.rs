@@ -76,7 +76,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_on_player, tempt_run).chain().in_set(slot));
+    s.add_systems((wake_on_player, wake_on_untempt, tempt_run).chain().in_set(slot));
 }
 /// A player took an item, put it away, came or went: the animals it newly draws are woken (those that were already in
 /// range, and those whose goal runs, notice by themselves).
@@ -91,6 +91,31 @@ fn wake_on_player(clock: Res<Clock>, on: Res<Online>, idx: Res<Index>, cows: Que
                 let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
                 if clock.of(c) >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
                     reqs.0.push(Req::Start(c, t.slot));
+                }
+            }
+        });
+    }
+}
+/// A player put the item away, went out of range or left: the activities `tempted` held (the goat's ram and long jump) are asked again.
+/// An event, not a poll.
+fn wake_on_untempt(on: Res<Online>, idx: Res<Index>, cows: Query<(&Pos, &Tempts, &GoalSet, &crate::behaviours::long_jump::LongJumpState)>, mut reqs: ResMut<Requests>) {
+    let d2 = |p: &Player, c: Vec3| (p.x - c.x).powi(2) + (p.y - c.y).powi(2) + (p.z - c.z).powi(2);
+    for &(old, new) in &on.seen {
+        let Some(o) = old else { continue };
+        idx.for_radius(o.x, o.z, SCAN, |c| {
+            let Ok((pos, ts, g, lj)) = cows.get(c) else { return };
+            if !lj.gated() {
+                return;
+            }
+            for t in &ts.0 {
+                let reach = t.range.max(2.0).powi(2);
+                let held = |p: &Player| p.holds_any(t.items) && d2(p, pos.0) <= reach;
+                if held(&o) && !new.is_some_and(|n| held(&n)) {
+                    for m in [&crate::behaviours::ram::MODULE, &crate::behaviours::long_jump::MODULE] {
+                        if let Some(s) = g.slot_of(m) {
+                            reqs.0.push(Req::Start(c, s));
+                        }
+                    }
                 }
             }
         });

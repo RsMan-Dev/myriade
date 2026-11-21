@@ -184,6 +184,7 @@ pub struct Sizes {
 /// A path was asked for (the stroll picked a spot): `pathfind` visits only these.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
+#[component(on_remove = crate::behaviours::long_jump::wake_gated)]
 pub struct NeedsPath;
 
 /// The walk of the cow is over (path done, blocked, or none found): `path_ended` arms its next stroll attempt.
@@ -194,7 +195,7 @@ pub struct PathEnded;
 /// The cow follows a path: `follow` and `move_control` visit only these.
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
-#[component(on_add = crate::locomotion::hop::following_started)]
+#[component(on_add = crate::locomotion::hop::following_started, on_remove = crate::behaviours::long_jump::wake_gated)]
 pub struct Following;
 
 /// The entity stands still (`stare_freeze`): `follow` and `move_control` skip it, its path is kept.

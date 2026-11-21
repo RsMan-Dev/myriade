@@ -45,6 +45,7 @@ pub struct BreedData {
 pub const NO_SLOT: u8 = u8::MAX;
 /// In love until this tick; resting (age 6000) until this tick.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_remove = crate::behaviours::long_jump::wake_gated)]
 pub struct Love(pub u64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resting(pub u64);
