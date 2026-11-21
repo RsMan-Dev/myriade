@@ -342,4 +342,6 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
         wh.push(if stale { now + 1 } else { now + rem }, e, due);
     }
     crate::despawn::on_wake(world, e);
+    // A brain that was due a step when it fell asleep (or that never sleeps) was left out of the list: it is queued again.
+    crate::brain::requeue(world, e);
 }

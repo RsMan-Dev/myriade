@@ -104,6 +104,10 @@ fn main() {
         }
     }
     herd.set_players(list);
+    // ZONE=r: the simulated chunks on (r chunks around the players): with no player every creature sleeps (the cost of a dormant one).
+    if let Some(r) = std::env::var("ZONE").ok().and_then(|v| v.parse().ok()) {
+        herd.set_simulation(r);
+    }
     let walkers = holders / 10;
     let mut seed = 0x9e37_79b9_u64;
     let mut next = |m: usize| {

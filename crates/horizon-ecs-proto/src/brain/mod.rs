@@ -572,6 +572,12 @@ pub fn timed_out(w: &World, e: Entity, c: &Ctx) -> bool {
     w.get::<Brain>(e).is_some_and(|b| b.run[c.id as usize].end < now_of(w, e))
 }
 /// The brain has something to do at the next step.
+/// Queues a brain that is marked awake but was left out of the list (it was asleep with the chunk).
+pub fn requeue(w: &mut World, e: Entity) {
+    if w.get::<Brain>(e).is_some_and(|b| b.awake) {
+        w.resource_mut::<BrainAwake>().0.push(e);
+    }
+}
 pub fn wake(w: &mut World, e: Entity) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
     if !b.awake {
@@ -648,6 +654,10 @@ pub fn erase(w: &mut World, e: Entity, k: &MemKey) {
 pub fn brain_step(world: &mut World) {
     let list = std::mem::take(&mut world.resource_mut::<BrainAwake>().0);
     for e in list {
+        // A creature asleep (its chunk does not tick) is not stepped: its `awake` flag stays up and `zone::wake` queues it again.
+        if world.get::<crate::zone::Dormant>(e).is_some() {
+            continue;
+        }
         step(world, e);
     }
 }
