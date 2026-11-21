@@ -334,3 +334,38 @@ pub fn xz(a: Vec3, b: Vec3) -> f64 {
 pub fn mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len().max(1) as f64
 }
+
+impl MobRef {
+    /// Grows the crops a `Mob` villager worked on since `seen` (`MobEvent::Bonemeal`: the game's `BoneMealItem.growCrop`, 3 ages
+    /// here, capped at 7), tells the villager (`bonemeal_grown`), and returns the ticks of the growths.
+    pub fn bonemeal_growths(&mut self, seen: &mut usize) -> Vec<i64> {
+        let fresh: Vec<(u32, [i32; 3])> = self.events[*seen..]
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::Bonemeal { mob, pos } => Some((*mob, *pos)),
+                _ => None,
+            })
+            .collect();
+        *seen = self.events.len();
+        let mut ticks = Vec::new();
+        for (id, p) in fresh {
+            let name = self.w.block_name(p[0], p[1], p[2]).to_string();
+            let age = self.prop(p[0], p[1], p[2], "age").and_then(|a| a.parse::<i32>().ok()).unwrap_or(0);
+            let next = (age + 3).min(7).to_string();
+            self.set_block_props(p[0], p[1], p[2], &name, &[("age", next.as_str())]);
+            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                horizon_client_lib::mobs::villager_brain::bonemeal_grown(m, self.t);
+            }
+            ticks.push(self.t);
+        }
+        ticks
+    }
+}
+/// Whether the warden's brain still holds an attack target (`Warden::target`).
+pub fn warden_has_target(m: &Mob) -> bool {
+    m.extra.warden.as_deref().is_some_and(|w| w.target().is_some())
+}
+/// The yaw (degrees, vanilla `lookAt`) a head at `from` takes to look at `to`, in the x/z plane.
+pub fn look_yaw(from: Vec3, to: Vec3) -> f32 {
+    ((to.z - from.z).atan2(to.x - from.x).to_degrees() - 90.0) as f32
+}

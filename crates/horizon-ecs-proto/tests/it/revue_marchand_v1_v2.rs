@@ -1,0 +1,333 @@
+//! Revue du marchand et du villageois, ECS contre `Mob` sur la même scène et le même nombre de tics (points 1, 2, 3, 4, 6, 7). Non écrits :
+//! 5 (perte de poste : le `Mob` ne permet pas de fixer un métier sans poste) et 8 (échange de nourriture : aucun équivalent côté `Mob`).
+use crate::common;
+use bevy_ecs::prelude::*;
+use common::*;
+use horizon_client_lib::mobs::{villager, MobEvent, MobWorld};
+use horizon_core::geometry::Vec3;
+use horizon_ecs_proto::{
+    behaviours::{
+        food_gift::Heroes,
+        poi_claim::ClaimIndex,
+        profession::Profession,
+        schedule::Times,
+        timed_idle,
+        trade_offers::{self, Merchant},
+        trade_session, Entry,
+    },
+    brain::*,
+    cow::*,
+    goals::*,
+    item::Item,
+    species::{villager::HOME, Config},
+    targeting::Who,
+};
+use horizon_world::poi::PoiType;
+
+const DAY: i64 = 4000;
+const SITE: [i32; 3] = [3, 1, 3];
+
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:villager"])
+}
+
+fn villager_at(h: &mut Herd, x: f64, z: f64, seed: u64) -> Entity {
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
+    let e = spawn_species(&mut h.world, &sp, x, z, seed);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
+    e
+}
+
+fn ecs_herd() -> Herd {
+    let mut h = Herd::with_slab_awake(40, true, false);
+    h.world.insert_resource(ClaimIndex::default());
+    h.tick();
+    h
+}
+
+/// A Mob world by day (the work and the walks to a post are of the day).
+fn day_mob() -> MobRef {
+    let mut r = MobRef::new(40, false);
+    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
+    r
+}
+
+/// The ticks where `step` is on, as (start, end) pairs.
+fn pauses(mut step: impl FnMut() -> bool, ticks: u32) -> Vec<(u32, u32)> {
+    let (mut out, mut from) = (Vec::new(), None);
+    for t in 0..ticks {
+        match (from, step()) {
+            (None, true) => from = Some(t),
+            (Some(s), false) => {
+                out.push((s, t));
+                from = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Point 1: a wandering trader that trades with a player 2 blocks away holds still and faces it.
+fn ecs_trader_beside(ticks: usize) -> (f64, bool) {
+    let mut h = Herd::with_slab_awake(40, true, false);
+    h.tick();
+    h.set_day(true);
+    let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
+    h.world.resource_mut::<Entered>().0.push(e);
+    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    h.world.insert_resource(trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
+    let y = h.world.get::<Pos>(e).unwrap().0.y;
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 2.5, y, z: 0.5, ..Default::default() });
+    h.tick();
+    trade_session::open(&mut h.world, e, 1);
+    let mut faces = false;
+    for _ in 0..ticks {
+        h.tick();
+        faces |= matches!(look_target(&h.world, e), Some(Tracker::Entity(Who::Player(1), _)));
+    }
+    (h.world.get::<Pos>(e).unwrap().0.x, faces)
+}
+
+fn mob_trader_beside(ticks: usize) -> (f64, bool) {
+    let mut r = MobRef::new(40, false);
+    let t = r.add_id(Vec3::new(0.5, 1.0, 0.5), 5);
+    r.mobs[t].extra.flag2 = true;
+    let view = player_view(Vec3::new(2.5, 1.0, 0.5), None);
+    for _ in 0..ticks {
+        r.step(Some(&view));
+    }
+    (r.mobs[t].position.x, r.mobs[t].ai.goals.running_names().contains(&"TradeWithPlayer"))
+}
+
+#[test]
+fn wandering_trader_holds_still_and_faces_its_player_vs_mob() {
+    if !have_data() || wrong_species(&["minecraft:wandering_trader"]) {
+        return;
+    }
+    let ((ex, ecs_faces), (mx, mob_faces)) = (ecs_trader_beside(40), mob_trader_beside(40));
+    eprintln!("trader: x ecs {ex:.2} mob {mx:.2}; faces ecs {ecs_faces} mob {mob_faces}");
+    assert!((ex - 0.5).abs() <= 0.5 && (mx - 0.5).abs() <= 0.5, "the trader walks toward the player: ecs x {ex}, mob x {mx}");
+    assert!((ex - mx).abs() <= 0.5, "trader x: ecs {ex} against mob {mx}");
+    // The Mob's look is read through its trade goal (its look target is private).
+    assert!(ecs_faces && mob_faces, "the trader faces the player: ecs {ecs_faces}, mob {mob_faces}");
+}
+
+/// Point 2: the warden's `DoNothing(Timed::new(30, 60))`, the same goal in the ECS (`timed_idle`) with the Mob's pauses.
+fn ecs_pauses() -> Vec<(u32, u32)> {
+    let mut h = Herd::with_slab_awake(60, true, false);
+    let p: &'static timed_idle::Params = Box::leak(Box::new(timed_idle::Params { min: 30, max: 60, interval: 1, chance: 1.0 }));
+    let entries: &'static [Entry] = Box::leak(vec![Entry::new(&timed_idle::MODULE, 10, p)].into_boxed_slice());
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let mut sp = *table.iter().find(|s| s.name == "minecraft:warden").unwrap();
+    sp.goals = Config { entries };
+    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
+    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(e);
+    pauses(
+        || {
+            h.tick();
+            h.world.get::<GoalSet>(e).unwrap().is_running(&timed_idle::MODULE)
+        },
+        3000,
+    )
+}
+
+fn mob_pauses() -> Vec<(u32, u32)> {
+    let mut r = MobRef::new(60, false);
+    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:warden"));
+    pauses(
+        || {
+            r.step(None);
+            r.names(i).iter().any(|n| n.contains("Nothing"))
+        },
+        3000,
+    )
+}
+
+#[test]
+fn timed_idle_pause_lasts_thirty_to_sixty_ticks_vs_mob() {
+    if !have_data() {
+        return;
+    }
+    let (e, m) = (ecs_pauses(), mob_pauses());
+    let dur = |v: &[(u32, u32)]| v.iter().map(|(s, t)| f64::from(t - s)).collect::<Vec<f64>>();
+    let (de, dm) = (dur(&e), dur(&m));
+    eprintln!("pauses: ecs {de:?} mob {dm:?}");
+    assert!(!de.is_empty() && !dm.is_empty(), "no complete pause: ecs {} mob {}", de.len(), dm.len());
+    assert!(de.iter().chain(&dm).all(|d| (30.0..=61.0).contains(d)), "a pause outside 30..=60: ecs {de:?} mob {dm:?}");
+    assert!((mean(&de) - mean(&dm)).abs() <= 3.0, "mean pause: ecs {} against mob {}", mean(&de), mean(&dm));
+}
+
+/// Point 3: a jobless villager, 9 blocks from a post, takes the profession of the post block by day, within 600 ticks.
+fn ecs_job(block: &'static str) -> String {
+    let mut h = ecs_herd();
+    h.set_block(SITE[0], SITE[1], SITE[2], block);
+    let e = villager_at(&mut h, 12.5, 3.5, 11);
+    Times::set(&mut h.world, DAY);
+    for _ in 0..600 {
+        h.tick();
+    }
+    h.world.get::<Profession>(e).map_or_else(String::new, |p| format!("{:?}", p.0))
+}
+
+fn mob_job(block: &'static str) -> Option<u8> {
+    let mut r = day_mob();
+    r.set_block(SITE[0], SITE[1], SITE[2], block);
+    let i = r.add_kind(Vec3::new(12.5, 1.0, 3.5), mob_kind("minecraft:villager"));
+    for _ in 0..600 {
+        r.step(None);
+    }
+    r.mobs[i].extra.profession.index()
+}
+
+#[test]
+fn villager_takes_the_profession_of_its_post_block_vs_mob() {
+    if skip() {
+        return;
+    }
+    for (block, poi, name) in [("minecraft:composter", PoiType::Farmer, "farmer"), ("minecraft:lectern", PoiType::Librarian, "librarian")] {
+        let (e, m) = (ecs_job(block), mob_job(block));
+        assert_eq!(e, format!("{poi:?}"), "ecs profession on {block}");
+        assert_eq!(m, villager::profession_index(name), "mob profession on {block}");
+    }
+}
+
+/// Point 4: a bed whose head is occupied is not claimed; the free bed beside it is.
+#[test]
+fn villager_claims_the_free_bed_not_the_occupied_one_vs_mob() {
+    if skip() {
+        return;
+    }
+    const TAKEN: [i32; 3] = [6, 1, 3];
+    const FREE: [i32; 3] = [6, 1, 6];
+    let mut h = ecs_herd();
+    h.set_block_state(TAKEN[0], TAKEN[1], TAKEN[2], "minecraft:white_bed", &[("part", "head"), ("occupied", "true")]);
+    h.set_block_state(FREE[0], FREE[1], FREE[2], "minecraft:white_bed", &[("part", "head"), ("occupied", "false")]);
+    let e = villager_at(&mut h, 4.5, 4.5, 11);
+    Times::set(&mut h.world, DAY);
+    for _ in 0..200 {
+        h.tick();
+    }
+    let ecs_home = match get(&h.world, e, &HOME) {
+        Some(MemValue::Block(b)) => Some(*b),
+        _ => None,
+    };
+    let mut r = day_mob();
+    r.set_block_props(TAKEN[0], TAKEN[1], TAKEN[2], "minecraft:white_bed", &[("part", "head"), ("occupied", "true")]);
+    r.set_block_props(FREE[0], FREE[1], FREE[2], "minecraft:white_bed", &[("part", "head"), ("occupied", "false")]);
+    let i = r.add_kind(Vec3::new(4.5, 1.0, 4.5), mob_kind("minecraft:villager"));
+    for _ in 0..200 {
+        r.step(None);
+    }
+    let mob_home = r.mobs[i].extra.bed;
+    assert_eq!(ecs_home, Some(FREE), "ecs home");
+    assert_eq!(mob_home, Some(FREE), "mob bed");
+}
+
+/// Point 6: the offers spent at the post are reset when the day's restock is due (12000 ticks after the last one), by the same clock.
+#[test]
+fn restock_resets_spent_offers_at_the_post_vs_mob() {
+    if skip() {
+        return;
+    }
+    let mut h = ecs_herd();
+    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    h.world.insert_resource(trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
+    h.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
+    let e = villager_at(&mut h, 3.5, 3.5, 11);
+    let farmer = villager::profession_index("farmer").unwrap();
+    h.world.entity_mut(e).insert((Profession(PoiType::Farmer), Merchant::new(false, farmer, 0)));
+    h.world.get_mut::<Merchant>(e).unwrap().trade.xp = 1;
+    trade_offers::ensure_offers(&mut h.world, e);
+    {
+        let mut m = h.world.get_mut::<Merchant>(e).unwrap();
+        for o in m.trade.offers.iter_mut() {
+            o.uses = o.max_uses;
+        }
+    }
+    for _ in 0..12100 {
+        h.tick();
+    }
+    let offers = &h.world.get::<Merchant>(e).unwrap().trade.offers;
+    let ecs_reset = !offers.is_empty() && offers.iter().all(|o| o.uses == 0);
+
+    let mut r = day_mob();
+    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
+    let i = r.add_kind(Vec3::new(3.5, 1.0, 3.5), mob_kind("minecraft:villager"));
+    for _ in 0..40 {
+        r.step(None);
+    }
+    {
+        let t = r.mobs[i].extra.trade.as_mut().expect("the Mob villager has its offers after 40 ticks at the post");
+        t.xp = 1;
+        for o in t.offers.iter_mut() {
+            o.uses = o.max_uses;
+        }
+    }
+    for _ in 0..12100 {
+        r.step(None);
+    }
+    let mob_reset = r.mobs[i].extra.trade.as_ref().is_some_and(|t| !t.offers.is_empty() && t.offers.iter().all(|o| o.uses == 0));
+    assert!(ecs_reset && mob_reset, "offers reset after the restock: ecs {ecs_reset}, mob {mob_reset}");
+}
+
+/// Point 7: a hero in view, the villager throws its gift toward the player after the 600-tick wait (within 3 ticks of the Mob).
+fn ecs_gift(ticks: u32) -> (Option<u32>, f64) {
+    let mut h = Herd::with_slab_awake(60, true, false);
+    h.world.insert_resource(Heroes([1].into_iter().collect()));
+    villager_at(&mut h, 0.5, 0.5, 1);
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, ..Default::default() });
+    let (mut first, mut x) = (None, 0.0);
+    for t in 0..ticks {
+        h.tick();
+        if first.is_none() {
+            if let Some(p) = h.world.query::<(&Item, &Pos)>().iter(&h.world).map(|(_, p)| p.0.x).next() {
+                first = Some(t);
+                x = p;
+            }
+        }
+    }
+    (first, x)
+}
+
+fn mob_gift(ticks: u32) -> (Option<u32>, [f64; 3], [f64; 3]) {
+    let mut r = MobRef::new(60, false);
+    r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
+    let mut view = player_view(Vec3::new(3.5, 1.0, 0.5), None);
+    view.hero = true;
+    let (mut seen, mut first, mut from, mut to) = (0, None, [0.0; 3], [0.0; 3]);
+    for t in 0..ticks {
+        r.step(Some(&view));
+        for ev in &r.events[seen..] {
+            if let MobEvent::ThrowGift { from: f, to: o, .. } = ev {
+                if first.is_none() {
+                    first = Some(t);
+                    from = *f;
+                    to = *o;
+                }
+            }
+        }
+        seen = r.events.len();
+    }
+    (first, from, to)
+}
+
+#[test]
+fn hero_gift_is_thrown_toward_the_player_after_the_wait_vs_mob() {
+    if skip() {
+        return;
+    }
+    let (e, ex) = ecs_gift(900);
+    let (m, from, to) = mob_gift(900);
+    eprintln!("gift: ecs tick {e:?} x {ex}; mob tick {m:?} from {from:?} to {to:?}");
+    let (e, m) = (e.expect("the ECS villager throws no gift"), m.expect("the Mob villager throws no gift"));
+    assert!(e >= 600 && m >= 600, "the gift comes after the 600-tick wait: ecs {e}, mob {m}");
+    assert!(e.abs_diff(m) <= 3, "gift at tick {e} (ecs) against {m} (mob)");
+    assert_eq!(to, [3.5, 1.0, 0.5], "the Mob throws toward the player");
+    assert!(to[0] > from[0], "the Mob's throw goes toward the player");
+    // The ECS drop starts at the villager with no horizontal speed: its item must already lean toward the player.
+    assert!(ex > 1.0, "the ECS item is not thrown toward the player: x {ex}");
+}
