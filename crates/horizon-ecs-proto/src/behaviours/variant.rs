@@ -104,7 +104,7 @@ fn write_variant(w: &World, e: Entity, c: &mut Compound) {
 fn write_variant_int(w: &World, e: Entity, c: &mut Compound) {
     write_key("Variant", w, e, c);
     // A packed int (`Horse`: colour | markings << 8): the bits above the colour are the `Wide` component.
-    if let (Some(wide), Some(Tag::Int(i))) = (w.get::<super::spawn_draw::Wide>(e), c.get("Variant")) {
+    if let (Some(wide), Some(Tag::Int(i))) = (w.get::<super::spawn_draw::Wide>(e), c.get(&"Variant".into())) {
         let packed = *i | (wide.0 as i32);
         c.insert("Variant".into(), Tag::Int(packed));
     }

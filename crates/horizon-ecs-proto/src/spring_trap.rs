@@ -160,7 +160,8 @@ fn spring(w: &mut World, e: Entity, p: &'static Params) {
     let special = crate::effects::special_difficulty(w, e);
     ride_with(w, e, p, at, special, &mut r);
     for _ in 0..p.extra {
-        let Some(horse) = spawn(w, p.mount, at, seed_of(w, e)) else { continue };
+        let seed = seed_of(w, e);
+        let Some(horse) = spawn(w, p.mount, at, seed) else { continue };
         w.entity_mut(horse).insert(Tamed);
         guard(w, horse, p);
         ride_with(w, horse, p, at, special, &mut r);

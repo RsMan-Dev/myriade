@@ -3,6 +3,7 @@
 //! A player target is tossed by the host (`push_player`), with no resistance known here.
 use super::*;
 use crate::cow::{Resist, Vel};
+use crate::goals::Events;
 use crate::targeting::Who;
 
 #[derive(Clone, Copy, Debug)]

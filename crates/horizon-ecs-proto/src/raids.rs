@@ -254,7 +254,7 @@ fn equip_no_raid(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync
 pub fn finalize_raider(w: &mut World, e: Entity, reason: crate::spawn_reason::SpawnReason, r: &mut impl horizon_core::random::RandomSource) {
     use crate::spawn_reason::SpawnReason as Why;
     let bits = w.get::<crate::cow::SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
-    if bits & crate::cow::species::tag::RAIDER == 0 {
+    if bits & crate::cow::tag::RAIDER == 0 {
         return;
     }
     set_can_join_raid(w, e, !(reason == Why::Natural && w.get::<NoRaidWhenNatural>(e).is_some()));

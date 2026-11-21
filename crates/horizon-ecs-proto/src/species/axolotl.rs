@@ -45,6 +45,8 @@ static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
     ids: &[0, 1, 2, 3, 4],
     names: &[],
     traits: &[],
+    group_baby: None,
+    inherit: crate::rules::variant::Inherit::None,
 };
 
 /// `Axolotl.finalizeSpawn` (not a bucket): a new group draws two common variants (`Util.getRandom` over the four common ones, blue is the

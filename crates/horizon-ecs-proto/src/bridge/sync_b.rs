@@ -47,6 +47,7 @@ fn panda_gene(w: &World, e: Entity) -> Option<SyncValue> {
         panda_state::Gene::Lazy => 1,
         panda_state::Gene::Worried => 2,
         panda_state::Gene::Playful => 3,
+        panda_state::Gene::Brown => 4,
         panda_state::Gene::Weak => 5,
         panda_state::Gene::Aggressive => 6,
     };

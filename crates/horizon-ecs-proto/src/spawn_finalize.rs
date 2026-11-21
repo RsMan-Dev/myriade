@@ -41,10 +41,10 @@ pub struct Outcome {
     pub gear: Vec<(crate::goals::Slot, String)>,
 }
 
-/// The kind of a species from its class bits (`cow::species::tag`): the zombie's class, the ageing one, else `Mob`'s alone. The default
+/// The kind of a species from its class bits (`cow::tag`): the zombie's class, the ageing one, else `Mob`'s alone. The default
 /// gear is the species' own configuration, so it is `None` here.
 pub fn kind_of(w: &World, e: Entity) -> Finalize {
-    use crate::cow::species::tag;
+    use crate::cow::tag;
     let bits = w.get::<SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
     if bits & tag::ZOMBIE != 0 {
         Finalize::Zombie { jockey: "minecraft:chicken" }
@@ -165,7 +165,7 @@ fn finalize_class(
         }
         Finalize::Geared(kit) => {
             let mut put = Vec::new();
-            let ageing = kit.baby.is_none() && w.get::<SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & crate::cow::species::tag::AGEING != 0);
+            let ageing = kit.baby.is_none() && w.get::<SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & crate::cow::tag::AGEING != 0);
             let group = if ageing {
                 let (baby, g) = ageable_roll(group, r);
                 if baby {

@@ -220,7 +220,7 @@ fn can_start_dig(w: &mut World, e: Entity, c: &Ctx) -> bool {
 fn start_dig(w: &mut World, e: Entity, c: &Ctx) {
     transition(w, e, DIGGING);
     let p = c.get::<Params>();
-    let at = (now_of(w, e) as i64 + i64::from(p.seed_delay)) as i32;
+    let at = (now_of(w, e) as i64 + p.seed_delay as i64) as i32;
     if let Some(mut s) = w.get_mut::<State>(e) {
         s.seed_due = true;
         s.seed_at = at;

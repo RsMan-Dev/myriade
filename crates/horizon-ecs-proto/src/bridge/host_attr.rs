@@ -49,7 +49,7 @@ impl EcsWorld {
             let i = match list.0.iter().position(|x| x.0 == k) {
                 Some(i) => i,
                 None => {
-                    list.0.push((k, f64::NAN, Vec::new()));
+                    list.0.push((k.clone(), f64::NAN, Vec::new()));
                     list.0.len() - 1
                 }
             };
@@ -80,7 +80,7 @@ impl EcsWorld {
         edit(self.world_mut(), e, &k, |list| {
             match list.0.iter().position(|x| x.0 == k) {
                 Some(i) => list.0[i].1 = base,
-                None => list.0.push((k, base, Vec::new())),
+                None => list.0.push((k.clone(), base, Vec::new())),
             }
             true
         })

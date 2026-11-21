@@ -50,7 +50,7 @@ impl Params {
         caller_charge: 0.05,
         callee_charge: 0.05,
         clear_radius: 7.0,
-        finalize: Finalize::Zombie { jockey: "minecraft:chicken", gear: None },
+        finalize: Finalize::Zombie { jockey: "minecraft:chicken" },
     };
     /// `ZombifiedPiglin.randomizeReinforcementsChance` sets the base to 0 and draws nothing.
     pub const PIGLIN: Self = Self { spread: 0.0, ..Self::ZOMBIE };

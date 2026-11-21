@@ -36,7 +36,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     w.entity_mut(e).insert(Harness { item });
     crate::give_item::take_from_hand(w, i);
     let at = w.get::<crate::cow::Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
-    w.resource_mut::<crate::cow::Events>().host.sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
+    w.resource_mut::<crate::goals::Events>().host.sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
     true
 }
 /// `Mob.attemptToShearEquipment`: shears in hand take the harness off unless something rides (`canShearEquipment`). The harness is thrown out at
@@ -51,7 +51,7 @@ fn shear_harness(w: &mut World, e: Entity, i: &Interaction) -> bool {
     let at = w.get::<crate::cow::Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
     let half = w.get::<crate::cow::Body>(e).map_or(0.5, |b| f64::from(b.height) * 0.5);
     crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(h.item, 1)], [at[0], at[1] + half, at[2]]);
-    let ev = &mut w.resource_mut::<crate::cow::Events>().host;
+    let ev = &mut w.resource_mut::<crate::goals::Events>().host;
     ev.sound("minecraft:entity.happy_ghast.unequip", at, 1.0, 1.0);
     ev.game_event_by(e, "minecraft:shear", at, false, false, false);
     ev.held_worn(i.player, i.item, 1);

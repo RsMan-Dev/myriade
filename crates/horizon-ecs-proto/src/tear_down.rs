@@ -1,7 +1,7 @@
 //! A creature that crumbles: its death lasts `TICKS` ticks instead of 20 (`Creaking.tickDeath`: `deathTime > 45`), then it vanishes with
 //! no loot (`remove(DISCARDED)`) and the host shows the crumbling (`MiscEvent::Crumbled`). While it crumbles it takes nothing (its
 //! `DamageLink` window is shut for good) and its brain does not run (`brain_step` skips `Crumbling`). The deadline is on the wheel.
-use crate::cow::wheel;
+use crate::cow::after;
 use crate::damage_link::DamageLink;
 use crate::host_out_misc::MiscEvent;
 use bevy_ecs::prelude::*;
@@ -63,7 +63,7 @@ pub fn linger(w: &mut World, e: Entity) {
     for kind in kinds {
         crate::effects::remove(w, e, kind);
     }
-    wheel::after(w, e, FADE_TICKS, finish);
+    after(w, e, FADE_TICKS, finish);
 }
 
 /// `Mob.voice`: `name` at the entity's place with a pitch drawn from its own stream; nothing is heard while it is `Silent`.
@@ -87,7 +87,7 @@ pub fn start(w: &mut World, e: Entity, sound: &'static str) {
     if let (Some(id), Some(p)) = (crate::bridge::ids::id_of(w, e), w.get::<crate::cow::Pos>(e).map(|p| p.0)) {
         w.resource_mut::<crate::goals::Events>().host.death_animation(id, [p.x, p.y, p.z]);
     }
-    wheel::after(w, e, TICKS, finish);
+    after(w, e, TICKS, finish);
 }
 
 /// `LivingEntity.tickDeath`'s `broadcastEntityEvent(60)`: the smoke of `e` about its box, told to the host before `e` goes.

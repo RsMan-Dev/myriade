@@ -3,6 +3,7 @@
 //! is used up; a bucket of `bucket_tag` comes back as `bucket_back` (not in creative). A baby, a wild one and one at full health refuse.
 //! Not done: the bucket goes to the player through `held_given` (the jar puts it in the hand slot when the stack empties).
 use crate::cow::*;
+use crate::goals::Events;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;

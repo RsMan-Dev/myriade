@@ -5,6 +5,7 @@
 //! (`canExplode`, `primeTime`), the bucket pickup, the eating sound of the baby (the jar has `playEatingSound`, its event is not read here).
 use crate::behaviours::swallow_hold::{hold, release, Held, SearchAfter};
 use crate::cow::*;
+use crate::goals::Events;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;

@@ -147,4 +147,6 @@ pub static DEF: Def = Def {
     lost_horn: None,
     llama_strength: false,
     not_in_peaceful: true,
+    variant: None,
+    draws: None,
 };

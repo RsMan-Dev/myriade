@@ -3,6 +3,7 @@
 //! The cooldown is a deadline on the entity's own clock (`Cooldown`), not a counter that ticks. Not done: `setPersistenceRequired` on the copy
 //! (the persistence flag is not read here), the sound's source (neutral).
 use crate::cow::*;
+use crate::goals::Events;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
 
@@ -36,7 +37,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
     let seed = w.get_mut::<Rng>(e).unwrap().next_u32() as u64;
     let copy = crate::cow::spawn_like(w, e, at.x, at.z, seed);
-    if let Some(q) = w.get_mut::<Pos>(copy) {
+    if let Some(mut q) = w.get_mut::<Pos>(copy) {
         q.0 = at;
     }
     let until = now + p.cooldown;

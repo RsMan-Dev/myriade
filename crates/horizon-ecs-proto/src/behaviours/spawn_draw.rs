@@ -77,7 +77,7 @@ pub struct Draws {
 /// `AbstractCubeMob.setSpawnSize` after `AgeableMob.finalizeSpawn` (the group of a fresh spawn makes no baby): `1 << nextInt(3)`, one more
 /// power when it is under 2 and `nextFloat() < 0.5 * special` (slime, magma cube).
 pub static SPAWN_SIZE: Draws = Draws {
-    group: Some(Group::Ageable { should_baby: false, size: 0, chance: BABY_CHANCE }),
+    group: Some(Group::Ageable { should_baby: false, size: 0, chance: BABY_CHANCE, variant: None }),
     list: &[Draw {
         when: When::After,
         kind: Kind::Plain(Roll::Pow2(&Roll::Grow { bound: 3, below: 2, chance: 0.5 })),
