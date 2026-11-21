@@ -188,6 +188,7 @@ pub struct NeedsPath;
 
 /// The walk of the cow is over (path done, blocked, or none found): `path_ended` arms its next stroll attempt.
 #[derive(Component, Clone, Copy, Debug)]
+#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct PathEnded;
 
 /// The cow follows a path: `follow` and `move_control` visit only these.
