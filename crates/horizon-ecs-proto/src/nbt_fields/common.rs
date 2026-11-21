@@ -35,17 +35,43 @@ pub const CREATORS: &[Field] = &[
 
 /// The free keys of common state whose default is the game's: loaded equal to it, they are dropped (`drop_default`).
 pub const DEFAULTS: &[(&str, fn() -> Tag)] = &[
+    ("Rotation", zero_rotation),
     ("OnGround", zero_byte),
     ("Invulnerable", zero_byte),
-    ("NoGravity", zero_byte),
-    ("LeftHanded", zero_byte),
-    ("CanPickUpLoot", zero_byte),
-    ("Glowing", zero_byte),
     ("PortalCooldown", zero_int),
     ("fall_distance", zero_double),
     ("AbsorptionAmount", zero_float),
 ];
 
+/// What a living creature's save writes when its state is at the game's default (`LivingEntity` and `Mob.addAdditionalSaveData` write these
+/// whatever their value): written only when no field of the entity gave the key. `NoGravity`, `Glowing` and `TicksFrozen` are not here:
+/// `Entity.saveWithoutId` writes them only when set.
+pub const LIVING_DEFAULTS: &[(&str, fn() -> Tag)] = &[
+    ("Fire", zero_short),
+    ("DeathTime", zero_short),
+    ("HurtTime", zero_short),
+    ("FallFlying", zero_byte),
+    ("current_impulse_context_reset_grace_time", zero_int),
+    ("attributes", empty_list),
+    ("Brain", empty_brain),
+];
+
+/// What a `Mob` (a creature with goals) writes on top: `Mob.addAdditionalSaveData`.
+pub const MOB_DEFAULTS: &[(&str, fn() -> Tag)] = &[("LeftHanded", zero_byte), ("CanPickUpLoot", zero_byte), ("PersistenceRequired", zero_byte)];
+
+fn zero_rotation() -> Tag {
+    Tag::List(vec![Tag::Float(0.0f32.to_bits()), Tag::Float(0.0f32.to_bits())])
+}
+
+fn zero_short() -> Tag {
+    Tag::Short(0)
+}
+fn empty_list() -> Tag {
+    Tag::List(Vec::new())
+}
+fn empty_brain() -> Tag {
+    Tag::compound([("memories", Tag::Compound(Default::default()))])
+}
 fn zero_byte() -> Tag {
     Tag::Byte(0)
 }
@@ -59,9 +85,17 @@ fn zero_float() -> Tag {
     Tag::Float(0.0f32.to_bits())
 }
 
-/// True when `key` has a default in `DEFAULTS` and `t` equals it: the free key is then not kept.
+/// True when `key` has a default in `DEFAULTS` and `t` equals it.
 pub fn drop_default(key: &str, t: &Tag) -> bool {
     DEFAULTS.iter().any(|(k, d)| *k == key && d() == *t)
+}
+
+/// True when `key` has a default that `e` writes (`DEFAULTS`, and the tables of a living creature or a mob when it is one) and `t` equals it:
+/// the free key is then not kept, the save writes it again.
+pub fn drop_default_of(w: &World, e: Entity, key: &str, t: &Tag) -> bool {
+    let living = w.get::<crate::cow::Health>(e).is_some().then_some(LIVING_DEFAULTS);
+    let mob = w.get::<crate::goals::GoalSet>(e).is_some().then_some(MOB_DEFAULTS);
+    DEFAULTS.iter().chain(living.into_iter().flatten()).chain(mob.into_iter().flatten()).any(|(k, d)| *k == key && d() == *t)
 }
 
 fn is_byte(t: &Tag) -> bool {
@@ -97,7 +131,7 @@ fn read_fire(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 fn write_frozen(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(f) = w.get::<Frozen>(e) {
+    if let Some(f) = w.get::<Frozen>(e).filter(|f| f.0 > 0) {
         c.insert("TicksFrozen".into(), Tag::Int(f.0));
     }
 }
@@ -203,7 +237,7 @@ fn read_home_radius(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `HurtTime`: the ticks of invulnerability left (a short): `HurtAt` gives 10 from its tick. Zero leaves `HurtAt` as it is.
 fn write_hurt_time(w: &World, e: Entity, c: &mut Compound) {
-    let Some(h) = w.get::<HurtAt>(e) else { return };
+    let Some(h) = w.get::<HurtAt>(e).filter(|h| h.at != 0 || h.last != 0.0) else { return };
     let left = (h.at + 10).saturating_sub(now_of(w, e));
     c.insert("HurtTime".into(), Tag::Short(i16::try_from(left).unwrap_or(i16::MAX)));
 }

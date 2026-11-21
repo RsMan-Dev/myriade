@@ -61,7 +61,7 @@ pub struct Mount {
     /// The second seat and the following ones (`seats.len()` in all): never steer.
     pub passenger: Option<Who>,
     pub input: RiderInput,
-    /// `AbstractHorse`'s jump strength (the attribute), and the highest temper (`getMaxTemper`).
+    /// `AbstractHorse`'s jump strength (the attribute), and the highest temper (`getMaxTemper`): 0 for a mount that is not an `AbstractHorse`.
     pub jump_strength: f32,
     pub max_temper: i32,
     /// `AbstractHorse.getTemper`, between 0 and `max_temper`.
@@ -81,7 +81,7 @@ pub struct Mount {
 }
 impl Default for Mount {
     fn default() -> Self {
-        Self { rider: None, passenger: None, input: RiderInput::default(), jump_strength: 0.7, max_temper: 100, temper: 0, saddled: false, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, ready_at: 0, rider_ranged: false, by_player: true }
+        Self { rider: None, passenger: None, input: RiderInput::default(), jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, ready_at: 0, rider_ranged: false, by_player: true }
     }
 }
 /// The stick of a pig or strider was used: the boost runs (`elapsed` of `total` own ticks).
@@ -112,9 +112,9 @@ pub struct RideParams {
 impl RideParams {
     pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, by_player: true };
     /// A creature that only carries creatures (the spider, the chicken).
-    pub const CARRIER: Self = Self { by_player: false, ..Self::HORSE };
-    pub const PIG: Self = Self { steer: Steer::PIG, ..Self::HORSE };
-    pub const STRIDER: Self = Self { steer: Steer::STRIDER, ..Self::HORSE };
+    pub const CARRIER: Self = Self { by_player: false, max_temper: 0, ..Self::HORSE };
+    pub const PIG: Self = Self { steer: Steer::PIG, max_temper: 0, ..Self::HORSE };
+    pub const STRIDER: Self = Self { steer: Steer::STRIDER, max_temper: 0, ..Self::HORSE };
     /// `Camel`: two seats (`camel.rs:258-281`: the first 0,5 ahead, the second 0,7 behind).
     pub const CAMEL: Self = Self { steer: Steer::CAMEL, seats: &[0.5, -0.7], ..Self::HORSE };
 }

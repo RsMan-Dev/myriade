@@ -61,11 +61,11 @@ fn a_vex_saves_its_ticks_left_as_an_int_and_a_read_restores_its_span_and_refuses
 #[test]
 fn a_horse_saves_its_temper_as_an_int_and_refuses_a_byte() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
-    let horse = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:horse"), Saved, Mount { temper: 17, ..Mount::default() })).id();
+    let horse = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:horse"), Saved, Mount { temper: 17, max_temper: 100, ..Mount::default() })).id();
     assert_eq!(nbt::get(&h.world, horse, "Temper"), Some(Tag::Int(17)));
 
     let c = nbt::save(&h.world, horse).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:horse"), Saved, Mount::default())).id();
+    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:horse"), Saved, Mount { max_temper: 100, ..Mount::default() })).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert_eq!(h.world.get::<Mount>(twin).map(|m| m.temper), Some(17));
     assert_eq!(nbt::save(&h.world, twin), Some(c));

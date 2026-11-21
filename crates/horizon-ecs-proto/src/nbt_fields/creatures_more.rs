@@ -57,14 +57,14 @@ fn read_sheared(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `Temper`: the horse's temper, an int, as `Mount.temper`.
 fn write_temper(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(m) = w.get::<Mount>(e) {
+    if let Some(m) = w.get::<Mount>(e).filter(|m| m.max_temper > 0) {
         c.insert("Temper".into(), Tag::Int(m.temper));
     }
 }
 
 fn read_temper(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
-    let Some(mut m) = w.get_mut::<Mount>(e) else { return false };
+    let Some(mut m) = w.get_mut::<Mount>(e).filter(|m| m.max_temper > 0) else { return false };
     m.temper = *v;
     true
 }

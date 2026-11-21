@@ -184,6 +184,11 @@ pub fn mob_kind(name: &str) -> Arc<horizon_client_lib::mobs::MobType> {
     Arc::new(TYPES.get().expect("a level was built").types.get(name).unwrap_or_else(|| panic!("no MobType {name}")).clone())
 }
 
+/// Whether the identifier has a `MobType` (a creature Horizon simulates as a `Mob`).
+pub fn has_mob_kind(name: &str) -> bool {
+    TYPES.get().is_some_and(|t| t.types.contains_key(name))
+}
+
 /// Whether the species is a monster (`MobType.category`); an entity that is not a `Mob` has no type and is not one.
 pub fn is_monster(name: &str) -> bool {
     TYPES.get().expect("a level was built").types.get(name).is_some_and(|k| k.category == "monster")

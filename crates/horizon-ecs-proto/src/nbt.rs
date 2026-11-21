@@ -217,6 +217,16 @@ pub fn save(w: &World, e: Entity) -> Option<Compound> {
             c.insert(key.into(), default());
         }
     }
+    for (present, table) in [(w.get::<crate::cow::Health>(e).is_some(), crate::nbt_fields::common::LIVING_DEFAULTS), (w.get::<crate::goals::GoalSet>(e).is_some(), crate::nbt_fields::common::MOB_DEFAULTS)] {
+        if !present {
+            continue;
+        }
+        for &(key, default) in table {
+            if c.get(&JavaString::from(key)).is_none() {
+                c.insert(key.into(), default());
+            }
+        }
+    }
     Some(c)
 }
 
@@ -261,7 +271,7 @@ fn distribute(w: &mut World, e: Entity, c: &Compound) -> (usize, Vec<String>) {
         .iter()
         .filter(|(k, v)| {
             let key = k.to_string_lossy();
-            !taken.contains(&key) && !crate::nbt_fields::common::drop_default(&key, v)
+            !taken.contains(&key) && !crate::nbt_fields::common::drop_default_of(w, e, &key, v)
         })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
@@ -649,6 +659,11 @@ pub fn mark_saved(w: &mut World, e: Entity, id: &str) {
     if is_saved(w, id) {
         w.entity_mut(e).insert(Saved);
     }
+}
+
+/// Every declared identifier with its recipe, in identifier order.
+pub fn recipes(w: &World) -> Vec<(String, Recipe)> {
+    w.get_resource::<EntityTypes>().map_or_else(Vec::new, |t| t.0.iter().map(|(k, r)| (k.clone(), *r)).collect())
 }
 
 /// Whether `id` is declared.
