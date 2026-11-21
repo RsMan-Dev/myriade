@@ -7,11 +7,11 @@ use horizon_core::{
     nbt::{Compound, JavaString, Tag},
 };
 use horizon_ecs_proto::{
-    cow::{spawn_species, species_table, Herd, Pos},
+    cow::{spawn_species, species_table, Herd, Pos, TypeName},
     hanging::{Attached, Frame},
     minecart::{Furnace, Fuse},
     mount::{ride, Mount, Riding},
-    nbt::{self, accept, Field, Kind, NbtData, Saved},
+    nbt::{self, accept, Field, NbtData, Saved},
     stand::{DisabledSlots, Pose, Stand, DEFAULT_POSE, MARKER, NO_BASE_PLATE, SHOW_ARMS, SMALL},
     targeting::Who,
 };
@@ -34,7 +34,7 @@ fn an_armor_stand_saves_its_flags_pose_and_slots_as_the_jar_does_and_reads_them_
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let mut pose = DEFAULT_POSE;
     pose[0] = [10.0, 0.0, 0.0];
-    let stand = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), Kind("minecraft:armor_stand".into()), Saved, Stand { flags: SMALL | SHOW_ARMS | MARKER }, Pose(Box::new(pose)), DisabledSlots(5))).id();
+    let stand = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:armor_stand"), Saved, Stand { flags: SMALL | SHOW_ARMS | MARKER }, Pose(Box::new(pose)), DisabledSlots(5))).id();
     assert_eq!(nbt::get(&h.world, stand, "Small"), Some(Tag::Byte(1)));
     assert_eq!(nbt::get(&h.world, stand, "ShowArms"), Some(Tag::Byte(1)));
     assert_eq!(nbt::get(&h.world, stand, "NoBasePlate"), Some(Tag::Byte(0)));
@@ -45,7 +45,7 @@ fn an_armor_stand_saves_its_flags_pose_and_slots_as_the_jar_does_and_reads_them_
     assert_eq!(parts.get(&key("Head")), Some(&Tag::List(vec![float(10.0), float(0.0), float(0.0)])));
 
     let c = nbt::save(&h.world, stand).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), Kind("minecraft:armor_stand".into()), Saved, Stand::default(), Pose(Box::new(DEFAULT_POSE)), DisabledSlots(0))).id();
+    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:armor_stand"), Saved, Stand::default(), Pose(Box::new(DEFAULT_POSE)), DisabledSlots(0))).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert_eq!(nbt::save(&h.world, twin), Some(c.clone()));
     assert_eq!(h.world.get::<Stand>(twin).copied(), Some(Stand { flags: SMALL | SHOW_ARMS | MARKER }));
@@ -60,13 +60,13 @@ fn an_armor_stand_saves_its_flags_pose_and_slots_as_the_jar_does_and_reads_them_
 #[test]
 fn a_frame_saves_facing_block_and_rotation_and_refuses_a_bad_facing() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
-    let frame = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), Kind("minecraft:item_frame".into()), Saved, Frame { rotation: 3, item: None }, Attached { pos: [1, 64, -2], face: 2 })).id();
+    let frame = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Frame { rotation: 3, item: None }, Attached { pos: [1, 64, -2], face: 2 })).id();
     assert_eq!(nbt::get(&h.world, frame, "Facing"), Some(Tag::Byte(2)));
     assert_eq!(nbt::get(&h.world, frame, "block_pos"), Some(Tag::IntArray(vec![1, 64, -2])));
     assert_eq!(nbt::get(&h.world, frame, "ItemRotation"), Some(Tag::Byte(3)));
 
     let c = nbt::save(&h.world, frame).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), Kind("minecraft:item_frame".into()), Saved, Frame { rotation: 0, item: None }, Attached { pos: [0, 0, 0], face: 0 })).id();
+    let twin = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Frame { rotation: 0, item: None }, Attached { pos: [0, 0, 0], face: 0 })).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert_eq!(nbt::save(&h.world, twin), Some(c.clone()));
 
@@ -79,14 +79,14 @@ fn a_frame_saves_facing_block_and_rotation_and_refuses_a_bad_facing() {
 #[test]
 fn a_furnace_and_a_tnt_cart_save_their_keys_and_refuse_a_wrong_type() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
-    let furnace = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), Kind("minecraft:furnace_minecart".into()), Saved, Furnace { fuel: 4, push: Vec3::new(0.25, 0.0, -0.5) }, Fuse(40))).id();
+    let furnace = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), TypeName("minecraft:furnace_minecart"), Saved, Furnace { fuel: 4, push: Vec3::new(0.25, 0.0, -0.5) }, Fuse(40))).id();
     assert_eq!(nbt::get(&h.world, furnace, "PushX"), Some(double(0.25)));
     assert_eq!(nbt::get(&h.world, furnace, "PushZ"), Some(double(-0.5)));
     assert_eq!(nbt::get(&h.world, furnace, "Fuel"), Some(Tag::Short(4)));
     assert_eq!(nbt::get(&h.world, furnace, "fuse"), Some(Tag::Int(40)));
 
     let c = nbt::save(&h.world, furnace).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), Kind("minecraft:furnace_minecart".into()), Saved, Furnace { fuel: 0, push: Vec3::new(0.0, 0.0, 0.0) }, Fuse(0))).id();
+    let twin = h.world.spawn((Pos(Vec3::new(0.5, 1.0, 0.5)), TypeName("minecraft:furnace_minecart"), Saved, Furnace { fuel: 0, push: Vec3::new(0.0, 0.0, 0.0) }, Fuse(0))).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert_eq!(nbt::save(&h.world, twin), Some(c.clone()));
 
@@ -203,33 +203,23 @@ fn a_common_key_at_its_default_is_not_kept_free() {
 }
 
 #[test]
-fn an_id_no_species_declares_is_kept_whole_and_makes_no_entity() {
+fn an_id_no_species_declares_is_flagged_outside_the_window_and_not_kept() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let cow = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let e = spawn_species(&mut h.world, &cow, 0.5, 0.5, 1);
     let mut c = nbt::save(&h.world, e).expect("saved");
     c.insert(key("id"), Tag::String(JavaString::from("minecraft:not_a_species")));
 
-    nbt::begin_declarations(&mut h.world);
     assert!(nbt::restore(&mut h.world, &c).is_none());
     assert_eq!(h.world.query_filtered::<Entity, With<Saved>>().iter(&h.world).count(), 1, "only the cow exists");
-    let mut kept = Vec::new();
-    nbt::save_pending(&h.world, |p| kept.push(p.clone()));
-    assert_eq!(kept, vec![c.clone()], "the NBT as read, whole");
+    assert!(nbt::has_unknown(&h.world, 0, 0), "the chunk is flagged");
+    assert_eq!(nbt::keep_unknown(&mut h.world, 0, 0, std::iter::once(c.clone())), vec![c.clone()], "the NBT read back, whole");
 
-    nbt::flush_pending(&mut h.world);
-    let mut still = 0;
-    nbt::save_pending(&h.world, |_| still += 1);
-    assert_eq!(still, 1, "an id still declared by no species stays pending");
-
-    let dropped = nbt::end_declarations(&mut h.world);
-    assert_eq!(dropped.get("minecraft:not_a_species"), Some(&1), "the one compound is dropped and counted");
-    let mut left = 0;
-    nbt::save_pending(&h.world, |_| left += 1);
-    assert_eq!(left, 0, "nothing kept after the window");
-    assert!(nbt::restore(&mut h.world, &c).is_none());
-    nbt::save_pending(&h.world, |_| left += 1);
-    assert_eq!(left, 0, "an unknown id after the window keeps nothing");
+    let marked = nbt::declare(&mut h.world, "minecraft:not_a_species", nbt::Recipe { saved: true, build: nbt::Build::With(refused) });
+    assert_eq!(marked, vec![(0, 0)], "the declaration outside the window names the flagged chunk to reread");
+    assert!(nbt::keep_unknown(&mut h.world, 0, 0, std::iter::once(c.clone())).is_empty(), "declared now, not kept");
+    nbt::forget_chunk(&mut h.world, 0, 0);
+    assert!(!nbt::has_unknown(&h.world, 0, 0), "the flag goes with the chunk");
 }
 
 #[test]
@@ -250,13 +240,13 @@ fn refused(_: &mut World, _: Vec3, _: &Compound) -> Option<Entity> {
 }
 
 #[test]
-fn a_registered_builder_makes_the_entity_and_the_keys_load_on_it() {
+fn a_declared_builder_makes_the_entity_and_the_keys_load_on_it() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let cow = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let e = spawn_species(&mut h.world, &cow, 0.5, 0.5, 1);
     let mut c = nbt::save(&h.world, e).expect("saved");
     c.insert(key("OnGround"), Tag::Byte(1));
-    nbt::register_builder(&mut h.world, "minecraft:cow", built);
+    nbt::declare(&mut h.world, "minecraft:cow", nbt::Recipe { saved: true, build: nbt::Build::With(built) });
 
     let back = nbt::restore(&mut h.world, &c).expect("the builder's entity");
     assert!(h.world.get::<Saved>(back).is_some());
@@ -265,49 +255,34 @@ fn a_registered_builder_makes_the_entity_and_the_keys_load_on_it() {
 }
 
 #[test]
-fn a_builder_that_makes_nothing_leaves_the_compound_pending() {
+fn a_builder_that_makes_nothing_in_the_window_keeps_the_compound_until_the_window_closes() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let cow = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let e = spawn_species(&mut h.world, &cow, 0.5, 0.5, 1);
     let c = nbt::save(&h.world, e).expect("saved");
-    nbt::register_builder(&mut h.world, "minecraft:cow", refused);
-
     nbt::begin_declarations(&mut h.world);
+    nbt::declare(&mut h.world, "minecraft:cow", nbt::Recipe { saved: true, build: nbt::Build::With(refused) });
     assert!(nbt::restore(&mut h.world, &c).is_none());
     assert_eq!(h.world.query_filtered::<Entity, With<Saved>>().iter(&h.world).count(), 1, "only the cow exists");
-    let mut kept = Vec::new();
-    nbt::save_pending(&h.world, |p| kept.push(p.clone()));
-    assert_eq!(kept, vec![c], "the compound kept whole");
+    assert!(!nbt::has_unknown(&h.world, 0, 0), "in the window nothing is flagged yet");
+
+    nbt::end_declarations(&mut h.world);
+    assert!(nbt::has_unknown(&h.world, 0, 0), "the window closed with it pending: its chunk is flagged");
 }
 
 #[test]
-fn a_pending_compound_is_built_when_its_species_is_declared() {
-    let mut h = Herd::new(0, 1.0, true, false, 1);
-    let cow = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
-    let e = spawn_species(&mut h.world, &cow, 0.5, 0.5, 1);
-    let c = nbt::save(&h.world, e).expect("saved");
-    nbt::begin_declarations(&mut h.world);
-    nbt::register_builder(&mut h.world, "minecraft:cow", refused);
-    assert!(nbt::restore(&mut h.world, &c).is_none());
-
-    nbt::register_builder(&mut h.world, "minecraft:cow", built);
-    nbt::flush_pending(&mut h.world);
-    assert_eq!(h.world.query_filtered::<Entity, With<Saved>>().iter(&h.world).count(), 2, "the declaration built it");
-    let mut left = 0;
-    nbt::save_pending(&h.world, |_| left += 1);
-    assert_eq!(left, 0, "built, so no longer pending");
-}
-
-#[test]
-fn outside_the_window_an_unknown_id_is_refused_and_nothing_is_kept() {
+fn a_pending_compound_is_built_when_its_id_is_declared_in_the_window() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let cow = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let e = spawn_species(&mut h.world, &cow, 0.5, 0.5, 1);
     let mut c = nbt::save(&h.world, e).expect("saved");
     c.insert(key("id"), Tag::String(JavaString::from("minecraft:not_a_species")));
+    nbt::begin_declarations(&mut h.world);
     assert!(nbt::restore(&mut h.world, &c).is_none());
-    assert_eq!(h.world.query_filtered::<Entity, With<Saved>>().iter(&h.world).count(), 1, "only the cow exists");
-    let mut kept = 0;
-    nbt::save_pending(&h.world, |_| kept += 1);
-    assert_eq!(kept, 0, "no window, nothing kept");
+
+    let marked = nbt::declare(&mut h.world, "minecraft:not_a_species", nbt::Recipe { saved: true, build: nbt::Build::With(built) });
+    assert!(marked.is_empty(), "in the window nothing is flagged");
+    assert_eq!(h.world.query_filtered::<Entity, With<Saved>>().iter(&h.world).count(), 2, "the declaration built it");
+    nbt::end_declarations(&mut h.world);
+    assert!(!nbt::has_unknown(&h.world, 0, 0), "built, so nothing flagged");
 }

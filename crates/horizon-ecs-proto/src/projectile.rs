@@ -11,11 +11,14 @@ use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::arrows::{back_off, clip_block_hit};
 use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::collections::HashMap;
 
 /// What differs between the kinds of projectile: how they fall, slow down, end and hurt.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Flight {
+    /// The identifier the kind is saved under (`minecraft:arrow`...); a projectile carries no `TypeName`, so this is its id.
+    pub id: &'static str,
     /// The pull per tick (the arrow 0.05, the snowball 0.03), the factor of the velocity per tick (0.99).
     pub gravity: f64,
     pub inertia: f64,
@@ -104,32 +107,55 @@ pub enum Damage {
 /// `0.99F`, the way vanilla multiplies the velocity of a projectile.
 const INERTIA: f64 = 0.99_f32 as f64;
 impl Flight {
-    const BASE: Flight = Flight { gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing, wither: false, spit_end: false, bullet: false, blue: false };
-    pub const ARROW: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
+    const BASE: Flight = Flight { id: "", gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing, wither: false, spit_end: false, bullet: false, blue: false };
+    pub const ARROW: Flight = Flight { id: "minecraft:arrow", gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
     /// `SmallFireball`: 5 damage and fire for 5 seconds; no explosion.
-    pub const SMALL_FIREBALL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(5.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Ignite(100), ..Self::BASE };
+    pub const SMALL_FIREBALL: Flight = Flight { id: "minecraft:small_fireball", inertia: 0.95_f32 as f64, damage: Damage::Fixed(5.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Ignite(100), ..Self::BASE };
     /// `LargeFireball` of the explosion power `power`: 6 damage, then the explosion (with fire).
     pub const fn large_fireball(power: i32) -> Flight {
-        Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(6.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power, fire: true }, ..Self::BASE }
+        Flight { id: "minecraft:fireball", inertia: 0.95_f32 as f64, damage: Damage::Fixed(6.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power, fire: true }, ..Self::BASE }
     }
     /// `LlamaSpit`: 1 damage from a living owner, gravity 0.06; gone once its box is inside blocks, or in water.
-    pub const SPIT: Flight = Flight { gravity: 0.06, damage: Damage::Owned(1.0), spit_end: true, ..Self::BASE };
+    pub const SPIT: Flight = Flight { id: "minecraft:llama_spit", gravity: 0.06, damage: Damage::Owned(1.0), spit_end: true, ..Self::BASE };
     /// A thrown splash potion: gravity 0.05, no damage. Not done: what it splashes (the effects of its stack) where it breaks.
     /// `BreezeWindCharge`: straight flight at constant speed (inertia 1, no acceleration), one point of damage, a burst of radius 3.
-    pub const BREEZE_WIND_CHARGE: Flight = Flight { inertia: 1.0, damage: Damage::Fixed(1.0), size: 0.3125, order: Order::Hurting, accel: 0.0, hit: OnHit::WindBurst { radius: 3.0 }, ..Self::BASE };
-    pub const POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, hit: OnHit::Potion, ..Self::BASE };
-    pub const LINGERING_POTION: Flight = Flight { gravity: 0.05, order: Order::DragThenMove, hit: OnHit::LingeringPotion, ..Self::BASE };
+    pub const BREEZE_WIND_CHARGE: Flight = Flight { id: "minecraft:breeze_wind_charge", inertia: 1.0, damage: Damage::Fixed(1.0), size: 0.3125, order: Order::Hurting, accel: 0.0, hit: OnHit::WindBurst { radius: 3.0 }, ..Self::BASE };
+    /// The thrown potions are saved under their item's id (`entity_nbt.rs`, `throwable_to_nbt`): `minecraft:splash_potion`, `minecraft:lingering_potion`.
+    pub const POTION: Flight = Flight { id: "minecraft:splash_potion", gravity: 0.05, order: Order::DragThenMove, hit: OnHit::Potion, ..Self::BASE };
+    pub const LINGERING_POTION: Flight = Flight { id: "minecraft:lingering_potion", gravity: 0.05, order: Order::DragThenMove, hit: OnHit::LingeringPotion, ..Self::BASE };
     /// `ThrownTrident` as a mob throws it: gravity 0.05, `ceil(speed * 8)`; no pierce, no return (the item and the loyalty are not modelled).
-    pub const TRIDENT: Flight = Flight { gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
+    pub const TRIDENT: Flight = Flight { id: "minecraft:trident", gravity: 0.05, sticks: true, damage: Damage::BySpeed(8.0), size: 0.5, ..Self::BASE };
     /// `WitherSkull` (not dangerous): inertia 0.95, 8 damage, the wither effect on a hit, then a blast of power 1.
     pub const WITHER_SKULL: Flight = Self::wither_skull(false);
-    pub const SNOWBALL: Flight = Flight { gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
+    pub const SNOWBALL: Flight = Flight { id: "minecraft:snowball", gravity: 0.03, order: Order::DragThenMove, ..Self::BASE };
     /// `WitherSkull`: a blue (dangerous) skull keeps 0.73 of its speed a tick, the others 0.95; 8 damage, then a power 1 blast without fire.
     pub const fn wither_skull(dangerous: bool) -> Flight {
         let inertia = if dangerous { 0.73_f32 as f64 } else { 0.95_f32 as f64 };
-        Flight { inertia, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power: 1, fire: false }, wither: true, blue: dangerous, ..Self::BASE }
+        Flight { id: "minecraft:wither_skull", inertia, damage: Damage::Fixed(8.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Explode { power: 1, fire: false }, wither: true, blue: dangerous, ..Self::BASE }
     }
 }
+/// The identifiers of `KINDS` declared by a recipe of their own, not by `build`: a thrown trident (`trident.rs`).
+pub const UNSAVED: &[&str] = &["minecraft:trident"];
+/// Every projectile identifier with the `Flight` it is made from: `build` launches the kind of its saved `id`. A fireball comes back with
+/// explosion power 1 (no field saves its power).
+pub const KINDS: &[(&str, Flight)] = &[
+    ("minecraft:arrow", Flight::ARROW),
+    ("minecraft:small_fireball", Flight::SMALL_FIREBALL),
+    ("minecraft:fireball", Flight::large_fireball(1)),
+    ("minecraft:wither_skull", Flight::WITHER_SKULL),
+    ("minecraft:breeze_wind_charge", Flight::BREEZE_WIND_CHARGE),
+    ("minecraft:splash_potion", Flight::POTION),
+    ("minecraft:lingering_potion", Flight::LINGERING_POTION),
+    ("minecraft:snowball", Flight::SNOWBALL),
+    ("minecraft:trident", Flight::TRIDENT),
+    ("minecraft:llama_spit", Flight::SPIT),
+    ("minecraft:shulker_bullet", crate::species::shulker::SHOT.flight),
+    ("minecraft:egg", crate::projectile_more::EGG),
+    ("minecraft:ender_pearl", crate::projectile_more::ENDER_PEARL),
+    ("minecraft:experience_bottle", crate::projectile_more::EXPERIENCE_BOTTLE),
+    ("minecraft:dragon_fireball", crate::projectile_more::DRAGON_FIREBALL),
+    ("minecraft:wind_charge", crate::projectile_more::WIND_CHARGE),
+];
 /// The six steps a projectile or a path takes from a block, by direction: down, up, north, south, west, east (the 3D data order).
 pub const STEPS: [[i32; 3]; 6] = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 /// The projectile: whose it is, its age, whether it has left its owner's box, the ticks it spent stuck.
@@ -169,9 +195,18 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(stuck_wake.after(block_changes).before(crate::targeting::sight_eval));
     s.add_systems(fly.after(travel).before(reindex));
 }
-/// Launches a projectile at `at` with `velocity`, owned by `owner`.
+/// Launches a projectile at `at` with `velocity`, owned by `owner`; saved (`Saved`, in the same insert) when its identifier is.
 pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner: Option<Who>) -> Entity {
-    world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id()
+    let saved = crate::nbt::is_saved(world, flight.id).then_some(crate::nbt::Saved);
+    world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime, saved)).id()
+}
+/// The builder of every projectile identifier (`nbt::Builder`): the kind of its saved `id` in `KINDS`, launched at the saved `Pos` with no
+/// owner (the owner is not restored); the saved `Motion` is loaded on the entity by `restore`.
+pub fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    let Some(Tag::String(id)) = c.get(&JavaString::from("id")) else { return None };
+    let id = id.to_string_lossy();
+    let (_, flight) = KINDS.iter().find(|(k, _)| *k == id)?;
+    Some(launch(w, *flight, at, Vec3::ZERO, None))
 }
 fn bounds(at: Vec3, size: f64) -> Aabb {
     let w = size / 2.0;

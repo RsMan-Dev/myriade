@@ -3,7 +3,7 @@
 //! sauvegarde. Garde comme `leash_vs_mob.rs` (`HORIZON_SPECIES=minecraft:villager`, `REGISTER_ALL`, `HORIZON_TEST_RESOURCES`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_ecs_proto::nbt::{self, Kind};
+use horizon_ecs_proto::{cow::TypeName, nbt};
 use horizon_client_lib::{
     items::{ItemStack, Items},
     merchant::{self, MerchantOffer, Session, TradeEnv, Trades},
@@ -201,9 +201,9 @@ fn the_trade_fields_survive_a_save() {
     assert!(ecs_buy(&mut w, e, items, 0));
     trade_session::close(&mut w, e);
     nbt::register(&mut w, trade_offers::FIELDS);
-    w.entity_mut(e).insert(Kind("test".into()));
+    w.entity_mut(e).insert(TypeName("test"));
     let saved = nbt::save(&w, e).expect("an NBT");
-    let f = w.spawn((Merchant::new(false, 0, 0), Kind("test".into()))).id();
+    let f = w.spawn((Merchant::new(false, 0, 0), TypeName("test"))).id();
     nbt::load(&mut w, f, &saved);
     let read = &w.get::<Merchant>(f).unwrap().trade;
     let m = w.get::<Merchant>(e).unwrap();

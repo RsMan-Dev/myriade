@@ -579,10 +579,6 @@ pub fn build() -> Result<Registry, Error> {
 pub fn registry() -> &'static Registry {
     REGISTRY.get_or_init(|| build().unwrap_or_else(|e| panic!("species registry: {e}")))
 }
-/// Whether the species `name` is saved with its world (`Def.saved`): what a creation reads to pose `nbt::Saved` in its insert.
-pub fn saved(name: &str) -> bool {
-    registry().by_name(name).is_ok_and(|s| s.saved)
-}
 /// The configuration of a species by its type name; an unknown name is an error, not a default.
 pub fn config(name: &str) -> Config {
     registry().by_name(name).unwrap_or_else(|e| panic!("{e}")).config

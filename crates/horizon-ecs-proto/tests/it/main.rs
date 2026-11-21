@@ -11,6 +11,7 @@ mod nbt_common;
 mod nbt_creatures_more;
 mod nbt_rides;
 mod nbt_things;
+mod nbt_types;
 mod bow_vs_mob;
 mod brain_vs_mob;
 mod capabilities;

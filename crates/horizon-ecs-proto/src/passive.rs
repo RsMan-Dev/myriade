@@ -1,15 +1,20 @@
 //! Passive entities (`Display`, `Interaction`, `Marker`): no goal, no clock, no move, so no system visits them. The compound is kept
 //! as loaded (its free keys in `NbtData`): the ECS reads none of a display's settings. An interaction's box and answer (`Interact`) are
 //! declared keys (`FIELDS`). Saving writes the position and the fields Horizon's `addAdditionalSaveData` writes.
-use crate::cow::Pos;
-use crate::nbt::{owner, Field, Kind};
+use crate::cow::{Pos, TypeName};
+use crate::nbt::{owner, Field};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::borrow::Cow;
 
 pub use crate::species::lists::DISPLAYS;
-use crate::species::lists::{BLOCK_DISPLAY, INTERACTION, ITEM_DISPLAY, TEXT_DISPLAY};
+use crate::species::lists::{BLOCK_DISPLAY, INTERACTION, ITEM_DISPLAY, MARKER, TEXT_DISPLAY};
+
+/// The identifiers of the passive types, static as a `TypeName` is: what `herd` declares and `restore` makes.
+pub fn kinds() -> impl Iterator<Item = &'static str> {
+    DISPLAYS.into_iter().chain([INTERACTION, MARKER])
+}
 
 /// `Interaction.PlayerAction`: the player (four ints) and the game time of its last attack or use.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -262,12 +267,13 @@ fn display_fields(src: &Tag, kind: &str) -> Vec<(&'static str, Option<Tag>)> {
 
 /// A passive entity of `kind` at `at`, with the compound it is saved as (`id` is set when absent). The position asked for wins over the
 /// compound's `Pos`, as `place_summoned` snaps a summoned entity. An interaction starts with its box and answer at their defaults.
-pub fn spawn(w: &mut World, kind: &str, at: Vec3, mut tag: Tag) -> Entity {
+pub fn spawn(w: &mut World, kind: &'static str, at: Vec3, mut tag: Tag) -> Entity {
     if let Tag::Compound(c) = &mut tag {
         c.entry("id".into()).or_insert_with(|| Tag::String(kind.into()));
         c.remove(&JavaString::from("Pos"));
     }
-    let e = w.spawn((Pos(at), crate::goals::Uid(crate::goals::next_uid()), Kind(kind.into()), crate::nbt::Saved)).id();
+    let saved = crate::nbt::is_saved(w, kind).then_some(crate::nbt::Saved);
+    let e = w.spawn((Pos(at), crate::goals::Uid(crate::goals::next_uid()), TypeName(kind), saved)).id();
     if kind == INTERACTION {
         w.entity_mut(e).insert(Interact::default());
     } else if DISPLAYS.contains(&kind) {
