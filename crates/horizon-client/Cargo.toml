@@ -32,6 +32,7 @@ horizon-client-render = { path = "../horizon-client-render" }
 horizon-command = { path = "../horizon-command" }
 horizon-items = { path = "../horizon-items" }
 horizon-core = { path = "../horizon-core" }
+horizon-ecs-proto = { path = "../horizon-ecs-proto" }
 # OptiFine-format pack files: custom entity models, random entity textures.
 horizon-optifine = { path = "../horizon-optifine" }
 # The server thread ahead of the workers (MinecraftServer.spin's Thread.setPriority).

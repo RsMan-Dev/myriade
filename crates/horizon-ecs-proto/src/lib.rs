@@ -30,6 +30,7 @@ pub mod area;
 pub mod attributes;
 pub mod pathsearch;
 pub mod host_out;
+pub mod bridge;
 pub mod hostile;
 pub mod kernel_lab;
 pub mod locomotion;
