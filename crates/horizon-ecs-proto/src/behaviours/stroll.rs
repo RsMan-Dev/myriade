@@ -37,6 +37,24 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Locomotion],
     ..Module::DEFAULT
 };
+pub static MODULE_LOOK: Module = Module {
+    name: "stroll_look",
+    flags: MOVE | LOOK,
+    ends_with_path: true,
+    blocked: Some(blocked),
+    equip,
+    fired,
+    can_use,
+    start,
+    stop,
+    damaged,
+    requires: &[Cap::Locomotion, Cap::Head],
+    ..Module::DEFAULT
+};
+/// The module this entity's stroll entry uses: the guardian's `.looking()` stroll holds LOOK too, the same code otherwise.
+pub fn module_of(w: &World, e: Entity) -> &'static Module {
+    if w.get::<GoalSet>(e).is_some_and(|g| g.has(&MODULE_LOOK)) { &MODULE_LOOK } else { &MODULE }
+}
 /// `ai::after_hurt`: `noActionTime = 0`: the animal is active for 100 more ticks and its stroll attempt, if none is armed, is armed
 /// (the wait is drawn from a stream of its own: the animal's random belongs to its goals, which the hit must not shift).
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
@@ -74,7 +92,7 @@ pub fn trigger(w: &mut World, e: Entity) {
     let walking = s.walking;
     drop(s);
     if !walking {
-        wake(w, e, &MODULE);
+        wake(w, e, module_of(w, e));
     }
 }
 /// Arms the next attempt, unless one is armed.
@@ -84,7 +102,7 @@ pub fn arm_now(w: &mut World, e: Entity) {
         return;
     }
     let wait = with_rng(w, e, |r| idle_wait(r, s.interval));
-    arm_module(w, e, &MODULE, wait);
+    arm_module(w, e, module_of(w, e), wait);
     s.scheduled = true;
     *w.get_mut::<Stroll>(e).unwrap() = s;
 }
@@ -131,7 +149,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     *w.get_mut::<Stroll>(e).unwrap() = s;
     if !ok {
         if s.force {
-            wake(w, e, &MODULE);
+            wake(w, e, module_of(w, e));
         } else {
             arm_now(w, e);
         }
@@ -151,7 +169,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     });
     stop_nav(w, e);
     if s == Some(true) {
-        wake(w, e, &MODULE);
+        wake(w, e, module_of(w, e));
     } else {
         arm_now(w, e);
     }

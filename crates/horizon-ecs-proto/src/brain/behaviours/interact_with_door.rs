@@ -58,14 +58,17 @@ fn step(w: &World, e: Entity) -> Option<([i32; 3], [i32; 3])> {
 }
 
 /// The step counter of `try_start`: the same node asked again sets the cooldown; another node counts it down, and the step
-/// waits while it stays above 0. The counter moves whether or not the step is taken.
+/// waits while it stays above 0. The counter moves whether or not the step is taken; the node is recorded only when it is.
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let Some((_, to)) = step(w, e) else { return false };
     let p = c.get::<Params>();
     let Some(mut s) = w.get_mut::<DoorState>(e) else { return false };
     let (cooldown, taken) = rules::step_gate(s.last_node, to, s.cooldown, p.cooldown);
     s.cooldown = cooldown;
-    s.last_node = Some(to);
+    // The Mob records the node only when the step is taken (`last_node = next` follows the early return).
+    if taken {
+        s.last_node = Some(to);
+    }
     taken
 }
 

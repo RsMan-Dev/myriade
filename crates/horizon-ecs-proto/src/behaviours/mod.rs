@@ -433,6 +433,7 @@ pub static TABLE: &[&Module] = &[
     &ranged_crossbow::MODULE,
     &eat_block::MODULE,
     &stroll::MODULE,
+    &stroll::MODULE_LOOK,
     &avoid_entity::MODULE,
     &flee_sun::MODULE,
     &panda_sneeze::MODULE,

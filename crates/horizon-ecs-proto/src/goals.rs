@@ -1255,7 +1255,7 @@ fn of(w: &World, e: Entity, slot: u8) -> Option<(&'static Module, Inst)> {
 }
 fn timer_fired(w: &mut World, e: Entity, slot: u8) {
     // The kernel's own stroll timer (`Due::Stroll`) fires the animal's stroll goal, wherever it is in the list.
-    let slot = if slot == crate::behaviours::stroll::FIRED { slot_of(w, e, &crate::behaviours::stroll::MODULE).unwrap_or(u8::MAX) } else { slot };
+    let slot = if slot == crate::behaviours::stroll::FIRED { slot_of(w, e, crate::behaviours::stroll::module_of(w, e)).unwrap_or(u8::MAX) } else { slot };
     let Some((m, inst)) = of(w, e, slot) else { return };
     let go = { bp!("fired", m.name); (m.fired)(w, e, inst) };
     if go {

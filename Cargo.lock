@@ -2245,7 +2245,7 @@ dependencies = [
 name = "horizon-client-gameplay"
 version = "0.1.0"
 dependencies = [
- "glam",
+ "glam 0.30.10",
  "horizon-client-lib",
  "horizon-core",
  "horizon-world",

@@ -17,7 +17,7 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&guardian_beam::MODULE, 4, &guardian_beam::Params::GUARDIAN),
         Entry::new(&move_towards_restriction::MODULE, 5, &move_towards_restriction::Params::DEFAULT),
-        Entry::new(&stroll::MODULE, 7, &stroll::Params { interval: Some(80), ..stroll::Params::DEFAULT }),
+        Entry::new(&stroll::MODULE_LOOK, 7, &stroll::Params { interval: Some(80), ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         // `LookAtPlayerGoal(this, Guardian.class, 12.0F, 0.01F)`: one chance in a hundred, the guardians (the elder too) among themselves.
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 12.0, period: 100, species: &["minecraft:guardian", "minecraft:elder_guardian"] }),
