@@ -13,7 +13,7 @@ use crate::item::{drop_item, rearm_expiry, Item};
 use crate::nbt::{accept, owner, Field};
 use crate::ominous_spawner::{self, OminousSpawner};
 use crate::orb::{spawn_orb, Orb};
-use crate::projectile::Projectile;
+use crate::projectile::{Flight, OnHit, Order, Projectile};
 use crate::tnt::{spawn_primed, Primed};
 use crate::trident::{self, Pickup, Trident};
 use bevy_ecs::prelude::*;
@@ -38,6 +38,9 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("DealtDamage"), write: write_dealt, read: read_dealt, accepts: byte, owner: Some(owner::<Trident>) },
     Field { key: Cow::Borrowed("pickup"), write: write_pickup, read: read_pickup, accepts: byte, owner: Some(owner::<Trident>) },
     Field { key: Cow::Borrowed("item"), write: write_trident_item, read: read_trident_item, accepts: compound, owner: Some(owner::<Trident>) },
+    Field { key: Cow::Borrowed("ExplosionPower"), write: write_explosion_power, read: read_explosion_power, accepts: byte, owner: Some(owner::<Flight>) },
+    Field { key: Cow::Borrowed("acceleration_power"), write: write_acceleration, read: read_acceleration, accepts: double, owner: Some(owner::<Flight>) },
+    Field { key: Cow::Borrowed("dangerous"), write: write_dangerous, read: read_dangerous, accepts: byte, owner: Some(owner::<Flight>) },
     Field { key: Cow::Borrowed("LeftOwner"), write: write_left_owner, read: read_left_owner, accepts: byte, owner: Some(owner::<Projectile>) },
     Field { key: Cow::Borrowed("Life"), write: write_life, read: read_life, accepts: accept::int, owner: Some(owner::<Projectile>) },
     Field { key: Cow::Borrowed("ShotAtAngle"), write: write_angled, read: read_angled, accepts: byte, owner: Some(owner::<Rocket>) },
@@ -292,6 +295,65 @@ fn read_left_owner(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `Entity.age` of a projectile: the ticks in the air (`Life`).
+/// `LargeFireball`: the power of its blast is a byte (`putByte`), read back with `getByteOr(1)`. It lives in the `Flight` of the shot.
+fn is_large_fireball(f: &Flight) -> bool {
+    f.id == Flight::large_fireball(1).id
+}
+
+fn write_explosion_power(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(Flight { id, hit: OnHit::Explode { power, .. }, .. }) = w.get::<Flight>(e) {
+        if *id == Flight::large_fireball(1).id {
+            c.insert("ExplosionPower".into(), Tag::Byte(*power as i8));
+        }
+    }
+}
+
+fn read_explosion_power(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<Flight>(e) else { return false };
+    if !is_large_fireball(&f) {
+        return true;
+    }
+    if let OnHit::Explode { power, .. } = &mut f.hit {
+        *power = i32::from(*v);
+    }
+    true
+}
+
+/// `AbstractHurtingProjectile.accelerationPower` (a double): the fireballs and the wind charges, whose flight is the hurting one.
+fn write_acceleration(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<Flight>(e).filter(|f| f.order == Order::Hurting) {
+        c.insert("acceleration_power".into(), Tag::Double(f.accel.to_bits()));
+    }
+}
+
+fn read_acceleration(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Double(bits) = t else { return false };
+    let Some(mut f) = w.get_mut::<Flight>(e) else { return false };
+    if f.order == Order::Hurting {
+        f.accel = f64::from_bits(*bits);
+    }
+    true
+}
+
+/// `WitherSkull.dangerous` (a byte): the blue skull, which keeps 0.73 of its speed a tick instead of 0.95.
+fn write_dangerous(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<Flight>(e).filter(|f| f.wither) {
+        c.insert("dangerous".into(), Tag::Byte(i8::from(f.blue)));
+    }
+}
+
+fn read_dangerous(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<Flight>(e) else { return false };
+    if f.wither {
+        let blue = Flight::wither_skull(*v != 0);
+        f.blue = blue.blue;
+        f.inertia = blue.inertia;
+    }
+    true
+}
+
 fn write_life(w: &World, e: Entity, c: &mut Compound) {
     if let Some(p) = w.get::<Projectile>(e) {
         c.insert("Life".into(), Tag::Int(p.age.min(i32::MAX as u32) as i32));

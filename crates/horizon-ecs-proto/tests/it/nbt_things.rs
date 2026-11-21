@@ -163,3 +163,46 @@ fn a_projectile_saves_left_owner_only_when_set_and_restores_it() {
     let g = trident::throw(w, ItemStack::new("minecraft:trident", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, None, 0, Pickup::Allowed);
     assert!(at(&saved(w, g), "LeftOwner").is_none(), "an unset LeftOwner is not written");
 }
+
+#[test]
+fn a_large_fireball_keeps_its_explosion_power_as_a_byte_through_a_save_and_a_restore() {
+    use horizon_ecs_proto::projectile::{launch, Flight, OnHit};
+    let mut h = Herd::with_slab(2, false, false);
+    let e = launch(&mut h.world, Flight::large_fireball(4), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, None);
+    let c = saved(&h.world, e);
+    assert_eq!(at(&c, "ExplosionPower"), Some(Tag::Byte(4)), "`LargeFireball.addAdditionalSaveData` puts a byte");
+
+    let mut b = Herd::with_slab(2, false, false);
+    let r = nbt::restore(&mut b.world, &c).expect("a declared, saved type");
+    let flight = *b.world.get::<Flight>(r).expect("a flight");
+    assert!(matches!(flight.hit, OnHit::Explode { power: 4, fire: true }), "the power comes back, not 1: {:?}", flight.hit);
+    assert_eq!(nbt::save(&b.world, r).as_ref(), Some(&c));
+
+    let mut absent = c.clone();
+    absent.remove(&JavaString::from("ExplosionPower"));
+    let d = nbt::restore(&mut b.world, &absent).expect("restored");
+    assert!(matches!(b.world.get::<Flight>(d).unwrap().hit, OnHit::Explode { power: 1, .. }), "`getByteOr(1)` when absent");
+    let wither = launch(&mut h.world, Flight::wither_skull(false), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, None);
+    assert!(at(&saved(&h.world, wither), "ExplosionPower").is_none(), "only the large fireball writes it");
+}
+
+#[test]
+fn a_wither_skull_keeps_dangerous_and_a_hurting_projectile_its_acceleration() {
+    use horizon_ecs_proto::projectile::{launch, Flight};
+    let mut h = Herd::with_slab(2, false, false);
+    let at_pos = Vec3::new(0.5, 1.0, 0.5);
+    let blue = launch(&mut h.world, Flight::wither_skull(true), at_pos, Vec3::ZERO, None);
+    let c = saved(&h.world, blue);
+    assert_eq!(at(&c, "dangerous"), Some(Tag::Byte(1)));
+    assert_eq!(at(&c, "acceleration_power"), Some(Tag::Double(0.1f64.to_bits())));
+    let mut b = Herd::with_slab(2, false, false);
+    let r = nbt::restore(&mut b.world, &c).expect("restored");
+    let f = *b.world.get::<Flight>(r).unwrap();
+    assert!(f.blue, "a blue skull stays blue");
+    assert_eq!(f.inertia, Flight::wither_skull(true).inertia, "and keeps its 0.73");
+    assert_eq!(nbt::save(&b.world, r).as_ref(), Some(&c));
+
+    let arrow = launch(&mut h.world, Flight::ARROW, at_pos, Vec3::ZERO, None);
+    let c = saved(&h.world, arrow);
+    assert!(at(&c, "dangerous").is_none() && at(&c, "acceleration_power").is_none(), "an arrow has neither");
+}

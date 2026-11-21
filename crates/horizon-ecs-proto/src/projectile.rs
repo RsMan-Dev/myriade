@@ -137,7 +137,7 @@ impl Flight {
 /// The identifiers of `KINDS` declared by a recipe of their own, not by `build`: a thrown trident (`trident.rs`).
 pub const UNSAVED: &[&str] = &[crate::species::lists::TRIDENT];
 /// Every projectile identifier with the `Flight` it is made from: `build` launches the kind of its saved `id`. A fireball comes back with
-/// explosion power 1 (no field saves its power).
+/// the explosion power its `ExplosionPower` field saves (1 when absent).
 pub const KINDS: &[(&str, Flight)] = &[
     ("minecraft:arrow", Flight::ARROW),
     ("minecraft:small_fireball", Flight::SMALL_FIREBALL),
