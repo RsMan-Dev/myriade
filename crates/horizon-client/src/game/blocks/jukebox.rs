@@ -477,7 +477,7 @@ impl Game<'_> {
             let playing = matches!(self.world.block_entities.get(&k), Some(BlockEntity::Jukebox(j)) if j.playing);
             if !keeps_song(
                 self.audio.engine.is_active(id),
-                self.remote.is_some(),
+                false,
                 playing,
             ) {
                 self.audio.stop_and_release(id);

@@ -93,9 +93,6 @@ impl Game<'_> {
     /// cactus its box is in takes a point off its 5 health
     /// (`ExperienceOrb.hurtServer`, no event). True when that destroyed it.
     pub(super) fn orb_cactus_hits(&mut self, i: usize) -> bool {
-        if self.remote.is_some() {
-            return false;
-        }
         let bounds = self.orbs[i].bounds();
         let hits = cells_named(self, bounds, "minecraft:cactus").len();
         (0..hits).any(|_| self.orbs[i].hurt(1.0))

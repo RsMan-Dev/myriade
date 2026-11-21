@@ -25,7 +25,7 @@ fn a_client_mod_leaves_at_the_end_of_the_frame_with_its_reason() {
         let host: &mut dyn ClientHost = game;
         assert_eq!(host.disconnect(Some(kicked())), Ok(()));
         assert!(
-            game.remote.is_some(),
+            false,
             "still connected until the frame ends"
         );
         game.native_leave_if_asked().unwrap();

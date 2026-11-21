@@ -199,7 +199,7 @@ impl Game<'_> {
             // BlocksAttacks.hurtBlockingItem: the hit counts the blocking item
             // as used, before the blocked-damage gate (vanilla awards it on the
             // server even when the item blocks none of the damage).
-            if self.remote.is_none() {
+            {
                 self.award_stat("used", &stack.item, 1);
             }
             // ItemDamageFunction.apply (or what a native mod set, kept only for a hit

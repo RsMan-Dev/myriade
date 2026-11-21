@@ -604,9 +604,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_tags(&self, mob: &Mob) -> Option<Vec<String>> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(self.tags_of(super::commands::Target::Mob(mob.id)))
     }
 

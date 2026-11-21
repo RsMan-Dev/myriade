@@ -266,7 +266,7 @@ impl Game<'_> {
                 });
                 std::mem::take(&mut p.bubble_surfaces)
             });
-            if self.remote.is_none() {
+            {
                 for [x, y, z] in tops {
                     self.bubble_column_particles(BlockPos::new(x, y, z));
                 }
@@ -432,13 +432,6 @@ impl Game<'_> {
         self.shulker_push_player(lid.mover(), movement);
     }
 
-    /// [`Self::lid_push_local`] for this tick's shulker box lids.
-    pub(super) fn push_shulker_local(&mut self, pushes: Vec<ShulkerPush>) {
-        for (_, facing, lid) in pushes {
-            let (movement, area) = shulker_lid(facing, lid);
-            self.lid_push_local(Lid::Box, area, movement);
-        }
-    }
 
     /// The root vehicle of a shulker whose lid pushes, which the bodies
     /// sharing it are spared (`isPassengerOfSameVehicle`); none for a box.
@@ -1011,8 +1004,8 @@ impl Game<'_> {
         // shortcut: unoccupied server mobs only, expand when controller/passenger authority is bound.
         let mob = if let MoveWho::Entity(EntityHandle::Mob(i)) = target {
             let m = &self.remote_entities[i];
-            (!self.options.execution_role.is_client()
-                && self.remote.is_none()
+            (true
+
                 && !m.extra.passenger
                 && m.extra.mount.is_none()
                 && m.rider.is_none()

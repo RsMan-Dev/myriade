@@ -205,7 +205,7 @@ pub(super) fn write_random_sequences(world_root: &std::path::Path, data: &mut Ra
 impl Game<'_> {
     /// `RandomSequences` as `random_sequences.dat` (not on a server's guest).
     pub(super) fn save_random_sequences(&mut self) {
-        if self.remote.is_none() {
+        {
             write_random_sequences(&self.world_root, &mut self.rand_sequences);
         }
     }
@@ -818,16 +818,6 @@ impl Game<'_> {
     }
     /// `MerchantMenu.tryMoveItems` for the selected offer (the select trade packet).
     fn try_move_items(&mut self, index: usize) {
-        if self.remote.is_some() {
-            // ServerboundSelectTradePacket; the server moves the items.
-            if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-                m.session.selection_hint = index;
-            }
-            self.send(horizon_protocol::packets::play::Serverbound::SelectTrade(
-                horizon_protocol::packets::play::SelectTrade { item: index as i32 },
-            ));
-            return;
-        }
         self.menu_session(|menu, env, _| {
             menu.merchant_select(env, index);
             Some(true)
@@ -863,31 +853,6 @@ impl Game<'_> {
         }
         false
     }
-    /// `AbstractButton.keyPressed` on the focused offer button: Enter or
-    /// Space presses it again, key repeats included, so holding Space
-    /// refills the payment slots after every trade. Focus stays on the
-    /// button through slot clicks (`ContainerEventHandler.mouseClicked`).
-    pub(super) fn merchant_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
-        use winit::keyboard::KeyCode;
-        if !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space) {
-            return false;
-        }
-        let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
-            return false;
-        };
-        // Buttons past the last offer are hidden, and a hidden button is inactive.
-        let Some(index) = m
-            .focused
-            .map(|row| row + m.scroll)
-            .filter(|&index| index < m.session.offers.len())
-        else {
-            return false;
-        };
-        self.audio
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
-        self.try_move_items(index);
-        true
-    }
     /// The offer buttons a controller can focus (GUI origin relative).
     pub(super) fn merchant_targets(&self) -> Vec<[f32; 4]> {
         let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
@@ -897,23 +862,6 @@ impl Game<'_> {
             .filter(|i| i + m.scroll < m.session.offers.len())
             .map(|i| [5.0 + SHIFT, 18.0 + 20.0 * i as f32, 88.0, 20.0])
             .collect()
-    }
-    /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
-    pub(super) fn merchant_drag(&mut self) {
-        let Some(size) = self
-            .renderer
-            .as_ref()
-            .map(|r| [r.config.width, r.config.height])
-        else {
-            return;
-        };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.cursor.1 - oy;
-        if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
-            && m.dragging
-        {
-            m.scroll = drag_scroll(y, m.session.offers.len());
-        }
     }
     pub(super) fn merchant_scroll(&mut self, d: f32) {
         let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {

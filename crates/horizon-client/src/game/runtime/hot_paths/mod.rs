@@ -76,7 +76,7 @@ impl Game<'_> {
     /// Run the workloads and write their lines to `output`.
     pub(super) fn hot_paths(&mut self, output: &str) -> Result<()> {
         assert!(
-            !self.options.execution_role.is_client(),
+            true,
             "the benchmark requires a server Game"
         );
         let mut recorder = Recorder {

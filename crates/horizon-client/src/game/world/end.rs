@@ -241,15 +241,6 @@ impl EndState {
     pub(super) fn eye_motions(&self) -> impl Iterator<Item = (glam::DVec3, glam::DVec3)> + '_ {
         self.eyes.iter().map(|e| (e.previous, e.position))
     }
-    /// `EyeOfEnder.tick` on a server's client: it moves by its last known
-    /// motion; only the server steers it.
-    pub(super) fn step_remote_eyes(&mut self) {
-        for e in &mut self.eyes {
-            e.previous = e.position;
-            e.life += 1;
-            e.position += e.velocity;
-        }
-    }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
     pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
@@ -266,12 +257,6 @@ impl EndState {
         };
         e.velocity = glam::DVec3::from_array(velocity);
         true
-    }
-    pub(super) fn remove_remote_eye(&mut self, id: u32) {
-        self.eyes.retain(|e| e.id != id);
-    }
-    pub(super) fn clear_remote_eyes(&mut self) {
-        self.eyes.clear();
     }
     /// Where each eye is, for `status`.
     pub(super) fn eye_positions(&self) -> impl Iterator<Item = (u32, [f64; 3])> {
@@ -493,12 +478,6 @@ impl Game<'_> {
             .clone()
     }
 
-    /// EnderEyeItem.use's `getPlayerPOVHitResult`: whether the block aimed
-    /// at is an End portal frame (the use passes there).
-    pub(super) fn aims_at_end_portal_frame(&self) -> bool {
-        self.pick()
-            .is_some_and(|hit| &*self.block_name(hit.pos) == "minecraft:end_portal_frame")
-    }
 
     /// EnderEyeItem.useOn: fill an empty End portal frame, then light the
     /// portal when the ring of twelve filled frames is complete.
@@ -1503,35 +1482,6 @@ impl Game<'_> {
         }
     }
 
-    /// `EyeOfEnder.tick` on a client: behind each eye (a quarter of its last
-    /// move back), four bubbles in water, else a portal particle.
-    pub(super) fn eye_particles(&mut self) {
-        for i in 0..self.end.eyes.len() {
-            let e = &self.end.eyes[i];
-            let movement = (e.position - e.previous).to_array();
-            let origin = (e.position - (e.position - e.previous) * 0.25).to_array();
-            let block = origin.map(|v| v.floor() as i32);
-            let water = self
-                .res
-                .facts()
-                .get(self.world.block(block[0], block[1], block[2]))
-                .fluid
-                == horizon_client::blocks::Fluid::Water;
-            if water {
-                let bubble = ParticleOptions::simple(ParticleType::Bubble);
-                for _ in 0..4 {
-                    self.particles.add(&bubble, origin, movement);
-                }
-            } else {
-                let r = self.particles.random();
-                let x = origin[0] + r.next_double() * 0.6 - 0.3;
-                let z = origin[2] + r.next_double() * 0.6 - 0.3;
-                let portal = ParticleOptions::simple(ParticleType::Portal);
-                self.particles
-                    .add(&portal, [x, origin[1] - 0.5, z], movement);
-            }
-        }
-    }
     /// ThrownItemRenderer: the ender eye item facing the camera.
     fn eye_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         let Some(r) = self.gui.atlas.sprites.get("item/ender_eye").copied() else {
@@ -1561,7 +1511,7 @@ impl Game<'_> {
     /// entities in entity-ticking chunks: one past the simulation distance
     /// enters none (and costs nothing here, however many lie there).
     pub(super) fn find_end_gateway_portals(&mut self) {
-        if self.remote.is_some() || self.dim != Dim::End {
+        if self.dim != Dim::End {
             return;
         }
         let is_gateway = |game: &Self, p: BlockPos| {
@@ -1693,7 +1643,7 @@ impl Game<'_> {
 
     fn handle_end_gateway_portals_phase(&mut self, after_move: bool) {
         // Nobody in a gateway: nothing to look up.
-        if self.remote.is_some() || self.dim != Dim::End || self.end.gateways.is_empty() {
+        if self.dim != Dim::End || self.end.gateways.is_empty() {
             return;
         }
         // `handlePortal` runs in the entity's tick: one past the simulation
@@ -1822,7 +1772,7 @@ impl Game<'_> {
     /// The entities that reached a gateway's exit: they land where the
     /// gateway leads, once its chunks have loaded.
     pub(super) fn resolve_end_gateway_arrivals(&mut self) -> Result<()> {
-        if self.remote.is_some() || self.dim != Dim::End {
+        if self.dim != Dim::End {
             return Ok(());
         }
         for arrival in std::mem::take(&mut self.end.arrivals) {

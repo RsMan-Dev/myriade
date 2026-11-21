@@ -178,9 +178,6 @@ impl Game<'_> {
     /// Registered dimensions cover live carriers without an Entity handle.
     pub(in crate::game) fn local_passenger_vehicle_bounds(&self, id: u32) -> Option<Aabb> {
         use crate::game::entity::{Entity, with_entity};
-        if self.remote.is_some() {
-            return None;
-        }
         let target = self.level_entity(id as i32)?;
         let at = self.target_position(target)?;
         let [width, height] = self.registered_entity_dimensions(&self.target_type(target))?;

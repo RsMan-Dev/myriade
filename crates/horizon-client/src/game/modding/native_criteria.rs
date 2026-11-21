@@ -68,9 +68,6 @@ impl Game<'_> {
         {
             return Err(TriggerCriterionError::InvalidTrigger);
         }
-        if self.remote.is_some() {
-            return Err(TriggerCriterionError::NotServer);
-        }
         let target = self
             .player_handle_read(player)
             .and_then(|_| self.native_entity_target(player.entity()))
@@ -115,9 +112,6 @@ impl Game<'_> {
         pos: [i32; 3],
         fire: impl FnOnce(&mut Self),
     ) -> Result<(), TriggerCriterionError> {
-        if self.remote.is_some() {
-            return Err(TriggerCriterionError::NotServer);
-        }
         let target = self
             .player_handle_read(player)
             .and_then(|_| self.native_entity_target(player.entity()))

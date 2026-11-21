@@ -956,7 +956,7 @@ impl Game<'_> {
             p.attributes
                 .computed_value_of("minecraft:attack_speed")
                 .ok()
-        }) && (self.remote.is_some()
+        }) && (false
             || !self.applied_modifiers.is_empty()
             || !self.potions.applied.is_empty())
         {

@@ -1561,7 +1561,7 @@ impl Game<'_> {
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
     fn armor_stand_turtle_eggs(&mut self, i: usize, landed: bool) -> Result<()> {
         let stand = &self.armor_stands[i];
-        if !stand.on_ground || self.remote.is_some() || self.options.execution_role.is_client() {
+        if !stand.on_ground {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {
@@ -2557,7 +2557,7 @@ impl Game<'_> {
             return true;
         }
         // Counted on the server only, before the swap.
-        if self.remote.is_none() {
+        {
             self.award_stat("used", &stack.item, 1);
         }
         let swap = swap_with_equipment_slot(stack, current, self.creative);
@@ -2571,7 +2571,7 @@ impl Game<'_> {
             && let Some(rest) = self.add_stack_to_inventory(old)
             && !self.creative
             // Player.drop is the server's on a client: it spawns the item.
-            && self.remote.is_none()
+
             && let Some(eye) = self.eye_position()
         {
             // Player.drop(stack, false): thrown from the eyes, no thrower.
@@ -2579,7 +2579,7 @@ impl Game<'_> {
         }
         // The attribute modifiers of a worn piece come from the server's
         // ClientboundUpdateAttributesPacket on a client.
-        if self.remote.is_none() {
+        {
             self.apply_equipment();
         }
         self.swing_arm();

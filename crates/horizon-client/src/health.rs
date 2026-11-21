@@ -882,12 +882,6 @@ impl PlayerHealth {
         self.hurt.hurt_time = 10;
         self.hurt_animation_time = 10;
     }
-    /// `LivingEntity.animateHurt(yaw)` on a player: the tilt restarts around
-    /// `yaw` (`Player.animateHurt` keeps it as `hurtDir`).
-    pub fn animate_hurt_dir(&mut self, yaw: f32) {
-        self.animate_hurt();
-        self.hurt_dir = yaw;
-    }
     /// `ServerPlayer.indicateDamage`: the hit's direction relative to where
     /// the player looks, kept for the packet to its client.
     pub fn indicate_damage(&mut self, xd: f64, zd: f64, yaw: f32) {

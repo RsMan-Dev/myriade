@@ -254,9 +254,7 @@ impl Game<'_> {
                 .as_ref()
                 .filter(|_| world.is_some())
                 .map(|p| (p.health.health(), p.health.food.food as i64)),
-            hit: if self.remote.is_some() {
-                self.events.remote_hit.clone()
-            } else {
+            hit: {
                 self.combat.last_hit()
             },
             world,

@@ -111,7 +111,7 @@ impl Game<'_> {
         if !self.persist.off_level.is_empty() || !self.persist.removed_vehicles.is_empty() {
             self.sync_retained_riders();
             self.position_riders();
-            if self.remote.is_none() {
+            {
                 self.position_saved_passengers();
             }
             if !self.persist.removed_vehicles.is_empty()
@@ -130,7 +130,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             // The ECS seats its riders; no sweep over the mobs runs here.
             self.position_riders();
-            if self.remote.is_none() {
+            {
                 self.position_saved_passengers();
             }
             return;
@@ -186,7 +186,7 @@ impl Game<'_> {
             m.extra.rider = riding.get(&m.id).map(|&(_, id)| id);
         }
         self.position_riders();
-        if self.remote.is_none() {
+        {
             self.position_saved_passengers();
         }
     }
@@ -507,7 +507,7 @@ impl Game<'_> {
             };
             return Some(at + glam::DVec3::Y * height);
         }
-        if self.remote.is_none() {
+        {
             let bounds = self.local_passenger_vehicle_bounds(vehicle)?;
             let target = self.level_entity(vehicle as i32)?;
             let at = self.target_position(target)?;

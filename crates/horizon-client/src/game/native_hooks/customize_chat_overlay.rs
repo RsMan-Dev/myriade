@@ -2,18 +2,6 @@ use super::*;
 
 /// The hook points. Each does nothing in Horizon.
 impl Game<'_> {
-    /// The in-game chat is about to be drawn (`CustomizeGuiOverlayEvent.Chat`): `x`, `y` are its
-    /// bottom-left corner in GUI pixels, which a mod may move.
-    pub(in crate::game) fn native_customize_chat_overlay(
-        &mut self,
-        gui_width: i32,
-        gui_height: i32,
-        focused: bool,
-        x: &mut i32,
-        y: &mut i32,
-    ) {
-        self.fire_customize_chat_overlay(gui_width, gui_height, focused, x, y);
-    }
 }
 
 #[cfg(test)]

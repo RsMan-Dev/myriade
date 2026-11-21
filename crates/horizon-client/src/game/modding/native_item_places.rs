@@ -132,9 +132,6 @@ impl Game<'_> {
     /// (`EntitySelector.CONTAINER_ENTITY_SELECTOR`: chest and hopper minecarts, chest boats; a
     /// chested mount is not one): none for any other entity, and on a client.
     pub(super) fn entity_automation_size(&self, entity: u32) -> Option<usize> {
-        if self.remote.is_some() {
-            return None;
-        }
         if let Some(c) = self.carts.iter().find(|c| c.id == entity) {
             let container = c.kind.slots() > 0;
             return container.then_some(c.items.len());

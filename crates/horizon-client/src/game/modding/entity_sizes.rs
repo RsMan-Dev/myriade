@@ -79,25 +79,6 @@ impl Game<'_> {
         body.dimensions = Dimensions::from_array(answer.effective());
     }
 
-    /// The client's own body, after its tick (`LocalPlayer.tick` set its pose).
-    pub(super) fn native_local_player_size(&mut self) {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return;
-        }
-        let Some(id) = self.remote.as_ref().map(|remote| remote.entity_id as u32) else {
-            return;
-        };
-        let Some(answer) = self
-            .player
-            .as_ref()
-            .and_then(|body| self.ask_body_size(id, body))
-        else {
-            return;
-        };
-        if let Some(body) = self.player.as_mut() {
-            Self::apply_body_size(body, answer);
-        }
-    }
 
     /// Each guest's body on the server, once a tick.
     pub(super) fn native_guest_sizes(&mut self) {

@@ -73,10 +73,8 @@ impl Game<'_> {
             teams: std::sync::Arc::new(self.mob_teams()),
             items: Some(self.items()),
             lid_openers: &self.lid_openers,
-            mod_effects: if self.remote.is_none() {
+            mod_effects: {
                 Some(self)
-            } else {
-                None
             },
             mob_hooks: (self.native_authoritative()
                 && ([
@@ -99,18 +97,16 @@ impl Game<'_> {
                 && (mod_api::__private::has_entity_parts()
                     || mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)))
             .then_some(self as &dyn horizon_client::mobs::part_goals::GoalHost),
-            asks_animal_tame: self.remote.is_none()
+            asks_animal_tame: true
                 && mod_api::__private::listened(mod_api::HookId::AnimalTame),
-            asks_living_destroy_block: self.remote.is_none()
+            asks_living_destroy_block: true
                 && mod_api::__private::listened(mod_api::HookId::LivingDestroyBlock),
-            asks_baby_spawn: self.remote.is_none()
+            asks_baby_spawn: true
                 && mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn),
             // A warden's away suspects are UUIDs: on the server side, where the
             // entity UUIDs live, they resolve back to the mobs that are here.
-            who_lookup: if self.remote.is_none() {
+            who_lookup: {
                 Some(self)
-            } else {
-                None
             },
             border: Some(self.border.geometry()),
             // The first player in the level: a server has no player of its own.

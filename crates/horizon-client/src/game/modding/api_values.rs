@@ -1063,9 +1063,7 @@ impl super::Game<'_> {
     ) -> mod_api::BlockClick<'a> {
         let (player, player_entity_id) = self.native_clicker();
         mod_api::BlockClick::from(mod_api::__private::built::BlockClick {
-            side: if self.remote.is_some() {
-                mod_api::LogicalSide::Client
-            } else {
+            side: {
                 mod_api::LogicalSide::Server
             },
             dimension: self.dim.level(),

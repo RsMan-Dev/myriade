@@ -232,40 +232,6 @@ impl Game<'_> {
             self.server_packs.packs.push_local(WORLD_PACK_ID, path);
         }
     }
-    /// `ConnectScreen`: the server's setting decides what its packs do
-    /// (`configureForServerControl`); single player's own server takes them
-    /// all, quietly (`configureForLocalWorld`).
-    pub(super) fn server_packs_connect(&mut self, address: Option<&str>, user: (String, u128)) {
-        let state = &mut self.server_packs;
-        state.user = user;
-        state.prompt = None;
-        state.notifiers.clear();
-        let Some(address) = address else {
-            state.address = None;
-            state.packs.local_world();
-            return;
-        };
-        let file = multiplayer::servers_file(&saves());
-        // ServerList.get: the shown entries, then the hidden ones.
-        let (shown, hidden) = servers::load_all(&file);
-        let entry = shown.into_iter().chain(hidden).find(|s| s.ip == address);
-        let setting = entry.as_ref().and_then(|e| e.accept_textures);
-        state.address = entry.map(|e| e.ip);
-        state.packs.connect(Prompt::for_server(setting));
-        // GetServerDetailsTask.scheduleResourcePackDownload: the Realm's own pack, which the
-        // player agreed to before connecting (`allowServerPacks`, then `pushPack`).
-        if let Some(pack) = horizon_client::realms::take_pending_pack(address) {
-            state.packs.allow();
-            state.packs.push(pack.id, &pack.url, parse_sha1(&pack.hash));
-        }
-    }
-    /// `Minecraft.clearDownloadedResourcePacks`: every server pack goes at once.
-    pub(super) fn server_packs_disconnect(&mut self) {
-        self.server_packs.prompt = None;
-        self.server_packs.notifiers.clear();
-        self.server_packs.packs.disconnect();
-        self.tick_server_packs();
-    }
 
     /// `handleResourcePackPush`.
     pub(super) fn handle_pack_push(&mut self, p: ResourcePackPush) {
@@ -327,9 +293,6 @@ impl Game<'_> {
             .accept_textures
     }
     fn send_pack_status(&self, id: u128, status: i32) {
-        if let Some(r) = &self.remote {
-            r.session.send_pack_status(id, status);
-        }
     }
 
     /// Splitscreen: this player's answer for the server's packs, once it gave one (or its
@@ -592,22 +555,6 @@ impl Game<'_> {
             }
         }
         self.draw_split_hud(batch, hidden);
-    }
-    /// A left click on the prompt: its answer when it hit a button.
-    pub(super) fn pack_prompt_click(&mut self) -> Result<()> {
-        let Some(prompt) = &self.server_packs.prompt else {
-            return Ok(());
-        };
-        let answer = prompt
-            .layout(&self.gui.atlas, self.gui_size())
-            .answer_at(self.cursor);
-        match answer {
-            Some(yes) => {
-                self.audio.play_button_click();
-                self.answer_pack_prompt(yes)
-            }
-            None => Ok(()),
-        }
     }
 }
 

@@ -33,53 +33,15 @@ impl Game<'_> {
         slot < 36
             || slot == 504
             || ((300..500).contains(&slot)
-                && (self.remote.is_none() || self.remote_storage_open())
+                && (true || self.remote_storage_open())
                 && self.slots().contains(&slot))
     }
 
-    /// `BundleMouseActions.onMouseScrolled`: the wheel over a bundle moves the selection
-    /// through the items its tooltip shows. True when the bundle took the wheel.
-    pub(super) fn bundle_scroll(&mut self, x: f64, y: f64) -> bool {
-        let Some(slot) = self.inventory_target().0 else {
-            return false;
-        };
-        if !self.bundle_slot(slot) {
-            return false;
-        }
-        let stack = self.slot_mut(slot).clone();
-        let items = self.items();
-        let Some(bundle) = stack.filter(|s| items.get(&s.item).is_some_and(|i| i.bundle)) else {
-            return false;
-        };
-        let shown = Contents::of(items, &bundle).map_or(0, |c| c.shown_count());
-        if shown == 0 {
-            return false;
-        }
-        let (wheel_x, wheel_y) = self.bundle_mouse.wheel.on_mouse_scroll(x, y);
-        let wheel = if wheel_y == 0 { -wheel_x } else { wheel_y };
-        if wheel != 0 {
-            let selected = bundle.data().map_or(-1, |d| d.bundle_selected.0);
-            let next = ScrollWheelHandler::next_selection(f64::from(wheel), selected, shown as i32);
-            if next != selected {
-                self.select_bundle(slot, next);
-            }
-        }
-        true
-    }
 
     /// `BundleMouseActions.toggleSelectedBundleItem`: the stack here and, on a server, there.
     fn select_bundle(&mut self, slot: usize, index: i32) {
         if let Some(stack) = self.slot_mut(slot) {
             toggle_selected(stack, index);
-        }
-        if self.remote.is_some() {
-            let (_, menu) = self.remote_menu();
-            if let Some(menu_slot) = Self::menu_slot_index(&menu, slot) {
-                self.send(S::SelectBundleItem(play::SelectBundleItem {
-                    slot: menu_slot as i32,
-                    index,
-                }));
-            }
         }
     }
 

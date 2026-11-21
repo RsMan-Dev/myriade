@@ -80,9 +80,6 @@ impl Game<'_> {
 
     /// `ServerStatsCounter.toJson` of all the player's statistics.
     pub(super) fn player_statistics(&self, player: PlayerRef) -> Option<String> {
-        if self.remote.is_some() {
-            return None;
-        }
         let json = match self.native_player_stats(player)? {
             Some(stats) => stats.to_json(),
             None => Stats::default().to_json(),
@@ -92,9 +89,6 @@ impl Game<'_> {
     /// `ServerStatsCounter.parseLocal`'s counters of `json` in place of the player's own,
     /// each set as `StatsCounter.setValue` sets it.
     pub(super) fn player_set_statistics(&mut self, player: PlayerRef, json: &str) -> bool {
-        if self.remote.is_some() {
-            return false;
-        }
         let Ok(value @ serde_json::Value::Object(_)) = serde_json::from_str(json) else {
             return false;
         };

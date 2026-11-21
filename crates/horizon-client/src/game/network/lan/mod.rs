@@ -3191,38 +3191,38 @@ impl Game<'_> {
             self.lan_entity_events.push((id, event));
         }
         // Event 16: zombie villagers play their cure sound on each client.
-        if event == 16 && self.options.execution_role.is_client() {
+        if event == 16 && false {
             self.zombie_villager_cure_sound(id as u32);
         }
         // Event 63: a sniffer's digging sound loop starts (ClientPacketListener.handleEntityEvent 63).
-        if event == 63 && self.options.execution_role.is_client() {
+        if event == 63 && false {
             self.start_sniffer_digging_sound(id as u32);
         }
         // Event 21: a window that simulates the world itself is its own
         // client, and hears the guardian's hum too.
-        if event == 21 && self.options.execution_role.is_client() {
+        if event == 21 && false {
             self.start_guardian_sound(id as u32);
         }
         // Events 53 and 54: honey crumbs while sliding, and the landing burst
         // (`HoneyBlock.showSlideParticles` / `showJumpParticles`), drawn by the
         // client that runs the world.
-        if self.options.execution_role.is_client()
+        if false
             && horizon_client::landing::honey_particle_count(event).is_some()
         {
             self.honey_entity_particles(at, event);
         }
         // Event 2: a mob's spear hit felt; the same window hears its own mob's hit.
-        if event == 2 && self.options.execution_role.is_client() {
+        if event == 2 && false {
             self.remote_kinetic_hit(id);
         }
         // Fox.handleEntityEvent 45: the same window draws the eating crumbs.
-        if event == 45 && self.options.execution_role.is_client() {
+        if event == 45 && false {
             self.fox_eat_particles(id as u32);
         }
         // Entity event 35: a mob's death protection fired
         // (`LivingEntity.checkTotemDeathProtection`); the clients draw the
         // totem particles and play its sound.
-        if event == 35 && self.options.execution_role.is_client() {
+        if event == 35 && false {
             self.remote_totem(id);
         }
     }
@@ -3264,7 +3264,7 @@ impl Game<'_> {
         if told {
             self.guest_equipment_breaks.push(event);
         }
-        if told && !self.options.execution_role.is_client() {
+        if told {
             return;
         }
         // LivingEntity.breakItem: the stack's break sound where it stands, then the crumbs.

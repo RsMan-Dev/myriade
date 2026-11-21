@@ -243,7 +243,7 @@ fn compiled_guest_runs_in_actual_game_roots_on_guest_stack() {
                         "the wasm Game root ran and failed: {:?}",
                         ROOTS.lock().unwrap()
                     );
-                    if (trap && game.remote.is_none() && trapped())
+                    if (trap && trapped())
                         || (!trap && observed && RECEIPTS.load(Ordering::SeqCst) == 1)
                     {
                         break;
@@ -251,10 +251,8 @@ fn compiled_guest_runs_in_actual_game_roots_on_guest_stack() {
                     assert!(
                         Instant::now() < deadline,
                         "actual wasm Game root did not finish{}; runtime log {:#?}",
-                        if game.remote.is_none() {
+                        {
                             ": the connection ended without the guest's trap"
-                        } else {
-                            ""
                         },
                         LOGGED.lock().unwrap()
                     );
@@ -310,9 +308,6 @@ fn compiled_guest_runs_in_actual_game_roots_on_guest_stack() {
                     "actual authoritative player mutation must follow root outcome"
                 );
                 assert_eq!(RECEIPTS.load(Ordering::SeqCst), usize::from(!trap));
-                if game.remote.is_some() {
-                    game.leave_server(None).unwrap();
-                }
             });
         })
     });

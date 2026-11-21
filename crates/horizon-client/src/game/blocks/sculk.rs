@@ -774,9 +774,6 @@ impl Game<'_> {
                 pos[2].floor() as i32
             )
         });
-        if self.remote.is_some() {
-            return;
-        }
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
             let ctx = make_ctx(self);
             let cause = event_cause(ctx.source, self.lan_acting_entity);
@@ -1992,9 +1989,6 @@ impl Game<'_> {
         ticks: i32,
     ) {
         let options = ParticleOptions::vibration(source, to, ticks);
-        if self.options.execution_role.is_client() {
-            self.particles.vibration(from, to, ticks);
-        }
         self.lan_send_particles(super::lan_particles::QueuedParticle {
             dimension: self.dim.id(),
             options,
@@ -2198,9 +2192,6 @@ impl Game<'_> {
         bounds: Aabb,
         living: bool,
     ) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return;
-        }
         self.sculk_prepare();
         let state = self.landing_state(position, bounds);
         let mut context = self.who_context(None, Some(state));

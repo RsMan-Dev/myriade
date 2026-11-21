@@ -108,58 +108,7 @@ impl Game<'_> {
         .and_then(|u| self.mob_by_uuid(u))
         .unwrap_or(0)
     }
-    /// `EvokerFangs.handleEntityEvent`: only event 4 starts a client attack.
-    /// `playLocalSound` at `nextFloat() * 0.2 + 0.85`. The fangs this client
-    /// tracks carry no Silent flag, so the sound always plays.
-    pub(super) fn remote_fangs_event(&mut self, id: u32, event: i8) {
-        let sound = self
-            .fangs
-            .list
-            .iter()
-            .position(|f| f.id == id)
-            .and_then(|i| {
-                self.fangs.list.update(i, |f| {
-                    if event != 4 {
-                        return None;
-                    }
-                    f.started = true;
-                    let pitch = fang_attack_pitch(&mut f.random);
-                    Some((f.pos, pitch))
-                })
-            });
-        if let Some((pos, pitch)) = sound {
-            self.audio.play_unshared(
-                "minecraft:entity.evoker_fangs.attack",
-                Some(pos),
-                1.0,
-                pitch,
-            );
-        }
-    }
 
-    /// `EvokerFangs.tick`: clients only advance animation, never damage or discard.
-    /// At life 14, twelve `crit` particles (`ATTACK_TRIGGER_TICKS`).
-    pub(super) fn tick_remote_fangs(&mut self) {
-        let mut bursts = Vec::new();
-        self.fangs.list.for_each_mut(|f| {
-            if f.started {
-                f.life -= 1;
-                if f.life == 14 {
-                    let mut crits = Vec::with_capacity(12);
-                    for _ in 0..12 {
-                        crits.push(fang_crit(&mut f.random, f.pos));
-                    }
-                    bursts.push(crits);
-                }
-            }
-        });
-        let crit = ParticleOptions::simple(ParticleType::Crit);
-        for crits in bursts {
-            for (at, velocity) in crits {
-                self.particles.add(&crit, at, velocity);
-            }
-        }
-    }
 
     /// `EvokerFangsRenderer`: the jaws snapping up and closing.
     pub(super) fn fangs_geometry(

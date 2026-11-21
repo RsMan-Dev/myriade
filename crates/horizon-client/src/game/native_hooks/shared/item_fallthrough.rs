@@ -53,9 +53,7 @@ impl Game<'_> {
         let (player, player_entity_id) = self.native_clicker();
         let snapshot = stack.try_into_api().ok()?;
         let click = ItemClick::from(mod_api::__private::built::ItemClick {
-            side: if self.remote.is_some() {
-                LogicalSide::Client
-            } else {
+            side: {
                 LogicalSide::Server
             },
             dimension: self.dim.level(),

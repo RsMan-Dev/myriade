@@ -18,7 +18,7 @@ impl Game<'_> {
         let (top, sources) = if pack_type == PackType::ClientResources {
             // A server has no client resource stack to read; only a client
             // selects the asset packs this asks about.
-            if !self.options.execution_role.is_client() {
+            {
                 return None;
             }
             ("assets", vec![&self.pack.source])

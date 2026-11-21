@@ -132,9 +132,6 @@ impl Game<'_> {
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
     pub(super) fn save_game_with(&mut self, wait: bool) -> Result<()> {
-        if self.remote.is_some() {
-            return Ok(());
-        }
         self.admit_level_save()?;
         // `DedicatedServer.saveAllChunks` tells the management protocol's clients when a save starts and when
         // it ends without failing, for every save: the command, the autosave, the pause.

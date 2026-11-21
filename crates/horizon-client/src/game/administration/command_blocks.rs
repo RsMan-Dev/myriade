@@ -785,13 +785,6 @@ impl Game<'_> {
         self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
         horizon_client::screen_draw::paint_tooltip(batch, atlas, &draws, tooltip);
     }
-    /// The wheel over the suggestion list (`CommandSuggestions.mouseScrolled`).
-    pub(super) fn command_block_scroll(&mut self, amount: f32) {
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
-        if let Some(s) = self.command_block_screen.as_mut() {
-            s.command.scroll(mouse, f64::from(amount));
-        }
-    }
     /// The command box's completion request for an `ask_server` node.
     pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
         self.command_block_screen.as_mut()?.command.take_request()
@@ -813,128 +806,6 @@ impl Game<'_> {
         };
         s.command.server_suggestions(&m, &c, id, range, list);
         self.command_block_screen = Some(s);
-    }
-    pub(super) fn command_block_click(&mut self) {
-        let Some(mut s) = self.command_block_screen.take() else {
-            return;
-        };
-        // CommandSuggestions.mouseClicked first, then the command box.
-        {
-            let m = Measure(&self.gui.atlas.font);
-            let c = Commands {
-                dispatcher: super::chat::chat_tree(&self.remote),
-                registries: &self.ui.registries,
-            };
-            let (x, y) = (f64::from(self.cursor.0), f64::from(self.cursor.1));
-            if s.command.click(&m, &c, x, y) {
-                self.command_block_screen = Some(s);
-                return;
-            }
-        }
-        let size = self
-            .renderer
-            .as_ref()
-            .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let fallback;
-        let buttons = match self.built_command_block(b.width, b.height) {
-            Some(layout) => &layout.buttons,
-            None => {
-                fallback = CommandBlockScreen::buttons(b.width, b.height, s.cart.is_some());
-                &fallback
-            }
-        };
-        let hit = buttons
-            .iter()
-            .find(|(_, x, y, bw)| ui::hovered(self.cursor, *x, *y, *bw, 20.0))
-            .map(|b| b.0);
-        if hit.is_some() {
-            self.audio.play_button_click();
-        }
-        match hit {
-            Some(Button::Output) => {
-                s.track_output = !s.track_output;
-                if let Some(block) = self.edit_base(&s) {
-                    s.show_previous(&block);
-                }
-            }
-            Some(Button::Mode) => s.mode = s.mode.next(),
-            Some(Button::Conditional) => s.conditional = !s.conditional,
-            Some(Button::Auto) => s.auto = !s.auto,
-            Some(Button::Done) => {
-                self.set_command_block(&s);
-                self.close_command_block();
-                return;
-            }
-            Some(Button::Cancel) => {
-                self.close_command_block();
-                return;
-            }
-            None => {}
-        }
-        self.command_block_screen = Some(s);
-    }
-    /// `AbstractCommandBlockEditScreen.keyPressed`: the suggestions first,
-    /// then Enter is Done, Escape cancels, the rest edits the command.
-    pub(super) fn command_block_key(&mut self, event: &KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return;
-        };
-        let shortcut = self.edit_shortcut(event);
-        self.command_block_key_code(key, shortcut, event.text.as_deref());
-    }
-    /// A key pressed on the command block screen, with the edit shortcut it
-    /// makes and the text it types.
-    pub(super) fn command_block_key_code(
-        &mut self,
-        key: KeyCode,
-        shortcut: Option<horizon_client::clipboard::EditShortcut>,
-        text: Option<&str>,
-    ) {
-        let ctrl = self.has_control_down_with_quirk();
-        let shift = self.has_shift_down();
-        // Windows' AltGr is Ctrl+Alt, and its characters still type.
-        let types_text = self.types_text();
-        let Some(mut s) = self.command_block_screen.take() else {
-            return;
-        };
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        if s.command.suggestions_key(&m, &c, key, shift) {
-            self.command_block_screen = Some(s);
-            return;
-        }
-        let typed = match key {
-            KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter => false,
-            _ => {
-                if let Some(shortcut) = shortcut {
-                    s.command.shortcut(&m, &c, shortcut, &mut self.clipboard);
-                    false
-                } else {
-                    !s.command.field_key(&m, &c, key, shift, ctrl) && types_text
-                }
-            }
-        };
-        self.command_block_screen = Some(s);
-        if typed {
-            self.command_block_type(text.unwrap_or(""));
-        }
-        match key {
-            KeyCode::Escape => self.close_command_block(),
-            KeyCode::Enter | KeyCode::NumpadEnter => {
-                if let Some(s) = self.command_block_screen.take() {
-                    self.set_command_block(&s);
-                }
-                self.close_command_block();
-            }
-            _ => {}
-        }
     }
     /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
     pub(super) fn command_block_type(&mut self, typed: &str) {
@@ -975,16 +846,7 @@ impl Game<'_> {
             conditional: s.conditional,
             auto: s.auto,
         };
-        if self.remote.is_some() {
-            self.send(S::SetCommandBlock(play::SetCommandBlock {
-                pos: [edit.pos.0, edit.pos.1, edit.pos.2],
-                command: edit.command,
-                mode: edit.mode.ordinal(),
-                flags: i8::from(edit.track_output)
-                    | (i8::from(edit.conditional) << 1)
-                    | (i8::from(edit.auto) << 2),
-            }));
-        } else {
+        {
             self.apply_command_block(&edit);
         }
     }

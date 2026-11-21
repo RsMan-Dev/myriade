@@ -592,15 +592,6 @@ fn on_peek_change(m: &Mob, old: f32, new: f32, events: &mut Vec<MobEvent>) {
         });
     }
 }
-/// `Shulker.tick`'s `onPeekAmountChange` on a client that is not the server,
-/// after `client_tick` eased the lid: the client moves its own player, which
-/// the [`MobEvent::LidPush`] reaches.
-pub fn client_push(m: &Mob, events: &mut Vec<MobEvent>) {
-    let (old, new) = (m.anim.vo[PEEK], m.anim.v[PEEK]);
-    if new != old {
-        on_peek_change(m, old, new, events);
-    }
-}
 /// `ShulkerLookControl.getYRotD`: the look yaw in the open direction's
 /// plane (`None`: the target is on the head's own axis).
 pub fn look_yaw(m: &Mob, at: [f64; 3]) -> Option<f32> {

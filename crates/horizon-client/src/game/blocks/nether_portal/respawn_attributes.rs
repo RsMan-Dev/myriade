@@ -32,29 +32,6 @@ impl RespawnAttributes {
 }
 
 impl Game<'_> {
-    /// The old player goes (`handleRespawn`, `handleLogin`): after a respawn its attributes are
-    /// kept for the next one; a login starts from nothing.
-    pub(in crate::game) fn drop_remote_player(&mut self) {
-        let respawn = &mut self.portals.respawn_attributes;
-        match (respawn.keep_modifiers.take(), self.player.as_ref()) {
-            (Some(keep_modifiers), Some(old)) => {
-                respawn.carried = Some(Carried {
-                    keep_modifiers,
-                    instances: old
-                        .attributes
-                        .instances()
-                        .map(|(_, key, instance)| (key.name().to_owned(), instance.clone()))
-                        .collect(),
-                    early: Vec::new(),
-                });
-            }
-            // A second respawn before the position: the first one's attributes are still the
-            // ones to carry.
-            (Some(_), None) => {}
-            (None, _) => respawn.carried = None,
-        }
-        self.remove_local_player_body();
-    }
 
     /// `ClientPacketListener.handleUpdateAttributes` of the player's own entity.
     pub(in crate::game) fn apply_own_attributes(&mut self, values: Vec<AttributeSnapshot>) {

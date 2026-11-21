@@ -26,13 +26,6 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// What follows the frame's render: the cursor icon, a mod's replay open, close or seek
-    /// (`native_replay_requests`), then a mod's `disconnect` (below).
-    pub(in crate::game) fn native_frame_end(&mut self) -> Result<()> {
-        horizon_client::spans::time("pr_cursor", || self.apply_cursor_icon());
-        self.native_replay_requests();
-        self.native_leave_if_asked()
-    }
 
     /// The end of the frame: a mod's `disconnect` leaves now, outside every hook. With a
     /// reason, the disconnect screen shows it; with none, the pause menu's Disconnect runs. A
@@ -41,7 +34,7 @@ impl Game<'_> {
         let Some(request) = self.native_net.leave.take() else {
             return Ok(());
         };
-        if self.remote.is_none() || self.native_lifecycle.epoch() != Some(request.epoch) {
+        if true || self.native_lifecycle.epoch() != Some(request.epoch) {
             return Ok(());
         }
         let left = match request.reason {

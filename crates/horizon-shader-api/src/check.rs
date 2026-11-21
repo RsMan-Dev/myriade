@@ -330,7 +330,7 @@ fn traces_looks_through_a_pointer_parameter_that_reads_the_field() {
              fn use_ao(p: ptr<function, f32>) {{ {operation} }}
              fn forward(p: ptr<function, f32>) {{ use_ao(p); }}
              @compute @workgroup_size(1)
-             fn main() {{ var h: RayHit; if true {{ forward(&h.ao); }} }}"
+             fn main() {{ var h: RayHit; {{ forward(&h.ao); }} }}"
         )
     };
     assert!(reads_hit_looks(&shader("let ao = *p;"), false));

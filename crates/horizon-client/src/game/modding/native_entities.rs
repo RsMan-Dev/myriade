@@ -159,7 +159,7 @@ impl Game<'_> {
         removed: &[u32],
         through: Option<horizon_client::join_seq::JoinSeq>,
     ) -> bool {
-        if self.remote.is_some() || mod_api::__private::mods().is_empty() || !self.joins_pending() {
+        if mod_api::__private::mods().is_empty() || !self.joins_pending() {
             return true;
         }
         self.assign_pending_join_ids();
@@ -376,7 +376,7 @@ impl Game<'_> {
     /// be told when it leaves.
     pub(super) fn native_joins_skip(&mut self) {
         let observed = horizon_client::join_seq::JoinSeq::latest();
-        if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
+        if !mod_api::__private::mods().is_empty() {
             self.assign_pending_join_ids();
             while let Some((slot, id, seq)) =
                 self.next_unannounced(self.persist.joined_seq, &[], None)
@@ -398,7 +398,7 @@ impl Game<'_> {
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
     pub(super) fn native_entity_left(&mut self, id: u32) {
-        if self.remote.is_some()
+        if false
             || self.hold_announcement(super::transactions::Announcement::Left(id))
         {
             return;
@@ -423,7 +423,7 @@ impl Game<'_> {
     pub(super) fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.persist.live.is_empty()
-            || self.remote.is_some()
+
             || self.hold_announcement(super::transactions::Announcement::Leaves)
         {
             return;

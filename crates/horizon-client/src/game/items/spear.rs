@@ -567,44 +567,5 @@ impl Game<'_> {
         }
     }
 
-    /// `remote_kinetic_hit` for the ECS mob `id` that is using a kinetic weapon: the weapon and the position come from its components.
-    pub(in crate::game) fn remote_kinetic_hit_ecs(&mut self, id: u32) {
-        let Some(off) = self.ecs.using_off_hand(id) else { return };
-        let stack = if off {
-            self.ecs_item(id, horizon_ecs_proto::goals::Slot::Off).map(|n| ItemStack::new(&n, 1))
-        } else {
-            self.ecs_main_hand(id)
-        };
-        let (Some(kinetic), Some(at)) = (stack.and_then(|s| Kinetic::of(&s.item)), self.ecs.position(id)) else { return };
-        self.kinetic_hit_feedback(id as i32, &kinetic, at);
-    }
 
-    /// Synchronize look rotation before sending a spear jab so the server
-    /// raycasts along the player's updated look direction.
-    pub(in crate::game) fn remote_sync_look(&mut self) {
-        let (yaw, pitch) = (self.yaw, self.pitch);
-        let (riding, controls) = (self.riding.is_some(), self.controls_camera());
-        if let Some(p) = self.player.as_ref()
-            && let Some(r) = self.remote.as_mut()
-        {
-            let pos = [p.position.x, p.position.y, p.position.z];
-            let (g, c) = (p.ground.on_ground, p.collision.horizontal);
-            let pkt = if riding {
-                Some(horizon_protocol::packets::play::Serverbound::MovePlayerRot(
-                    horizon_protocol::packets::play::MovePlayerRot {
-                        yaw,
-                        pitch,
-                        flags: u8::from(g) | u8::from(c) << 1,
-                    },
-                ))
-            } else if controls {
-                r.position_sender.update(pos, (yaw, pitch), g, c)
-            } else {
-                None
-            };
-            if let Some(pkt) = pkt {
-                r.session.send(pkt);
-            }
-        }
-    }
 }

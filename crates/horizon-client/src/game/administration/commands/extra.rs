@@ -1046,18 +1046,6 @@ impl Game<'_> {
         };
         self.send_dialog(targets, &holder);
     }
-    /// `ServerPlayer.openDialog` for the dialog of a `show_dialog` click
-    /// event (a sign's): a registry id or the dialog itself, opened for the
-    /// player the game acts for.
-    pub(in crate::game) fn show_click_dialog(&mut self, dialog: &horizon_core::nbt::Tag) {
-        let holder = match dialog {
-            horizon_core::nbt::Tag::String(id) => self.dialog_holder(&id.to_string_lossy()),
-            direct => Some(DialogHolder::Direct(direct.clone())),
-        };
-        if let Some(holder) = holder {
-            self.send_dialog(&[Target::Player], &holder);
-        }
-    }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// screen to the window's own player.
     fn send_dialog(&mut self, targets: &[Target], holder: &DialogHolder) {

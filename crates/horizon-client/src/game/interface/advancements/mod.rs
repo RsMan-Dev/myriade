@@ -432,7 +432,7 @@ impl Game<'_> {
             .ok();
     }
     pub(super) fn load_advancements(&mut self) {
-        if self.adv.loaded || self.remote.is_some() || self.no_player_here() {
+        if self.adv.loaded || self.no_player_here() {
             return;
         }
         self.adv.loaded = true;
@@ -459,7 +459,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn save_advancements(&self) {
-        if !self.adv.loaded || self.remote.is_some() || self.no_player_here() {
+        if !self.adv.loaded || self.no_player_here() {
             return;
         }
         let Some(path) = self.adv_path() else {
@@ -888,7 +888,7 @@ impl Game<'_> {
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
     pub(super) fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
-        if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+        if self.lan_acting_fake || self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1116,7 +1116,7 @@ impl Game<'_> {
         if !allowed.is_empty() {
             self.invalidate_mod_book_placement_knowledge();
         }
-        if allowed.is_empty() || self.remote.is_some() || self.no_player_here() {
+        if allowed.is_empty() || self.no_player_here() {
             return taken_back;
         }
         self.load_advancements();
@@ -1318,7 +1318,7 @@ impl Game<'_> {
         // Native mods hear the change before any criterion is looked at, so
         // they do with no `inventory_changed` advancement in the tree too
         // (`native_player_inventory_changed`, API 579).
-        if self.remote.is_none()
+        if true
             && !self.no_player_here()
             && mod_api::__private::listened(mod_api::HookId::PlayerInventoryChanged)
         {
@@ -1354,7 +1354,7 @@ impl Game<'_> {
             })
             .count() as f64;
         // Only the criteria the items held could pass (`InventoryIndex`).
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1402,7 +1402,7 @@ impl Game<'_> {
     }
     /// `PlayerTrigger.LOCATION` every 20 of the player's own ticks (`tickCount % 20`), and the others.
     pub(super) fn tick_advancements(&mut self) {
-        if self.player.is_none() || self.remote.is_some() {
+        if self.player.is_none() {
             return;
         }
         self.check_inventory_trigger();
@@ -1680,7 +1680,7 @@ impl Game<'_> {
     /// `durability` tests `maxDamage - newDamage`, `delta` tests
     /// `damageValue - newDamage`.
     pub(super) fn trigger_item_durability(&mut self, stack: &ItemStack, new_damage: i32) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:item_durability_changed");
@@ -1715,7 +1715,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use.
     pub(super) fn trigger_using_item(&mut self, stack: &ItemStack) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:using_item");
@@ -1733,7 +1733,7 @@ impl Game<'_> {
     /// `UsedEnderEyeTrigger.trigger`: the player threw an eye of ender toward
     /// a structure `sqr_distance` (squared, horizontal) away.
     pub(super) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
-        if self.remote.is_some() || self.no_player_here() {
+        if self.no_player_here() {
             return;
         }
         let me = self.player_entity_for("minecraft:used_ender_eye");

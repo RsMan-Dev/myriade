@@ -1900,13 +1900,6 @@ pub fn celebrate(m: &mut Mob, w: &MobWorld) {
         t.position.z.floor() as i32,
     ]);
 }
-/// `Hoglin.isConverting` and `AbstractPiglin.isConverting` on a client: in a
-/// dimension that is not piglin safe (`nether` is false), a mob that is not
-/// immune (`flag2`) and has AI shakes. `counter2 > 0` draws the shake, as it
-/// does on the server while the zombification counts up.
-pub fn client_converting(m: &mut Mob, nether: bool) {
-    m.extra.counter2 = i32::from(!nether && !m.extra.flag2 && !m.no_ai);
-}
 /// Per-tick piglin, piglin brute and hoglin state: the brute's activity and
 /// growl, a piglin's admiring, anger and zombification, and the hoglin attack
 /// animation.

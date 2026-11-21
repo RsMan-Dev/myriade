@@ -1239,9 +1239,6 @@ fn candidate_fluid(c: RayCandidate) -> u32 {
 }
 // Every ray misses: `ray_step` sees no candidate and `state` stays as it was.
 fn trace_step(origin: vec3<f32>, direction: vec3<f32>, max_distance: f32, layers: u32, state: ptr<function, RayState>) -> RayHit {
-    if false {
-        _ = ray_step(RayCandidate(-1.0, 0u), state);
-    }
     let horizon_shaded = vec4<f32>(0.0);
     return RayHit(-1.0, vec3<f32>(0.0), vec3<f32>(0.0), vec2<f32>(0.0), vec4<f32>(0.0),
         vec4<f32>(0.0), 0.0, 0.0, vec2<f32>(0.0), 0u, 0u, 0.0, 0u, false, false,

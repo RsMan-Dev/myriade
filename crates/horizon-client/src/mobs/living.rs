@@ -2204,25 +2204,6 @@ pub fn eye_probe_cell(previous: Vec3, position: Vec3, eye_height: f64, partial: 
     ]
 }
 
-/// `Entity.doWaterSplashEffect` for a mob this window is drawing.
-/// `Level.addParticle` runs on the client. `ClientLevel.playSeededSound`
-/// ignores `Entity.playSound` (`except` is null), and the SPLASH game event
-/// stays on the server, so only the bubble and splash particles are kept.
-pub fn client_water_splash(mob: &mut Mob, out: &mut Vec<MobEvent>) {
-    let mut events = Vec::new();
-    let _ = horizon_world::water_splash::water_splash(
-        &mut Splash {
-            mob,
-            events: &mut events,
-        },
-        1_000_000,
-    );
-    out.extend(
-        events
-            .into_iter()
-            .filter(|event| matches!(event, MobEvent::ParticleAt { .. })),
-    );
-}
 
 /// `Entity.restituteMovementAfterCollisions`' native inputs, bound for a mob:
 /// its own bounciness attribute, the block's coefficients and the pose of a

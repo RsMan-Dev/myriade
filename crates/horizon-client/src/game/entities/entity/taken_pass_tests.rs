@@ -225,20 +225,6 @@ impl LifecycleFixture {
             assert_eq!(ids(game), parked_ids, "parked owner restore");
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             assert_eq!(ids(game), active, "second active restore");
-            if let Some(remote) = self.remote {
-                (remote.prepare)(game);
-                (self.seed)(
-                    game,
-                    &[
-                        (301, [1.0, 80.0, 1.0]),
-                        (302, [17.0, 80.0, 1.0]),
-                        (303, [33.0, 80.0, 1.0]),
-                    ],
-                );
-                assert_eq!(ids(game), [301, 302, 303], "remote owner install");
-                (remote.apply)(game, 302, 303);
-                assert_eq!(ids(game), [301, 303], "remote update and removal");
-            }
         });
     }
 }

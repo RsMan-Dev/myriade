@@ -111,7 +111,7 @@ impl Game<'_> {
     fn screen_hooks_heard(&self) -> bool {
         (mod_api::__private::listened(mod_api::HookId::ScreenOpening)
             || mod_api::__private::listened(mod_api::HookId::ScreenClosing))
-            && self.options.execution_role.is_client()
+            && false
             && self.lan_acting.is_none()
     }
     /// The hooks' answer to a change from `current` to `new`, for every path
@@ -824,38 +824,6 @@ impl Game<'_> {
         self.native_player_heart_type(&mut kind);
         Some(kind)
     }
-    /// Deliver a non-repeat key press to the native panel.
-    pub(super) fn native_panel_key_event(&mut self, key: KeyCode, pressed: bool, repeat: bool) {
-        if pressed
-            && !repeat
-            && let Some(name) = keybinds::key_name(key)
-        {
-            self.native_panel_key(name);
-        }
-    }
-    /// Whether a mod listens to one of the four screen render hooks; nothing
-    /// is built to fire them otherwise.
-    pub(super) fn screen_render_listened(&self) -> bool {
-        use mod_api::HookId;
-        [
-            HookId::ScreenRenderPre,
-            HookId::ScreenRenderBackground,
-            HookId::ScreenRenderForeground,
-            HookId::ScreenRenderPost,
-        ]
-        .into_iter()
-        .any(mod_api::__private::listened)
-    }
-    /// `Render.Pre`: whether the screen draws. The screen owns its later phases.
-    pub(super) fn screen_render_begin(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) -> bool {
-        let mut canceled = false;
-        self.native_screen_render_pre(draw, screen, &mut canceled);
-        !canceled
-    }
-    /// `Render.Post`, including when Pre cancelled the screen's drawing.
-    pub(super) fn screen_render_end(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) {
-        self.native_screen_render_post(draw, screen);
-    }
     /// The open screen as a native mod sees it (`ScreenView`): its id,
     /// the open menu's type and title, its slot count, and its panel's
     /// rectangle, with the mouse and the partial tick. `screen` is the screen
@@ -911,11 +879,6 @@ impl Game<'_> {
             image.width as f32,
             image.height as f32,
         ]
-    }
-    pub(super) fn track_drag_button(&mut self, button: MouseButton, pressed: bool) {
-        // Any release ends the drag, as vanilla's `MouseHandler.onButton` clears `activeButton`:
-        // left down, right down, left up sends no drag while right is still held.
-        self.drag_button = pressed.then_some(button);
     }
     pub(super) fn screen_mouse_dragged(&self, previous: (f32, f32)) -> ScreenMousePre {
         if self.pad_synthetic_input() || self.cursor == previous {
@@ -981,46 +944,6 @@ impl Game<'_> {
             }
         }
     }
-    /// Whether a Post of the key `key` over the open screen cancelled it
-    /// (`ScreenEvent.KeyPressed.Post` / `KeyReleased.Post`): asked where the
-    /// key no screen arm took reaches the game's own key handling, which a
-    /// cancel then skips. False with no subscriber, no screen of the hooks'
-    /// open, or a key with no vanilla name.
-    pub(super) fn screen_key_post(&self, key: KeyCode, pressed: bool, repeat: bool) -> bool {
-        let hook = if pressed {
-            mod_api::HookId::ScreenKeyPressedPost
-        } else {
-            mod_api::HookId::ScreenKeyReleasedPost
-        };
-        if !mod_api::__private::listened(hook) {
-            return false;
-        }
-        let (Some(name), Some(screen)) = (keybinds::key_name(key), self.screen_view_now()) else {
-            return false;
-        };
-        let modifiers = super::glfw_modifiers(self.modifiers);
-        let mut canceled = false;
-        if pressed {
-            self.native_screen_key_pressed_post(&screen, name, repeat, modifiers, &mut canceled);
-        } else {
-            self.native_screen_key_released_post(&screen, name, modifiers, &mut canceled);
-        }
-        canceled
-    }
-    /// `ScreenEvent.CharacterTyped.Post` for each character of `text` that no
-    /// text box took.
-    fn screen_chars_post(&self, text: &str) {
-        if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPost) {
-            return;
-        }
-        let Some(screen) = self.screen_view_now() else {
-            return;
-        };
-        let modifiers = super::glfw_modifiers(self.modifiers);
-        for c in text.chars() {
-            self.native_screen_char_typed_post(&screen, c, modifiers, &mut false);
-        }
-    }
     /// A screen the native mods' input hooks are for is open: the window has a
     /// renderer, either the title's own (`title`, `world_select`,
     /// `world_create`, `multiplayer`…) or a screen over the world
@@ -1052,118 +975,6 @@ impl Game<'_> {
             return Some(self.screen_view(&batch, self.screen));
         }
         self.title_screen_view(&batch)
-    }
-    /// Whether the key press `key` over the open screen went no further
-    /// (`native_screen_key_pressed_pre`): what `handle_window_event` and the
-    /// control socket's `key` command both ask before a screen acts on a key.
-    /// False when no screen of the hooks' is open, and for a key with no
-    /// vanilla name.
-    pub(super) fn screen_key_pressed(&self, key: KeyCode, repeat: bool) -> bool {
-        let Some(name) = keybinds::key_name(key) else {
-            return false;
-        };
-        let Some(screen) = self.screen_view_now() else {
-            return false;
-        };
-        let mut canceled = false;
-        self.native_screen_key_pressed_pre(
-            &screen,
-            name,
-            repeat,
-            super::glfw_modifiers(self.modifiers),
-            &mut canceled,
-        );
-        canceled
-    }
-    pub(super) fn screen_key_released(&self, key: KeyCode) -> bool {
-        let Some(name) = keybinds::key_name(key) else {
-            return false;
-        };
-        let Some(screen) = self.screen_view_now() else {
-            return false;
-        };
-        let mut canceled = false;
-        self.native_screen_key_released_pre(
-            &screen,
-            name,
-            super::glfw_modifiers(self.modifiers),
-            &mut canceled,
-        );
-        canceled
-    }
-    /// `native_screen_char_typed_pre` for one character, with the focused
-    /// box's edit: what the listeners leave of `field` goes back to the box
-    /// before the character does. Whether they cancelled the character.
-    fn screen_char_canceled(&mut self, c: char) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPre)
-            || !self.screen_hooks_open()
-        {
-            return false;
-        }
-        let modifiers = super::glfw_modifiers(self.modifiers);
-        self.with_focused_text_edit(|game, field| {
-            let Some(screen) = game.screen_view_now() else {
-                return false;
-            };
-            let mut canceled = false;
-            game.native_screen_char_typed_pre(&screen, c, modifiers, field, &mut canceled);
-            canceled
-        })
-    }
-    /// Text on its way to a text box after the open screen's character hooks
-    /// (`native_screen_char_typed_pre` per printable character): the cancelled
-    /// characters are gone and every other one stays, control characters
-    /// included (a text box reads Backspace, Delete and the like as keys).
-    /// `None` when none of them is left to type. For a key's text that stays
-    /// on the key, which no box with a `field` takes.
-    pub(super) fn screen_text_typed(&mut self, text: &str) -> Option<String> {
-        screen_text_hooked(text, |c| self.screen_char_canceled(c))
-    }
-    /// Text into a text box a character at a time (`Screen.charTyped`): each
-    /// printable one is offered to `native_screen_char_typed_pre`, and `take`
-    /// gets it unless cancelled, before the next is offered. A control
-    /// character goes straight to `take`: a text box reads it as a key.
-    pub(super) fn screen_text_each(&mut self, text: &str, mut take: impl FnMut(&mut Self, &str)) {
-        let mut encoded = [0; 4];
-        for c in text.chars() {
-            if c.is_control() || !self.screen_char_canceled(c) {
-                take(self, c.encode_utf8(&mut encoded));
-            }
-        }
-    }
-    /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
-    /// `KeyboardHandler.charTyped`), dispatched once the screen has acted on
-    /// the key: GLFW's char callback comes after its key callback, so the
-    /// characters go to the screen that is open now — a key that closed the
-    /// screen leaves none to hear them, as vanilla's closed screen hears
-    /// nothing, and one that moved the focus types into the box it moved to.
-    /// Each printable one is offered to `native_screen_char_typed_pre`; the
-    /// survivors go to the focused text box, control characters (keys) gone.
-    pub(super) fn screen_chars_typed(&mut self, text: Option<&str>) {
-        let Some(text) = text else {
-            return;
-        };
-        if !self.screen_hooks_open() {
-            return;
-        }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        self.screen_text_each(&text, |game, c| {
-            // `Err` only says no text box of the screen takes the character.
-            if game.type_chars_into_screen(c).is_err() {
-                game.screen_chars_post(c);
-            }
-        });
-    }
-    pub(super) fn observe_client_packet(
-        &mut self,
-        packet: &horizon_protocol::packets::play::Clientbound,
-    ) {
-        if !mod_api::__private::listened(mod_api::HookId::ClientPacket) {
-            return;
-        }
-        let view = client_packet_view(packet);
-        self.native_client_packet(&view);
     }
     /// Whether a mod cancelled `packet` on its way to the server (`client_packet_send`).
     /// Builds the packet's view only when a mod listens.
@@ -2252,15 +2063,6 @@ impl Game<'_> {
             dimension: self.dim.id(),
         })
     }
-    /// The frame counter: frames in the last second, the slowest frame and
-    /// the 1% low of the last 5 seconds, in frames per second.
-    pub(super) fn native_frame_rate(&self) -> (u32, u32, u32) {
-        self.frame_reading()
-    }
-    /// Attack and use clicks in the last second.
-    pub(super) fn native_clicks(&mut self) -> (u32, u32) {
-        self.click_reading()
-    }
     /// A line in chat from the client.
     pub(super) fn native_chat(&mut self, text: &str) {
         let focused = self.screen == Screen::Chat;
@@ -2310,7 +2112,7 @@ impl Game<'_> {
     /// server's `Game` (the server thread, a dedicated server, a LAN host)
     /// has no player of its own, and is always in its world.
     fn outside_world(&self) -> bool {
-        self.player.is_none() && self.options.execution_role.is_client()
+        self.player.is_none() && false
     }
     /// Every item and recipe the game knows, made once (the same for every
     /// call); none outside a world. They are the window's own (the content
@@ -2384,7 +2186,7 @@ impl Game<'_> {
                 check: None,
             };
         }
-        let client = self.remote.is_some();
+        let client = false;
         let check = self.with_level(|b, level, _| b.is_valid_bonemeal_target(level, pos, client));
         let valid = check.is_valid();
         let state = self.world.block(pos.x, pos.y, pos.z);
@@ -2509,9 +2311,6 @@ impl Game<'_> {
     /// player's UUID and entity id on a server, this client's own player on
     /// a client.
     pub(super) fn native_clicker(&mut self) -> (u128, i32) {
-        if self.remote.is_some() {
-            return (self.own_uuid(), self.own_entity_id());
-        }
         let entity = self
             .lan_acting_entity
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
@@ -2579,7 +2378,7 @@ impl Game<'_> {
             && let Some(stack) = stack
         {
             self.with_hand(hand, |game| {
-                if game.remote.is_none() {
+                {
                     game.award_stat("used", &stack.item, 1);
                 }
                 game.apply_after_use_components(stack);
@@ -2670,9 +2469,6 @@ impl Game<'_> {
     /// Tells the mods of the chunks that came into this level.
     pub(super) fn native_chunks_loaded(&mut self) {
         let loaded = std::mem::take(&mut self.world.loaded_chunks);
-        if self.remote.is_some() {
-            return;
-        }
         let dimension = self.dim.id();
         if let Some(host) = self.lan.as_mut() {
             host.hub
@@ -2697,9 +2493,6 @@ impl Game<'_> {
         &mut self,
         unloaded: &[std::sync::Arc<horizon_client::chunk::Chunk>],
     ) {
-        if self.remote.is_some() {
-            return;
-        }
         let dimension = self.dim.id();
         if let Some(host) = self.lan.as_mut() {
             host.hub
@@ -3026,16 +2819,6 @@ impl Game<'_> {
         let c = self.world.block_entities.mod_container(state)?;
         mod_menu(c.menu.as_deref()?).map(|(menu, _)| menu)
     }
-    /// A data slot of window `window`'s menu (`ContainerSetData`); false
-    /// when no mod screen is showing for that window.
-    pub(super) fn native_screen_data(&mut self, window: i32, id: i16, value: i16) -> bool {
-        if self.shown_native_screen().is_none() {
-            return false;
-        }
-        self.mod_screen
-            .as_mut()
-            .is_some_and(|s| s.set_data(window, id, value))
-    }
     /// Where the open mod screen puts container slot `slot`.
     pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
@@ -3057,12 +2840,6 @@ impl Game<'_> {
                 .collect(),
         )
     }
-    /// How many of those slots `native_screen_slots` lists, without building
-    /// it (`Game::slot_count` asks every frame).
-    pub(super) fn native_screen_slot_count(&self) -> Option<usize> {
-        let s = self.shown_native_screen()?;
-        Some(s.screen.slots.iter().filter(|p| p.is_some()).count())
-    }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
         self.shown_native_screen().map(|s| s.screen.inventory_y)
@@ -3074,62 +2851,6 @@ impl Game<'_> {
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
         self.shown_native_screen().map(|s| s.screen.width)
-    }
-    /// The open mod screen: a plain panel with its slots' frames, the mod's
-    /// drawing over it, then the title and the inventory's label. False when
-    /// none is showing.
-    pub(super) fn draw_native_screen(&self, batch: &mut HudBatch, ox: f32, oy: f32) -> bool {
-        let Some(s) = self.shown_native_screen() else {
-            return false;
-        };
-        let atlas = &self.gui.atlas;
-        if !s.screen.own_background {
-            let (w, h) = (s.screen.width, s.screen.height);
-            batch.fill(atlas, ox, oy, w, h, rgba(0, 0, 0, 255));
-            batch.fill(
-                atlas,
-                ox + 1.0,
-                oy + 1.0,
-                w - 2.0,
-                h - 2.0,
-                rgba(198, 198, 198, 255),
-            );
-            let container = self.native_screen_slots().unwrap_or_default();
-            for i in (0..36).chain(container) {
-                let (x, y) = self.slot_position(i);
-                let (x, y) = (ox + x - 1.0, oy + y - 1.0);
-                batch.fill(atlas, x, y, 18.0, 18.0, rgba(55, 55, 55, 255));
-                batch.fill(
-                    atlas,
-                    x + 1.0,
-                    y + 1.0,
-                    17.0,
-                    17.0,
-                    rgba(255, 255, 255, 255),
-                );
-                batch.fill(
-                    atlas,
-                    x + 1.0,
-                    y + 1.0,
-                    16.0,
-                    16.0,
-                    rgba(139, 139, 139, 255),
-                );
-            }
-        }
-        self.native_screen_draw(&s.block, &s.data, batch, [ox, oy]);
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-        if s.screen.own_labels {
-            return true;
-        }
-        let grey = rgba(64, 64, 64, 255);
-        if let Some(title) = self.remote_menu_title() {
-            batch.text_styled(atlas, &title, ox + 8.0, oy + 6.0, grey, false);
-        }
-        let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-        let label_y = oy + s.screen.inventory_y - 11.0;
-        batch.text(atlas, &inventory, ox + 8.0, label_y, grey, false);
-        true
     }
     /// Puts back a mod block entity taken out for a call, unless the call
     /// removed or replaced it, with what its `setChanged` does.
@@ -3188,45 +2909,6 @@ impl Game<'_> {
         let (ox, oy) = self.inventory_origin(&batch);
         let at = [self.cursor.0 - ox, self.cursor.1 - oy];
         Some((s.block.clone(), s.data.clone(), at))
-    }
-    /// A press on the open mod screen's own button (`native_screen_click`)
-    /// goes to the server as a menu button click (true).
-    pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
-        if self.inventory_target().0.is_some() {
-            return false;
-        }
-        let Some((block, data, at)) = self.native_screen_at() else {
-            return false;
-        };
-        let mut button = None;
-        self.native_screen_click(&block, &data, at, right, &mut button);
-        let Some(button) = button else {
-            return false;
-        };
-        // No menu open: the click still sounds.
-        let _ = self.remote_button_click(button);
-        self.audio.play_button_click();
-        true
-    }
-    /// The open mod screen's tooltip under the cursor (`native_screen_tooltip`).
-    pub(super) fn draw_native_screen_tooltip(&mut self, batch: &mut HudBatch) {
-        // Over no item: an empty slot still gets the mod's hint (which fuel it takes).
-        // A carried stack hides only slot tooltips, as AbstractContainerScreen's;
-        // the screen's other parts keep theirs, as a vanilla widget's tooltip does.
-        let slot = self.slot_at(batch, self.cursor.0, self.cursor.1);
-        if slot.is_some_and(|i| self.slot_view(i).is_some()) {
-            return;
-        }
-        let Some((block, data, at)) = self.native_screen_at() else {
-            return;
-        };
-        let mut lines = Vec::new();
-        self.native_screen_tooltip(&block, &data, at, &mut lines);
-        let lines: Vec<(horizon_client::text::Text, u32)> = lines
-            .into_iter()
-            .map(|l| (horizon_client::text::Text::literal(l), u32::MAX))
-            .collect();
-        self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
     }
     /// Options > Mods' rows for loaded code mods, after the content-only rows.
     pub(super) fn list_native_mods(&mut self) {
@@ -3349,47 +3031,6 @@ impl Game<'_> {
         if self.store_setting(&id, &key, &kept) {
             self.native_setting_changed(&id, &key);
         }
-    }
-    /// Native mod `i`'s page opened: its settings' kept values read again.
-    pub(super) fn native_settings_refresh(&mut self, i: usize) {
-        let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
-            return;
-        };
-        let settings = self.native_page_settings(&id);
-        let row = self.settings.mods.installed.get_mut(i);
-        if let Some(page) = row.and_then(|m| m.native.as_mut()) {
-            page.settings = settings;
-        }
-    }
-    /// A client mod's command (the `command` hook); a server never asks.
-    pub(super) fn client_mod_command(&mut self, command: &str) -> bool {
-        if self.lan_acting.is_some() {
-            return false;
-        }
-        let mut ran = false;
-        self.native_command(command, &mut ran);
-        ran
-    }
-    /// The zoom in effect while playing (a native mod's); the spyglass's own
-    /// view wins.
-    pub(super) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
-        if !self.playing() || self.scoping() {
-            return None;
-        }
-        let mut zoom = None;
-        self.native_zoom(&mut zoom);
-        // As the WebAssembly runtime clamped a mod's zoom.
-        let z = zoom?;
-        let factor = finite(z.factor, 1.0, 10.0);
-        (factor > 1.0).then_some(mod_api::Zoom {
-            factor,
-            smooth: z.smooth,
-            turn: if z.turn.is_finite() {
-                z.turn.clamp(0.05, 1.0)
-            } else {
-                1.0
-            },
-        })
     }
     /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
     /// none while not playing.

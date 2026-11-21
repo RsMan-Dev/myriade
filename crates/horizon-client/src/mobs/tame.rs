@@ -1635,11 +1635,6 @@ pub fn cat_variant(w_moon_full: bool, r: &mut impl RandomSource) -> u8 {
     let n = if w_moon_full { 11 } else { 10 };
     r.next_int_bound(n).unwrap_or(0) as u8
 }
-pub fn cat_texture(m: &Mob) -> String {
-    let v = CAT_VARIANTS[(m.extra.variant as usize).min(10)];
-    let baby = if m.is_baby() { "_baby" } else { "" };
-    format!("entity/cat/cat_{v}{baby}")
-}
 /// `CatRenderer.setupRotations`: lying cats roll onto their side.
 pub fn cat_rotations(m: &Mob, partial: f32) -> glam::Mat4 {
     let lie = m.anim.lerp(LIE, partial);

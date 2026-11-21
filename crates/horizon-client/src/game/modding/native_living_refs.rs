@@ -969,9 +969,6 @@ impl Game<'_> {
         defer: bool,
     ) -> bool {
         // A client's copy changes only when the server says so.
-        if self.remote.is_some() {
-            return false;
-        }
         let Some(t) = self.native_living_target(living) else {
             return false;
         };

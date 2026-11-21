@@ -45,8 +45,6 @@ impl Game<'_> {
                 },
                 _ => Play::Singleplayer,
             }
-        } else if self.remote.is_some() {
-            Play::Multiplayer
         } else {
             Play::Singleplayer
         };

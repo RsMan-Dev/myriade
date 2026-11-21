@@ -19,16 +19,6 @@ impl Game<'_> {
         }
         lines
     }
-    /// `stack`'s tooltip at `x`, `y`, laid out and drawn as every tooltip is.
-    pub(in crate::game) fn draw_fluid_tooltip(
-        &self,
-        batch: &mut HudBatch,
-        stack: &FluidStack,
-        x: f32,
-        y: f32,
-    ) {
-        self.draw_tooltip_lines(batch, &self.fluid_tooltip_lines(stack), x, y);
-    }
 }
 
 /// Helpers for native mods, kept as stable as the hook points.

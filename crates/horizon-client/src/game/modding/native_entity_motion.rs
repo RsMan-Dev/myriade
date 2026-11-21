@@ -154,7 +154,7 @@ impl Game<'_> {
     /// it), an entity Horizon doesn't simulate, a value that isn't finite,
     /// or on a client. API 379.
     pub(super) fn entity_set_velocity(&mut self, entity: EntityRef, velocity: [f64; 3]) -> bool {
-        if self.remote.is_some()
+        if false
             || !velocity.iter().all(|v| v.is_finite())
             || self.native_entity_target(entity).is_none()
         {

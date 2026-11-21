@@ -287,25 +287,6 @@ impl Game<'_> {
             self.particles.add(&bubble, p, velocity);
         }
     }
-    /// Entity event 67 from a server, for this client's own player or an
-    /// entity it draws.
-    pub(super) fn remote_drown(&mut self, id: i32) {
-        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
-        let body = if own {
-            self.player.as_ref().map(|p| {
-                let (at, v) = (p.position, p.velocity);
-                ([at.x, at.y, at.z], [v.x, v.y, v.z])
-            })
-        } else {
-            self.remote_entities.iter().find(|m| m.id == id as u32).map(|m| {
-                let (at, v) = (m.position, m.velocity);
-                ([at.x, at.y, at.z], [v.x, v.y, v.z])
-            })
-        };
-        if let Some((at, v)) = body {
-            self.drown_particles(at, v, 8);
-        }
-    }
     /// `LivingDrownEvent`'s `bubbles` for an entity drowning at `at`: true for
     /// vanilla's eight, which the caller sends as entity event 67 and draws.
     /// Another positive count goes to the players around as that many bubble
@@ -332,12 +313,6 @@ impl Game<'_> {
         if self.drown_bubbles(at, v, bubbles) {
             self.lan_entity_event(mob as i32, DROWN_EVENT, at);
             self.drown_particles(at, v, 8);
-        }
-    }
-    /// `remote_drown` for the ECS mob `id`: its place and velocity come from the bridge.
-    pub(super) fn remote_drown_ecs(&mut self, id: u32) {
-        if let (Some(at), Some(v)) = (self.ecs.position(id), self.ecs_mob_velocity(id)) {
-            self.drown_particles(at, [v.x, v.y, v.z], 8);
         }
     }
     /// `mob_drown` for the ECS mob `mob`.

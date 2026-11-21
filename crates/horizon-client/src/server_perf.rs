@@ -239,10 +239,6 @@ impl ServerPerf {
         t - self.gauges_at >= 1.0
     }
 
-    /// The median CPU time of the frames since the last second, for the gauges read next.
-    pub fn set_frame_medians(&mut self, cpu_ms: Option<f32>) {
-        self.frame_medians = cpu_ms;
-    }
 
     /// One tick or frame that took `wall_ms` and ended at `t`; `world` and `wire` are read when the gauges are due.
     pub fn tick(
@@ -336,21 +332,6 @@ impl ServerPerf {
         Ok(path)
     }
 
-    /// Writes this side into the file another side opened; `origin`, on this side's clock, is the zero of every `t`. Call it on the tick thread.
-    pub fn join_capture(
-        &mut self,
-        t: f64,
-        origin: f64,
-        tx: FieldSender,
-        path: PathBuf,
-        options: CaptureOptions,
-    ) -> std::io::Result<()> {
-        if self.session.is_some() {
-            return Err(std::io::Error::other("a capture is already running"));
-        }
-        self.open(t, origin, None, tx, path, Path::new(""), options);
-        Ok(())
-    }
 
     /// What another side needs to join the running capture: its sender, its file and the clock reading its `t` is zero at.
     pub fn joinable(&self) -> Option<(FieldSender, PathBuf, f64)> {

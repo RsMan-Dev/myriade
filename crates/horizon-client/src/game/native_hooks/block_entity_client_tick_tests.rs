@@ -68,13 +68,6 @@ struct Hum;
 impl BlockPart for Hum {}
 #[mod_api::horizon_part]
 impl BlockEntityPart for Hum {
-    fn block_entity_client_ticks(
-        &self,
-        _: &dyn ClientHost,
-        event: &mut BlockEntityClientTicksEvent<'_>,
-    ) {
-        event.ticks = true;
-    }
     fn block_entity_client_tick(
         &self,
         host: &mut dyn ClientHost,

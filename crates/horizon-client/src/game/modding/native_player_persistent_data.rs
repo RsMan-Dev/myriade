@@ -36,9 +36,6 @@ impl Game<'_> {
     /// The mods' compound on a player: the acting player's saved data is the level's for their
     /// turn, another's is their record's.
     pub(super) fn player_persistent_data(&self, player: PlayerRef) -> Option<Compound> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => persistent_data(self.level.player_extra.as_ref()),
             PlayerRead::Guest(g) => persistent_data(g.saved.as_ref()),

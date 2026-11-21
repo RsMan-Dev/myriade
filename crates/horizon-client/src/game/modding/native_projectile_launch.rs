@@ -20,7 +20,7 @@ impl Game<'_> {
         if self.entity_ids_exhausted() {
             return None;
         }
-        if self.remote.is_some() || ![offset, power, inaccuracy].into_iter().all(f32::is_finite) {
+        if ![offset, power, inaccuracy].into_iter().all(f32::is_finite) {
             return None;
         }
         let target = self.native_living_target(owner)?;

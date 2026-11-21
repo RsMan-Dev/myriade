@@ -75,7 +75,7 @@ impl Game<'_> {
     /// server is told the passage and where the feet were; a payload a mod cancels moves
     /// nothing. Until the server's position packet, the next crossing waits.
     pub(super) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
-        if self.remote.is_none() {
+        {
             return Err(Error::Unavailable);
         }
         if self.player.is_none() {

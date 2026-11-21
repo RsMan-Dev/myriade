@@ -69,7 +69,7 @@ impl Game<'_> {
         };
         if self.tick_script.running.is_none() {
             let go = path.with_extension("go");
-            if self.remote.is_none() || !go.exists() {
+            if true || !go.exists() {
                 return;
             }
             let _ = std::fs::remove_file(&go);

@@ -12,9 +12,6 @@ impl Game<'_> {
         player: PlayerRef,
         packet: ClientboundPlayPacket,
     ) -> Result<(), SendPacketError> {
-        if self.remote.is_some() {
-            return Err(SendPacketError::NotConnected);
-        }
         let reachable = self.native_acting_player() == Some(player)
             || self.online_player_record(player).is_some();
         if !reachable {

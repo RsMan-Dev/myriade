@@ -90,7 +90,7 @@ impl Game<'_> {
                         .or_default()
                         .trigger_event(a, b, time, || gathered);
                 // The server's copy tells the living entities within 32 blocks.
-                if rung && self.remote.is_none() {
+                if rung {
                     self.bell_heard(pos, time);
                 }
             }
@@ -372,7 +372,7 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         // On a server its own copy does this and sends the sound.
-        if tick.resonate && self.remote.is_none() {
+        if tick.resonate {
             // The server's copy plays the resonance for everyone.
             self.audio
                 .play("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
@@ -390,13 +390,13 @@ impl Game<'_> {
             }
             // makeRaidersGlow (the server's effect).
             if self.ecs.is_active() {
-                if self.remote.is_none() {
+                {
                     for id in glow.iter().filter_map(|&h| u32::try_from(h).ok()) {
                         self.ecs_add_effect(id, "minecraft:glowing", 60, 0);
                     }
                 }
             } else {
-                for m in self.remote_entities.iter_mut().filter(|_| self.remote.is_none()) {
+                for m in self.remote_entities.iter_mut().filter(|_| true) {
                     if glow.contains(&u64::from(m.id)) {
                         m.add_effect("minecraft:glowing", 60, 0);
                     }
@@ -417,7 +417,7 @@ impl Game<'_> {
         // A client's mod block entities with a client ticker (none off a server's client).
         self.client_tick_mod_block_entities();
         // A client of a server only animates what it is sent.
-        if self.remote.is_none() {
+        {
             self.tick_block_entity_servers();
         }
         let Some(r) = &self.renderer else {
@@ -432,10 +432,8 @@ impl Game<'_> {
                 .filter_map(|(p, s)| Some((*p, self.be_anims.ticker(*s)?)))
                 .collect();
             present.sort_unstable_by_key(|(p, _)| *p);
-            if self.remote.is_none() {
+            {
                 self.be_anims.retain_present_preserving_bells(&present);
-            } else {
-                self.be_anims.retain_present(&present);
             }
             self.be_anims.present = present;
             self.be_anims.present_revision = Some(revision);
@@ -478,17 +476,6 @@ impl Game<'_> {
                     // `ShulkerBoxBlockEntity.tick` runs on both sides: the
                     // client moves its own player, including with a menu open.
                     // The server ticks its boxes in `tick_block_entities`.
-                    if self.remote.is_some() {
-                        let tick = self
-                            .be_anims
-                            .shulkers
-                            .entry(pos)
-                            .or_default()
-                            .tick(pos, facing);
-                        if let Some(push) = tick.push {
-                            shulker_pushes.push((pos, facing, push));
-                        }
-                    }
                 }
                 Ticker::Skull { powered } => {
                     self.be_anims.skulls.entry(pos).or_default().tick(powered);
@@ -496,9 +483,6 @@ impl Game<'_> {
                 Ticker::Bell => {
                     // Integrated servers already ticked this state above, independently
                     // of drawn block entities. Remote clients only animate their copy.
-                    if self.remote.is_some() {
-                        self.tick_bell(pos, &raiders);
-                    }
                 }
                 Ticker::Conduit => {
                     let target = self.conduit_target(pos);
@@ -545,10 +529,6 @@ impl Game<'_> {
         // move, and a lid the client cannot collide with never holds it up.
         // Only the player: `tick_block_entities` has already pushed the mobs
         // and the guests, and a second push would double the lift.
-        if self.remote.is_some() {
-            self.sync_shulkers();
-            self.push_shulker_local(shulker_pushes);
-        }
     }
     /// `ConduitBlockEntity.serverTick` of every conduit in the chunks that
     /// tick blocks, with or without a renderer. The conduits are looked for
@@ -721,9 +701,6 @@ impl Game<'_> {
         let up = BlockPos::new(p.x, top.floor() as i32, p.z);
         // A server's client has no live biome features to ask: it answers from
         // the chunks and the weather it was sent.
-        if self.remote.is_some() {
-            return self.raining_at(p) || self.raining_at(up);
-        }
         self.with_level(|b, level, _| b.is_raining_at(level, p) || b.is_raining_at(level, up))
     }
     /// `ConduitBlockEntity.updateAndAttackTarget`: while the conduit hunts

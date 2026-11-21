@@ -7,9 +7,6 @@ impl Game<'_> {
     /// The Respawn button for a dead player (`handleClientCommand`'s `PERFORM_RESPAWN`), outside
     /// every player's hook. Each refusal is a variant of [`RespawnRefusal`], checked in its order.
     pub(super) fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal> {
-        if self.remote.is_some() {
-            return Err(RespawnRefusal::Client);
-        }
         if self.lan_acting.is_some() {
             return Err(RespawnRefusal::InPlayerHook);
         }

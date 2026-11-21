@@ -9,7 +9,7 @@ impl Game<'_> {
     pub(in crate::game) fn item_update_round(&mut self) -> native_ticks::TickRound {
         // EntityTickEvent.Pre for the items about to tick, and the Post after them.
         let mut round = self.native_tick_round();
-        let merging = self.remote.is_none();
+        let merging = true;
         // One read says whether any item part listens; with none, no stack is looked at.
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);

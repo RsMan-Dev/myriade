@@ -75,22 +75,6 @@ impl Game<'_> {
                 started: Instant::now(),
                 stage: Stage::Server,
             });
-        } else if self.remote.is_some() {
-            if !quit {
-                return self.leave_server(None);
-            }
-            self.client_logging_out();
-            if let Some(mut remote) = self.remote.take() {
-                remote.session.disconnect();
-            }
-            self.saved_for_exit = true;
-            self.pending_save = Some(ClosingSave {
-                quit,
-                close: true,
-                reply: None,
-                started: Instant::now(),
-                stage: Stage::Quit,
-            });
         } else {
             self.close_container();
             self.award_custom_stat("leave_game", 1);
@@ -277,44 +261,6 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn render_closing_save(&mut self) -> Result<()> {
-        if matches!(
-            self.pending_save.as_ref().map(|save| &save.stage),
-            Some(Stage::Quit)
-        ) {
-            return Ok(());
-        }
-        // disconnectWithSavingScreen: a GenericMessageScreen, its title and
-        // no navigation.
-        horizon_client::widgets::begin_screen(|| {
-            horizon_client::widgets::ScreenInfo::new(
-                "saving",
-                super::screen_info::tr("menu.savingLevel", &[]),
-            )
-            .without_navigation()
-        });
-        let Some(renderer) = &mut self.renderer else {
-            return Ok(());
-        };
-        let mut hud = HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
-        );
-        let progress = match self.pending_save.as_ref().map(|save| &save.stage) {
-            Some(Stage::Chunks(_)) => 0.25,
-            Some(Stage::Entities(_)) => 0.5,
-            Some(Stage::Writes) => 0.9,
-            _ => 0.0,
-        };
-        horizon_client::level_loading::draw_progress(
-            &mut hud,
-            &self.gui.atlas,
-            "Saving world...",
-            progress,
-        );
-        renderer.render(&loading_frame(&hud))?;
-        Ok(())
-    }
 
     /// `GameRenderer.tryTakeScreenshotIfNeeded`: while a local world without a
     /// saved icon is on the screen, grab the rendered frame once a second until

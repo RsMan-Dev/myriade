@@ -422,22 +422,11 @@ struct Launch {
 }
 
 impl Game<'_> {
-    /// Only the owner window changes its integrated server's command tree. A remote
-    /// server (or a splitscreen guest) keeps its own choice and permissions.
-    pub(super) fn sync_pregen_option(&self) {
-        let Some(server) = &self.integrated else {
-            return;
-        };
-        let enabled = self.options.pregen || self.settings.extras.pregen;
-        // Check on the server, after earlier updates have run, so a later toggle
-        // wins. Do not block the window when an unrelated setting changes.
-        server.queue_pregen_option(enabled);
-    }
 
     /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run
     /// in the frame or on its server thread.
     pub(super) fn has_singleplayer_server(&self) -> bool {
-        self.remote.is_none() || self.integrated.is_some()
+        true || self.integrated.is_some()
     }
     /// `Minecraft.isMultiplayerServer`: on another's server, or a world of one's own open to the
     /// network.
@@ -662,14 +651,6 @@ impl Game<'_> {
         handle.world_name = world_name;
         self.server_packs_world_pack(&folder);
         self.connect_local(pipe, &player)?;
-        if let Some(r) = self.remote.as_mut() {
-            // `new LevelLoadTracker(newWorld ? 500L : 0L)`.
-            r.level_load = horizon_client::level_loading::LevelLoadTracker::new(if new_world {
-                horizon_client::level_loading::LEVEL_LOAD_CLOSE_DELAY_MS
-            } else {
-                0
-            });
-        }
         // IntegratedServer.getWorldScreenshotFile: the client grabs the frame
         // the Select World list shows, and needs the save folder for it.
         self.world_icon = Some(WorldIcon {
@@ -1353,26 +1334,6 @@ impl Game<'_> {
                     );
                 }
             }
-        }
-    }
-    /// The world options screen's state, read on the server.
-    pub(super) fn server_options(&self) -> ServerOptions {
-        let owner = self.serving.as_ref().map(|s| s.owner);
-        let host = self.lan.as_ref();
-        let personal_mode = host
-            .and_then(|h| h.hub.guests.iter().find(|g| Some(g.uuid) == owner))
-            .map_or(self.level.mode(), |g| g.game_mode);
-        let published = self.published_port();
-        ServerOptions {
-            default_mode: self.level.mode(),
-            personal_mode,
-            cheats: self.allow_commands(),
-            difficulty: self.ui.difficulty,
-            hardcore: self.level.hardcore,
-            difficulty_locked: self.level.difficulty_locked,
-            port: published,
-            guest_commands: published.is_some() && host.is_some_and(|h| h.settings.guest_commands),
-            force: published.is_none() || host.is_some_and(|h| h.settings.force_game_mode),
         }
     }
     /// `IntegratedServer.setPersonalGameType`: the owner's game mode.

@@ -155,14 +155,6 @@ pub fn eat_sound(m: &Mob) -> &'static str {
         (false, false) => "entity.nautilus.eat",
     }
 }
-/// `getEquipSound(SADDLE)`.
-pub fn saddle_sound(m: &Mob) -> &'static str {
-    if m.fluids.eye_in_water {
-        "item.nautilus_saddle_underwater_equip"
-    } else {
-        "item.nautilus_saddle_equip"
-    }
-}
 fn sound(m: &Mob, name: &'static str, events: &mut Vec<MobEvent>) {
     events.push(MobEvent::Sound(name, m.center(), 1.0, 1.0));
 }
@@ -627,18 +619,6 @@ pub fn model(m: &Mob) -> &'static str {
         (false, true, _) if m.kind.layer("nautilus_baby#main").is_some() => "nautilus_baby#main",
         _ => "nautilus#main",
     }
-}
-/// The `NAUTILUS_BODY` equipment texture of a nautilus armour item.
-pub fn armor_texture(item: &str) -> Option<String> {
-    let material = item
-        .strip_prefix("minecraft:")?
-        .strip_suffix("_nautilus_armor")?;
-    let material = if material == "golden" {
-        "gold"
-    } else {
-        material
-    };
-    Some(format!("entity/equipment/nautilus_body/{material}"))
 }
 /// `NautilusModel.setupAnim` (and `ZombieNautilusCoralModel`'s corals,
 /// hidden under armour).

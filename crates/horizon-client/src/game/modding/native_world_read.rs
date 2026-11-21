@@ -172,9 +172,6 @@ impl Game<'_> {
     /// (`install_remote_tags`), elsewhere the merged tables, once the world has built them (the
     /// world lock is installed after they are built). None before that.
     pub(super) fn native_tag_items(&self) -> Option<&Items> {
-        if self.options.execution_role.is_client() {
-            return self.remote.as_ref()?.tags.as_ref();
-        }
         self.session_lock.is_some().then(|| self.items())
     }
 

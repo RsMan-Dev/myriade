@@ -42,15 +42,6 @@ pub fn texture(m: &Mob) -> String {
         ),
     }
 }
-pub fn eye_texture(m: &Mob) -> String {
-    match m.extra.variant {
-        0 => "entity/copper_golem/copper_golem_eyes".into(),
-        n => format!(
-            "entity/copper_golem/copper_golem_eyes_{}",
-            WEATHER[n.min(3) as usize]
-        ),
-    }
-}
 /// The sound of the oxidation level: `spin`, `hurt`, `death` or `step`.
 pub fn sound(m: &Mob, what: &str) -> &'static str {
     match (m.extra.variant, what) {

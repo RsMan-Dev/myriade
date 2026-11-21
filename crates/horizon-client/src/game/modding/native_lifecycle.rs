@@ -209,9 +209,6 @@ impl NativeLifecycle {
 impl Game<'_> {
     /// The role is fixed at construction; a mirror `Game` is remote whatever it is.
     fn native_lifecycle_authority(&self) -> Authority {
-        if self.remote.is_some() {
-            return Authority::RemoteClient;
-        }
         match self.options.execution_role {
             ExecutionRole::Client => Authority::LocalAuthoritative,
             ExecutionRole::IntegratedServer => Authority::IntegratedServer,
@@ -223,9 +220,6 @@ impl Game<'_> {
         self.clear_composter_randoms();
         self.reset_entity_residency();
         self.entity_initialization = Default::default();
-        if let Some(remote) = &mut self.remote {
-            remote.attachments.clear();
-        }
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.native_lifecycle
@@ -241,7 +235,7 @@ impl Game<'_> {
     /// `error_text` is the engine's own error text, unchanged.
     pub(super) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
         // The server levels that opened before the failure close first.
-        if self.remote.is_none() {
+        {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_open_failed() {
@@ -254,7 +248,7 @@ impl Game<'_> {
 
     /// Report a server-loop or shutdown failure once and retire its epoch.
     pub(super) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
-        if self.remote.is_none() {
+        {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_close_failed() {
@@ -270,7 +264,7 @@ impl Game<'_> {
     pub(super) fn native_lifecycle_world_closed(&mut self) {
         self.instance_groups.borrow_mut().clear();
         // Each server level closes after the final save (`LevelEvent.Unload`).
-        if self.remote.is_none() {
+        {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_close_final() {

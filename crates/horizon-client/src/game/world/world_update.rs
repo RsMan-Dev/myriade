@@ -7,9 +7,6 @@ impl Game<'_> {
     pub(super) fn clear_lod(&mut self) {
         // The samplers waiting on the server stop first: dropping the far
         // terrain joins them.
-        if let Some(remote) = &self.remote {
-            remote.session.cancel_far_terrain();
-        }
         self.lod = None;
         self.lod_source_attempted = false;
         self.lod_observe.clear();
@@ -169,18 +166,6 @@ impl Game<'_> {
         horizon_client::spans::time("prepare_lod", || self.prepare_lod());
         // The columns the single-player server changed in bulk without sending them, which far terrain still drew
         // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
-        if self.remote.is_some() {
-            let changed = horizon_client::lan::handoff::take_changed();
-            if let Some(lod) = &mut self.lod {
-                for chunk in changed {
-                    let column = (chunk.x, chunk.z);
-                    if self.world.chunks.contains_key(&column) {
-                        continue;
-                    }
-                    lod.observe(chunk, self.res.facts());
-                }
-            }
-        }
         self.observe_light_edits();
         self.ask_edited_light_emission();
         if let (Some(map), Some(p), Some(lod)) = (&self.lod_blue_map, &self.player, &mut self.lod) {
@@ -303,7 +288,7 @@ impl Game<'_> {
         // resident has its tick containers before a command can schedule into
         // it, even in a frozen level that runs no world tick. The unloaded
         // chunks above were saved with their ticks first.
-        if self.remote.is_none() {
+        {
             horizon_client::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
         }
         let (far_distance, far_reduced) =

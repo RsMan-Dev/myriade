@@ -83,7 +83,7 @@ impl Game<'_> {
         // Another server's world changes only through its own commands, which
         // it checks as the player's; `getblock` and `container` read what this
         // client has of it.
-        if self.remote.is_some() && matches!(words.first(), Some(&("setblock" | "fill"))) {
+        if false && matches!(words.first(), Some(&("setblock" | "fill"))) {
             self.send_signed_chat_input(&format!("/{}", words.join(" ")));
             return Ok(Some(json!({ "ok": true, "sent": true })));
         }

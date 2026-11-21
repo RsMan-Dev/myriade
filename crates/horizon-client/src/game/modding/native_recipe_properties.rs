@@ -20,20 +20,6 @@ impl Game<'_> {
     pub(super) fn refresh_recipe_property_context(&mut self) {
         let mut sets = HashMap::<String, HashSet<String>>::new();
         if let Some(server) = &self.recipe_ui.server_properties.sets {
-            if let Some(remote) = &self.remote {
-                for (key, ids) in server
-                    .iter()
-                    .filter(|(key, _)| !key.starts_with("minecraft:"))
-                {
-                    let items = ids
-                        .iter()
-                        .filter_map(|id| remote.builtin.get("minecraft:item")?.name(*id))
-                        .filter(|name| *name != "minecraft:air")
-                        .map(str::to_owned)
-                        .collect();
-                    sets.insert(key.clone(), items);
-                }
-            }
         } else if self.world_tables.is_some() || self.res.rest.get().is_some() {
             for (key, names) in self.recipes().custom_property_sets() {
                 let items = names

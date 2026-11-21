@@ -72,9 +72,6 @@ impl Game<'_> {
     /// one's. The mobs take theirs at the event of a slot change, in P
     /// (`equip_attrs`), never by tick.
     pub(super) fn tick_equipment_attributes(&mut self) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return;
-        }
         let catalog = self.motion.attributes.clone();
         let items = world_items!(self);
         for a in self.armor_stands.iter_mut() {

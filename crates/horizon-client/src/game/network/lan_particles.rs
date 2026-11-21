@@ -346,7 +346,7 @@ impl Game<'_> {
     ) {
         // `particle_velocity` refuses no horizontal movement before any draw,
         // so a resting entity skips the sweep (most items, orbs and carts).
-        if self.remote.is_some() || (known_movement.x == 0.0 && known_movement.z == 0.0) {
+        if (known_movement.x == 0.0 && known_movement.z == 0.0) {
             return;
         }
         let snow = horizon_client::powder_snow::contacts(previous, position, bounds, living, |p| {
@@ -364,9 +364,6 @@ impl Game<'_> {
         position: Vec3,
         known_movement: Vec3,
     ) {
-        if self.remote.is_some() {
-            return;
-        }
         let Some(velocity) = powder_snow_velocity(known_movement, &mut self.world.random) else {
             return;
         };
@@ -376,9 +373,6 @@ impl Game<'_> {
     /// Locally draw the level's own particle, then send it to LAN players.
     pub(super) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
         let options = ParticleOptions::simple(ParticleType::Snowflake);
-        if self.options.execution_role.is_client() {
-            self.particles.add(&options, at, velocity);
-        }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),
             options,
@@ -518,98 +512,7 @@ impl Game<'_> {
         }
     }
 
-    /// `ClientPacketListener.handleParticleEvent`: no count is one particle
-    /// moving by speed times spread; otherwise each is spread and sped up by
-    /// gaussians on each axis.
-    pub(super) fn remote_level_particles(&mut self, p: &play::LevelParticles) {
-        let Some(options) = self.received_particle(&p.particle, p.pos) else {
-            return;
-        };
-        // Combat feel Legacy draws a hit as 1.8.9 did: no sweep, no damage hearts.
-        if self.pvp_hides_particle(options.ty) {
-            return;
-        }
-        let (d, s) = (p.dist.map(f64::from), p.max_speed.map(f64::from));
-        // ClientLevel.addParticle: the camera's 32 blocks and the Particles
-        // option, unless the packet or the type overrides the limiter.
-        let add = |particles: &mut horizon_client::particles::ParticleEngine, at, v| {
-            particles.add_with(&options, at, v, p.override_limiter, p.always_show);
-        };
-        if p.count == 0 {
-            add(
-                &mut self.particles,
-                p.pos,
-                [s[0] * d[0], s[1] * d[1], s[2] * d[2]],
-            );
-            return;
-        }
-        for _ in 0..p.count {
-            let (at, v) = spread(self.particles.random(), p.randomization, p.pos, d, s);
-            add(&mut self.particles, at, v);
-        }
-    }
 
-    /// `ClientPacketListener.handleExplosion`: the blast's particles (its
-    /// block particles as the packet lists them) and its sound, when the
-    /// packet carries it, then the player's push.
-    pub(super) fn remote_explode(&mut self, p: &play::Explode) {
-        // A blast near this player's own body shakes its pad (a server's pads are not this
-        // window's: the client half is where a player feels it).
-        if let Some(player) = &self.player {
-            let d = [
-                player.position.x - p.center[0],
-                player.position.y - p.center[1],
-                player.position.z - p.center[2],
-            ];
-            let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-            self.input_feedback(horizon_client::input_source::Feedback::Explosion {
-                distance,
-                radius: p.radius,
-            });
-        }
-        if p.play_sound {
-            let pitch = (1.0
-                + (self.particles.random().next_float() - self.particles.random().next_float())
-                    * 0.2)
-                * 0.7;
-            // The packet's explosionSound: a wind charge's burst, a bed's
-            // or anchor's blast, a modded sound.
-            let sound = self
-                .remote_sound_name(&p.sound)
-                .unwrap_or_else(|| "minecraft:entity.generic.explode".to_owned());
-            self.audio.play(&sound, Some(p.center), 4.0, pitch);
-        }
-        if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.particles.add(&options, p.center, [1.0, 0.0, 0.0]);
-        }
-        // A wind charge's burst lists none, and one this client can't draw is left out.
-        let block_particles: Vec<_> = p
-            .block_particles
-            .iter()
-            .filter_map(|b| {
-                Some(ExplosionParticle {
-                    options: self.received_particle(&b.particle, p.center)?,
-                    scaling: b.scaling,
-                    speed: b.speed,
-                    weight: u32::try_from(b.weight).ok()?,
-                })
-            })
-            .collect();
-        self.particles.track_explosion(
-            p.center,
-            p.radius,
-            p.block_count.max(0) as usize,
-            &block_particles,
-        );
-        // Entity.pushFromExplosion.
-        if let (Some(push), Some(player)) = (p.knockback, self.player.as_mut()) {
-            player.velocity = Vec3::new(
-                player.velocity.x + push[0],
-                player.velocity.y + push[1],
-                player.velocity.z + push[2],
-            );
-        }
-    }
 
     /// `ServerLevel.sendParticles` for the players a server serves: one
     /// `ClientboundLevelParticlesPacket` to each player in the level whose

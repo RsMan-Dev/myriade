@@ -121,7 +121,7 @@ impl Game<'_> {
     }
     /// Save the border of the level in place (`SavedData`, one per level).
     pub(super) fn save_border(&self) {
-        if !self.score.loaded || self.remote.is_some() {
+        if !self.score.loaded {
             return;
         }
         if self.border != horizon_client::worldborder::WorldBorder::default()
@@ -138,7 +138,7 @@ impl Game<'_> {
     }
     /// `ScoreboardSaveData` read from `data/minecraft/scoreboard.dat`.
     pub(super) fn load_scoreboard(&mut self) {
-        if self.score.loaded || self.remote.is_some() {
+        if self.score.loaded {
             return;
         }
         self.score.loaded = true;
@@ -153,7 +153,7 @@ impl Game<'_> {
         self.sync_score_registries();
     }
     pub(super) fn save_scoreboard(&mut self) {
-        if !self.score.loaded || self.remote.is_some() {
+        if !self.score.loaded {
             return;
         }
         self.score.storage.save(&self.world_root);

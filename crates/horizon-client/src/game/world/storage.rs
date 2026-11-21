@@ -78,14 +78,6 @@ impl Game<'_> {
         self.capture(false);
         self.right = false;
     }
-    /// The custom name of the open container, or its default title
-    /// (a double chest is named by whichever half has a name).
-    pub(super) fn container_title(&self, default: String) -> String {
-        self.container_parts()
-            .iter()
-            .find_map(|(key, _)| self.block_name_plain(*key))
-            .unwrap_or(default)
-    }
     /// `BaseContainerBlockEntity.createMenu` (and `ChestBlock`'s provider for
     /// a double chest, which asks both halves' `canOpen`): a `lock` the opener
     /// cannot unlock refuses the menu with `sendChestLockedNotifications` -
@@ -366,9 +358,6 @@ impl Game<'_> {
     /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
     pub(super) fn tick_container_reach(&mut self) {
         // A server's menu ends when the server closes it.
-        if self.remote.is_some() {
-            return;
-        }
         let Some(eye) = self.eye_position() else {
             return;
         };
@@ -405,7 +394,7 @@ impl Game<'_> {
     /// reach (a 4-block buffer).
     pub(super) fn tick_craft_table(&mut self) {
         // A server's menu ends when the server closes it.
-        if self.remote.is_some() || self.craft_size != 3 {
+        if self.craft_size != 3 {
             return;
         }
         let (Some(pos), Some(eye)) = (self.craft_table, self.eye_position()) else {
@@ -488,92 +477,6 @@ impl Game<'_> {
             _ => self.open_cart_kind() == Some(super::minecarts::CartKind::Chest),
         };
         generic.then(|| self.open_container_size() / 9)
-    }
-    /// The title of the open chest-like menu.
-    fn chest_title(&self, rows: usize) -> Text {
-        if let Some((_, title)) = self.remote_chest_menu() {
-            return title;
-        }
-        let (key, fallback) = match self.container_block().as_deref() {
-            Some("minecraft:barrel") => ("container.barrel", "Barrel"),
-            Some("minecraft:ender_chest") => ("container.enderchest", "Ender Chest"),
-            _ if self.open_cart_kind().is_some() => {
-                ("entity.minecraft.chest_minecart", "Minecart with Chest")
-            }
-            _ if rows > 3 => ("container.chestDouble", "Large Chest"),
-            _ => ("container.chest", "Chest"),
-        };
-        Text::literal(self.container_title(self.translate_with_fallback(key, fallback)))
-            .resolve_legacy()
-    }
-    /// `ContainerScreen` / `ShulkerBoxScreen`: the background with its
-    /// container rows, the title and the inventory label.
-    pub(super) fn draw_chest_screen(
-        &self,
-        batch: &mut horizon_client::hud::HudBatch,
-        ox: f32,
-        oy: f32,
-    ) {
-        use horizon_client::hud::rgba;
-        let atlas = &self.gui.atlas;
-        let grey = rgba(64, 64, 64, 255);
-        if self
-            .container_block()
-            .as_deref()
-            .is_some_and(is_shulker_box)
-        {
-            batch.sprite_region(
-                atlas,
-                "gui/container/shulker_box",
-                [ox, oy, 176.0, 167.0],
-                256.0,
-                256.0,
-            );
-            self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-            // ShulkerBoxScreen draws the menu's title: the box's custom name
-            // (BaseContainerBlockEntity.getDisplayName) or its default name.
-            let title = self.remote_menu_title().unwrap_or_else(|| {
-                Text::literal(self.container_title(
-                    self.translate_with_fallback("container.shulkerBox", "Shulker Box"),
-                ))
-                .resolve_legacy()
-            });
-            super::screen_info::name_container(|| title.plain());
-            batch.text_styled(atlas, &title, ox + 8.0, oy + 6.0, grey, false);
-            let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-            batch.text(atlas, &inventory, ox + 8.0, oy + 73.0, grey, false);
-            return;
-        }
-        let rows = self.chest_rows().unwrap_or(3);
-        let top = rows as f32 * 18.0 + 17.0;
-        batch.sprite_region(
-            atlas,
-            "gui/container/generic_54",
-            [ox, oy, 176.0, top],
-            256.0,
-            256.0,
-        );
-        // The player half of the texture starts at v = 126.
-        if let Some(mut r) = atlas.sprites.get("gui/container/generic_54").copied() {
-            let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
-            r.v0 += 126.0 * dv;
-            r.v1 = r.v0 + 96.0 * dv;
-            r.u1 = r.u0 + 176.0 * du;
-            batch.rect_uv(ox, oy + top, 176.0, 96.0, r, u32::MAX);
-        }
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-        let title = self.chest_title(rows);
-        super::screen_info::name_container(|| title.plain());
-        batch.text_styled(atlas, &title, ox + 8.0, oy + 6.0, grey, false);
-        let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-        batch.text(
-            atlas,
-            &inventory,
-            ox + 8.0,
-            oy + 114.0 + rows as f32 * 18.0 - 94.0,
-            grey,
-            false,
-        );
     }
 }
 

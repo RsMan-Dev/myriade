@@ -3942,35 +3942,6 @@ impl Dragon {
     }
 }
 impl Game<'_> {
-    /// `FireworkRocketEntity.dealExplosionDamage` on the dragon: a living
-    /// entity in the rocket's `inflate(5)` box and within 5 blocks, seen at its
-    /// feet or middle, takes `EnderDragon.hurtServer` (`hurt(body, ...)`).
-    pub(super) fn rocket_blast_dragon(
-        &mut self,
-        from: Vec3,
-        damage: f32,
-        reach: Aabb,
-        by: Option<FightWho>,
-    ) {
-        let Some(d) = self.dragon.as_ref() else {
-            return;
-        };
-        let p = d.position;
-        let d2 = (p.x - from.x).powi(2) + (p.y - from.y).powi(2) + (p.z - from.z).powi(2);
-        if d2 > 25.0 || !d.whole_box().intersects(reach) {
-            return;
-        }
-        let world = self.mob_world_base(&[]);
-        let sees = (0..2).any(|step| {
-            let to = Vec3::new(p.x, p.y + 8.0 * 0.5 * f64::from(step), p.z);
-            world.clear_between(from, to, false)
-        });
-        if !sees {
-            return;
-        }
-        let amount = super::fireworks::blast_damage(damage, from, p);
-        self.hurt_dragon(2, amount, true, by, DamageKind::Fireworks);
-    }
     /// `ServerExplosion.hurtEntities`: crystals in reach are removed without another
     /// blast; explosions always hurt dragons, except one `explosion_detonate` spared.
     pub(super) fn explosion_hits_special(
@@ -4112,37 +4083,6 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-    /// The dragon and fight for `horizon-ctl status`.
-    pub(super) fn dragon_status(&self) -> serde_json::Value {
-        serde_json::json!({
-            "dragon": self.dragon.as_ref().map(|d| serde_json::json!({
-                "id": d.id,
-                "position": [d.position.x, d.position.y, d.position.z],
-                "health": d.health,
-                "phase": d.phase.id(),
-                "death_time": d.death_time,
-                // The player it strafes: "host", or the guest's entity id.
-                "strafing": match &d.phase {
-                    Phase::Strafe { player: Some(FightWho::Host), .. } => serde_json::json!("host"),
-                    Phase::Strafe { player: Some(FightWho::Guest(conn)), .. } => serde_json::json!(
-                        self.lan.as_ref().and_then(|h| h.hub.guest(*conn)).map(|g| g.entity_id)
-                    ),
-                    _ => serde_json::Value::Null,
-                },
-            })),
-            "players": self.fight.players,
-            "crystals": self.crystals.len(),
-            // The tracked id (0 until tracked) and position of each crystal.
-            "crystal_list": self.crystals.iter().map(|c| serde_json::json!({
-                "id": c.id,
-                "position": [c.position.x, c.position.y, c.position.z],
-            })).collect::<Vec<_>>(),
-            "alive_crystals": self.fight.alive_crystals,
-            "killed": self.fight.killed,
-            "exit_portal": self.fight.exit_portal,
-            "respawn": self.fight.respawn.map(|(s, t)| format!("{} {t}", s.name())),
-        })
-    }
 }
 /// Respawning the dragon with end crystals on the exit portal
 /// (`EndCrystalItem.useOn`, `EnderDragonFight.tryRespawn`, `DragonRespawnStage`).
@@ -4792,34 +4732,10 @@ impl Game<'_> {
             .as_mut()
             .filter(|d| d.id == uid || (d.id != 0 && (d.id + 1..=d.id + 8).contains(&uid)))
     }
-    /// `handleSetEntityData`: LivingEntity.DATA_HEALTH_ID and
-    /// EnderDragon.DATA_PHASE (`onSyncedDataUpdated` sets the phase).
-    pub(super) fn remote_dragon_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
-        let Some(d) = self.remote_dragon_mut(id) else {
-            return;
-        };
-        for (index, _, value) in values {
-            match (index, value) {
-                (9, Value::Float(health)) => d.health = *health,
-                (16, Value::Int(phase)) => d.set_phase(Phase::from_id(*phase)),
-                // Mob.DATA_MOB_FLAGS_ID: isNoAi.
-                (15, Value::Byte(flags)) => d.no_ai = flags & 1 != 0,
-                _ => {}
-            }
-        }
-    }
     /// `handleSetEntityMotion`: the velocity its wings flap by.
     pub(super) fn remote_dragon_motion(&mut self, id: i32, velocity: [f64; 3]) {
         if let Some(d) = self.remote_dragon_mut(id) {
             d.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
-        }
-    }
-    /// `handleHurtAnimation` and `handleDamageEvent`: the red flash.
-    pub(super) fn remote_dragon_hurt(&mut self, id: i32) {
-        if let Some(d) = self.remote_dragon_mut(id) {
-            // `LivingEntity.handleDamageEvent`: the red flash. Its sound is the
-            // server's (`playHurtSound`); a client plays one only for its own player.
-            d.hurt_time = 10;
         }
     }
     /// `handleRemoveEntities`, or a crystal removed: the healing beam

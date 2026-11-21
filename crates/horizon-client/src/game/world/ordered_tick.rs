@@ -233,7 +233,7 @@ impl Game<'_> {
                     // ExperienceOrb.tick runs scanForMerges before it moves.
                     // An orb absorbed here is gone before its own turn's
                     // lookup finds it.
-                    if self.remote.is_none() {
+                    {
                         self.merge_orb(i);
                     }
                     let Some(i) = self.orbs.locate(join) else {
@@ -284,7 +284,7 @@ impl Game<'_> {
                             self.res.facts(),
                             self.collision,
                             target,
-                            self.remote.is_none(),
+                            true,
                             &mut next_float,
                             Some(self.border.geometry()),
                             &self.res.motion().fluids,

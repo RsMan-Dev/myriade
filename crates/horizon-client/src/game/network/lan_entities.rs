@@ -146,9 +146,6 @@ impl Game<'_> {
             Some(host) => std::mem::take(&mut host.hub.native_tracking),
             None => return,
         };
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return;
-        }
         for batch in batches {
             for e in batch.events {
                 let (id, kind) = (e.entity as u32, &*e.tracked.kind);

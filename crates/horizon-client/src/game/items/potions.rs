@@ -593,55 +593,6 @@ impl PotionState {
             )
         })
     }
-    /// `handleAddEntity` for a thrown potion or bottle on a server's client:
-    /// drawn where the server says (its item comes in its entity data).
-    pub(super) fn add_remote_thrown(&mut self, id: u32, kind: &str, at: Vec3, velocity: Vec3) {
-        self.thrown.retain(|t| t.id != id);
-        let item = match kind {
-            "minecraft:lingering_potion" | "minecraft:experience_bottle" => kind,
-            _ => "minecraft:splash_potion",
-        };
-        self.thrown.push(ThrownPotion {
-            id,
-            stack: ItemStack::new(item, 1),
-            previous: at,
-            position: at,
-            velocity,
-            age: 0,
-            owner: None,
-            thrower: None,
-            guest: None,
-            left_owner: false,
-            last_deflected_by: None,
-            random: EntityRandom::own(LegacyRandom::new(i64::from(id))),
-        });
-    }
-    /// ThrowableItemProjectile.DATA_ITEM_STACK: the potion it shows.
-    pub(super) fn remote_thrown_item(&mut self, id: u32, stack: ItemStack) {
-        if let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) {
-            t.stack = stack;
-        }
-    }
-    /// A server's move: thrown potions have no interpolation handler, so
-    /// `moveOrInterpolateTo` puts them there at once. False when `id` isn't one.
-    pub(super) fn move_remote_thrown(&mut self, id: u32, at: Vec3) -> bool {
-        let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) else {
-            return false;
-        };
-        t.position = at;
-        true
-    }
-    /// `handleSetEntityMotion` for a thrown potion. False when `id` isn't one.
-    pub(super) fn remote_thrown_motion(&mut self, id: u32, velocity: Vec3) -> bool {
-        let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) else {
-            return false;
-        };
-        t.velocity = velocity;
-        true
-    }
-    pub(super) fn remove_remote_thrown(&mut self, id: u32) {
-        self.thrown.retain(|t| t.id != id);
-    }
     pub(super) fn has_thrown(&self, id: u32) -> bool {
         self.thrown.iter().any(|t| t.id == id)
     }
@@ -1173,7 +1124,7 @@ impl Game<'_> {
         // zero ticks and the ones reaching it in this pass (the last tick of
         // their countdown); a canceled expiry keeps the effect at no ticks,
         // asking again next tick. Only on the server, where the effects tick.
-        let keep_expired: Vec<&'static str> = if self.remote.is_none() {
+        let keep_expired: Vec<&'static str> = {
             let player = self.effect_living_ref(None);
             effects
                 .list
@@ -1197,8 +1148,6 @@ impl Game<'_> {
                 })
                 .map(|e| e.id)
                 .collect()
-        } else {
-            Vec::new()
         };
         let (actions, raid_omen_added) = effects.tick_with(
             &mut |e, t, actions, dispatch| {
@@ -1444,7 +1393,7 @@ impl Game<'_> {
         amplifier: i32,
         new: bool,
     ) {
-        if self.remote.is_none()
+        if true
             && mod_api::__private::effect_index(effect)
                 .and_then(horizon_client_core::potions::effect_by_index)
                 .is_some_and(|def| def.index >= brewing::EFFECTS.len())
@@ -1499,11 +1448,8 @@ impl Game<'_> {
         // the player's tick (ServerPlayer.doTick runs after the tick's
         // sendDirtyEntityData). Its own would slow it a tick before the
         // server's player when Speed runs out (#12040).
-        if self.remote.is_some() {
-            self.potions.applied.clear();
-        }
         let modifiers = self.potions.effects.modifiers();
-        if self.remote.is_none()
+        if true
             && modifiers != self.potions.applied
             && let Some(p) = self.player.as_mut()
         {
@@ -2005,33 +1951,6 @@ impl Game<'_> {
             (t.velocity.y - gravity) * inertia,
             t.velocity.z * inertia,
         );
-    }
-    /// `ThrowableProjectile.tick` on a server's client: it falls and moves
-    /// by itself between the server's updates and stops at a block; only
-    /// the server breaks it.
-    pub(super) fn step_remote_thrown(&mut self) {
-        let mut thrown = std::mem::take(&mut self.potions.thrown);
-        for t in &mut thrown {
-            t.previous = t.position;
-            t.age += 1;
-            self.thrown_potion_motion(t);
-            let next = Vec3::new(
-                t.position.x + t.velocity.x,
-                t.position.y + t.velocity.y,
-                t.position.z + t.velocity.z,
-            );
-            let state = self.world.block(
-                next.x.floor() as i32,
-                next.y.floor() as i32,
-                next.z.floor() as i32,
-            );
-            if self.res.facts().get(state).full_collision {
-                t.velocity = Vec3::ZERO;
-            } else {
-                t.position = next;
-            }
-        }
-        self.potions.thrown = thrown;
     }
     /// `ThrownItemRenderer` for thrown splash and lingering potions and
     /// experience bottles: the item (GROUND) facing the camera at scale 1,

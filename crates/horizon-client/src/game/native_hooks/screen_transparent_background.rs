@@ -2,19 +2,6 @@ use super::*;
 
 /// The hook points. Each does nothing in Horizon.
 impl Game<'_> {
-    /// `Screen.extractTransparentBackground`: draws the translucent dark background
-    /// behind an in-game screen (inventory, container, creative, book, sign, editor).
-    /// Set `canceled` (or return `Flow::Cancel`) to suppress the vanilla dark gradient,
-    /// allowing a mod to draw its own background or apply menu background blur
-    /// via `Host::apply_screen_blur`. API @API:screen_transparent_background@.
-    pub(in crate::game) fn native_screen_transparent_background(
-        &self,
-        screen: &str,
-        batch: &mut HudBatch,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_transparent_background(screen, batch, canceled);
-    }
 }
 
 /// Helpers for native mods, kept as stable as the hook points.

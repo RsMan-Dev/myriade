@@ -104,7 +104,7 @@ impl Game<'_> {
             .join("data/minecraft/custom_boss_events.dat")
     }
     pub(super) fn load_bossbars(&mut self) {
-        if self.bosses.loaded || self.remote.is_some() {
+        if self.bosses.loaded {
             return;
         }
         self.bosses.loaded = true;
@@ -117,7 +117,7 @@ impl Game<'_> {
         self.ui.registries.bossbars = self.bosses.bars.ids();
     }
     pub(super) fn save_bossbars(&self) {
-        if !self.bosses.loaded || self.remote.is_some() {
+        if !self.bosses.loaded {
             return;
         }
         if self.bosses.bars.bars.is_empty() && !self.bossbar_path().exists() {
@@ -500,9 +500,6 @@ impl Game<'_> {
     /// that simulates the world applies them to its own overlay; everyone
     /// else gets `ClientboundBossEventPacket`s.
     pub(super) fn publish_boss_bars(&mut self) {
-        if self.remote.is_some() {
-            return;
-        }
         self.load_bossbars();
         self.update_dragon_bar_name();
         let now = boss_overlay::now_millis();

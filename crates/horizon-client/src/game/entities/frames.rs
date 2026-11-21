@@ -251,10 +251,6 @@ impl Game<'_> {
         }
         true
     }
-    /// `ItemFrame.hurtServer` from a projectile, by `who`: P decides the refusal and the break. False when the frame refused the hit.
-    pub(super) fn projectile_hurts_frame(&mut self, id: u32, who: Who, creative: bool) -> bool {
-        self.ecs_with(|ecs, mw| ecs.frame_hit(mw, id, who, creative))
-    }
     /// `ItemFrame.setItem` / `setRotation`: `updateNeighbourForOutputSignal`, so
     /// the comparators reading the frame take its new signal.
     pub(in crate::game) fn frame_output_changed(&mut self, pos: [i32; 3]) {

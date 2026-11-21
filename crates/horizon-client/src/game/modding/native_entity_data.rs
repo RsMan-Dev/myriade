@@ -17,9 +17,6 @@ impl Game<'_> {
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.
     pub(super) fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
-        if self.remote.is_some() {
-            return None;
-        }
         let t = self.native_entity_target(entity)?;
         match self.command_target_nbt(t)? {
             Tag::Compound(mut c) => {
@@ -36,9 +33,6 @@ impl Game<'_> {
     /// frames), data nested too deep, or data that changes nothing. API
     /// 386.
     pub(super) fn entity_merge_nbt(&mut self, entity: EntityRef, nbt: Compound) -> bool {
-        if self.remote.is_some() {
-            return false;
-        }
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -55,17 +49,11 @@ impl Game<'_> {
     /// The entity's tags (`Entity.getTags`), as `/tag <entity> list` shows
     /// them. API 386.
     pub(super) fn entity_tags(&self, entity: EntityRef) -> Option<Vec<String>> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(self.tags_of(self.native_entity_target(entity)?))
     }
     /// Adds tag `tag` (`Entity.addTag`): false when it has it already, holds
     /// 1024, its kind can't store tags yet, or the handle is stale. API 386.
     pub(super) fn entity_add_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
-        if self.remote.is_some() {
-            return false;
-        }
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -81,9 +69,6 @@ impl Game<'_> {
     /// Removes tag `tag` (`Entity.removeTag`): false when it didn't have it.
     /// API 386.
     pub(super) fn entity_remove_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
-        if self.remote.is_some() {
-            return false;
-        }
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -99,21 +84,6 @@ impl Game<'_> {
     /// 386.
     pub(super) fn entity_name(&self, entity: EntityRef) -> Option<String> {
         let t = self.native_entity_read_target(entity)?;
-        if let Some(r) = &self.remote {
-            let id = i32::try_from(entity.id()).ok()?;
-            if let Some((_, Some(name))) = r.level_player(id) {
-                return Some(name.to_owned());
-            }
-            if let Target::Stand(id) = t
-                && let Some(name) = self
-                    .armor_stands
-                    .iter()
-                    .find(|a| a.id == id)
-                    .and_then(|a| a.custom_name.as_ref())
-            {
-                return Some(name.plain());
-            }
-        }
         Some(self.target_name(t).plain())
     }
     /// Names the entity (`Entity.setCustomName`), or takes its name away
@@ -230,9 +200,6 @@ impl Game<'_> {
     /// The id of the entity a custom-name write changes, or None for a kind
     /// that keeps no name, a stale handle or on a client.
     fn name_holder(&self, entity: EntityRef) -> Option<u32> {
-        if self.remote.is_some() {
-            return None;
-        }
         named_id(self.native_entity_target(entity)?)
     }
     /// Sets (or with `None` removes) `key` in entity `id`'s saved compound.

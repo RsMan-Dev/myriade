@@ -279,29 +279,6 @@ impl Session {
     ) -> Self {
         Self::start(address, name, auth, info, lang, None, None, resources, true)
     }
-    /// `ConnectScreen.startConnecting` for a `transfer`: the cookies the
-    /// server stored carry to the new connection (`TransferState`).
-    pub fn connect_transferred(
-        address: &str,
-        name: &str,
-        auth: Option<Arc<AuthSession>>,
-        info: cfg::ClientInformation,
-        lang: Arc<Language>,
-        cookies: Cookies,
-        resources: Arc<ItemData>,
-    ) -> Self {
-        Self::start(
-            address,
-            name,
-            auth,
-            info,
-            lang,
-            None,
-            Some(cookies),
-            resources,
-            false,
-        )
-    }
     /// Join an integrated server through memory (`Connection.connectToLocalServer`). The
     /// hello still names the signed-in account (`Minecraft.handleClientLogin`'s
     /// `ServerboundHelloPacket(getUser().getName(), getUser().getProfileId())`), so the
@@ -653,25 +630,6 @@ impl Session {
             w.shutdown();
         }
     }
-    /// ServerboundCustomClickActionPacket (a dialog's answer), in whichever
-    /// phase the connection is.
-    pub fn send_custom_click(&self, id: &str, payload: Option<horizon_core::nbt::Tag>) {
-        let click = cfg::CustomClickAction {
-            id: id.to_owned(),
-            payload,
-        };
-        let mut writer = self.writer.lock().unwrap();
-        let body = if self.configuring.load(Ordering::Relaxed) {
-            cfg::Serverbound::CustomClickAction(click).encode()
-        } else {
-            play::Serverbound::CustomClickAction(click).encode()
-        };
-        if let Some(w) = writer.as_mut()
-            && w.send(&body).is_err()
-        {
-            w.shutdown();
-        }
-    }
     /// ServerboundAcceptCodeOfConductPacket, sent in configuration.
     pub fn accept_code_of_conduct(&self) {
         let mut writer = self.writer.lock().unwrap();
@@ -712,16 +670,6 @@ pub fn is_invite(code: &str, full: bool) -> bool {
     horizon_hooks::engine::tunnel().is_some_and(|r| r.is_code(code, full))
 }
 
-/// Whether an invite code can be joined: a resolver is registered (horizon-official registers
-/// horizon-friends'). The title screen's Friends icon, which opens Join a Friend, is inactive
-/// without one, as the pause menu's is without a page to share from.
-pub fn joins_friends() -> bool {
-    #[cfg(test)]
-    if JOINS_FRIENDS_IN_TEST.get() {
-        return true;
-    }
-    horizon_hooks::engine::tunnel().is_some()
-}
 #[cfg(test)]
 thread_local! {
     /// A test's stand-in for a registered resolver: the registry is the process's and sealed.

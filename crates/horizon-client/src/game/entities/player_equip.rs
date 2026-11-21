@@ -66,7 +66,7 @@ impl Game<'_> {
     /// server plays it) or for a spectator. The player's `firstTick` never
     /// sees an equip here: loading a save sets the slots directly.
     pub(super) fn player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
-        if self.remote.is_some() || self.spectator() {
+        if self.spectator() {
             return;
         }
         self.native_on_equip(slot, new);
@@ -121,12 +121,6 @@ impl Game<'_> {
         };
         for (attribute, id) in std::mem::take(&mut self.applied_modifiers) {
             let _ = player.set_modifier_unclamped(&attribute, &id, 0.0, "add_value", false);
-        }
-        if self.remote.is_some() {
-            for (attr, id, _, op) in std::mem::take(&mut self.potions.enchant_modifiers) {
-                let _ = player.set_modifier_unclamped(&attr, &id, 0.0, &op, false);
-            }
-            return;
         }
         let slots = ["head", "chest", "legs", "feet"];
         let mut equipped: Vec<(Option<&ItemStack>, &str)> = self

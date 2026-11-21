@@ -225,16 +225,6 @@ impl Game<'_> {
         let g = host.hub.guests.iter().find(|g| g.conn == conn)?;
         Some(Who::Mob(g.entity_id as u32))
     }
-    /// FireworkRocketEntity.handleEntityEvent: use the synchronized item data.
-    pub(super) fn remote_firework_explosion(&mut self, id: i32) {
-        let camera = self.eye_position();
-        if let Some(r) = self.rockets.iter().find(|r| r.id == id as u32) {
-            let at = [r.position.x, r.position.y, r.position.z];
-            let v = [r.velocity.x, r.velocity.y, r.velocity.z];
-            self.particles
-                .fireworks(at, v, r.explosions.clone(), camera.unwrap_or(at), !r.silent);
-        }
-    }
     /// `hurtServer` with `damageSources().fireworks` from the rocket at
     /// `from`: the rocket is the direct entity, so the player is knocked away
     /// from it and the death message names it; creative and spectator

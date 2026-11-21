@@ -207,7 +207,7 @@ impl Moves {
     ) -> Self {
         if !ahead()
             || items.len() < MIN_ITEMS
-            || game.remote.is_some()
+
             || round.listening()
             || !mod_api::__private::mods().is_empty()
         {

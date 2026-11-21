@@ -306,7 +306,7 @@ impl Game<'_> {
     fn replay_world_busy(&self) -> bool {
         self.pending_entry.is_some()
             || self.integrated_starting.is_some()
-            || (!self.replay.playing() && self.integrated.is_none() && self.remote.is_some())
+            || (!self.replay.playing() && self.integrated.is_none() && false)
             || self.is_published()
             || self.has_split_players()
             || self.split_window
@@ -319,7 +319,7 @@ impl Game<'_> {
         } else {
             ReplayScope::Session {
                 connections: self.replay.connections,
-                connected: self.remote.is_some() || self.integrated.is_some(),
+                connected: self.integrated.is_some(),
             }
         }
     }
@@ -476,95 +476,12 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// The end of the frame: a mod's close or seek runs now, outside every hook, then an open
-    /// whose recording is ready, then the next waiting one starts reading, and the requests that
-    /// failed since are told. A close or seek of a replay closed or replaced since is dropped.
-    pub(in crate::game) fn native_replay_requests(&mut self) {
-        if let Some(request) = self.replay.request.take()
-            && self.replay_available()
-        {
-            let current = |game: &Self, generation| {
-                game.replay.driver.is_some() && game.replay.generation == generation
-            };
-            match request {
-                ReplayRequest::Close { generation } => {
-                    if current(self, generation) {
-                        self.close_studio_replay();
-                    }
-                }
-                ReplayRequest::Seek { generation, ms } => {
-                    if current(self, generation)
-                        && let Err(error) = self.seek_studio_replay(ms)
-                    {
-                        log::warn!("Replay seek to {ms} ms failed: {error}");
-                    }
-                }
-            }
-        }
-        // Superseded requests hear so before a later one's outcome.
-        self.tell_replay_open_failures();
-        self.poll_replay_opening();
-        self.start_queued_open();
-        self.tell_replay_open_failures();
-        // A request a hook made while these ran (a seek from `replay_opened`) waits for the
-        // next frame's end; its generation keeps it from reaching another replay.
-    }
 
-    fn tell_replay_open_failures(&mut self) {
-        for (origin, error) in std::mem::take(&mut self.replay.open_failures) {
-            self.replay_open_failed(&origin, error);
-        }
-    }
 
     fn replay_open_failed(&mut self, origin: &ReplayOrigin, error: ReplayError) {
         self.native_replay_open_failed(origin.request, &origin.recording, error);
     }
 
-    /// The reading thread's answer: installed if the session it was asked in is still the one
-    /// here, else told as failed. A superseded thread's answer, whatever it is, is dropped once
-    /// the thread has ended; the next request starts reading only then.
-    fn poll_replay_opening(&mut self) {
-        let Some(opening) = &mut self.replay.opening else {
-            return;
-        };
-        if opening.origin.is_none() {
-            if opening.thread.as_ref().is_none_or(JoinHandle::is_finished) {
-                if let Some(thread) = opening.thread.take() {
-                    let _ = thread.join();
-                }
-                self.replay.opening = None;
-            }
-            return;
-        }
-        let prepared = match opening.prepared.try_recv() {
-            Ok(prepared) => prepared,
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => Err(io::Error::other("the reading thread ended")),
-        };
-        let mut opening = self.replay.opening.take().expect("checked above");
-        if let Some(thread) = opening.thread.take() {
-            // It has answered: only its return is left.
-            let _ = thread.join();
-        }
-        let origin = opening.origin.take().expect("checked above");
-        let refused = if !self.replay_available() {
-            Some(ReplayError::Unavailable)
-        } else if self.replay_world_busy() || self.replay_scope() != opening.scope {
-            Some(ReplayError::WorldBusy)
-        } else {
-            None
-        };
-        if let Some(error) = refused {
-            return self.replay_open_failed(&origin, error);
-        }
-        match prepared {
-            Ok(driver) => self.open_prepared_replay(driver, origin),
-            Err(error) => {
-                log::warn!("Replay {:?} could not be read: {error}", origin.recording);
-                self.replay_open_failed(&origin, ReplayError::Unreadable);
-            }
-        }
-    }
 
     /// Drops a mod's read replay waiting as the world entry, if that is what waits, telling the
     /// mod it opened nothing: another entry takes its place (`WorldBusy`) or the person cancels
@@ -623,7 +540,7 @@ impl Game<'_> {
             );
             return self.replay_open_failed(&origin, ReplayError::Unavailable);
         }
-        if self.replay.driver.is_none() && (self.remote.is_some() || self.integrated.is_some()) {
+        if self.replay.driver.is_none() && (self.integrated.is_some()) {
             let recording = origin.recording.clone();
             self.pending_entry = Some(PendingWorldEntry::PreparedReplay {
                 driver: Box::new(driver),
@@ -636,7 +553,7 @@ impl Game<'_> {
             return;
         }
         // Replay setup builds the client registries, which need the world tables.
-        if self.remote.is_none() && self.res.rest.get().is_none() {
+        if self.res.rest.get().is_none() {
             let entry = PendingWorldEntry::PreparedReplay {
                 driver: Box::new(driver),
                 origin,
@@ -678,16 +595,4 @@ impl Game<'_> {
         self.native_replay_open_failed(request, &recording, ReplayError::Unavailable);
     }
 
-    /// Tells mods the replay's clock moved: at most once a frame, only when its position differs
-    /// from the last one told, and not before `replay_opened`.
-    pub(super) fn announce_replay_advance(&mut self) {
-        let Some(position) = self.replay.driver.as_ref().map(|r| r.position_ms()) else {
-            return;
-        };
-        if self.replay.reported_ms.is_none_or(|told| told == position) {
-            return;
-        }
-        self.replay.reported_ms = Some(position);
-        self.native_replay_advanced(position);
-    }
 }

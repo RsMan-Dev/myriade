@@ -42,11 +42,11 @@ impl Game<'_> {
                             let mut random = EntityRandom::own(random_source::entity());
                             self.bolt_fire(at, 4, &mut random);
                         }
-                        if self.remote.is_none() {
+                        {
                             self.bolt_clear_copper(at);
                         }
                     }
-                    if self.remote.is_none() {
+                    {
                         self.strike_rod(at);
                     }
                 }

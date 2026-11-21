@@ -548,37 +548,6 @@ impl Game<'_> {
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
     }
-    /// Ticks spawners, trial spawners and vaults near the player on a remote
-    /// client (`tick_remote`).
-    pub(super) fn tick_remote_spawners(&mut self) {
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        let center = [
-            p.position.x.floor() as i32,
-            p.position.y.floor() as i32,
-            p.position.z.floor() as i32,
-        ];
-        let (keys, trial_keys, vault_keys) = {
-            use horizon_client::block_entities::Listed;
-            let listed = &self.world.block_entities;
-            nearby_remote_spawner_keys(
-                listed
-                    .listed(Listed::Spawner)
-                    .chain(listed.listed(Listed::TrialSpawner))
-                    .chain(listed.listed(Listed::Vault)),
-                center,
-            )
-        };
-        self.client_tick_spawners(&keys);
-        for key in trial_keys {
-            self.client_tick_trial_spawner(key);
-        }
-        // VaultBlock.getTicker on the client: VaultBlockEntity.Client.tick.
-        for key in vault_keys {
-            self.client_tick_vault(key);
-        }
-    }
     /// `SpawnerRenderer` and `TrialSpawnerRenderer`: the next mob of every
     /// spawner near the camera, small and turning.
     pub(super) fn spawner_geometry(

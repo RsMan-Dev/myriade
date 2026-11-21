@@ -12,13 +12,6 @@ impl Game<'_> {
         registry: &Identifier,
         name: &Identifier,
     ) -> Option<i32> {
-        if let Some(remote) = self.remote.as_ref() {
-            return SyncedNames {
-                builtin: &remote.builtin,
-                dynamic: &remote.registries,
-            }
-            .id(registry, name);
-        }
         self.lan.as_ref()?.hub.synced_id(registry, name)
     }
 }

@@ -169,9 +169,6 @@ impl Game<'_> {
         bounds: Aabb,
         fall: f64,
     ) -> Option<f64> {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return None;
-        }
         let pos = self.landing_pos(at, bounds);
         let state = self.world.block(pos.x, pos.y, pos.z);
         let motion = self.motion;

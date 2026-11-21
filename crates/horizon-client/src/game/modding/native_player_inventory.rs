@@ -50,9 +50,6 @@ impl Game<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<Vec<(u32, ItemStack)>> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => {
                 numbered(&self.inventory, &self.armor, &self.offhand, &self.equipment)
@@ -64,9 +61,6 @@ impl Game<'_> {
     /// Why a write to this player's inventory, ender chest, hands or saved data is refused
     /// before it starts: a client, a handle with no online player, a dead player.
     pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerDataRefusal> {
-        if self.remote.is_some() {
-            return Err(PlayerDataRefusal::Client);
-        }
         match self.player_handle_read(player) {
             None => Err(PlayerDataRefusal::Stale),
             Some(PlayerRead::Guest(g)) if g.dead => Err(PlayerDataRefusal::Dead),

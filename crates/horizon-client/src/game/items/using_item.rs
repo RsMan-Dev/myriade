@@ -41,7 +41,7 @@ impl Game<'_> {
         // as Consumable.startConsuming does, no time is eaten at once, without a use
         // (the server's eating reaches a client through the inventory).
         if item_use::consumes_at_once(consumable.ticks()) {
-            if self.remote.is_none() {
+            {
                 // the cooldown of ItemStack.use's applyAfterUseComponentSideEffects.
                 self.apply_use_cooldown(&stack);
                 self.finish_consuming(info, &consumable, &stack);

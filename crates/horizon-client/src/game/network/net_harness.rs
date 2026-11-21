@@ -42,7 +42,7 @@ impl Game<'_> {
         let mut error = None;
         while Instant::now() < deadline {
             self.update_world();
-            if self.remote.is_none() {
+            {
                 error = Some(match self.title.as_ref().map(|t| &t.mode) {
                     Some(horizon_client::title::Mode::Multiplayer(
                         horizon_client::multiplayer::Screen::Disconnected { reason, .. },
@@ -135,9 +135,6 @@ impl Game<'_> {
             .as_ref()
             .map(|r| r.chat.iter().map(|(t, _)| t.clone()).collect())
             .unwrap_or_default();
-        if self.remote.is_some() {
-            self.leave_server(None)?;
-        }
         std::fs::write(
             report,
             json!({

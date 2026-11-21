@@ -308,7 +308,7 @@ impl Game<'_> {
         let Some(dim) = self.raiding.loaded else {
             return;
         };
-        if !self.raiding.raids.dirty || self.remote.is_some() {
+        if !self.raiding.raids.dirty {
             return;
         }
         let tag = horizon_core::nbt::Tag::compound([
@@ -585,9 +585,6 @@ impl Game<'_> {
     }
     /// `ServerLevel.tick` for the raids and their raiders.
     pub(super) fn tick_raids(&mut self) {
-        if self.remote.is_some() {
-            return;
-        }
         self.load_raids();
         let centers = self.village_centers();
         let infos = self.raider_infos();

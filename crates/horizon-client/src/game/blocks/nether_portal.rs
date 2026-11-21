@@ -540,7 +540,7 @@ impl Game<'_> {
     /// there, and goes back through the portal when its cooldown ends).
     /// Only a server holds levels with tickets of their own.
     pub(super) fn place_portal_ticket(&mut self, chunk: (i32, i32)) {
-        if !self.options.execution_role.is_client() {
+        {
             self.tickets.add_portal(chunk);
         }
     }
@@ -579,20 +579,6 @@ impl Game<'_> {
         self.portals.client_was_inside
     }
 
-    /// The same on a server's client: `Entity.canUsePortal` (alive, not a
-    /// passenger), then only the client's `setAsInsidePortal`, which drives
-    /// the confusion effect (`client_portal_effect`). On a server's client
-    /// `portals.player` holds only the LocalPlayer's `portalCooldown`.
-    pub(super) fn client_inside_nether_portal(&mut self) {
-        if !self.player_can_use_portal() {
-            return;
-        }
-        if self.portals.player.cooldown > 0 {
-            self.portals.player.cooldown = PLAYER_DELAY;
-        } else {
-            self.portals.client_inside = true;
-        }
-    }
     /// Where to wait for the destination of `plan` to load, once its level
     /// is open: the portal its points of interest lead to, or the
     /// approximate exit.
@@ -658,9 +644,6 @@ impl Game<'_> {
         self.handle_portals(true, false);
     }
     fn handle_portals(&mut self, vehicles: bool, after_move: bool) {
-        if self.remote.is_some() {
-            return;
-        }
         self.load_portal_arrivals();
         let mut leaving: Vec<(u32, BlockPos)> = Vec::new();
         // Positions before the entities move, and (only for an entity in a
@@ -1020,9 +1003,6 @@ impl Game<'_> {
         }
     }
     fn find_portals(&mut self, only: Option<&[u32]>) {
-        if self.remote.is_some() {
-            return;
-        }
         let ridden = if only.is_none() {
             self.guest_vehicles()
         } else {
@@ -1544,7 +1524,7 @@ impl Game<'_> {
     /// tick, and one that crossed from a later level stands there until the
     /// next. Only the portal arrivals join; the chunks' entities wait.
     pub(super) fn land_portal_arrivals(&mut self) {
-        if self.remote.is_some() || self.portals.arrivals.is_empty() {
+        if self.portals.arrivals.is_empty() {
             return;
         }
         let _save_lease = horizon_client::join_seq::visibility::PassLease::enter();
@@ -1557,9 +1537,6 @@ impl Game<'_> {
     /// their exit portal (found or built) or End destination, position,
     /// turned yaw and motion, and portal cooldown; they join the world with the chunk entities.
     pub(super) fn resolve_arrivals(&mut self) {
-        if self.remote.is_some() {
-            return;
-        }
         let mut i = 0;
         while i < self.portals.arrivals.len() {
             let plan = self.portals.arrivals[i].plan;
@@ -1728,9 +1705,6 @@ impl Game<'_> {
         &mut self,
         f: &mut super::FallingBlock,
     ) -> Option<Dim> {
-        if self.remote.is_some() {
-            return None;
-        }
         let mut sections = std::mem::take(&mut self.portals.sections);
         let entry = self.swept_portal(f.previous, f.position, 0.98, 0.98, &mut sections);
         self.portals.sections = sections;
@@ -1807,7 +1781,7 @@ impl Game<'_> {
     }
     /// The waiting entities of the open world (read once).
     pub(super) fn load_portal_arrivals(&mut self) {
-        if self.portals.loaded || self.remote.is_some() {
+        if self.portals.loaded {
             return;
         }
         self.portals.loaded = true;
@@ -1823,7 +1797,7 @@ impl Game<'_> {
     }
     /// Write the waiting entities when they changed.
     pub(super) fn save_portal_arrivals(&mut self) {
-        if !self.portals.dirty || self.remote.is_some() {
+        if !self.portals.dirty {
             return;
         }
         let list = self.portals.arrivals.iter().map(arrival_tag).collect();

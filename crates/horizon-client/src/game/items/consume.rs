@@ -446,52 +446,6 @@ impl Game<'_> {
         };
         self.emit_living_teleport(from, to, width, height);
     }
-    /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:
-    /// this player, or a mob the client is drawing.
-    pub(super) fn entity_teleport_particles(&mut self, id: i32) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
-            self.portal_particles();
-            return;
-        }
-        let spawned = {
-            let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id as u32) else {
-                return;
-            };
-            let from = [m.previous.x, m.previous.y, m.previous.z];
-            let to = [m.position.x, m.position.y, m.position.z];
-            let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-            let mut spawned = Vec::with_capacity(128);
-            horizon_client::particles::living_teleport_particles(
-                &mut m.random,
-                from,
-                to,
-                width,
-                height,
-                |p, v| spawned.push((p, v)),
-            );
-            spawned
-        };
-        let options = ParticleOptions::simple(ParticleType::Portal);
-        for (p, v) in spawned {
-            self.particles.add(&options, p, v);
-        }
-    }
-    /// `entity_teleport_particles` for the ECS mob `id`: its previous and current place, its box and its random come from the bridge.
-    pub(super) fn entity_teleport_particles_ecs(&mut self, id: i32) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
-            self.portal_particles();
-            return;
-        }
-        let Some((from, to, width, height)) = self.ecs.teleport_box(id as u32) else { return };
-        let Some(seed) = self.ecs.draw_seed(id as u32) else { return };
-        let mut random = LegacyRandom::new(seed);
-        let mut spawned = Vec::with_capacity(128);
-        horizon_client::particles::living_teleport_particles(&mut random, from, to, width, height, |p, v| spawned.push((p, v)));
-        let options = ParticleOptions::simple(ParticleType::Portal);
-        for (p, v) in spawned {
-            self.particles.add(&options, p, v);
-        }
-    }
     fn emit_living_teleport(&mut self, from: [f64; 3], to: [f64; 3], width: f64, height: f64) {
         let mut spawned = Vec::with_capacity(128);
         horizon_client::particles::living_teleport_particles(

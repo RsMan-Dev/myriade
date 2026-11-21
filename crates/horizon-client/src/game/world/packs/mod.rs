@@ -190,20 +190,6 @@ pub(super) fn import_resource_packs(
         ui.resource_error = Some(Text::translate("pack.copyFailure", &[]).plain());
     }
 }
-/// The player changed Pack Options: `chosen` replaces their choices for `entries`, kept in
-/// `polytone-configs.json`.
-pub(super) fn save_pack_options(
-    entries: &[String],
-    chosen: std::collections::BTreeMap<String, packs::ConfigValue>,
-) {
-    let mut all = packs::polytone_choices();
-    all.retain(|id, _| !entries.contains(id));
-    all.extend(chosen);
-    if let Err(e) = packs::save_polytone_choices(&packs::polytone_choices_file(), &all) {
-        log::warn!("could not save the pack options: {e}");
-    }
-    packs::set_polytone_choices(all);
-}
 impl Game<'_> {
     pub(super) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
@@ -229,14 +215,6 @@ impl Game<'_> {
         } else {
             self.ui.vanilla_root.clone()
         }
-    }
-    /// Whether all active packs preserve vanilla's block models. The server
-    /// overlay sits above the local selection and must be included too.
-    pub(super) fn model_packs_are_vanilla(&self) -> bool {
-        self.settings.horizon.vanilla_models_with_server_packs(
-            self.settings.resource_packs.iter().map(String::as_str),
-            self.server_packs.active.iter().map(|pack| pack.id.as_str()),
-        )
     }
     /// The leaf mode that is safe for the current local and server packs.
     pub(super) fn effective_leaf_culling(&self) -> horizon_client::graphics::LeafCullingMode {

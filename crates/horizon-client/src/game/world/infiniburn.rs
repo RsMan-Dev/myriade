@@ -51,9 +51,4 @@ impl Game<'_> {
         self.refresh_infiniburn();
     }
 
-    /// The new remote World and its connection's dimension facts are now both installed.
-    pub(super) fn finish_remote_level(&mut self) {
-        self.refresh_infiniburn();
-        self.apply_settings();
-    }
 }

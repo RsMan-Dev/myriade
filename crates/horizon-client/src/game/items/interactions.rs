@@ -79,13 +79,6 @@ impl Game<'_> {
             i.position = Vec3::new(position[0], position[1], position[2]);
         }
     }
-    pub(super) fn remote_interaction_data(&mut self, id: i32, values: &[(u8, i32, Value)]) -> bool {
-        let Some(i) = self.interactions.get_mut(&id) else {
-            return false;
-        };
-        i.metadata(values);
-        true
-    }
 }
 
 #[cfg(test)]

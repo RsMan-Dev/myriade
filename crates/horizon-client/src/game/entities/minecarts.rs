@@ -284,21 +284,6 @@ impl Game<'_> {
                 .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
         }
     }
-    /// `MinecartTNT.handleEntityEvent`: event 70 calls `primeFuse`, which on a
-    /// client only sets the fuse to 80. The window then counts it down
-    /// (`MinecartTNT.tick`) for the smoke, the flash and the swell.
-    pub(super) fn remote_tnt_cart_event(&mut self, id: i32, event: i8) {
-        if event != TNT_PRIME_EVENT {
-            return;
-        }
-        if let Some(i) = self
-            .carts
-            .iter()
-            .position(|c| c.id == id as u32 && c.kind == CartKind::Tnt)
-        {
-            self.carts.update(i, |c| c.fuse = 80);
-        }
-    }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
     pub(super) fn seat_cart_mobs(&mut self, riding: &super::passengers::Riders) {
@@ -531,38 +516,6 @@ impl Game<'_> {
     pub(super) fn cart_hit(&self) -> Option<(u32, f64)> {
         let (eye, dir) = self.aim()?;
         self.ecs.aimed_cart_except(Vec3::new(eye[0], eye[1], eye[2]), Vec3::new(dir[0], dir[1], dir[2]), self.entity_reach, self.riding)
-    }
-    /// The client's own carts (the remote list): the index of the cart the aim enters first, with the distance.
-    pub(super) fn remote_cart_hit(&self) -> Option<(usize, f64)> {
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let mut best: Option<(usize, f64)> = None;
-        for (i, c) in self.carts.iter().enumerate() {
-            if Some(c.id) == self.riding {
-                continue;
-            }
-            let bb = c.bounds();
-            let (lo, hi) = (bb.min_position(), bb.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
-                best = Some((i, t0));
-            }
-        }
-        best
     }
     /// The slots of the cart `id`, for a command: `getChestVehicleItem` and
     /// `setChestVehicleItem` first unpack its loot table with no player, so

@@ -1351,7 +1351,7 @@ pub(super) fn make_streaming(
         facts.cardinal_light == horizon_world::dimension_type::CardinalLight::Nether;
     // A server draws nothing: neither the integrated server nor the
     // dedicated one meshes sections.
-    streaming.mesh = options.execution_role.is_client();
+    streaming.mesh = false;
     Ok((streaming, save, locator))
 }
 

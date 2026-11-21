@@ -217,7 +217,7 @@ impl Game<'_> {
             }
             _ => None,
         }
-        .filter(|d| *d == self.dim || !self.options.execution_role.is_client());
+        .filter(|d| *d == self.dim || true);
         let Some(dim) = dim else {
             self.test_failure(Text::literal(format!(
                 "Could not resolve level for dimension: {}",

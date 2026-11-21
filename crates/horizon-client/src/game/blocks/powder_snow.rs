@@ -43,7 +43,7 @@ impl Game<'_> {
     /// A client of a remote server leaves it to the server.
     pub(super) fn powder_snow_melt(&mut self, pos: BlockPos) {
         let at = [pos.x, pos.y, pos.z];
-        if self.remote.is_some() || !self.is_powder_snow(at) || !self.may_interact_at(pos) {
+        if !self.is_powder_snow(at) || !self.may_interact_at(pos) {
             return;
         }
         self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));

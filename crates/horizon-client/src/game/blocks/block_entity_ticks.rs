@@ -439,9 +439,6 @@ impl Game<'_> {
                     this.tick_potent_sulfur(pos)?;
                     // A window that simulates the world itself is its own
                     // client; a server's clients tick it on their own.
-                    if this.options.execution_role.is_client() {
-                        this.client_tick_potent_sulfur(pos);
-                    }
                 }
             }
             slot.after(&mut BlockEntityTick {

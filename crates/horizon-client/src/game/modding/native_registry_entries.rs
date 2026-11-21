@@ -93,9 +93,6 @@ impl Game<'_> {
     fn registry_datapacks(&self, registry: &str) -> Option<Arc<mod_api::DatapackRegistrySet>> {
         if self.is_logical_server() {
             self.mods.datapack_registries.clone()
-        } else if self.remote.is_some() {
-            // This set has already been filtered by the offer, sync policy and accepted schema.
-            horizon_client::datapack_net::received().filter(|set| set.registry_available(registry))
         } else {
             None
         }
@@ -136,15 +133,6 @@ impl Game<'_> {
     }
 
     fn registry_has_entry(&self, registry: &str, id: &str) -> bool {
-        if let Some(remote) = &self.remote {
-            if registry == "minecraft:game_rule" {
-                return self.ui.rules.registry().position(id).is_some();
-            }
-            return network_id(&remote.builtin, &remote.registries, registry, id).is_some()
-                || self
-                    .registry_datapacks(registry)
-                    .is_some_and(|set| set.contains_entry(registry, id));
-        }
         if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
             return false;
         }
@@ -195,22 +183,16 @@ impl Game<'_> {
     /// `HolderLookup.listElements`, from the same owners used by `registry_entry`.
     pub(super) fn registry_entries(&self, registry: &str) -> Option<Vec<Identifier>> {
         let registry = normalized(registry);
-        if !self.is_logical_server() && self.remote.is_none() {
+        if !self.is_logical_server() {
             return None;
         }
-        if self.remote.is_none() {
+        {
             self.native_lifecycle.epoch()?;
         }
         if let Some(set) = self.registry_datapacks(&registry)
             && let Ok(entries) = set.entries(&registry)
         {
             return identifiers(entries);
-        }
-        if let Some(remote) = &self.remote {
-            if registry == "minecraft:game_rule" {
-                return identifiers(LocalRegistry::Rules(self.ui.rules.registry()).ids());
-            }
-            return network_entries(&remote.builtin, &remote.registries, &registry);
         }
         if let Some(table) = self.local_registry(&registry) {
             return identifiers(table.ids());
@@ -254,18 +236,6 @@ impl Game<'_> {
             && let Some(found) = set.tag_contains(&registry, &id, &tag)
         {
             return Some(found);
-        }
-        if let Some(remote) = &self.remote {
-            let Some(index) = network_id(&remote.builtin, &remote.registries, &registry, &id)
-            else {
-                return Some(false);
-            };
-            return Some(
-                remote
-                    .registries
-                    .tag(&registry, &tag)
-                    .is_some_and(|members| members.contains(&index)),
-            );
         }
         if registry == "minecraft:enchantment" {
             return Some(

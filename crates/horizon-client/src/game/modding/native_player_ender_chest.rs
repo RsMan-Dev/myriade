@@ -19,9 +19,6 @@ fn numbered(items: &[Option<ItemStack>]) -> Vec<(u32, ItemStack)> {
 impl Game<'_> {
     /// `PlayerEnderChestContainer.getItem` for every slot that holds something.
     pub(super) fn player_ender_chest(&self, player: PlayerRef) -> Option<Vec<(u32, ItemStack)>> {
-        if self.remote.is_some() {
-            return None;
-        }
         Some(match self.player_handle_read(player)? {
             // An open ender chest menu holds the live copy until it closes.
             PlayerRead::Acting { .. } => match self

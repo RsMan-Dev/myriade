@@ -179,16 +179,6 @@ impl Kind {
             Self::Loom => "container.loom",
         }
     }
-    /// (titleLabelX, titleLabelY).
-    fn title_pos(self) -> (f32, f32) {
-        match self {
-            Self::Anvil => (60.0, 6.0),
-            Self::Smithing => (44.0, 15.0),
-            Self::Stonecutter => (8.0, 5.0),
-            Self::Cartography | Self::Loom => (8.0, 4.0),
-            _ => (8.0, 6.0),
-        }
-    }
     fn input_pos(self, i: usize) -> (f32, f32) {
         let table: &[(f32, f32)] = match self {
             Self::Enchanting => &[(15.0, 47.0), (35.0, 47.0)],
@@ -549,7 +539,7 @@ impl Game<'_> {
         let Some(mut station) = self.station.take() else {
             return;
         };
-        if self.remote.is_some() && station.kind != Kind::Merchant {
+        if false && station.kind != Kind::Merchant {
             // A server's workstation: its removed() gives the inputs back.
             return;
         }
@@ -675,7 +665,7 @@ impl Game<'_> {
         match s.kind {
             // A server's table: its data slots carry the offers, and its
             // client menu only clears them without an enchantable item.
-            Kind::Enchanting if self.remote.is_some() => {
+            Kind::Enchanting if false => {
                 let enchantable = s.inputs[0]
                     .as_ref()
                     .is_some_and(|i| stations::is_enchantable(&enchantments, i));
@@ -714,8 +704,6 @@ impl Game<'_> {
                 // An empty left slot has no result and forgets the answer.
                 if s.inputs[0].is_none() {
                     s.anvil_answer = None;
-                } else if self.remote.is_some() {
-                    self.update_anvil_answer(&mut s, name);
                 }
                 s.result = s.anvil.result.clone();
             }
@@ -776,58 +764,6 @@ impl Game<'_> {
             return (false, 64);
         }
         (s.kind != Kind::Loom, 64)
-    }
-    /// `AbstractContainerMenu.doClick` PICKUP on a filtered slot.
-    pub(super) fn click_filtered(&mut self, slot: usize, right: bool) {
-        let carried = self.carried.take();
-        let current = self.slot_mut(slot).take();
-        let (new_slot, new_carried) = match (carried, current) {
-            (None, None) => (None, None),
-            (None, Some(mut s)) => {
-                let take = if right { s.count.div_ceil(2) } else { s.count };
-                s.count -= take;
-                let taken = ItemStack {
-                    count: take,
-                    ..s.clone()
-                };
-                ((s.count > 0).then_some(s), Some(taken))
-            }
-            (Some(mut c), None) => {
-                let (ok, cap) = self.slot_rules(slot, &c);
-                if ok {
-                    let n = if right { 1 } else { c.count }.min(cap.min(self.max_stack(&c)));
-                    let placed = ItemStack {
-                        count: n,
-                        ..c.clone()
-                    };
-                    c.count -= n;
-                    (Some(placed), (c.count > 0).then_some(c))
-                } else {
-                    (None, Some(c))
-                }
-            }
-            (Some(mut c), Some(mut s)) => {
-                let (ok, cap) = self.slot_rules(slot, &c);
-                if ok && c.same_item_same_components(&s) {
-                    let room = cap.min(self.max_stack(&s)).saturating_sub(s.count);
-                    let n = if right { 1 } else { c.count }.min(room);
-                    s.count += n;
-                    c.count -= n;
-                    (Some(s), (c.count > 0).then_some(c))
-                } else if ok && c.count <= cap.min(self.max_stack(&c)) {
-                    (Some(c), Some(s))
-                } else if c.same_item_same_components(&s) {
-                    let n = s.count.min(self.max_stack(&c).saturating_sub(c.count));
-                    s.count -= n;
-                    c.count += n;
-                    ((s.count > 0).then_some(s), Some(c))
-                } else {
-                    (Some(s), Some(c))
-                }
-            }
-        };
-        *self.slot_mut(slot) = new_slot;
-        self.carried = new_carried;
     }
     /// `moveItemStackTo` over `targets` (menu order), merging first, then empty slots.
     pub(super) fn move_to(
@@ -1050,11 +986,6 @@ impl Game<'_> {
         {
             return;
         }
-        if self.remote.is_some() {
-            // EnchantmentScreen.mouseClicked: the client menu took it, the server enchants.
-            self.remote_station_button(button as i32);
-            return;
-        }
         let Some(enchanted) = self.table_enchant(self.level.xp_seed, button, cost, &item) else {
             return;
         };
@@ -1114,7 +1045,7 @@ impl Game<'_> {
     }
     pub(super) fn station_click(&mut self, right: bool) -> bool {
         // A server's brewing stand: its slots are the server's.
-        if self.station.is_none() && (!self.brewing_open() || self.remote.is_some()) {
+        if self.station.is_none() && (!self.brewing_open()) {
             return false;
         }
         let Some(size) = self
@@ -1132,7 +1063,7 @@ impl Game<'_> {
             if kind == Kind::Merchant && !right && self.merchant_click(local) {
                 return true;
             }
-            if kind == Kind::Merchant && self.remote.is_some() {
+            if kind == Kind::Merchant && false {
                 // A server's trading window: its slots are the server's.
                 return false;
             }
@@ -1267,29 +1198,6 @@ impl Game<'_> {
         let rows = stonecutter_offscreen_rows(s.stone.recipes.len());
         s.stonecutter_scroll_to(s.scroll - d / rows as f32);
     }
-    /// The mouse moved with a button held on a station: the loom's,
-    /// stonecutter's and merchant's scrollers follow it.
-    pub(super) fn station_drag(&mut self) {
-        self.loom_drag();
-        self.merchant_drag();
-        let Some(size) = self
-            .renderer
-            .as_ref()
-            .map(|r| [r.config.width, r.config.height])
-        else {
-            return;
-        };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.cursor.1 - oy;
-        // `StonecutterScreen.mouseDragged`.
-        if let Some(s) = self.station.as_mut()
-            && s.kind == Kind::Stonecutter
-            && s.scrolling
-            && s.stonecutter_scrolls()
-        {
-            s.stonecutter_scroll_to(stonecutter_drag_offs(y));
-        }
-    }
     /// A mouse button let go: no scroller is held any more.
     pub(super) fn station_release(&mut self) {
         self.loom_release();
@@ -1325,20 +1233,6 @@ impl Game<'_> {
         s.name.clone_from(&s.rename.value);
         self.station_changed();
         self.remote_anvil_rename();
-    }
-    /// `AnvilScreen.keyPressed`: the rename box handles the key.
-    pub(super) fn station_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
-        let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let Some(s) = self.station.as_mut() else {
-            return false;
-        };
-        if !s.rename.key(key, ctrl, shift) {
-            return false;
-        }
-        s.name.clone_from(&s.rename.value);
-        self.station_changed();
-        self.remote_anvil_rename();
-        true
     }
     /// Ctrl+A/C/V/X in the anvil's rename box (an `EditBox` of 50) or the
     /// recipe book's search box.
@@ -1376,22 +1270,6 @@ impl Game<'_> {
         s.rename.width = w;
         s.rename.click(&self.gui.atlas, mx, shift, false);
         true
-    }
-    /// AnvilScreen's name box, drawn after the station picture.
-    fn draw_anvil_name(&mut self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let Some(s) = self.station.as_mut() else {
-            return;
-        };
-        let edit = &mut s.rename;
-        edit.x = ox + 62.0;
-        edit.y = oy + 24.0;
-        edit.width = 103.0;
-        edit.height = 12.0;
-        edit.bordered = false;
-        edit.focused = true;
-        edit.text_color = u32::MAX;
-        edit.max_length = anvil::NAME_CHARS;
-        edit.draw(batch, &self.gui.atlas, None);
     }
 
     // ---------------------------------------------------------------- drawing
@@ -2361,31 +2239,6 @@ impl Game<'_> {
     pub(super) fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
         self.carried.is_none()
             || horizon_client::bundle::Contents::of(self.items(), stack).is_some()
-    }
-    /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
-    pub(super) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
-        let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) else {
-            return;
-        };
-        // The recipe book's tooltip is drawn after the slot's own, so a ghost wins.
-        if let Some(ghost) = self.ghost_stack(slot) {
-            self.draw_stack_tooltip(batch, &ghost, self.cursor.0, self.cursor.1);
-            return;
-        }
-        let stack = self.slot_view(slot);
-        if self.carried.is_some() && !stack.as_ref().is_some_and(|s| self.tooltip_with_carried(s)) {
-            return;
-        }
-        if let Some(stack) = stack {
-            self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
-        } else if let Some(text) = self.crafter_tooltip(slot) {
-            self.draw_tooltip_lines(
-                batch,
-                &[(horizon_client::text::Text::literal(text), u32::MAX)],
-                self.cursor.0,
-                self.cursor.1,
-            );
-        }
     }
 
     // ---------------------------------------------------------------- brewing stand

@@ -190,9 +190,6 @@ impl Game<'_> {
         items: Vec<Option<ItemStack>>,
     ) -> Result<(), mod_api::MenuItemsRefusal> {
         use mod_api::MenuItemsRefusal;
-        if self.remote.is_some() {
-            return Err(MenuItemsRefusal::Client);
-        }
         let conn = self.native_conn(uuid).ok_or(MenuItemsRefusal::NoPlayer)?;
         let host = self.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
         if host.hub.set_native_menu_items(conn, window, items) {

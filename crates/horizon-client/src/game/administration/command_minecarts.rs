@@ -134,13 +134,7 @@ impl Game<'_> {
         let track_output = s.track_output;
         // The output button set the cart's own flag as it was pressed.
         self.edit_command_cart(id, |c| c.track_output = track_output);
-        if self.remote.is_some() {
-            self.send(S::SetCommandMinecart(play::SetCommandMinecart {
-                entity: id as i32,
-                command,
-                track_output,
-            }));
-        } else {
+        {
             self.apply_cart_command(id, command, track_output);
         }
         if !track_output {

@@ -241,24 +241,6 @@ fn refused(error: &PayloadSendError) -> bool {
 }
 
 impl Game<'_> {
-    /// A `horizon:attachment_sync` payload the server sent the window.
-    pub(super) fn remote_attachment_sync(&mut self, data: &[u8]) {
-        let message = match attachment_sync::decode(data) {
-            Ok(message) => message,
-            Err(e) => return log::debug!("Horizon: a bad attachment sync: {e}"),
-        };
-        let Some(remote) = self.remote.as_mut() else {
-            return;
-        };
-        let map = remote.attachments.entry(message.holder).or_default();
-        if message.replace {
-            map.replace_contents(Attachments::default());
-        }
-        for change in message.changes {
-            map.apply_sync(change);
-        }
-        self.bind_remote_attachment(message.holder);
-    }
 
     /// Publish a synced copy once its scoped client holder can be named.
     pub(super) fn bind_remote_attachment(&mut self, holder: Holder) {

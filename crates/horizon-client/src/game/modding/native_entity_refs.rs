@@ -834,28 +834,6 @@ impl Game<'_> {
     /// On a client, the one the server added it with (a player's is its
     /// profile's). API 373.
     pub(super) fn entity_uuid(&mut self, entity: EntityRef) -> Option<u128> {
-        if let Some(r) = &self.remote {
-            let id = i32::try_from(entity.id()).ok()?;
-            if self.native_entity_read_target(entity).is_none()
-                && self.native_client_tracked(entity).is_none()
-            {
-                return None;
-            }
-            if let Some(words) =
-                self.known_resident_entity_uuid_at(self.native_level_key(), entity.id())
-            {
-                return Some(uuid_from_words(words));
-            }
-            if let Some((uuid, _)) = r.level_player(id) {
-                return Some(uuid);
-            }
-            return self
-                .persist
-                .uuids
-                .get(&entity.id())
-                .copied()
-                .map(uuid_from_words);
-        }
         let words = match self.native_entity_target(entity)? {
             Target::Player => {
                 let dimension = self.current_player_resident_location()?.owner.dimension;

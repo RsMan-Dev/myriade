@@ -56,7 +56,7 @@ pub(super) fn synchronous_startup(options: &Options) -> bool {
         || options.world_frames.is_some()
         || options.benchmark.is_some()
         || options.control.is_some()
-        || !options.execution_role.is_client()
+        || true
         || std::env::var_os("HORIZON_SCREEN_BUILD_FIXTURE").is_some()
         || std::env::var_os("HORIZON_DISPENSE_FIXTURE").is_some()
         || std::env::var_os("HORIZON_SCULK_FIXTURE").is_some()
@@ -75,7 +75,7 @@ pub(super) fn owns_device_loss_marker(options: &Options) -> bool {
 /// The local world a client's launch opens at once (`--world`,
 /// `--quickPlaySingleplayer`), whose generator data can load with the game's.
 pub(super) fn launch_world(options: &Options) -> Option<&str> {
-    (options.execution_role.is_client() && options.server.is_none() && !options.test_terrain)
+    (false && options.server.is_none() && !options.test_terrain)
         .then_some(options.world.as_deref())
         .flatten()
 }

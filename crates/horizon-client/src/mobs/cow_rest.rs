@@ -97,9 +97,7 @@ impl Mob {
             stuck: bits(self.stuck_multiplier),
             supporting: self.supporting,
             fall: self.fall_distance.to_bits(),
-            input: if false {
-                [0; 4]
-            } else {
+            input: {
                 [
                 (input.x as f32).to_bits(),
                 (input.y as f32).to_bits(),

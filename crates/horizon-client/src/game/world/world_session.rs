@@ -282,7 +282,7 @@ impl Game<'_> {
             return Ok(());
         }
         self.close_container();
-        if self.remote.is_none() {
+        {
             self.award_custom_stat("leave_game", 1);
         }
         self.lan_close(false);

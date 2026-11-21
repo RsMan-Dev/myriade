@@ -50,9 +50,6 @@ impl Game<'_> {
             return Ok(None);
         };
         // A client of a server predicts the placing; the server decides.
-        if self.remote.is_some() {
-            return Ok(Some(true));
-        }
         let key = (pos[0], pos[1], pos[2]);
         let placed = match self.world.block_entities.get_mut(&key) {
             Some(BlockEntity::Campfire(c)) => {

@@ -81,16 +81,6 @@ impl Game<'_> {
         wasm_tests::staged_reply(endpoint.side() == Side::Server && id.0 == "raw_probe:receipt");
         Ok(PayloadAccepted::Queued)
     }
-    pub(super) fn receive_client_payload(
-        &mut self,
-        incoming: &mut Incoming,
-    ) -> horizon_client::Result<bool> {
-        let Some(remote) = self.remote.as_ref() else {
-            return Ok(true);
-        };
-        let endpoint = remote.session.payload_endpoint();
-        Ok(self.run_payload(endpoint, incoming))
-    }
     /// Endpoint identity was captured on ingress, not resolved from a later guest incarnation.
     pub(super) fn receive_server_payload(
         &mut self,

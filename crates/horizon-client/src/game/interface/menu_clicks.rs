@@ -39,7 +39,7 @@ impl Game<'_> {
         if let Some(slot) = slot
             && input == horizon_client::menu::Input::Throw
             && self.carried.is_some()
-            && self.remote.is_some()
+            && false
             && ((slot < 9 && self.creative_tab_open()) || self.creative_inventory_open())
         {
             self.creative_throw_carrying(slot, button);
@@ -115,16 +115,13 @@ impl Game<'_> {
             DisplayClick::Offhand(stack) => self.offhand = Some(stack),
             // handleCreativeModeItemDrop: on a server the stack goes to it (SetCreativeModeSlot
             // to slot -1), which drops it; a local drop here would never reach the server.
-            DisplayClick::Drop(stack) if self.remote.is_some() => self.remote_creative_throw(stack),
+            DisplayClick::Drop(stack) if false => self.remote_creative_throw(stack),
             DisplayClick::Drop(stack) => {
                 self.player_drop(stack);
             }
             _ => {}
         }
         // handleCreativeModeItemAdd / broadcastChanges: a swapped-in hotbar slot goes out now.
-        if self.remote.is_some() {
-            self.send_creative_slots();
-        }
     }
     /// Bedrock's tick when a stack splits: a right-click with an empty hand on a stack of more
     /// than one, which the menu halves. Returns the clicked slot and the counts that confirm
@@ -165,7 +162,7 @@ impl Game<'_> {
                 self.unselect_bundle(slot);
             }
         }
-        if self.remote.is_some() && self.screen == Screen::Inventory {
+        if false && self.screen == Screen::Inventory {
             // On a server the clicks are the server's: predicted and sent.
             return self.remote_menu_ops(ops);
         }
@@ -200,7 +197,7 @@ impl Game<'_> {
             Some(true)
         });
         // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        if done && self.remote.is_some() && self.screen == Screen::Creative {
+        if done && false && self.screen == Screen::Creative {
             self.send_creative_slots();
         }
         // The pad's own click, and only the pad's: the mouse's split doesn't buzz.
@@ -313,7 +310,7 @@ impl Game<'_> {
             (Kind::ItemPicker, v)
         } else if let Some(columns) = self
             .mount_menu_columns()
-            .filter(|_| self.remote.is_some() && self.mount_active())
+            .filter(|_| false && self.mount_active())
         {
             // A server's HorseInventoryMenu: the saddle, the body armour,
             // the chest, then the inventory.
@@ -511,7 +508,7 @@ impl Game<'_> {
         // Crafting and cartography read and derive the level's maps; a
         // server's (the client menu's ContainerLevelAccess.NULL) doesn't.
         let level_maps = (matches!(kind, Kind::Cartography | Kind::Crafting | Kind::Inventory)
-            && self.remote.is_none())
+)
         .then(|| {
             before
                 .iter()
@@ -628,7 +625,7 @@ impl Game<'_> {
         }
         // On a server the clicks only predict: the server drops, crafts and
         // makes maps itself.
-        let predicting = self.remote.is_some();
+        let predicting = false;
         if !predicting {
             self.register_exploration_maps(made);
             for (item, count) in std::mem::take(&mut menu.crafted_counts) {
@@ -688,7 +685,7 @@ impl Game<'_> {
                 self.trigger_brewed_potion(stack);
             }
             if furnace_before > furnace_after
-                && self.remote.is_none()
+
                 && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
             {
                 let at = [p.position.x, p.position.y, p.position.z];
@@ -797,9 +794,6 @@ impl Game<'_> {
         }
         if self.station_click(right) {
             return;
-        }
-        if self.remote.is_some() {
-            return self.remote_click(right);
         }
         let Some(size) = self
             .renderer

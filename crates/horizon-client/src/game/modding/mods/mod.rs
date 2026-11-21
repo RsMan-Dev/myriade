@@ -1737,7 +1737,7 @@ impl Game<'_> {
         log::info!("Horizon: content mods switched live: resources reloaded in {resources_ms} ms");
         if let Some(server) = &self.integrated {
             server.post(reload);
-        } else if self.remote.is_none() {
+        } else {
             reload(self);
         }
     }

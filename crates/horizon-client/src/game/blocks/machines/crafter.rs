@@ -287,57 +287,6 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// `CrafterScreen`'s background, disabled slots and powered arrow (the
-    /// verified `screen_layout::crafter`) and its centred title.
-    pub(in crate::game) fn draw_crafter_screen(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let Some(c) = self.container.and_then(|k| self.crafter_at(k)) else {
-            return;
-        };
-        // CrafterScreen draws the arrow from `menu.isPowered()`: data slot 9, the int, is 1.
-        let powered = c.is_triggered();
-        let draws =
-            horizon_client::screen_layout::crafter(&horizon_client::screen_layout::CrafterView {
-                width: 176,
-                height: 166,
-                left: 0,
-                top: 0,
-                disabled: c.disabled,
-                powered,
-            });
-        // The background goes first, then the labels, then the slot decorations.
-        let (background, rest) = draws.split_at(2.min(draws.len()));
-        self.paint_screen(batch, ox, oy, background, true);
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-        let atlas = &self.gui.atlas;
-        let grey = rgba(64, 64, 64, 255);
-        // A server's crafter menu has the title it was given.
-        let title = self.remote_menu_title().unwrap_or_else(|| {
-            horizon_client::text::Text::literal(
-                self.container_title(self.translate_with_fallback("container.crafter", "Crafter")),
-            )
-            .resolve_legacy()
-        });
-        crate::game::screen_info::name_container(|| title.plain());
-        let tw = atlas.font.width_text(&title);
-        batch.text_styled(
-            atlas,
-            &title,
-            ox + ((176.0 - tw) / 2.0).trunc(),
-            oy + 6.0,
-            grey,
-            false,
-        );
-        let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-        batch.text(atlas, &inventory, ox + 8.0, oy + 72.0, grey, false);
-        self.paint_screen(batch, ox, oy, rest, true);
-    }
-    /// `gui.togglable_slot` over an empty, enabled grid slot.
-    pub(in crate::game) fn crafter_tooltip(&self, slot: usize) -> Option<String> {
-        let c = self.container.and_then(|k| self.crafter_at(k))?;
-        let i = slot.checked_sub(300).filter(|i| *i < 9)?;
-        (self.carried.is_none() && c.items[i].is_none() && !c.disabled[i] && !self.spectator())
-            .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
-    }
     /// A click in the crafter menu: `CrafterMenu` on the verified menu engine.
     pub(in crate::game) fn crafter_click(&mut self, slot: usize, shift: bool, right: bool) -> bool {
         if !self.crafter_open() {

@@ -209,25 +209,6 @@ impl Game<'_> {
             self.native_beacon_state_change(self.dim.id(), [key.0, key.1, key.2], current > 0);
         }
     }
-    /// `ClientLevel.tickBlockEntities` for beacons: a server's chunk data
-    /// carries no beam sections, so the client builds them too; effects,
-    /// sounds and the advancement stay with the server.
-    pub(super) fn client_tick_beacons(&mut self) {
-        let keys: Vec<_> = self
-            .world
-            .block_entities
-            .listed(horizon_client::block_entities::Listed::Beacon)
-            .map(|(k, _)| *k)
-            .collect();
-        for key in keys {
-            let Some((lease, BlockEntity::Beacon(mut b))) = self.world.block_entities.take(&key)
-            else {
-                continue;
-            };
-            self.tick_beacon(key, &mut b, true);
-            self.world.block_entities.put(lease, BlockEntity::Beacon(b));
-        }
-    }
     fn tick_beacon(&mut self, (x, y, z): (i32, i32, i32), b: &mut Beacon, client: bool) {
         let mut check = if b.last_check_y < y {
             b.checking.clear();
@@ -509,12 +490,6 @@ impl Game<'_> {
     /// a server, `BeaconScreen`'s confirm button sends them
     /// (`ServerboundSetBeaconPacket`) and the server's menu does it.
     fn confirm_beacon(&mut self, sel: [Option<usize>; 2]) {
-        if self.remote.is_some() {
-            let id = |e: Option<usize>| e.and_then(|e| self.remote_effect_network_id(EFFECTS[e].0));
-            let (primary, secondary) = (id(sel[0]), id(sel[1]));
-            self.send(S::SetBeacon(play::SetBeacon { primary, secondary }));
-            return;
-        }
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -533,146 +508,6 @@ impl Game<'_> {
             self.beacon_sound(pos, "minecraft:block.beacon.power_select");
         }
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-    }
-    /// `BeaconScreen`: background, labels, payment icons, power buttons.
-    pub(super) fn draw_beacon(&mut self, batch: &mut HudBatch) {
-        let (ox, oy) = self.inventory_origin(batch);
-        let (bx, by) = (ox + SHIFT, oy);
-        let local = (self.cursor.0 - bx, self.cursor.1 - by);
-        let levels = self.beacon_levels();
-        let sel = self.station.as_ref().map_or([None; 2], |s| s.beacon);
-        let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
-        // BeaconScreen draws no title, but has the menu's.
-        super::screen_info::name_container(|| {
-            self.remote_menu_title().map_or_else(
-                || self.translate_with_fallback("container.beacon", "Beacon"),
-                |t| t.plain(),
-            )
-        });
-        self.render_transparent_background("beacon", batch);
-        let atlas = &self.gui.atlas;
-        if let Some(mut r) = atlas.sprites.get("gui/container/beacon").copied() {
-            let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
-            r.u1 = r.u0 + 230.0 * du;
-            r.v1 = r.v0 + HEIGHT * dv;
-            batch.rect_uv(bx, by, 230.0, HEIGHT, r, u32::MAX);
-        }
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-        let label = 0xFFE0_E0E0;
-        for (key, fallback, cx) in [
-            ("block.minecraft.beacon.primary", "Primary Power", 62.0),
-            ("block.minecraft.beacon.secondary", "Secondary Power", 169.0),
-        ] {
-            let text = self.translate_with_fallback(key, fallback);
-            let atlas = &self.gui.atlas;
-            let w = HudBatch::text_width(atlas, &text);
-            batch.text(
-                atlas,
-                &text,
-                bx + cx - (w / 2.0).floor(),
-                by + 10.0,
-                label,
-                false,
-            );
-        }
-        for (item, x) in PAYMENT_ROW {
-            self.draw_item(batch, &ItemStack::new(item, 1), bx + x, by + 109.0);
-        }
-        let atlas = &self.gui.atlas;
-        let buttons = buttons();
-        let tooltip = hovered_tooltip(local, sel[0], &buttons);
-        let button =
-            |batch: &mut HudBatch, x: f32, y: f32, active: bool, selected: bool, icon: &str| {
-                let hover = inside(local, x, y, 22.0, 22.0);
-                let sprite = if !active {
-                    "button_disabled"
-                } else if selected {
-                    "button_selected"
-                } else if hover {
-                    "button_highlighted"
-                } else {
-                    "button"
-                };
-                batch.sprite(
-                    atlas,
-                    &format!("gui/sprites/container/beacon/{sprite}"),
-                    bx + x,
-                    by + y,
-                );
-                batch.sprite_scaled(
-                    atlas,
-                    icon,
-                    bx + x + 2.0,
-                    by + y + 2.0,
-                    18.0,
-                    18.0,
-                    u32::MAX,
-                );
-            };
-        for (e, x, y, primary) in buttons {
-            let tier = EFFECTS[e].1;
-            let active = if primary {
-                tier <= levels && tier < 4
-            } else {
-                levels >= 4
-            };
-            let selected = if primary {
-                sel[0] == Some(e)
-            } else {
-                sel[1] == Some(e)
-            };
-            let icon = format!("mob_effect/{}", EFFECTS[e].0);
-            button(batch, x, y, active, selected, &icon);
-        }
-        if let Some(p) = sel[0] {
-            let (x, y) = upgrade_button();
-            let icon = format!("mob_effect/{}", EFFECTS[p].0);
-            button(batch, x, y, levels >= 4, sel[1] == Some(p), &icon);
-        }
-        button(
-            batch,
-            164.0,
-            107.0,
-            paid && sel[0].is_some(),
-            false,
-            "gui/sprites/container/beacon/confirm",
-        );
-        button(
-            batch,
-            190.0,
-            107.0,
-            true,
-            false,
-            "gui/sprites/container/beacon/cancel",
-        );
-        let slots: Vec<usize> = (0..36).chain([INPUT]).collect();
-        self.draw_hovered_slot_highlight(batch, false, ox, oy);
-        for i in slots {
-            let (sx, sy) = self.slot_position(i);
-            if let Some(stack) = self.slot_mut(i).clone() {
-                self.draw_item(batch, &stack, ox + sx, oy + sy);
-            }
-        }
-        self.draw_hovered_slot_highlight(batch, true, ox, oy);
-        let mut stack_tip = None;
-        if let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) {
-            stack_tip = self.slot_mut(slot).clone();
-        }
-        let browser_tip = self.draw_mod_browser(batch);
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
-        if self.carried.is_some() {
-            self.draw_carried(batch);
-            if let Some(stack) = stack_tip.filter(|s| self.tooltip_with_carried(s)) {
-                self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
-            }
-        } else if let Some(stack) = stack_tip {
-            self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
-        } else if let Some(text) = tooltip {
-            self.draw_tooltip_lines(batch, &[(text, u32::MAX)], self.cursor.0, self.cursor.1);
-        }
-        if let Some(tooltip) = browser_tip {
-            self.draw_mod_browser_tooltip(batch, tooltip);
-        }
     }
     /// `BeaconRenderer`: each section's rotating solid beam and its glow.
     pub(super) fn beacon_geometry(

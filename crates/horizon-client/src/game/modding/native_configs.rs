@@ -197,10 +197,6 @@ impl Game<'_> {
         }
     }
 
-    /// The window's frame step: changed config files reload once a second.
-    pub(super) fn native_configs_tick_client(&mut self) {
-        self.native_configs_poll();
-    }
 
     /// A server about to open `world`: a dedicated server loads its
     /// `Common` configs too, a single player's server thread only `Server`.

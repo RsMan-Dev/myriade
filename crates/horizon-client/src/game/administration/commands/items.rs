@@ -733,7 +733,7 @@ impl Game<'_> {
                                 .is_some_and(|i| i.equip_slot.is_some()))
                 });
                 let changed = self.ecs.put_equipment_slot(*id, slot, stack);
-                if changed && !same && self.remote.is_none() {
+                if changed && !same {
                     self.mob_equip_event(*id, at, equippable);
                 }
                 changed
@@ -763,7 +763,7 @@ impl Game<'_> {
                 if !a.equipment.set(*i, stack) {
                     return false;
                 }
-                if effects && emit && self.remote.is_none() {
+                if effects && emit {
                     self.post_game_event(
                         if equippable {
                             "minecraft:equip"

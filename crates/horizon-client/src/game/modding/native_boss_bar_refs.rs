@@ -12,7 +12,7 @@ use mod_api::{BossBarColor, BossBarOverlay, BossBarRef, PlayerRef};
 
 impl Game<'_> {
     fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
-        if self.remote.is_some() || self.native_lifecycle.epoch() != Some(bar.fields().epoch) {
+        if self.native_lifecycle.epoch() != Some(bar.fields().epoch) {
             return None;
         }
         self.bosses
@@ -57,17 +57,11 @@ impl Game<'_> {
     }
 
     fn boss_bar_state_by_id(&self, id: &str) -> Option<&BossBar> {
-        if self.remote.is_some() {
-            return None;
-        }
         self.bosses.bars.get(id)
     }
 
     /// Every custom boss bar, in the order `/bossbar list` shows them.
     pub(super) fn boss_bars(&self) -> Vec<BossBarRef> {
-        if self.remote.is_some() {
-            return Vec::new();
-        }
         self.bosses
             .listed_bars()
             .into_iter()
@@ -81,9 +75,6 @@ impl Game<'_> {
         let epoch = self.native_lifecycle.epoch()?;
         let id = Identifier::parse(id).ok()?;
         let id = format!("{}:{}", id.namespace(), id.path());
-        if self.remote.is_some() {
-            return None;
-        }
         let uuid = self.add_custom_bossbar(&id, name.component())?;
         self.bossbars_changed();
         Some(mod_api::__private::game::boss_bar_ref(epoch, uuid))

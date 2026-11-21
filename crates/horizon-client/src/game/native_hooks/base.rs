@@ -530,20 +530,6 @@ impl GameLevel<'_> {
 
 /// The hook points. Each does nothing in Horizon.
 impl Game<'_> {
-    /// The frame rate this window is about to be held to: Max Framerate after the
-    /// inactivity throttle and Battery Mode (260 is unlimited). `focused` is whether the
-    /// window has focus, `minimized` whether it is minimised and `in_world` whether a world
-    /// is open. A mod may lower `limit`, as Dynamic FPS does for a window in the background:
-    /// Horizon keeps the lower of its own limit and the mod's, and ignores values below 1.
-    pub(in crate::game) fn native_framerate_limit(
-        &self,
-        focused: bool,
-        minimized: bool,
-        in_world: bool,
-        limit: &mut i32,
-    ) {
-        self.fire_framerate_limit(focused, minimized, in_world, limit);
-    }
     /// Render-thread notification after a resource-pack reload has applied successfully.
     /// Atlas, models, renderer and client caches already refer to the new resources.
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
@@ -806,26 +792,6 @@ impl Game<'_> {
     ) {
         self.fire_health_hud(inputs, wi, hi, draws);
     }
-    /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
-    /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.
-    pub(in crate::game) fn native_mouse_button_pre(
-        &mut self,
-        button: i32,
-        pressed: bool,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_mouse_button_pre(button, pressed, modifiers, canceled);
-    }
-    /// An accepted raw button event finished dispatch, including a screen handler's early return.
-    pub(in crate::game) fn native_mouse_button_post(
-        &mut self,
-        button: i32,
-        pressed: bool,
-        modifiers: u32,
-    ) {
-        self.fire_mouse_button_post(button, pressed, modifiers);
-    }
     /// Gameplay scrolling after accumulation, before hotbar/spectator handling.
     /// `scroll` is scaled x/y, `accumulated` whole x/y steps, `buttons` left/middle/right,
     /// and `cursor` the GUI position. Cancel skips gameplay scrolling.
@@ -844,18 +810,6 @@ impl Game<'_> {
     /// server and Horizon's commands see it: set `ran` when the mod ran it.
     pub(in crate::game) fn native_command(&mut self, command: &str, ran: &mut bool) {
         self.fire_command(command, ran);
-    }
-    /// The client's own commands (`RegisterClientCommandsEvent`), which
-    /// `native_command` runs: push a `mod_api::Command` per usage. Asked when a
-    /// connection starts and again when the server sends its own tree, so the
-    /// chat box colours, completes and lists them as the game's own; a name
-    /// the game already has keeps that command's behaviour. A client command
-    /// has no operator level: one with a nonzero level is left out.
-    pub(in crate::game) fn native_register_client_commands(
-        &mut self,
-        commands: &mut Vec<mod_api::Command>,
-    ) {
-        self.fire_register_client_commands(commands);
     }
     /// World field of view, after normal calculation and zoom and before projection/Nausea.
     /// Called for world rendering and near-plane overlays; hand/HUD FOV uses its own path.
@@ -915,18 +869,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_camera_shake(&self, partial: f32, shake: &mut Shake) {
         self.fire_camera_shake(partial, shake);
     }
-    /// Final scaled third-person camera distance, before visual-shape collision clipping.
-    /// `entity` includes its living scale/distance and optional mount scale/distance.
-    /// Only finite requests in 0..=1024 blocks replace the vanilla distance.
-    pub(in crate::game) fn native_camera_distance(
-        &self,
-        partial: f32,
-        mirrored: bool,
-        entity: &mod_api::client::camera::CameraEntity,
-        distance: &mut f32,
-    ) {
-        self.fire_camera_distance(partial, mirrored, entity, distance);
-    }
     /// Change the colours of `biome` (`minecraft:plains`) on this client: the
     /// grass, foliage (leaves, vines), dry foliage (leaf litter) and water
     /// tints, 0xRRGGBB, as its biome file and the colormaps set them. Asked
@@ -937,17 +879,6 @@ impl Game<'_> {
     /// replace it.
     pub(in crate::game) fn native_biome_colors(&self, biome: &str, colors: &mut BiomeColors) {
         self.fire_biome_colors(biome, colors);
-    }
-    /// Choose this client's music, once a client tick: `music` and `volume`
-    /// hold what vanilla chose (`Minecraft.getSituationalMusic` and
-    /// `getMusicVolume`: the biome's track, the creative or underwater one, a
-    /// boss's, the menu's; None for silence). Set `music` to a track of your
-    /// own, a sound event of your content mod's `sounds.json` such as
-    /// `Music::new("mymod:music.spring", 1200, 6000, false)` (the delays in
-    /// ticks between songs, and whether it cuts off a different song playing),
-    /// None to keep vanilla's quiet, or change `volume` (0 to 1) to fade it.
-    pub(in crate::game) fn native_music(&self, music: &mut Option<Music>, volume: &mut f32) {
-        self.fire_music(music, volume);
     }
     /// The tracks to play over (or instead of) the music on this client,
     /// asked once a client tick: push a `MusicLayer` (a sound event, looped,
@@ -1237,56 +1168,6 @@ impl Game<'_> {
     ) {
         self.fire_screen_render_post(draw, screen);
     }
-    /// A mouse button went down over the open screen
-    /// (`ScreenEvent.MouseButtonPressed.Pre`, vanilla's
-    /// `Screen.mouseClicked`): `screen` is the screen it is, `screen.mouse`
-    /// where the pointer is (so there is no position of its own), `button` the
-    /// button's GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; a
-    /// button past those is the platform's own number, which differs between
-    /// systems) and `modifiers` GLFW's bits (shift 1, control 2,
-    /// alt 4, super 8). Set `canceled` and the press goes no further: no slot,
-    /// no screen button, no drag, no hotbar key, no sort or header button.
-    ///
-    /// It fires before anything the screen does with the press, on the window
-    /// only, and while a screen of the game's or the title's is open (Options
-    /// and the pack list opened from the title screen count, with no player
-    /// and no `menu`; the title's own screens, their
-    /// `screen.id` from the title state machine). It does not fire on the
-    /// connect and loading screens, nor for a server
-    /// dialog, the server pack, link and code-of-conduct prompts, a book or a
-    /// sign editor drawn over gameplay, nor while a world loads or saves: the
-    /// click there stays the game's own. A gamepad click or a click the
-    /// keyboard's focus sends is not the mouse and fires nothing.
-    pub(in crate::game) fn native_screen_mouse_button_pressed_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        button: i32,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_mouse_button_pressed_pre(screen, button, modifiers, canceled);
-    }
-    /// A mouse button went up over the open screen
-    /// (`ScreenEvent.MouseButtonReleased.Pre`, vanilla's
-    /// `Screen.mouseReleased`), with the same `screen`, `button` and
-    /// `modifiers` as `native_screen_mouse_button_pressed_pre` and fired at
-    /// the same point. Set `canceled` and the release goes no further: a
-    /// pressed slot keeps what it took and no drag, slider or scrollbar lets
-    /// go.
-    ///
-    /// Cancel a release only when the press it ends was cancelled too: a
-    /// release the screen took ends the drag or the scroll it began, as it
-    /// does in vanilla, and no guard here un-cancels it. Same screens as the
-    /// press; a press that opened another screen ends on that one.
-    pub(in crate::game) fn native_screen_mouse_button_released_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        button: i32,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_mouse_button_released_pre(screen, button, modifiers, canceled);
-    }
     /// Before a real held-button movement reaches screen drag handlers.
     /// `screen.mouse` is the current GUI position; `delta` is its GUI-space movement.
     /// Cancel keeps the new cursor position but skips all screen drag handlers.
@@ -1364,17 +1245,6 @@ impl Game<'_> {
         canceled: &mut bool,
     ) {
         self.fire_screen_key_pressed_pre(screen, key, repeat, modifiers, canceled);
-    }
-    /// Before an open screen handles a named key's release (same screen gate as key presses).
-    /// Cancel bypasses screen handling; physical keys and mapped keyboard hold/toggle state release.
-    pub(in crate::game) fn native_screen_key_released_pre(
-        &self,
-        screen: &ScreenView<'_>,
-        key: &str,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_key_released_pre(screen, key, modifiers, canceled);
     }
     /// A character was typed at the open screen
     /// (`ScreenEvent.CharacterTyped.Pre`, vanilla's `Screen.charTyped`):
@@ -2339,20 +2209,6 @@ impl Game<'_> {
         page: i32,
     ) {
         self.fire_player_lectern_page_change(player, name, pos, page);
-    }
-    /// A server player changed an item frame after its contents or rotation changed. `action` is
-    /// `put`, `rotate`, `remove_item` or `break`; `item` is empty when no item remains, and `rotation`
-    /// is the resulting step. Server-side.
-    pub(in crate::game) fn native_player_item_frame_change(
-        &mut self,
-        player: u128,
-        name: &str,
-        entity_id: u32,
-        action: &str,
-        item: &str,
-        rotation: u8,
-    ) {
-        self.fire_player_item_frame_change(player, name, entity_id, action, item, rotation);
     }
     /// Mending repaired a server player's item with experience from an orb. `repair` is durability
     /// restored and `experience` is the orb's value. Server-side.

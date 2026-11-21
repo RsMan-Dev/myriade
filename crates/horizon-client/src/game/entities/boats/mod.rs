@@ -344,7 +344,7 @@ impl Game<'_> {
         }
         // A remote client gets the controller from the passenger packet, even when
         // this window occupies the second seat. Local worlds derive it here.
-        if self.remote.is_none() {
+        {
             b.paddle_controller = controlled;
         }
         if !controlled {
@@ -645,9 +645,6 @@ impl Game<'_> {
             return;
         }
         // A window that is its own client hears and sees the splash too.
-        if self.options.execution_role.is_client() {
-            self.boat_bubble_splash(i);
-        }
         let (id, p) = (self.boats[i].id, self.boats[i].position);
         // Entity.gameEvent(SPLASH, getControllingPassenger()): the window's
         // own player when it drives the boat.

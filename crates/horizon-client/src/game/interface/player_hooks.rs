@@ -531,26 +531,6 @@ impl Game<'_> {
         self.cosmetics_frame();
     }
 
-    /// Once a client tick in a world: the player's own emote, then the hooks.
-    pub(super) fn client_hooks_tick(&mut self) {
-        debug_assert!(
-            self.serving.is_none(),
-            "a server thread calls no client hook"
-        );
-        self.tick_emotes();
-        if !engine::any() {
-            return;
-        }
-        self.cosmetics_say();
-        let Some(remote) = self.remote.as_ref() else {
-            return;
-        };
-        engine::tick(&mut Models {
-            own: self.player_model.as_mut(),
-            mobs: &mut self.remote_entities,
-            remote,
-        });
-    }
 
     /// What goes by `m`'s name (`own`: the window's own player), from the hooks.
     pub(super) fn hooks_name_marks(&self, m: &Mob, own: bool) -> super::names::Marks {
@@ -588,20 +568,6 @@ impl Game<'_> {
         marks
     }
 
-    /// How far the third-person camera stands back, as a share of the usual distance: a hook's
-    /// (an emote pulls it back), else 1.
-    pub(super) fn hooks_camera_distance(&self, partial: f32) -> f32 {
-        debug_assert!(
-            self.serving.is_none(),
-            "a server thread calls no client hook"
-        );
-        match &self.player_model {
-            Some(m) if engine::any() => {
-                engine::camera(&CameraView::new(m.age as f32 + partial)).map_or(1.0, |c| c.distance)
-            }
-            _ => 1.0,
-        }
-    }
 }
 
 #[cfg(test)]

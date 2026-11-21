@@ -13,7 +13,7 @@ impl Game<'_> {
     ) -> Result<(), NarrateError> {
         // A server thread's `Game` shares the process's narrator but has no
         // `Minecraft` to narrate for, as `Game::narrates` says.
-        if !self.options.execution_role.is_client() {
+        {
             return Err(NarrateError::Unavailable);
         }
         let line = text.plain();

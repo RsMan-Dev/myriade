@@ -39,35 +39,4 @@ impl Game<'_> {
     ) {
         self.fire_screen_mouse_scrolled_post(screen, scroll, modifiers);
     }
-    /// A key press no screen took (`ScreenEvent.KeyPressed.Post`).
-    pub(in crate::game) fn native_screen_key_pressed_post(
-        &self,
-        screen: &ScreenView<'_>,
-        key: &str,
-        repeat: bool,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_key_pressed_post(screen, key, repeat, modifiers, canceled);
-    }
-    /// A key release no screen took (`ScreenEvent.KeyReleased.Post`).
-    pub(in crate::game) fn native_screen_key_released_post(
-        &self,
-        screen: &ScreenView<'_>,
-        key: &str,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_key_released_post(screen, key, modifiers, canceled);
-    }
-    /// A character no text box took (`ScreenEvent.CharacterTyped.Post`).
-    pub(in crate::game) fn native_screen_char_typed_post(
-        &self,
-        screen: &ScreenView<'_>,
-        c: char,
-        modifiers: u32,
-        canceled: &mut bool,
-    ) {
-        self.fire_screen_char_typed_post(screen, c, modifiers, canceled);
-    }
 }

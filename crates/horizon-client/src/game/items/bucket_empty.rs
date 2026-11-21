@@ -82,16 +82,4 @@ impl Game<'_> {
         *capture = keep;
     }
 
-    /// `bucket_contents` for the pour a server's client predicts: none for an
-    /// item whose `empty_contents` Part answers on the server, whose result
-    /// stands.
-    pub(in crate::game) fn predicted_bucket_contents<'s>(
-        &self,
-        stack: &'s ItemStack,
-    ) -> Option<(BucketContent, &'s str, Option<&'s str>)> {
-        if self.empty_contents_listens(&stack.item) {
-            return None;
-        }
-        horizon_client::items::bucket_contents(&stack.item)
-    }
 }

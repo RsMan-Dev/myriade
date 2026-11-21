@@ -16,9 +16,6 @@ impl Game<'_> {
         size: u8,
         silent: bool,
     ) {
-        if self.remote.is_some() {
-            return;
-        }
         let id = self.ecs_id_of(fish);
         let guest = self
             .lan

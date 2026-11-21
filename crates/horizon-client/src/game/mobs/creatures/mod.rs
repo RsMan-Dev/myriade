@@ -2047,7 +2047,7 @@ impl Game<'_> {
         &mut self,
         mut p: horizon_client::projectiles::Projectile,
     ) -> u32 {
-        if self.remote.is_none() {
+        {
             // Already in the level: its flight is the ECS's.
             if p.id != 0 {
                 return p.id;
@@ -2527,9 +2527,7 @@ impl Game<'_> {
                     );
                     // A client of a server pushes only its own player, as
                     // the shulker box's lid does.
-                    if self.remote.is_some() {
-                        self.lid_push_local(lid, area, delta);
-                    } else {
+                    {
                         self.lid_push(lid, area, delta);
                     }
                 }
@@ -3682,7 +3680,7 @@ impl Game<'_> {
         conn: Option<u32>,
     ) {
         // A client of someone else's world has the server's mobs only to show.
-        if self.remote.is_some()
+        if false
             || !self
                 .ui
                 .rules
@@ -4317,7 +4315,7 @@ impl Game<'_> {
     /// player is invulnerable to wither damage (creative, spectator). A
     /// server's player gets it from the server.
     pub(super) fn wither_rose_contact(&mut self) {
-        if self.remote.is_some() || self.ui.difficulty == 0 {
+        if self.ui.difficulty == 0 {
             return;
         }
         self.give_player_effect("minecraft:wither", 40, 0);

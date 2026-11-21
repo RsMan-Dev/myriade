@@ -790,9 +790,6 @@ impl Game<'_> {
     /// a level holding saved `PORTAL` tickets opens with the world and ticks
     /// while they hold it (`shouldKeepDimensionActive`).
     pub(super) fn open_saved_portal_levels(&mut self) -> Result<()> {
-        if self.options.execution_role.is_client() {
-            return Ok(());
-        }
         let back = self.dim;
         for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
             if dim == back || self.levels.parked.contains_key(&dim) {
@@ -817,9 +814,6 @@ impl Game<'_> {
     /// were saved at (`startTickingChunk`), not at whichever tick they finish
     /// streaming in.
     pub(super) fn prepare_levels(&mut self) -> Result<()> {
-        if self.options.execution_role.is_client() {
-            return Ok(());
-        }
         let deadline = Instant::now() + Duration::from_secs(600);
         self.wait_for_ticket_chunks(deadline);
         let back = self.dim;
@@ -953,9 +947,6 @@ impl Game<'_> {
     /// clock and weather go with the swap.
     pub(super) fn enter_level(&mut self, target: Dim) -> Result<()> {
         // A client holds no levels.
-        if self.options.execution_role.is_client() {
-            return Ok(());
-        }
         if target != self.dim {
             let (mut p, opened) = match self.levels.parked.remove(&target) {
                 Some(p) => (p, false),
@@ -1079,7 +1070,7 @@ impl Game<'_> {
     /// nobody is in it; returns the level to put back afterwards. Only a
     /// server holds other levels.
     pub(super) fn enter_command_level(&mut self, dim: Dim) -> Option<Dim> {
-        if self.options.execution_role.is_client() || dim == self.dim {
+        if dim == self.dim {
             return None;
         }
         let back = self.dim;
@@ -1565,8 +1556,8 @@ impl Game<'_> {
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
-        if self.remote.is_some()
-            || self.options.execution_role.is_client()
+        if false
+
             || self.levels.heard_open.contains(&dim)
         {
             return;
@@ -1618,7 +1609,7 @@ impl Game<'_> {
             return;
         }
         let requested = std::mem::take(&mut self.levels.requested_saves);
-        if requested.is_empty() || self.remote.is_some() {
+        if requested.is_empty() {
             return;
         }
         let back = self.dim;

@@ -283,32 +283,6 @@ impl Game<'_> {
             search.shortcut(shortcut, &mut self.clipboard);
         }
     }
-    /// A key press while the search box has focus.
-    pub(super) fn recipe_key(&mut self, event: &winit::event::KeyEvent) {
-        use winit::keyboard::PhysicalKey;
-        if let Some(shortcut) = self.edit_shortcut(event) {
-            self.recipe_shortcut(shortcut);
-            return;
-        }
-        let ctrl = self.has_control_down();
-        let shift = self.has_shift_down();
-        let types_text = self.types_text();
-        let Some(search) = self.recipe_ui.search.as_mut() else {
-            return;
-        };
-        let handled = match event.physical_key {
-            PhysicalKey::Code(code) => search.key(code, ctrl, shift),
-            _ => false,
-        };
-        if !handled
-            && types_text
-            && let Some(text) = &event.text
-        {
-            let text: String = text.chars().filter(|c| !c.is_control()).collect();
-            search.insert_text(&text);
-        }
-        search.reset_blink();
-    }
 
     /// `RecipeToast.addOrUpdate` for each display of the recipes just
     /// unlocked: its crafting station and result join the toast still
@@ -372,45 +346,6 @@ impl Game<'_> {
     /// The items the book counts (`RecipeBookComponent.updateStackedContents`):
     /// the inventory and the menu's crafting slots, as the menu engine counts them.
     fn book_available(&mut self, _book: BookType) -> Stacked {
-        if self.remote.is_some() {
-            // A server's menu: the slots it last sent, counted the same way.
-            use horizon_client::menu::{Env, Kind, Menu};
-            let table = self.craft_size == 3;
-            let grid: Vec<_> = (0..self.craft_size * self.craft_size)
-                .map(|k| self.slot_mut(100 + k).clone())
-                .collect();
-            let mut menu = Menu::new(if table {
-                Kind::Crafting
-            } else {
-                Kind::Inventory
-            });
-            let env = Env {
-                crafting_remainder: Some(self),
-                player: None,
-                player_entity_id: None,
-                loop_context: &self.loop_context,
-                items: self.items(),
-                recipes: self.recipes(),
-                brewing: &self.stations().brewing,
-                banners: &self.stations().banners,
-                station_recipes: &self.stations().recipes,
-                enchantments: &self.stations().enchantments,
-                names: &self.pack.names,
-                trade: None,
-                maps: None,
-                limited_crafting: self.limited_crafting(),
-                can_equip: None,
-                known_recipes: Some(&self.level.recipe_book),
-                slot_rules: Some(self),
-            };
-            for i in 0..36 {
-                menu.set_player_item(i, self.inventory[i].clone());
-            }
-            for (k, stack) in grid.into_iter().enumerate() {
-                menu.set_slot(&env, 1 + k, stack);
-            }
-            return menu.stacked_contents(&env);
-        }
         let mut out = Stacked::default();
         let stock = &mut out;
         self.menu_session(|menu, env, _| {
@@ -424,9 +359,6 @@ impl Game<'_> {
     /// one goes in id order), then each unlock and removal.
     fn sync_client_book(&mut self) {
         // On a server the book is the server's packets' (remote_recipe_book_*).
-        if self.remote.is_some() {
-            return;
-        }
         let known = &self.level.recipe_book.recipes;
         let index = &world_stations!(self).recipe_index;
         let ui = &mut self.recipe_ui;
@@ -951,53 +883,6 @@ impl Game<'_> {
             .and_then(|b| b.entries.get(entry))
             .map(|e| e.display_id);
     }
-    /// `RecipeBookComponent.keyPressed`: Enter or Space (`isSelection`) places
-    /// the recipe clicked last again, key repeats included, as many as fit
-    /// with Shift. The focused search box takes the key first.
-    pub(super) fn recipe_book_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
-        use winit::keyboard::KeyCode;
-        if !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space) {
-            return false;
-        }
-        let Some(book_type) = self.active_book() else {
-            return false;
-        };
-        if !self.book_open(book_type) || self.spectator() || self.recipe_search_focused() {
-            return false;
-        }
-        let Some(display) = self.recipe_ui.last_clicked else {
-            return false;
-        };
-        // The craft just taken changed what is craftable.
-        self.refresh_book_view(book_type);
-        let Some(entry) = self
-            .recipe_ui
-            .book
-            .as_ref()
-            .and_then(|b| b.entry_of_display(display))
-        else {
-            return false;
-        };
-        self.audio
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
-        let shift = self.shift_down();
-        self.try_place(entry, shift)
-    }
-    /// `RecipeBookComponent.mouseDragged`: while the search box is focused a
-    /// drag moves its selection end to the pointer (`EditBox.onDrag`).
-    pub(super) fn recipe_book_drag(&mut self) {
-        if !self.recipe_ui.search_drag
-            || !(self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
-        {
-            return;
-        }
-        let x = self.cursor.0;
-        if let Some(search) = self.recipe_ui.search.as_mut()
-            && search.focused
-        {
-            search.drag_to(&self.gui.atlas, x);
-        }
-    }
     /// A mouse button let go: a drag no longer selects in the search box.
     pub(super) fn recipe_book_release(&mut self) {
         self.recipe_ui.search_drag = false;
@@ -1024,31 +909,6 @@ impl Game<'_> {
     /// How many displays the client's book holds.
     pub(super) fn recipe_book_known(&self) -> usize {
         self.recipe_ui.client.displays().len()
-    }
-    /// The next or previous page, as the arrows turn it: nothing past either end, or with a
-    /// pointer button held.
-    pub(super) fn pad_recipe_page(&mut self, next: bool) {
-        if self.pad.menu.held != [false; 2] {
-            return;
-        }
-        if self.native_screen_shown() {
-            if self.mod_book_open() && !self.spectator() {
-                self.recipe_ui.custom.turn_page(next);
-            }
-            return;
-        }
-        let pages = self.recipe_ui.view.buttons.len().div_ceil(20);
-        let page = self.recipe_ui.page;
-        let Some(to) = (if next {
-            (page + 1 < pages).then_some(page + 1)
-        } else {
-            page.checked_sub(1)
-        }) else {
-            return;
-        };
-        self.recipe_ui.page = to;
-        self.audio
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
     }
     /// The crafting book's entry of the recipe button under the pointer, in its overlay if open.
     pub(super) fn recipe_under_pointer(&self) -> Option<usize> {
@@ -1110,17 +970,6 @@ impl Game<'_> {
             book.entries
                 .get(entry_index)
                 .is_some_and(|entry| book.can_craft(entry, &available))
-        })
-    }
-    /// The crafting book's entry by what a rebuilt book keeps of it (`pad_craft::RecipeKey`).
-    pub(super) fn recipe_stable_key(
-        &self,
-        entry_index: usize,
-    ) -> Option<super::pad_craft::RecipeKey> {
-        let entry = self.recipe_ui.book.as_ref()?.entries.get(entry_index)?;
-        Some(super::pad_craft::RecipeKey {
-            id: entry.id.clone(),
-            display: entry.display_id,
         })
     }
     /// Where the crafting book holds the recipe now: none once the book has it no more.
@@ -1357,9 +1206,6 @@ impl Game<'_> {
     /// The content mod menu type and block of the menu this player has open when the game is
     /// its own server (a solo world, a LAN host's own player): the block container's menu type.
     fn local_mod_menu(&self) -> Option<(&'static str, [i32; 3])> {
-        if self.remote.is_some() {
-            return None;
-        }
         let k = self.container?;
         Some((self.mod_menu_at(k)?, [k.0, k.1, k.2]))
     }
@@ -1403,7 +1249,7 @@ impl Game<'_> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         }
-        if self.remote.is_none() {
+        {
             // The game is its own server: the mod menu's part answers first, as on a server,
             // then the grid transfer.
             if let Some(answer) = self.local_menu_transfer(recipe, max, false) {
@@ -1482,18 +1328,6 @@ impl Game<'_> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         };
-        if self.remote.is_some() {
-            let mut request = horizon_protocol::buf::Writer::new();
-            request.varint(self.remote_menu_id());
-            request.string(&id);
-            self.send(horizon_protocol::packets::play::Serverbound::CustomPayload(
-                horizon_protocol::packets::configuration::CustomPayload {
-                    channel: horizon_client::lan::recipes::TRANSFER_CHANNEL.into(),
-                    data: request.data,
-                },
-            ));
-            return;
-        }
         // The game is its own server: a mod menu's part answers first, as on a server.
         if let Some(answer) = self.local_menu_transfer(&id, false, false) {
             self.show_transfer_result(answer);
@@ -1516,40 +1350,7 @@ impl Game<'_> {
         }
     }
 
-    /// A payload on one of the recipe viewer's channels
-    /// (`lan::recipes::viewer_channel`); with no data, the server's word that
-    /// it answers that channel.
-    pub(super) fn remote_recipe_viewer(&mut self, channel: &str, data: &[u8]) {
-        use horizon_client::lan::recipes::TRANSFER_CHANNEL;
-        if data.is_empty() {
-            if let Some(remote) = &mut self.remote {
-                let channels = &mut remote.recipe_viewer;
-                *(if channel == TRANSFER_CHANNEL {
-                    &mut channels.transfer
-                } else {
-                    &mut channels.check
-                }) = true;
-            }
-        } else if channel == TRANSFER_CHANNEL {
-            self.remote_recipe_transfer(data);
-        } else {
-            self.remote_recipe_check(data);
-        }
-    }
 
-    fn remote_recipe_transfer(&mut self, data: &[u8]) {
-        if let Ok(Some((container, result))) =
-            horizon_client::lan::recipes::decode_transfer_reply(data)
-            && container == self.remote_menu_id()
-            && (self.mod_recipe_screen() || self.mod_menu_open())
-            && self.panel.recipes.is_some()
-        {
-            match horizon_client::lan::recipes::byte_result(result) {
-                Some(result) => self.show_transfer_result(result),
-                None => self.panel.transfer_warning = None,
-            }
-        }
-    }
 
     fn show_transfer_result(&mut self, result: RecipeTransferResult) {
         if result == RecipeTransferResult::Moves {
@@ -1584,7 +1385,7 @@ impl Game<'_> {
     ) -> Option<RecipeTransferCheck> {
         // The game is its own server: a mod menu's part answers the dry run, as
         // `horizon:recipe_check` asks it on a server; with none the check is as before.
-        if self.remote.is_none() && self.mod_menu_open() {
+        if self.mod_menu_open() {
             self.ensure_book();
             let id = (self.recipe_ui.book.as_ref())
                 .and_then(|book| book.entries.iter().find(|e| e.display_id == display_id))
@@ -1647,58 +1448,6 @@ impl Game<'_> {
         answer
     }
 
-    /// The server's answer to `horizon:recipe_check`. Kept only as the answer
-    /// to the request out, for the view of the menu it was asked for.
-    fn remote_recipe_check(&mut self, data: &[u8]) {
-        let mut reader = horizon_protocol::buf::Reader::new(data);
-        let (Ok(container), Ok(tag), Ok(byte)) = (reader.varint(), reader.varint(), reader.u8())
-        else {
-            return;
-        };
-        let Some(result) = horizon_client::lan::recipes::byte_result(byte) else {
-            return;
-        };
-        let mut missing_cells = Vec::new();
-        if result == RecipeTransferResult::Missing {
-            let Ok(n) = reader.varint() else {
-                return;
-            };
-            for _ in 0..n.clamp(0, 256) {
-                let Ok(cell) = reader.u8() else {
-                    return;
-                };
-                missing_cells.push(u32::from(cell));
-            }
-        }
-        let checks = &mut self.recipe_ui.checks;
-        if reader.remaining() != 0
-            || checks.asked.map(|(id, _, _)| id) != Some(tag)
-            || checks.seen.as_ref().map(|s| s.0) != Some(container)
-        {
-            return;
-        }
-        let (_, display_id, _) = checks.asked.take().unwrap();
-        let refreshes = match checks
-            .answers
-            .iter()
-            .position(|a| a.display_id == display_id)
-        {
-            Some(i) => checks.answers.remove(i).refreshes + 1,
-            None => 0,
-        };
-        if checks.answers.len() >= CHECK_KEPT {
-            checks.answers.remove(0);
-        }
-        checks.answers.push(CheckAnswer {
-            display_id,
-            at: Instant::now(),
-            refreshes,
-            check: RecipeTransferCheck {
-                result,
-                missing_cells,
-            },
-        });
-    }
 
     /// `ServerboundPlaceRecipePacket`: the server places the recipe
     /// (`ServerPlaceRecipe` on the menu engine) and answers with a ghost
@@ -1713,18 +1462,6 @@ impl Game<'_> {
         else {
             return;
         };
-        if self.remote.is_some() {
-            // The server places it and answers with the slots, or a ghost.
-            let container = self.remote_menu_id();
-            self.send(horizon_protocol::packets::play::Serverbound::PlaceRecipe(
-                horizon_protocol::packets::recipes::PlaceRecipe {
-                    container,
-                    recipe: entry.display_id,
-                    use_max,
-                },
-            ));
-            return;
-        }
         let creative = self.creative;
         let mut post = None;
         let answer = &mut post;
@@ -1755,99 +1492,6 @@ impl Game<'_> {
 
     // ---- a server's recipe book ----
 
-    /// ClientboundRecipeBookAddPacket (`ClientRecipeBook.add`): the
-    /// displays join the book, highlighted when new, and the recipes whose
-    /// entries ask for it show the toast.
-    pub(super) fn remote_recipe_book_add(
-        &mut self,
-        p: horizon_protocol::packets::recipes::RecipeBookAdd,
-    ) {
-        let ui = &mut self.recipe_ui;
-        // `display_index`, borrowed by field beside the book.
-        let index = match &self.recipe_tables.synced_index {
-            Some(index) => index,
-            None => &world_stations!(self).recipe_index,
-        };
-        if p.replace {
-            ui.client.clear();
-            ui.server_entries.clear();
-        }
-        let mut toast = Vec::new();
-        for e in &p.entries {
-            ui.client.add(e.id);
-            ui.server_entries.insert(e.id, e.clone());
-            if e.flags & 2 != 0 {
-                ui.client.highlight.insert(e.id);
-            }
-            if e.flags & 1 != 0
-                && let Some(id) = index.recipe_of_display(e.id)
-                && !toast.iter().any(|t| t == id)
-            {
-                toast.push(id.to_owned());
-            }
-        }
-        // A local world opened later syncs its book from scratch.
-        ui.client_known = None;
-        ui.client_version += 1;
-        // A replacing packet starts the book again from its own recipes; a
-        // later one puts its entries over the book as it is.
-        if p.replace {
-            ui.book = None;
-        } else if let Some(mut book) = ui.book.take() {
-            self.server_entries_over(&mut book, p.entries.iter());
-            self.recipe_ui.book = Some(book);
-        }
-        self.recipe_toast(&toast);
-    }
-    /// ClientboundRecipeBookRemovePacket.
-    pub(super) fn remote_recipe_book_remove(
-        &mut self,
-        p: horizon_protocol::packets::recipes::RecipeBookRemove,
-    ) {
-        for id in p.ids {
-            self.recipe_ui.client.remove(id);
-            self.recipe_ui.server_entries.remove(&id);
-            if let Some(book) = self.recipe_ui.book.as_mut() {
-                book.unconfirm(id);
-            }
-        }
-        self.recipe_ui.client_version += 1;
-    }
-    /// ClientboundRecipeBookSettingsPacket: each book's open and filter flags.
-    pub(super) fn remote_recipe_book_settings(
-        &mut self,
-        p: horizon_protocol::packets::recipes::RecipeBookSettings,
-    ) {
-        for (i, (open, filtering)) in p.books.into_iter().enumerate() {
-            self.level.recipe_book.open[i] = open;
-            self.level.recipe_book.filtering[i] = filtering;
-        }
-        self.build_screen();
-    }
-    /// ClientboundPlaceGhostRecipePacket: the recipe last placed, faded into
-    /// the open menu's grid.
-    pub(super) fn remote_ghost_recipe(
-        &mut self,
-        p: horizon_protocol::packets::recipes::PlaceGhostRecipe,
-    ) {
-        let open = self.remote_menu_id();
-        let Some(book_type) = self.active_book() else {
-            return;
-        };
-        if p.container != open {
-            return;
-        }
-        let entry = self.recipe_ui.last_placed.as_ref().and_then(|id| {
-            let book = self.recipe_ui.book.as_ref()?;
-            book.entry(id).cloned()
-        });
-        if let Some(entry) = entry {
-            self.recipe_ui.ghost.clear();
-            self.fill_ghost(book_type, &entry);
-        }
-        // The server is missing an item the client counted: nothing was placed.
-        self.direct_craft_refused();
-    }
 
     // ---- ghost recipe ----
 
@@ -1878,40 +1522,6 @@ impl Game<'_> {
 
     // ---- drawing ----
 
-    /// The book button, ghost recipe and open book, returning its deferred tooltip.
-    pub(super) fn draw_recipe_book(&mut self, batch: &mut HudBatch) -> Option<Vec<(Text, u32)>> {
-        if self.native_screen_shown() {
-            return self.draw_mod_book(batch);
-        }
-        let book_type = self.active_book()?;
-        self.ensure_book();
-        if !self.shift_down_or_ctrl() {
-            self.recipe_ui.time += self.frame_ticks;
-        }
-        let (ox, _) = self.inventory_origin(batch);
-        let cursor = self.cursor;
-        let (bx, by) = self.book_button_pos(book_type, ox, batch);
-        let hover = inside(cursor, bx, by, 20.0, 18.0);
-        batch.sprite(
-            &self.gui.atlas,
-            &sprite(if hover {
-                "button_highlighted"
-            } else {
-                "button"
-            }),
-            bx,
-            by,
-        );
-        self.draw_ghost(batch, book_type);
-        let tooltip = if self.book_open(book_type) {
-            self.refresh_book_view(book_type);
-            self.draw_book_panel(batch, book_type)
-        } else {
-            None
-        };
-        self.narrate_recipe_book(batch, book_type, [bx, by, 20.0, 18.0]);
-        tooltip
-    }
     /// `AbstractRecipeBookScreen`'s narratables: the book button (an
     /// `ImageButton` without a message) and the `RecipeBookComponent`, which
     /// narrates its recipe buttons, search box, filter and tabs while open.
@@ -2009,30 +1619,6 @@ impl Game<'_> {
     fn shift_down_or_ctrl(&self) -> bool {
         self.has_control_down()
     }
-    /// `GhostSlots.extractRenderState`, among the container's slots.
-    fn draw_ghost(&mut self, batch: &mut HudBatch, book_type: BookType) {
-        if self.recipe_ui.ghost.is_empty() {
-            return;
-        }
-        let (ox, oy) = self.inventory_origin(batch);
-        let big_result = book_type != BookType::Crafting || self.craft_size == 3;
-        let ghosts: Vec<GhostView> = self
-            .recipe_ui
-            .ghost
-            .iter()
-            .map(|g| {
-                let (sx, sy) = self.slot_position(g.slot);
-                GhostView {
-                    x: sx as i32,
-                    y: sy as i32,
-                    items: g.items.clone(),
-                    result: g.result,
-                }
-            })
-            .collect();
-        let calls = screen::ghost(self.swap_index(), ox as i32, oy as i32, big_result, &ghosts);
-        self.paint_book(batch, &calls);
-    }
     /// `GhostSlots.extractTooltip`: the stack a ghost shows on menu slot
     /// `slot` now, cycling like its draw; only while the open book is visible
     /// (`RecipeBookComponent.extractTooltip`).
@@ -2051,128 +1637,6 @@ impl Game<'_> {
             .iter()
             .find(|g| g.slot == slot && !g.items.is_empty())?;
         Some(ghost.items[self.swap_index() % ghost.items.len()].clone())
-    }
-    /// `RecipeBookComponent.extractRenderState` and `extractTooltip`, laid
-    /// out by `horizon_client::recipe_book_screen`.
-    fn draw_book_panel(
-        &mut self,
-        batch: &mut HudBatch,
-        book_type: BookType,
-    ) -> Option<Vec<(Text, u32)>> {
-        let (xo, yo) = self.book_origin(batch);
-        let cursor = self.cursor;
-        let atlas = &self.gui.atlas;
-        let search = match self.recipe_ui.search.as_mut() {
-            Some(edit) => {
-                // The box's place, for clicks and typing.
-                edit.x = xo + 25.0;
-                edit.y = yo + 13.0;
-                let (display, blink_ms) = edit.view_state(atlas);
-                Search {
-                    value: edit.value.clone(),
-                    cursor: edit.cursor,
-                    highlight: edit.highlight,
-                    display,
-                    focused: edit.focused,
-                    blink_ms,
-                }
-            }
-            None => Search::default(),
-        };
-        let ui = &self.recipe_ui;
-        let current = ui
-            .tab
-            .filter(|t| ui.view.tabs.contains(t))
-            .unwrap_or(Tab::Search);
-        let tabs: Vec<TabView> = ui
-            .view
-            .tabs
-            .iter()
-            .map(|tab| {
-                let (a, b) = tab.icons();
-                TabView {
-                    icons: (a.to_owned(), b.map(str::to_owned)),
-                    selected: *tab == current,
-                    anim: ui
-                        .tab_anim
-                        .iter()
-                        .find(|e| e.0 == *tab)
-                        .map_or(0.0, |e| e.1),
-                }
-            })
-            .collect();
-        let pages = ui.view.buttons.len().div_ceil(20);
-        let first = ui.page * 20;
-        let (buttons, overlay) = match ui.book.as_ref() {
-            Some(book) => {
-                let buttons: Vec<ButtonView> = ui
-                    .view
-                    .buttons
-                    .iter()
-                    .enumerate()
-                    .skip(first)
-                    .take(20)
-                    .map(|(n, b)| ButtonView {
-                        has_craftable: b.craftable(),
-                        entries: b
-                            .entries
-                            .iter()
-                            .map(|e| vec![book.entries[e.0].result.clone()])
-                            .collect(),
-                        anim: ui
-                            .button_anim
-                            .iter()
-                            .find(|e| e.0 == n)
-                            .map_or(0.0, |e| e.1),
-                    })
-                    .collect();
-                let overlay = ui.overlay.as_ref().map(|o| OverlayView {
-                    x: o.x as i32,
-                    y: o.y as i32,
-                    recipes: o
-                        .entries
-                        .iter()
-                        .map(|&(i, craftable)| OverlayRecipe {
-                            craftable,
-                            cells: screen::overlay_cells(book, &book.entries[i]),
-                        })
-                        .collect(),
-                });
-                (buttons, overlay)
-            }
-            None => (Vec::new(), None),
-        };
-        let translate = |key: &str| self.translate_with_fallback(key, key);
-        let text_width = |s: &str| HudBatch::text_width(atlas, s) as i32;
-        let layout = Layout {
-            book: book_type,
-            origin: (xo as i32, yo as i32),
-            mouse: (cursor.0.floor() as i32, cursor.1.floor() as i32),
-            index: self.swap_index(),
-            filtering: self.book_filtering(book_type),
-            search: &search,
-            tabs: &tabs,
-            buttons: &buttons,
-            page: ui.page,
-            pages,
-            overlay: overlay.as_ref(),
-            ghost: None,
-            translate: &translate,
-            text_width: &text_width,
-        };
-        let calls = screen::draw(&layout);
-        let tooltip = self.paint_book(batch, &calls);
-        // The squeeze animations run down with the frames.
-        let frame = self.frame_ticks;
-        for e in &mut self.recipe_ui.tab_anim {
-            e.1 -= frame;
-        }
-        for e in &mut self.recipe_ui.button_anim {
-            e.1 -= frame;
-        }
-        self.recipe_ui.tab_anim.retain(|e| e.1 > 0.0);
-        self.recipe_ui.button_anim.retain(|e| e.1 > 0.0);
-        tooltip
     }
     /// Paints recipe book calls; returns the first tooltip set (vanilla keeps
     /// the first one a frame asks for).
