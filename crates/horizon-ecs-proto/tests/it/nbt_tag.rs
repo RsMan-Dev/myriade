@@ -29,7 +29,9 @@ fn a_query_gives_exactly_the_entities_of_the_tag() {
     tags::add(&mut w, b, "other");
     let mut found: Vec<Entity> = tags::query(&mut w, "raid").iter(&w).collect();
     found.sort();
-    assert_eq!(found, vec![a, c]);
+    let mut want = vec![a, c];
+    want.sort();
+    assert_eq!(found, want);
 }
 
 #[test]

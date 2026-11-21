@@ -50,6 +50,9 @@ fn a_bullet_that_hits_a_creature_plays_its_hurt_and_is_gone() {
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the bullet is gone at the creature");
+    // The blow queued at the hit is applied at the start of the next tick.
+    h.tick();
+    out.extend(h.drain_host_out());
     assert!(before > health(&h, cow), "the creature is hurt");
     assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name: "entity.shulker_bullet.hurt", .. })), "{out:?}");
     assert!(out.iter().any(|x| matches!(x, HostEvent::GameEvent { name: "minecraft:entity_damage", .. })), "{out:?}");

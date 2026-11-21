@@ -19,6 +19,10 @@ use horizon_world::registry::BlockStateId;
 fn world() -> World {
     let mut w = World::new();
     w.init_resource::<Events>();
+    w.init_resource::<horizon_ecs_proto::goals::Online>();
+    w.init_resource::<horizon_ecs_proto::hostile::PlayerState>();
+    w.init_resource::<horizon_ecs_proto::cow::Index>();
+    horizon_ecs_proto::nbt::register(&mut w, passive::FIELDS);
     w
 }
 fn at() -> Vec3 {

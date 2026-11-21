@@ -10,9 +10,17 @@ fn at() -> Vec3 {
     Vec3::new(10.0, 64.0, -3.0)
 }
 
+/// A world with the declared NBT keys of the common fields and of the passive kinds, as the herd's.
+fn world() -> World {
+    let mut w = World::new();
+    nbt::register(&mut w, nbt::COMMON);
+    nbt::register(&mut w, passive::FIELDS);
+    w
+}
+
 #[test]
 fn a_block_display_saves_its_settings_as_horizon_does() {
-    let mut w = World::new();
+    let mut w = world();
     let src = Tag::compound([
         ("view_range", Tag::Float(2.0f32.to_bits())),
         ("billboard", Tag::String("bogus".into())),
@@ -47,7 +55,7 @@ fn a_block_display_saves_its_settings_as_horizon_does() {
 
 #[test]
 fn an_interaction_box_is_centred_on_the_feet_and_grows_with_the_data() {
-    let mut w = World::new();
+    let mut w = world();
     let e = passive::spawn(&mut w, "minecraft:interaction", at(), Tag::compound([("width", Tag::Float(2.2f32.to_bits())), ("height", Tag::Float(2.2f32.to_bits())), ("response", Tag::Byte(1))]));
     let i = w.get::<Interact>(e).unwrap().clone();
     let b = i.bounds(at());
@@ -62,12 +70,12 @@ fn an_interaction_box_is_centred_on_the_feet_and_grows_with_the_data() {
     }
     assert!(i.response);
     // The box's keys leave the kept compound: `Interact` is their one copy.
-    assert!(nbt::get(&w, e, "width").is_none());
+    assert!(w.get::<nbt::NbtData>(e).is_none_or(|d| d.0.get(&"width".into()).is_none()));
 }
 
 #[test]
 fn an_interaction_without_size_is_one_block_and_keeps_its_last_actions() {
-    let mut w = World::new();
+    let mut w = world();
     let player = Tag::IntArray(vec![1, 2, 3, 4]);
     let act = Tag::compound([("player", player), ("timestamp", Tag::Long(77))]);
     let e = passive::spawn(&mut w, "minecraft:interaction", at(), Tag::compound([("attack", act.clone())]));
@@ -81,7 +89,7 @@ fn an_interaction_without_size_is_one_block_and_keeps_its_last_actions() {
 
 #[test]
 fn a_passive_entity_is_never_visited_by_a_tick() {
-    let mut w = World::new();
+    let mut w = world();
     let e = passive::spawn(&mut w, "minecraft:marker", at(), Tag::compound([("data", Tag::compound([("k", Tag::Int(1))]))]));
     assert!(!w.entity(e).contains::<Moving>());
     assert!(!w.entity(e).contains::<OwnTime>());

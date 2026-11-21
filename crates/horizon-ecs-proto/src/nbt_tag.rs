@@ -38,7 +38,7 @@ fn marker(w: &mut World, name: &str) -> ComponentId {
             None,
         )
     });
-    let t = w.resource_mut::<NbtTags>();
+    let mut t = w.resource_mut::<NbtTags>();
     t.ids.insert(name.to_owned(), c);
     t.names.insert(c, name.to_owned());
     c

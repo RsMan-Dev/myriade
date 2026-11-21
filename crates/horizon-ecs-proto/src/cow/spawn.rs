@@ -126,7 +126,10 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     let id = world.spawn_empty().id();
     crate::type_tags::mark(world, id, sp.id);
     let mut e = world.entity_mut(id);
-    e.insert((transform_bundle(sp, x, z, uid), sp.saved.then_some(crate::nbt::Saved)));
+    e.insert(transform_bundle(sp, x, z, uid));
+    if sp.saved {
+        e.insert(crate::nbt::Saved);
+    }
     if has(crate::behaviours::Cap::Solid) {
         e.insert(solid_bundle(sp, x, z));
     }

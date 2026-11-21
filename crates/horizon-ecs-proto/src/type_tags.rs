@@ -80,7 +80,7 @@ fn sync(w: &mut World) {
     let typed = w.resource::<TypeTags>().typed;
     let mut ids = std::mem::take(&mut w.resource_mut::<TypeTags>().ids);
     for (name, _) in names.iter().skip(ids.len()) {
-        let id = match typed.iter().find(|t| t.name == name.as_str()) {
+        let id = match typed.iter().find(|t| t.name == name.strip_prefix("minecraft:").unwrap_or(name)) {
             Some(t) => (t.register)(w),
             // SAFETY: a zero-size, table-stored component with no drop and no value: nothing to read or drop.
             None => w.register_component_with_descriptor(unsafe {

@@ -112,26 +112,27 @@ fn floor_at(h: &Herd, x: i32, z: i32, from: i32) -> i32 {
 fn spawn_stand(h: &mut Herd, at: Vec3, flags: u8) -> Entity {
     let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:armor_stand").unwrap();
     let e = stand::spawn(&mut h.world, &sp, at, 5, flags);
-    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    if let Some(mut a) = h.world.get_mut::<ActiveUntil>(e) {
+        a.0 = u64::MAX;
+    }
     h.world.resource_mut::<Entered>().0.push(e);
     e
 }
 
-/// The jar's fall of a living object: gravity 0.04, the move stopped by the floor (the vertical speed is zeroed there), the drag 0.98.
-/// The height and the vertical speed after each tick.
+/// The jar's fall of a living entity (`LivingEntity.travelInAir`): the move by the speed of the last tick (stopped by the floor, where the
+/// vertical speed is zeroed), then the gravity 0.08 and the drag 0.98 on the speed. The height and the vertical speed after each tick.
 fn fall_reference(start_y: f64, floor: f64, ticks: usize) -> Vec<(f64, f64)> {
     let (mut y, mut vy) = (start_y, 0.0_f64);
     let drag = f64::from(0.98_f32);
     (0..ticks)
         .map(|_| {
-            vy -= 0.04;
             if y + vy <= floor {
                 y = floor;
                 vy = 0.0;
             } else {
                 y += vy;
             }
-            vy *= drag;
+            vy = (vy - 0.08) * drag;
             (y, vy)
         })
         .collect()
@@ -181,6 +182,8 @@ fn a_block_removed_under_a_resting_stand_makes_it_fall() {
     let mut h = Herd::with_slab(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), 0);
+    // The first tick moves by a speed of zero (no contact), the second falls the 0.0784 onto the floor: `onGround` comes from that contact.
+    h.tick();
     h.tick();
     assert!(h.world.get::<Unsettled>(e).is_none(), "the stand rests on the floor");
     h.set_block(0, top - 1, 0, "minecraft:air");
@@ -201,7 +204,6 @@ fn a_burning_stand_takes_four_every_twenty_ticks_then_breaks() {
     let mut h = Herd::with_slab(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), 0);
-    h.world.get_mut::<Health>(e).unwrap().0 = 20.0;
     set_on_fire(&mut h.world, e, 100);
     for _ in 0..25 {
         h.tick();
@@ -222,7 +224,6 @@ fn an_invisible_stand_takes_no_burn() {
     let mut h = Herd::with_slab(16, true, false);
     let top = floor_at(&h, 0, 0, 40);
     let e = spawn_stand(&mut h, Vec3::new(0.5, f64::from(top), 0.5), INVISIBLE);
-    h.world.get_mut::<Health>(e).unwrap().0 = 20.0;
     set_on_fire(&mut h.world, e, 100);
     for _ in 0..30 {
         h.tick();

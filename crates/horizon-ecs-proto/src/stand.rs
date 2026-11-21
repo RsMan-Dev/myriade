@@ -147,6 +147,11 @@ pub struct Unsettled;
 pub fn unsettle(w: &mut World, e: Entity) {
     if w.get::<Stand>(e).is_some_and(|s| has_physics(*s)) {
         w.entity_mut(e).insert((Moving, Unsettled));
+        // The ground is read again by the move: `travel` takes a stand that still "stands" with no speed for one at rest, which a stand put in
+        // the air or left over a block that went would be (`Entity.move` recomputes `onGround` from the collision of each tick).
+        if let Some(mut c) = w.get_mut::<Contact>(e) {
+            c.on_ground = false;
+        }
     }
 }
 
@@ -157,9 +162,10 @@ fn fall(w: &mut World) {
         return;
     }
     let rest: Vec<(Entity, [i32; 3])> = w
-        .query_filtered::<(Entity, &Pos, &Vel, &Contact), With<Unsettled>>()
+        .query_filtered::<(Entity, &Pos, &Vel, &Contact, &Body), With<Unsettled>>()
         .iter(w)
-        .filter(|(_, _, v, c)| c.on_ground && v.0.x == 0.0 && v.0.y == 0.0 && v.0.z == 0.0)
+        // At rest on the ground a living entity keeps the speed its gravity gives in the tick (`(0 - g) * 0.98`), which `travel` leaves as it is.
+        .filter(|(_, _, v, c, b)| c.on_ground && v.0.x == 0.0 && v.0.y == (0.0 - b.gravity) * f64::from(0.98_f32) && v.0.z == 0.0)
         .map(|x| (x.0, [x.1 .0.x.floor() as i32, x.1 .0.y.floor() as i32 - 1, x.1 .0.z.floor() as i32]))
         .collect();
     for (e, support) in rest {
@@ -225,9 +231,16 @@ fn break_by_anything(w: &mut World, e: Entity) {
 /// The creation of an armor stand: the species' entity, its flags, the fire intake, and its physics when it can move.
 pub fn spawn(w: &mut World, sp: &Species, at: Vec3, seed: u64, flags: u8) -> Entity {
     let e = spawn_species(w, sp, at.x, at.z, seed);
-    w.entity_mut(e).insert((Stand { flags }, Intake(fire_intake)));
+    // Not a `Mob`: its row of the table is a stand-in's. Its life is the default of `LivingEntity` (the attribute MAX_HEALTH, 20).
+    w.entity_mut(e).insert((Stand { flags }, Intake(fire_intake), Health(20.0)));
     if let Some(mut p) = w.get_mut::<Pos>(e) {
         p.0 = at;
+    }
+    // The box follows the position the stand was put at: the move reads it, not the position.
+    if let Some((width, height)) = w.get::<Body>(e).map(|b| (b.width, b.height)) {
+        if let Some(mut b) = w.get_mut::<Bounds>(e) {
+            b.0 = box_at(at, width, height);
+        }
     }
     unsettle(w, e);
     e

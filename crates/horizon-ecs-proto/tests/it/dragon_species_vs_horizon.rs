@@ -29,7 +29,7 @@ fn a_dragon_is_born_hovering_with_its_type_health() {
 fn the_dragon_save_keys_are_the_jars() {
     let mut w = bevy_ecs::world::World::new();
     nbt::register(&mut w, save::FIELDS);
-    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), Kind("minecraft:ender_dragon".into()))).id();
+    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), Kind("minecraft:ender_dragon".into()), nbt::Saved)).id();
     let saved = nbt::save(&w, e).expect("an NBT");
     let keys: Vec<String> = saved.keys().map(|k| k.to_string_lossy()).collect();
     assert_eq!(keys, ["DragonDeathTime", "DragonPhase", "sitting_damage_received"]);
@@ -51,6 +51,7 @@ fn the_dragon_fields_survive_a_save_and_a_load() {
     let saved = nbt::save(&h.world, e).expect("an NBT");
 
     let f = spawn_species(&mut h.world, &sp, 4.5, 4.5, 8);
+    h.world.entity_mut(f).insert((DeathTime(0), SittingDamage(0.0)));
     nbt::load(&mut h.world, f, &saved);
     assert_eq!(h.world.get::<PhaseId>(f).map(|p| p.0), h.world.get::<PhaseId>(e).map(|p| p.0));
     assert_eq!(h.world.get::<DeathTime>(f).map(|d| d.0), Some(42));

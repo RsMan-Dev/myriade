@@ -78,7 +78,12 @@ fn a_wither_skull_without_owner_hurts_by_5_and_withers_the_creature() {
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the skull is gone at the creature");
-    assert_eq!(before - health(&h, cow), 5.0, "magic 5 without an owner");
+    // The blows are queued at the hit and applied at the start of the next tick: the skull's own is the magic 5 (the blast's, larger, comes
+    // with it and the hurt window keeps the greater of the two).
+    let magic: Vec<f32> = h.world.resource::<DamageQueue>().0.iter().filter(|x| x.target == cow && matches!(x.cause, Cause::Magic)).map(|x| x.amount).collect();
+    assert_eq!(magic, vec![5.0], "magic 5 without an owner");
+    h.tick();
+    assert!(before - health(&h, cow) >= 5.0, "the creature is hurt by at least the skull");
     assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_some_and(|f| !f.list.is_empty()), "the wither effect");
 }
 
@@ -138,7 +143,9 @@ fn a_blue_skull_breaks_obsidian_that_a_normal_one_does_not() {
             for y in 0..=8_i32 {
                 for z in -4..=4_i32 {
                     let norm = x.abs().max((y - 4).abs()).max(z.abs());
-                    r.set_block(x, y, z, if norm == 2 { "minecraft:obsidian" } else { "minecraft:dirt" });
+                    let block = if norm == 2 { "minecraft:obsidian" } else { "minecraft:dirt" };
+                    r.set_block(x, y, z, block);
+                    h.set_block(x, y, z, block);
                 }
             }
         }
@@ -186,7 +193,7 @@ fn a_skull_that_does_not_hurt_does_not_wither() {
     let (_, mut h) = flat_pair();
     let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
     h.tick();
-    for _ in 0..2 {
+    let shoot = |h: &mut Herd| {
         let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
         for _ in 0..40 {
             h.tick();
@@ -194,20 +201,14 @@ fn a_skull_that_does_not_hurt_does_not_wither() {
                 break;
             }
         }
-        if h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_some_and(|f| !f.list.is_empty()) {
-            h.world.entity_mut(cow).remove::<horizon_ecs_proto::effects::Effects>();
-            let before = health(&h, cow);
-            let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
-            for _ in 0..40 {
-                h.tick();
-                if h.world.get_entity(e).is_err() {
-                    break;
-                }
-            }
-            assert_eq!(before - health(&h, cow), 0.0, "the second skull does not hurt in the window");
-            assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_none(), "no wither on a blow that does not hurt");
-            return;
-        }
-    }
-    panic!("the first skull withers the creature");
+        // The blow queued at the hit is applied at the start of the next tick.
+        h.tick();
+    };
+    shoot(&mut h);
+    assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_some_and(|f| !f.list.is_empty()), "the first skull withers the creature");
+    h.world.entity_mut(cow).remove::<horizon_ecs_proto::effects::Effects>();
+    let before = health(&h, cow);
+    shoot(&mut h);
+    assert_eq!(before - health(&h, cow), 0.0, "the second skull does not hurt in the window");
+    assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_none(), "no wither on a blow that does not hurt");
 }

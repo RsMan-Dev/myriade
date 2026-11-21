@@ -756,6 +756,7 @@ mod tests {
         ("minecraft:wither", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("invulnerable_charge", 0), ("ranged_attack", 2), ("side_heads", 2), ("side_heads", 2), ("regen", 0), ("block_breaker", 0), ("boss_bar", 0), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:armor_stand", &[]),
+        ("minecraft:shulker_bullet", &[]),
         ("minecraft:cushion", &[]),
         ("minecraft:leash_knot", &[]),
         ("minecraft:end_crystal", &[]),
