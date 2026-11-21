@@ -6,7 +6,7 @@ use common::*;
 use horizon_ecs_proto::{
     cow::*,
     dragon::{death::DeathTime, perch::SittingDamage, phases::PhaseId, save},
-    nbt::{self, Kind},
+    nbt::{self},
     species::ender_dragon::START_PHASE,
 };
 use horizon_core::nbt::{Compound, Tag};
@@ -29,7 +29,7 @@ fn a_dragon_is_born_hovering_with_its_type_health() {
 fn the_dragon_save_keys_are_the_jars() {
     let mut w = bevy_ecs::world::World::new();
     nbt::register(&mut w, save::FIELDS);
-    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), Kind("minecraft:ender_dragon".into()), nbt::Saved)).id();
+    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), TypeName("minecraft:ender_dragon"), nbt::Saved)).id();
     let saved = nbt::save(&w, e).expect("an NBT");
     let keys: Vec<String> = saved.keys().map(|k| k.to_string_lossy()).collect();
     assert_eq!(keys, ["DragonDeathTime", "DragonPhase", "sitting_damage_received"]);

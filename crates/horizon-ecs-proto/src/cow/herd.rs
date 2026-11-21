@@ -113,9 +113,31 @@ impl Herd {
             write: crate::nbt_tag::write,
             read: crate::nbt_tag::read,
         }];
-        for fields in [crate::nbt::COMMON, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, &tags[..]] {
+        crate::nbt::begin_declarations(&mut world);
+        for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
             crate::nbt::register(&mut world, fields);
         }
+        crate::nbt::register_creators(&mut world, crate::nbt_fields::rides::CREATORS);
+        crate::nbt::register_creators(&mut world, crate::nbt_fields::common::CREATORS);
+        crate::nbt::register_creators(&mut world, crate::nbt_fields::creatures_more::CREATORS);
+        // Every species, then the passive types, then the sorts with a constructor (which replaces the species' recipe of their id).
+        for sp in species_table().0 {
+            crate::nbt::declare(&mut world, sp.name, crate::nbt::Recipe { saved: sp.saved, build: crate::nbt::Build::Species });
+        }
+        for id in crate::passive::kinds() {
+            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::Passive });
+        }
+        for &(id, b) in crate::nbt_fields::things::builders() {
+            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(b) });
+        }
+        for &(id, _) in crate::projectile::KINDS {
+            // A kind with a recipe of its own (the trident's builder) keeps it.
+            if crate::projectile::UNSAVED.contains(&id) {
+                continue;
+            }
+            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(crate::projectile::build) });
+        }
+        crate::nbt::end_declarations(&mut world);
         world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());

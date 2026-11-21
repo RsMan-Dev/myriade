@@ -44,7 +44,7 @@ pub struct Victims(pub Vec<(Victim, i32)>);
 
 /// A cloud of `potion` at `at` (its floor). It emits one `HostEvent::Cloud`, as the breath clouds do.
 pub fn spawn(w: &mut World, at: [f64; 3], potion: PotionId, c: EffectCloud) -> Entity {
-    let e = w.spawn((Pos(Vec3::new(at[0], at[1], at[2])), c, potion, Victims::default())).id();
+    let e = w.spawn((Pos(Vec3::new(at[0], at[1], at[2])), c, potion, Victims::default(), crate::nbt::is_saved(w, "minecraft:area_effect_cloud").then_some(crate::nbt::Saved))).id();
     w.resource_mut::<Events>().host.cloud(at, c.radius, c.duration);
     e
 }

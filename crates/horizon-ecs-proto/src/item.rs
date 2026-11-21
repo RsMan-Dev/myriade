@@ -162,7 +162,8 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     ));
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
-    world.entity_mut(e).insert(Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
+    let saved = crate::nbt::is_saved(world, "minecraft:item").then_some(crate::nbt::Saved);
+    world.entity_mut(e).insert((Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id }, saved));
     world.resource_mut::<ItemIndex>().add(e, cell);
     if let Some(mut ev) = world.get_resource_mut::<crate::goals::Events>() {
         ev.item_dropped.push(e);

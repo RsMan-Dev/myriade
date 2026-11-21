@@ -41,7 +41,7 @@ pub fn box_at(p: Vec3, width: f32, height: f32) -> Aabb {
 /// The capabilities of an entity are separate bundles: a configuration without a section has none of its components.
 /// `Transform`: where it is, how fast, its own time and its identity. All a projectile has.
 pub fn transform_bundle(sp: &Species, x: f64, z: f64, uid: u64) -> impl Bundle {
-    (Pos(Vec3::new(x, 1.0, z)), Vel(Vec3::ZERO), SpeciesId(sp.id), crate::goals::Uid(uid), OwnTime)
+    (Pos(Vec3::new(x, 1.0, z)), Vel(Vec3::ZERO), SpeciesId(sp.id), TypeName(sp.name), crate::goals::Uid(uid), OwnTime)
 }
 
 /// `Solid`: a box in the spatial index (what the pushes, the searches and the targeting see).
@@ -72,7 +72,6 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Air(300),
         Resist(sp.knockback_resistance),
         Immune(crate::rules::attrs_of(sp.rules).immune | if sp.breathes_water { BREATHES_WATER } else { 0 }),
-        TypeName(sp.name),
     )
 }
 
@@ -125,10 +124,11 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
     let id = world.spawn_empty().id();
     crate::type_tags::mark(world, id, sp.id);
+    let saved = crate::nbt::is_saved(world, sp.name).then_some(crate::nbt::Saved);
     let mut e = world.entity_mut(id);
     e.insert(transform_bundle(sp, x, z, uid));
-    if sp.saved {
-        e.insert(crate::nbt::Saved);
+    if let Some(s) = saved {
+        e.insert(s);
     }
     if has(crate::behaviours::Cap::Solid) {
         e.insert(solid_bundle(sp, x, z));

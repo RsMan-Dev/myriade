@@ -79,7 +79,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 /// `ThrownTrident` thrown from `at` with `velocity`, owned by `owner`.
 pub fn throw(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, owner: Option<Who>, loyalty: u8, pickup: Pickup) -> Entity {
     let t = Trident { owner, loyalty, pickup, dealt: false, stack };
-    world.spawn((Pos(at), Vel(velocity), t, Projectile { owner, age: 0, left_owner: false, expires: 0 }, TridentFlying, OwnTime)).id()
+    world.spawn((Pos(at), Vel(velocity), t, Projectile { owner, age: 0, left_owner: false, expires: 0 }, TridentFlying, OwnTime, crate::nbt::is_saved(world, "minecraft:trident").then_some(crate::nbt::Saved))).id()
 }
 
 fn bin(x: f64, z: f64) -> (i32, i32) {

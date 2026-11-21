@@ -1,15 +1,15 @@
 //! The NBT socle: the view composed from the components and the free keys kept as loaded, the declarations of the registry (several
 //! fields per key, one per kind of entity, in declaration order), the refusal of a wrong type, the atomic merge, the change event of the
-//! free keys only, the presence of `NbtData` (the free keys, present only while there is one) and `Kind`.
+//! free keys only, the presence of `NbtData` (the free keys, present only while there is one) and `TypeName`.
 use bevy_ecs::prelude::*;
 use horizon_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
 use horizon_ecs_proto::{
-    cow::{spawn_species, species_table, Herd, Pos},
+    cow::{spawn_species, species_table, Herd, Pos, TypeName},
     passive,
-    nbt::{self, accept, NbtData, Field, Kind, NbtChanged, Saved},
+    nbt::{self, accept, NbtData, Field, NbtChanged, Saved},
     nbt_tag,
     passive::{DisplayBox, Interact},
 };
@@ -72,7 +72,7 @@ fn an_entity_without_nbt_has_none_and_a_load_keeps_every_unknown_key() {
         ("horizon:attachments", Tag::compound([("a", Tag::String("b".into()))])),
         ("mod_key", Tag::Long(9)),
     ]);
-    let e = w.spawn((Kind("test".into()), Saved)).id();
+    let e = w.spawn((TypeName("test"), Saved)).id();
     assert_eq!(nbt::load(&mut w, e, &src), Some(0));
     assert_eq!(nbt::save(&w, e), Some(src));
 }
@@ -81,7 +81,7 @@ fn an_entity_without_nbt_has_none_and_a_load_keeps_every_unknown_key() {
 fn a_declared_key_goes_to_its_component_and_never_to_the_free_keys() {
     let mut w = World::new();
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(0))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(0))).id();
     assert_eq!(nbt::load(&mut w, e, &comp([("Score", Tag::Int(7)), ("data", Tag::Int(1))])), Some(0));
     assert_eq!(w.get::<Score>(e).map(|s| s.0), Some(7));
     let free = w.get::<NbtData>(e).expect("the free key");
@@ -93,7 +93,7 @@ fn a_declared_key_goes_to_its_component_and_never_to_the_free_keys() {
 fn a_refused_declared_key_is_ignored_counted_and_never_kept_free() {
     let mut w = World::new();
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(0))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(0))).id();
     assert_eq!(nbt::load(&mut w, e, &comp([("Score", Tag::String("x".into()))])), Some(1));
     assert_eq!(w.get::<Score>(e).map(|s| s.0), Some(0), "the refused tag changed nothing");
     assert!(!has_custom(&w, e), "a refused declared key is not free");
@@ -103,7 +103,7 @@ fn a_refused_declared_key_is_ignored_counted_and_never_kept_free() {
 fn a_merge_with_one_refused_tag_changes_nothing() {
     let mut w = World::new();
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(1))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(1))).id();
     nbt::load(&mut w, e, &comp([("data", Tag::Int(1))]));
     let before = nbt::save(&w, e);
     assert!(!nbt::merge(&mut w, e, &comp([("Score", Tag::String("x".into())), ("other", Tag::Int(1))])));
@@ -114,7 +114,7 @@ fn a_merge_with_one_refused_tag_changes_nothing() {
 #[test]
 fn a_merge_is_recursive_and_a_remove_takes_one_free_key() {
     let mut w = World::new();
-    let e = w.spawn((Kind("test".into()), Saved)).id();
+    let e = w.spawn((TypeName("test"), Saved)).id();
     nbt::load(&mut w, e, &comp([("data", Tag::compound([("a", Tag::Int(1))]))]));
     assert!(nbt::merge(&mut w, e, &comp([("data", Tag::compound([("b", Tag::Int(3)), ("c", Tag::Int(4))]))])));
     assert_eq!(nbt::get(&w, e, "data"), Some(Tag::compound([("a", Tag::Int(1)), ("b", Tag::Int(3)), ("c", Tag::Int(4))])));
@@ -127,7 +127,7 @@ fn a_merge_is_recursive_and_a_remove_takes_one_free_key() {
 fn a_remove_of_a_declared_key_is_refused() {
     let mut w = World::new();
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(3))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(3))).id();
     assert!(!nbt::remove(&mut w, e, "Score"));
     assert_eq!(w.get::<Score>(e).map(|s| s.0), Some(3));
 }
@@ -148,7 +148,7 @@ fn declared_keys_are_distributed_in_declaration_order() {
     let zeta = Field { key: Cow::Borrowed("zeta"), write: none, read: read_zeta, accepts: accept::any, owner: None };
     let alpha = Field { key: Cow::Borrowed("alpha"), write: none, read: read_alpha, accepts: accept::any, owner: None };
     nbt::register(&mut w, &[zeta, alpha]);
-    let e = w.spawn((Kind("test".into()), Saved)).id();
+    let e = w.spawn((TypeName("test"), Saved)).id();
     nbt::load(&mut w, e, &comp([("alpha", Tag::Int(1)), ("zeta", Tag::Int(2))]));
     assert_eq!(w.resource::<Order>().0, ["zeta", "alpha"], "the declaration order, not the key order");
 }
@@ -175,8 +175,8 @@ fn one_key_has_a_field_per_component_and_the_applicable_one_is_used() {
     };
     nbt::register(&mut w, SCORE);
     nbt::register_owned(&mut w, meter);
-    let e = w.spawn((Kind("test".into()), Saved, ModMeter(0))).id();
-    let scored = w.spawn((Kind("test".into()), Saved, Score(0))).id();
+    let e = w.spawn((TypeName("test"), Saved, ModMeter(0))).id();
+    let scored = w.spawn((TypeName("test"), Saved, Score(0))).id();
     nbt::load(&mut w, e, &comp([("value", Tag::Int(4))]));
     assert_eq!(w.get::<ModMeter>(e).map(|m| m.0), Some(4));
     assert_eq!(nbt::get(&w, e, "value"), Some(Tag::Int(4)));
@@ -191,7 +191,7 @@ fn two_applicable_fields_of_one_key_on_one_entity_are_an_error() {
     let mut w = World::new();
     nbt::register(&mut w, SCORE);
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(1))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(1))).id();
     nbt::save(&w, e);
 }
 
@@ -199,8 +199,8 @@ fn two_applicable_fields_of_one_key_on_one_entity_are_an_error() {
 fn a_width_belongs_to_the_interaction_or_the_display_that_has_it() {
     let mut w = World::new();
     nbt::register(&mut w, horizon_ecs_proto::passive::FIELDS);
-    let display = w.spawn((Kind("test".into()), Saved, DisplayBox::default())).id();
-    let interaction = w.spawn((Kind("test".into()), Saved, Interact::default())).id();
+    let display = w.spawn((TypeName("test"), Saved, DisplayBox::default())).id();
+    let interaction = w.spawn((TypeName("test"), Saved, Interact::default())).id();
     nbt::load(&mut w, display, &comp([("width", Tag::Float(2.5f32.to_bits()))]));
     nbt::load(&mut w, interaction, &comp([("width", Tag::Float(0.5f32.to_bits()))]));
     assert_eq!(w.get::<DisplayBox>(display).map(|b| b.width), Some(2.5));
@@ -211,7 +211,7 @@ fn a_width_belongs_to_the_interaction_or_the_display_that_has_it() {
 #[test]
 fn removing_saved_takes_the_free_keys_and_the_tags_away() {
     let mut w = World::new();
-    let e = w.spawn((Kind("test".into()), Saved)).id();
+    let e = w.spawn((TypeName("test"), Saved)).id();
     nbt::load(&mut w, e, &comp([("data", Tag::Int(1))]));
     assert!(nbt_tag::add(&mut w, e, "marked"));
     assert!(has_custom(&w, e));
@@ -228,9 +228,9 @@ fn removing_saved_takes_the_free_keys_and_the_tags_away() {
 fn kind_is_kept_only_by_an_entity_without_a_species() {
     let mut w = World::new();
     nbt::register(&mut w, nbt::COMMON);
-    let passive = w.spawn((Kind("test".into()), Saved)).id();
+    let passive = w.spawn((TypeName("test"), Saved)).id();
     nbt::load(&mut w, passive, &comp([("id", Tag::String("minecraft:item".into()))]));
-    assert_eq!(w.get::<Kind>(passive).map(|k| k.0.as_str()), Some("minecraft:item"));
+    assert_eq!(w.get::<TypeName>(passive).map(|k| k.0), Some("minecraft:item"));
     assert_eq!(nbt::get(&w, passive, "id"), Some(Tag::String("minecraft:item".into())));
     assert!(!has_custom(&w, passive), "`id` is declared, so not free");
 }
@@ -241,7 +241,7 @@ fn a_changed_free_key_sends_one_event_and_a_declared_key_none() {
     w.init_resource::<Seen>();
     w.add_observer(|on: On<NbtChanged>, mut seen: ResMut<Seen>| seen.0.push(on.key.clone()));
     nbt::register(&mut w, SCORE);
-    let e = w.spawn((Kind("test".into()), Saved, Score(0))).id();
+    let e = w.spawn((TypeName("test"), Saved, Score(0))).id();
     nbt::load(&mut w, e, &comp([("data", Tag::Int(1)), ("Score", Tag::Int(2))]));
     assert_eq!(w.resource::<Seen>().0, ["data"]);
     nbt::load(&mut w, e, &comp([("data", Tag::Int(1))]));
@@ -269,7 +269,7 @@ fn a_field_declared_at_run_time_is_read_and_written() {
         owner: Some(nbt::owner::<ModMeter>),
     };
     nbt::register_owned(&mut w, meter);
-    let e = w.spawn((Kind("test".into()), Saved, ModMeter(0))).id();
+    let e = w.spawn((TypeName("test"), Saved, ModMeter(0))).id();
     nbt::load(&mut w, e, &comp([("mod:meter", Tag::Int(4))]));
     assert_eq!(w.get::<ModMeter>(e).map(|m| m.0), Some(4));
     assert_eq!(nbt::get(&w, e, "mod:meter"), Some(Tag::Int(4)));
@@ -279,9 +279,9 @@ fn a_field_declared_at_run_time_is_read_and_written() {
 fn the_common_position_round_trips() {
     let mut w = World::new();
     nbt::register(&mut w, nbt::COMMON);
-    let e = w.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), Kind("test".into()), Saved)).id();
+    let e = w.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("test"), Saved)).id();
     let saved = nbt::save(&w, e).expect("an NBT");
-    let f = w.spawn((Pos(Vec3::ZERO), Kind("test".into()), Saved)).id();
+    let f = w.spawn((Pos(Vec3::ZERO), TypeName("test"), Saved)).id();
     nbt::load(&mut w, f, &saved);
     assert_eq!((w.get::<Pos>(f).unwrap().0.x, w.get::<Pos>(f).unwrap().0.y, w.get::<Pos>(f).unwrap().0.z), (1.0, 2.0, 3.0));
 }

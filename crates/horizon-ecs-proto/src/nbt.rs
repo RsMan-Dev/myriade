@@ -2,8 +2,11 @@
 //! fields, one per kind of entity: the one that applies to an entity is the one whose component it holds. `save` composes the compound
 //! from the applicable fields and the free keys, `load` and `merge` distribute a compound back, in declaration order.
 //! An entity has an NBT while it holds `Saved`. `NbtData` keeps only the free keys (those no applicable field declares), and exists only
-//! while there is one. `Kind` is the `id` of an entity with no species.
-use crate::cow::{Air, Health, Pos, SpeciesId, SpeciesTable, Vel};
+//! while there is one. The `id` of an entity is its `TypeName`, declared with a `Recipe` (`declare`).
+use crate::cow::{Air, Health, Pos, TypeName, Vel};
+use crate::projectile::Flight;
+use crate::mount::{Mount, Riding};
+use crate::targeting::Who;
 use bevy_ecs::{archetype::{Archetype, ArchetypeId}, component::ComponentId, prelude::*};
 use horizon_core::{
     geometry::Vec3,
@@ -15,8 +18,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// The entity is saved: it has an NBT, and its free keys and tags exist. Set at birth from the species' `saved` (or with a `Kind`, for an
-/// entity without species). Zero bytes. Removing it removes the `NbtData` and the tags of the entity.
+/// The entity is saved: it has an NBT, and its free keys and tags exist. Set at birth from `is_saved` of its identifier. Zero bytes.
+/// Removing it removes the `NbtData` and the tags of the entity.
 #[derive(Component, Default, Debug)]
 #[component(storage = "Table", on_remove = clear_saved)]
 pub struct Saved;
@@ -36,10 +39,6 @@ fn clear_saved(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
 #[derive(Component, Clone, Debug)]
 #[component(storage = "SparseSet")]
 pub struct NbtData(pub Box<Compound>);
-
-/// The `id` of an entity that has no species (a passive one): the type it was loaded as. Only those entities carry it.
-#[derive(Component, Clone, Debug)]
-pub struct Kind(pub String);
 
 /// A declared key and the component that owns it: `owner` registers that component and gives its id, and the field applies to an entity
 /// whose archetype has it. No owner: the key of every `Saved` entity. `accepts` tests a tag before any change (`merge` checks the whole
@@ -94,6 +93,8 @@ pub struct NbtChanged {
 pub struct NbtFields {
     fields: Vec<(Field, Option<ComponentId>)>,
     keys: BTreeMap<String, Vec<usize>>,
+    /// The creators (`register_creators`): never applicable, only used to give a free key back to its component.
+    creators: Vec<Field>,
     cache: Mutex<HashMap<ArchetypeId, Arc<[usize]>>>,
 }
 
@@ -104,6 +105,15 @@ impl NbtFields {
             None => true,
         }
     }
+    /// The creator of `key` when exactly one creator declares it; none when there are two (the key stays free).
+    fn creator_of(&self, key: &str) -> Option<&Field> {
+        let mut found = self.creators.iter().filter(|f| f.key.as_ref() == key);
+        let first = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        Some(first)
+    }
 }
 
 /// The owner of a field: the component `T`, registered in the world.
@@ -113,15 +123,38 @@ pub fn owner<T: Component>(w: &mut World) -> ComponentId {
 
 /// Declares `fields` in the world's registry, after the ones already declared. Forgets the archetype cache.
 pub fn register(w: &mut World, fields: &[Field]) {
+    register_with(w, fields, false);
+}
+
+/// Declares `fields` as creators: a key that no applicable field declares is given to the only creator of that key, whose `read` sets the
+/// component back (`restore` of a component added in play). Two creators of one key: the key stays free.
+pub fn register_creators(w: &mut World, fields: &[Field]) {
+    register_with(w, fields, true);
+}
+
+fn register_with(w: &mut World, fields: &[Field], creators: bool) {
     w.init_resource::<NbtFields>();
-    let ids: Vec<Option<ComponentId>> = fields.iter().map(|f| f.owner.map(|o| o(w))).collect();
-    let mut res = w.resource_mut::<NbtFields>();
-    let reg = &mut *res;
-    for (f, id) in fields.iter().zip(ids) {
-        reg.keys.entry(f.key.to_string()).or_default().push(reg.fields.len());
-        reg.fields.push((f.clone(), id));
+    let ids: Vec<Option<ComponentId>> = if creators { Vec::new() } else { fields.iter().map(|f| f.owner.map(|o| o(w))).collect() };
+    {
+        let mut res = w.resource_mut::<NbtFields>();
+        let reg = &mut *res;
+        if creators {
+            reg.creators.extend(fields.iter().cloned());
+        }
+        for (f, id) in fields.iter().zip(ids).filter(|_| !creators) {
+            reg.keys.entry(f.key.to_string()).or_default().push(reg.fields.len());
+            reg.fields.push((f.clone(), id));
+        }
+        reg.cache.get_mut().unwrap().clear();
     }
-    reg.cache.get_mut().unwrap().clear();
+    // A late declaration claims the free keys of the entities that have some: only at registration, never per tick.
+    let holders: Vec<Entity> = w.query_filtered::<Entity, With<NbtData>>().iter(w).collect();
+    for e in holders {
+        let Some(free) = w.get::<NbtData>(e).map(|t| (*t.0).clone()) else { continue };
+        if free.keys().any(|k| fields.iter().any(|f| f.key.as_ref() == k.to_string_lossy())) {
+            distribute(w, e, &free);
+        }
+    }
 }
 
 /// Declares one field at run time (a mod's component).
@@ -169,13 +202,19 @@ fn custom(w: &World, e: Entity) -> Compound {
     w.get::<NbtData>(e).map_or_else(Compound::new, |t| (*t.0).clone())
 }
 
-/// The entity's compound: its free keys, then the keys of the applicable fields (a declared key wins). None when the entity is not `Saved`.
+/// The entity's compound: its free keys, then the keys of the applicable fields (a declared key wins), then the common keys left at their
+/// game default (`DEFAULTS`, computed here and not stored). None when the entity is not `Saved`.
 pub fn save(w: &World, e: Entity) -> Option<Compound> {
     if w.get::<Saved>(e).is_none() { return None; }
     let mut c = custom(w, e);
     if let Some(reg) = w.get_resource::<NbtFields>() {
         for &i in applicable_indices(w, e).iter() {
             (reg.fields[i].0.write)(w, e, &mut c);
+        }
+    }
+    for &(key, default) in crate::nbt_fields::common::DEFAULTS {
+        if c.get(&JavaString::from(key)).is_none() {
+            c.insert(key.into(), default());
         }
     }
     Some(c)
@@ -206,7 +245,26 @@ fn distribute(w: &mut World, e: Entity, c: &Compound) -> (usize, Vec<String>) {
             refused += 1;
         }
     }
-    let free: Compound = c.iter().filter(|(k, _)| !taken.contains(&k.to_string_lossy())).map(|(k, v)| (k.clone(), v.clone())).collect();
+    let creating: Vec<Field> = match w.get_resource::<NbtFields>() {
+        Some(reg) => c.keys().map(|k| k.to_string_lossy()).filter(|k| !taken.contains(k)).filter_map(|k| reg.creator_of(&k).cloned()).collect(),
+        None => Vec::new(),
+    };
+    for f in creating {
+        let Some(v) = c.get(&JavaString::from(f.key.as_ref())) else { continue };
+        taken.insert(f.key.to_string());
+        if !(f.read)(w, e, v) {
+            refused += 1;
+        }
+    }
+    // A common key left at its game default is dropped, not kept free (no `NbtData` on every loaded entity).
+    let free: Compound = c
+        .iter()
+        .filter(|(k, v)| {
+            let key = k.to_string_lossy();
+            !taken.contains(&key) && !crate::nbt_fields::common::drop_default(&key, v)
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let old = custom(w, e);
     let keys: BTreeSet<&JavaString> = old.keys().chain(free.keys()).collect();
     let changed = keys.into_iter().filter(|k| old.get(*k) != free.get(*k)).map(|k| k.to_string_lossy()).collect();
@@ -351,24 +409,21 @@ fn read_health(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// The `id` of a species entity is its species' name (read is taken and ignored); any other entity keeps its `Kind`.
+/// The identifier of an entity: its `TypeName`, else the id of its `Flight` (a projectile carries no `TypeName`, so its bytes are not doubled).
+pub fn id_of_entity(w: &World, e: Entity) -> Option<&'static str> {
+    w.get::<TypeName>(e).map(|t| t.0).or_else(|| w.get::<Flight>(e).map(|f| f.id))
+}
+
+/// The `id` of an entity is its identifier (`id_of_entity`), the one it was declared as.
 fn write_id(w: &World, e: Entity, c: &mut Compound) {
-    let name = match (w.get::<SpeciesId>(e), w.get_resource::<SpeciesTable>()) {
-        (Some(s), Some(t)) => t.0.iter().find(|sp| sp.id == s.0).map(|sp| sp.name.to_string()),
-        _ => w.get::<Kind>(e).map(|k| k.0.clone()),
-    };
-    if let Some(name) = name {
-        c.insert("id".into(), Tag::String(JavaString::from(name.as_str())));
+    if let Some(id) = id_of_entity(w, e) {
+        c.insert("id".into(), Tag::String(JavaString::from(id)));
     }
 }
 
+/// The `id` is taken by an entity that has an identifier (read is taken and ignored).
 fn read_id(w: &mut World, e: Entity, t: &Tag) -> bool {
-    if w.get::<SpeciesId>(e).is_some() {
-        return true;
-    }
-    let Tag::String(s) = t else { return false };
-    w.entity_mut(e).insert(Kind(s.to_string_lossy()));
-    true
+    matches!(t, Tag::String(_)) && id_of_entity(w, e).is_some()
 }
 
 /// Sent on an entity before its NBT is composed by `save_all`.
@@ -387,6 +442,10 @@ pub struct Restored {
 pub fn save_all(w: &mut World, mut each: impl FnMut(Entity, Compound)) {
     let saved: Vec<Entity> = w.query_filtered::<Entity, With<Saved>>().iter(w).collect();
     for e in saved {
+        // A `Saved` entity with no identifier is not saved.
+        if written_by_mount(w, e) || id_of_entity(w, e).is_none() {
+            continue;
+        }
         w.trigger(Saving { entity: e });
         if let Some(c) = save(w, e) {
             each(e, c);
@@ -394,25 +453,231 @@ pub fn save_all(w: &mut World, mut each: impl FnMut(Entity, Compound)) {
     }
 }
 
-/// Restores the entity a saved compound describes: a passive one through `passive::spawn`, a species' one through its creation, both at
-/// the compound's `Pos`; the rest of the compound is loaded. None when its `id` is unknown or unsaved, and the world is left as it was.
-/// `Passengers` is not mounted (no rider is restored): it stays a free key.
+/// A rider of a saved mount: its mount writes it under `Passengers`, so `save_all` does not write it a second time.
+fn written_by_mount(w: &World, e: Entity) -> bool {
+    let Some(Riding(m)) = w.get::<Riding>(e).copied() else { return false };
+    w.get::<Saved>(m).is_some() && w.get::<Mount>(m).is_some_and(|t| t.rider == Some(Who::Entity(e)) || t.passenger == Some(Who::Entity(e)))
+}
+
+/// Makes the entity of an identifier that needs its own construction (a dropped item, an orb, an arrow...): the position, the compound;
+/// None when it makes nothing, and the compound is set aside.
+pub type Builder = fn(&mut World, Vec3, &Compound) -> Option<Entity>;
+
+/// How `restore` makes the entity of an identifier: as its species (`cow::spawn_species`), as a passive one (`passive::spawn`), or with
+/// its constructor.
+#[derive(Clone, Copy)]
+pub enum Build {
+    Species,
+    Passive,
+    With(Builder),
+}
+
+/// What an identifier is: `saved` (its entities carry `Saved` and keep their NBT) and how `restore` makes them.
+#[derive(Clone, Copy)]
+pub struct Recipe {
+    pub saved: bool,
+    pub build: Build,
+}
+
+/// The declared identifiers of the world, each with its recipe.
+#[derive(Resource, Default)]
+pub struct EntityTypes(BTreeMap<String, Recipe>);
+
+/// The saved NBT of the declaration window, by id then chunk: built when their id is declared, dropped at `end_declarations`.
+#[derive(Resource, Default)]
+pub struct Pending {
+    open: bool,
+    map: BTreeMap<String, BTreeMap<(i32, i32), Vec<Compound>>>,
+}
+
+/// The chunks that hold an NBT whose id is not declared, as flags only: the caller rereads the chunk's file to keep those entities.
+#[derive(Resource, Default)]
+pub struct UnknownChunks(BTreeSet<(i32, i32)>);
+
+fn recipe_of(w: &World, id: &str) -> Option<Recipe> {
+    w.get_resource::<EntityTypes>()?.0.get(id).copied()
+}
+
+fn is_open(w: &World) -> bool {
+    w.get_resource::<Pending>().is_some_and(|p| p.open)
+}
+
+fn chunk_of(at: Vec3) -> (i32, i32) {
+    ((at.x / 16.0).floor() as i32, (at.z / 16.0).floor() as i32)
+}
+
+fn id_of(c: &Compound) -> Option<String> {
+    match c.get(&JavaString::from("id"))? {
+        Tag::String(s) => Some(s.to_string_lossy()),
+        _ => None,
+    }
+}
+
+fn mark(w: &mut World, chunk: (i32, i32)) {
+    w.init_resource::<UnknownChunks>();
+    w.resource_mut::<UnknownChunks>().0.insert(chunk);
+}
+
+/// Sets aside a compound `restore` cannot make: in the window it is kept pending; otherwise it is not kept, and its chunk is flagged.
+fn set_aside(w: &mut World, id: &str, at: Vec3, c: &Compound) {
+    if is_open(w) {
+        w.resource_mut::<Pending>().map.entry(id.to_string()).or_default().entry(chunk_of(at)).or_default().push(c.clone());
+    } else {
+        mark(w, chunk_of(at));
+    }
+}
+
+/// Whether chunk (cx, cz) holds an NBT whose id is not declared: flagged by `restore` or `end_declarations`, until `keep_unknown` or
+/// `populate_unknown` finds nothing left, or `forget_chunk`. The caller reads this flag first: a chunk without it is not reread at all.
+pub fn has_unknown(w: &World, cx: i32, cz: i32) -> bool {
+    w.get_resource::<UnknownChunks>().is_some_and(|u| u.0.contains(&(cx, cz)))
+}
+
+/// Forgets the flag of a chunk that unloads.
+pub fn forget_chunk(w: &mut World, cx: i32, cz: i32) {
+    if let Some(mut u) = w.get_resource_mut::<UnknownChunks>() {
+        u.0.remove(&(cx, cz));
+    }
+}
+
+/// The compounds of `disk` that `want` accepts by their id, whole. A root it does not accept is searched in its `Passengers`: a rider
+/// of a known mount is taken out on its own, at its own `Pos` (kept without loss, its seat is not restored).
+fn gather(c: &Compound, want: &dyn Fn(&str) -> bool, out: &mut Vec<Compound>) {
+    if id_of(c).is_some_and(|id| want(id.as_str())) {
+        out.push(c.clone());
+        return;
+    }
+    if let Some(Tag::List(list)) = c.get(&JavaString::from("Passengers")) {
+        for t in list {
+            if let Tag::Compound(p) = t {
+                gather(p, want, out);
+            }
+        }
+    }
+}
+
+/// Of the entities the caller rereads from chunk (cx, cz)'s file (`disk`), those whose id is still not declared, intact, to write back with
+/// the chunk. Nothing left: the flag goes. The caller reads the file only when `has_unknown` says so, and before the next save of the chunk.
+pub fn keep_unknown(w: &mut World, cx: i32, cz: i32, disk: impl Iterator<Item = Compound>) -> Vec<Compound> {
+    let disk: Vec<Compound> = disk.collect();
+    let kept = {
+        let world: &World = w;
+        let mut out = Vec::new();
+        for c in &disk {
+            gather(c, &|id: &str| !declared(world, id), &mut out);
+        }
+        out
+    };
+    if kept.is_empty() {
+        forget_chunk(w, cx, cz);
+    }
+    kept
+}
+
+/// After `id` was declared late (`declare` returned chunk (cx, cz)), builds from the reread `disk` of that chunk the entities of this `id`
+/// only: the other identifiers were declared at load, so their entities are alive already and are not built again. A failed build keeps the
+/// flag. Returns how many entities it made.
+pub fn populate_unknown(w: &mut World, cx: i32, cz: i32, id: &str, disk: impl Iterator<Item = Compound>) -> usize {
+    let disk: Vec<Compound> = disk.collect();
+    let mut wanted = Vec::new();
+    for c in &disk {
+        gather(c, &|k: &str| k == id, &mut wanted);
+    }
+    let (mut made, mut failed) = (0, false);
+    for c in &wanted {
+        match restore(w, c) {
+            Some(_) => made += 1,
+            None => failed = true,
+        }
+    }
+    let left = {
+        let world: &World = w;
+        let mut out = Vec::new();
+        for c in &disk {
+            gather(c, &|k: &str| !declared(world, k), &mut out);
+        }
+        out
+    };
+    if left.is_empty() && !failed {
+        forget_chunk(w, cx, cz);
+    }
+    made
+}
+
+/// Opens the declaration window: until `end_declarations`, an NBT whose id is not declared is kept pending and built when it is declared.
+pub fn begin_declarations(w: &mut World) {
+    w.init_resource::<Pending>();
+    w.resource_mut::<Pending>().open = true;
+}
+
+/// Closes the window: the pending NBT are dropped, and their chunks are flagged for the caller to reread.
+pub fn end_declarations(w: &mut World) {
+    let Some(p) = w.remove_resource::<Pending>() else { return };
+    let chunks: BTreeSet<(i32, i32)> = p.map.values().flat_map(|chunks| chunks.keys()).copied().collect();
+    for chunk in chunks {
+        mark(w, chunk);
+    }
+}
+
+/// Declares `id` with its recipe, at any time. In the window, the pending NBT of this id are built now. Outside it, nothing was kept: the
+/// flagged chunks are returned: the caller logs a warning naming `id` and the count (no `log` dependency here), then rereads each one and
+/// calls `populate_unknown` BEFORE its next save (after that save, `keep_unknown` no longer keeps them: they are declared). The chunks are
+/// the flagged ones of any id, not only of `id`.
+pub fn declare(w: &mut World, id: &str, recipe: Recipe) -> Vec<(i32, i32)> {
+    w.init_resource::<EntityTypes>();
+    w.resource_mut::<EntityTypes>().0.insert(id.to_string(), recipe);
+    if is_open(w) {
+        let taken: Vec<Compound> = match w.get_resource_mut::<Pending>() {
+            Some(mut p) => p.map.remove(id).map_or_else(Vec::new, |chunks| chunks.into_values().flatten().collect()),
+            None => Vec::new(),
+        };
+        for c in taken {
+            restore(w, &c);
+        }
+        return Vec::new();
+    }
+    w.get_resource::<UnknownChunks>().map_or_else(Vec::new, |u| u.0.iter().copied().collect())
+}
+
+/// Whether an entity of `id` is saved: what a creation reads to pose `Saved` in its one insert.
+pub fn is_saved(w: &World, id: &str) -> bool {
+    recipe_of(w, id).is_some_and(|r| r.saved)
+}
+
+/// Whether `id` is declared.
+pub fn declared(w: &World, id: &str) -> bool {
+    recipe_of(w, id).is_some()
+}
+
+/// Restores the entity a saved compound describes, at its `Pos`, made by the recipe of its `id` (`Build`), then the rest of the compound is
+/// loaded. An `id` no recipe declares, or an entity that cannot be made, is set aside (`set_aside`) and None is returned: nothing is
+/// spawned. `Passengers` restores the riders and seats them (`nbt_fields::rides`).
 pub fn restore(w: &mut World, c: &Compound) -> Option<Entity> {
     let Some(Tag::String(id)) = c.get(&JavaString::from("id")) else { return None };
     let name = id.to_string_lossy();
     let at = c.get(&JavaString::from("Pos")).and_then(tag_vec3)?;
-    use crate::species::lists::{DISPLAYS, INTERACTION, MARKER};
-    let e = if DISPLAYS.iter().any(|d| *d == name) || name == INTERACTION || name == MARKER {
-        crate::passive::spawn(w, &name, at, Tag::Compound(c.clone()))
-    } else {
-        let sp = crate::cow::species_table().0.into_iter().find(|sp| sp.name == name)?;
-        if !sp.saved {
-            return None;
-        }
-        let e = crate::cow::spawn_species(w, &sp, at.x, at.z, 0);
-        load(w, e, c);
-        e
+    let Some(recipe) = recipe_of(w, &name) else {
+        set_aside(w, &name, at, c);
+        return None;
     };
+    if !recipe.saved {
+        return None;
+    }
+    let made = match recipe.build {
+        Build::Passive => crate::passive::kinds().find(|k| *k == name).map(|k| crate::passive::spawn(w, k, at, Tag::Compound(c.clone()))),
+        Build::Species => {
+            let sp = crate::cow::species_table().0.into_iter().find(|sp| sp.name == name)?;
+            Some(crate::cow::spawn_species(w, &sp, at.x, at.z, 0))
+        }
+        Build::With(b) => b(w, at, c),
+    };
+    let Some(e) = made else {
+        set_aside(w, &name, at, c);
+        return None;
+    };
+    if !matches!(recipe.build, Build::Passive) {
+        load(w, e, c);
+    }
     w.trigger(Restored { entity: e });
     Some(e)
 }

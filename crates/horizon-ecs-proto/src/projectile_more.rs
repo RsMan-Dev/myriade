@@ -21,19 +21,19 @@ pub const PEARL_DAMAGE: f32 = 5.0;
 pub const BOTTLE_XP: (i32, i32) = (3, 5);
 
 /// `ThrownEgg`: a thrown item, gravity 0.03, no damage.
-pub const EGG: Flight = Flight::SNOWBALL;
+pub const EGG: Flight = Flight { id: "minecraft:egg", ..Flight::SNOWBALL };
 /// The egg's end, its hatchling being the species `into`.
 pub const fn egg_hit(into: &'static str) -> OnHit {
     OnHit::Hatch { into, one_in: EGG_HATCH.0, many_in: EGG_HATCH.1, many: EGG_HATCH.2, baby: 24_000 }
 }
 /// `ThrownEnderpearl`: a thrown item, gravity 0.03, no damage.
-pub const ENDER_PEARL: Flight = Flight { hit: OnHit::Teleport { endermite: PEARL_ENDERMITE, damage: PEARL_DAMAGE }, ..Flight::SNOWBALL };
+pub const ENDER_PEARL: Flight = Flight { id: "minecraft:ender_pearl", hit: OnHit::Teleport { endermite: PEARL_ENDERMITE, damage: PEARL_DAMAGE }, ..Flight::SNOWBALL };
 /// `ThrownExperienceBottle`: gravity 0.07, no damage.
-pub const EXPERIENCE_BOTTLE: Flight = Flight { gravity: 0.07, order: Order::DragThenMove, hit: OnHit::Orbs { base: BOTTLE_XP.0, bound: BOTTLE_XP.1 }, ..Flight::SNOWBALL };
+pub const EXPERIENCE_BOTTLE: Flight = Flight { id: "minecraft:experience_bottle", gravity: 0.07, order: Order::DragThenMove, hit: OnHit::Orbs { base: BOTTLE_XP.0, bound: BOTTLE_XP.1 }, ..Flight::SNOWBALL };
 /// `DragonFireball`: `AbstractHurtingProjectile` with the default inertia and acceleration; no direct damage (the doubt is in the notes).
-pub const DRAGON_FIREBALL: Flight = Flight { inertia: 0.95_f32 as f64, damage: Damage::Fixed(0.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::DragonBurst, ..Flight::SNOWBALL };
+pub const DRAGON_FIREBALL: Flight = Flight { id: "minecraft:dragon_fireball", inertia: 0.95_f32 as f64, damage: Damage::Fixed(0.0), size: 1.0, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::DragonBurst, ..Flight::SNOWBALL };
 /// `WindCharge` of a player: the breeze's straight flight, no damage, a burst of radius 1.2 (`WindCharge.RADIUS`).
-pub const WIND_CHARGE: Flight = Flight { damage: Damage::Fixed(0.0), hit: OnHit::WindBurst { radius: 1.2 }, ..Flight::BREEZE_WIND_CHARGE };
+pub const WIND_CHARGE: Flight = Flight { id: "minecraft:wind_charge", damage: Damage::Fixed(0.0), hit: OnHit::WindBurst { radius: 1.2 }, ..Flight::BREEZE_WIND_CHARGE };
 
 /// The end of a thrown item at `at` (the hit point); `previous` is where it was at the start of its last tick (`oldPosition`).
 pub fn ends(w: &mut World, hit: OnHit, at: Vec3, previous: Vec3, owner: Option<Who>) {

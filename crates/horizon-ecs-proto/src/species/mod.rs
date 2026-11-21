@@ -115,6 +115,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &endermite::DEF, &ender_dragon::DEF, &end_crystal::DEF, &dragon_fireball::DEF,
     &enderman::DEF,
     &fishing_bobber::DEF,
+    &item::DEF, &experience_orb::DEF, &trident::DEF, &firework_rocket::DEF, &area_effect_cloud::DEF, &evoker_fangs::DEF, &ominous_item_spawner::DEF,
     &silverfish::DEF,
     &piglin_brute::DEF,
     &panda::DEF,
@@ -870,6 +871,13 @@ pub mod falling_block;
 pub mod egg;
 pub mod ender_pearl;
 pub mod fishing_bobber;
+pub mod item;
+pub mod experience_orb;
+pub mod trident;
+pub mod firework_rocket;
+pub mod area_effect_cloud;
+pub mod evoker_fangs;
+pub mod ominous_item_spawner;
 pub mod experience_bottle;
 pub mod wind_charge;
 pub mod piglin;
