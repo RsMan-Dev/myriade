@@ -21,6 +21,9 @@ fn a_hunt_waits_for_the_cooldown_of_a_piglin_nearby_as_a_mob_does() {
     r.add_kind_id(Vec3::new(6.5, 1.0, 0.5), mob_kind("minecraft:hoglin"), 13);
     r.mobs[hunter].extra.ints[0] = 0;
     r.mobs[nearby].extra.ints[0] = COOLDOWN;
+    // The ECS has no unsafe place (no zombification): the Mob piglins are immune (`flag2`), else they zombify after 300 ticks in the overworld.
+    r.mobs[hunter].extra.flag2 = true;
+    r.mobs[nearby].extra.flag2 = true;
 
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let piglin = *table.iter().find(|s| s.name == "minecraft:piglin").unwrap();
@@ -141,6 +144,8 @@ fn a_pregnant_frog_does_not_leap_as_a_mob_does() {
 /// Each piglin test below builds the same pair of worlds: the Mob (`MobRef`) and the ECS (`Herd`), the piglin at the same spot in both.
 fn piglin_pair(r: &mut MobRef, h: &mut Herd, at: Vec3, seed: u64) -> (usize, Entity) {
     let i = r.add_id(at, seed as u32);
+    // The ECS has no unsafe place; the Mob piglin is made immune to zombification (`flag2`), else it converts in the overworld.
+    r.mobs[i].extra.flag2 = true;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let piglin = *table.iter().find(|s| s.name == "minecraft:piglin").unwrap();
     let e = spawn_species(&mut h.world, &piglin, at.x, at.z, seed);
@@ -200,8 +205,13 @@ fn a_lit_soul_campfire_repels_a_piglin_inside_the_sphere_only() {
             r.step(None);
             h.tick();
         }
-        let mob_avoids = r.mobs[p].extra.piglin.activity == horizon_client_lib::mobs::piglin::Activity::Avoid;
-        let ecs_avoids = h.world.get::<Avoid>(p_e).is_some();
+        // The repellent is a walk away from the block (not the `Avoid` activity, which a hurt or a hunt sets): it is read from the way
+        // gained from the campfire's bottom centre in 40 ticks.
+        let fire = Vec3::new(6.5, 1.0, f64::from(dz) + 0.5);
+        let gain = |from: Vec3, to: Vec3| to.distance_squared(fire).sqrt() - from.distance_squared(fire).sqrt();
+        let start = Vec3::new(0.5, 1.0, 0.5);
+        let mob_avoids = gain(start, r.mobs[p].position) > 3.0;
+        let ecs_avoids = gain(start, h.world.get::<Pos>(p_e).unwrap().0) > 3.0;
         assert_eq!(mob_avoids, repelled, "the Mob, campfire at dz {dz}");
         assert_eq!(ecs_avoids, repelled, "the ECS, campfire at dz {dz}");
     }
@@ -223,8 +233,15 @@ fn celebrate_walks_to_the_kill_spot_as_a_mob_does() {
     let hoglin_e = spawn_species(&mut h.world, &hoglin_sp, 6.5, 0.5, 13);
     h.world.get_mut::<ActiveUntil>(hoglin_e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(hoglin_e);
+    // Both settle on the ground first: a path asked at the first tick of a creature in the air is refused (`on_ground`) and not asked again.
+    for _ in 0..5 {
+        r.step(None);
+        h.tick();
+    }
     r.mobs[p].ai.target = Some(horizon_client_lib::mobs::Who::Mob(r.mobs[hoglin].id));
-    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, u8::MAX));
+    // A target of a goal (as the hunt sets it): it ends with the goal, after the kill is heard; a target without a goal is cleared first.
+    let hunt_slot = horizon_ecs_proto::goals::slot_of(&h.world, p_e, &horizon_ecs_proto::behaviours::hunt_prey::MODULE).unwrap();
+    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, hunt_slot));
     r.hit(hoglin, 1000.0, [6.5, 1.0, 0.5]);
     h.hit(hoglin_e, 1000.0, (6.5, 0.5));
     for _ in 1..=60i64 {
@@ -257,8 +274,12 @@ fn a_kill_event_starts_the_party_of_the_targeter_once() {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.resource_mut::<Entered>().0.push(e);
     }
-    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, u8::MAX));
+    // A target of a goal (as the hunt sets it): it ends with the goal, after the kill is heard; a target without a goal is cleared first.
+    let hunt_slot = horizon_ecs_proto::goals::slot_of(&h.world, p_e, &horizon_ecs_proto::behaviours::hunt_prey::MODULE).unwrap();
+    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, hunt_slot));
     h.hit(hoglin_e, 1000.0, (6.5, 0.5));
+    // The kill is written in the tick of the damage and heard in the next one (`Ev`: the events of the previous tick).
+    h.tick();
     h.tick();
     assert!(h.world.get::<Celebrating>(p_e).is_some(), "the targeter of the victim celebrates at the death");
     h.tick();
@@ -276,6 +297,7 @@ fn admire_starts_on_the_gold_in_the_off_hand_as_a_mob_does() {
     let (p, p_e) = piglin_pair(&mut r, &mut h, Vec3::new(0.5, 1.0, 0.5), 11);
     r.mobs[p].extra.set_slot_id(horizon_items::equipment::OFFHAND, Some("minecraft:gold_ingot".into()));
     r.mobs[p].extra.using_item = 1;
+    horizon_ecs_proto::equipment::set_slot(&mut h.world, p_e, horizon_ecs_proto::goals::Slot::Off, horizon_ecs_proto::items::item_id("minecraft:gold_ingot"));
     let mut mob_at = None;
     let mut ecs_at = None;
     for t in 1..=20i64 {

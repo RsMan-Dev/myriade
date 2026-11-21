@@ -28,6 +28,9 @@ fn a_hook_holding_a_creature_sits_at_eight_tenths_of_its_height() {
     if !have_data() {
         return;
     }
+    if unfit_species(&["minecraft:breeze"], "Breeze.deflection: DEFLECTS_PROJECTILES, the hook is deflected (jar, Entity.deflection)") {
+        return;
+    }
     let owner = Vec3::new(0.5, 1.5, 0.5);
     let mut h = Herd::with_slab(16, true, false);
     let cow = ecs_cow(&mut h, 3.5_f64.max(1.5 + f64::from(species().width)), 1.0, 0.5, 7);
@@ -68,6 +71,9 @@ fn a_blow_destroys_a_flying_bullet_without_hurting_its_target() {
     if !have_data() {
         return;
     }
+    if unfit_species(&["minecraft:snow_golem"], "SnowGolem.aiStep burns in a hot place by its rule (snow_trail.rs): its health moves by itself; the temperature of the grid is not verified") {
+        return;
+    }
     let (_, mut h) = flat_pair();
     let owner = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     let target = ecs_cow(&mut h, 4.5, 1.0, 0.5, 6);
@@ -94,6 +100,9 @@ fn a_blow_destroys_a_flying_bullet_without_hurting_its_target() {
 #[test]
 fn a_bullet_pursues_its_creature_and_hurts_it_on_impact() {
     if !have_data() {
+        return;
+    }
+    if unfit_species(&["minecraft:enderman"], "Enderman.hurtServer: a projectile damage teleports it instead of hurting (jar)") {
         return;
     }
     let (_, mut h) = flat_pair();

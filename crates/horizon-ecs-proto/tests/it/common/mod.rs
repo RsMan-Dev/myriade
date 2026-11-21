@@ -203,6 +203,16 @@ pub fn wrong_species(names: &[&str]) -> bool {
     }
     wrong
 }
+/// Whether the run's species is one of `names`, whose own rule changes what the test asserts (the reason is noted with the skip, never silent).
+pub fn unfit_species(names: &[&str], why: &str) -> bool {
+    let sp = std::env::var("HORIZON_SPECIES").expect("HORIZON_SPECIES absent");
+    let unfit = names.contains(&sp.as_str());
+    if unfit {
+        let t = std::thread::current();
+        horizon_ecs_proto::cow::skip_note(t.name().unwrap_or("?"), &format!("{sp}: {why}"));
+    }
+    unfit
+}
 pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();
     horizon_ecs_proto::type_tags::mark(&mut h.world, e, species().id);

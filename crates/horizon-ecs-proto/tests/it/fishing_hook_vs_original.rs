@@ -255,6 +255,9 @@ fn reel_pulls_a_hooked_creature_towards_the_owner() {
     if !have_data() {
         return;
     }
+    if unfit_species(&["minecraft:breeze"], "Breeze.deflection: DEFLECTS_PROJECTILES, the hook is deflected (jar, Entity.deflection)") {
+        return;
+    }
     let owner = Vec3::new(0.5, 1.5, 0.5);
     let mut h = Herd::with_slab(16, true, false);
     let cow = ecs_cow(&mut h, 3.5_f64.max(1.5 + f64::from(horizon_ecs_proto::cow::species().width)), 1.0, 0.5, 7);

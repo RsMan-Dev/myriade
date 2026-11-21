@@ -98,6 +98,11 @@ fn a_harming_splash_heals_a_zombie_and_hurts_a_cow() {
     }
     let (_, mut h) = flat_pair();
     let cow = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
+    if horizon_ecs_proto::type_tags::named(&h.world, "undead", cow) {
+        let t = std::thread::current();
+        horizon_ecs_proto::cow::skip_note(t.name().unwrap_or("?"), "the species under test is undead: harming heals it (`LivingEntity.isInvertedHealAndHarm`, jar)");
+        return;
+    }
     let zombie_sp = species_table().0.into_iter().find(|s| s.name == "minecraft:zombie").expect("the zombie species");
     let zombie = spawn_species(&mut h.world, &zombie_sp, 4.5, 4.5, 7);
     h.world.get_mut::<Health>(zombie).unwrap().0 = 5.0;

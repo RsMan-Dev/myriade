@@ -31,6 +31,7 @@ pub static MODULE: Module = Module {
     name: "hunt_prey",
     flags: TARGET,
     equip,
+    arm,
     can_use,
     start,
     requires: &[Cap::Body, Cap::Goals, Cap::Targets],
@@ -50,18 +51,33 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 #[component(storage = "SparseSet")]
 pub struct CannotHunt;
 
+/// Wakes the selector when the cooldown is due: a refusal for a cooldown (its own, or that of a hunter near) arms the deadline, so the
+/// hunt is asked again then and not before (the prey coming into sight is not an event the module hears).
+fn wake_at(w: &mut World, e: Entity, slot: u8, until: u64) {
+    let wait = until.saturating_sub(now_of(w, e)).max(1);
+    crate::goals::arm(w, e, slot, wait as i32);
+}
+fn arm(w: &mut World, e: Entity, i: Inst) {
+    let until = w.get::<Hunt>(e).unwrap().until;
+    wake_at(w, e, i.slot, until);
+}
 /// `canUse`: an adult past its cooldown, with no target, not angry, not avoiding a repellent, allowed to hunt, with no adult hunter of
 /// its kind in range still cooling down, and a prey in sight.
-fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
+fn can_use(w: &mut World, e: Entity, i: Inst) -> bool {
     let h = *w.get::<Hunt>(e).unwrap();
     let now = now_of(w, e);
-    if w.get::<GrowAt>(e).is_some() || w.get::<targeting::Target>(e).is_some() || now < h.until || w.get::<CannotHunt>(e).is_some() {
+    if w.get::<GrowAt>(e).is_some() || w.get::<targeting::Target>(e).is_some() || w.get::<CannotHunt>(e).is_some() {
+        return false;
+    }
+    if now < h.until {
+        wake_at(w, e, i.slot, h.until);
         return false;
     }
     if crate::behaviours::neutral_anger::is_angry(w, e) || w.get::<super::walk_away::Avoid>(e).is_some_and(|a| now < a.until) {
         return false;
     }
-    if near_hunters(w, e, h.p.range).iter().any(|&(_, until)| now < until) {
+    if let Some(until) = near_hunters(w, e, h.p.range).into_iter().map(|(_, u)| u).filter(|&u| now < u).max() {
+        wake_at(w, e, i.slot, until);
         return false;
     }
     prey_near(w, e, &h.p).is_some()
