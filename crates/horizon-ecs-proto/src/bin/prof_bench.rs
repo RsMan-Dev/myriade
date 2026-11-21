@@ -122,6 +122,7 @@ fn main() {
     for t in 0..ticks {
         if t == warm {
             profile::reset(&shared);
+            horizon_ecs_proto::brain::bprobe::reset();
             total = 0;
         }
         if scene == "itemfall" {
@@ -166,6 +167,9 @@ fn main() {
         let per = (x.run + x.apply) as f64 / t;
         let v = x.visited as f64 / t;
         println!("{i:>3} {name:<22} {per:>12.0} {:>12.0} {v:>10.1} {:>12} {:>6.1}%", x.apply as f64 / t, if v > 0.0 { format!("{:.0}", per / v) } else { "-".into() }, 100.0 * per / (total as f64 / t));
+    }
+    for (k, calls, instr) in horizon_ecs_proto::brain::bprobe::dump().into_iter().take(70) {
+        println!("BRAIN {k:<48} calls/tick={:>9.1} instr/tick={:>11.0} instr/call={:>8.0}", calls as f64 / t, instr as f64 / t, instr as f64 / calls as f64);
     }
     let l: Vec<u64> = horizon_ecs_proto::behaviours::long_jump::LJ.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).collect();
     if l[0] > 0 {

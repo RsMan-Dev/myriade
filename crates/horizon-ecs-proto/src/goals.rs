@@ -1098,6 +1098,7 @@ fn tick_modules(world: &mut World) {
     while live != 0 {
         let j = live.trailing_zeros() as usize;
         live &= live - 1;
+        bp!("tick", crate::species::registry().modules[ticks[j].0].name);
         (ticks[j].1)(world);
     }
     for &(i, t) in ticks.iter().skip(128) {
@@ -1216,7 +1217,8 @@ fn timer_fired(w: &mut World, e: Entity, slot: u8) {
     // The kernel's own stroll timer (`Due::Stroll`) fires the animal's stroll goal, wherever it is in the list.
     let slot = if slot == crate::behaviours::stroll::FIRED { slot_of(w, e, &crate::behaviours::stroll::MODULE).unwrap_or(u8::MAX) } else { slot };
     let Some((m, inst)) = of(w, e, slot) else { return };
-    if (m.fired)(w, e, inst) {
+    let go = { bp!("fired", m.name); (m.fired)(w, e, inst) };
+    if go {
         start_goal(w, e, slot);
     }
 }
@@ -1294,7 +1296,8 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
         }
         return;
     }
-    if !(m.can_use)(w, e, inst) {
+    let can = { bp!("can_use", m.name); (m.can_use)(w, e, inst) };
+    if !can {
         return;
     }
     let stopped = w.get_mut::<GoalSet>(e).unwrap().start(slot);
@@ -1304,7 +1307,10 @@ fn start_goal(w: &mut World, e: Entity, slot: u8) {
             (sm.stop)(w, e, si);
         }
     }
-    (m.start)(w, e, inst);
+    {
+        bp!("start", m.name);
+        (m.start)(w, e, inst);
+    }
     changed(w, e, Change::Started);
 }
 /// A goal started or ended: the modules that follow the flags (the tempt goal's calm-down) are told, once each.

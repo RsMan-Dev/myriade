@@ -15,6 +15,7 @@ mod nbt_rides;
 mod nbt_things;
 mod nbt_types;
 mod projectile_zone;
+mod projectile_unloaded;
 mod creation_cost;
 mod dormancy_of_entities;
 mod nbt_conformance;

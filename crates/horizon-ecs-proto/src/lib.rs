@@ -1,6 +1,11 @@
 //! Prototype herds as `bevy_ecs` worlds (suivi/ecs-prototype.md sections 11 and 12).
 //! `flat`: the first throwaway herd (ground = the plane y = 0). `cow`: a cow with Horizon's real block
 //! collision kernel and the stroll / move-control / travel formulas of the real cow.
+//! Bench probe scope (feature `probes`, env `BRAINPROF`): `bp!("kind", name)` counts the instructions of the rest of the block (`brain::bprobe`).
+#[cfg(feature = "probes")]
+macro_rules! bp { ($k:expr, $n:expr) => { let _bp = $crate::brain::bprobe::scope($k, $n); }; }
+#[cfg(not(feature = "probes"))]
+macro_rules! bp { ($k:expr, $n:expr) => {}; }
 pub mod behaviours;
 pub mod bench_support;
 pub mod blocks;

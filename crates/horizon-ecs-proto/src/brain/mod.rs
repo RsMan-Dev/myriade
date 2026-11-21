@@ -20,6 +20,64 @@ use std::sync::Arc;
 pub mod behaviours;
 pub mod sensors;
 
+/// Bench probe (`probes` feature, env `BRAINPROF`): instructions per sensor scan and per behaviour entry point inside `brain_step`.
+/// The table is keyed by the addresses of the two names (open addressing, no hashing library); the row `step empty` is an empty scope: the
+/// cost of measuring one, to subtract per call.
+#[cfg(feature = "probes")]
+pub mod bprobe {
+    use std::cell::RefCell;
+    type Row = ((usize, usize), &'static str, &'static str, u64, u64);
+    const N: usize = 4096;
+    thread_local! {
+        static C: crate::profile::Counter = crate::profile::Counter::new();
+        static T: RefCell<Vec<Option<Row>>> = RefCell::new(vec![None; N]);
+    }
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    pub struct Scope(Option<(u64, &'static str, &'static str)>);
+    pub fn scope(kind: &'static str, name: &'static str) -> Scope {
+        if !*ON.get_or_init(|| std::env::var_os("BRAINPROF").is_some()) {
+            return Scope(None);
+        }
+        Scope(Some((C.with(|c| c.read()), kind, name)))
+    }
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            if let Some((a, kind, name)) = self.0.take() {
+                let d = C.with(|c| c.read()) - a;
+                let key = (kind.as_ptr() as usize, name.as_ptr() as usize);
+                T.with(|t| {
+                    let mut t = t.borrow_mut();
+                    let mut h = (key.0.wrapping_mul(31) ^ key.1) >> 3;
+                    loop {
+                        let slot = &mut t[h % N];
+                        match slot {
+                            Some(r) if r.0 == key => {
+                                r.3 += 1;
+                                r.4 += d;
+                                return;
+                            }
+                            None => {
+                                *slot = Some((key, kind, name, 1, d));
+                                return;
+                            }
+                            _ => h += 1,
+                        }
+                    }
+                });
+            }
+        }
+    }
+    /// (label, calls, instructions) of this thread, heaviest first.
+    pub fn dump() -> Vec<(String, u64, u64)> {
+        let mut v: Vec<_> = T.with(|t| t.borrow().iter().flatten().map(|r| (format!("{} {}", r.1, r.2), r.3, r.4)).collect());
+        v.sort_by_key(|x| std::cmp::Reverse(x.2));
+        v
+    }
+    pub fn reset() {
+        T.with(|t| t.borrow_mut().iter_mut().for_each(|x| *x = None));
+    }
+}
+
 // ---- memories ---------------------------------------------------------------------------------------------------------
 /// What a memory holds (the forms are few; `Opaque` is a value a mod owns and types).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +224,9 @@ impl Ctx {
 pub struct Gate {
     pub shuffle: bool,
     pub try_all: bool,
+    /// A gate that ends with no kid running does not wake the brain: its next ask comes from an event (configured by the species whose
+    /// kids all wait on memories, sensors or deadlines, not on a count of asks).
+    pub quiet: bool,
 }
 /// A behaviour, written `Behaviour { name, <entry points>, ..Behaviour::DEFAULT }`.
 pub struct Behaviour {
@@ -478,7 +539,7 @@ fn wake_on_item(ev: Res<Events>, items: Query<&Pos, With<crate::item::Item>>, id
             let Ok((mut b, me)) = q.get_mut(c) else { return };
             let r = b.plan.item_wake;
             if r > 0.0 && !b.awake && (me.0.x - at.0.x).abs() <= r && (me.0.y - at.0.y).abs() <= r && (me.0.z - at.0.z).abs() <= r {
-                b.awake = true;
+        b.awake = true;
                 awake.0.push(c);
             }
         });
@@ -551,9 +612,11 @@ pub fn sensor_due(w: &mut World, e: Entity, i: u8) {
         return;
     }
     expire(w, e, now);
-    (plan.sensors[i].sensor.scan)(w, e, &sensor_ctx(plan, i));
+    {
+        bp!("scan", plan.sensors[i].sensor.name);
+        (plan.sensors[i].sensor.scan)(w, e, &sensor_ctx(plan, i));
+    }
     arm_at(w, e, now + plan.sensors[i].period as u64, Due::Sensor(i as u8));
-    wake(w, e);
 }
 /// The memories whose time is up are forgotten (`Brain.forgetOutdatedMemories`, before the sensors).
 fn expire(w: &mut World, e: Entity, now: u64) {
@@ -653,7 +716,11 @@ pub fn set(w: &mut World, e: Entity, k: &MemKey, v: MemValue, ttl: Option<u64>) 
     // Written again with the same value (a schedule's slice, a re-sensed flag): only the expiry moves, nothing to re-evaluate.
     let same = matches!((&s.v, &v), (Some(MemValue::Unit), MemValue::Unit))
         || matches!((&s.v, &v), (Some(MemValue::Bool(a)), MemValue::Bool(c)) if a == c)
-        || matches!((&s.v, &v), (Some(MemValue::Int(a)), MemValue::Int(c)) if a == c);
+        || matches!((&s.v, &v), (Some(MemValue::Int(a)), MemValue::Int(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Who(a)), MemValue::Who(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Whos(a)), MemValue::Whos(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Block(a)), MemValue::Block(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Blocks(a)), MemValue::Blocks(c)) if a == c);
     s.v = Some(v);
     s.token += 1;
     s.until = ttl.map_or(u64::MAX, |t| now + t + 1);
@@ -698,19 +765,34 @@ fn step(w: &mut World, e: Entity) {
     b.awake = false;
     let plan = b.plan;
     drop(b);
-    for &id in &plan.order {
-        if w.get::<Brain>(e).is_some_and(|b| b.ready(id)) {
-            try_start(w, e, plan, id);
+    bp!("step", "total");
+    {
+        bp!("step", "empty");
+    }
+    {
+        bp!("step", "start loop");
+        // One read of the brain finds the next behaviour that can be asked; the walk goes on after it (a start changes the flags).
+        let mut i = 0;
+        while i < plan.order.len() {
+            let Some(k) = w.get::<Brain>(e).and_then(|b| plan.order[i..].iter().position(|&id| b.ready(id))) else { break };
+            try_start(w, e, plan, plan.order[i + k]);
+            i += k + 1;
         }
     }
     let mut any;
-    for &id in &plan.order {
-        // One read of the brain per behaviour (the running flags change as the earlier ones are ticked).
-        if w.get::<Brain>(e).is_some_and(|b| b.run[id as usize].running) {
-            tick_or_stop(w, e, plan, id);
+    {
+        bp!("step", "tick loop");
+        let mut i = 0;
+        while i < plan.order.len() {
+            let Some(k) = w.get::<Brain>(e).and_then(|b| plan.order[i..].iter().position(|&id| b.run[id as usize].running)) else { break };
+            tick_or_stop(w, e, plan, plan.order[i + k]);
+            i += k + 1;
         }
     }
-    update_activity(w, e, plan);
+    {
+        bp!("step", "update_activity");
+        update_activity(w, e, plan);
+    }
     any = false;
     // The running flags are read in place (one lookup of the brain); the deadlines to arm are applied after the walk.
     let mut arm: Option<(usize, u64)> = None;
@@ -720,6 +802,7 @@ fn step(w: &mut World, e: Entity) {
             if x.b.gate.is_some() || x.b.passive || !b.run[i].running {
                 continue;
             }
+            bp!("sleeps", x.b.name);
             if !(x.b.sleeps)(w, e, &ctx(plan, i as u16)) {
                 any = true;
                 break;
@@ -752,7 +835,8 @@ fn ctx(plan: &Plan, id: u16) -> Ctx {
 fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
     let inst = &plan.insts[id as usize];
     let c = ctx(plan, id);
-    if !(inst.b.can_start)(w, e, &c) {
+    let cs = { bp!("can_start", inst.b.name); (inst.b.can_start)(w, e, &c) };
+    if !cs {
         return false;
     }
     if let Some((min, max)) = inst.duration {
@@ -784,9 +868,17 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
                 break;
             }
         }
+        // No kid went on running: the gate ends here without waking the brain (the next ask comes from an event: a memory, a sensor, a
+        // behaviour that ends), not by a re-step every tick.
+        if g.quiet && !inst.kids.iter().any(|&k| running(w, e, k)) {
+            set_running(w, e, id, false);
+        }
         return true;
     }
-    (inst.b.start)(w, e, &c);
+    {
+        bp!("start", inst.b.name);
+        (inst.b.start)(w, e, &c);
+    }
     if inst.b.one_shot {
         set_running(w, e, id, false);
     }
@@ -810,7 +902,8 @@ fn tick_or_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
     }
     let c = ctx(plan, id);
     let (end, timed) = (w.get::<Brain>(e).unwrap().run[id as usize].end, inst.duration.is_some());
-    if timed && now_of(w, e) > end || !(inst.b.tick)(w, e, &c) {
+    let alive = { bp!("tick", inst.b.name); !(timed && now_of(w, e) > end) && (inst.b.tick)(w, e, &c) };
+    if !alive {
         do_stop(w, e, plan, id);
     }
 }
@@ -823,6 +916,7 @@ fn do_stop(w: &mut World, e: Entity, plan: &'static Plan, id: u16) {
         }
     }
     if inst.b.gate.is_none() {
+        bp!("stop", inst.b.name);
         (inst.b.stop)(w, e, &ctx(plan, id));
     }
     wake(w, e);

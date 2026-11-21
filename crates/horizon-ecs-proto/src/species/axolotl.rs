@@ -65,7 +65,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &set_walk_target_from_attack_target::BEHAVIOUR, activity: "fight", priority: 1, params: &CHASE, needs: &[(&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &forget_memory::BEHAVIOUR, activity: "play_dead", priority: 1, params: &FORGET_DEAD, needs: &[(&BREED_TARGET, Need::Present), (&play_dead::PLAY_DEAD_TICKS, Need::Present)], duration: None, kids: &[] },
             BEntry {
-                behaviour: &run_one::BEHAVIOUR,
+                behaviour: &run_one::QUIET,
                 activity: "idle",
                 priority: 2,
                 params: &(),
@@ -81,7 +81,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &find_liquid::BEHAVIOUR, activity: "idle", priority: 3, params: &find_liquid::Params::DEFAULT, needs: &[(&WALK_TARGET, Need::Absent), (&ATTACK_TARGET, Need::Absent)], duration: None, kids: &[] },
             BEntry { behaviour: &forget_memory::BEHAVIOUR, activity: "fight", priority: 3, params: &FORGET_TARGET, needs: &[(&BREED_TARGET, Need::Present), (&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry {
-                behaviour: &gate_all::BEHAVIOUR,
+                behaviour: &gate_all::QUIET,
                 activity: "idle",
                 priority: 4,
                 params: &(),

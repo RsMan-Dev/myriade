@@ -102,11 +102,23 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let ok = wants(w, e, inst);
     let wololo = w.get::<Spells>(e).and_then(|s| s.p[(inst.nth as usize).min(2)]).is_some_and(|p| matches!(p.spell, Spell::Wololo));
     if !ok && (wololo || w.get::<Target>(e).is_some()) {
-        // Asked again in 2 ticks while there is a target (`Goal.canUse` is asked every 2 ticks): no scan, one deadline.
-        crate::goals::arm(w, e, inst.slot, 2);
+        // Asked again in 2 ticks while there is a target (`Goal.canUse` is asked every 2 ticks): no scan, one deadline. While the entry cools
+        // down the answers are known to be no: the deadline is the first asking (same 2-tick phase) at or after the end of the cooldown.
+        let (now, n) = (now_of(w, e), (inst.nth as usize).min(2));
+        let wait = w.get::<Spells>(e).map_or(0, |s| s.next[n].saturating_sub(now));
+        crate::goals::arm(w, e, inst.slot, (wait.div_ceil(2) * 2).max(2) as i32);
     }
     ok
 }
+/// The world's query over the wool-bearing creatures, built on the first ask and kept.
+#[derive(Resource)]
+struct SheepQuery(QueryState<(Entity, &'static Pos, &'static crate::farm::Wool, &'static Health)>);
+impl FromWorld for SheepQuery {
+    fn from_world(w: &mut World) -> Self {
+        SheepQuery(w.query())
+    }
+}
+
 fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
     let n = (inst.nth as usize).min(2);
     let Some(s) = w.get::<Spells>(e).copied() else { return false };
@@ -122,12 +134,16 @@ fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
                 return false;
             }
             let me = w.get::<Pos>(e).unwrap().0;
-            let mut sheep: Vec<Entity> = w
-                .query::<(Entity, &Pos, &crate::farm::Wool, &Health)>()
-                .iter(w)
-                .filter(|(_, p, c, h)| c.color == 11 && h.0 > 0.0 && (p.0.x - me.x).abs() <= 16.0 && (p.0.y - me.y).abs() <= 4.0 && (p.0.z - me.z).abs() <= 16.0 && d2(p.0, me) <= 256.0)
-                .map(|(x, ..)| x)
-                .collect();
+            // One query state for the world (built once): with no sheep nearby the pass costs one empty archetype walk, not a state built per ask.
+            if !w.contains_resource::<SheepQuery>() {
+                w.init_resource::<SheepQuery>();
+            }
+            let mut sheep: Vec<Entity> = w.resource_scope(|w: &mut World, mut qs: Mut<SheepQuery>| {
+                qs.0.iter(w)
+                    .filter(|(_, p, c, h)| c.color == 11 && h.0 > 0.0 && (p.0.x - me.x).abs() <= 16.0 && (p.0.y - me.y).abs() <= 4.0 && (p.0.z - me.z).abs() <= 16.0 && d2(p.0, me) <= 256.0)
+                    .map(|(x, ..)| x)
+                    .collect()
+            });
             if sheep.is_empty() {
                 return false;
             }

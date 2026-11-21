@@ -8,7 +8,10 @@ use crate::cow::*;
 use crate::goals::{Events, Online};
 use crate::hostile::{ChangedBlocks, PlayerState};
 use crate::targeting::{player_box, Who};
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
+use bevy_ecs::world::DeferredWorld;
 use horizon_client_lib::arrows::{back_off, clip_block_hit};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::nbt::{Compound, JavaString, Tag};
@@ -31,7 +34,7 @@ pub struct Flight {
     pub order: Order,
     /// `AbstractHurtingProjectile.accelerationPower` (a fireball 0.1): the push along its velocity each tick, before the inertia.
     pub accel: f64,
-    /// The age at which it is gone in the air (a fireball 1 200 ticks, the rest 6 000).
+    /// The age at which it is gone in the air (the rest 6 000). Not used by the `Order::Hurting` flights, which have none.
     pub max_age: u32,
     /// What it does where it ends, after the damage.
     pub hit: OnHit,
@@ -177,6 +180,27 @@ pub struct Flying;
 pub struct Stuck {
     pub block: [i32; 3],
 }
+/// An entity that shot a `Order::Hurting` projectile: when it is removed, the ones it shot still in flight go with it (an owner that is
+/// removed, `AbstractHurtingProjectile.tick`). Put on the shooter by `launch`; an entity that never shot has none.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_remove = shooter_removed)]
+pub struct Shooter;
+fn shooter_removed(mut world: DeferredWorld, ctx: HookContext) {
+    let shooter = ctx.entity;
+    world.commands().queue(move |w: &mut World| retire_shot_by(w, shooter));
+}
+/// Discards the `Order::Hurting` projectiles that `shooter` shot, frozen ones included.
+fn retire_shot_by(w: &mut World, shooter: Entity) {
+    let shot: Vec<Entity> = w
+        .query_filtered::<(Entity, &Projectile, &Flight), Allow<Disabled>>()
+        .iter(w)
+        .filter(|(_, p, f)| f.order == Order::Hurting && p.owner == Some(Who::Entity(shooter)))
+        .map(|(e, _, _)| e)
+        .collect();
+    for e in shot {
+        w.despawn(e);
+    }
+}
 /// The stuck projectiles by the block they are in, so that a block change finds them without a scan.
 #[derive(Resource, Default)]
 pub struct StuckIndex {
@@ -204,6 +228,11 @@ pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner
     let id = flight.id;
     let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, id);
+    if let (Order::Hurting, Some(Who::Entity(shooter))) = (flight.order, owner)
+        && world.get_entity(shooter).is_ok()
+    {
+        world.entity_mut(shooter).insert_if_new(Shooter);
+    }
     // Launched in a chunk that does not tick: it waits there (`ServerLevel.tick` does not tick it).
     crate::zone::settle(world, e);
     e
@@ -219,6 +248,10 @@ pub fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 fn bounds(at: Vec3, size: f64) -> Aabb {
     let w = size / 2.0;
     Aabb::new(Vec3::new(at.x - w, at.y, at.z - w), Vec3::new(at.x + w, at.y + size, at.z + w))
+}
+/// Whether a move took the projectile from one chunk to another: only such a move can take it out of the chunks that are loaded.
+fn chunk_changed(a: Vec3, b: Vec3) -> bool {
+    (a.x / 16.0).floor() != (b.x / 16.0).floor() || (a.z / 16.0).floor() != (b.z / 16.0).floor()
 }
 /// `ProjectileUtil.getManyEntityHitResult` for one box: where the path enters it, else where it enters the box grown by
 /// `margin`, if a line from there towards the centre (stopped by blocks) reaches the box.
@@ -467,14 +500,20 @@ pub fn fly(
             vel.0 = vel.0.scale(f.inertia);
             vel.0 = Vec3::new(vel.0.x, vel.0.y - f.gravity, vel.0.z);
         }
-        if pos.0.y < mw.world.below_world_y() || p.age >= f.max_age && !f.sticks {
+        let hurting = f.order == Order::Hurting;
+        // `AbstractHurtingProjectile` has no age limit: it is discarded when it enters a chunk that is not loaded (`tick`: `hasChunkAt`).
+        if pos.0.y < mw.world.below_world_y() || !hurting && p.age >= f.max_age && !f.sticks {
             commands.entity(e).despawn();
-        } else if !idx.zone.simulated_at(pos.0.x, pos.0.z) {
-            // Out of the chunks that tick: it stops where it is, and flies on from there when a player comes back (`zone::thaw`).
-            commands.queue(move |w: &mut World| {
-                let now = w.resource::<Clock>().0;
-                crate::zone::freeze(w, e, now);
-            });
+        } else if chunk_changed(original, pos.0) && !idx.zone.simulated_at(pos.0.x, pos.0.z) {
+            if hurting {
+                commands.entity(e).despawn();
+            } else {
+                // Out of the chunks that tick: it stops where it is, and flies on from there when a player comes back (`zone::thaw`).
+                commands.queue(move |w: &mut World| {
+                    let now = w.resource::<Clock>().0;
+                    crate::zone::freeze(w, e, now);
+                });
+            }
         }
     }
 }

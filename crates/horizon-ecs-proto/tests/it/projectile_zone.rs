@@ -22,9 +22,9 @@ fn age(h: &Herd, e: Entity) -> u32 {
 fn waiting(n: usize) -> (Herd, Entity, u64) {
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
-    let e = launch(&mut h.world, Flight::BREEZE_WIND_CHARGE, AT, V, None);
+    let e = launch(&mut h.world, Flight::SNOWBALL, AT, V, None);
     for _ in 1..n {
-        launch(&mut h.world, Flight::BREEZE_WIND_CHARGE, AT, V, None);
+        launch(&mut h.world, Flight::SNOWBALL, AT, V, None);
     }
     for _ in 0..10 {
         h.tick();
@@ -47,7 +47,7 @@ fn a_projectile_waits_without_a_player_and_flies_on_from_where_it_stopped() {
     }
     // The control: the same projectile, ticked 20 times with the whole world awake.
     let mut c = Herd::with_slab_awake(40, true, false);
-    let ec = launch(&mut c.world, Flight::BREEZE_WIND_CHARGE, AT, V, None);
+    let ec = launch(&mut c.world, Flight::SNOWBALL, AT, V, None);
     for _ in 0..20 {
         c.tick();
     }
@@ -76,7 +76,7 @@ fn a_projectile_launched_far_from_every_player_does_not_fly_until_one_comes() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(400.5, 400.5)]);
-    let e = launch(&mut h.world, Flight::BREEZE_WIND_CHARGE, AT, V, None);
+    let e = launch(&mut h.world, Flight::SNOWBALL, AT, V, None);
     for _ in 0..30 {
         h.tick();
     }

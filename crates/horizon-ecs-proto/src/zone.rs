@@ -257,7 +257,12 @@ pub fn zone_step(world: &mut World) {
             let list: Vec<Entity> = world.query_filtered::<(Entity, &crate::cow::Pos), (Loose, Without<Dormant>)>().iter(world).filter(|(_, p)| !idx.zone.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect();
             idx.zone.stats.slept += list.len() as u64;
             for e in list {
-                freeze(world, e, now);
+                // A `Hurting` projectile leaves the loaded chunks: it is discarded, not kept (`projectile::fly`).
+                if world.get::<crate::projectile::Flight>(e).is_some_and(|f| f.order == crate::projectile::Order::Hurting) {
+                    world.despawn(e);
+                } else {
+                    freeze(world, e, now);
+                }
             }
         }
         if up {
@@ -303,6 +308,10 @@ pub fn freeze(world: &mut World, e: Entity, now: u64) {
 /// A loose object just made: it waits at once when its chunk does not tick.
 pub fn settle(world: &mut World, e: Entity) {
     if world.get_resource::<Index>().is_some_and(|i| world.get::<crate::cow::Pos>(e).is_some_and(|p| !i.zone.simulated_at(p.0.x, p.0.z))) {
+        if world.get::<crate::projectile::Flight>(e).is_some_and(|f| f.order == crate::projectile::Order::Hurting) {
+            world.despawn(e);
+            return;
+        }
         let now = world.resource::<Clock>().0;
         freeze(world, e, now);
     }

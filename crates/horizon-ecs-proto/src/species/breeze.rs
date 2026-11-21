@@ -61,7 +61,7 @@ pub static DEF: Def = Def {
             },
             BEntry { behaviour: &breeze::SLIDE_SINK, activity: "idle", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((20, 40)), kids: &[] },
             BEntry {
-                behaviour: &run_one::BEHAVIOUR,
+                behaviour: &run_one::QUIET,
                 activity: "idle",
                 priority: 3,
                 params: &(),

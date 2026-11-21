@@ -26,7 +26,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &transport_items::BEHAVIOUR, activity: "idle", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &interact_with_door::BEHAVIOUR, activity: "core", priority: 3, params: &DOOR, needs: &[], duration: None, kids: &[] },
             BEntry {
-                behaviour: &run_one::BEHAVIOUR,
+                behaviour: &run_one::QUIET,
                 activity: "idle",
                 priority: 2,
                 params: &(),
