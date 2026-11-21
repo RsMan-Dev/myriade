@@ -2179,6 +2179,7 @@ dependencies = [
  "horizon-core",
  "horizon-cosmetics",
  "horizon-dualsense",
+ "horizon-ecs-proto",
  "horizon-engine-slots",
  "horizon-friends",
  "horizon-game-discovery",
