@@ -10,18 +10,36 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 struct Counting;
 static LIVE: AtomicUsize = AtomicUsize::new(0);
+/// Live blocks by exact size (sizes below `SIZES`) and by power of two above: where the heap of the entities goes (`HEAP=1` prints it).
+const SIZES: usize = 4096;
+static BLOCKS: [std::sync::atomic::AtomicIsize; SIZES] = [const { std::sync::atomic::AtomicIsize::new(0) }; SIZES];
+static BIG: [(std::sync::atomic::AtomicIsize, std::sync::atomic::AtomicIsize); 48] =
+    [const { (std::sync::atomic::AtomicIsize::new(0), std::sync::atomic::AtomicIsize::new(0)) }; 48];
+fn block(size: usize, d: isize) {
+    if size < SIZES {
+        BLOCKS[size].fetch_add(d, Relaxed);
+    } else {
+        let c = (usize::BITS - size.leading_zeros()) as usize;
+        BIG[c].0.fetch_add(d, Relaxed);
+        BIG[c].1.fetch_add(d * size as isize, Relaxed);
+    }
+}
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
         LIVE.fetch_add(l.size(), Relaxed);
+        block(l.size(), 1);
         unsafe { System.alloc(l) }
     }
     unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
         LIVE.fetch_sub(l.size(), Relaxed);
+        block(l.size(), -1);
         unsafe { System.dealloc(p, l) }
     }
     unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
         LIVE.fetch_add(n, Relaxed);
         LIVE.fetch_sub(l.size(), Relaxed);
+        block(l.size(), -1);
+        block(n, 1);
         unsafe { System.realloc(p, l, n) }
     }
 }
@@ -55,6 +73,8 @@ fn main() {
     let (r3, l3) = (rss(), LIVE.load(Relaxed));
     println!("empty Herd on its own terrain (second terrain included): allocator +{:.1} MB, rss {:.1} MB", mb(l3 - l2), mb(r3 as usize));
     let base_live = LIVE.load(Relaxed);
+    let base_blocks: Vec<isize> = BLOCKS.iter().map(|b| b.load(Relaxed)).collect();
+    let base_big: Vec<(isize, isize)> = BIG.iter().map(|b| (b.0.load(Relaxed), b.1.load(Relaxed))).collect();
     let base_rss = rss();
     let side = (n as f64).sqrt().ceil() as i32;
     let spacing = f64::from(2 * half - 6) / f64::from(side);
@@ -102,6 +122,21 @@ fn main() {
     println!("RAW n={n} bytes={}", live - base_live);
     println!("N={n} spacing {spacing:.2}: allocator +{:.2} MB over the empty world = {:.0} bytes per entity (ticks run: {ticks})", mb(live - base_live), (live - base_live) as f64 / n as f64);
     // The components of the tables.
+    if std::env::var_os("HEAP").is_some() {
+        let mut gain: Vec<(usize, f64)> = (0..SIZES).map(|i| (i, (BLOCKS[i].load(Relaxed) - base_blocks[i]) as f64 / n as f64)).filter(|g| g.1.abs() > 0.02).collect();
+        gain.sort_by(|a, b| (b.0 as f64 * b.1).total_cmp(&(a.0 as f64 * a.1)));
+        for (c, b) in BIG.iter().enumerate() {
+            let (dn, db) = (b.0.load(Relaxed) - base_big[c].0, b.1.load(Relaxed) - base_big[c].1);
+            if db.abs() > 8 * n as isize / 4 {
+                println!("HEAP big blocks of 2^{} bytes: {dn} blocks, {:.1} bytes per entity", c - 1, db as f64 / n as f64);
+            }
+        }
+        let small: f64 = (0..SIZES).map(|i| i as f64 * (BLOCKS[i].load(Relaxed) - base_blocks[i]) as f64 / n as f64).sum();
+        println!("HEAP all blocks under {SIZES} bytes: {small:.1} bytes per entity");
+        for (size, per) in gain.iter().take(14) {
+            println!("HEAP blocks of {size} bytes: {per:.2} per entity = {:.0} bytes per entity", *size as f64 * per);
+        }
+    }
     let world = &herd.world;
     let comps = world.components();
     let mut by: HashMap<String, (usize, usize, &'static str)> = HashMap::new();
@@ -161,6 +196,30 @@ fn main() {
         }
     }
     println!("tables with capacity >= 100: entities {live}, capacity {cap_total} rows ({:.2} x the entities: the rest is retained by tables that entities left)", cap_total as f64 / live.max(1) as f64);
+    {
+        // What the big tables differ by (the components a table has that the biggest live one has not, and the reverse): a spawn that
+        // passes through a table that its entities then leave keeps that table's rows.
+        use std::collections::{BTreeSet, HashMap as Map};
+        let mut by_table: Map<usize, BTreeSet<String>> = Map::new();
+        for arch in world.archetypes().iter() {
+            let set = by_table.entry(arch.table_id().as_u32() as usize).or_default();
+            for c in arch.components() {
+                if let Some(info) = comps.get_info(*c) {
+                    set.insert(info.name().to_string());
+                }
+            }
+        }
+        let live = world.storages().tables.iter().enumerate().filter(|(_, t)| t.entity_count() > 0).max_by_key(|(_, t)| t.entity_count()).map(|x| x.0);
+        if let Some(live) = live {
+            for (i, t) in world.storages().tables.iter().enumerate() {
+                if i != live && t.entity_capacity() >= 100 {
+                    if let (Some(a), Some(b)) = (by_table.get(&i), by_table.get(&live)) {
+                        println!("table {i} (capacity {}) has, and the live table {live} has not: {:?}; the live one has, it has not: {:?}", t.entity_capacity(), a.difference(b).collect::<Vec<_>>(), b.difference(a).collect::<Vec<_>>());
+                    }
+                }
+            }
+        }
+    }
     {
         // The removals of each component over the run (the toggles of the states), by name.
         let mut rem: Vec<(String, usize, &'static str)> = comps
