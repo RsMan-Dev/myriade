@@ -6,8 +6,10 @@ use crate::IFloor as _;
 use crate::behaviours::{Change, Entry, Inst, Module};
 use crate::cow::*;
 use bevy_ecs::{prelude::*, schedule::Schedule};
+use horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps;
 use horizon_core::geometry::{Vec3, trig};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 pub use crate::behaviours::{
     breed::{BreedData, Breeding, Love, Resting, feed},
@@ -691,11 +693,26 @@ pub fn insert_resources(world: &mut World) {
     crate::explosion::insert_resources(world);
     crate::tame::insert_resources(world);
     world.insert_resource(crate::targeting::TargetWatchers::default());
+    insert_mob_maps(world, NeoForgeMobMaps::vanilla().clone());
     for (i, m) in crate::species::registry().modules.iter().enumerate() {
         if crate::species::registry().carried(i) {
             (m.resources)(world);
         }
     }
+}
+
+/// The data maps of the mobs (`neoforge:*`), read once from the packs: `MobMaps` holds the snapshot (the hero gifts of
+/// `species::villager`), `DistanceMaps` the villager distances of `behaviours::hostiles_near`, filled from the same snapshot.
+#[derive(Resource)]
+pub struct MobMaps(pub Arc<NeoForgeMobMaps>);
+
+/// Installs the mobs' data maps: the server calls it with the snapshot of its packs (replacing the vanilla ones of `insert_resources`).
+pub fn insert_mob_maps(world: &mut World, maps: Arc<NeoForgeMobMaps>) {
+    let names = crate::species::registry().species.iter().map(|s| s.name).chain(std::iter::once("minecraft:player"));
+    let distances = names.filter_map(|n| maps.villager_distance(n).map(|d| (n.to_string(), f64::from(d)))).collect();
+    let table = "neoforge:acceptable_villager_distances".to_string();
+    world.insert_resource(crate::behaviours::hostiles_near::DistanceMaps(BTreeMap::from([(table, distances)])));
+    world.insert_resource(MobMaps(maps));
 }
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {

@@ -182,13 +182,22 @@ fn crop_grow(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 
 }
 const BONEMEAL: bonemeal::Params = bonemeal::Params { growable: crop_growable, grow: crop_grow };
 // lot V2 : le cadeau du héros (`villager.rs:480-495`) : bébé, puis le métier (`unemployed` sans métier)
-fn gift_table(w: &World, e: Entity) -> String {
+pub fn gift_table(w: &World, e: Entity) -> String {
     if w.get::<crate::cow::GrowAt>(e).is_some() {
         return "minecraft:gameplay/hero_of_the_village/baby_gift".to_string();
     }
     let profession = w.get::<Merchant>(e).map_or(0, |m| m.profession);
     let full = trade_offers::profession_name(w, profession);
-    let name = match full.strip_prefix("minecraft:").unwrap_or(&full) {
+    let maps = w.get_resource::<crate::goals::MobMaps>().map(|m| m.0.clone());
+    gift_name(maps.as_deref(), &full)
+}
+/// `GiveGiftToHero.getLootTableToThrow` for an adult, from the profession's id (`minecraft:farmer`): the pack's table when the maps give one
+/// (`neoforge:raid_hero_gifts`), else the vanilla name of the profession (`none` and `nitwit` are `unemployed`).
+pub fn gift_name(maps: Option<&horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps>, full: &str) -> String {
+    if let Some(table) = maps.and_then(|m| m.hero_gift(full)) {
+        return table;
+    }
+    let name = match full.strip_prefix("minecraft:").unwrap_or(full) {
         "none" | "nitwit" | "" => "unemployed".to_string(),
         other => other.to_string(),
     };

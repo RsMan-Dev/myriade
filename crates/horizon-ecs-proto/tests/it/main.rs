@@ -162,6 +162,8 @@ mod passive_entities_vs_original;
 mod lot_fin_villager_wiring;
 mod lot_fin_villager_new;
 mod lot_fin_goat;
+mod lot_fin2_hero_gift;
+mod lot_fin2_distance_maps;
 // lot V4
 mod lot_v4_work;
 // lot V3
