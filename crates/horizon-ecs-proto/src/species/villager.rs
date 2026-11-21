@@ -44,10 +44,11 @@ static ACTIVITIES: &[ActivityDef] = &[
     ActivityDef { name: "rest", slot: 2, requires: &[(&SCHEDULE_REST, Need::Present)] },
     // lot V3 : `hide`, `pre_raid` et `raid` tiennent tant que leur mémoire (posée par `ReactToBell` / `SetRaidStatus`, ôtée par `SetHiddenState` / `ResetRaidStatus`) est posée
     ActivityDef { name: "hide", slot: 3, requires: &[(&hide::HIDE_ON, Need::Present)] },
-    ActivityDef { name: "meet", slot: 4, requires: &[(&SCHEDULE_MEET, Need::Present)] },
-    ActivityDef { name: "idle", slot: 5, requires: &[(&SCHEDULE_IDLE, Need::Present)] },
+    // `Villager.registerBrainGoals` (jar): work needs JOB_SITE, meet needs MEETING_POINT; idle is the fallback (no requirement).
+    ActivityDef { name: "meet", slot: 4, requires: &[(&SCHEDULE_MEET, Need::Present), (&MEETING_POINT, Need::Present)] },
+    ActivityDef { name: "idle", slot: 5, requires: &[] },
     ActivityDef { name: "pre_raid", slot: 6, requires: &[(&raid::PRE_RAID_ON, Need::Present)] },
-    ActivityDef { name: "work", slot: 7, requires: &[(&SCHEDULE_WORK, Need::Present)] },
+    ActivityDef { name: "work", slot: 7, requires: &[(&SCHEDULE_WORK, Need::Present), (&JOB_SITE, Need::Present)] },
     ActivityDef { name: "panic", slot: 8, requires: &[(&HURT_BY, Need::Present)] },
     ActivityDef { name: "raid", slot: 9, requires: &[(&raid::RAID_ON, Need::Present)] },
 ];

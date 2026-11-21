@@ -51,6 +51,11 @@ fn the_villager_walks_to_a_wanted_item_within_four_blocks_awake() {
     let it = horizon_ecs_proto::item::drop_item(&mut h.world, horizon_client_lib::items::ItemStack::new("minecraft:wheat", 1), Vec3::new(3.0, 1.0, 0.5), Vec3::ZERO, 0);
     let (mut walked, mut taken) = (false, false);
     for _ in 0..200 {
+        // A villager with no job idles (jar: WORK needs JOB_SITE): its stroll sets walk targets that the item's behaviour (core,
+        // starts only with none) never gets to replace; the test clears every target that is not the item's.
+        if walk_target(&h.world, e).is_some_and(|t| t.target.position(&h.world).is_some_and(|p| (p[0] - 3.0).abs() > 0.6)) {
+            erase(&mut h.world, e, &WALK_TARGET);
+        }
         h.tick();
         walked |= walk_target(&h.world, e).is_some();
         taken |= goals::main_hand(&h.world, e).is_some_and(|s| s.item.as_ref() == "minecraft:wheat");

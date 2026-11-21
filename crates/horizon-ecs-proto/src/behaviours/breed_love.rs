@@ -35,12 +35,23 @@ pub fn start(w: &mut World, e: Entity, partner: Entity) {
     set(w, e, &BIRTH_DUE, MemValue::Unit, Some(delay));
 }
 
-/// Le lit de l'enfant : le lit le plus proche du parent, à 48 blocs au plus (XZ), s'il n'est pas occupé.
+/// `VillagerMakeLove.takeVacantBed` (`PoiManager.take(HOME, .., 48)`, jar) : le lit libre le plus proche du parent dans 48 blocs, que
+/// ni un dormeur ni le lit retenu d'un autre villageois n'occupe (l'accessibilité par chemin n'est pas vérifiée).
 fn child_bed(w: &mut World, parent: Entity, baby: Entity) -> Option<[i32; 3]> {
-    let Some(MemValue::Block(bed)) = get(w, parent, &NEAREST_BED).cloned() else { return None };
-    let at = w.get::<Pos>(parent)?.0;
-    let (dx, dz) = (f64::from(bed[0]) + 0.5 - at.x, f64::from(bed[2]) + 0.5 - at.z);
-    (dx * dx + dz * dz <= BED_RANGE * BED_RANGE && !bed_taken(w, baby, bed)).then_some(bed)
+    let here = crate::behaviours::poi_claim::block_of(w, parent);
+    let homes = w.resource::<crate::poi::PoiRegistry>().in_range(here, 48, true, |k| k == horizon_world::poi::PoiType::Home);
+    let claimed: Vec<[i32; 3]> = w
+        .query::<Entity>()
+        .iter(w)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter(|e| *e != baby)
+        .filter_map(|e| match get(w, e, &NEAREST_BED) {
+            Some(MemValue::Block(b)) => Some(*b),
+            _ => None,
+        })
+        .collect();
+    homes.into_iter().map(|h| h.0).find(|b| !claimed.contains(b) && !bed_taken(w, baby, *b))
 }
 fn bed_for_child(w: &mut World, parent: Entity, baby: Entity) {
     if let Some(bed) = child_bed(w, parent, baby) {
