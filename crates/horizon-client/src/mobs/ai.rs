@@ -408,6 +408,33 @@ fn block_contact_damage(
 }
 
 #[derive(Clone, Debug, Default)]
+/// `SwingAnimation`: the swing's kind and its base ticks, as the mob sends them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SwingAnimation {
+    pub kind: u8,
+    pub duration: i32,
+}
+
+impl SwingAnimation {
+    /// `SwingAnimation.DEFAULT`: WHACK for 6 ticks.
+    pub const DEFAULT: SwingAnimation = SwingAnimation {
+        kind: 1,
+        duration: 6,
+    };
+}
+
+/// The swing's ticks: haste shortens it, mining fatigue lengthens it.
+pub fn swing_duration(animation: SwingAnimation, dig_speed: Option<i32>, fatigue: Option<i32>) -> i32 {
+    let duration = animation.duration;
+    if let Some(amplification) = dig_speed {
+        duration - (1 + amplification)
+    } else if let Some(amplifier) = fatigue {
+        duration + (1 + amplifier) * 2
+    } else {
+        duration
+    }
+}
+
 pub struct Ai {
     /// `Mob.homePosition` and `homeRadius`: where a restricted mob stays
     /// (a lead's holder, a happy ghast's float area).
@@ -528,7 +555,7 @@ impl Mob {
     pub fn swing_hand_modified(
         &mut self,
         off_hand: bool,
-        animation: crate::first_person::SwingAnimation,
+        animation: SwingAnimation,
     ) -> bool {
         let amplifier = |id: &str| {
             self.extra
@@ -539,7 +566,7 @@ impl Mob {
         };
         let dig_speed = amplifier("minecraft:haste").max(amplifier("minecraft:conduit_power"));
         let fatigue = amplifier("minecraft:mining_fatigue");
-        let duration = crate::first_person::swing_duration(animation, dig_speed, fatigue);
+        let duration = swing_duration(animation, dig_speed, fatigue);
         if self.start_swing(duration) {
             self.extra.swing_right_arm = Some(!off_hand != self.main_arm_left());
             self.extra.swing_stab = animation.kind == 2;

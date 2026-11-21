@@ -1,5 +1,5 @@
 //! `DyeItem.interactLivingEntity`: the client hears it, the server changes wool.
-use super::{Mob, Species, render::DYE_NAMES};
+use super::{DYE_NAMES, Mob, Species};
 use crate::items::ItemStack;
 use horizon_core::nbt::Tag;
 

@@ -4177,7 +4177,7 @@ fn put_memories(map: &mut Compound, m: &Mob) {
     );
 }
 fn read_villager(m: &mut Mob, tag: &Tag) {
-    use crate::{merchant::Trader, mobs::render::VILLAGER_TYPES};
+    use crate::{merchant::Trader, mobs::VILLAGER_TYPES};
     if let Some(data) = tag.get("VillagerData") {
         let name = |key| text(data.get(key)).map(|s| s.trim_start_matches("minecraft:").to_owned());
         if let Some(t) = name("type").and_then(|t| VILLAGER_TYPES.iter().position(|v| *v == t)) {
@@ -6870,7 +6870,7 @@ pub fn bucket_components(m: &Mob) -> crate::item_data::StackData {
     }
     // TropicalFish.saveToBucketTag: the pattern and both colours.
     if m.species() == crate::mobs::Species::TropicalFish {
-        let dye = |i: u8| crate::mobs::render::DYE_NAMES[usize::from(i) & 15];
+        let dye = |i: u8| crate::mobs::DYE_NAMES[usize::from(i) & 15];
         let pattern = TROPICAL_PATTERNS
             .get(usize::from(m.extra.variant))
             .unwrap_or(&"kob");
@@ -6963,7 +6963,7 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
         let name = |key| text(components.other(key));
         let dye = |key| {
             name(key).and_then(|n| {
-                crate::mobs::render::DYE_NAMES
+                crate::mobs::DYE_NAMES
                     .iter()
                     .position(|&v| v == n.trim_start_matches("minecraft:"))
             })
@@ -7035,7 +7035,7 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
     // Sheep.applyImplicitComponents: the wool colour, a DyeColor id.
     if species == crate::mobs::Species::Sheep
         && let Some(name) = text(components.other("minecraft:sheep/color"))
-        && let Some(i) = crate::mobs::render::DYE_NAMES
+        && let Some(i) = crate::mobs::DYE_NAMES
             .iter()
             .position(|c| *c == name.trim_start_matches("minecraft:"))
     {

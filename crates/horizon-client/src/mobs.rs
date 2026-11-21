@@ -85,7 +85,6 @@ pub mod cow_rest;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;
-pub mod skin;
 pub mod sniffer;
 pub mod spawn_rules;
 pub mod spawn_selection;
@@ -125,6 +124,30 @@ pub mod dragon_contacts;
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// The dye colours in `DyeColor`'s order.
+pub const DYE_NAMES: [&str; 16] = [
+    "white",
+    "orange",
+    "magenta",
+    "light_blue",
+    "yellow",
+    "lime",
+    "pink",
+    "gray",
+    "light_gray",
+    "cyan",
+    "purple",
+    "blue",
+    "brown",
+    "green",
+    "red",
+    "black",
+];
+/// The villager types in `VillagerType`'s order.
+pub const VILLAGER_TYPES: [&str; 7] = [
+    "plains", "desert", "jungle", "savanna", "snow", "swamp", "taiga",
+];
+
 pub struct StoredEffect {
     pub id: &'static str,
     pub duration: i32,
@@ -4876,18 +4899,6 @@ impl Mob {
         events.push(MobEvent::Sound(event, at, ai::sound_volume(self), pitch));
     }
 }
-/// Model geometry for a mob, posed for its animation state, as camera-relative
-/// vertices textured from the shared atlas.
-pub fn render(
-    mob: &Mob,
-    alpha: f32,
-    camera: glam::DVec3,
-    uv: [f32; 4],
-    light: u32,
-    out: &mut Vec<Vertex>,
-) {
-    render::render_single(mob, alpha, camera, uv, light, out);
-}
 /// A parsed `entity-models.json` document, shared while loading model batches.
 /// Each lookup still constructs an independent part tree for the caller.
 #[derive(Clone)]
@@ -4917,80 +4928,6 @@ impl EntityModelDocument {
     }
 }
 
-/// Load one baked model layer from `entity-models.json` (e.g. `minecraft:chest#main`).
-/// Batch loaders should share an `EntityModelDocument` instead.
-pub fn load_model(root: &Path, key: &str) -> Option<Part> {
-    EntityModelDocument::load(root).ok()?.model(key)
-}
-/// ModelPart.render: translate, rotate ZYX, scale, then children.
-pub fn render_model(
-    part: &Part,
-    base: glam::Mat4,
-    pose_for: &dyn Fn(&Part) -> [f32; 9],
-    uv: [f32; 4],
-    light: u32,
-    overlay: u32,
-    out: &mut Vec<Vertex>,
-) {
-    visit(
-        part,
-        base,
-        ModelNormals::new(base),
-        pose_for,
-        uv,
-        light,
-        overlay,
-        out,
-    );
-    fn visit(
-        part: &Part,
-        parent: glam::Mat4,
-        normals: ModelNormals,
-        pose_for: &dyn Fn(&Part) -> [f32; 9],
-        uv: [f32; 4],
-        light: u32,
-        overlay: u32,
-        out: &mut Vec<Vertex>,
-    ) {
-        let p = pose_for(part);
-        let m = parent
-            * glam::Mat4::from_translation(glam::Vec3::new(p[0], p[1], p[2]) / 16.0)
-            * glam::Mat4::from_quat(glam::Quat::from_euler(
-                glam::EulerRot::ZYX,
-                p[5],
-                p[4],
-                p[3],
-            ))
-            * glam::Mat4::from_scale(glam::Vec3::new(p[6], p[7], p[8]));
-        let normals = normals.part(p);
-        for poly in &part.polygons {
-            let normal = poly.vertex_normal(normals);
-            for v in poly.vertices {
-                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
-                out.push(Vertex {
-                    normal,
-                    pos: pos.to_array(),
-                    uv: [
-                        uv[0] + (uv[2] - uv[0]) * v[3],
-                        uv[1] + (uv[3] - uv[1]) * v[4],
-                    ],
-                    layer: overlay,
-                    color: 0xFFFF_FFFF,
-                    light,
-                    // The armour glint scrolls the model UV in the shader.
-                    glint_uv: if overlay == render::ARMOR_GLINT {
-                        [v[3], v[4]]
-                    } else {
-                        [0.0, 0.0]
-                    },
-                });
-            }
-        }
-        for c in &part.children {
-            visit(c, m, normals, pose_for, uv, light, overlay, out);
-        }
-    }
-}
 
 impl Mob {
     /// The saddle worn, with its components.
@@ -7215,3 +7152,5 @@ pub mod control;
 
 pub mod anim;
 pub mod body_anim;
+
+pub mod landing;

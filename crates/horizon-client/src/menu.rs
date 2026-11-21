@@ -116,7 +116,7 @@ pub struct Env<'a> {
     pub enchantments: &'a crate::enchant::Enchantments,
     /// Item display names: the anvil compares the rename box with the
     /// input's hover name.
-    pub names: &'a crate::creative::Names,
+    pub names: &'a crate::item_names::Names,
     /// What a merchant menu needs for offers made while it is open (level-ups).
     pub trade: Option<&'a crate::merchant::TradeEnv<'a>>,
     /// The level's maps (`ContainerLevelAccess`): the cartography table reads
@@ -3082,7 +3082,7 @@ pub(crate) mod tests {
             &crate::test_resources::server_load(),
         );
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -3231,7 +3231,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -3280,7 +3280,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -5027,39 +5027,6 @@ pub(crate) mod tests {
         });
     }
 
-    /// #1832: a potion taken from the creative inventory and put in the
-    /// hotbar keeps its `PotionContents` (the brew), as vanilla's
-    /// `PotionContents.createItemStack` builds it: the item tab's stack is
-    /// the real one, and the hotbar slot holds it as it is.
-    #[test]
-    fn a_creative_potion_keeps_its_contents_in_the_hotbar() {
-        let snbt = r#"{components:{"minecraft:potion_contents":{potion:"minecraft:swiftness"}},count:1,id:"minecraft:potion"}"#;
-        let potion = crate::item_data::parse_stack(snbt).unwrap().unwrap();
-        assert_eq!(potion.potion(), Some("minecraft:swiftness"));
-        // The creative screen hands the stack over...
-        let mut carried = None;
-        crate::creative::click_display(
-            &mut carried,
-            Some(&potion),
-            |_: &ItemStack| 1,
-            0,
-            Input::Pickup,
-        );
-        assert_eq!(
-            carried.as_ref().and_then(|s| s.potion()),
-            Some("minecraft:swiftness")
-        );
-        // ... and the hotbar slot keeps it: it is not the uncraftable
-        // potion, which is a `minecraft:potion` with no contents at all.
-        with_menu(Kind::ItemPicker, |env, menu| {
-            menu.carried = carried;
-            menu.click(env, 45, 0, Input::Pickup).unwrap();
-            let in_hand = menu.slot(45).expect("the hotbar slot");
-            assert_eq!(in_hand.potion(), Some("minecraft:swiftness"));
-            assert_eq!(&*in_hand.item, "minecraft:potion");
-        });
-    }
-
     /// `RecipeCraftingHolder.setRecipeUsed`: when `limited_crafting` is false,
     /// crafting works even if the recipe is not known by the player.
     #[test]
@@ -5084,7 +5051,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let env = Env {
             crafting_remainder: None,
@@ -5139,7 +5106,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known = ["minecraft:stick"];
         let env = Env {
@@ -5195,7 +5162,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known = ["minecraft:oak_planks"];
         let env = Env {
@@ -5255,7 +5222,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known: [&str; 0] = [];
         let env = Env {

@@ -3590,13 +3590,14 @@ impl Level {
     /// difficulty, so the game and the file follow each other and a world
     /// that was set to hard is hard when it is opened again.
     pub fn set_difficulty(&mut self, difficulty: u8) {
-        self.difficulty = crate::title::DIFFICULTIES[difficulty as usize % 4].to_owned();
+        self.difficulty =
+            horizon_server_files::properties::DIFFICULTIES[difficulty as usize % 4].to_owned();
     }
 
     /// `PrimaryLevelData.getDifficulty`: the id of the level data's
     /// difficulty (peaceful 0 .. hard 3), normal when it is not one of them.
     pub fn difficulty_id(&self) -> u8 {
-        crate::title::DIFFICULTIES
+        horizon_server_files::properties::DIFFICULTIES
             .iter()
             .position(|d| *d == self.difficulty)
             .map_or(2, |i| i as u8)

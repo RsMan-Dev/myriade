@@ -1,7 +1,5 @@
 //! A side's .hzperf capture (docs/perf-platform.md §3, §4.1), the dedicated server's or the client's, and the always-on health history and slow ring behind it.
-use crate::gfx::pack_timing::{GpuReadout, TimedFrames};
 use crate::spans::Span;
-use horizon_client_render::perf_gpu;
 use horizon_perf_format::files;
 use horizon_perf_format::v1::{
     BenchResult, GpuMode, Kind, Mark, MemorySnapshot, Options, Overhead, Side, Start, Stop,
@@ -23,6 +21,7 @@ mod tests;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) static SAMPLED_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+mod capture_profile;
 mod samples;
 pub mod spans;
 mod system;
@@ -122,8 +121,6 @@ pub struct CaptureOptions {
     pub levels: Vec<LevelCounts>,
     /// The connections as the capture begins.
     pub wire: Wire,
-    /// Whether the GPU's pass timings are recorded: unspecified on a side without a GPU.
-    pub gpu: GpuMode,
     /// Records every thread's spans as `timeline` chunks within these caps, unless another capture already does.
     pub timeline: Option<timeline::Caps>,
     /// Write the capture at exactly this path, kept by no retention, instead of into the folder given to `start_capture`.
@@ -140,8 +137,6 @@ pub struct CaptureEnd {
     /// What timing one span and one mob costs on this machine, in nanoseconds.
     pub span_ns: f64,
     pub mob_ns: f64,
-    /// The GPU pass timings, when the capture asked for them.
-    pub gpu: Option<GpuReadout>,
     /// Benchmark reports to embed verbatim; the capture gives them its side.
     pub bench: Vec<BenchResult>,
 }
@@ -177,10 +172,6 @@ struct Session {
     block_names: Vec<String>,
     spans: SpanRecorder,
     traffic: TrafficRecorder,
-    gpu: GpuMode,
-    /// The GPU timers' frames and the window's CPU frame times, and when their last block was written.
-    gpu_log: perf_gpu::FrameLog,
-    gpu_block_t: f64,
     timeline: Option<TimelineRecorder>,
 }
 
@@ -199,7 +190,7 @@ pub struct ServerPerf {
     gauges_at: f64,
     system: SystemProbe,
     background: Option<BackgroundProbe>,
-    frame_medians: (Option<f32>, Option<f32>),
+    frame_medians: Option<f32>,
     session: Option<Session>,
     ending: Vec<Ending>,
 }
@@ -220,7 +211,7 @@ impl ServerPerf {
             gauges_at: start,
             system: SystemProbe::default(),
             background: None,
-            frame_medians: (None, None),
+            frame_medians: None,
             session: None,
             ending: Vec::new(),
         }
@@ -248,9 +239,9 @@ impl ServerPerf {
         t - self.gauges_at >= 1.0
     }
 
-    /// The median CPU and GPU time of the frames since the last second, for the gauges read next.
-    pub fn set_frame_medians(&mut self, cpu_ms: Option<f32>, gpu_ms: Option<f32>) {
-        self.frame_medians = (cpu_ms, gpu_ms);
+    /// The median CPU time of the frames since the last second, for the gauges read next.
+    pub fn set_frame_medians(&mut self, cpu_ms: Option<f32>) {
+        self.frame_medians = cpu_ms;
     }
 
     /// One tick or frame that took `wall_ms` and ended at `t`; `world` and `wire` are read when the gauges are due.
@@ -284,7 +275,7 @@ impl ServerPerf {
                 }
                 None => self.system.read(t, counts),
             };
-            (g.frame_cpu_ms_p50, g.frame_gpu_ms_p50) = self.frame_medians;
+            g.frame_cpu_ms_p50 = self.frame_medians;
             self.health.set_gauges(g);
             if let Some(session) = &mut self.session {
                 session.traffic.sample(t - session.origin, &wire());
@@ -321,27 +312,6 @@ impl ServerPerf {
             session.span_tick(t, self.ticks, wall_ms, detail.as_ref());
             session.pump(&self.health, t);
             session.timeline_tick(t);
-        }
-    }
-
-    /// The window's frame that ended at `t`: its CPU ms and the GPU frames timed since the last, written about once a second when the capture times the GPU.
-    pub fn gpu_frames(&mut self, t: f64, cpu_ms: f32, frames: &TimedFrames) {
-        let Some(session) = &mut self.session else {
-            return;
-        };
-        if matches!(session.gpu, GpuMode::Unspecified | GpuMode::Off) {
-            return;
-        }
-        let (now, origin) = (Instant::now(), session.origin);
-        session.gpu_log.cpu_frame(cpu_ms);
-        session.gpu_log.add(
-            frames,
-            |at| t - now.saturating_duration_since(at).as_secs_f64() - origin,
-            &mut session.strings,
-        );
-        if t - origin - session.gpu_block_t >= 1.0 {
-            session.gpu_block_t = t - origin;
-            session.gpu_block();
         }
     }
 
@@ -432,9 +402,6 @@ impl ServerPerf {
             block_names: options.block_names,
             spans: SpanRecorder::new(self.role.span_thread, self.role.side, self.role.unit),
             traffic: TrafficRecorder::new(options.wire),
-            gpu: options.gpu,
-            gpu_log: perf_gpu::FrameLog::default(),
-            gpu_block_t: 0.0,
             timeline,
         };
         let mut start = options.start;
@@ -464,7 +431,7 @@ impl ServerPerf {
             ticks_over_ms: options.sampler.over_ms.filter(|_| sampled),
             wall: sampled && options.sampler.wall,
             samples: sampled,
-            gpu: options.gpu as i32,
+            gpu: GpuMode::Unspecified as i32,
             timeline: session.timeline.is_some(),
         });
         if sampled && let Some(build) = &mut start.build {
@@ -681,43 +648,12 @@ impl Session {
         self.tx.send(Field::Spans(summary));
         self.tx.send(Field::Workers(workers));
         self.tx.send(Field::Net(traffic));
-        self.gpu(rel, end.gpu.as_ref());
         self.tx.send(Field::World(world));
         for mut bench in end.bench {
             bench.side = self.side as i32;
             self.tx.send(Field::Bench(bench));
         }
         overhead
-    }
-
-    /// Writes the GPU timings the capture asked for, or a warning when there were none.
-    fn gpu(&mut self, rel: f64, readout: Option<&GpuReadout>) {
-        if matches!(self.gpu, GpuMode::Unspecified | GpuMode::Off) {
-            return;
-        }
-        self.gpu_block();
-        let sections = readout.map_or_else(Vec::new, |r| {
-            perf_gpu::gpu_passes(r, &self.gpu_log, self.side, &mut self.strings)
-        });
-        self.entries();
-        if sections.is_empty() {
-            self.tx.send(Field::Warning(Warning {
-                side: self.side as i32,
-                t: rel,
-                code: WarningCode::GpuUnavailable as i32,
-                args: Vec::new(),
-            }));
-        }
-        for gpu in sections {
-            self.tx.send(Field::Gpu(gpu));
-        }
-    }
-
-    fn gpu_block(&mut self) {
-        if let Some(block) = self.gpu_log.take_block(self.side) {
-            self.entries();
-            self.tx.send(Field::GpuFrames(block));
-        }
     }
 
     fn timeline_tick(&mut self, t: f64) {

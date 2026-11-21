@@ -4,7 +4,7 @@
 //! sequence), `Mob.dropCustomDeathLoot` (equipment by drop chance, with the
 //! entity random), the species' extra drops (an enderman's carried block) and
 //! the experience orbs.
-use super::{Mob, Species, equine, gear, raider, render::DYE_NAMES};
+use super::{DYE_NAMES, Mob, Species, equine, gear, raider};
 use crate::random_sequences::RandomSequences;
 use horizon_core::random::{LegacyRandom, LevelRandom, RandomSource};
 use horizon_world::{

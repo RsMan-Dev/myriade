@@ -21,24 +21,12 @@ mod test_log;
 #[cfg(any(test, feature = "proto"))]
 mod test_resources;
 pub use horizon_client_render::{
-    assets, atlas_sources, audio, auth, autotune, ban_notice, bidi, biome, block_edit,
-    block_entities, block_entity_anim, block_entity_render, block_sprites, block_states, bluemap,
-    bluemap_detect, border_render, breaking, brewing, camera, chat, chunk, chunk_map, cit,
-    cit_armor, cit_assets, cit_glint, client_resources, clouds, collisions, command_block,
-    containers, controller_ui, crash, custom_sky, datapack, dynamic_light, dynamic_resolution,
-    effects, environment, extras, fast_hash, fluid_models, fluid_render, fog, font, gfx, graphics,
-    graphics_style, graphics_ui, hdr_calibration, hud, hud_kit, hud_layout, hud_overlays,
-    inventory_effects, java_text, jigsaw_block, json_folder, level_loading, light, lod, logging,
-    mark_sprite, menu_blur, menu_style, mesher, minimap, mipmap, mod_browser, mod_chunk_tickets,
-    mod_list, mod_pipelines, model_library, models, mods_screen, monitor, multiline_edit,
-    native_emissive, options_file, options_fixes, options_ui, overlay, pack_browser, pack_formats,
-    pack_hooks, pack_palette, pack_screen, packs, pad_cursor, pad_glyph, par, particles,
-    poi_sections, polytone_creative_tabs, polytone_post, post_chain, potent_sulfur, preedit,
-    providers, pvp, pvp_hud, random_source, resource_source, screen_draw, screen_effects, sculk,
-    section_mask, server_terrain, settings, shader_options, shader_pack_list, signs, skins, social,
-    sound_engine, sound_events, sound_preview, spans, split_layout, split_map, split_profiles,
-    sprites, streaming, structure_block, tab_list, terrain_model, test_block, test_instance_block,
-    testgen, title_edition, trims, ui, vault, weather, widgets, world, worldborder, zip,
+    assets, auth, biome, block_entities, block_entity_anim, block_states, brewing, chunk,
+    chunk_map, collisions, command_block, containers, crash, datapack, effects, environment,
+    fast_hash, level_loading, light, logging, mod_chunk_tickets, mod_list, poi_sections,
+    potent_sulfur, providers, random_source, sculk, section_mask, signs, skins, sound_events,
+    spans, streaming, structure_block, test_block, test_instance_block, testgen, vault, weather,
+    world, worldborder,
 };
 pub mod attack_strength;
 pub mod attribute_updates;
@@ -84,6 +72,7 @@ pub mod hunger;
 pub mod inv_sort;
 pub mod item_activation;
 pub mod item_attributes;
+pub mod item_names;
 pub mod item_sync;
 pub mod join_seq;
 pub mod move_gate;
@@ -92,7 +81,6 @@ pub use horizon_core::json_nbt;
 pub mod lan;
 pub mod legacy_combat;
 pub mod living_attributes;
-pub mod lod_net;
 pub mod map_decoration_types;
 pub mod menu;
 pub mod menu_extra_net;
@@ -131,10 +119,7 @@ pub mod carrier_store;
 mod carrier_store_tests;
 pub mod scoreboard_cmd;
 pub mod screen_layout;
-pub mod skull_models;
-pub mod world_geometry;
 pub use horizon_server_files as server;
-pub mod controller_notice;
 pub mod server_packs;
 pub mod server_perf;
 pub mod spear;
@@ -170,20 +155,6 @@ pub use horizon_client_core::nbt_path;
 pub use horizon_client_core::scoreboard;
 pub use horizon_client_core::snbt;
 pub use horizon_client_core::text;
-pub use horizon_client_input::actions;
-pub use horizon_client_input::clipboard;
-pub use horizon_client_input::gamepad;
-pub use horizon_client_input::gameplay_guide;
-pub use horizon_client_input::held;
-pub use horizon_client_input::input;
-pub use horizon_client_input::input_queue;
-pub use horizon_client_input::input_source;
-pub use horizon_client_input::interaction_input;
-pub use horizon_client_input::key_names;
-pub use horizon_client_input::keybinds;
-pub use horizon_client_input::keymapping;
-pub use horizon_client_input::mouse;
-pub use horizon_client_input::window;
 pub use horizon_command as command;
 pub use horizon_items::blocks;
 pub use horizon_items::bundle;
@@ -201,3 +172,4 @@ pub mod control;
 pub mod landing;
 pub mod native_client_hooks;
 pub mod net;
+pub mod lod_net;

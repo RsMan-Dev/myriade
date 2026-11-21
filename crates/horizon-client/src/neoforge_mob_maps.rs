@@ -1,7 +1,7 @@
 //! Immutable, per-world built-in data maps. File codecs run before installation;
 //! simulation readers use exact registry identities and never parse JSON or lock
 //! a process-global current world. The common store owns each generation.
-use crate::mobs::{Species, parrot, render::VILLAGER_TYPES, species};
+use crate::mobs::{Species, VILLAGER_TYPES, parrot, species};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock};

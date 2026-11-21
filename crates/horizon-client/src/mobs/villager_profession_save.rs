@@ -6,7 +6,7 @@ use crate::{
 use horizon_core::nbt::Tag;
 /// `VillagerData`: type, profession and level.
 pub fn villager_data(m: &Mob) -> Tag {
-    use crate::mobs::render::VILLAGER_TYPES;
+    use crate::mobs::VILLAGER_TYPES;
     Tag::compound([
         (
             "type",

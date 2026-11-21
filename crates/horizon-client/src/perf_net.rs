@@ -1,12 +1,14 @@
 //! `horizon:perf`: a client asks a Horizon server to capture its side (docs/perf-platform.md §4.2).
-use crate::client_perf::request::{HZ_RANGE, StartOptions, Threads};
 use crate::server_perf::MAX_WINDOW_S;
 use horizon_perf_format::MAX_PART_BYTES;
 use horizon_protocol::{
     Error, Result,
     buf::{Reader, Writer},
 };
-use std::time::{Duration, Instant};
+use std::{
+    ops::RangeInclusive,
+    time::{Duration, Instant},
+};
 
 pub const CHANNEL: &str = "horizon:perf";
 /// The server brand of every Horizon server and LAN host.
@@ -27,6 +29,44 @@ pub const BUSY_QUEUE: usize = 64 * 1024;
 /// How long a client waits for the file to be finished, or for the next chunk, before it gives up on the server's part.
 pub const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_REMOVED: usize = 64;
+
+/// The range `--hz` accepts.
+pub const HZ_RANGE: RangeInclusive<u32> = 10..=1000;
+
+/// Which threads a capture samples: the main thread, or all of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Threads {
+    Main,
+    All,
+}
+
+/// The switches of `profile start`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StartOptions {
+    /// Unset runs until `stop`, or the longest window.
+    pub seconds: Option<u32>,
+    pub hz: Option<u32>,
+    pub over_ms: Option<f32>,
+    pub threads: Threads,
+    pub wall: bool,
+    pub samples: bool,
+    /// Also record every thread's spans (`--timeline`), for 60 s at most.
+    pub timeline: bool,
+}
+
+impl Default for StartOptions {
+    fn default() -> Self {
+        Self {
+            seconds: None,
+            hz: None,
+            over_ms: None,
+            threads: Threads::Main,
+            wall: false,
+            samples: true,
+            timeline: false,
+        }
+    }
+}
 
 /// What a capture on the server is asked to record; the switches a server has (no GPU, no file).
 #[derive(Clone, Copy, Debug, PartialEq)]

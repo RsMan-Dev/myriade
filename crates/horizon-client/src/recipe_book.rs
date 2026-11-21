@@ -19,7 +19,6 @@ pub use properties::ServerRecipeProperties;
 mod custom_books;
 pub mod menu_layout;
 mod mod_index;
-pub mod mod_presentation;
 mod placement_codec;
 pub mod placement_sync;
 mod resource_id;

@@ -740,19 +740,9 @@ pub fn shown_address(address: &str) -> String {
     }
 }
 
-/// The relay the player set (`friendsRelay` in horizon.txt, beside
-/// options.txt), else the resolver's (`HORIZON_RELAY_URL`). None by default.
+/// The relay from `HORIZON_RELAY_URL` (the resolver's), None by default.
 pub fn friends_relay_setting() -> Option<String> {
-    let dir = std::env::current_dir().ok()?;
-    crate::ui_theme::preference(&dir, "friendsRelay")
-        .filter(|r| !r.is_empty())
-        .or_else(|| horizon_hooks::engine::tunnel().and_then(|r| r.relay_from_env()))
-}
-/// Remember the relay typed on Join a friend (empty forgets it).
-pub fn save_friends_relay(relay: &str) {
-    if let Ok(dir) = std::env::current_dir() {
-        crate::ui_theme::set_preference(&dir, "friendsRelay", (!relay.is_empty()).then_some(relay));
-    }
+    horizon_hooks::engine::tunnel().and_then(|r| r.relay_from_env())
 }
 
 /// Reach the friend's world from the code (directly, or through a relay)

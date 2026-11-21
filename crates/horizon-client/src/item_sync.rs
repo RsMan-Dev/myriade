@@ -341,9 +341,9 @@ pub fn consumable(stack: &ItemStack, items: &crate::items::Items) -> Option<Item
 
 /// Decodes the `minecraft:consumable` component from its saved/NBT tag form.
 pub fn decode_consumable_tag(tag: &Tag) -> Option<ItemConsumable> {
-    let json = crate::item_render::tag_json(tag);
+    let json = horizon_client_core::component_codec::raw_tag_json(tag);
     let seconds = json["consume_seconds"].as_f64().map_or(1.6, |s| s as f32);
-    let animation = crate::first_person::consumable_animation(&json);
+    let animation = horizon_items::use_animation::consumable_animation(&json);
     let sound = json["sound"]
         .as_str()
         .or_else(|| json["sound"]["sound_id"].as_str())
@@ -405,7 +405,7 @@ pub fn decode_consumable_bytes_with(
     let mut effects = Vec::with_capacity(n.min(64));
     for _ in 0..n {
         if let Some(tag) = consume_effect_tag(&mut r, b, 0) {
-            let json = crate::item_render::tag_json(&tag);
+            let json = horizon_client_core::component_codec::raw_tag_json(&tag);
             if let Some(parsed) = horizon_items::items::parse_consume_effect(&json) {
                 effects.push(parsed);
             }

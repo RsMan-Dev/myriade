@@ -3,6 +3,7 @@
 //! effects (regeneration, poison, wither, hunger, saturation, instant
 //! effects), and the derived flags the movement and damage code read.
 use horizon_client_core::potions;
+use mod_api::client::particles::ParticleOptions;
 use horizon_protocol::entity_data::Value;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -222,6 +223,59 @@ pub struct ShownEffect {
     pub amplifier: i32,
     pub visible: bool,
     pub ambient: bool,
+}
+/// `LivingEntity.updateSynchronizedMobEffectParticles` for an entity with
+/// `effects`: the particle of each visible one (`effect_particle`) and
+/// `areAllEffectsAmbient` (true when none is visible).
+pub fn effect_particles(
+    effects: impl IntoIterator<Item = ShownEffect>,
+) -> (Vec<ParticleOptions>, bool) {
+    visible_effect_particles(
+        (effects.into_iter())
+            .filter(|e| e.visible)
+            .map(|e| (e.ambient, effect_particle(e.effect, e.ambient))),
+    )
+}
+/// The swirls of an entity's `visible` effects, each as whether it is ambient
+/// and its particle, if it has one: the particles and
+/// `areAllEffectsAmbient` (true when none is visible).
+pub fn visible_effect_particles(
+    visible: impl IntoIterator<Item = (bool, Option<ParticleOptions>)>,
+) -> (Vec<ParticleOptions>, bool) {
+    let mut all_ambient = true;
+    let particles = (visible.into_iter())
+        .filter_map(|(ambient, particle)| {
+            all_ambient &= ambient;
+            particle
+        })
+        .collect();
+    (particles, all_ambient)
+}
+/// The particle of one effect: its own kind for the omens and the others,
+/// else an entity-effect swirl tinted by its colour (faded when ambient).
+pub fn effect_particle(effect: &str, ambient: bool) -> Option<ParticleOptions> {
+    let simple = |name: &str| {
+        mod_api::__private::particle_named_key(name).map(ParticleOptions::simple)
+    };
+    match effect.trim_start_matches("minecraft:") {
+        "trial_omen" => simple("minecraft:trial_omen"),
+        "raid_omen" => simple("minecraft:raid_omen"),
+        "wind_charged" => simple("minecraft:small_gust"),
+        "weaving" => simple("minecraft:item_cobweb"),
+        "oozing" => simple("minecraft:item_slime"),
+        "infested" => simple("minecraft:infested"),
+        other => {
+            let color = potions::effect(other)?.color;
+            let channel = |shift: u32| ((color >> shift) & 255) as f32 / 255.0;
+            // MobEffect.AMBIENT_ALPHA is 38 of 255.
+            let alpha = if ambient { 38.0 / 255.0 } else { 1.0 };
+            let key = mod_api::__private::particle_named_key("minecraft:entity_effect")?;
+            Some(ParticleOptions::colored(
+                key,
+                [channel(16), channel(8), channel(0), alpha],
+            ))
+        }
+    }
 }
 /// A living entity's `DATA_EFFECT_PARTICLES` and `DATA_EFFECT_AMBIENCE_ID`
 /// as the native mods left them (`effect_particle_modification`), with the

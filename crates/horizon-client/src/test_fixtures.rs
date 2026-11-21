@@ -5,7 +5,7 @@
 //! for itself spent most of its time there. Tests only read these, so one
 //! copy serves them all; each test still builds its own `World` over it.
 use crate::{
-    assets::{Assets, RenderAssets},
+    assets::Assets,
     blocks::BlockFacts,
     motion::MotionResources,
 };
@@ -19,7 +19,6 @@ pub(crate) struct Vanilla {
     /// The root everything below was read from: additional test data uses the same root.
     pub root: PathBuf,
     pub assets: Assets,
-    pub render: RenderAssets,
     pub facts: BlockFacts,
     pub collision: BlockCollisionRegistry<'static>,
     pub motion: MotionResources,
@@ -42,11 +41,6 @@ pub(crate) fn vanilla() -> Option<&'static Vanilla> {
                 return None;
             }
             let assets = Assets::load(&root).unwrap();
-            let render = assets
-                .reload(&horizon_assets::resource_source::ResourceRoot::directory(
-                    root.clone(),
-                ))
-                .unwrap();
             let facts = BlockFacts::load(&root, assets.registry).unwrap();
             let collision = crate::collisions::load(&root, assets.registry).unwrap();
             let motion = MotionResources::load(&root, &assets).unwrap();
@@ -54,7 +48,6 @@ pub(crate) fn vanilla() -> Option<&'static Vanilla> {
                 root,
                 facts,
                 assets,
-                render,
                 collision,
                 motion,
             })

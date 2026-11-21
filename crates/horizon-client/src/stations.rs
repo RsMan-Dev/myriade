@@ -298,7 +298,7 @@ pub fn increased_repair_cost(cost: u32) -> u32 {
 /// `ItemStack.getHoverName`: the custom name, a potion's or tipped arrow's
 /// contents, a written book's title, the `item_name` component, else the
 /// item's or head owner's name.
-pub fn hover_name(names: &crate::creative::Names, stack: &ItemStack) -> String {
+pub fn hover_name(names: &crate::item_names::Names, stack: &ItemStack) -> String {
     if let Some(name) = stack.custom_name() {
         return name;
     }
@@ -315,7 +315,7 @@ pub fn hover_name(names: &crate::creative::Names, stack: &ItemStack) -> String {
     {
         return title.to_owned();
     }
-    if let Some(head) = crate::item_tooltip::player_head_name(stack) {
+    if let Some(head) = crate::item_names::player_head_name(stack) {
         // `PlayerHeadItem.getName`: a profile's name, else the item name.
         return head.title(&|key| names.display_get(key));
     }
@@ -1703,7 +1703,7 @@ mod tests {
     /// item's name in the client's language.
     #[test]
     fn hover_name_prefers_custom_name_then_book_title_then_item_name() {
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let stack = |snbt: &str| item_data::parse_stack(snbt).unwrap().unwrap();
         let lang = crate::lang::Language::of(
             "en_us",
@@ -1739,7 +1739,7 @@ mod tests {
             "!minecraft:item_name",
             Some(Tag::compound(Vec::<(&str, Tag)>::new())),
         );
-        assert_eq!(hover_name(&crate::creative::Names::default(), &sword), "");
+        assert_eq!(hover_name(&crate::item_names::Names::default(), &sword), "");
     }
 
     /// Grindstone: transmuting an empty enchanted book to a book drops the
@@ -2245,7 +2245,7 @@ mod tests {
 
     #[test]
     fn smithing_transform_overlay_matches_optional_inputs_and_takes_template_result() {
-        use crate::{banner::Banners, brewing::Brewing, crafting::Recipes, creative::Names, menu};
+        use crate::{banner::Banners, brewing::Brewing, crafting::Recipes, item_names::Names, menu};
         let root = std::env::temp_dir().join(format!("horizon-smithing-{}", std::process::id()));
         fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
         fs::write(

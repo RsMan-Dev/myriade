@@ -26,7 +26,7 @@ pub use other::{Sampling, Stopped};
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
-    use horizon_client_render::perf_capture;
+    use crate::server_perf::capture_profile;
     use horizon_threads::heap_sample::{self, HeapProfile};
     use horizon_threads::profile::{self, Profile, SymbolQuality};
     use horizon_threads::sampler;
@@ -116,7 +116,7 @@ mod linux {
         ) -> Finished {
             let name = |id: u16| block_names.get(usize::from(id)).cloned();
             Finished {
-                samples: perf_capture::sample_profile(
+                samples: capture_profile::sample_profile(
                     &self.0,
                     self.1.as_ref(),
                     side,
@@ -124,7 +124,7 @@ mod linux {
                     &name,
                     strings,
                 ),
-                overhead: perf_capture::overhead(&self.0, self.1.as_ref()),
+                overhead: capture_profile::overhead(&self.0, self.1.as_ref()),
             }
         }
     }
