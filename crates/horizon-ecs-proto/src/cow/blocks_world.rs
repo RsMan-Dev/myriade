@@ -256,6 +256,7 @@ pub(crate) fn block_changes(
     let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..], None));
     let with_state = std::mem::take(&mut state_changes.0).into_iter().map(|(x, y, z, n, p)| (x, y, z, n, p, None));
     let by_id = std::mem::take(&mut state_changes.1).into_iter().map(|(x, y, z, id)| (x, y, z, "", &[][..], Some(id)));
+    let mut lit: Vec<(i32, i32, i32)> = Vec::new();
     for (x, y, z, name, props, id) in named.chain(with_state).chain(by_id).collect::<Vec<_>>() {
         let Some(state) = id.or_else(|| crate::blocks::resolve(mw, name, props)) else { continue };
         let name: &str = if id.is_some() { mw.registry.state(state).map_or("", |s| s.name.as_str()) } else { name };
@@ -266,9 +267,8 @@ pub(crate) fn block_changes(
             level.occ.changed(&*world, level.mw.0.collision, x, y, z);
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
             crate::pathsearch::layer_bump();
-            // The real light engine: the sky above a column changed with the block.
-            horizon_client_lib::mobs::world::relight_test_world(world, &[(x, y, z)]);
         }
+        lit.push((x, y, z));
         hazards.set(x, y, z, hazard_bit(name));
         hazards.eggs.remove(&[x, y, z]);
         if name == EGG {
@@ -311,6 +311,13 @@ pub(crate) fn block_changes(
             if c.distance_squared(middle) < remaining * remaining && s.walking && !nav.delayed {
                 commands.entity(e).insert(Recompute);
             }
+        }
+    }
+    // The real light engine: the sky above the columns changed with the blocks (one pass for all of the tick's changes).
+    // SAFETY: as above, nothing else reads the blocks meanwhile.
+    if !lit.is_empty() {
+        unsafe {
+            horizon_client_lib::mobs::world::relight_test_world(&mut *level.blocks.0, &lit);
         }
     }
 }
