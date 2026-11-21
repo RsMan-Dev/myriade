@@ -5,9 +5,6 @@ pub mod alloc_count;
 #[cfg(feature = "test-allocation-probe")]
 pub mod allocation_probe;
 pub mod allocator_stats;
-/// The game window's boot screen, before wgpu's first frame paints over it.
-#[cfg(target_os = "windows")]
-pub mod boot_paint;
 pub mod callgrind;
 pub mod heap_census;
 #[cfg(target_os = "linux")]

@@ -75,21 +75,9 @@ alloc-count = ["horizon-threads/alloc-count"]
 workspace = true
 
 # Each installs the process-wide render slots and must run in its own process.
-[[test]]
-name = "render_slots"
-path = "tests/render_slots.rs"
 
-[[test]]
-name = "world_view_slots"
-path = "tests/world_view_slots.rs"
 
-[[test]]
-name = "standard_pack_gpu_entities"
-path = "tests/standard_pack_gpu_entities.rs"
 
-[[example]]
-name = "standard_pack_gpu_entities"
-path = "examples/standard_pack_gpu_entities.rs"
 
 [dev-dependencies]
 tempfile = "3"
