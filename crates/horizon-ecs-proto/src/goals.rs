@@ -1033,8 +1033,11 @@ fn watch_due(w: &World) -> bool {
     (!on.seen.is_empty() || !moves.0.is_empty()) && sparse_any::<PlayerWatch>(w)
 }
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
-fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
+fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(Entity, &Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
     const R: f64 = 64.0;
+    /// Up to this many watchers, each player event is evaluated against every watcher (a far one cannot change state: it was not inside
+    /// before, and is not now) instead of collecting, sorting and looking up every entity of the cells around the player.
+    const FEW: usize = 64;
     // Nobody watches (the common case): not one index scan per moving player.
     if (on.seen.is_empty() && moves.0.is_empty()) || q.is_empty() {
         return;
@@ -1051,8 +1054,29 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
             ev.player_left.push((e, id));
         }
     };
+    let few: Option<Vec<Entity>> = {
+        let mut ws: Vec<Entity> = Vec::new();
+        for (e, _, _) in q.iter() {
+            ws.push(e);
+            if ws.len() > FEW {
+                break;
+            }
+        }
+        (ws.len() <= FEW).then(|| {
+            ws.sort_unstable();
+            ws
+        })
+    };
     for (old, new) in &on.seen {
         let Some(id) = new.or(*old).map(|p| p.id) else { continue };
+        if let Some(ws) = &few {
+            for &e in ws {
+                if let Ok((_, pos, mut w)) = q.get_mut(e) {
+                    eval(e, pos, &mut w, id, *new, &mut ev);
+                }
+            }
+            continue;
+        }
         let mut near: Vec<Entity> = Vec::new();
         for p in [old, new].into_iter().flatten() {
             idx.for_radius(p.x, p.z, R, |c| near.push(c));
@@ -1060,13 +1084,13 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
         near.sort_unstable();
         near.dedup();
         for e in near {
-            if let Ok((pos, mut w)) = q.get_mut(e) {
+            if let Ok((_, pos, mut w)) = q.get_mut(e) {
                 eval(e, pos, &mut w, id, *new, &mut ev);
             }
         }
     }
     for &e in &moves.0 {
-        if let Ok((pos, mut w)) = q.get_mut(e) {
+        if let Ok((_, pos, mut w)) = q.get_mut(e) {
             for p in on.list.iter().flatten() {
                 eval(e, pos, &mut w, p.id, Some(*p), &mut ev);
             }
