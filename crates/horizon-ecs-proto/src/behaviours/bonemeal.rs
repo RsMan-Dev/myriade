@@ -94,6 +94,9 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
 }
 
 fn stop(w: &mut World, e: Entity, _: &Ctx) {
+    // `UseBonemeal.stop`: the session's end is noted whatever stopped it (duration, 80 cycles, no crop).
+    let (now, s) = (now_of(w, e), w.get::<Session>(e).copied().unwrap_or_default());
+    w.entity_mut(e).insert(Session { last: now, ..s });
     erase(w, e, &WALK_TARGET);
     erase(w, e, &LOOK_TARGET);
 }

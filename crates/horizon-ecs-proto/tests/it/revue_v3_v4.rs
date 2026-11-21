@@ -362,11 +362,9 @@ fn sky_spot_position_is_reached_as_on_the_mob() {
 /// 5. The farmer and its bone meal: a young wheat field and 20 bone meal on each side, 400 ticks. The count of crops grown is
 /// compared (tolerance 2: the work cycle is drawn at random), and every two growths of the villager are at least 40 ticks apart
 /// (`UseBonemeal`: 40 ticks of rest after each).
-#[test]
-#[ignore = "Mob grows the field from tick 60 (51 growth events), the ECS villager never gets UseBonemeal: its walk target is set almost every tick (idle strolls) and the 10-tick gate rarely meets a free tick; cause on the Mob side not read (no instrumentation allowed), recorded in suivi/ecs-ecarts.md"]
-fn farmer_grows_crops_with_bone_meal_as_a_mob_does() {
+fn farmer_run() -> Option<(Vec<i64>, Vec<i64>)> {
     if skip() {
-        return;
+        return None;
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     field_ecs(&mut h);
@@ -397,10 +395,26 @@ fn farmer_grows_crops_with_bone_meal_as_a_mob_does() {
         mstep(&mut r);
         mob_ticks.extend(r.bonemeal_growths(&mut seen));
     }
-    assert!(!ecs_ticks.is_empty() && !mob_ticks.is_empty(), "cultures poussées : ECS {}, Mob {}", ecs_ticks.len(), mob_ticks.len());
+    Some((ecs_ticks, mob_ticks))
+}
+
+/// What the jar fixes for the ECS farmer: it grows crops with its bone meal, at least 40 ticks apart, and the Mob farmer starts too.
+#[test]
+fn farmer_grows_crops_with_bone_meal_per_the_jar() {
+    let Some((ecs, mob)) = farmer_run() else { return };
+    assert!(!ecs.is_empty() && !mob.is_empty(), "cultures poussées : ECS {}, Mob {}", ecs.len(), mob.len());
+    assert!(ecs.windows(2).all(|w| w[1] - w[0] >= 40), "espacement ECS : {ecs:?}");
+    assert!(ecs.len() <= 10, "plus de 10 pousses en 400 tics : {ecs:?}");
+}
+
+/// Strict comparison with the Mob. `villager_brain::bonemeal_grown` only visits the top-level entries of the brain, while
+/// `UseBonemeal` is a kid of the work `RunOne` gate: the 40-tick rest is never set and the Mob grows a crop on consecutive ticks.
+#[test]
+#[ignore = "Mob : bonemeal_grown ne atteint pas le UseBonemeal enfant du RunOne, pas de repos de 40 tics (51 pousses en 400 tics, ticks consécutifs) ; écart consigné"]
+fn farmer_grows_crops_with_bone_meal_as_a_mob_does() {
+    let Some((ecs_ticks, mob_ticks)) = farmer_run() else { return };
     let (a, b) = (ecs_ticks.len() as i64, mob_ticks.len() as i64);
     assert!((a - b).abs() <= 2, "cultures poussées en 400 tics : ECS {a}, Mob {b}");
-    assert!(ecs_ticks.windows(2).all(|w| w[1] - w[0] >= 40), "espacement ECS : {ecs_ticks:?}");
     assert!(mob_ticks.windows(2).all(|w| w[1] - w[0] >= 40), "espacement Mob : {mob_ticks:?}");
 }
 

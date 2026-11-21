@@ -59,7 +59,7 @@ fn mob_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     }
     out
 }
-fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
+fn ecs_side(days: &[i64], seed: u64) -> Vec<((f64, f64), bool)> {
     let mut h = Herd::with_slab_awake(60, true, false);
     // The job site is a block of the world, as on the Mob's side: its validation (`poi_validate`) drops a memory with no block under it.
     super::villager_misc_vs_mob::insert_trade_data(&mut h);
@@ -71,7 +71,7 @@ fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     h.tick();
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
-    let e = spawn_species(&mut h.world, &sp, SPAWN.0, SPAWN.1, 1);
+    let e = spawn_species(&mut h.world, &sp, SPAWN.0, SPAWN.1, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     set(&mut h.world, e, &horizon_ecs_proto::species::villager::HOME, MemValue::Block(BED), None);
@@ -121,9 +121,14 @@ fn bedtime_departure_and_meeting_match_the_mob() {
     let mut days: Vec<i64> = window(12_000, 600).collect();
     days.extend(window(1_960, 640));
     days.extend(window(8_960, 640));
-    let (mob, ecs) = (mob_side(&days), ecs_side(&days));
-    let (m, e) = (marks(&mob, &days), marks(&ecs, &days));
-    for (name, a, b) in [("sleep", m.sleep, e.sleep), ("bed", m.bed, e.bed), ("wake", m.wake, e.wake), ("work", m.work, e.work), ("bell", m.bell, e.bell)] {
+    let mob = mob_side(&days);
+    let (m, e) = (marks(&mob, &days), marks(&ecs_side(&days, 1), &days));
+    // The departure toward the bell follows the work `RunOne`'s random mix (a stroll in progress at 9000 ends first): one run of each
+    // side cannot be compared, so the Mob's value must fall within the range of eight ECS seeds, widened by 40 ticks.
+    let bells: Vec<i64> = (1..=8).filter_map(|sd| marks(&ecs_side(&days, sd), &days).bell).map(|k| k as i64).collect();
+    let (lo, hi) = (bells.iter().copied().min().unwrap_or(0), bells.iter().copied().max().unwrap_or(0));
+    assert!(m.bell.is_some_and(|b| (lo - 40..=hi + 40).contains(&(b as i64))), "bell: mob {:?}, ecs seeds {bells:?}", m.bell);
+    for (name, a, b) in [("sleep", m.sleep, e.sleep), ("bed", m.bed, e.bed), ("wake", m.wake, e.wake), ("work", m.work, e.work)] {
         let (a, b) = (a.map(|k| k as i64), b.map(|k| k as i64));
         match (a, b) {
             (Some(a), Some(b)) => assert!((a - b).abs() <= if name == "work" { 90 } else { 40 }, "{name}: mob {a}, ecs {b} (the work walk is the `RunOne` of the work package: its kids are drawn on each side)"),
