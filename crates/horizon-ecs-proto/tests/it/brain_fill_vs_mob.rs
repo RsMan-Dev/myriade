@@ -147,6 +147,34 @@ fn a_golem_takes_from_a_copper_chest_as_the_mob_does() {
     assert!(ecs_took, "the ECS golem never took from the chest");
 }
 
+/// The index of chests is built when the first golem looks, then kept by block events: a chest placed afterwards (the block changed, the block
+/// entity written by `set_chest`) is listed by the next tick and the golem takes from it.
+#[test]
+fn a_chest_placed_after_the_index_is_built_is_found_by_the_golem() {
+    if skip_golem() {
+        return;
+    }
+    let stack = || ItemStack { item: Arc::from("minecraft:cobblestone"), count: 8, damage: 0, extra: None };
+    let mut h = Herd::with_slab_awake(60, true, false);
+    h.tick();
+    set_chest(*h.world.resource::<Level>(), 8000, 1, 8000, vec![None; 3]);
+    ecs_golem(&mut h, -1.0, 0.5, 31);
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert!(h.world.get_resource::<horizon_ecs_proto::chest_index::ChestIndex>().is_some_and(|i| !i.chunk(8000 >> 4, 8000 >> 4).is_empty()), "the index is built and lists the far chest");
+    h.set_block(2, 1, 0, "minecraft:copper_chest");
+    set_chest(*h.world.resource::<Level>(), 2, 1, 0, vec![Some(stack()), None, None]);
+    h.tick();
+    assert!(h.world.resource::<horizon_ecs_proto::chest_index::ChestIndex>().chunk(0, 0).contains(&[2, 1, 0]), "the placed chest is listed by the event");
+    let mut took = false;
+    for _ in 0..600 {
+        h.tick();
+        took |= h.world.resource_mut::<Events>().host.drain().any(|e| matches!(e, HostEvent::ChestSlot { .. }));
+    }
+    assert!(took, "the golem never took from the chest placed after the index");
+}
+
 /// 30000 chests far from the golem (500 chunks away) cost it nothing: its search reads the chunks of its box from the index of chests,
 /// never the whole store. The time of 1500 ticks of 8 golems that search is printed (before the index: a walk of 30000 entries per search).
 #[test]
