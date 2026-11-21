@@ -271,6 +271,7 @@ pub fn container_signal(fractions: &[f32], slots: usize) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::minecart::{along_track, Track};
 
     const FLAT: Rail = Rail { exits: [[-1, 0, 0], [1, 0, 0]], powered: None };
 

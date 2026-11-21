@@ -34,7 +34,7 @@ fn a_frame_breaks_on_the_101st_tick_after_its_birth() {
     }
     let mut h = scene();
     let born = clock(&h);
-    let e = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None, None);
+    let e = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None);
     let support = [0, 60, -1];
     for _ in 0..4 {
         h.tick();
@@ -60,7 +60,7 @@ fn an_intact_frame_is_still_there_after_a_thousand_ticks() {
         return;
     }
     let mut h = scene();
-    let e = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None, None);
+    let e = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None);
     for _ in 0..1000 {
         h.tick();
     }
@@ -76,8 +76,8 @@ fn two_frames_in_one_cell_the_first_breaks_on_the_101st_tick_and_the_second_stay
     }
     let mut h = scene();
     let born = clock(&h);
-    let a = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None, None);
-    let b = hang(&mut h.world, [0, 60, 0], 3, GLOW_ITEM_FRAME, None, None);
+    let a = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None);
+    let b = hang(&mut h.world, [0, 60, 0], 3, GLOW_ITEM_FRAME, None);
     let mut broke_at = None;
     while broke_at.is_none() && clock(&h) < born + 300 {
         h.tick();
@@ -97,7 +97,7 @@ fn a_frame_breaks_on_the_100th_tick_as_horizon_does() {
     }
     let mut h = scene();
     let born = clock(&h);
-    let a = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None, None);
+    let a = hang(&mut h.world, [0, 60, 0], 3, ITEM_FRAME, None);
     for _ in 0..4 {
         h.tick();
     }

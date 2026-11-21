@@ -72,7 +72,7 @@ fn a_free_rocket_flies_and_goes_off_as_the_jar_s_does() {
     }
     let (_r, mut h) = flat_pair();
     let at = Vec3::new(0.5, 10.0, 0.5);
-    let e = launch(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
+    let e = launch(&mut h.world, shot(at));
     let mut model = Model::new(at, i32::from(FLIGHT), &mut LegacyRandom::new(SEED));
     let life = model.life;
     for t in 1..=life + 2 {
@@ -102,7 +102,7 @@ fn the_blast_hurts_a_creature_as_the_jar_s_does() {
     }
     let boom = probe.pos;
     let (_r, mut h) = flat_pair();
-    launch(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
+    launch(&mut h.world, shot(at));
     for _ in 0..life {
         h.tick();
     }

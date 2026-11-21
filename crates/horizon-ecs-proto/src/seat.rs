@@ -299,9 +299,12 @@ mod tests {
         let mut w = world();
         let v = boat(&mut w, false, false, Vec3::new(0.0, 0.0, 0.0));
         assert!(seat_player(&mut w, 7, v, None));
-        w.resource_mut::<Events>().vehicle_moved.clear();
+        for _ in 0..2 {
+            w.resource_mut::<Events>().vehicle_moved.swap();
+        }
         unseat_player(&mut w, 7);
-        assert!(w.resource::<Events>().vehicle_moved.contains(&7));
+        w.resource_mut::<Events>().vehicle_moved.swap();
+        assert!(w.resource::<Events>().vehicle_moved.iter().any(|v| v == 7));
         assert!(free_seat(&w, v));
     }
 }

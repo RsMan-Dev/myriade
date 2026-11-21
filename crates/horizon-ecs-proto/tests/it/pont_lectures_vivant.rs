@@ -60,7 +60,8 @@ fn attributes_read_the_components_and_the_armour_modifiers() {
     assert_eq!(h.attribute(e, "minecraft:max_health"), Some(f64::from(max)));
     assert!(h.attribute_modifiers(e, "minecraft:armor").is_empty());
     set_armor_modifier(h.world_mut(), e, "test:armour", Some(2.0));
-    assert_eq!(h.attribute_modifiers(e, "minecraft:armor"), vec![("test:armour", 2.0)]);
+    let mods = h.attribute_modifiers(e, "minecraft:armor");
+    assert_eq!(mods.iter().map(|m| (m.id.as_str(), m.amount)).collect::<Vec<_>>(), vec![("test:armour", 2.0)]);
 }
 
 #[test]

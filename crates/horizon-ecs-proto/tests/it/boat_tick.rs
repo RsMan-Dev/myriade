@@ -49,9 +49,9 @@ fn a_boat_at_rest_on_the_floor_is_not_moving_after_two_ticks() {
     assert!(w.get::<Moving>(e).is_none());
 }
 
-/// A boat dropped from ten blocks up reports a fall past three blocks once it lands.
+/// A boat dropped from ten blocks up settles and makes no fall event (`AbstractBoat.checkFallDamage` hurts nothing).
 #[test]
-fn a_fall_past_three_blocks_reports_the_fall() {
+fn a_fall_past_three_blocks_makes_no_event() {
     if !have_data() {
         return;
     }
@@ -63,10 +63,7 @@ fn a_fall_past_three_blocks_reports_the_fall() {
         }
     }
     let events = take_boat_events(&mut w);
-    assert!(
-        events.iter().any(|ev| matches!(ev, BoatEvent::Fall { entity, distance } if *entity == e && *distance > 3.0)),
-        "{events:?}"
-    );
+    assert!(events.iter().all(|ev| matches!(ev, BoatEvent::Paddle { .. })), "{events:?}");
 }
 
 /// A boat that has fallen under the world's floor minus 64 blocks is discarded; one above it stays.

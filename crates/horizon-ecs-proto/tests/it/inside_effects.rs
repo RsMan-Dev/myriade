@@ -160,7 +160,7 @@ fn fire_immune_and_wither_immune_species_refuse_what_the_jar_says() {
     let (Some(blaze), Some(wither)) = (table.iter().find(|s| s.name == "minecraft:blaze"), table.iter().find(|s| s.name == "minecraft:wither_skeleton")) else {
         return;
     };
-    let (b, w, c) = (spawn_species(&mut h.world, blaze, 0.5, 0.5, 1), spawn_species(&mut h.world, wither, 2.5, 0.5, 2), spawn_species(&mut h.world, table[0], 4.5, 0.5, 3));
+    let (b, w, c) = (spawn_species(&mut h.world, blaze, 0.5, 0.5, 1), spawn_species(&mut h.world, wither, 2.5, 0.5, 2), spawn_species(&mut h.world, &table[0], 4.5, 0.5, 3));
     for e in [b, c] {
         h.world.resource_mut::<DamageQueue>().add(e, 4.0, Cause::Lava);
     }

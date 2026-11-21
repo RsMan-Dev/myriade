@@ -9,6 +9,7 @@ use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::mount::*;
+use horizon_ecs_proto::pilot::{self, PilotInput};
 use horizon_ecs_proto::targeting::{Target, Who};
 
 fn skip(name: &str) -> bool {
@@ -54,7 +55,7 @@ fn run(ticks: u32, preroll: u32, boost: Option<(u32, u32)>, f: impl Fn(u32) -> (
         }
         let (fw, yaw, jump, sprint, steer) = f(t);
         r.mobs[i].rider = Some(rider(fw, yaw, jump, sprint, steer));
-        h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: fw, strafe: 0.0, yaw, pitch: 0.0, jump, sprint, steer };
+        pilot::set(&mut h.world, e, PilotInput { who: Who::Player(1), forward: fw, strafe: 0.0, yaw: yaw, pitch: 0.0, jump: jump, sprint: sprint, sneak: false, steer: steer, keys: [false, false, (fw) > 0.0, false] });
         r.step(Some(&view));
         h.tick();
         let (m, p) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
@@ -92,12 +93,12 @@ fn a_pig_without_the_stick_is_not_steered() {
     h.world.get_mut::<Mount>(e).unwrap().saddled = true;
     assert!(ride(&mut h.world, e, Who::Player(1)));
     for _ in 0..40 {
-        h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: 1.0, yaw: 137.0, steer: false, ..Default::default() };
+        pilot::set(&mut h.world, e, PilotInput { who: Who::Player(1), forward: 1.0, strafe: 0.0, yaw: 137.0, pitch: 0.0, jump: 0.0, sprint: false, sneak: false, steer: false, keys: [false, false, (1.0) > 0.0, false] });
         h.tick();
         assert!((h.world.get::<Yaw>(e).unwrap().0 - 137.0).abs() > 1.0, "the pig took the look of a rider without the stick");
     }
     // The stick makes it go, and a second use during the boost is refused.
-    h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: 0.0, yaw: 137.0, steer: true, ..Default::default() };
+    pilot::set(&mut h.world, e, PilotInput { who: Who::Player(1), forward: 0.0, strafe: 0.0, yaw: 137.0, pitch: 0.0, jump: 0.0, sprint: false, sneak: false, steer: true, keys: [false, false, (0.0) > 0.0, false] });
     assert!(boost(&mut h.world, e));
     assert!(!boost(&mut h.world, e), "a boost runs already");
     h.tick();

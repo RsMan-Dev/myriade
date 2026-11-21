@@ -5,6 +5,7 @@ use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
+use horizon_ecs_proto::targeting::Who;
 use horizon_ecs_proto::fangs::spawn_fang;
 use horizon_ecs_proto::cow::Herd;
 use horizon_ecs_proto::goals::*;
@@ -44,7 +45,7 @@ fn fangs_start_bite_and_end_on_the_vanilla_ticks() {
         let at = Vec3::new(0.5, 1.0, 0.5);
         let mut h = Herd::with_slab_awake(16, true, false);
         let owner = h.world.spawn_empty().id();
-        let fang = spawn_fang(&mut h.world, at, warmup, owner);
+        let fang = spawn_fang(&mut h.world, at, warmup, Some(Who::Entity(owner)));
         let (mut started, mut bitten, mut removed) = (None, None, None);
         let end = vanilla_ticks(warmup).2;
         for t in 1..=end + 2 {

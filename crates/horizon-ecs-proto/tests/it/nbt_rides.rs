@@ -8,7 +8,8 @@ use horizon_core::{
 };
 use horizon_ecs_proto::{
     cow::{spawn_species, species_table, Herd, Pos, TypeName},
-    hanging::{Attached, Frame},
+    frame_item::Held,
+    hanging::Attached,
     minecart::{Furnace, Fuse},
     mount::{ride, Mount, Riding},
     nbt::{self, accept, Field, NbtData, Saved},
@@ -60,13 +61,13 @@ fn an_armor_stand_saves_its_flags_pose_and_slots_as_the_jar_does_and_reads_them_
 #[test]
 fn a_frame_saves_facing_block_and_rotation_and_refuses_a_bad_facing() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
-    let frame = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Frame { rotation: 3, item: None }, Attached { pos: [1, 64, -2], face: 2, kind: 0, born: 0 })).id();
+    let frame = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Held { stack: None, rotation: 3, drop_chance: 1.0 }, Attached { pos: [1, 64, -2], face: 2, kind: 0, born: 0 })).id();
     assert_eq!(nbt::get(&h.world, frame, "Facing"), Some(Tag::Byte(2)));
     assert_eq!(nbt::get(&h.world, frame, "block_pos"), Some(Tag::IntArray(vec![1, 64, -2])));
     assert_eq!(nbt::get(&h.world, frame, "ItemRotation"), Some(Tag::Byte(3)));
 
     let c = nbt::save(&h.world, frame).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Frame { rotation: 0, item: None }, Attached { pos: [0, 0, 0], face: 0, kind: 0, born: 0 })).id();
+    let twin = h.world.spawn((Pos(Vec3::new(1.5, 64.0, -1.5)), TypeName("minecraft:item_frame"), Saved, Held { stack: None, rotation: 0, drop_chance: 1.0 }, Attached { pos: [0, 0, 0], face: 0, kind: 0, born: 0 })).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert_eq!(nbt::save(&h.world, twin), Some(c.clone()));
 

@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::LegacyRandom;
-use horizon_ecs_proto::cow::{Clock, Pos, Vel};
+use horizon_ecs_proto::cow::{Clock, Herd, Pos, Vel};
 use horizon_ecs_proto::fishing_hook::cast;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::host_out_hook::{HookEvent, HookOut};
@@ -139,7 +139,7 @@ fn the_draws_stay_within_vanillas_bounds() {
 /// The player `1` set at `x` holding `main`, with the fact of a living player.
 fn set_1(h: &mut Herd, main: u32, x: f64) {
     let p = Player { id: 1, x, y: at().y, z: at().z, main, ..Default::default() };
-    h.set_player(p, PlayerFact { alive: true, targetable: true });
+    horizon_ecs_proto::bridge::players::set_player(&mut h.world, p, PlayerFact { alive: true, targetable: true });
 }
 
 #[test]
@@ -157,7 +157,7 @@ fn a_waiting_hook_goes_when_its_player_leaves_or_drops_the_rod() {
     assert!(h.world.get_entity(hook).is_err(), "a hook over 32 blocks away stayed");
     let mut h = Herd::with_slab(16, true, false);
     let (hook, _) = land(&mut h);
-    h.remove_player(1);
+    horizon_ecs_proto::bridge::players::remove_player(&mut h.world, 1);
     assert!(h.world.get_entity(hook).is_err(), "a hook whose player left stayed");
 }
 

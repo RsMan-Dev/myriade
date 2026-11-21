@@ -10,6 +10,7 @@ use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::mount::*;
+use horizon_ecs_proto::pilot::{self, PilotInput};
 use horizon_ecs_proto::tame::Owner;
 use horizon_ecs_proto::targeting::Who;
 
@@ -83,7 +84,7 @@ fn the_rider_steers_the_horse_as_it_steers_the_original() {
         let yaw = if t < 60 { 0.0 } else { 90.0 };
         let jump = if t == 80 { 1.0 } else { 0.0 };
         r.mobs[i].rider = Some(input(1.0, 0.0, yaw, jump));
-        h.world.get_mut::<Mount>(e).unwrap().input = RiderInput { forward: 1.0, strafe: 0.0, yaw, pitch: 0.0, jump, ..Default::default() };
+        pilot::set(&mut h.world, e, PilotInput { who: Who::Player(1), forward: 1.0, strafe: 0.0, yaw: yaw, pitch: 0.0, jump: jump, sprint: false, sneak: false, steer: false, keys: [false, false, (1.0) > 0.0, false] });
         r.step(Some(&view));
         h.tick();
         let (m, p) = (r.mobs[i].position, h.world.get::<Pos>(e).unwrap().0);
