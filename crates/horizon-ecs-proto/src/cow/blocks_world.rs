@@ -79,7 +79,11 @@ impl Level {
 
 /// A walled stone slab of `half` blocks each way from the origin, on the prepared vanilla data.
 pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
-    build_level_with(half, move |blocks: &mut horizon_client_render::world::World, registry: &horizon_world::registry::BlockRegistry| {
+    build_level_with(half, level_builder(half, patches))
+}
+
+fn level_builder(half: i32, patches: bool) -> impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry) {
+    move |blocks: &mut horizon_client_render::world::World, registry: &horizon_world::registry::BlockRegistry| {
         let stone = registry.default_state("minecraft:stone").unwrap();
         let chunks = (half + 15) / 16 + 1;
         for cx in -chunks..chunks {
@@ -125,20 +129,51 @@ pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_cli
                 gx += 48;
             }
         }
-    })
+    }
 }
 
 /// `build_level` over a world of the caller's making (`build` fills the blocks).
 pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry)) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
+    let level = build_level_neutral_with(half, build);
+    let chosen = process_species_name();
+    let species = *TABLE.get().expect("a level was built").iter().find(|s| s.name == chosen).expect("a known species");
+    let _ = SPECIES.set(species);
+    let types = TYPES.get().expect("a level was built");
+    let kind = Arc::new(types.types.get(chosen.as_str()).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
+    (level, species, kind)
+}
+
+/// `build_level_with` that does not read the species of the process (`HORIZON_SPECIES`): the world and the table of every species, the same
+/// for every identifier. A test built on it depends on the identifier only if it asks for `species()` or the skips.
+pub fn build_level_neutral_with(half: i32, build: impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry)) -> Level {
     let (mw, types, blocks_ptr) =
         horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("HORIZON_TEST_RESOURCES");
-    let chosen: &'static str = Box::leak(
-        process_species_name().into_boxed_str(),
-    );
+    // The table of every species, the items and the tags: the same for the whole process, made once (the first level builds them).
+    let table = TABLE.get_or_init(|| {
+        let table = species_rows(types);
+        if let Some(items) = mw.items {
+            crate::items::install(items);
+            crate::equipment_items::install(items);
+        }
+        let _ = TYPES.set(types);
+        // LEVER en attente : la racine est lue ici comme par `leaked_test_world_mut` ; elle devrait venir de `TestResources`.
+        crate::type_tags::install(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES")), &table);
+        table
+    });
+    let _ = table;
+    Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), occ: Box::leak(Box::default()), half }
+}
+
+/// `build_level` that does not read the species of the process (see `build_level_neutral_with`).
+pub fn build_level_neutral(half: i32, patches: bool) -> Level {
+    build_level_neutral_with(half, level_builder(half, patches))
+}
+
+/// The row of every species the prototype knows, by id.
+fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Species> {
     // Every species the prototype knows, by id: the same table for the whole process.
     let names: Vec<&'static str> = crate::species::names();
     let mut table: Vec<Species> = Vec::new();
-    let mut chosen_kind = None;
     for (i, name) in names.into_iter().enumerate() {
         // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
         let kind = Arc::new(types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
@@ -186,21 +221,8 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             lost_horn,
             llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
         });
-        if name == chosen {
-            chosen_kind = Some(kind);
-        }
     }
-    if let Some(items) = mw.items {
-        crate::items::install(items);
-        crate::equipment_items::install(items);
-    }
-    let _ = TYPES.set(types);
-    let _ = TABLE.set(table.clone());
-    // LEVER en attente : la racine est lue ici comme par `leaked_test_world_mut` ; elle devrait venir de `TestResources`.
-    crate::type_tags::install(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES")), &table);
-    let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
-    let _ = SPECIES.set(species);
-    (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), occ: Box::leak(Box::default()), half }, species, chosen_kind.expect("a known species"))
+    table
 }
 
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).

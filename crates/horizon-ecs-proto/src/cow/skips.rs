@@ -32,7 +32,7 @@ pub fn skip_note(test: &str, reason: &str) {
     eprintln!("SKIP {test}: {reason}");
     if let Some(path) = std::env::var_os("HORIZON_SKIP_LOG") {
         use std::io::Write;
-        let species = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+        let species = species_env();
         let line = format!("{species}\t{test}\t{}\n", reason.replace(['\t', '\n'], " "));
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
             let _ = f.write_all(line.as_bytes());
@@ -58,7 +58,7 @@ pub fn skip_unless(module: &'static crate::behaviours::Module, test: &str) -> bo
 /// For the controls against the `Mob` of a goal-only walker (avoid, flee the sun...): skips (printed) for a species with a brain, whose
 /// `Mob` and creature both wander with it (proved on the avoid goal: with the brain removed the ECS test passes), so the scene is not the goal's.
 pub fn skip_if_brain(test: &str) -> bool {
-    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let name = species_env();
     let brained = crate::species::registry().by_name(&name).is_ok_and(|r| r.brain.is_some());
     if brained {
         eprintln!("SKIP {test}: the species of the process ({name}) has a brain that walks it: the scene is a goal-only walker's");

@@ -304,9 +304,25 @@ pub fn species_table() -> SpeciesTable {
     SpeciesTable(TABLE.get().expect("a level was built").clone())
 }
 
+/// `HORIZON_SPECIES`, the one place the identifier enters the process (default `PROCESS_DEFAULT`). `HORIZON_SPECIES_PROBE=<file>` appends a
+/// line to the file at every read (`pass.sh --classify` tells the tests that depend on the identifier from those that do not);
+/// `HORIZON_SPECIES_FORBID=1` makes a read panic (the run of the common tests: one that reads the identifier turns red, it is never run unseen).
+pub fn species_env() -> String {
+    if std::env::var_os("HORIZON_SPECIES_FORBID").is_some() {
+        panic!("a test of the common group read HORIZON_SPECIES: it depends on the identifier (pass.sh --classify, then rerun)");
+    }
+    if let Some(path) = std::env::var_os("HORIZON_SPECIES_PROBE") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = f.write_all(b"read\n");
+        }
+    }
+    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into())
+}
+
 /// The name of the species of the process (`HORIZON_SPECIES`), readable before any level is built (`species()` is not).
 pub fn process_species_name() -> String {
-    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into());
+    let name = species_env();
     // A name that matches no registered species must stop the harness: skipping every test of an unknown species would be a false green.
     if crate::species::registry().by_name(&name).is_err() {
         panic!("HORIZON_SPECIES={name:?} matches no registered species (names carry the namespace, e.g. minecraft:frog): {:?}", crate::species::names());
@@ -326,5 +342,9 @@ pub(crate) fn species_size(name: &str) -> (f32, f32) {
 pub(crate) static SPECIES: std::sync::OnceLock<Species> = std::sync::OnceLock::new();
 
 pub fn species() -> &'static Species {
-    SPECIES.get().expect("a level was built")
+    // Asked for only by the tests that need the species of the process: the level does not read it (`build_level_neutral_with`).
+    SPECIES.get_or_init(|| {
+        let name = process_species_name();
+        *TABLE.get().expect("a level was built").iter().find(|s| s.name == name).expect("a known species")
+    })
 }
