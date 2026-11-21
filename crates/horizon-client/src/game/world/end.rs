@@ -1575,7 +1575,7 @@ impl Game<'_> {
             .filter(|e| ticks(e.position))
             .map(|e| (e.id, e.position, 0.25, 0.25))
             .collect();
-        let mobs: Vec<(u32, Vec3, f32, f32)> = self
+        let mut mobs: Vec<(u32, Vec3, f32, f32)> = self
             .mobs
             .iter()
             .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
@@ -1607,6 +1607,17 @@ impl Game<'_> {
                     }),
             )
             .collect();
+        // The ECS creatures, items and carts that moved (`portal_entries`): the legacy lists above are empty while the ECS is active.
+        if self.ecs.is_active() {
+            for (id, can_sweep, at) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+                let at = Vec3::new(at[0], at[1], at[2]);
+                if can_sweep && ticks(at) {
+                    if let Some((width, height)) = self.ecs.portal_size(id) {
+                        mobs.push((id, at, width, height));
+                    }
+                }
+            }
+        }
         let mut inside: Vec<(u32, BlockPos)> = Vec::new();
         for (id, to, width, height) in items.into_iter().chain(mobs) {
             let from = self.portals.before.get(&id).copied().unwrap_or(to);
@@ -1688,7 +1699,7 @@ impl Game<'_> {
         // distance waits in its gateway, its state kept as it is.
         let ticking = self.entity_ticking_area();
         let ticks = |at: Vec3| ticking(at.x.floor() as i32, at.z.floor() as i32);
-        let ids: Vec<(u32, bool, bool)> = self
+        let mut ids: Vec<(u32, bool, bool)> = self
             .dropped
             .iter()
             .map(|e| (e.id, true, ticks(e.position)))
@@ -1715,6 +1726,15 @@ impl Game<'_> {
                     .map(|p| (p.id, true, ticks(p.position))),
             )
             .collect();
+        if self.ecs.is_active() {
+            // Only the entities in a gateway have a state: the ECS rows are asked for those alone.
+            let held: Vec<u32> = self.end.gateways.keys().copied().collect();
+            for id in held {
+                if let Some((at, _, _)) = self.ecs_body(id) {
+                    ids.push((id, self.ecs.can_use_portal(id), ticks(at)));
+                }
+            }
+        }
         let mut present: std::collections::HashSet<u32> =
             ids.iter().map(|(id, _, _)| *id).collect();
         // A pearl waiting for its exit keeps its portal cooldown.
@@ -1761,7 +1781,8 @@ impl Game<'_> {
     /// `Entity.teleportToPortalDestination` for an entity that goes through an
     /// End gateway: an ordinary same-level entity stays live while the exit loads.
     fn send_through_gateway(&mut self, id: u32, gateway: BlockPos) {
-        if matches!(
+        if self.ecs.entity_of(id).is_some()
+            || matches!(
             self.level_entity(id as i32),
             Some(
                 super::commands::Target::Item(_)
@@ -1837,7 +1858,12 @@ impl Game<'_> {
         let key = chunk(at);
         match arrival.traveller {
             Arriving::Live(id) => {
-                if let Some(target) = self.level_entity(id as i32) {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    // `Entity.teleportSameDimension` for an ECS entity: the place and the portal cooldown.
+                    self.ecs_with_mw(|ecs, mw| ecs.teleport(mw, e, [at.x, at.y, at.z]));
+                    self.set_portal_cooldown(id);
+                    self.place_portal_ticket(key);
+                } else if let Some(target) = self.level_entity(id as i32) {
                     // Entity.teleportSameDimension keeps the live entity and moves every
                     // passenger in the same operation. The gateway's transition has
                     // `Relative.DELTA`: the motion `/tp`'s rule in there stops is put back.

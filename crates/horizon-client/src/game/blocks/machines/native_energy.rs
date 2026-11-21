@@ -201,7 +201,7 @@ mod tests {
                 game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
             }
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.mobs.push(Mob::new(15, pig, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(15, pig, Vec3::ZERO, 0.0));
             let (stand, other, pig) = (
                 game.entity(13).unwrap(),
                 game.entity(14).unwrap(),

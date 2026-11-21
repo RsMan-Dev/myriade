@@ -114,7 +114,7 @@ impl Game<'_> {
         // Java dispatches this through the target's RemotePlayer type. The
         // level_players map is profile bookkeeping and can lag the entity;
         // mobs must stay out because their hurtClient returns false.
-        if self.mobs[mob].kind.id != "minecraft:player" {
+        if self.remote_entities[mob].kind.id != "minecraft:player" {
             return;
         }
         // `getAttackStrengthScale(0.5)`: here the ticker is `hand_strength`'s
@@ -144,7 +144,7 @@ impl Game<'_> {
         // magicBoost is 0 on a client, so no ENCHANTED_HIT one.
         if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.critical_attack(strength) {
             use horizon_client::particles::{ParticleOptions, ParticleType};
-            let m = &self.mobs[mob];
+            let m = &self.remote_entities[mob];
             self.particles.tracking_emitter(
                 ParticleOptions::simple(ParticleType::Crit),
                 TrackingTarget::Entity(m.id as i32),

@@ -14,6 +14,8 @@ use horizon_client_lib::entities::{merge_with_neighbours, ItemCells, ItemEntity}
 use horizon_client_lib::items::ItemStack;
 use crate::rules::item::{check_wait, expire_at, fits_stack, max_stack, merge_due, pickup_ready, throw_velocity};
 use horizon_core::geometry::{Aabb, Vec3};
+use crate::host_out_items::{ItemEvent, ItemEvents};
+use crate::orb::Orb;
 use std::collections::HashMap;
 pub use crate::rules::item::{LIFE, SIZE};
 pub(crate) use crate::rules::item::box_at;
@@ -111,8 +113,35 @@ fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
     }
 }
 
+/// The thrower of a stack (`ItemEntity.thrower`): the UUID as the four ints of its NBT key `Thrower`; absent when nobody threw it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Thrower(pub [i32; 4]);
+/// The end of life is held: the deadline came, the host was told (`ItemEvent::Expiring`) and decides with `resolve_expiry`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Expiring;
+/// The stack resists explosions (`damage_resistant` of `is_explosion`): a blast pushes it but does not hurt it. Only those stacks carry it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct BlastResist;
+/// Whether the host listens to the end of life of the items and of the orbs. Off: a stack or an orb is removed at its deadline, as before.
+#[derive(Resource, Default)]
+pub struct ExpiryPolicy {
+    pub hooked: bool,
+    pub orbs: bool,
+}
+
+/// What a stack on the ground resists (bit 0 fire, bit 1 explosion). Every item `drop_item` creates reads it. The host sets it once at the
+/// level's creation; without it (the pure tests) a stack resists nothing.
+pub type ItemResistsFn = Box<dyn Fn(&ItemStack) -> u8 + Send + Sync>;
+#[derive(Resource)]
+pub struct ItemResists(pub ItemResistsFn);
+
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(ItemIndex::default());
+    w.insert_resource(ExpiryPolicy::default());
+    w.insert_resource(ItemEvents::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(item_moved.after(travel).before(reindex));
@@ -120,6 +149,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// The components of the item on the ground of vanilla: a position, a velocity, a box in the index and a body of an object.
 pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, pickup_delay: i64) -> Entity {
+    let resists = world.get_resource::<ItemResists>().map_or(0, |r| (r.0)(&stack));
     let id = {
         let mut ix = world.resource_mut::<ItemIndex>();
         ix.next_id += 1;
@@ -137,7 +167,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
             Body { width: SIZE as f32, height: SIZE as f32, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: true, orb: false, tnt: false, lava_walker: false },
             Bounds(box_at(at)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
-            Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
+            Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
             FluidParams { eye_height: f64::from(0.2125_f32), can_float: false, water_slowdown: 0.8, water_efficiency: 0.0, max_air: 300 },
             FluidState::default(),
             Recheck,
@@ -158,6 +188,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
     world.entity_mut(e).insert((Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id }));
+    set_resists(world, e, resists);
     crate::nbt::mark_saved(world, e, crate::species::lists::ITEM);
     world.resource_mut::<ItemIndex>().add(e, cell);
     if let Some(mut ev) = world.get_resource_mut::<crate::goals::Events>() {
@@ -167,6 +198,20 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     arm_expire(world, e);
     arm_check(world, e);
     e
+}
+/// Sets what the stack on the ground resists (bit 0: fire, bit 1: explosion), read by `drop_item` from `ItemResists`. Fire resistance is the
+/// `Immune` bit that the hits and the burn read; the explosion is the marker `BlastResist`.
+pub fn set_resists(world: &mut World, e: Entity, resists: u8) {
+    if resists & 1 != 0 {
+        if let Some(mut im) = world.get_mut::<Immune>(e) {
+            im.0 |= crate::effects::IMMUNE_FIRE;
+        }
+    }
+    if resists & 2 != 0 {
+        if let Ok(mut m) = world.get_entity_mut(e) {
+            m.insert(BlastResist);
+        }
+    }
 }
 fn arm_expire(world: &mut World, e: Entity) {
     let now = now_of(world, e);
@@ -182,14 +227,54 @@ pub fn rearm_expiry(world: &mut World, e: Entity) {
 }
 pub fn expire_due(world: &mut World, e: Entity, token: u32) {
     let Some(it) = world.get::<Item>(e) else { return };
-    if it.expire != token {
+    if it.expire != token || world.get::<Expiring>(e).is_some() {
         return;
     }
     if now_of(world, e) < it.age_base + LIFE {
         arm_expire(world, e);
         return;
     }
-    world.entity_mut(e).despawn();
+    if !world.resource::<ExpiryPolicy>().hooked {
+        world.entity_mut(e).despawn();
+        return;
+    }
+    let stack = it.stack.clone();
+    let at = world.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    world.entity_mut(e).insert(Expiring);
+    if let Some(mut ev) = world.get_resource_mut::<ItemEvents>() {
+        ev.0.push(ItemEvent::Expiring { entity: e, stack, at: [at.x, at.y, at.z] });
+    }
+}
+/// Pushes the end of life back by `ticks` (the age goes down as much, never past now) and ends a hold. An orb takes its own rule.
+pub fn extend_life(world: &mut World, e: Entity, ticks: u32) {
+    if world.get::<Orb>(e).is_some() {
+        return crate::orb::extend_life(world, e, ticks);
+    }
+    let now = now_of(world, e);
+    let Some(mut it) = world.get_mut::<Item>(e) else { return };
+    it.age_base = (it.age_base + u64::from(ticks)).min(now);
+    world.entity_mut(e).remove::<Expiring>();
+    arm_expire(world, e);
+}
+/// The host's answer to a held end of life: `None` removes the stack (or orb), `Some(t)` extends its life by `t` ticks.
+pub fn resolve_expiry(world: &mut World, e: Entity, extend: Option<u32>) {
+    match extend {
+        None => {
+            if world.get_entity(e).is_ok() {
+                world.entity_mut(e).despawn();
+            }
+        }
+        Some(t) => extend_life(world, e, t),
+    }
+}
+/// Sets the thrower of a stack; nothing for an entity that is not a stack on the ground.
+pub fn set_thrower(world: &mut World, e: Entity, who: [i32; 4]) {
+    if world.get::<Item>(e).is_some() {
+        world.entity_mut(e).insert(Thrower(who));
+    }
+}
+pub fn thrower(world: &World, e: Entity) -> Option<[i32; 4]> {
+    world.get::<Thrower>(e).map(|t| t.0)
 }
 /// The deadline at the item's next multiple of 40 ticks (`ItemEntity.tick`'s rate for an item that stays in its block).
 fn arm_check(world: &mut World, e: Entity) {
@@ -343,6 +428,32 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
 /// from `random`) and not to be picked up for 10 ticks.
 pub fn spawn_at_location(world: &mut World, stack: ItemStack, at: Vec3, random: &mut impl horizon_core::random::RandomSource) -> Entity {
     drop_item(world, stack, at, throw_velocity(random), 10)
+}
+/// `ItemEntity.hurtServer`'s hit: the host is told for `ENTITY_DAMAGE` (every damage: explosion, fire, lava, cactus).
+pub fn hurt_event(w: &mut World, e: Entity, by: Option<crate::targeting::Who>) {
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    if w.get::<Item>(e).is_none() {
+        return;
+    }
+    if let Some(mut ev) = w.get_resource_mut::<ItemEvents>() {
+        ev.0.push(ItemEvent::Hurt { at: [p.x, p.y, p.z], by });
+    }
+}
+/// `ItemStack.onDestroyed` for the item `e` that a damage destroys: what a bundle or a container item held spills as items from its place
+/// (`ItemUtils.onContainerDestroyed`: the constructor's throw, no pickup delay). No-op for an entity that is no item.
+pub fn spill_destroyed(w: &mut World, e: Entity) {
+    let (Some(item), Some(at)) = (w.get::<Item>(e), w.get::<Pos>(e).map(|p| p.0)) else { return };
+    let mut stack = item.stack.clone();
+    let mut spilled = horizon_client_lib::bundle::destroyed(&mut stack);
+    spilled.extend(horizon_client_lib::item_data::destroyed_container(&mut stack));
+    if spilled.is_empty() {
+        return;
+    }
+    let seed = w.get_resource_or_insert_with(crate::frame_item::DropRng::default).0.next();
+    let mut rng = horizon_core::random::LegacyRandom::new(i64::from(seed));
+    for s in spilled {
+        drop_item(w, s, at, throw_velocity(&mut rng), 0);
+    }
 }
 /// The items on the ground whose box meets `area` (`level.getEntitiesOfClass(ItemEntity.class, area)`, in the order they joined).
 pub fn items_in(world: &World, area: Aabb) -> Vec<Entity> {

@@ -5,6 +5,7 @@
 //! has a target, or a melee that runs, is visited by a system. The damage goes through the players' state.
 use crate::cow::*;
 use crate::goals::*;
+use crate::bridge::teams::allied;
 use crate::targeting::{self, Target, Who, info, player_box};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::ParamSet;
@@ -71,14 +72,13 @@ pub struct PlayerState {
     pub creative: Vec<bool>,
     pub spectator: Vec<bool>,
     pub visibility: Vec<f64>,
-    /// Sneaking, the helmet worn (an item id, 0 none), the view vector (what the player looks at) and the team (0 none), by
+    /// Sneaking, the helmet worn (an item id, 0 none), the view vector (what the player looks at), by
     /// player: what the creatures read of a player beyond where it is. `peaceful`: the difficulty (monsters do not target).
     pub sneaking: Vec<bool>,
     pub helmet: Vec<u32>,
     pub gaze: Vec<[f64; 3]>,
     /// The players whose view vector changed since the last tick (drained into `Events.gaze_changed`).
     pub gaze_dirty: Vec<u32>,
-    pub team: Vec<u32>,
     pub peaceful: bool,
     /// `getLastHurtByMob` and `getLastHurtMob` of each player (who, the world tick): what the pets of a player answer (`tame.rs`).
     pub hurt_by: Vec<Option<(Who, u64)>>,
@@ -113,10 +113,6 @@ impl PlayerState {
     pub fn gaze(&self, id: u32) -> [f64; 3] {
         self.gaze.get(id as usize).copied().unwrap_or([0.0, 0.0, 1.0])
     }
-    /// 0: no team. Two players of the same non-zero team are allies.
-    pub fn team(&self, id: u32) -> u32 {
-        self.team.get(id as usize).copied().unwrap_or(0)
-    }
     /// The single rule of "a monster may target / flee this player": alive, not creative, not spectator, not Peaceful.
     pub fn targetable(&self, id: u32) -> bool {
         self.alive(id) && !self.creative(id) && !self.spectator(id) && !self.peaceful
@@ -144,13 +140,6 @@ impl PlayerState {
             self.gaze_dirty.push(id);
         }
         self.gaze[i] = v;
-    }
-    pub fn set_team(&mut self, id: u32, team: u32) {
-        let i = id as usize;
-        if self.team.len() <= i {
-            self.team.resize(i + 1, 0);
-        }
-        self.team[i] = team;
     }
     pub fn set_creative(&mut self, id: u32, on: bool) {
         let i = id as usize;
@@ -282,8 +271,8 @@ pub fn arm_melee_after(w: &mut World, e: Entity) {
 /// `canUse`: a living target (a path to it or within reach: the path is made by the pathfinder at the start; the case of
 /// no path is not fed back).
 pub fn melee_target(w: &mut World, e: Entity) -> Option<Who> {
-    let t = w.get::<Target>(e)?;
-    info(w, t.who).map(|_| t.who)
+    let who = w.get::<Target>(e)?.who;
+    (info(w, who).is_some() && !allied(w, Who::Entity(e), who)).then_some(who)
 }
 /// `MeleeAttackGoal.start`: a path to the target, the cooldown and the repath timer reset.
 pub fn start_melee(w: &mut World, e: Entity, who: Who) {
@@ -527,7 +516,7 @@ fn sun_burn(
         if b.flee {
             // Not done: the gate of 600 ticks since the target was taken (`targetChangeTime`).
             cmd.queue(move |w: &mut World| {
-                w.entity_mut(e).remove::<crate::targeting::Target>();
+                crate::targeting::clear_target(w, e);
                 crate::behaviours::ender_teleport::random(w, e);
             });
         } else if !fs.in_water && !bodies.get(e).is_ok_and(|(p, bd)| wet_by_weather(level.mw.0, p.0, bd)) {

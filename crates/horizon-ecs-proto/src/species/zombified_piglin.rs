@@ -7,6 +7,7 @@ static ANGRY: Cond = Cond::Is("neutral:angry");
 
 pub static DEF: Def = Def {
     name: "minecraft:zombified_piglin",
+    caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&ANGRY),

@@ -7,7 +7,7 @@ use super::{
 };
 use horizon_client::{
     Result,
-    entities::{ArmorStand, ItemFrame, Painting},
+    entities::ArmorStand,
     item_data::parse_stack,
     motion::PlayerMotion,
 };
@@ -96,18 +96,9 @@ impl Game<'_> {
                 self.special_targets()[0].1.center()
             }
             "painting" => {
-                self.paintings.push(Painting {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: 1,
-                    pos: [0, 1, 0],
-                    facing: 2,
-                    variant: "minecraft:kebab".into(),
-                    width: 1,
-                    height: 1,
-                    check_interval: 0,
-                });
-                let (lo, hi) = self.paintings[0].bounds();
+                let id = self.ecs_with_mw(|ecs, mw| ecs.hang_painting(mw, [0, 1, 0], 2, Some("minecraft:kebab"), None, &mut |_| 0, &mut || 1));
+                let p = id.and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.painting_from_ecs(e)).ok_or("special attack painting not hung")?;
+                let (lo, hi) = p.bounds();
                 Vec3::new(
                     (lo[0] + hi[0]) / 2.0,
                     (lo[1] + hi[1]) / 2.0,
@@ -115,29 +106,15 @@ impl Game<'_> {
                 )
             }
             "frame" | "fixed_frame" | "filled_frame" => {
-                self.item_frames.push(ItemFrame {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: 1,
-                    pos: [0, 1, 0],
-                    facing: 2,
-                    glow: false,
-                    item: if kind == "filled_frame" {
-                        Some(horizon_client::items::ItemStack::new("minecraft:stone", 1))
-                    } else {
-                        None
-                    },
-                    rotation: 0,
-                    drop_chance: 1.0,
-                    fixed: kind == "fixed_frame",
-                    invisible: false,
-                    check_interval: 0,
-                    custom_name: None,
-                    random: horizon_core::random::EntityRandom::own(
-                        horizon_core::random::LegacyRandom::new(0),
-                    ),
-                });
-                let (lo, hi) = self.item_frames[0].bounds();
+                let id = self.ecs_with_mw(|ecs, mw| ecs.hang_frame(mw, [0, 1, 0], 2, false, None, &mut || 1));
+                if kind == "filled_frame" {
+                    let stack = horizon_client::items::ItemStack::new("minecraft:stone", 1);
+                    if let Some(id) = id {
+                        self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, id, Some(stack)));
+                    }
+                }
+                let f = id.and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.frame_from_ecs(e)).ok_or("special attack frame not hung")?;
+                let (lo, hi) = f.bounds();
                 Vec3::new(
                     (lo[0] + hi[0]) / 2.0,
                     (lo[1] + hi[1]) / 2.0,

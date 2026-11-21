@@ -46,6 +46,8 @@ pub trait Env {
         c
     }
     fn feedback(&mut self, message: Text);
+    /// A team's members changed: the ECS is told (the game's override; nothing for a bare board).
+    fn team_changed(&mut self, _team: &str) {}
 }
 
 pub fn err(key: &str, args: &[&dyn std::fmt::Display]) -> CommandError {
@@ -884,6 +886,7 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
                 literal(&name)
             };
             env.sb_mut().add_team(&name).display_name = display;
+            env.team_changed(&name);
             let shown = formatted(env, &name);
             env.feedback(tr("commands.team.add.success", &[shown]));
             Ok(env.sb().teams.len() as i32)
@@ -892,6 +895,7 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
             let name = team_name(ctx, env, "team")?;
             let shown = formatted(env, &name);
             env.sb_mut().remove_team(&name);
+            env.team_changed(&name);
             env.feedback(tr("commands.team.remove.success", &[shown]));
             Ok(env.sb().teams.len() as i32)
         }
@@ -908,6 +912,7 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
             for m in &members {
                 env.sb_mut().remove_from_team(m);
             }
+            env.team_changed(&name);
             let shown = formatted(env, &name);
             env.feedback(tr(
                 "commands.team.empty.success",
@@ -926,7 +931,9 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
                 }
             };
             let mut tracker = Tracker::default();
+            let mut changed = vec![name.clone()];
             for m in &members {
+                changed.extend(env.sb().players_team(&m.name).map(|t| t.name.clone()));
                 let joined = env.sb_mut().add_to_team(&m.name, &name);
                 // The message reads the display name after the change; a name-only holder has none.
                 let shown = if m.display.is_some() {
@@ -935,6 +942,9 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
                     Holder::named(&m.name)
                 };
                 tracker.track(&shown, i32::from(joined));
+            }
+            for t in &changed {
+                env.team_changed(t);
             }
             let shown = formatted(env, &name);
             tracker.send(
@@ -958,7 +968,9 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
         "team.leave" => {
             let members = holders(ctx, "members", env, true)?;
             let mut tracker = Tracker::default();
+            let mut changed = Vec::new();
             for m in &members {
+                changed.extend(env.sb().players_team(&m.name).map(|t| t.name.clone()));
                 let left = env.sb_mut().remove_from_team(&m.name);
                 let shown = if m.display.is_some() {
                     env.named(&m.name)
@@ -966,6 +978,9 @@ fn team(id: &str, ctx: &Context, env: &mut dyn Env) -> CmdResult<i32> {
                     Holder::named(&m.name)
                 };
                 tracker.track(&shown, i32::from(left));
+            }
+            for t in &changed {
+                env.team_changed(t);
             }
             tracker.send(
                 env,

@@ -7,7 +7,7 @@ impl Game<'_> {
     pub(super) fn retire_vehicle_registration(&self, target: Target) {
         match target {
             Target::Boat(id) => {
-                if let Some(boat) = self.boats.iter().find(|boat| boat.id == id) {
+                if let Some(boat) = self.boat_object(id) {
                     boat.attachment_lifetime.retire();
                 }
             }
@@ -61,8 +61,8 @@ impl Game<'_> {
     fn native_vehicle_kind(&self, id: u32) -> String {
         if let Some(b) = self.boat_object(id) {
             b.entity_type()
-        } else if let Some(c) = self.cart_object(id) {
-            c.kind.id().into()
+        } else if let Some(kind) = self.ecs.kind(id) {
+            kind.into()
         } else if let Some(vehicle) = self.persist.removed_vehicles.get(&id) {
             vehicle.kind()
         } else if self.cushions.iter().any(|c| c.id == id) {

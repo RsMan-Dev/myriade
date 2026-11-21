@@ -278,7 +278,7 @@ impl Game<'_> {
         // The charge owner is the indirect source of the explosion.
         let owner = match p.owner {
             Some(Who::Player) => Some(self.own_entity_id() as u32),
-            Some(Who::Mob(id)) => self.mobs.iter().any(|m| m.id == id).then_some(id),
+            Some(Who::Mob(id)) => self.remote_entities.iter().any(|m| m.id == id).then_some(id),
             None => None,
         };
         let cause = BurstCause {
@@ -334,7 +334,10 @@ impl Game<'_> {
         if self.boats.iter().any(|b| b.id == id) || self.carts.iter().any(|c| c.id == id) {
             return Some((p, hit));
         }
-        let mut targets = self.projectile_targets();
+        let (a, b) = (again.previous, again.position.add_vector(again.velocity));
+        let lo = Vec3::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z));
+        let hi = Vec3::new(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z));
+        let mut targets = self.projectile_targets(lo, hi);
         if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
             targets.extend(self.lan_projectile_targets());
         }
@@ -367,7 +370,7 @@ impl Game<'_> {
     /// `AbstractWindCharge.onHitEntity`: one point of damage.
     fn wind_charge_damage(&mut self, p: &Projectile, who: Who) {
         let owner_breeze = matches!(p.owner, Some(Who::Mob(id))
-            if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Breeze));
+            if self.remote_entities.iter().any(|m| m.id == id && m.species() == Species::Breeze));
         match who {
             Who::Player => {
                 self.mob_hits_player_kind(
@@ -389,11 +392,8 @@ impl Game<'_> {
                     );
                 }
             }
-            // A boat or a minecart (`VehicleEntity.hurtServer`): the point of
-            // damage shakes it, and the fifth one in a row breaks it.
-            Who::Mob(id) if !self.mobs.iter().any(|m| m.id == id) => {
-                self.hurt_vehicle(p, id, 1.0);
-            }
+            // A boat or a minecart (`VehicleEntity.hurtServer`) is hurt by the ECS.
+            Who::Mob(id) if !self.remote_entities.iter().any(|m| m.id == id) => {}
             Who::Mob(id) => {
                 // AbstractWindCharge.onHitEntity: `damageSources().windCharge`
                 // (`minecraft:wind_charge`, whose message id is `mob`).
@@ -403,8 +403,7 @@ impl Game<'_> {
                     from: Some([p.previous.x, p.previous.y, p.previous.z]),
                     attacker_species: owner_breeze.then_some(Species::Breeze),
                 };
-                let mut hurt = false;
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     // Breeze.isInvulnerableTo: its own kind's charges.
                     if owner_breeze && m.species() == Species::Breeze {
                         return;
@@ -414,7 +413,7 @@ impl Game<'_> {
                     if horizon_client::mobs::wither::armor_refuses(m, &p.kind) {
                         return;
                     }
-                    hurt = m.damage(
+                    m.damage(
                         crate::game::entity::damage_level_of!(self, scoped),
                         1.0,
                         source,
@@ -422,9 +421,6 @@ impl Game<'_> {
                 }
                 if p.owner == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
-                }
-                if hurt {
-                    self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
                 }
             }
         }

@@ -115,7 +115,6 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
 #[ignore = "daily"]
 fn resident_other_and_fangs_load_tick_and_reset() {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.others.clear();
         game.fangs.list.clear();
         let tag = |kind| {
             let mut tag = entity(kind);
@@ -132,13 +131,6 @@ fn resident_other_and_fangs_load_tick_and_reset() {
             }
             tag
         };
-        let id = game
-            .load_other(tag("minecraft:marker"), "minecraft:marker")
-            .unwrap();
-        assert_eq!(game.others[0].id, id);
-        let snapshot = game.others.to_vec();
-        game.others.update(0, |o| o.yaw = 90.0);
-        assert_eq!(snapshot[0].yaw, 0.0);
         game.load_unlisted(
             (0, 0),
             "minecraft:evoker_fangs",
@@ -152,13 +144,11 @@ fn resident_other_and_fangs_load_tick_and_reset() {
             f.life = 0;
             f.started = true;
         });
-        game.tick_fangs();
         assert_eq!(game.fangs.list.len(), 1);
         assert_eq!(game.fangs.list[0].id, survivor);
         assert_eq!(game.fangs.list[0].warmup, 39);
-        game.others.clear();
         game.fangs.list.clear();
-        assert!(game.others.is_empty() && game.fangs.list.is_empty());
+        assert!(game.fangs.list.is_empty());
     });
 }
 

@@ -93,11 +93,11 @@ impl Game<'_> {
         self.screen == Screen::Inventory && self.mount_menu.open.is_some()
     }
     fn mount_mob_index(&self, id: u32) -> Option<usize> {
-        self.mobs.iter().position(|m| m.id == id)
+        self.remote_entities.iter().position(|m| m.id == id)
     }
     /// `AbstractHorse.openCustomInventoryScreen` for a tamed adult mount.
     pub(super) fn open_mount_menu(&mut self, index: usize) {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let species = m.species();
         if !has_mount_menu(species) {
             return;
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// inventory over mount `entity`, its slots to come in the menu's content.
     pub(super) fn open_remote_mount_menu(&mut self, entity: u32, columns: usize) -> bool {
         let Some(species) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == entity)
             .map(Mob::species)
@@ -162,7 +162,7 @@ impl Game<'_> {
         let Some(index) = self.mount_mob_index(id) else {
             return false;
         };
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         if !has_mount_menu(m.species()) || !m.extra.tame || !m.alive() {
             return false;
         }
@@ -173,7 +173,7 @@ impl Game<'_> {
     pub(super) fn riding_mount_with_menu(&self) -> bool {
         self.riding
             .and_then(|id| self.mount_mob_index(id))
-            .is_some_and(|i| has_mount_menu(self.mobs[i].species()))
+            .is_some_and(|i| has_mount_menu(self.remote_entities[i].species()))
     }
     /// A server closed its window: the screen's copy goes.
     pub(super) fn mount_menu_reset(&mut self) {
@@ -182,7 +182,7 @@ impl Game<'_> {
     /// The entity type of the open mount menu's mount (`minecraft:horse`).
     pub(super) fn mount_menu_entity(&self) -> Option<String> {
         let open = self.mount_menu.open.as_ref()?;
-        let m = self.mobs.iter().find(|m| m.id == open.mob)?;
+        let m = self.remote_entities.iter().find(|m| m.id == open.mob)?;
         Some(m.kind.id.to_string())
     }
     /// The chest columns of the open mount menu (the server's window's).
@@ -205,7 +205,7 @@ impl Game<'_> {
         let mob = open.mob;
         let mount = self
             .mount_mob_index(mob)
-            .map(|i| (self.mobs[i].alive(), self.mobs[i].bounds()));
+            .map(|i| (self.remote_entities[i].alive(), self.remote_entities[i].bounds()));
         let valid = match mount {
             Some((true, bounds)) => self.within_entity_interaction_range(&bounds, 4.0),
             _ => false,
@@ -248,7 +248,7 @@ impl Game<'_> {
         Option<Option<ItemStack>>,
         Vec<Option<ItemStack>>,
     ) {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let species = m.species();
         let body = shows_body(species).then(|| m.equipment_stacks()[6].clone());
         let mut items = m.extra.items.clone();
@@ -264,7 +264,7 @@ impl Game<'_> {
         body: Option<Option<ItemStack>>,
         items: Vec<Option<ItemStack>>,
     ) {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let at = m.center();
         let saddle_put_on = saddle.is_some() && !m.extra.saddled();
         let put_on = if saddle_put_on {
@@ -288,7 +288,7 @@ impl Game<'_> {
             (Some(sound), Some(stack)) => self.mod_equip_sound(stack, slot, Some(sound)),
             (sound, _) => sound,
         };
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         let id = m.id;
         let pos = m.position;
         let saddle_off = m.extra.saddled() && saddle.is_none();
@@ -516,7 +516,7 @@ impl Game<'_> {
             batch.sprite(atlas, sprite, ox + 8.0, oy + 36.0);
         }
         let grey = rgba(64, 64, 64, 255);
-        let title = match self.mobs.iter().find(|m| m.id == open.mob) {
+        let title = match self.remote_entities.iter().find(|m| m.id == open.mob) {
             Some(m) => m.custom_name.clone().unwrap_or_else(|| {
                 let key = format!(
                     "entity.minecraft.{}",
@@ -530,7 +530,7 @@ impl Game<'_> {
         batch.text(atlas, &title, ox + 8.0, oy + 6.0, grey, false);
         let inventory = self.translate_with_fallback("container.inventory", "Inventory");
         batch.text(atlas, &inventory, ox + 8.0, oy + 72.0, grey, false);
-        if let Some(m) = self.mobs.iter().find(|m| m.id == open.mob) {
+        if let Some(m) = self.remote_entities.iter().find(|m| m.id == open.mob) {
             self.draw_mob_preview(
                 batch,
                 m,

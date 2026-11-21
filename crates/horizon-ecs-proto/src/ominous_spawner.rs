@@ -71,9 +71,9 @@ fn drop_now(w: &mut World, e: Entity) {
             }
             let v = shoot_down(&mut w.resource_mut::<SpawnerRng>().0, power, uncertainty);
             let e = launch(w, flight, p, v, None);
-            // A potion's contents (its item data) name the brews it splashes or lingers.
-            if let (Some(potion), Ok(mut m)) = (item.potion().and_then(crate::effects::potion_id), w.get_entity_mut(e)) {
-                m.insert(potion);
+            // A potion's item (its data) names the brews it splashes or lingers.
+            if let Ok(mut m) = w.get_entity_mut(e) {
+                m.insert(crate::arrow_more::ThrownItem(item.clone()));
             }
         }
         None => {

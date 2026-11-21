@@ -242,7 +242,7 @@ impl Game<'_> {
     /// The mob the view follows, while the level still holds it.
     pub(super) fn camera_mob(&self) -> Option<&Mob> {
         let id = self.remote_camera_id()?;
-        self.mobs.iter().find(|m| m.id == id)
+        self.remote_entities.iter().find(|m| m.id == id)
     }
     /// The view of the entity a server attached the camera to, while the
     /// level still holds it.
@@ -253,7 +253,7 @@ impl Game<'_> {
     /// The level's entities a server camera may name.
     fn camera_entities(&self) -> CameraEntities<'_> {
         CameraEntities {
-            mobs: &self.mobs,
+            mobs: &self.remote_entities,
             stands: &self.armor_stands,
             boats: &self.boats,
             frames: &self.item_frames,
@@ -264,7 +264,7 @@ impl Game<'_> {
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an
     /// `EntityHitResult`): the nearest mob or object before any block.
     pub(super) fn spectator_click_target(&self) -> Option<i32> {
-        let mob = self.mob_hit().map(|(i, d, _)| (self.mobs[i].id as i32, d));
+        let mob = self.mob_hit().map(|(i, d, _)| (self.remote_entities[i].id as i32, d));
         let object = self.remote_object_hit(false).map(|h| (h.id, h.distance));
         [mob, object]
             .into_iter()

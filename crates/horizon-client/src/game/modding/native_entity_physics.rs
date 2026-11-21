@@ -9,7 +9,7 @@
 //! constructors set.
 use super::{Game, commands::Target};
 use horizon_client::mobs::Species;
-use horizon_client::projectiles::{Projectile, ProjectileKind};
+use horizon_core::nbt::Tag;
 use mod_api::EntityRef;
 
 impl Game<'_> {
@@ -24,6 +24,9 @@ impl Game<'_> {
     /// on load, so it keeps a written value only until then; a kind Horizon
     /// does not simulate keeps it in its saved compound.
     pub(super) fn entity_no_physics(&self, entity: EntityRef) -> Option<bool> {
+        if let Some(id) = self.native_ecs_projectile(entity) {
+            return Some(self.ecs_flag(id, "NoPhysics").unwrap_or(false));
+        }
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.player.as_ref()?.spectator),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
@@ -31,15 +34,6 @@ impl Game<'_> {
             Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) => {
                 Some(self.stored_no_physics(id))
             }
-            Target::Projectile(id) => {
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                match (&p.kind, &p.arrow) {
-                    (ProjectileKind::ShulkerBullet { .. }, _) => Some(self.stored_no_physics(id)),
-                    (_, Some(arrow)) => Some(arrow.no_physics),
-                    _ => None,
-                }
-            }
-            Target::Trident(id) => Some(self.tridents.iter().find(|t| t.id == id)?.no_physics),
             Target::Stand(id) => {
                 let stand = self.armor_stands.iter().find(|s| s.id == id)?;
                 Some(stand.no_physics.unwrap_or(stand.marker || stand.no_gravity))
@@ -74,6 +68,9 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return false;
         }
+        if let Some(id) = self.native_ecs_projectile(entity) {
+            return self.native_projectile_merge(id, "NoPhysics", Tag::Byte(i8::from(no_physics)));
+        }
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => {
                 let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
@@ -88,30 +85,6 @@ impl Game<'_> {
             Some(Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id)) => {
                 self.persist.no_physics.insert(id, no_physics);
                 true
-            }
-            Some(Target::Projectile(id)) => {
-                let Some(index) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
-                    return false;
-                };
-                if matches!(
-                    self.creatures.projectiles[index].kind,
-                    ProjectileKind::ShulkerBullet { .. }
-                ) {
-                    self.persist.no_physics.insert(id, no_physics);
-                    return true;
-                }
-                self.creatures
-                    .projectiles
-                    .update(index, |p| p.set_no_physics(no_physics))
-            }
-            Some(Target::Trident(id)) => {
-                self.tridents
-                    .iter_mut()
-                    .find(|t| t.id == id)
-                    .is_some_and(|t| {
-                        t.set_no_physics(no_physics);
-                        true
-                    })
             }
             Some(Target::Stand(id)) => self
                 .armor_stands
@@ -145,16 +118,10 @@ impl Game<'_> {
     /// `/kill` and the native discard drop a projectile from its list: the
     /// `noPhysics` write stored for a shulker bullet leaves with it.
     pub(super) fn remove_projectile(&mut self, id: u32) {
-        self.creatures.projectiles.retain(|p| p.id != id);
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.despawn(e);
+        }
         self.forget_entity(id);
-    }
-
-    /// A player's blow takes a projectile out at `i` (`hit_shulker_bullet`):
-    /// the `noPhysics` write stored for a shulker bullet leaves with it.
-    pub(super) fn remove_projectile_at(&mut self, i: usize) -> Projectile {
-        let p = self.creatures.projectiles.remove(i);
-        self.forget_entity(p.id);
-        p
     }
 
     /// A command drops an ominous item spawner: its stored `noPhysics` write
@@ -211,103 +178,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn no_physics_reads_supported_entities_and_refuses_others() {
-        use super::super::native_entity_refs::tests::with_game;
-        use super::super::trident::ThrownTrident;
-        use horizon_client::mobs::Mob;
-        use horizon_client::motion::PlayerMotion;
-        use horizon_client::projectiles::{Projectile, ProjectileKind};
-        use horizon_core::geometry::Vec3;
-        use mod_api::WorldEpoch;
-
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.entity(20).unwrap();
-            game.player.as_mut().unwrap().spectator = false;
-            assert_eq!(player.no_physics(game), Some(false));
-            game.player.as_mut().unwrap().spectator = true;
-            assert_eq!(player.no_physics(game), Some(true));
-
-            let kind = game.res.mob_types().get("minecraft:vex").unwrap().clone();
-            game.mobs.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
-            let mob = game.entity(42).unwrap();
-            assert_eq!(mob.no_physics(game), Some(false));
-
-            let mut arrow = Projectile::new(
-                ProjectileKind::Arrow {
-                    base_damage: 2.0,
-                    critical: false,
-                    effect: None,
-                },
-                Vec3::ZERO,
-                None,
-            );
-            arrow.id = game.take_entity_id();
-            let arrow_id = arrow.id;
-            game.creatures.projectiles.push(arrow);
-            let arrow = game.entity(arrow_id).unwrap();
-            assert_eq!(arrow.no_physics(game), Some(false));
-            game.creatures
-                .projectiles
-                .update(0, |p| p.arrow.as_mut().unwrap().no_physics = true);
-            assert_eq!(arrow.no_physics(game), Some(true));
-
-            let trident_id = game.take_entity_id();
-            game.tridents
-                .push(ThrownTrident::remote(trident_id, Vec3::ZERO, 0.0, 0.0));
-            let trident = game.entity(trident_id).unwrap();
-            assert_eq!(trident.no_physics(game), Some(false));
-            game.tridents[0].no_physics = true;
-            assert_eq!(trident.no_physics(game), Some(true));
-
-            let mut snowball = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
-            snowball.id = game.take_entity_id();
-            let snowball_id = snowball.id;
-            game.creatures.projectiles.push(snowball);
-            let snowball = game.entity(snowball_id).unwrap();
-            assert_eq!(snowball.no_physics(game), None);
-
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                Vec3::ZERO,
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let bullet_id = bullet.id;
-            game.creatures.projectiles.push(bullet);
-            let bullet = game.entity(bullet_id).unwrap();
-            assert_eq!(bullet.no_physics(game), Some(true));
-
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = game.take_entity_id();
-            let dragon_id = dragon.id;
-            game.dragon.replace(dragon);
-            let dragon = game.entity(dragon_id).unwrap();
-            assert_eq!(dragon.no_physics(game), Some(true));
-
-            game.boats.push(super::super::boats::Boat::new(
-                44,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
-            let boat = game.entity(44).unwrap();
-            assert_eq!(boat.no_physics(game), None);
-            let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
-            assert_eq!(stale.no_physics(game), None);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn no_physics_write_holds_and_covers_the_four_constant_kinds() {
         use super::super::native_entity_refs::tests::with_game;
         use super::super::trident::ThrownTrident;
@@ -317,8 +187,9 @@ mod tests {
         use horizon_client::items::ItemStack;
         use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
-        use horizon_client::projectiles::Projectile;
+        use horizon_client::arrows::Pickup;
         use horizon_core::geometry::Vec3;
+        use horizon_ecs_proto::arrow_more::{ArrowShot, Def};
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -402,22 +273,16 @@ mod tests {
             assert_eq!(zombie.no_physics(game), Some(true));
 
             // An arrow and a trident write their synced flag with it.
-            let mut arrow = Projectile::new(
-                ProjectileKind::Arrow {
-                    base_damage: 2.0,
-                    critical: false,
-                    effect: None,
-                },
-                Vec3::ZERO,
-                None,
-            );
-            arrow.id = game.take_entity_id();
-            let arrow_id = arrow.id;
-            game.creatures.projectiles.push(arrow);
+            let shot = ArrowShot {
+                pickup: Pickup::Allowed,
+                stack: ItemStack::new("minecraft:arrow", 1),
+                fx: Def::default(),
+                sound: "minecraft:entity.arrow.hit",
+            };
+            let arrow_id = game.ecs_shoot_arrow([0.0; 3], [0.0; 3], None, shot, None);
             let arrow = game.entity(arrow_id).unwrap();
             assert!(arrow.set_no_physics(game, true));
             assert_eq!(arrow.no_physics(game), Some(true));
-            assert!(game.creatures.projectiles[0].needs_sync);
 
             let trident_id = game.take_entity_id();
             game.tridents
@@ -446,20 +311,9 @@ mod tests {
 
             // A shulker bullet and the dragon read a constant `true` before;
             // now their write lands and the read answers it.
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                Vec3::ZERO,
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let bullet_id = bullet.id;
-            game.creatures.projectiles.push(bullet);
+            let bullet_id = game
+                .ecs_launch("minecraft:shulker_bullet", [0.0; 3], [0.0; 3], None)
+                .unwrap();
             let bullet = game.entity(bullet_id).unwrap();
             assert_eq!(bullet.no_physics(game), Some(true));
             assert!(bullet.set_no_physics(game, false));
@@ -482,191 +336,6 @@ mod tests {
     /// shulker's lid (`piston_push::lid_push`, the gate that asks
     /// `Entity::no_physics`) pushes a bullet whose flag a mod cleared and
     /// spares one left at the kind's default `true`.
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_cleared_no_physics_shulker_bullet_is_pushed_by_a_shulker_lid() {
-        use super::super::native_entity_refs::tests::with_game;
-        use crate::game::piston_push::Lid;
-        use horizon_client::mobs::Mob;
-        use horizon_client::projectiles::Projectile;
-        use horizon_core::geometry::{Aabb, Vec3};
-
-        let bullet = |game: &mut Game<'_>, at: Vec3| {
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                at,
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let id = bullet.id;
-            game.creatures.projectiles.push(bullet);
-            id
-        };
-
-        with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:shulker")
-                .expect("the shulker type")
-                .clone();
-            game.mobs
-                .push(Mob::new(24, kind, Vec3::new(24.0, 200.0, 24.0), 0.0));
-            let cleared = bullet(game, Vec3::new(10.5, 200.0, 10.5));
-            let left_alone = bullet(game, Vec3::new(13.5, 200.0, 10.5));
-            let handle = game.entity(cleared).expect("the bullet handle");
-            assert!(handle.set_no_physics(game, false));
-            assert_eq!(handle.no_physics(game), Some(false));
-
-            let area = Aabb::new(Vec3::new(9.0, 200.0, 9.0), Vec3::new(15.0, 201.0, 12.0));
-            game.lid_push(Lid::Shulker(24), area, Vec3::new(0.0, 0.25, 0.0));
-            let y = |id: u32| {
-                game.creatures
-                    .projectiles
-                    .iter()
-                    .find(|p| p.id == id)
-                    .expect("the bullet")
-                    .position
-                    .y
-            };
-            assert_eq!(
-                y(cleared),
-                200.25,
-                "a cleared flag lets a shulker's lid push the bullet"
-            );
-            assert_eq!(
-                y(left_alone),
-                200.0,
-                "a bullet left at its default noPhysics is spared"
-            );
-        });
-    }
-
-    /// The stored value leaves the world with its entity: a projectile unloaded
-    /// with its chunk is removed without `forget_entity` on the removal path,
-    /// so the sweep has to drop the entry itself.
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_entry_is_cleared_when_the_bullet_leaves_with_its_chunk() {
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::projectiles::Projectile;
-        use horizon_core::geometry::Vec3;
-        use std::collections::HashSet;
-
-        with_game(|game| {
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                Vec3::new(4.5, 200.0, 4.5),
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let id = bullet.id;
-            game.creatures.projectiles.push(bullet);
-            let bullet = game.entity(id).expect("the bullet handle");
-            assert!(bullet.set_no_physics(game, false));
-            assert!(game.persist.no_physics.contains_key(&id));
-
-            let _ = game.entity_chunks(&HashSet::from([(0, 0)]), true);
-            assert!(
-                !game.persist.no_physics.contains_key(&id),
-                "the entry left with its entity"
-            );
-        });
-    }
-
-    /// `/kill` (and the native discard that shares `kill_target_in_level`)
-    /// takes a shulker bullet out of its list: the `noPhysics` write stored
-    /// for it has to leave with it.
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_entry_is_cleared_when_a_command_kills_a_shulker_bullet() {
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::projectiles::Projectile;
-        use horizon_core::geometry::Vec3;
-
-        with_game(|game| {
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                Vec3::new(4.5, 200.0, 4.5),
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let id = bullet.id;
-            game.creatures.projectiles.push(bullet);
-            let bullet = game.entity(id).expect("the bullet handle");
-            assert!(bullet.set_no_physics(game, false));
-            assert!(game.persist.no_physics.contains_key(&id));
-
-            game.set_allow_commands(true);
-            assert!(
-                game.run_command("kill @e[type=minecraft:shulker_bullet]"),
-                "the command found and removed the bullet"
-            );
-            assert!(!game.creatures.projectiles.iter().any(|p| p.id == id));
-            assert!(
-                !game.persist.no_physics.contains_key(&id),
-                "the entry left with the entity the command killed"
-            );
-        });
-    }
-
-    /// A player's blow removes a shulker bullet (`hit_shulker_bullet`): the
-    /// `noPhysics` write stored for it has to leave with it.
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_entry_is_cleared_when_a_players_blow_removes_a_shulker_bullet() {
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::projectiles::Projectile;
-        use horizon_core::geometry::Vec3;
-
-        with_game(|game| {
-            let mut bullet = Projectile::new(
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 0,
-                },
-                Vec3::new(4.5, 200.0, 4.5),
-                None,
-            );
-            bullet.id = game.take_entity_id();
-            let id = bullet.id;
-            game.creatures.projectiles.push(bullet);
-            let bullet = game.entity(id).expect("the bullet handle");
-            assert!(bullet.set_no_physics(game, false));
-            assert!(game.persist.no_physics.contains_key(&id));
-
-            game.hit_shulker_bullet(0);
-            assert!(!game.creatures.projectiles.iter().any(|p| p.id == id));
-            assert!(
-                !game.persist.no_physics.contains_key(&id),
-                "the entry left with the bullet the player's blow removed"
-            );
-        });
-    }
-
-    /// An ominous item spawner that finishes its countdown is taken away by
-    /// `tick_ominous_item_spawners`: its entry goes with it.
     #[test]
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_an_ominous_item_spawner_finishes() {

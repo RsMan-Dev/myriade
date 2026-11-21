@@ -95,7 +95,7 @@ if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") 
         herd.tick();
     }
     show(&herd, 40);
-    // The fall: 11 blocks hurt by 8 (ceil(11 - 3)); 39 kill.
+    // The fall: 11 blocks hurt by 8 (floor(11 + 1e-6 - 3)); 39 kill.
     if species().rules.iter().any(|r| r.rule.name == "wing_flap") {
         // A hen takes no fall damage (`causeFallDamage` answers no).
         assert!(health(&herd, hurt) == Some(species().max_health) && health(&herd, dies) == Some(species().max_health), "{:?} {:?}", health(&herd, hurt), health(&herd, dies));

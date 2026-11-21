@@ -32,7 +32,7 @@ fn in_water_the_buoyancy_lifts_a_still_boat_by_the_jar_numbers() {
     let mut vel = Vec3::new(0.0, 0.0, 0.0);
     let mut yaw = 0.0_f32;
     // Buoyancy (water_level - y) / HEIGHT = 1, gravity 0.04: (-0.04 + 0.04 / 0.65) * 0.75.
-    float(&mut b, &mut vel, &mut yaw, 0.0, 0.04, false);
+    float(&mut b, &mut vel, &mut yaw, 0.0, 0.04, None);
     near(vel.y, (-0.04 + 0.04 / 0.65) * 0.75);
     near(vel.x, 0.0);
 }
@@ -43,7 +43,7 @@ fn under_a_still_fluid_the_drag_is_0_45_and_the_sink_is_the_gravity() {
     set_status(&mut b, Status::UnderWater, 0.0);
     let mut vel = Vec3::new(1.0, 0.0, 1.0);
     let mut yaw = 0.0_f32;
-    float(&mut b, &mut vel, &mut yaw, 0.0, 0.04, false);
+    float(&mut b, &mut vel, &mut yaw, 0.0, 0.04, None);
     near(vel.x, 0.45);
     near(vel.z, 0.45);
     near(vel.y, (-0.04 + 0.01 * 0.04 / 0.65) * 0.75);
@@ -51,11 +51,11 @@ fn under_a_still_fluid_the_drag_is_0_45_and_the_sink_is_the_gravity() {
 
 #[test]
 fn a_rider_pressing_up_pushes_along_the_yaw_at_0_04() {
-    let mut b = Boat { input: [false, false, true, false], ..Boat::default() };
+    let mut b = Boat::default();
     set_status(&mut b, Status::InAir, 0.0);
     let mut vel = Vec3::new(0.0, 0.0, 0.0);
     let mut yaw = 0.0_f32;
-    float(&mut b, &mut vel, &mut yaw, 0.0, 0.0, true);
+    float(&mut b, &mut vel, &mut yaw, 0.0, 0.0, Some([false, false, true, false]));
     near(vel.x, 0.0);
     near(vel.z, 0.04);
     assert_eq!(b.paddling, [true, true]);
@@ -63,11 +63,11 @@ fn a_rider_pressing_up_pushes_along_the_yaw_at_0_04() {
 
 #[test]
 fn a_rider_pressing_left_turns_the_boat_and_paddles_the_second_row() {
-    let mut b = Boat { input: [true, false, false, false], ..Boat::default() };
+    let mut b = Boat::default();
     set_status(&mut b, Status::InAir, 0.0);
     let mut vel = Vec3::new(0.0, 0.0, 0.0);
     let mut yaw = 0.0_f32;
-    float(&mut b, &mut vel, &mut yaw, 0.0, 0.0, true);
+    float(&mut b, &mut vel, &mut yaw, 0.0, 0.0, Some([true, false, false, false]));
     near(f64::from(yaw), -1.0);
     assert_eq!(b.paddling, [false, true]);
 }

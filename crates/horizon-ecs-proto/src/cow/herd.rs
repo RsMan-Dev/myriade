@@ -125,54 +125,7 @@ impl Herd {
         let mut world = World::new();
         crate::goals::reset_uids();
         let level = if spawn_world { build_level_neutral_with(half, crate::spawning::world_builder(half)) } else { build_level_neutral(half, hazards) };
-        world.insert_resource(Hazards::build(&level));
-        world.insert_resource(DamageQueue::default());
-        world.insert_resource(HurtCauses::default());
-        world.insert_resource(BlockChanges::default());
-        world.insert_resource(StateChanges::default());
-        world.insert_resource(level);
-        world.insert_resource(species_table());
-        crate::type_tags::register(&mut world, crate::effects::TYPED_TAGS);
-        let tags = [crate::nbt::Field {
-            key: "Tags".into(),
-            owner: None,
-            accepts: crate::nbt::accept::any,
-            write: crate::nbt_tag::write,
-            read: crate::nbt_tag::read,
-        }];
-        crate::nbt::begin_declarations(&mut world);
-        for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::common::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
-            crate::nbt::register(&mut world, fields);
-        }
-        crate::nbt::register_creators(&mut world, crate::nbt_fields::rides::CREATORS);
-        crate::nbt::register_creators(&mut world, crate::nbt_fields::common::CREATORS);
-        crate::nbt::register_creators(&mut world, crate::nbt_fields::creatures_more::CREATORS);
-        // Every species, then the passive types, then the sorts with a constructor (which replaces the species' recipe of their id).
-        for sp in species_table().0 {
-            crate::nbt::declare(&mut world, sp.name, crate::nbt::Recipe { saved: sp.saved, build: crate::nbt::Build::Species });
-        }
-        for id in crate::passive::kinds() {
-            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::Passive });
-        }
-        for &(id, b) in crate::nbt_fields::things::builders() {
-            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(b) });
-        }
-        for &(id, _) in crate::projectile::KINDS {
-            // A kind with a recipe of its own (the trident's builder) keeps it.
-            if crate::projectile::UNSAVED.contains(&id) {
-                continue;
-            }
-            crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(crate::projectile::build) });
-        }
-        crate::nbt::end_declarations(&mut world);
-        world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
-        world.insert_resource(OrderedStats::default());
-        world.insert_resource(Clock::default());
-        world.insert_resource(Players::default());
-        world.insert_resource(Wheel::default());
-        crate::goals::insert_resources(&mut world);
-        crate::hostile::insert_resources(&mut world);
-        world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
+        assemble_resources(&mut world, level, sleep, parallel);
         let mut rng = Rng(seed | 1);
         for i in 0..n {
             let (cx, cz) = ((i as i32 % side) as f64, (i as i32 / side) as f64);
@@ -398,4 +351,65 @@ impl Herd {
         let total = self.world.query::<&Pos>().iter(&self.world).count();
         (idle, following, moving, total)
     }
+}
+
+/// The resources and the schedule-side tables of a herd: the level (its blocks, read by the systems), the species, the nbt declarations,
+/// the config and the spatial index. The herd builder and the host world (`bridge/assemble.rs`) build them the same way.
+pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, parallel: bool) {
+    let half = level.half;
+    world.insert_resource(Hazards::build(&level));
+    world.insert_resource(DamageQueue::default());
+    world.insert_resource(HurtCauses::default());
+    world.insert_resource(BlockChanges::default());
+    world.insert_resource(StateChanges::default());
+    world.insert_resource(level);
+    world.insert_resource(species_table());
+    crate::type_tags::register(&mut world, crate::effects::TYPED_TAGS);
+    let tags = [crate::nbt::Field {
+        key: "Tags".into(),
+        owner: None,
+        accepts: crate::nbt::accept::any,
+        write: crate::nbt_tag::write,
+        read: crate::nbt_tag::read,
+    }];
+    crate::nbt::begin_declarations(&mut world);
+    for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::common::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::owners::FIELDS, crate::nbt_fields::falling::FIELDS, crate::nbt_fields::effect_cloud::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::mount_inventory::FIELDS, crate::firework_burst::FIELDS, crate::cart_state::FIELDS, crate::nbt_fields::living_state::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
+        crate::nbt::register(&mut world, fields);
+    }
+    crate::nbt::register_creators(&mut world, crate::nbt_fields::rides::CREATORS);
+    crate::nbt::register_creators(&mut world, crate::nbt_fields::common::CREATORS);
+    crate::nbt::register_creators(&mut world, crate::nbt_fields::creatures_more::CREATORS);
+    crate::nbt::register_creators(&mut world, crate::nbt_fields::living_state::CREATORS);
+    crate::nbt::register_creators(&mut world, crate::dispense::CREATORS);
+    crate::cart_state::register_nbt(&mut world);
+    crate::boat_state::register_nbt(&mut world);
+    // Every species, then the passive types, then the sorts with a constructor (which replaces the species' recipe of their id).
+    for sp in species_table().0 {
+        crate::nbt::declare(&mut world, sp.name, crate::nbt::Recipe { saved: sp.saved, build: crate::nbt::Build::Species });
+    }
+    for id in crate::passive::kinds() {
+        crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::Passive });
+    }
+    for &(id, b) in crate::nbt_fields::things::builders() {
+        crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(b) });
+    }
+    for &(id, _) in crate::projectile::KINDS {
+        // A kind with a recipe of its own (the trident's builder) keeps it.
+        if crate::projectile::UNSAVED.contains(&id) {
+            continue;
+        }
+        crate::nbt::declare(&mut world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(crate::projectile::build) });
+    }
+    crate::nbt::end_declarations(&mut world);
+    world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
+    world.insert_resource(OrderedStats::default());
+    world.insert_resource(Clock::default());
+    world.insert_resource(Players::default());
+    world.insert_resource(Wheel::default());
+    crate::goals::insert_resources(&mut world);
+    crate::inside::insert_resources(&mut world);
+    crate::inside_effects::insert_resources(&mut world);
+    crate::inside_more::insert_resources(&mut world);
+    crate::hostile::insert_resources(&mut world);
+    world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
 }

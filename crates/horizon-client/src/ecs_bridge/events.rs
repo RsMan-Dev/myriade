@@ -1,9 +1,97 @@
 //! The ECS host events as the server's `MobEvent`s, which `handle_mob_events_reusable` applies with the effect the mobs' own events have.
 //! `None`: no `MobEvent` of the same meaning, or an entity without a network id or a position; the caller keeps the event.
-use crate::mobs::MobEvent;
+//! Variant to action: SetBlock, Sound, Particles, EntityEvent, Darkness, Xp, LevelEvent, ChestOpen, ChestSlot, ParrotToShoulder
+//! and PullEntity (a `Push` of the creature) map to their `MobEvent`, and TargetChanged with a target to `SetTarget`; BossBar, PushPlayer,
+//! Cloud, DisplayUpdate, GameEvent, Pearl, GolemState and the lot-46 outputs (Death, ConversionAsk, Spawned,
+//! Tamed, HitDealt, Unleashed, TotemAsk) and the lot variants (one per lot, routed by `game/ecs/host_events.rs`) have none and stay with the host (`None`).
+use super::level::EcsLevel;
+use crate::mobs::{MobEvent, Who};
 use bevy_ecs::world::World;
-use horizon_ecs_proto::bridge::{ids::id_of, view};
+use horizon_ecs_proto::bridge::{host_events_more::resolve_death, ids::id_of, view};
 use horizon_ecs_proto::host_out::HostEvent;
+
+impl EcsLevel {
+    /// A conversion waits for the host while a mod hears it (`set_conversion_watched`); nothing when inert.
+    pub fn set_conversion_watched(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_conversion_watched(on);
+        }
+    }
+
+    /// Walking entities emit their movement game events while `on`; nothing when inert.
+    pub fn set_move_events(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_move_events(on);
+        }
+    }
+
+    /// The host's table of what a stack on the ground resists, set once at the level's creation (no-op when inert).
+    pub fn set_item_resists_table(&mut self, f: horizon_ecs_proto::item::ItemResistsFn) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_item_resists_table(f);
+        }
+    }
+
+    /// The answer to a `ConversionAsk` of the entity `e`: the new entity (the old one stays until `finish_conversion`).
+    pub fn resolve_conversion(&mut self, e: bevy_ecs::entity::Entity, cancel: bool) -> Option<bevy_ecs::entity::Entity> {
+        self.ecs_mut()?.resolve_conversion(e, cancel)
+    }
+
+    /// The old entity of a resolved conversion leaves.
+    pub fn finish_conversion(&mut self, e: bevy_ecs::entity::Entity) {
+        if let Some(w) = self.ecs_mut() {
+            w.finish_conversion(e);
+        }
+    }
+
+    /// A lethal hit leaves the entity `Dying` until `resolve_death` (set while a mod hears `living_death_post`); nothing when inert.
+    pub fn set_death_vetoable(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_death_vetoable(on);
+        }
+    }
+
+    /// A lethal hit on a holder of a totem waits for the host while a mod hears `living_use_totem`; nothing when inert.
+    pub fn set_totem_watched(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_totem_watched(on);
+        }
+    }
+
+    /// `HitDealt` is emitted only while `on` (a mod hears `hurt_enemy`); nothing when inert.
+    pub fn set_hit_watched(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_hit_watched(on);
+        }
+    }
+
+    /// The answer to a `TotemAsk` of `e`: `cancel` lets it die, else the totem is used up. True when it was saved.
+    pub fn resolve_totem(&mut self, e: bevy_ecs::entity::Entity, cancel: bool) -> bool {
+        self.ecs_mut().is_some_and(|w| w.resolve_totem(e, cancel))
+    }
+
+    /// The end of a lethal hit held by the death policy, of the entity with network id `id` (`None`: the death goes on; `Some(v)`:
+    /// the entity lives on with health `v`). Nothing when the id is unknown.
+    pub fn loot_dying(&mut self, id: u32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.loot_dying(e))
+    }
+
+    pub fn resolve_death(&mut self, id: u32, veto: Option<f32>) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(w) = self.world_mut() {
+            resolve_death(w, e, veto);
+        }
+    }
+}
+
+/// A `targeting::Who` as the `MobEvent`'s: a player (the id is the server's own, not carried by `MobEvent`) or a mob by network id.
+fn who_of(world: &World, w: horizon_ecs_proto::targeting::Who) -> Option<Who> {
+    Some(match w {
+        horizon_ecs_proto::targeting::Who::Player(_) => Who::Player,
+        horizon_ecs_proto::targeting::Who::Entity(e) => Who::Mob(id_of(world, e)?),
+    })
+}
 
 pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
     Some(match ev {
@@ -17,7 +105,44 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         HostEvent::ChestOpen { chest, open, entity } => MobEvent::ChestOpen { chest, open, mob: id_of(world, entity)? },
         HostEvent::ChestSlot { chest, slot, stack } => MobEvent::ChestSlot { chest, slot, stack },
         HostEvent::ParrotToShoulder { parrot, .. } => MobEvent::ParrotToShoulder { mob: id_of(world, parrot)? },
-        _ => return None,
+        HostEvent::PullEntity { entity, velocity } => MobEvent::Push { target: Who::Mob(id_of(world, entity)?), velocity },
+        HostEvent::TargetChanged { entity, target: Some(t), .. } => MobEvent::SetTarget { mob: id_of(world, entity)?, target: who_of(world, t)? },
+        HostEvent::BossBar { .. }
+        | HostEvent::PushPlayer { .. }
+        | HostEvent::Cloud { .. }
+        | HostEvent::DisplayUpdate { .. }
+        | HostEvent::GameEvent { .. }
+        | HostEvent::GameEventBy { .. }
+        | HostEvent::Pearl { .. }
+        | HostEvent::GolemState { .. }
+        | HostEvent::Death { .. }
+        | HostEvent::ConversionAsk { .. }
+        | HostEvent::TargetChanged { target: None, .. }
+        | HostEvent::Spawned { .. }
+        | HostEvent::Tamed { .. }
+        | HostEvent::HitDealt { .. }
+        | HostEvent::Unleashed { .. }
+        | HostEvent::TotemAsk { .. }
+        | HostEvent::Arrow(_)
+        | HostEvent::BoatEffect(_)
+        | HostEvent::BoatHurt(_)
+        | HostEvent::Boat(_)
+        | HostEvent::CartMove(_)
+        | HostEvent::Cart(_)
+        | HostEvent::Equipment(_)
+        | HostEvent::Falling(_)
+        | HostEvent::Firework(_)
+        | HostEvent::Frame(_)
+        | HostEvent::General(_)
+        | HostEvent::Hook(_)
+        | HostEvent::Inside(_)
+        | HostEvent::Item(_)
+        | HostEvent::Misc(_)
+        | HostEvent::Seat(_)
+        | HostEvent::Tnt(_)
+        | HostEvent::Trident(_)
+        | HostEvent::Using(_)
+        | HostEvent::VehiclePush(_) => return None,
     })
 }
 

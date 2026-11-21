@@ -254,7 +254,7 @@ mod tests {
             return;
         };
         assert!(acquire(&mut h, cube, prey), "témoin : le but tourne");
-        h.world.entity_mut(cube).remove::<Target>();
+        targeting::clear_target(&mut h.world, cube);
         h.tick();
         assert!(!running(&h, cube), "sans cible, le but s'arrête");
         h.tick();

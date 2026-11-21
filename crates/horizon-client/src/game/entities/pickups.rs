@@ -12,11 +12,13 @@ use horizon_client::{
 const LIFE_TIME: u32 = 3;
 
 /// The taken entity, as it was when taken.
-pub(super) enum Taken {
+pub(in crate::game) enum Taken {
     Item(Box<ItemEntity>),
     Orb(Box<ExperienceOrb>),
     Arrow(Box<Projectile>),
     Trident(Box<super::trident::ThrownTrident>),
+    /// An ECS item or orb taken (`kind` "item" or "orb"): its network id, its count and its position, read before it left the level.
+    Ecs { id: u32, count: i32, at: [f64; 3], kind: &'static str },
 }
 impl Taken {
     /// The render state's position: the entity's at partial tick 1.
@@ -26,6 +28,7 @@ impl Taken {
             Taken::Orb(o) => o.position,
             Taken::Arrow(a) => a.position,
             Taken::Trident(t) => t.position,
+            Taken::Ecs { at, .. } => return *at,
         };
         [p.x, p.y, p.z]
     }
@@ -36,12 +39,14 @@ impl Taken {
             Taken::Orb(o) => o.id,
             Taken::Arrow(a) => a.id,
             Taken::Trident(t) => t.id,
+            Taken::Ecs { id, .. } => *id,
         }
     }
     /// The packet's amount: the stack's size, or one of the others.
     fn amount(&self) -> i32 {
         match self {
             Taken::Item(i) => i.stack.count as i32,
+            Taken::Ecs { count, .. } => *count,
             Taken::Orb(_) | Taken::Arrow(_) | Taken::Trident(_) => 1,
         }
     }
@@ -49,10 +54,12 @@ impl Taken {
 
 /// Whoever took it: the particle's `target`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Collector {
+pub(in crate::game) enum Collector {
     Player,
     /// A mob, or another player on a server (both kept as mobs here).
     Mob(u32),
+    /// A mob that lives in the ECS, by its network id.
+    Ecs(u32),
 }
 
 pub(super) struct Pickup {
@@ -106,6 +113,13 @@ impl Game<'_> {
                 let m = self.mobs.iter().find(|m| m.id == id)?;
                 (m.position, m.eye_height())
             }
+            // The ECS holds the mob: its position, and its eye height from P's fluid parameters.
+            Collector::Ecs(id) => {
+                let e = self.ecs.entity_of(id)?;
+                let p = self.ecs.position(id)?;
+                let eye = self.ecs.world()?.get::<horizon_ecs_proto::cow::FluidParams>(e)?.eye_height;
+                (horizon_core::geometry::Vec3::new(p[0], p[1], p[2]), eye)
+            }
         };
         Some([p.x, (p.y + (p.y + eye)) / 2.0, p.z])
     }
@@ -138,6 +152,7 @@ impl Game<'_> {
             Taken::Orb(_) => "orb",
             Taken::Arrow(_) => "arrow",
             Taken::Trident(_) => "trident",
+            Taken::Ecs { kind, .. } => kind,
         };
         *self.pickups.made.entry(kind).or_default() += 1;
         self.pickups.added.push(Pickup {

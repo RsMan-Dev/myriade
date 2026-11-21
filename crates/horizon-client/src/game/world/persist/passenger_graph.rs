@@ -35,8 +35,8 @@ impl Game<'_> {
 
     pub(super) fn passenger_object_present(&self, id: u32) -> bool {
         self.mob_object(id).is_some_and(|mob| !mob.removed)
-            || self.boat_object(id).is_some()
-            || self.cart_object(id).is_some()
+            || self.is_boat(id)
+            || self.ecs.cart_kind(id).is_some()
             || self.passenger_present(id)
     }
 
@@ -148,8 +148,8 @@ impl Game<'_> {
             mob.kind.id.to_string()
         } else if let Some(boat) = self.boat_object(vehicle) {
             boat.entity_type()
-        } else if let Some(cart) = self.cart_object(vehicle) {
-            cart.kind.id().to_owned()
+        } else if let Some(kind) = self.ecs.kind(vehicle) {
+            kind.to_owned()
         } else if let Some(target) = self.level_entity(vehicle as i32) {
             self.target_type(target)
         } else {
@@ -328,22 +328,10 @@ impl Game<'_> {
             // BlockAttachedEntity.setPos floors the anchor then recalculates
             // the bounding-box centre; it does not retain the requested point.
             Target::Frame(id) => {
-                if let Some(e) = self.item_frames.iter_mut().find(|e| e.id == id) {
-                    e.pos = [
-                        at.x.floor() as i32,
-                        at.y.floor() as i32,
-                        at.z.floor() as i32,
-                    ];
-                }
+                self.ecs_move_hanging(id, [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32]);
             }
             Target::Painting(id) => {
-                if let Some(e) = self.paintings.iter_mut().find(|e| e.id == id) {
-                    e.pos = [
-                        at.x.floor() as i32,
-                        at.y.floor() as i32,
-                        at.z.floor() as i32,
-                    ];
-                }
+                self.ecs_move_hanging(id, [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32]);
             }
             Target::Fangs(id) => {
                 if let Some(i) = self.fangs.list.iter().position(|e| e.id == id) {
@@ -417,8 +405,16 @@ impl Game<'_> {
                 self.discard_entity(handle);
             }
         }
-        self.item_frames.retain(|e| !gone.contains(&e.id));
-        self.paintings.retain(|e| !gone.contains(&e.id));
+        for f in self.ecs_frames().into_iter().filter(|f| gone.contains(&f.id)) {
+            if let Some(e) = self.ecs.entity_of(f.id) {
+                self.ecs.despawn(e);
+            }
+        }
+        for p in self.ecs_paintings().into_iter().filter(|p| gone.contains(&p.id)) {
+            if let Some(e) = self.ecs.entity_of(p.id) {
+                self.ecs.despawn(e);
+            }
+        }
         self.others.retain(|e| !gone.contains(&e.id));
         self.cushions.retain(|e| !gone.contains(&e.id));
         self.fangs.list.retain(|e| !gone.contains(&e.id));
@@ -441,9 +437,7 @@ impl Game<'_> {
     }
 
     pub(super) fn saved_passenger_body(&mut self, id: u32) -> Option<Tag> {
-        if self.persist.off_level.contains_key(&id)
-            && (self.boat_object(id).is_some() || self.cart_object(id).is_some())
-        {
+        if self.persist.off_level.contains_key(&id) && self.is_boat(id) {
             return self.vehicle_tree_nbt(id);
         }
         let target = self.level_entity(id as i32)?;

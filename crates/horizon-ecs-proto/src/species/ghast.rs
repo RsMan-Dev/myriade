@@ -13,7 +13,7 @@ pub static DEF: Def = Def {
         Entry::new(&ghast_look::MODULE, 7, &ghast_look::Params::DEFAULT),
         Entry::new(&charged_shot::MODULE, 7, &charged_shot::Params::GHAST),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

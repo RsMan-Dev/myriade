@@ -175,11 +175,11 @@ impl Game<'_> {
             ));
             return Some((lo, hi, at(c.position)));
         }
-        if let Some(f) = self.item_frames.iter().find(|f| f.id == id) {
+        if let Some(f) = self.ecs.entity_of(id).and_then(|e| self.frame_from_ecs(e)) {
             let (lo, hi) = f.bounds();
             return Some((lo, hi, centre(f.pos)));
         }
-        let p = self.paintings.iter().find(|p| p.id == id)?;
+        let p = self.ecs.entity_of(id).and_then(|e| self.painting_from_ecs(e))?;
         let (lo, hi) = p.bounds();
         Some((lo, hi, centre(p.pos)))
     }
@@ -233,7 +233,7 @@ impl Game<'_> {
         let (keys, dead) = (input_keys(g.input), g.dead || g.health <= 0.0);
         let boat = self.boats.iter().position(|b| b.id == vehicle);
         let cart = self.carts.iter().any(|c| c.id == vehicle);
-        let mount = self.mobs.iter().any(|m| m.id == vehicle);
+        let mount = self.mob_exists(vehicle);
         let cushion = self.cushions.iter().any(|c| c.id == vehicle);
         let seat = self.seat(vehicle).is_some();
         let Some(host) = self.lan.as_mut() else {
@@ -257,12 +257,9 @@ impl Game<'_> {
         // is where it is now, so a move the server made (a piston, a push)
         // is not held against the rider's next move, which would fail, be
         // sent back, and fail again on every answer.
-        let at = boat.map(|i| self.boats[i].position).or_else(|| {
-            self.mobs
-                .iter()
-                .find(|m| m.id == vehicle && equine::moved_by_client(m))
-                .map(|m| m.position)
-        });
+        let at = boat
+            .map(|i| self.boats[i].position)
+            .or_else(|| self.mount_steered_at(vehicle));
         if let Some(p) = at {
             {
                 let value = Some([p.x, p.y, p.z]);
@@ -440,8 +437,17 @@ impl Game<'_> {
         // their rider (getControllingPassenger); a minecart that is elsewhere
         // on the client is put back.
         let boat = vehicle.and_then(|v| self.boats.iter().position(|b| b.id == v));
+        if self.ecs.is_active()
+            && boat.is_none()
+            && let Some(v) = vehicle
+            && self.mount_moved_by_client(v)
+        {
+            let target = Vec3::new(x, y, z);
+            self.ecs_mount_move(conn, v, target, p.yaw, owner);
+            return;
+        }
         let mount = vehicle.and_then(|v| {
-            self.mobs
+            self.remote_entities
                 .iter()
                 .position(|m| m.id == v && equine::moved_by_client(m))
         });
@@ -459,7 +465,7 @@ impl Game<'_> {
                 b.on_ground,
             )
         } else if let Some(i) = mount {
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             let step = m.kind.step_height as f32;
             (
                 m.id,
@@ -494,9 +500,9 @@ impl Game<'_> {
         // A living mount on a climbable has no fall, before its move: a move
         // put back below keeps that.
         if let Some(i) = mount
-            && self.mobs[i].on_climbable(&self.mob_world_base(&[]))
+            && self.remote_entities[i].on_climbable(&self.mob_world_base(&[]))
         {
-            self.mobs[i].fall_distance = 0.0;
+            self.remote_entities[i].fall_distance = 0.0;
         }
         // vehicle.move(PLAYER, target - lastGood) with the vehicle's
         // collisions: where it can't follow the client (a quarter block off,
@@ -512,7 +518,7 @@ impl Game<'_> {
         // string on a move nobody listens to).
         let kind = || match (boat, mount) {
             (Some(i), _) => std::borrow::Cow::Owned(self.boats[i].entity_type()),
-            (None, Some(i)) => std::borrow::Cow::Borrowed(&*self.mobs[i].kind.id),
+            (None, Some(i)) => std::borrow::Cow::Borrowed(&*self.remote_entities[i].kind.id),
             // Unreachable: the vehicle was a boat or a mount, or it returned.
             (None, None) => std::borrow::Cow::Borrowed(""),
         };
@@ -545,8 +551,8 @@ impl Game<'_> {
         // water or a reset block resets the fall, which a move put back keeps
         // (`absSnapTo` restores only the position).
         if let Some(i) = mount {
-            self.mobs[i].fall_distance =
-                self.vehicle_fall_reset(self.mobs[i].fall_distance, old, resolved);
+            self.remote_entities[i].fall_distance =
+                self.vehicle_fall_reset(self.remote_entities[i].fall_distance, old, resolved);
         } else if let Some(i) = boat {
             let reset = self.vehicle_fall_reset(self.boats[i].fall_distance, old, resolved);
             self.boats.update(i, |boat| boat.fall_distance = reset);
@@ -564,7 +570,7 @@ impl Game<'_> {
         // around its box grown by 0.0625 and stretched 0.55 down (water holds a boat up). A flying or
         // no-gravity mount, and a server that allows flight, never float.
         let (gravity, no_gravity) = match mount {
-            Some(i) => (0.08, self.mobs[i].no_gravity),
+            Some(i) => (0.08, self.remote_entities[i].no_gravity),
             None => (0.04, false),
         };
         let around = moved_box
@@ -592,7 +598,7 @@ impl Game<'_> {
             g.vehicle_gravity = gravity;
         });
         if let Some(i) = mount {
-            let mut m = self.mobs[i].clone();
+            let mut m = self.remote_entities[i].clone();
             let mut events = Vec::new();
             let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -619,7 +625,7 @@ impl Game<'_> {
             if let Err(panic) = outcome {
                 std::panic::resume_unwind(panic);
             }
-            self.mobs[i] = m;
+            self.remote_entities[i] = m;
             // propagateFallToPassengers reaches the guests through `host`: it is out
             // of `self.lan` while their packet is handled.
             let falls: Vec<(u32, f64, f32)> = events

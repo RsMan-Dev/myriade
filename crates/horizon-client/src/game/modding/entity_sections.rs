@@ -351,9 +351,29 @@ impl Game<'_> {
             moves.clear();
             return;
         };
+        // An ECS mob's position is already its world's: the write is filed at its own id, with no index over the mobs.
+        if self.ecs.is_active() {
+            for write in moves.drain(..) {
+                if write.delivered {
+                    continue;
+                }
+                if !self.ecs_has(write.id) {
+                    sections.forget(write.id);
+                    continue;
+                }
+                sections.moved(
+                    scope,
+                    write.id,
+                    write.from.map(|from| [from.x, from.y, from.z]),
+                    [write.to.x, write.to.y, write.to.z],
+                );
+                self.tell_entity_sections_in(sections);
+            }
+            return;
+        }
         let mut indices = horizon_client::fast_hash::FxHashMap::default();
         indices.extend(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .enumerate()
                 .map(|(index, mob)| (mob.join, index)),
@@ -366,8 +386,8 @@ impl Game<'_> {
                 sections.forget(write.id);
                 continue;
             };
-            let final_position = self.mobs[index].position;
-            self.mobs.update(index, |mob| mob.position = write.to);
+            let final_position = self.remote_entities[index].position;
+            self.remote_entities.update(index, |mob| mob.position = write.to);
             sections.moved(
                 scope,
                 write.id,
@@ -377,13 +397,13 @@ impl Game<'_> {
             self.tell_entity_sections_in(sections);
             indices.clear();
             indices.extend(
-                self.mobs
+                self.remote_entities
                     .iter()
                     .enumerate()
                     .map(|(index, mob)| (mob.join, index)),
             );
             if let Some(&index) = indices.get(&write.join) {
-                self.mobs.update(index, |mob| {
+                self.remote_entities.update(index, |mob| {
                     if mob.position == write.to {
                         mob.position = final_position;
                     }
@@ -458,11 +478,6 @@ impl Game<'_> {
         self.native_lifecycle
             .entity_sections
             .placed(scope, id, now.unwrap_or(at));
-    }
-
-    /// The projectiles tick ([`Game::tick_projectiles_now`]), and each one's move is filed.
-    pub(super) fn tick_projectiles(&mut self) -> super::Result<()> {
-        self.tick_projectiles_now()
     }
 
     /// A client's entities after its tick: each one where its interpolation or its own move

@@ -244,12 +244,12 @@ impl Game<'_> {
         let mut amounts: Vec<(std::sync::Arc<str>, i32)> = Vec::new();
         // Pin one world generation for the whole work batch, including callbacks.
         let maps = std::sync::Arc::clone(self.mob_map_snapshot());
-        let slots = villager::ext(&self.mobs[mob]).map_or(0, |e| e.inventory.len());
+        let slots = villager::ext(&self.remote_entities[mob]).map_or(0, |e| e.inventory.len());
         'slots: for slot in (0..slots).rev() {
             if remaining <= 0 {
                 break;
             }
-            let stack = villager::ext_mut(&mut self.mobs[mob]).inventory[slot].clone();
+            let stack = villager::ext_mut(&mut self.remote_entities[mob]).inventory[slot].clone();
             if !maps.villager_compostable(&stack.item) {
                 continue;
             }
@@ -291,11 +291,66 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         let _ = self.process_level_events();
-        let inventory = &mut villager::ext_mut(&mut self.mobs[mob]).inventory;
+        let inventory = &mut villager::ext_mut(&mut self.remote_entities[mob]).inventory;
         inventory[slot].count -= 1;
         if inventory[slot].count == 0 {
             inventory.remove(slot);
         }
+    }
+    /// `villager_compost_items` for the ECS villager `id`: the same batch, its stacks read from the bridge (`ecs.inventory_stacks`)
+    /// and taken one by one (`ecs.inventory_take`); the level side is shared with the client's copy.
+    pub(super) fn villager_compost_items_ecs(&mut self, id: u32, pos: [i32; 3]) {
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        let Some(mut before) = self.composter_level(pos) else {
+            return;
+        };
+        if before == 8 {
+            self.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
+            let _ = self.process_level_events();
+            before = 0;
+        }
+        let mut remaining = 20;
+        let maps = std::sync::Arc::clone(self.mob_map_snapshot());
+        let stacks = self.ecs.inventory_stacks(id);
+        'stacks: for stack in stacks.iter().rev() {
+            if remaining <= 0 {
+                break;
+            }
+            if !maps.villager_compostable(&stack.item) {
+                continue;
+            }
+            let uses = (stack.count as i32 - 10).min(remaining).min(stack.count as i32);
+            if uses <= 0 {
+                continue;
+            }
+            remaining -= uses;
+            for _ in 0..uses {
+                self.villager_insert_item_ecs(id, stack, pos);
+                if self.composter_level(pos) == Some(7) {
+                    break 'stacks;
+                }
+            }
+        }
+        let after = self.composter_level(pos).unwrap_or(before);
+        self.with_level(|b, level, ticks| {
+            b.composter_fill_effects(level, ticks, at, after != before)
+        });
+        let _ = self.process_level_events();
+    }
+    /// `villager_insert_item` for the ECS villager `id`: one item of `stack` is taken from it through the bridge.
+    fn villager_insert_item_ecs(&mut self, id: u32, stack: &ItemStack, pos: [i32; 3]) {
+        if self.composter_level(pos).is_none_or(|level| level >= 7) {
+            return;
+        }
+        let Some(layers) = self.compostable(stack) else {
+            return;
+        };
+        let layers = self.composter_layers(pos, &layers);
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        self.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
+        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        let _ = self.process_level_events();
+        self.ecs.inventory_take(id, &stack.item, 1);
     }
     /// `ComposterBlock.handleFill` (level event 1500) on the client: the
     /// fill sound and ten composter particles above the compost.

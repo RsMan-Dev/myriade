@@ -201,7 +201,7 @@ impl Game<'_> {
     /// frame.
     fn existing_gui_entity(&self, handle: mod_api::EntityRef) -> Result<Mob, GuiEntityError> {
         let found = match self.native_entity_read_target(handle) {
-            Some(Target::Mob(id)) => self.mobs.iter().find(|m| m.id == id && !m.removed),
+            Some(Target::Mob(id)) => self.remote_entities.iter().find(|m| m.id == id && !m.removed),
             Some(Target::Player) => self.player_model.as_ref(),
             _ => None,
         };

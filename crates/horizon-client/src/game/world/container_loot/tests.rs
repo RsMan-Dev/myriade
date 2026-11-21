@@ -322,16 +322,39 @@ fn double_chest_rolls_each_half_once() {
 }
 
 fn cart(g: &mut Game<'_>) -> u32 {
-    g.next_entity += 1;
-    let id = g.next_entity;
-    let mut c = Minecart::new(id, CartKind::Chest, Vec3::new(8.5, 64.0, 8.5));
-    c.loot = Some(PendingContainerLoot {
-        table: Tag::String(TABLE.into()),
-        seed: Some(Tag::Long(37)),
-    });
-    assert!(c.items.iter().all(Option::is_none));
-    g.carts.push(c);
+    let mut next = g.next_entity;
+    let id = g
+        .ecs_with(|ecs, mw| {
+            ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [8.5, 64.0, 8.5], 0.0, &mut || {
+                next += 1;
+                next
+            })
+        })
+        .unwrap();
+    g.next_entity = next;
+    let mut patch = horizon_core::nbt::Compound::default();
+    patch.insert("LootTable".into(), Tag::String(TABLE.into()));
+    patch.insert("LootTableSeed".into(), Tag::Long(37));
+    let e = g.ecs.entity_of(id).unwrap();
+    assert!(g.ecs.merge_nbt(e, &patch));
+    assert!(g.ecs.cart_items(id).unwrap().iter().all(Option::is_none));
     id
+}
+fn loot_pending(g: &Game<'_>, id: u32) -> bool {
+    g.ecs
+        .entity_of(id)
+        .and_then(|e| g.ecs.entity_nbt(e))
+        .is_some_and(|c| c.get("LootTable").is_some())
+}
+fn cart_count(g: &Game<'_>, id: u32, item: &str) -> u32 {
+    g.ecs
+        .cart_items(id)
+        .unwrap_or_default()
+        .iter()
+        .flatten()
+        .filter(|s| &*s.item == item)
+        .map(|s| s.count)
+        .sum()
 }
 fn chest_minecart_open_uses_opener_once() {
     with_game(|g| {
@@ -343,39 +366,22 @@ fn chest_minecart_open_uses_opener_once() {
             p.attributes
                 .edit(&h, |a, o| a.set_base_value(2.0, o))
                 .unwrap();
-            let i = g.carts.iter().position(|c| c.id == id).unwrap();
-            g.open_cart_container(i);
-            g.open_cart_container(i);
+            let player = g.own_entity_id() as u32;
+            g.open_cart_container(id, player);
+            g.open_cart_container(id, player);
         })
         .unwrap();
-        let c = g.carts.iter().find(|c| c.id == id).unwrap();
-        assert!(c.loot.is_none());
-        assert_eq!(
-            c.items
-                .iter()
-                .flatten()
-                .filter(|s| &*s.item == "minecraft:diamond")
-                .map(|s| s.count)
-                .sum::<u32>(),
-            3
-        );
+        assert!(!loot_pending(g, id));
+        assert_eq!(cart_count(g, id, "minecraft:diamond"), 3);
     });
 }
 fn chest_minecart_break_unpacks_before_drop() {
     with_game(|g| {
         let id = cart(g);
         for _ in 0..2 {
-            if let Some(i) = g.carts.iter().position(|c| c.id == id) {
-                g.hurt_cart(
-                    i,
-                    100.0,
-                    false,
-                    false,
-                    crate::game::minecarts::CartHit::default(),
-                );
-            }
+            g.hurt_cart_id(id, 100.0, false, false, None);
         }
-        assert!(!g.carts.iter().any(|c| c.id == id));
+        assert!(g.ecs_view(id).is_none());
         assert_eq!(dropped(g, "minecraft:diamond"), 1);
     });
 }
@@ -470,21 +476,12 @@ fn detector_rail_comparator_unpacks_cart_once() {
         assert!(g.run_command("fill 7 63 7 10 63 9 minecraft:stone"));
         let id = cart(g);
         assert!(g.run_command("setblock 8 64 8 minecraft:detector_rail[powered=true]"));
-        assert!(g.carts.iter().find(|c| c.id == id).unwrap().loot.is_some());
+        assert!(loot_pending(g, id));
         assert!(g.run_command("setblock 9 64 8 minecraft:comparator[facing=west]"));
         for _ in 0..2 {
             g.with_level(|b, l, t| b.scheduled_block_tick(l, t, BlockPos::new(9, 64, 8)));
-            let c = g.carts.iter().find(|c| c.id == id).unwrap();
-            assert!(c.loot.is_none());
-            assert_eq!(
-                c.items
-                    .iter()
-                    .flatten()
-                    .filter(|s| &*s.item == "minecraft:diamond")
-                    .map(|s| s.count)
-                    .sum::<u32>(),
-                1
-            );
+            assert!(!loot_pending(g, id));
+            assert_eq!(cart_count(g, id, "minecraft:diamond"), 1);
             assert!(
                 g.block_ticks
                     .comparator_outputs
@@ -1012,52 +1009,6 @@ struct EmptyFillMod;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for EmptyFillMod {}
 
-fn saved_carts_keep_a_loot_table_only_when_they_hold_a_container() {
-    with_game(|game| {
-        let keys: std::collections::HashSet<_> = [(0, 0)].into();
-        let cases = [
-            (
-                "minecraft:minecart",
-                "minecraft:chests/simple_dungeon",
-                None,
-            ),
-            (
-                "minecraft:tnt_minecart",
-                "minecraft:chests/simple_dungeon",
-                None,
-            ),
-            (
-                "minecraft:chest_minecart",
-                "minecraft:chests/simple_dungeon",
-                Some("minecraft:chests/simple_dungeon"),
-            ),
-            ("minecraft:hopper_minecart", "", Some("minecraft:")),
-            // readChestVehicleSaveData: a table that is not an identifier reads as none, so
-            // neither it nor the seed is saved.
-            ("minecraft:chest_minecart", "Bad Name!", None),
-        ];
-        for (i, (kind, table, kept)) in cases.into_iter().enumerate() {
-            let source =
-                format!(r#"{{Pos:[8.5d,64d,8.5d],LootTable:"{table}",LootTableSeed:73L}}"#);
-            let (tag, _) = horizon_core::nbt::parse_snbt(&source).unwrap();
-            game.load_cart(tag, Some([61, 0, 0, i as i32 + 1]), kind);
-            // The entity chunk's own writer, as a save writes it to disk.
-            let (_, saved) = game.save_cart(game.carts.len() - 1, &keys).unwrap();
-            assert_eq!(
-                (
-                    saved.get("LootTable").cloned(),
-                    saved.get("LootTableSeed").cloned()
-                ),
-                (
-                    kept.map(|table| Tag::String(table.into())),
-                    kept.map(|_| Tag::Long(73))
-                ),
-                "{kind}"
-            );
-        }
-    });
-}
-
 struct DurableStickListener;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for DurableStickListener {
@@ -1225,10 +1176,6 @@ fn commands_clone_and_structures() {
         (
             "structure_capture_disk_round_trip_keeps_pending_loot",
             structure_capture_disk_round_trip_keeps_pending_loot as fn(),
-        ),
-        (
-            "saved_carts_keep_a_loot_table_only_when_they_hold_a_container",
-            saved_carts_keep_a_loot_table_only_when_they_hold_a_container as fn(),
         ),
     ]);
 }

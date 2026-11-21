@@ -115,7 +115,7 @@ impl Game<'_> {
         }
         remote.tracked(id)?;
         match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
+            Target::Mob(mob) if !self.remote_entities.iter().any(|m| m.id == mob && !m.removed) => None,
             target => Some(target),
         }
     }
@@ -270,8 +270,8 @@ impl Game<'_> {
         self.append_dragon_query_ids(bounds, false, &mut ids);
         ids.extend(
             self.fishing_hooks_here()
-                .filter(|(hook, _)| bounds.intersects(hook.bounds()))
-                .map(|(hook, _)| hook.id()),
+                .filter(|(id, _)| self.fishing_hook_box(*id).is_some_and(|b| bounds.intersects(b)))
+                .map(|(id, _)| id),
         );
         for guest in self.lan.iter().flat_map(|h| &h.hub.guests) {
             if !guest.participates_in_player_simulation()
@@ -2382,8 +2382,8 @@ pub(super) mod tests {
                 held.damage = 7;
                 held.data_mut().custom_name = Some(horizon_core::nbt::Tag::String("kept".into()));
                 game.inventory[game.selected] = Some(held.clone());
-                let index = game.mobs.len();
-                game.mobs.push(mob);
+                let index = game.remote_entities.len();
+                game.remote_entities.push(mob);
                 let used = match id {
                     12 => game.interact_mount(index, item),
                     13 => game.interact_llama(index, item),
@@ -2393,7 +2393,7 @@ pub(super) mod tests {
                 assert!(used, "{item}");
                 assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);
                 held.count = 1;
-                assert_eq!(game.mobs[index].equipment_stacks()[6], Some(held), "{item}");
+                assert_eq!(game.remote_entities[index].equipment_stacks()[6], Some(held), "{item}");
             }
         });
     }
@@ -2415,13 +2415,13 @@ pub(super) mod tests {
             let mut held = ItemStack::new(&item, 3);
             held.data_mut().custom_name = Some(horizon_core::nbt::Tag::String("kept".into()));
             game.inventory[game.selected] = Some(held.clone());
-            game.mobs.push(Mob::new(12, kind.clone(), Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, kind.clone(), Vec3::ZERO, 0.0));
             assert!(game.interact_sulfur_cube(0, &item));
             assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);
             held.count = 1;
-            assert_eq!(game.mobs[0].equipment_stacks()[6], Some(held.clone()));
-            game.mobs.clear();
-            game.mobs.push(Mob::new(13, kind, Vec3::ZERO, 0.0));
+            assert_eq!(game.remote_entities[0].equipment_stacks()[6], Some(held.clone()));
+            game.remote_entities.clear();
+            game.remote_entities.push(Mob::new(13, kind, Vec3::ZERO, 0.0));
             game.creatures.ticked.insert(13);
             game.spawn_item(
                 ItemStack {
@@ -2433,7 +2433,7 @@ pub(super) mod tests {
                 0,
             );
             game.sulfur_cube_pickups();
-            assert_eq!(game.mobs[0].equipment_stacks()[6], Some(held));
+            assert_eq!(game.remote_entities[0].equipment_stacks()[6], Some(held));
             assert_eq!(game.dropped[0].stack.count, 2);
         });
     }
@@ -2455,8 +2455,8 @@ pub(super) mod tests {
                 stack.damage = 7;
                 stack.data_mut().custom_name = Some(horizon_core::nbt::Tag::String("kept".into()));
                 mob.extra.set_body_stack(Some(stack.clone()));
-                let index = game.mobs.len();
-                game.mobs.push(mob);
+                let index = game.remote_entities.len();
+                game.remote_entities.push(mob);
                 let used = if item.ends_with("carpet") {
                     game.interact_llama(index, "minecraft:shears")
                 } else {
@@ -2464,7 +2464,7 @@ pub(super) mod tests {
                 };
                 assert!(used);
                 assert!(game.dropped.iter().any(|drop| drop.stack == stack));
-                assert!(game.mobs[index].extra.body_id().is_none());
+                assert!(game.remote_entities[index].extra.body_id().is_none());
             }
         });
     }
@@ -2806,7 +2806,7 @@ pub(super) mod tests {
             assert_eq!(joined(game, true), (0, false, false, true));
             // A remote guest can mount through the same handle path as the acting player.
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.mobs.push(horizon_client::mobs::Mob::new(
+            game.remote_entities.push(horizon_client::mobs::Mob::new(
                 21,
                 kind,
                 horizon_core::geometry::Vec3::ZERO,
@@ -3939,7 +3939,7 @@ pub(super) mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 14;
@@ -4588,7 +4588,7 @@ pub(super) mod tests {
             assert!(
                 [18, 19, 20]
                     .iter()
-                    .all(|id| game.mobs.iter().any(|m| m.id == *id))
+                    .all(|id| game.remote_entities.iter().any(|m| m.id == *id))
             );
             let level = game.level("minecraft:overworld").unwrap();
             let ids = |host: &dyn Host, level: LevelRef, min, max| {

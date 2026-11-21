@@ -78,8 +78,11 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.add_goal(id, priority, goal);
+        }
         let Some((species, navigation)) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -89,7 +92,7 @@ impl Game<'_> {
         let Some(goal) = self.boxed_goal(species, navigation, goal) else {
             return false;
         };
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         m.ai.goals.add_boxed(priority, goal);
@@ -107,8 +110,11 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.add_target_goal(id, priority, goal);
+        }
         let Some((species, navigation)) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -118,7 +124,7 @@ impl Game<'_> {
         let Some(goal) = self.boxed_goal(species, navigation, goal) else {
             return false;
         };
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         m.ai.targets.add_boxed(priority, goal);
@@ -135,7 +141,10 @@ impl Game<'_> {
         let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
-        let index = self.mobs.iter().position(|m| m.id == entity)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(entity).and(self.ecs.remove_goal(entity, id, false));
+        }
+        let index = self.remote_entities.iter().position(|m| m.id == entity)?;
         Some(self.remove_from_selector(index, id, false))
     }
 
@@ -145,7 +154,10 @@ impl Game<'_> {
         let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
-        let index = self.mobs.iter().position(|m| m.id == entity)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(entity).and(self.ecs.remove_goal(entity, id, true));
+        }
+        let index = self.remote_entities.iter().position(|m| m.id == entity)?;
         Some(self.remove_from_selector(index, id, true))
     }
 
@@ -157,15 +169,18 @@ impl Game<'_> {
         let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(index) = self.mobs.iter().position(|m| m.id == entity) else {
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(entity).is_some() && self.ecs.reset_goals(entity);
+        }
+        let Some(index) = self.remote_entities.iter().position(|m| m.id == entity) else {
             return false;
         };
         let snapshot: Vec<_> = self
-            .mobs
+            .remote_entities
             .iter()
             .map(|m| super::creatures::seen(m, self.level.player_uuid, self.items()))
             .collect();
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
         let mut w = self.mob_world_base(&snapshot);
         let pos = mobs[index].position;
@@ -205,7 +220,7 @@ impl Game<'_> {
         }
         drop(w);
         lent.give_back(&mut self.world);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         self.handle_mob_events(events).ok();
         true
@@ -219,7 +234,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.goals(id));
+        }
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(
             m.ai.goals
                 .entries()
@@ -238,7 +256,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.target_goals(id));
+        }
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(
             m.ai.targets
                 .entries()
@@ -257,11 +278,11 @@ impl Game<'_> {
     /// makes land as any tick's do.
     fn remove_from_selector(&mut self, index: usize, id: &str, targets: bool) -> usize {
         let snapshot: Vec<_> = self
-            .mobs
+            .remote_entities
             .iter()
             .map(|m| super::creatures::seen(m, self.level.player_uuid, self.items()))
             .collect();
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
@@ -300,7 +321,7 @@ impl Game<'_> {
         };
         drop(w);
         lent.give_back(&mut self.world);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         self.handle_mob_events(events).ok();
         removed
@@ -543,7 +564,7 @@ mod tests {
         let t = game.res.mob_types().get(kind).unwrap().clone();
         let mut m = Mob::new(id, t, Vec3::new(3.5, 65.0, 3.5), 0.0);
         m.on_ground = true;
-        game.mobs.push(m);
+        game.remote_entities.push(m);
         let entity = game.entity(id).unwrap();
         game.mob(entity).unwrap()
     }
@@ -655,7 +676,7 @@ mod tests {
                     prefers_shallow: false,
                 },
             ] {
-                game.mobs[0].ai.nav.kind = nav;
+                game.remote_entities[0].ai.nav.kind = nav;
                 assert!(!game.mob_add_goal(mob, 0, &goal));
                 assert!(!game.mob_add_target_goal(mob, 0, &goal));
             }
@@ -664,7 +685,7 @@ mod tests {
                 super::NavKind::WallClimber,
                 super::NavKind::Flying,
             ] {
-                game.mobs[0].ai.nav.kind = nav;
+                game.remote_entities[0].ai.nav.kind = nav;
                 assert!(game.mob_add_goal(mob, 0, &goal));
                 assert!(game.mob_add_target_goal(mob, 0, &goal));
             }
@@ -696,7 +717,7 @@ mod tests {
         with_game(|game| {
             let handle = mob_in_game(game, "minecraft:zombie", 99);
             mob_in_game(game, "minecraft:zombie", 100);
-            let mut mobs = game.mobs.lift();
+            let mut mobs = game.remote_entities.lift();
             let snapshot: Vec<_> = mobs
                 .iter()
                 .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
@@ -717,14 +738,14 @@ mod tests {
                 selector.tick(&mut mobs[0], &mut cx);
             }
             mobs[0].ai.goals = selector;
-            game.mobs
+            game.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
             let mut expected = game.world.random.clone();
             let draw = expected.next_int_bound(1000).unwrap();
             let next = expected.next_int_bound(1000).unwrap();
             assert_eq!(handle.remove_goal(game, "StopProbe"), Some(1));
-            assert_eq!(game.mobs[0].extra.followers, 2);
-            assert_eq!(game.mobs[0].health, draw as f32);
+            assert_eq!(game.remote_entities[0].extra.followers, 2);
+            assert_eq!(game.remote_entities[0].health, draw as f32);
             assert_eq!(game.world.random.next_int_bound(1000).unwrap(), next);
         });
     }
@@ -754,11 +775,11 @@ mod tests {
         with_game(|game| {
             let handle = mob_in_game(game, "minecraft:zombie", 99);
             let printed = |game: &super::super::Game<'_>| {
-                format!("{:?} / {:?}", game.mobs[0].ai.goals, game.mobs[0].ai.targets)
+                format!("{:?} / {:?}", game.remote_entities[0].ai.goals, game.remote_entities[0].ai.targets)
             };
             let fresh = printed(game);
             let stopped = Arc::new(AtomicBool::new(false));
-            let mut mobs = game.mobs.lift();
+            let mut mobs = game.remote_entities.lift();
             let snapshot: Vec<_> = mobs
                 .iter()
                 .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
@@ -781,13 +802,13 @@ mod tests {
             selector.disabled = 2;
             mobs[0].ai.goals = selector;
             mobs[0].ai.targets.add(1, StopProbe(stopped.clone()));
-            game.mobs
+            game.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
             assert_ne!(printed(game), fresh);
             assert!(handle.reset_goals(game));
             assert!(stopped.load(Ordering::SeqCst), "the running goal stopped");
-            assert_eq!(game.mobs[0].ai.goals.disabled, 2, "a rider's flags stay");
-            game.mobs[0].ai.goals.disabled = 0;
+            assert_eq!(game.remote_entities[0].ai.goals.disabled, 2, "a rider's flags stay");
+            game.remote_entities[0].ai.goals.disabled = 0;
             assert_eq!(printed(game), fresh, "the mob has a new mob's goals");
             let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
             assert!(!stale.reset_goals(game));
@@ -800,10 +821,10 @@ mod tests {
         with_game(|game| {
             let handle = mob_in_game(game, "minecraft:warden", 99);
             let uuid = [1, 2, 3, 4];
-            game.mobs[0].extra.warden.as_mut().unwrap().anger =
+            game.remote_entities[0].extra.warden.as_mut().unwrap().anger =
                 horizon_client::mobs::warden::AngerManagement::from_saved([(uuid, 90)]);
             assert!(handle.reset_goals(game));
-            let anger: Vec<_> = game.mobs[0].extra.warden.as_ref().unwrap().anger.unloaded().collect();
+            let anger: Vec<_> = game.remote_entities[0].extra.warden.as_ref().unwrap().anger.unloaded().collect();
             assert_eq!(anger, vec![(uuid, 90)]);
         });
     }
@@ -819,7 +840,7 @@ mod tests {
         with_game(|game| {
             let handle = mob_in_game(game, "minecraft:pillager", 99);
             mob_in_game(game, "minecraft:pillager", 100);
-            let mut mobs = game.mobs.lift();
+            let mut mobs = game.remote_entities.lift();
             raider::state_mut(&mut mobs[0]).patrolling = true;
             mobs[0].ai.target = Some(Who::Player);
             let snapshot: Vec<_> = mobs
@@ -843,11 +864,11 @@ mod tests {
             }
             assert!(selector.is_running("HoldGroundAttack"));
             mobs[0].ai.goals = selector;
-            game.mobs
+            game.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
             assert_eq!(handle.remove_goal(game, "HoldGroundAttack"), Some(1));
-            assert!(game.mobs[1].ai.aggressive);
-            assert_eq!(game.mobs[1].ai.target, Some(Who::Player));
+            assert!(game.remote_entities[1].ai.aggressive);
+            assert_eq!(game.remote_entities[1].ai.target, Some(Who::Player));
         });
     }
 
@@ -858,7 +879,7 @@ mod tests {
         with_game(|game| {
             let follower = mob_in_game(game, "minecraft:cod", 99);
             let _leader = mob_in_game(game, "minecraft:cod", 100);
-            let mut mobs = game.mobs.lift();
+            let mut mobs = game.remote_entities.lift();
             mobs[0].extra.leader = Some(100);
             mobs[1].extra.followers = 1;
             let snapshot: Vec<_> = mobs
@@ -886,15 +907,15 @@ mod tests {
                 "starting an established follower must not change the school"
             );
             mobs[0].ai.goals = selector;
-            game.mobs
+            game.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
             assert_eq!(follower.remove_goal(game, "FollowFlockLeaderGoal"), Some(1));
             assert_eq!(
-                game.mobs[0].extra.leader, None,
+                game.remote_entities[0].extra.leader, None,
                 "the actual stop method must run"
             );
             assert_eq!(
-                game.mobs[1].extra.followers, 0,
+                game.remote_entities[1].extra.followers, 0,
                 "stopping a follower must decrement its leader"
             );
         });
@@ -1008,10 +1029,10 @@ mod tests {
             let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
             assert!(!stale.add_goal(game, 1, &GoalSpec::Float));
             assert!(stale.goals(game).is_none());
-            let taken = game.mobs.lift();
+            let taken = game.remote_entities.lift();
             assert!(zombie.goals(game).is_none());
             assert_eq!(zombie.remove_goal(game, "panic"), None);
-            game.mobs.restore(
+            game.remote_entities.restore(
                 taken,
                 horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
             );

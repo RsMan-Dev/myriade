@@ -169,7 +169,14 @@ pub(crate) fn move_relative(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: 
 /// `Entity.move`: the sweep over the blocks (Horizon's real kernel), then the collision flags, the landing and the
 /// restitution (the vertical velocity is lost after a landing).
 pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) {
-    let wanted = vel.0;
+    let mut wanted = vel.0;
+    if c.stuck != 0 {
+        // `Entity.move`: a cobweb, a bush or powder snow it is in scales the movement, then the velocity is lost.
+        let m = crate::inside_effects::stuck_factor(c.stuck);
+        wanted = Vec3::new(wanted.x * m.x, wanted.y * m.y, wanted.z * m.z);
+        vel.0 = Vec3::ZERO;
+        c.stuck = 0;
+    }
     let p = pos.0;
     let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
@@ -191,9 +198,10 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
         c.fall_distance -= moved.y;
     }
     if c.on_ground {
-        // `LivingEntity.causeFallDamage`: the fall beyond 3 blocks, rounded up.
-        if c.fall_distance > 3.0 {
-            *fall_damage = (c.fall_distance - 3.0).ceil() as f32;
+        if c.fall_distance > 0.0 {
+            // `LivingEntity.calculateFallDamage`: the fall beyond 3 blocks, floored; a stalagmite tip replaces the ordinary landing.
+            let own = crate::inside_effects::fall_damage(c.fall_distance, 1.0);
+            *fall_damage = crate::inside_effects::fall_on(level, pos.0, c.fall_distance).unwrap_or(own);
         }
         c.fall_distance = 0.0;
     }

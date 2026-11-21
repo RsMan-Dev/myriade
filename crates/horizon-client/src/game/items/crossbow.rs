@@ -148,7 +148,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
             return;
         }
-        let Some(shooter) = self.mobs.iter().find(|m| m.id == mob) else {
+        let Some(shooter) = self.remote_entities.iter().find(|m| m.id == mob) else {
             return;
         };
         let kind = shooter.kind.id.clone();
@@ -201,7 +201,7 @@ impl Game<'_> {
     /// replaced ammunition is what the crossbow holds; none leaves it uncharged
     /// and returns false (`tryLoadProjectiles`).
     pub(super) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
-        let Some(shooter) = self.mobs.iter().find(|m| m.id == mob) else {
+        let Some(shooter) = self.remote_entities.iter().find(|m| m.id == mob) else {
             return false;
         };
         let kind = shooter.kind.id.clone();
@@ -214,7 +214,7 @@ impl Game<'_> {
         // A crossbow takes arrows and firework rockets only.
         let projectile = projectile
             .filter(|ammo| is_arrow(world_items!(self), ammo) || &*ammo.item == FIREWORK_ROCKET);
-        let Some(shooter) = self.mobs.iter_mut().find(|m| m.id == mob) else {
+        let Some(shooter) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
             return false;
         };
         let Some(mut crossbow) = shooter.extra.main_hand_stack().cloned() else {
@@ -227,6 +227,53 @@ impl Game<'_> {
             .collect();
         crossbow.tidy();
         shooter.extra.set_main_hand_stack(Some(crossbow));
+        loaded
+    }
+    /// `Monster.getProjectile` for the ECS mob `id`: its ammunition is read from its off hand and main hand components.
+    fn mob_vanilla_ammo_ecs(&self, id: u32, weapon: &ItemStack) -> ItemStack {
+        let items = world_items!(self);
+        let supported = |s: &ItemStack| {
+            is_arrow(items, s) || &*weapon.item == CROSSBOW && &*s.item == FIREWORK_ROCKET
+        };
+        let off = self.ecs_item(id, horizon_ecs_proto::goals::Slot::Off).map(|n| ItemStack::new(&n, 1));
+        off.into_iter()
+            .chain(self.ecs_main_hand(id))
+            .find(supported)
+            .unwrap_or_else(|| ItemStack::new(ARROW, 1))
+    }
+    /// `mob_bow_ammo` for the ECS mob `id`: the native hook still answers, the ammunition comes from the components.
+    pub(in crate::game) fn mob_bow_ammo_ecs(&mut self, id: u32, weapon: &ItemStack, arrow: &mut Projectile) {
+        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
+            return;
+        }
+        let Some(kind) = self.ecs.kind(id) else { return };
+        let vanilla = self.mob_vanilla_ammo_ecs(id, weapon);
+        let mut projectile = Some(vanilla.clone());
+        self.native_living_get_projectile(None, "", Some(id), kind, weapon, &mut projectile);
+        let Some(ammo) =
+            projectile.filter(|ammo| *ammo != vanilla && is_arrow(world_items!(self), ammo))
+        else {
+            return;
+        };
+        Self::arrow_from_ammo(&ammo, arrow);
+    }
+    /// `mob_crossbow_ammo` for the ECS mob `id`: the loaded crossbow is written back to its main hand through the bridge.
+    pub(in crate::game) fn mob_crossbow_ammo_ecs(&mut self, id: u32, weapon: &ItemStack) -> bool {
+        let Some(kind) = self.ecs.kind(id) else { return false };
+        let mut projectile = Some(self.mob_vanilla_ammo_ecs(id, weapon));
+        self.native_living_get_projectile(None, "", Some(id), kind, weapon, &mut projectile);
+        let projectile = projectile
+            .filter(|ammo| is_arrow(world_items!(self), ammo) || &*ammo.item == FIREWORK_ROCKET);
+        let Some(mut crossbow) = self.ecs_main_hand(id) else { return false };
+        let loaded = projectile.is_some();
+        crossbow.data_mut().charged = projectile
+            .iter()
+            .map(|ammo| horizon_client::arrows::drawn_ammo(ammo, false))
+            .collect();
+        crossbow.tidy();
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.set_main_hand(e, Some(crossbow));
+        }
         loaded
     }
     /// `CrossbowItem.use`: shoot when charged, else start charging.
@@ -381,14 +428,15 @@ impl Game<'_> {
                     a.crossbow_hit_sound = true;
                     a.pierce = pierce;
                 }
-                // Flame: `spawn_projectile` runs EnchantmentHelper.onProjectileSpawned
-                // for the weapon the arrow was fired from.
+                // The ECS posts the arrow; Flame and Punch are read from the weapon it was fired from.
                 arrow.shoot_own(dir.to_array(), power, 1.0);
-                self.spawn_projectile(arrow, ammo);
-                let (player, name, projectile) = (
+                let shot = self.arrow_shot_of(arrow.arrow.as_deref().expect("an arrow has its state"), effect);
+                let (pos, vel) = (arrow.position, arrow.velocity);
+                let owner = self.ecs_owner(Some(Who::Player));
+                let projectile = self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, Some(weapon.clone()));
+                let (player, name) = (
                     horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                     self.acting_player_name().to_owned(),
-                    self.next_entity,
                 );
                 self.native_entity_shoot_bow(player, &name, projectile, power as f32);
             }

@@ -23,6 +23,7 @@ impl Game<'_> {
             let new_name = uuid_text(self.uuid_for(to));
             self.score.board.add_to_team(&new_name, &team);
             self.score.board.remove_from_team(&old_name);
+            self.push_team_event(&team);
         }
     }
     /// `IEntityExtension.copyAttachmentsFrom(from, false)` (NeoForge's conversion copy): every

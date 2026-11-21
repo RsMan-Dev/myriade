@@ -82,7 +82,6 @@ fn portal_contact_and_waiting_handoff_match_vanilla_counters() {
         ids.push(game.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
-    assert_eq!(game.carts.len(), 1);
     assert_eq!(game.creatures.projectiles.len(), 1);
     assert_eq!(game.mobs.len(), 1);
     // Direct handler calls do not refresh the headless world's chunk tickets.

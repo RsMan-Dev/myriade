@@ -115,7 +115,7 @@ impl Game<'_> {
                 // side, so the ray meets the boat before them (the server
                 // attacks the entity it is sent).
                 let carries = u32::try_from(id).is_ok_and(|v| {
-                    self.boats.iter().any(|b| b.id == v) && !self.boat_mobs(v).is_empty()
+                    self.ecs.boat_status(v).is_some() && !self.boat_mobs(v).is_empty()
                 });
                 if carries {
                     let near = |k: usize| eye[k].clamp(lo[k] + 0.01, hi[k] - 0.01);
@@ -132,11 +132,15 @@ impl Game<'_> {
             let on = (0..3).all(|k| (point[k] - inside[k]).abs() < 0.1);
             Some(if on { inside } else { middle })
         };
-        let mob_box = self.mobs.iter().find(|m| m.id as i32 == id).map(|m| {
-            let b = m.bounds();
-            let (mn, mx) = (b.min_position(), b.max_position());
-            ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
-        });
+        let mob_box = if self.ecs.is_active() {
+            self.ecs_corners(id)
+        } else {
+            self.remote_entities.iter().find(|m| m.id as i32 == id).map(|m| {
+                let b = m.bounds();
+                let (mn, mx) = (b.min_position(), b.max_position());
+                ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
+            })
+        };
         let centre = match mob_box {
             Some((lo, hi)) => visible_aim_point(eye, lo, hi, |p| self.block_between(eye, p)),
             None if self.object_target(id).is_some() => object()?,
@@ -214,7 +218,11 @@ impl Game<'_> {
         {
             return Some(g.bounds());
         }
-        if let Some(m) = self.mobs.iter().find(|m| m.id as i32 == id) {
+        if self.ecs.is_active() {
+            if let Some(b) = self.ecs.bounds(id) {
+                return Some(b);
+            }
+        } else if let Some(m) = self.remote_entities.iter().find(|m| m.id as i32 == id) {
             return Some(m.bounds());
         }
         if let Some((lo, hi, _)) = self.object_target(id) {
@@ -594,29 +602,28 @@ impl Game<'_> {
         // A ghast's fireball or a wind charge: turned along the guest's own
         // view (ServerGamePacketListenerImpl.handleInteract, then
         // Player.attack's AIM_DEFLECT).
-        if let Some(i) = self
-            .creatures
-            .projectiles
-            .iter()
-            .position(|p| p.id != 0 && p.id as i32 == id && crate::game::deflect::attackable(p))
+        if let Ok(pid) = u32::try_from(id)
+            && self.ecs.projectile_flying(pid)
+            && (self.ecs.has_tag(pid, "minecraft:redirectable_projectile") || self.ecs.shulker_bullet(pid))
         {
             return Ok(self.as_guest_at(gi, conn, |g| {
-                if !g.within_interaction_range(i) {
+                if !g.within_interaction_range(pid) {
                     return false;
                 }
-                if matches!(
-                    g.creatures.projectiles[i].kind,
-                    horizon_client::projectiles::ProjectileKind::ShulkerBullet { .. }
-                ) {
-                    g.hit_shulker_bullet(i);
+                if g.ecs.shulker_bullet(pid) {
+                    g.hit_shulker_bullet(pid);
                 } else {
-                    g.deflect(i);
+                    g.deflect(pid);
                 }
                 true
             }) == Ok(true));
         }
-        if let Some(index) = self
-            .mobs
+        if self.ecs.is_active() {
+            if let Some(landed) = self.ecs_guest_hit(conn, gi, id) {
+                return Ok(landed);
+            }
+        } else if let Some(index) = self
+            .remote_entities
             .iter()
             .position(|m| m.id as i32 == id && m.alive())
             .filter(|_| self.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
@@ -624,18 +631,23 @@ impl Game<'_> {
             let Some(host) = self.lan.as_ref() else {
                 return Err(ActionRefused::Stale);
             };
-            if host.hub.guests[gi].vehicle == Some(self.mobs[index].id) {
+            if host.hub.guests[gi].vehicle == Some(self.remote_entities[index].id) {
                 return Ok(false);
             }
             // A mace's smash sets the attacker's velocity and sends it at once, before the
             // Wind Burst's push (MaceItem.hurtEnemy, then the post-attack effects).
+            let target_id = self.remote_entities[index].id;
             let sent = self
                 .as_guest_at(gi, conn, |g| {
                     let marked = g
                         .player
                         .as_mut()
                         .is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
-                    g.attack_mob(index);
+                    if g.ecs.is_active() {
+                        g.attack_entity(target_id);
+                    } else {
+                        g.attack_mob(index);
+                    }
                     g.swing_arm();
                     let p = g.player.as_mut()?;
                     let sent = std::mem::replace(&mut p.health.sync_velocity, marked);
@@ -657,7 +669,7 @@ impl Game<'_> {
             return Err(ActionRefused::Stale);
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
-        let boat = self.boats.iter().position(|boat| boat.id as i32 == id);
+        let boat = u32::try_from(id).ok().filter(|&v| self.ecs.boat_status(v).is_some());
         // A packet names its target already. Keep the attacker's actual yaw
         // for the boat's knockback instead of aiming a ray at its center.
         if boat.is_none() && self.look_at_entity(gi, id, None).is_none() {
@@ -671,8 +683,8 @@ impl Game<'_> {
                     .player
                     .as_mut()
                     .is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
-                if let Some(index) = boat {
-                    g.strike_boat(index);
+                if let Some(boat) = boat {
+                    g.strike_boat(boat);
                     g.swing_arm();
                 } else {
                     g.attack();

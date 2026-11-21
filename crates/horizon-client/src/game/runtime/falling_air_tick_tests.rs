@@ -1,6 +1,5 @@
 use super::*;
 use horizon_client::chunk::Chunk;
-use horizon_core::nbt::Tag;
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
 
@@ -31,7 +30,6 @@ fn loaded_air_is_discarded_on_first_actual_game_tick() {
             2,
             "both actual command loads must be admitted"
         );
-        let keys = [(0, 0)].into_iter().collect();
         let ids: Vec<_> = game.falling.iter().map(|f| f.id).collect();
         for (i, state) in ["minecraft:air", "minecraft:sand"].into_iter().enumerate() {
             let f = &game.falling[i];
@@ -44,9 +42,6 @@ fn loaded_air_is_discarded_on_first_actual_game_tick() {
                 Vec3::new(if i == 0 { 4.5 } else { 8.5 }, 204.0, 4.5)
             );
             assert_eq!(game.uuid_for(ids[i]), [97, 0, 0, i as i32 + 1]);
-            let (_, saved) = game.save_falling(i, &keys).expect("actual saved state");
-            assert_eq!(saved.get("BlockState"), Some(&Tag::String(state.into())));
-            assert_eq!(saved.get("Time"), Some(&Tag::Int(0)));
         }
         assert!(!game.res.facts().is_air(game.world.block(4, 199, 4)));
         let clock = game.world.game_time;

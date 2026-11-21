@@ -217,7 +217,7 @@ impl Game<'_> {
         best.map(|(uuid, _)| uuid)
     }
     /// `PiglinAi.angerNearbyPiglins`.
-    pub(super) fn anger_piglins(&mut self, only_if_seen: bool) {
+    pub(in crate::game) fn anger_piglins(&mut self, only_if_seen: bool) {
         // Fake players never become a mob's target.
         if self.lan_acting_fake {
             return;

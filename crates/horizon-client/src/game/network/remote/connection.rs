@@ -37,7 +37,7 @@ impl Game<'_> {
         if player.is_some_and(|p| p.0 == id) {
             return entity_sound_state(id, player, None, &r.entities, None);
         }
-        let mob = self.mob_index.get(&self.mobs, id as u32).map(|m| {
+        let mob = self.remote_index.get(&self.remote_entities, id as u32).map(|m| {
             horizon_client::sound_engine::SoundEntityState {
                 position: [m.position.x, m.position.y, m.position.z],
                 silent: m.silent,
@@ -241,7 +241,7 @@ impl Game<'_> {
         self.craft_size = 2;
         self.remove_local_player_body();
         self.spawn = None;
-        self.mobs.clear();
+        self.remote_entities.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
         self.creatures.projectiles.clear();
@@ -510,7 +510,7 @@ impl Game<'_> {
         self.craft_size = 2;
         self.remove_local_player_body();
         self.spawn = None;
-        self.mobs.clear();
+        self.remote_entities.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
         self.creatures.projectiles.clear();

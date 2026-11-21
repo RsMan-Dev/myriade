@@ -4,7 +4,6 @@ use super::{Game, commands::Target};
 pub(super) enum SpecializedSource<'a> {
     Player(&'a horizon_client::motion::PlayerMotion),
     Guest(&'a horizon_client::lan::guest::Guest),
-    Hook(&'a super::fishing::Hook),
 }
 use horizon_client::join_seq::{
     Joined,
@@ -19,7 +18,6 @@ impl SpecializedSource<'_> {
         match self {
             Self::Player(player) => player.entity_id as u32,
             Self::Guest(guest) => guest.entity_id as u32,
-            Self::Hook(hook) => hook.id(),
         }
     }
 }
@@ -82,7 +80,6 @@ impl Game<'_> {
         hook.caster = self.lan_acting;
         hook.caster_generation = self.acting_player_join();
         self.hook.discard();
-        self.bind_current_hook_residency();
         self.hook.replace(hook);
     }
 
@@ -129,36 +126,6 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn bind_current_hook_residency(&mut self) {
-        let journal = self.resident_entities.table.borrow().producer();
-        let (owner, source) = self
-            .hook
-            .resident_location()
-            .map(|at| (at.owner, at.source))
-            .unwrap_or_else(|| {
-                let dimension = self
-                    .current_player_resident_location()
-                    .map_or(self.dim.key(), |at| at.owner.dimension);
-                (
-                    Owner {
-                        dimension,
-                        kind: Kind::Hook,
-                    },
-                    Source::Hook {
-                        caster: self.lan_acting,
-                    },
-                )
-            });
-        self.hook.bind_residency_specialized(
-            &journal,
-            owner,
-            |hook| (hook.id(), hook.join_seq()),
-            source,
-            None,
-            Some(|hook| Some(hook.uuid)),
-        );
-    }
-
     pub(super) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {
         self.resident_entities.local_player.rebind(journal);
         let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
@@ -171,15 +138,6 @@ impl Game<'_> {
         {
             self.resident_entities.local_player.extract();
         }
-        self.bind_current_hook_residency();
-        if self.hook.resident_location().is_some_and(|at| {
-            at.source
-                != (Source::Hook {
-                    caster: self.lan_acting,
-                })
-        }) {
-            self.hook.begin_loan();
-        }
         if let Some(host) = &mut self.lan {
             host.hub
                 .guests
@@ -191,31 +149,6 @@ impl Game<'_> {
                         guest.residency.extract();
                     }
                 }
-            }
-            for (&conn, play) in &mut host.play {
-                let Some(index) = host.hub.guests.connection_index(conn) else {
-                    continue;
-                };
-                let guest = &host.hub.guests[index];
-                let (owner, source) = play
-                    .hook
-                    .resident_location()
-                    .map(|at| (at.owner, at.source))
-                    .unwrap_or((
-                        Owner {
-                            dimension: super::Dim::from_id(&guest.dimension).key(),
-                            kind: Kind::Hook,
-                        },
-                        Source::Hook { caster: Some(conn) },
-                    ));
-                play.hook.bind_residency_specialized(
-                    journal,
-                    owner,
-                    |hook| (hook.id(), hook.join_seq()),
-                    source,
-                    None,
-                    Some(|hook| Some(hook.uuid)),
-                );
             }
         }
     }
@@ -270,50 +203,6 @@ impl Game<'_> {
                     )
                 }
             }
-            (Kind::Hook, Source::Hook { caster }) => {
-                let hook = match caster {
-                    None => {
-                        if self.lan_acting.is_some() {
-                            return None;
-                        }
-                        let hook = self.hook.as_ref()?;
-                        if hook.caster_generation != self.resident_entities.local_player.join() {
-                            return None;
-                        }
-                        hook
-                    }
-                    Some(conn) => {
-                        let host = self.lan.as_ref()?;
-                        let guest = host
-                            .hub
-                            .guests
-                            .connection_index(conn)
-                            .map(|index| &host.hub.guests[index]);
-                        let hook = if self.lan_acting == Some(conn) {
-                            self.hook.as_ref()?
-                        } else {
-                            if self.lan_guest_swaps.contains(&conn) {
-                                return None;
-                            }
-                            host.play.get(&conn)?.hook.as_ref()?
-                        };
-                        if guest
-                            .is_some_and(|guest| hook.caster_generation != guest.residency.join())
-                        {
-                            return None;
-                        }
-                        hook
-                    }
-                };
-                if hook.join_seq() != at.join || hook.caster != caster {
-                    return None;
-                }
-                (
-                    SpecializedSource::Hook(hook),
-                    hook.id(),
-                    Target::Hook(hook.id()),
-                )
-            }
             _ => return None,
         };
         Some(SourceEntity {
@@ -348,18 +237,7 @@ impl Game<'_> {
                 };
                 SlotAccess::Done(visit(attachments.attachment_lifetime()))
             }
-            Source::Hook { caster } => {
-                let hook = if caster == self.lan_acting {
-                    self.hook.as_mut()
-                } else {
-                    caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut())
-                };
-                let Some(hook) = hook else {
-                    return SlotAccess::Missing;
-                };
-                SlotAccess::Done(visit(hook.attachment_lifetime()))
-            }
-            Source::DragonPart(_) | Source::Ordinary => SlotAccess::Missing,
+            Source::DragonPart(_) | Source::Hook { .. } | Source::Ordinary => SlotAccess::Missing,
         }
     }
 

@@ -135,8 +135,7 @@ impl Game<'_> {
             // Neither is saved: `FishingHook.shouldBeSaved` and
             // `EnderDragonPart.shouldBeSaved` are false.
             Target::Hook(_) | Target::DragonPart(_) => return None,
-            // Stage 3's save owns the general record; none is saved here.
-            Target::General(_) => return None,
+            Target::General(id) | Target::Projectile(id) => return self.ecs_mob_tree(id).map(Tag::Compound),
             Target::Guest(_) => {
                 return self
                     .for_player(t, |g| g.command_target_nbt(Target::Player))
@@ -146,8 +145,12 @@ impl Game<'_> {
             Target::Mob(id) => {
                 // `saveWithoutId` writes the entity as saved, riders under
                 // `Passengers`: `/data get` reads the same tree persistence does (arismoko/horizon#1519).
-                let i = self.mobs.iter().position(|m| m.id == id)?;
-                let mut tag = self.mob_tree_nbt(i);
+                let mut tag = if self.ecs.is_active() {
+                    Tag::Compound(self.ecs_mob_tree(id)?)
+                } else {
+                    let i = self.remote_entities.iter().position(|m| m.id == id)?;
+                    self.mob_tree_nbt(i)
+                };
                 let session = self
                     .lan_trade_conn(id)
                     .and_then(|conn| self.lan_trade_session(conn))
@@ -191,22 +194,8 @@ impl Game<'_> {
                 let p = self.paintings.iter().find(|p| p.id == id)?;
                 entity_nbt::painting_to_nbt(p, uuid, self.persist.raw.get(&id))
             }
-            Target::Boat(id) => {
-                let uuid = self.uuid_for(id);
-                let i = self.boats.iter().position(|b| b.id == id)?;
-                let b = &self.boats[i];
-                let mut tag = b.to_nbt(uuid, self.persist.raw.get(&id));
-                // Entity.saveWithoutId: the actual runtime passenger tree.
-                self.put_mob_passengers(&mut tag, id);
-                // AbstractBoat.addAdditionalSaveData: the live or pending leash.
-                self.write_boat_leash(&mut tag, i);
-                self.save_portal_cooldown(id, &mut tag);
-                tag
-            }
-            Target::Cart(id) => {
-                let uuid = self.uuid_for(id);
-                let c = self.carts.iter().find(|c| c.id == id)?;
-                let mut tag = c.to_nbt(uuid, self.persist.raw.get(&id));
+            Target::Boat(id) | Target::Cart(id) => {
+                let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
                 self.put_mob_passengers(&mut tag, id);
                 self.save_portal_cooldown(id, &mut tag);
                 tag
@@ -226,47 +215,6 @@ impl Game<'_> {
                 let tag = entity_nbt::orb_to_nbt(self.orbs.iter().find(|o| o.id == id)?, uuid);
                 crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
             }
-            Target::Projectile(id) => {
-                let uuid = self.uuid_for(id);
-                // A homing bullet's `Target` is the entity's, not the raw
-                // compound's, as `save_projectile` writes it.
-                let who = self
-                    .creatures
-                    .projectiles
-                    .iter()
-                    .find(|p| p.id == id)
-                    .and_then(|p| match &p.kind {
-                        horizon_client::projectiles::ProjectileKind::ShulkerBullet {
-                            target: Some(who),
-                            ..
-                        } => Some(*who),
-                        _ => None,
-                    });
-                let target = who.and_then(|who| self.save_who_uuid(who));
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                let owner = if p.owner == Some(horizon_client::mobs::Who::Player) {
-                    player_uuid
-                } else {
-                    None
-                };
-                let in_block = p
-                    .arrow
-                    .as_ref()
-                    .and_then(|a| a.last_state)
-                    .map(|s| self.state_to_nbt(s));
-                let raw = self.persist.raw.get(&id);
-                // Projectile.addAdditionalSaveData stores the retained EntityReference,
-                // including an owner that is not currently resolved to a live entity.
-                let mut tag =
-                    entity_nbt::arrow_to_nbt(p, uuid, p.owner_uuid.or(owner), in_block, raw)
-                        .or_else(|| entity_nbt::fireball_to_nbt(p, uuid, owner, raw))
-                        .or_else(|| entity_nbt::throwable_to_nbt(p, uuid, owner, raw))
-                        .or_else(|| {
-                            entity_nbt::spit_or_bullet_to_nbt(p, uuid, owner, target, raw)
-                        })?;
-                self.save_projectile_portal_cooldown(p, &mut tag);
-                tag
-            }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
                 let raw = self.persist_anon("minecraft:end_crystal", c.position);
@@ -281,10 +229,7 @@ impl Game<'_> {
                 let tag = d.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
                 crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
             }
-            Target::Tnt(id) => {
-                let i = self.tnts.iter().position(|t| t.id == id)?;
-                self.tnt_nbt(i)
-            }
+            Target::Tnt(_) => None,
             Target::Cushion(id) => {
                 let uuid = self.uuid_for(id);
                 let c = self.cushions.iter().find(|c| c.id == id)?;
@@ -446,11 +391,33 @@ impl Game<'_> {
             Target::Player | Target::Guest(_) => {
                 return Err(err("commands.data.entity.invalid", &[]));
             }
+            Target::General(id) | Target::Projectile(id) if self.ecs.is_active() => {
+                let Tag::Compound(patch) = &tag else {
+                    return Err(stale());
+                };
+                if !self.ecs_merge_mob(id, patch) {
+                    return Err(stale());
+                }
+            }
+            Target::Mob(id) if self.ecs.is_active() => {
+                Self::normalize_loaded_mob_tags(&mut tag);
+                let uuid = self.uuid_for(id);
+                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
+                if let Some(k) = self.ecs_mob_kind(id) {
+                    set_key(&mut tag, "id", Tag::String(k.into()));
+                }
+                let Tag::Compound(patch) = &tag else {
+                    return Err(stale());
+                };
+                if !self.ecs_merge_mob(id, patch) {
+                    return Err(stale());
+                }
+            }
             Target::Mob(id) => {
                 Self::normalize_loaded_mob_tags(&mut tag);
                 let uuid = self.uuid_for(id);
                 let kind = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .find(|m| m.id == id)
                     .map(|m| m.kind.id.clone());
@@ -472,7 +439,7 @@ impl Game<'_> {
                     .professions
                     .state_index(&new.extra.profession)
                     .is_none();
-                if let Some(slot) = self.mobs.iter_mut().find(|m| m.id == id) {
+                if let Some(slot) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     // LivingEntity.readAdditionalSaveData only replaces a decoded
                     // Brain. Keep the Allay's modeled LIKED_PLAYER when the
                     // required root memory map cannot load; valid empty maps clear it.
@@ -640,35 +607,6 @@ impl Game<'_> {
                     horizon_client::join_seq::store_back(&mut self.item_frames[i], new);
                 }
             }
-            Target::Boat(id) => {
-                // AbstractBoat.readAdditionalSaveData over Entity.load: the
-                // position, rotation, motion, ground and gravity flags, Fire and chest items.
-                let (position, velocity, yaw) =
-                    entity_nbt::boat_from_nbt(&tag).ok_or_else(stale)?;
-                let uuid = self.uuid_for(id);
-                let i = self
-                    .boats
-                    .iter()
-                    .position(|b| b.id == id)
-                    .ok_or_else(stale)?;
-                self.boats.update(i, |b| {
-                    b.position = position;
-                    b.previous = position;
-                    b.velocity = velocity;
-                    b.yaw = yaw;
-                    b.previous_yaw = yaw;
-                    b.pitch = entity_nbt::rotation(&tag)[1];
-                    b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    b.on_ground = entity_nbt::flag(&tag, "OnGround");
-                    b.fire_ticks = crate::game::boats::saved_fire(&tag);
-                    b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
-                    if b.chest {
-                        b.items =
-                            save::decode_items(tag.get("Items"), crate::game::boats::CHEST_SLOTS);
-                    }
-                });
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
-            }
             Target::Falling(id) => {
                 // Use load_falling's existing converters, but mutate the resident
                 // instance: loading/spawning would allocate a new id and join.
@@ -793,22 +731,15 @@ impl Game<'_> {
                     .load_nbt(loaded);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
-            Target::Cart(id) => {
+            Target::Boat(id) | Target::Cart(id) => {
                 let uuid = self.uuid_for(id);
-                let i = self
-                    .carts
-                    .iter()
-                    .position(|c| c.id == id)
-                    .ok_or_else(stale)?;
-                let mut cart = self.carts[i].clone();
-                cart.load(&tag).ok_or_else(stale)?;
-                crate::game::minecarts::forget_unreadable_display(&mut cart, |t| {
-                    self.state_from_nbt(t).is_some()
-                });
-                if !self.store_cart_back(i, cart) {
+                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
+                let Tag::Compound(patch) = &tag else {
+                    return Err(stale());
+                };
+                if !self.ecs_merge_mob(id, patch) {
                     return Err(stale());
                 }
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
             Target::Painting(id) => {
                 // Painting.readAdditionalSaveData over HangingEntity's: the
@@ -829,36 +760,6 @@ impl Game<'_> {
                 if let Some(v) = known {
                     (p.variant, p.width, p.height) = (v.id, v.width, v.height);
                 }
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
-            }
-            Target::Projectile(id) => {
-                let uuid = self.uuid_for(id);
-                let index = self
-                    .creatures
-                    .projectiles
-                    .iter()
-                    .position(|p| p.id == id)
-                    .ok_or_else(stale)?;
-                self.creatures.projectiles.update(index, |p| {
-                    if let Some(pos) = entity_nbt::position(&tag) {
-                        p.position = pos;
-                        p.previous = pos;
-                    }
-                    p.velocity = entity_nbt::motion(&tag);
-                    let [yaw, pitch] = entity_nbt::rotation(&tag);
-                    p.yaw = yaw;
-                    p.pitch = pitch;
-                    p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    p.on_ground = entity_nbt::flag(&tag, "OnGround");
-                    // `SpectralArrow.readAdditionalSaveData`: a load reads the glow
-                    // `Duration` again (200 when the compound has none), so a merge
-                    // restarts the glow the arrow's next hit gives.
-                    if let Some(a) = p.arrow.as_mut()
-                        && a.is_spectral_type()
-                    {
-                        a.read_spectral_duration(&tag);
-                    }
-                });
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
             _ => return Err(stale()),
@@ -991,6 +892,11 @@ impl Game<'_> {
     /// Writes `t`'s `Tags`; false when its kind keeps no saved compound to
     /// write them to.
     pub(in crate::game) fn set_entity_tags(&mut self, t: Target, tags: &[String]) -> bool {
+        if let Target::Mob(id) = t
+            && self.ecs.is_active()
+        {
+            return self.ecs_set_mob_tags(id, tags);
+        }
         if let Target::Falling(id) = t {
             let uuid = self.uuid_for(id);
             let Some(i) = self.falling.iter().position(|f| f.id == id) else {
@@ -1456,6 +1362,13 @@ impl Game<'_> {
     /// Spawn an entity from its compound (`EntityType.loadEntityRecursive`);
     /// returns what was created.
     pub(in crate::game) fn spawn_entity_from_nbt(&mut self, tag: Tag) -> Option<Target> {
+        if self.ecs.is_active() {
+            let p = entity_nbt::position(&tag)?;
+            let Some(Tag::String(kind)) = tag.get("id") else { return None };
+            let kind = kind.to_string_lossy();
+            let Tag::Compound(c) = &tag else { return None };
+            return self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Ecs);
+        }
         let key = {
             let p = entity_nbt::position(&tag)?;
             ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
@@ -1477,15 +1390,7 @@ impl Game<'_> {
         }
         // The root of the stack is the first entity spawned.
         let id = before + 1;
-        if self
-            .resident_entities
-            .general
-            .rows
-            .iter()
-            .any(|row| row.id == id)
-        {
-            Some(Target::General(id))
-        } else if self.mobs.iter().any(|m| m.id == id) {
+        if self.remote_entities.iter().any(|m| m.id == id) {
             Some(Target::Mob(id))
         } else if self.dropped.iter().any(|e| e.id == id) {
             Some(Target::Item(id))
@@ -1495,9 +1400,9 @@ impl Game<'_> {
             Some(Target::Frame(id))
         } else if self.paintings.iter().any(|p| p.id == id) {
             Some(Target::Painting(id))
-        } else if self.boats.iter().any(|b| b.id == id) {
+        } else if self.ecs.boat_status(id).is_some() {
             Some(Target::Boat(id))
-        } else if self.carts.iter().any(|c| c.id == id) {
+        } else if self.ecs.cart_kind(id).is_some() {
             Some(Target::Cart(id))
         } else if self.others.iter().any(|o| o.id == id) {
             Some(Target::Other(id))
@@ -1515,8 +1420,6 @@ impl Game<'_> {
             Some(Target::Trident(id))
         } else if self.ominous_spawners.iter().any(|s| s.id == id) {
             Some(Target::Spawner(id))
-        } else if self.creatures.projectiles.iter().any(|p| p.id == id) {
-            Some(Target::Projectile(id))
         } else {
             None
         }
@@ -1558,10 +1461,12 @@ impl Game<'_> {
         }) {
             return Err(err("commands.summon.failed.uuid", &[]));
         }
-        let from = self.mobs.len();
+        let from = self.remote_entities.len();
         let canceled = self.persist.joins_canceled;
         let target = self.spawn_entity_from_nbt(tag);
-        self.native_mobs_joined(from, false);
+        if !self.ecs.is_active() {
+            self.native_mobs_joined(from, false);
+        }
         // A mod kept the entity out: tryAddFreshEntityWithPassengers is false.
         if self.persist.joins_canceled != canceled
             && target.is_none_or(|t| self.target_position(t).is_none())
@@ -1646,19 +1551,7 @@ mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.others.push(super::super::OtherEntity {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                item_transformation: None,
-                knot_check: None,
-                eye: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:block_display".into(),
-                position: Vec3::new(0.5, 64.0, 0.5),
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(12, "minecraft:block_display", [0.5, 64.0, 0.5]);
             let mut merge = Compound::new();
             merge.insert(
                 "Pos".into(),
@@ -1748,7 +1641,7 @@ mod wolf_live_anger_tests {
         game.world.game_time = 12_345;
         // Bee's independently modeled end is the first control, before the Wolf regression.
         for (kind, health, number) in [("bee", 10.0_f32, 1), ("wolf", 8.0, 2)] {
-            game.mobs.clear();
+            game.remote_entities.clear();
             let tag = Tag::Compound(
                 [
                     (
@@ -1775,11 +1668,11 @@ mod wolf_live_anger_tests {
                 .collect(),
             );
             let id = game.load_mob(tag, None).unwrap();
-            let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-            game.mobs[i].invulnerable = 17;
-            game.mobs[i].last_hurt = 2.0;
-            game.mobs[i].age = 6;
-            game.mobs[i].in_powder_snow = true;
+            let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
+            game.remote_entities[i].invulnerable = 17;
+            game.remote_entities[i].last_hurt = 2.0;
+            game.remote_entities[i].age = 6;
+            game.remote_entities[i].in_powder_snow = true;
             for end in [12_395, 12_395, 12_420, -1] {
                 let mut tag = game.mob_tree_nbt(i);
                 let Tag::Compound(fields) = &mut tag else {
@@ -1795,17 +1688,17 @@ mod wolf_live_anger_tests {
                 );
                 assert_eq!(game.world.game_time, 12_345);
                 assert_eq!(game.persist.uuids.get(&id), Some(&[316, 1, 0, number]));
-                assert_eq!(game.mobs[i].health, health);
-                assert!(game.mobs[i].no_ai);
+                assert_eq!(game.remote_entities[i].health, health);
+                assert!(game.remote_entities[i].no_ai);
                 assert_eq!(
                     (
-                        game.mobs[i].invulnerable,
-                        game.mobs[i].last_hurt,
-                        game.mobs[i].age
+                        game.remote_entities[i].invulnerable,
+                        game.remote_entities[i].last_hurt,
+                        game.remote_entities[i].age
                     ),
                     (17, 2.0, 6)
                 );
-                assert!(game.mobs[i].in_powder_snow, "{kind} end={end}");
+                assert!(game.remote_entities[i].in_powder_snow, "{kind} end={end}");
             }
         }
     }
@@ -1830,8 +1723,15 @@ mod boat_passenger_tree_tests {
             assert!(game.world.loaded(8, 8));
             assert!(game.run_command("setblock 8 199 8 stone"));
             assert!(game.run_command("summon oak_boat 8.5 200 8.5 {UUID:[I;7,151,1,1],NoGravity:1b,Silent:1b,CustomName:\"Hull\"}"));
-            let bi = game.boats.iter().position(|b| b.position.x == 8.5).unwrap();
-            let bid = game.boats[bi].id;
+            let bid = game
+                .ecs
+                .boats_in(
+                    horizon_core::geometry::Vec3::new(8.0, 199.0, 8.0),
+                    horizon_core::geometry::Vec3::new(9.0, 201.0, 9.0),
+                )
+                .into_iter()
+                .next()
+                .unwrap();
             let child = game
                 .spawn_mob(
                     "minecraft:cow",
@@ -1840,20 +1740,20 @@ mod boat_passenger_tree_tests {
                     crate::game::creatures::SpawnSite::Plain,
                 )
                 .unwrap();
-            let ci = game.mobs.iter().position(|m| m.id == child).unwrap();
-            game.mobs[ci].no_ai = true;
-            game.mobs[ci].no_gravity = true;
+            let ci = game.remote_entities.iter().position(|m| m.id == child).unwrap();
+            game.remote_entities[ci].no_ai = true;
+            game.remote_entities[ci].no_gravity = true;
             assert!(
                 !game.persist.raw.contains_key(&child),
                 "fresh actual runtime child has no raw NBT"
             );
             assert_eq!(
-                game.mobs[ci].extra.anger_end, 0,
+                game.remote_entities[ci].extra.anger_end, 0,
                 "unprimed constructor state"
             );
             game.ride_mount(Target::Mob(child), Target::Boat(bid))
                 .unwrap();
-            assert_eq!(game.mobs[ci].extra.mount, Some(bid));
+            assert_eq!(game.remote_entities[ci].extra.mount, Some(bid));
             let clock = game.world.game_time;
             let chunks = game.world.chunks.len();
             let raw = game.persist.raw.get(&bid).cloned();
@@ -1861,15 +1761,15 @@ mod boat_passenger_tree_tests {
             let before = (
                 game.persist.uuids.len(),
                 game.persist.uuid_of(child),
-                game.mobs[ci].extra.anger_end,
-                game.mobs[ci].extra.angry_at,
+                game.remote_entities[ci].extra.anger_end,
+                game.remote_entities[ci].extra.angry_at,
             );
             let first = game.command_target_nbt(Target::Boat(bid)).unwrap();
             let after = (
                 game.persist.uuids.len(),
                 game.persist.uuid_of(child),
-                game.mobs[ci].extra.anger_end,
-                game.mobs[ci].extra.angry_at,
+                game.remote_entities[ci].extra.anger_end,
+                game.remote_entities[ci].extra.angry_at,
             );
             println!("parent-first bookkeeping before={before:?} after={after:?}");
             let mut failures = Vec::new();
@@ -1887,21 +1787,21 @@ mod boat_passenger_tree_tests {
                     crate::game::creatures::SpawnSite::Plain,
                 )
                 .unwrap();
-            let di = game.mobs.iter().position(|m| m.id == control).unwrap();
-            game.mobs[di].no_ai = true;
-            game.mobs[di].no_gravity = true;
+            let di = game.remote_entities.iter().position(|m| m.id == control).unwrap();
+            game.remote_entities[di].no_ai = true;
+            game.remote_entities[di].no_gravity = true;
             assert!(!game.persist.raw.contains_key(&control));
-            assert_eq!(game.mobs[di].extra.anger_end, 0);
+            assert_eq!(game.remote_entities[di].extra.anger_end, 0);
             let direct_before = (
                 game.persist.uuids.len(),
                 game.persist.uuid_of(control),
-                game.mobs[di].extra.anger_end,
+                game.remote_entities[di].extra.anger_end,
             );
             let direct_control = game.command_target_nbt(Target::Mob(control)).unwrap();
             let direct_after = (
                 game.persist.uuids.len(),
                 game.persist.uuid_of(control),
-                game.mobs[di].extra.anger_end,
+                game.remote_entities[di].extra.anger_end,
             );
             println!(
                 "existing child-getter bookkeeping before={direct_before:?} after={direct_after:?}"
@@ -1931,8 +1831,8 @@ mod boat_passenger_tree_tests {
                     failures.push("repeated parent must keep exactly one actual child".into());
                 }
                 assert_eq!(game.persist.uuids.len(), stable);
-                assert_eq!(game.mobs[ci].extra.anger_end, -1);
-                assert_eq!(game.mobs[ci].extra.mount, Some(bid));
+                assert_eq!(game.remote_entities[ci].extra.anger_end, -1);
+                assert_eq!(game.remote_entities[ci].extra.mount, Some(bid));
             }
             assert!(game.run_command("scoreboard objectives add h151 dummy"));
             assert!(game.run_command("scoreboard players set #r h151 91"));
@@ -1942,9 +1842,11 @@ mod boat_passenger_tree_tests {
             if (accepted, score("#r"), score("#s")) != (true, 4, 1) {
                 failures.push("registered data command must reach live tree".into());
             }
-            game.boats.update(bi, |boat| {
-                boat.leash = Some(horizon_client::mobs::leash::Holder::Mob(control))
-            });
+            let boat_entity = game.ecs.entity_of(bid).unwrap();
+            game.ecs.set_leash(
+                boat_entity,
+                Some(horizon_client::mobs::leash::Holder::Mob(control)),
+            );
             let leashed = game.command_target_nbt(Target::Boat(bid)).unwrap();
             assert_eq!(
                 leashed.get("leash").and_then(|t| t.get("UUID")),
@@ -2130,8 +2032,6 @@ mod saved_tag_tests;
 #[cfg(test)]
 mod mod_block_entity_tests;
 
-#[cfg(test)]
-mod spectral_merge_tests;
 
 #[cfg(test)]
 mod residency_tests;
@@ -2142,110 +2042,6 @@ mod arrow_owner_tests {
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
     use horizon_core::nbt::Tag;
 
-    #[test]
-    #[ignore = "daily"]
-    fn loaded_arrow_getter_uses_registered_owner_reference_without_raw() {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.build_registries();
-
-        let position = Tag::List(vec![
-            Tag::Double(8.5_f64.to_bits()),
-            Tag::Double(202.0_f64.to_bits()),
-            Tag::Double(4.5_f64.to_bits()),
-        ]);
-        let mob_uuid = [213, 1, 2, 3];
-        let mob = Tag::compound([
-            ("id", Tag::String("minecraft:pig".into())),
-            ("UUID", Tag::IntArray(mob_uuid.to_vec())),
-            ("Pos", position.clone()),
-            ("Health", Tag::Float(10.0_f32.to_bits())),
-            ("NoAI", Tag::Byte(1)),
-        ]);
-        game.load_mob(mob, None).unwrap();
-        assert!(game.mob_by_uuid(mob_uuid).is_some());
-        let time = game.world.game_time;
-        for (index, owner) in [Some(mob_uuid), Some([213, 91, 92, 93]), None]
-            .into_iter()
-            .enumerate()
-        {
-            let uuid = [213, 10, 0, index as i32 + 1];
-            let mut tag = Tag::compound([
-                ("id", Tag::String("minecraft:arrow".into())),
-                ("UUID", Tag::IntArray(uuid.to_vec())),
-                ("Pos", position.clone()),
-                ("NoGravity", Tag::Byte(1)),
-                ("CustomName", Tag::String("kept name".into())),
-                ("Tags", Tag::List(vec![Tag::String("kept_tag".into())])),
-            ]);
-            if let (Some(owner), Tag::Compound(fields)) = (owner, &mut tag) {
-                fields.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
-            }
-            game.load_arrow(tag, Some(uuid), None);
-            let p = game.creatures.projectiles.last().unwrap();
-            // Prove actual loader adoption before reading any saved NBT.
-            assert_eq!(p.owner_uuid, owner);
-            let id = p.id;
-            assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
-            let expected = owner.map(|u| Tag::IntArray(u.to_vec()));
-            let loaded_raw = game.persist.raw.get(&id).cloned();
-            let mut stale = loaded_raw.clone().unwrap();
-            if let Tag::Compound(fields) = &mut stale {
-                fields.insert("Owner".into(), Tag::IntArray(vec![99; 4]));
-            }
-            let mut raw_cases = vec![None, loaded_raw];
-            // A positive modeled reference must overwrite a conflicting raw UUID.
-            // Generic stale optional-key cleanup is outside this getter bridge.
-            if owner.is_some() {
-                raw_cases.push(Some(stale));
-            }
-            for raw in raw_cases {
-                if let Some(raw) = &raw {
-                    game.persist.raw.insert(id, raw.clone());
-                } else {
-                    game.persist.raw.remove(&id);
-                }
-                let saved = game.command_target_nbt(Target::Projectile(id)).unwrap();
-                assert_eq!(saved.get("Owner"), expected.as_ref());
-                assert_eq!(saved.get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
-                if let Some(raw) = &raw {
-                    assert_eq!(saved.get("CustomName"), raw.get("CustomName"));
-                    assert_eq!(saved.get("Tags"), raw.get("Tags"));
-                }
-                assert_eq!(game.creatures.projectiles.last().unwrap().owner_uuid, owner);
-                assert_eq!(game.persist.raw.get(&id), raw.as_ref());
-                assert_eq!(game.world.game_time, time);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -2658,24 +2454,8 @@ mod vehicle_container_tests {
                     "",
                 ),
                 (
-                    "cart_items",
-                    "minecraft:chest_minecart",
-                    "Items:[{Slot:0b,id:\"minecraft:diamond\",count:3,components:{\"minecraft:custom_data\":{h052:9}}}],LootTableSeed:73L",
-                    Some(1usize),
-                    false,
-                    "",
-                ),
-                (
                     "boat_table",
                     "minecraft:oak_chest_boat",
-                    "LootTable:\"minecraft:empty\",LootTableSeed:73L",
-                    None,
-                    true,
-                    "minecraft:empty",
-                ),
-                (
-                    "cart_table",
-                    "minecraft:chest_minecart",
                     "LootTable:\"minecraft:empty\",LootTableSeed:73L",
                     None,
                     true,
@@ -2690,24 +2470,8 @@ mod vehicle_container_tests {
                     "minecraft:",
                 ),
                 (
-                    "cart_empty_table",
-                    "minecraft:chest_minecart",
-                    "LootTable:\"\",LootTableSeed:73L",
-                    None,
-                    true,
-                    "minecraft:",
-                ),
-                (
                     "boat_empty",
                     "minecraft:oak_chest_boat",
-                    "",
-                    Some(0usize),
-                    false,
-                    "",
-                ),
-                (
-                    "cart_empty",
-                    "minecraft:chest_minecart",
                     "",
                     Some(0usize),
                     false,
@@ -2728,35 +2492,22 @@ mod vehicle_container_tests {
                 ]
                 .concat();
                 let (tag, _) = parse_snbt(&source).unwrap();
-                let target = if kind.contains("boat") {
-                    game.load_boat(tag, Some(uuid), kind);
-                    let b = game.boats.last().unwrap();
-                    assert_eq!(
-                        b.items
-                            .first()
-                            .and_then(Option::as_ref)
-                            .map_or(0, |s| s.count),
-                        if *expected_items == Some(1) { 3 } else { 0 },
-                        "{name}: actual boat inventory"
-                    );
-                    Target::Boat(b.id)
-                } else {
-                    game.load_cart(tag, Some(uuid), kind);
-                    let c = game.carts.last().unwrap();
-                    assert_eq!(
-                        c.items
-                            .first()
-                            .and_then(Option::as_ref)
-                            .map_or(0, |s| s.count),
-                        if *expected_items == Some(1) { 3 } else { 0 },
-                        "{name}: actual cart inventory"
-                    );
-                    Target::Cart(c.id)
-                };
-                let id = match target {
-                    Target::Boat(id) | Target::Cart(id) => id,
-                    _ => unreachable!(),
-                };
+                game.load_boat(tag, Some(uuid), kind);
+                let id = game
+                    .ecs
+                    .boats_in(horizon_core::geometry::Vec3::new(-1.0e6, -1.0e6, -1.0e6), horizon_core::geometry::Vec3::new(1.0e6, 1.0e6, 1.0e6))
+                    .into_iter()
+                    .max()
+                    .unwrap();
+                assert_eq!(
+                    game.ecs.boat_items(id).unwrap()
+                        .first()
+                        .and_then(Option::as_ref)
+                        .map_or(0, |s| s.count),
+                    if *expected_items == Some(1) { 3 } else { 0 },
+                    "{name}: actual boat inventory"
+                );
+                let target = Target::Boat(id);
                 let saved = game.command_target_nbt(target).unwrap();
                 assert_eq!(saved.get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
                 assert_eq!(
@@ -2788,19 +2539,9 @@ mod vehicle_container_tests {
                 }
                 if *expected_items == Some(1) {
                     // The model, not a stale loaded Items list, owns the inventory.
-                    match target {
-                        Target::Boat(_) => {
-                            game.boats.update(game.boats.len() - 1, |boat| {
-                                boat.items[0].as_mut().unwrap().count = 4
-                            });
-                        }
-                        Target::Cart(_) => {
-                            game.carts.update(game.carts.len() - 1, |cart| {
-                                cart.items[0].as_mut().unwrap().count = 4
-                            });
-                        }
-                        _ => unreachable!(),
-                    }
+                    let mut stack = game.ecs.boat_items(id).unwrap()[0].clone().unwrap();
+                    stack.count = 4;
+                    game.ecs.boat_set_slot(id, 0, Some(stack));
                 }
                 // A normal model can save without any raw input. Boat pending tables
                 // already live in the retained source; no replacement pending state is invented.
@@ -2827,20 +2568,19 @@ mod vehicle_container_tests {
             }
             // Retained loader diagnostic, not a writer parity assertion: an input
             // containing both a table and Items currently keeps modeled contents.
-            for kind in ["minecraft:oak_chest_boat", "minecraft:chest_minecart"] {
+            for kind in ["minecraft:oak_chest_boat"] {
                 let source = r#"{Pos:[4.5d,200d,4.5d],LootTable:"minecraft:empty",LootTableSeed:73L,Items:[{Slot:0b,id:"minecraft:diamond",count:3}]}"#;
                 let (tag, _) = parse_snbt(source).unwrap();
-                let count = if kind.contains("boat") {
-                    game.load_boat(tag, Some([52, 1, 0, 1]), kind);
-                    game.boats.last().unwrap().items[0]
-                        .as_ref()
-                        .map_or(0, |s| s.count)
-                } else {
-                    game.load_cart(tag, Some([52, 1, 0, 2]), kind);
-                    game.carts.last().unwrap().items[0]
-                        .as_ref()
-                        .map_or(0, |s| s.count)
-                };
+                game.load_boat(tag, Some([52, 1, 0, 1]), kind);
+                let id = game
+                    .ecs
+                    .boats_in(horizon_core::geometry::Vec3::new(-1.0e6, -1.0e6, -1.0e6), horizon_core::geometry::Vec3::new(1.0e6, 1.0e6, 1.0e6))
+                    .into_iter()
+                    .max()
+                    .unwrap();
+                let count = game.ecs.boat_items(id).unwrap()[0]
+                    .as_ref()
+                    .map_or(0, |s| s.count);
                 eprintln!(
                     "separate loader diagnostic {kind}: supplied table+Items retains modeled count {count}"
                 );

@@ -250,7 +250,7 @@ impl Game<'_> {
             .chain(self.item_frames.iter().map(|f| boxed(f.bounds())))
             .chain(self.paintings.iter().map(|p| boxed(p.bounds())))
             .chain(self.crystals.iter().map(super::dragon::Crystal::bounds))
-            .chain(self.hook.iter().map(super::fishing::Hook::bounds))
+            .chain(self.fishing_hooks_here().filter_map(|(id, _)| self.fishing_hook_box(id)))
             .any(|b| b.intersects(area))
     }
 }

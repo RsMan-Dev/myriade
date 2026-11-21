@@ -237,7 +237,11 @@ impl Game<'_> {
         {
             out.push(PLAYER);
         }
-        for m in &self.mobs {
+        if self.ecs.is_active() {
+            out.extend(self.ecs_entities_meeting(area).into_iter().filter(|&id| self.mob_exists(id)).map(u64::from));
+            return out;
+        }
+        for m in &self.remote_entities {
             if !m.removed && m.bounds().intersects(area) {
                 out.push(u64::from(m.id));
             }
@@ -254,7 +258,15 @@ impl Game<'_> {
             .get(&pos)
             .and_then(|b| b.nearby.clone())
             .unwrap_or_default();
-        for m in &mut self.mobs {
+        if self.ecs.is_active() {
+            for id in nearby.iter().filter_map(|&h| u32::try_from(h).ok()) {
+                if self.mob_alive(id) && self.ecs.position(id).is_some_and(|p| closer_to_center_than(pos, p, 32.0)) {
+                    self.ecs_heard_bell(id, now);
+                }
+            }
+            return;
+        }
+        for m in &mut self.remote_entities {
             if m.alive()
                 && !m.removed
                 && nearby.contains(&u64::from(m.id))
@@ -326,10 +338,20 @@ impl Game<'_> {
             alive: p.alive,
             raider: false,
         });
-        let mobs = &self.mobs;
+        let mobs = &self.remote_entities;
+        let ecs = &self.ecs;
         let entity = |h: u64| {
             if h == PLAYER {
                 return player;
+            }
+            if ecs.is_active() {
+                let id = u32::try_from(h).ok()?;
+                let [x, y, z] = ecs.position(id)?;
+                return Some(BellEntity {
+                    position: [x, y, z],
+                    alive: ecs.exists(id) && ecs.alive(id),
+                    raider: ecs.kind(id).is_some_and(|k| raiders.contains(k)),
+                });
             }
             let m = mobs.iter().find(|m| u64::from(m.id) == h)?;
             Some(BellEntity {
@@ -367,9 +389,17 @@ impl Game<'_> {
                 self.particles.add(&options, p, [0.0; 3]);
             }
             // makeRaidersGlow (the server's effect).
-            for m in self.mobs.iter_mut().filter(|_| self.remote.is_none()) {
-                if glow.contains(&u64::from(m.id)) {
-                    m.add_effect("minecraft:glowing", 60, 0);
+            if self.ecs.is_active() {
+                if self.remote.is_none() {
+                    for id in glow.iter().filter_map(|&h| u32::try_from(h).ok()) {
+                        self.ecs_add_effect(id, "minecraft:glowing", 60, 0);
+                    }
+                }
+            } else {
+                for m in self.remote_entities.iter_mut().filter(|_| self.remote.is_none()) {
+                    if glow.contains(&u64::from(m.id)) {
+                        m.add_effect("minecraft:glowing", 60, 0);
+                    }
                 }
             }
         }
@@ -718,8 +748,9 @@ impl Game<'_> {
             _ if !hunting => None,
             None => self.conduit_new_target(pos),
             Some(None) => None,
+            Some(Some(id)) if self.ecs.is_active() => self.ecs_conduit_reachable(id, pos).then_some(id),
             Some(Some(id)) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)
                 .filter(|m| {
@@ -744,9 +775,21 @@ impl Game<'_> {
                 self.mark_block_entity_updated(key);
             }
         }
+        if self.ecs.is_active() {
+            let Some(id) = conduit.target else {
+                return;
+            };
+            let Some(at) = self.ecs.position(id) else {
+                return;
+            };
+            // Mob.hurt with the magic kind (HurtSource::Magic, missing in P: listed).
+            self.ecs_hurt(id, 4.0, horizon_ecs_proto::bridge::host::HurtSource::Magic);
+            self.audio.play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
+            return;
+        }
         let Some(m) = conduit
             .target
-            .and_then(|id| self.mobs.iter_mut().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id))
         else {
             return;
         };
@@ -767,8 +810,10 @@ impl Game<'_> {
             Vec3::new(x - 8.0, y - 8.0, z - 8.0),
             Vec3::new(x + 9.0, y + 9.0, z + 9.0),
         );
-        let near: Vec<(u32, bool, Vec3, f64)> = self
-            .mobs
+        let near: Vec<(u32, bool, Vec3, f64)> = if self.ecs.is_active() {
+            self.ecs_enemies_near(area)
+        } else {
+            self.remote_entities
             .iter()
             // `instanceof Enemy`, not the monster category: the zombie horse,
             // camel husk and zombie nautilus are `Animal`s.
@@ -777,7 +822,8 @@ impl Game<'_> {
                 let top = m.position.y + f64::from(m.height());
                 (m.id, m.fluids.in_water, m.position, top)
             })
-            .collect();
+            .collect()
+        };
         let candidates: Vec<u32> = near
             .into_iter()
             .filter(|&(_, in_water, at, top)| in_water || self.in_rain(at, top))
@@ -801,7 +847,12 @@ impl Game<'_> {
             Some(BlockEntity::Conduit(target)) => self.mob_by_uuid((*target)?)?,
             _ => self.be_anims.conduit_servers.get(&pos)?.target?,
         };
-        let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            let [x, y, z] = self.ecs.position(id).filter(|_| self.mob_exists(id))?;
+            let (width, height) = self.ecs.size(id)?;
+            return Some(ConduitTarget { position: [x, y, z], eye_y: self.ecs_mob_eye(id)?[1], width, height });
+        }
+        let m = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         Some(ConduitTarget {
             position: [m.position.x, m.position.y, m.position.z],
             eye_y: m.eye_y(),
@@ -1250,8 +1301,8 @@ mod conduit_target_tests {
     /// A mob of `kind` beside the conduit, in the water.
     fn summon(game: &mut Game<'_>, kind: &str) -> u32 {
         assert!(game.run_command(&format!("summon minecraft:{kind} 4.5 100 8.5")));
-        let id = game.mobs.last().unwrap().id;
-        game.mobs.last_mut().unwrap().fluids.in_water = true;
+        let id = game.remote_entities.last().unwrap().id;
+        game.remote_entities.last_mut().unwrap().fluids.in_water = true;
         id
     }
 

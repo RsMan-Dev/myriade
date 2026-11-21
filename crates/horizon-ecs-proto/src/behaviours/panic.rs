@@ -83,7 +83,7 @@ pub(crate) fn hurt_events(
 ) {
     for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
         let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming));
-        let environment = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| matches!(c.1, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze));
+        let environment = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| matches!(c.1, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze | Cause::HotFloor));
         if let Ok(mut p) = q.get_mut(e)
             && panics
             && (!p.environmental || environment)

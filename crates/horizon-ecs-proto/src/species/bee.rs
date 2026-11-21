@@ -22,6 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { interval: 10, ..nearest_target::Params::PLAYER }).when(&CAN_TARGET),
     ],
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { flap: crate::behaviours::move_emission::Flap::Every { period: 2, flying_only: true, offset: false }, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
         Entry::new(&melee::MODULE, 0, &melee::Params { speed: 1.4, follow_unseen: true, ..melee::Params::DEFAULT }).when(&CAN_TARGET),
         Entry::new(&bee::ENTER_HIVE, 1, &bee::Params::DEFAULT).when(&CALM),
@@ -38,7 +39,7 @@ pub static DEF: Def = Def {
         Entry::new(&fly_stroll::MODULE, 8, &fly_stroll::Params { interval: 10, toward: Some(bee::toward_far_hive), ..fly_stroll::Params::DEFAULT }),
         Entry::new(&float::MODULE, 9, &float::Params::DEFAULT),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::IgnoresBerryBush]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Path, max_turn: 20.0, hovers: true, ..fly::Params::DEFAULT }))],
 
     ..Def::EMPTY

@@ -59,8 +59,8 @@ impl Game<'_> {
             (mob.yaw, mob.previous_yaw) = (yaw, yaw);
             (mob.head_pitch, mob.previous_head_pitch) = (pitch, pitch);
             mob.persistent = true;
-            self.mobs.retain(|m| m.id != id as u32);
-            self.mobs.push(mob);
+            self.remote_entities.retain(|m| m.id != id as u32);
+            self.remote_entities.push(mob);
         }
         if let Some(r) = self.remote.as_mut() {
             // A new entity has a new interpolation handler (a mob's or an
@@ -100,8 +100,8 @@ impl Game<'_> {
         let dragon = self.dragon.as_ref().is_some_and(|d| d.id as i32 == id);
         let driven = self.driven_mount().is_some_and(|m| m.id as i32 == id);
         let mob = self
-            .mob_index
-            .get_mut(&mut self.mobs, id as u32)
+            .remote_index
+            .get_mut(&mut self.remote_entities, id as u32)
             .filter(|_| !dragon);
         let tracked = self
             .remote
@@ -331,8 +331,8 @@ impl Game<'_> {
         self.turn_remote_projectile(id, rotation);
     }
     pub(super) fn detach_remote_tracking_entity_body(&mut self, id: i32) {
-        let mobs = &self.mobs;
-        let index = &mut self.mob_index;
+        let mobs = &self.remote_entities;
+        let index = &mut self.remote_index;
         self.particles
             .detach_tracking_target(TrackingTarget::Entity(id), || {
                 index.get(mobs, id as u32).map(mob_tracking_body)

@@ -44,7 +44,7 @@ impl Game<'_> {
             let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|state| state.id == id)
                 .is_some_and(|state| self.native_mob_valid_target(state, kind))
@@ -113,7 +113,7 @@ impl Game<'_> {
         }
         match target {
             Target::Mob(id) => {
-                let Some(other) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(other) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
                 let seen = [super::creatures::seen(
@@ -163,7 +163,7 @@ impl Game<'_> {
         use horizon_core::geometry::Axis;
         let (bounds, team) = match target {
             Target::Mob(id) => {
-                let Some(other) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(other) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
                 if !other.alive() || other.invulnerable_flag || other.species() == Species::Warden {
@@ -224,7 +224,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(self.mob_portal_eligible(mob))
     }
 
@@ -237,7 +237,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return self.native_dragon_target(mob.entity());
         };
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
         let target = brain_target(mob).unwrap_or(mob.ai.target)?;
         let target_id = match target {
             Who::Mob(id) => id,
@@ -266,7 +266,7 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return self.native_dragon_set_target(mob.entity(), target);
         };
-        let Some(mob_state) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(mob_state) = self.remote_entities.iter().find(|m| m.id == id) else {
             return false;
         };
         if mob_state.refuses_set_target() {
@@ -287,7 +287,7 @@ impl Game<'_> {
             let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            let Some(state) = self.mobs.iter().find(|m| m.id == id) else {
+            let Some(state) = self.remote_entities.iter().find(|m| m.id == id) else {
                 return false;
             };
             if !self.native_mob_valid_target(state, kind) {
@@ -297,7 +297,7 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         mob.set_target(who);
@@ -305,7 +305,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a mod-initiated change while the mob remains in the game.
-    pub(super) fn native_mob_target_event(
+    pub(in crate::game) fn native_mob_target_event(
         &self,
         mob: MobRef,
         original_target: Option<LivingRef>,
@@ -385,7 +385,7 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+        let Some(m) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
             return false;
         };
         if !horizon_client::mobs::ai::writes_brain_target(m) {
@@ -397,7 +397,7 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        self.mobs
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id)
             .is_some_and(|m| horizon_client::mobs::ai::set_brain_target(m, who))
@@ -406,8 +406,15 @@ impl Game<'_> {
     /// The mob flag a handle names: a mob's, or the dragon's own.
     fn native_mob_flag(&self, mob: MobRef, flag: MobFlag) -> Option<bool> {
         match self.native_entity_target(mob.entity())? {
+            Target::Mob(id) if self.ecs.is_active() => {
+                self.ecs_mod_live(id)?;
+                match flag {
+                    MobFlag::Aggressive => self.ecs.aggressive(id),
+                    MobFlag::Persistent => self.ecs_flag(id, "PersistenceRequired"),
+                }
+            }
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                let mob = self.remote_entities.iter().find(|m| m.id == id)?;
                 Some(match flag {
                     MobFlag::Aggressive => mob.ai.aggressive,
                     MobFlag::Persistent => mob.persistent,
@@ -424,9 +431,16 @@ impl Game<'_> {
         }
     }
     fn native_mob_set_flag(&mut self, mob: MobRef, flag: MobFlag, value: bool) -> bool {
+        if let (true, Some(Target::Mob(id))) = (self.ecs.is_active(), self.native_entity_target(mob.entity())) {
+            return self.ecs_mod_live(id).is_some()
+                && match flag {
+                    MobFlag::Aggressive => self.ecs.set_aggressive(id, value),
+                    MobFlag::Persistent => self.ecs_put_flag(id, "PersistenceRequired", value),
+                };
+        }
         let slot = match self.native_entity_target(mob.entity()) {
             Some(Target::Mob(id)) => {
-                self.mobs
+                self.remote_entities
                     .iter_mut()
                     .find(|m| m.id == id)
                     .map(|mob| match flag {
@@ -475,7 +489,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.requires_custom_persistence(id));
+        }
+        self.remote_entities
             .iter()
             .find(|m| m.id == id)
             .map(mobs::ai::requires_custom_persistence)
@@ -489,7 +506,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        Some(self.mobs.iter().find(|m| m.id == id && !m.removed)?.no_ai)
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and_then(|_| self.ecs_flag(id, "NoAI"));
+        }
+        Some(self.remote_entities.iter().find(|m| m.id == id && !m.removed)?.no_ai)
     }
 
     /// `Mob.setNoAi`: whether the mob's own AI runs. With no AI the mob
@@ -499,7 +519,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs_put_flag(id, "NoAI", no_ai);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.no_ai = no_ai)
@@ -514,8 +537,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.no_action_time(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -531,7 +557,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_no_action_time(id, ticks);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.no_action_time = ticks)
@@ -548,7 +577,11 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            // The species' baby form is the bridge's (it refuses a species with none).
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_baby(id, baby);
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         if !mobs::species::can_be_a_baby(mob.species()) {
@@ -574,7 +607,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.look_at(id, at);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.look_at(at))
@@ -592,7 +628,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.jump(id);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.jump = true)
@@ -609,7 +648,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.restrict_to(id, at, radius);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.restore_home(at, radius))
@@ -624,8 +666,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.restrict_center(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -639,8 +684,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.restrict_radius(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -655,8 +703,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.has_restriction(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -672,7 +723,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.clear_restriction(id);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.clear_home())
@@ -687,8 +741,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.is_within_restriction(id, at));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -702,8 +759,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and_then(|_| self.ecs_flag(id, "LeftHanded"));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .extra
@@ -718,7 +778,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs_put_flag(id, "LeftHanded", left_handed);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.extra.left_handed = left_handed)
@@ -732,8 +795,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.can_pick_up_loot(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .can_pick_up_loot(),
@@ -748,7 +814,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs_put_flag(id, "CanPickUpLoot", can_pick_up);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.extra.pick_up_loot = can_pick_up)
@@ -766,7 +835,7 @@ mod tests {
 
     fn add_mob(game: &mut Game<'_>, id: u32, name: &str) -> MobRef {
         let kind = game.res.mob_types().get(name).unwrap().clone();
-        game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+        game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
         game.mob(game.entity(id).unwrap()).unwrap()
     }
 
@@ -801,10 +870,10 @@ mod tests {
                 *redirect.lock().unwrap() = Some(LivingRef::new(fake.entity()));
                 let mob = add_mob(game, 12, "minecraft:zombie");
                 let existing = add_mob(game, 13, "minecraft:sheep");
-                game.mobs[0].ai.target = Some(Who::Mob(13));
+                game.remote_entities[0].ai.target = Some(Who::Mob(13));
                 assert!(!mob.set_target(game, None));
                 assert_eq!(
-                    game.mobs[0].ai.target,
+                    game.remote_entities[0].ai.target,
                     Some(Who::Mob(existing.entity().id()))
                 );
             })
@@ -904,16 +973,16 @@ mod tests {
                 (Holder::Boat(14), LeashHolder::Entity(boat)),
                 (Holder::Knot([1, 2, 3]), LeashHolder::Knot([1, 2, 3])),
             ] {
-                game.mobs[0].extra.leash = Some(Holder::Player);
-                game.mobs[0].extra.leash_player = Some(uuid_ints(20));
+                game.remote_entities[0].extra.leash = Some(Holder::Player);
+                game.remote_entities[0].extra.leash_player = Some(uuid_ints(20));
                 game.as_guest(20, |game| {
                     assert!(game.tie_player_leads(glam::DVec3::ZERO, holder, None));
                     assert_eq!(cow.entity().leash_holder(game), Some(expected));
                 })
                 .unwrap();
             }
-            game.mobs[0].extra.leash = None;
-            game.mobs[0].extra.leash_pending = Some(Pending::Uuid([0, 0, 0, 99]));
+            game.remote_entities[0].extra.leash = None;
+            game.remote_entities[0].extra.leash_pending = Some(Pending::Uuid([0, 0, 0, 99]));
             assert_eq!(cow.entity().leash_holder(game), None);
             let stale = EntityRef::new(WorldEpoch::new(999), 12);
             assert_eq!(stale.leash_holder(game), None);
@@ -930,7 +999,7 @@ mod tests {
             let wither = add_mob(game, 13, "minecraft:wither");
             let check = |game: &Game<'_>, handle: MobRef, expected| {
                 let mob = game
-                    .mobs
+                    .remote_entities
                     .iter()
                     .find(|m| m.id == handle.entity().id())
                     .unwrap();
@@ -940,9 +1009,9 @@ mod tests {
             };
             check(game, cow, true);
             check(game, wither, false);
-            game.mobs[0].extra.mount = Some(99);
+            game.remote_entities[0].extra.mount = Some(99);
             check(game, cow, false);
-            game.mobs[0].extra.mount = None;
+            game.remote_entities[0].extra.mount = None;
             game.riding = Some(12);
             check(game, cow, false);
             game.riding = None;
@@ -972,8 +1041,8 @@ mod tests {
                     (true, None, false),
                     (true, Some(mobs::leash::Holder::Knot([5, 64, 5])), true),
                 ] {
-                    game.mobs[0].persistent = persistent;
-                    game.mobs[0].extra.leash = leash;
+                    game.remote_entities[0].persistent = persistent;
+                    game.remote_entities[0].extra.leash = leash;
                     assert_eq!(mob.requires_custom_persistence(game), Some(expected));
                     assert_eq!(mob.persistence_required(game), Some(persistent));
                     assert_eq!(mob.no_ai(game), Some(no_ai));
@@ -981,7 +1050,7 @@ mod tests {
             }
             let enderman = add_mob(game, 13, "minecraft:enderman");
             assert_eq!(enderman.requires_custom_persistence(game), Some(false));
-            game.mobs[1].extra.carried = Some(
+            game.remote_entities[1].extra.carried = Some(
                 game.pack
                     .assets
                     .registry
@@ -990,7 +1059,7 @@ mod tests {
             );
             assert_eq!(enderman.requires_custom_persistence(game), Some(true));
             assert_eq!(enderman.persistence_required(game), Some(false));
-            game.mobs[1].extra.carried = None;
+            game.remote_entities[1].extra.carried = None;
             assert!(enderman.set_persistence_required(game));
             assert_eq!(enderman.requires_custom_persistence(game), Some(false));
             assert_eq!(enderman.persistence_required(game), Some(true));
@@ -1022,7 +1091,7 @@ mod tests {
                     }
                     for baby in [true, false, true, false] {
                         assert!(mob.set_baby(game, baby), "{name}");
-                        let state = game.mobs.last().unwrap();
+                        let state = game.remote_entities.last().unwrap();
                         assert_eq!(state.extra.age, if baby { baby_age } else { 0 }, "{name}");
                         assert_eq!(mob.living().baby(game), Some(baby), "{name}");
                         if let Some((baby_damage, adult_damage)) = damage {
@@ -1049,10 +1118,10 @@ mod tests {
             let ghast = add_mob(game, 12, "minecraft:happy_ghast");
             assert!(ghast.set_no_ai(game, true));
             assert!(ghast.set_persistence_required(game));
-            assert!(game.mobs[0].ai.goals.has("HappyGhastFloatGoal"));
+            assert!(game.remote_entities[0].ai.goals.has("HappyGhastFloatGoal"));
             for baby in [true, false, true, false] {
                 assert!(ghast.set_baby(game, baby));
-                let state = &game.mobs[0];
+                let state = &game.remote_entities[0];
                 assert_eq!(ghast.living().baby(game), Some(baby));
                 assert_eq!(state.ai.goals.has("HappyGhastFloatGoal"), !baby);
                 assert_eq!(state.ai.goals.has("RandomFloatAroundGoal"), !baby);
@@ -1079,7 +1148,7 @@ mod tests {
                 assert!(mob.set_persistence_required(game));
                 for baby in [true, false] {
                     assert!(!mob.set_baby(game, baby), "{name}");
-                    assert_eq!(game.mobs.last().unwrap().extra.age, 0, "{name}");
+                    assert_eq!(game.remote_entities.last().unwrap().extra.age, 0, "{name}");
                     assert_eq!(mob.living().baby(game), Some(false), "{name}");
                     assert_eq!(mob.no_ai(game), Some(true), "{name}");
                     assert_eq!(mob.persistence_required(game), Some(true), "{name}");
@@ -1096,15 +1165,15 @@ mod tests {
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
             game.held_out.pop();
-            game.mobs.last_mut().unwrap().removed = true;
+            game.remote_entities.last_mut().unwrap().removed = true;
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
-            assert_eq!(game.mobs.last().unwrap().extra.age, 0);
-            game.mobs.last_mut().unwrap().removed = false;
-            let taken = game.mobs.lift();
+            assert_eq!(game.remote_entities.last().unwrap().extra.age, 0);
+            game.remote_entities.last_mut().unwrap().removed = false;
+            let taken = game.remote_entities.lift();
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
-            game.mobs = taken;
+            game.remote_entities = taken;
             assert!(mob.set_baby(game, true));
 
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
@@ -1175,7 +1244,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             let mob = game.mob(game.entity(12).unwrap()).unwrap();
             let player = game.living(game.entity(20).unwrap()).unwrap();
             assert!(mob.set_target(game, Some(player)));
@@ -1191,11 +1260,11 @@ mod tests {
                 .clone();
             let mut piglin_state = Mob::new(13, kind, Vec3::ZERO, 0.0);
             piglin_state.ai.last_hurt_by_player = 42;
-            game.mobs.push(piglin_state);
+            game.remote_entities.push(piglin_state);
             let piglin = game.mob(game.entity(13).unwrap()).unwrap();
             assert!(piglin.set_target(game, Some(player)));
             assert_eq!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .find(|m| m.id == 13)
                     .unwrap()
@@ -1206,7 +1275,7 @@ mod tests {
             assert!(!game.last_hurt_by_player.contains_key(&13));
             assert!(piglin.set_target(game, None));
             assert_eq!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .find(|m| m.id == 13)
                     .unwrap()
@@ -1220,7 +1289,7 @@ mod tests {
             assert!(!piglin.set_target(game, Some(fake_living)));
             assert_eq!(piglin.target(game), None);
             assert_eq!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .find(|m| m.id == 13)
                     .unwrap()
@@ -1236,7 +1305,7 @@ mod tests {
                 .get("minecraft:zombified_piglin")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(14, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(14, kind, Vec3::ZERO, 0.0));
             game.persist.uuids.insert(14, [0, 0, 0, 14]);
             let host_name = game.acting_player_name().to_owned();
             game.score.board.add_team("red");
@@ -1270,7 +1339,7 @@ mod tests {
             }
             assert!(!mob.set_target(game, Some(player)));
             assert_eq!(mob.target(game), None);
-            assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
+            assert_eq!(game.remote_entities[0].ai.target, Some(Who::Player));
             {
                 let value = 0;
                 game.lan
@@ -1290,10 +1359,10 @@ mod tests {
                     .update(0, |guest| guest.dimension = value);
             }
             assert!(!mob.set_target(game, Some(player)));
-            assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
+            assert_eq!(game.remote_entities[0].ai.target, Some(Who::Player));
             game.lan.as_mut().unwrap().mob_players.clear();
             assert_eq!(mob.target(game), None);
-            assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
+            assert_eq!(game.remote_entities[0].ai.target, Some(Who::Player));
         });
     }
 
@@ -1309,23 +1378,23 @@ mod tests {
                 (15, "minecraft:zombie"),
             ] {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
-                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
             let handle = |game: &Game<'_>, id| game.mob(game.entity(id).unwrap()).unwrap();
             let (fox, enderman, piglin) = (handle(game, 12), handle(game, 13), handle(game, 14));
             let other = game.living(game.entity(15).unwrap()).unwrap();
             let state =
-                |game: &Game<'_>, id| game.mobs.iter().find(|m| m.id == id).unwrap().clone();
+                |game: &Game<'_>, id| game.remote_entities.iter().find(|m| m.id == id).unwrap().clone();
 
             // Fox.setTarget: a target leaves defending as it is; clearing ends it.
-            game.mobs
+            game.remote_entities
                 .iter_mut()
                 .find(|m| m.id == 12)
                 .unwrap()
                 .extra
                 .ints[0] |= mobs::fox::DEFENDING;
             mobs::fox::add_trusted_entity(
-                game.mobs.iter_mut().find(|m| m.id == 12).unwrap(),
+                game.remote_entities.iter_mut().find(|m| m.id == 12).unwrap(),
                 [1, 2, 3, 4],
             );
             assert!(fox.set_target(game, Some(other)));
@@ -1338,13 +1407,13 @@ mod tests {
 
             // Enderman.setTarget: the open mouth, targetChangeTime and the
             // attack speed modifier follow the target.
-            let enderman_state = game.mobs.iter_mut().find(|m| m.id == 13).unwrap();
+            let enderman_state = game.remote_entities.iter_mut().find(|m| m.id == 13).unwrap();
             enderman_state.age = 1234;
             enderman_state.extra.flag2 = true;
             game.audio.capture = Some(Vec::new());
             assert!(enderman.set_target(game, Some(other)));
             let events =
-                std::mem::take(&mut game.mobs.iter_mut().find(|m| m.id == 13).unwrap().outbox);
+                std::mem::take(&mut game.remote_entities.iter_mut().find(|m| m.id == 13).unwrap().outbox);
             game.handle_mob_events(events).unwrap();
             assert_eq!(
                 game.audio.heard.get("minecraft:entity.enderman.stare"),
@@ -1372,7 +1441,7 @@ mod tests {
             let mut expected = LegacyRandom::new(2026);
             let sound_delay = expected.next_int_bound(21).unwrap();
             let alert_delay = 80 + expected.next_int_bound(41).unwrap();
-            game.mobs.iter_mut().find(|m| m.id == 14).unwrap().random = horizon_core::random::EntityRandom::own(LegacyRandom::new(2026));
+            game.remote_entities.iter_mut().find(|m| m.id == 14).unwrap().random = horizon_core::random::EntityRandom::own(LegacyRandom::new(2026));
             assert!(piglin.set_target(game, Some(other)));
             assert_eq!(piglin.target(game), Some(other));
             let first = state(game, 14);
@@ -1409,18 +1478,18 @@ mod tests {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
                 let mut mob = Mob::new(id, kind, Vec3::new(x, 100.0, 0.0), 0.0);
                 mobs::ai::register(&mut mob);
-                game.mobs.push(mob);
+                game.remote_entities.push(mob);
             }
             let seed = (0..10_000)
                 .find(|&seed| LegacyRandom::new(seed).next_int_bound(21) == Ok(1))
                 .unwrap();
-            game.mobs[0].random = horizon_core::random::EntityRandom::own(LegacyRandom::new(seed));
+            game.remote_entities[0].random = horizon_core::random::EntityRandom::own(LegacyRandom::new(seed));
             let actor = game.mob(game.entity(12).unwrap()).unwrap();
             let other = game.mob(game.entity(13).unwrap()).unwrap();
             let target = game.living(game.entity(14).unwrap()).unwrap();
             assert!(actor.set_target(game, Some(target)));
-            assert_eq!(game.mobs[0].extra.counter, 1);
-            game.mobs[0].extra.counter2 = 0;
+            assert_eq!(game.remote_entities[0].extra.counter, 1);
+            game.remote_entities[0].extra.counter2 = 0;
             game.audio.capture = Some(Vec::new());
             game.tick_mobs().unwrap();
             assert_eq!(other.target(game), Some(target));
@@ -1453,7 +1522,7 @@ mod tests {
                 (21, "minecraft:iron_golem"),
             ] {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
-                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
             let handle = |game: &Game<'_>, id| game.mob(game.entity(id).unwrap()).unwrap();
             let golem = game.living(game.entity(21).unwrap()).unwrap();
@@ -1464,7 +1533,7 @@ mod tests {
                 assert!(mob.set_brain_target(game, Some(golem)), "mob {id}");
                 assert_eq!(mob.target(game), Some(golem), "mob {id}");
                 assert_eq!(
-                    mobs::ai::brain_target(game.mobs.iter().find(|m| m.id == id).unwrap()),
+                    mobs::ai::brain_target(game.remote_entities.iter().find(|m| m.id == id).unwrap()),
                     Some(Some(Who::Mob(21))),
                     "mob {id}"
                 );
@@ -1475,7 +1544,7 @@ mod tests {
             // (the sonic-boom cooldown among them) do not run.
             let warden = handle(game, 12);
             assert!(warden.set_brain_target(game, Some(golem)));
-            let st = game.mobs.iter().find(|m| m.id == 12).unwrap();
+            let st = game.remote_entities.iter().find(|m| m.id == 12).unwrap();
             assert!(
                 !st.extra
                     .warden
@@ -1525,9 +1594,9 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(12, zombie.clone(), Vec3::ZERO, 0.0));
-            game.mobs.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
@@ -1549,11 +1618,11 @@ mod tests {
                 (21, "minecraft:ghast"),
             ] {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
-                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
             let brain = game.mob(game.entity(16).unwrap()).unwrap();
             mobs::monster_brain::set_attack_target(
-                game.mobs.iter_mut().find(|m| m.id == 16).unwrap(),
+                game.remote_entities.iter_mut().find(|m| m.id == 16).unwrap(),
                 Some(Who::Mob(13)),
             );
             assert_eq!(brain.target(game), Some(other));
@@ -1561,7 +1630,7 @@ mod tests {
             assert_eq!(brain.target(game), Some(other));
             let warden = game.mob(game.entity(19).unwrap()).unwrap();
             let ghast = game.living(game.entity(21).unwrap()).unwrap();
-            let warden_mob = game.mobs.iter_mut().find(|m| m.id == 19).unwrap();
+            let warden_mob = game.remote_entities.iter_mut().find(|m| m.id == 19).unwrap();
             warden_mob
                 .extra
                 .warden
@@ -1601,11 +1670,11 @@ mod tests {
             assert!(game.mob(stale.entity()).is_none());
             assert!(!game.mob_set_target(stale, None));
             assert_eq!(game.mob_is_aggressive(stale), None);
-            let taken = game.mobs.lift();
+            let taken = game.remote_entities.lift();
             assert_eq!(game.mob_target(mob), None);
             assert!(!game.mob_set_target(mob, None));
             assert_eq!(taken[0].ai.target, Some(Who::Mob(13)));
-            game.mobs = taken;
+            game.remote_entities = taken;
             assert!(game.mob_set_target(mob, None));
             assert_eq!(game.mob_target(mob), None);
         });
@@ -1621,7 +1690,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(12, zombie, Vec3::new(3.5, 65.0, 3.5), 0.0));
             let creaking = game
                 .res
@@ -1629,32 +1698,32 @@ mod tests {
                 .get("minecraft:creaking")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(16, creaking, Vec3::new(9.5, 65.0, 9.5), 0.0));
             let mob = game.mob(game.entity(12).unwrap()).unwrap();
             assert!(game.mob_look_at(mob, [10.5, 66.0, -2.5]));
             let (wanted, cooldown, speed) = {
-                let control = &game.mobs[0].ai.look;
+                let control = &game.remote_entities[0].ai.look;
                 (control.wanted, control.cooldown, control.y_max_rot_speed)
             };
             assert_eq!(wanted, [10.5, 66.0, -2.5]);
             assert_eq!(cooldown, 2);
-            assert_eq!(speed, game.mobs[0].kind.head_rot_speed);
+            assert_eq!(speed, game.remote_entities[0].kind.head_rot_speed);
             assert!(!game.mob_look_at(mob, [f64::NAN, 66.0, 0.0]));
-            assert_eq!(game.mobs[0].ai.look.wanted, [10.5, 66.0, -2.5]);
+            assert_eq!(game.remote_entities[0].ai.look.wanted, [10.5, 66.0, -2.5]);
             // A brain species writes through the same look control, so its
             // handle takes the wish too.
             let brain = game.mob(game.entity(16).unwrap()).unwrap();
             assert!(game.mob_look_at(brain, [0.0, 66.0, 0.0]));
-            assert_eq!(game.mobs[1].ai.look.wanted, [0.0, 66.0, 0.0]);
+            assert_eq!(game.remote_entities[1].ai.look.wanted, [0.0, 66.0, 0.0]);
             assert!(game.mob_jump(brain));
-            assert!(game.mobs[1].ai.jump);
+            assert!(game.remote_entities[1].ai.jump);
             assert!(game.mob_jump(mob));
-            assert!(game.mobs[0].ai.jump);
+            assert!(game.remote_entities[0].ai.jump);
             // JumpControl.tick consumes the wish as the next tick's jump.
-            game.mobs[0].jump_control_tick();
-            assert!(game.mobs[0].ai.jumping);
-            assert!(!game.mobs[0].ai.jump);
+            game.remote_entities[0].jump_control_tick();
+            assert!(game.remote_entities[0].ai.jumping);
+            assert!(!game.remote_entities[0].ai.jump);
         });
     }
 
@@ -1669,7 +1738,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(12, zombie, Vec3::new(3.5, 65.0, 3.5), 0.0));
             let mob = game.mob(game.entity(12).unwrap()).unwrap();
             assert_eq!(game.mob_restrict_center(mob), Some([0, 0, 0]));
@@ -1694,7 +1763,7 @@ mod tests {
             );
             // The home area is saved with the mob.
             let saved =
-                horizon_client::entity_nbt::mob_to_nbt(&game.mobs[0], [0; 4], None, None, |_| None);
+                horizon_client::entity_nbt::mob_to_nbt(&game.remote_entities[0], [0; 4], None, None, |_| None);
             assert_eq!(
                 saved.get("home_pos"),
                 Some(&Tag::IntArray(vec![10, 64, -5]))
@@ -1708,7 +1777,7 @@ mod tests {
             assert_eq!(game.mob_restrict_radius(mob), Some(-1));
             assert_eq!(game.mob_is_within_restriction(mob, [20, 64, 0]), Some(true));
             let saved =
-                horizon_client::entity_nbt::mob_to_nbt(&game.mobs[0], [0; 4], None, None, |_| None);
+                horizon_client::entity_nbt::mob_to_nbt(&game.remote_entities[0], [0; 4], None, None, |_| None);
             assert!(saved.get("home_pos").is_none());
             assert!(saved.get("home_radius").is_none());
             // restrictTo with radius -1 clears while keeping the new center.
@@ -1728,7 +1797,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(12, zombie, Vec3::new(3.5, 65.0, 3.5), 0.0));
             let mob = game.mob(game.entity(12).unwrap()).unwrap();
             // `Vec3i.distSqr` in doubles: the far corner of the int range is
@@ -1771,7 +1840,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
@@ -1779,14 +1848,14 @@ mod tests {
             let mob = game.mob(entity).unwrap();
             assert_eq!(game.mob_left_handed(mob), Some(false));
             assert!(game.mob_set_left_handed(mob, true));
-            assert!(game.mobs[0].extra.left_handed && game.mobs[0].main_arm_left());
+            assert!(game.remote_entities[0].extra.left_handed && game.remote_entities[0].main_arm_left());
             assert_eq!(game.mob_left_handed(mob), Some(true));
             assert!(game.mob_set_can_pick_up_loot(mob, true));
-            assert!(game.mobs[0].extra.pick_up_loot);
+            assert!(game.remote_entities[0].extra.pick_up_loot);
             assert_eq!(game.mob_can_pick_up_loot(mob), Some(true));
             // Saved as LeftHanded / CanPickUpLoot.
             let saved =
-                horizon_client::entity_nbt::mob_to_nbt(&game.mobs[0], [0; 4], None, None, |_| None);
+                horizon_client::entity_nbt::mob_to_nbt(&game.remote_entities[0], [0; 4], None, None, |_| None);
             assert_eq!(saved.get("LeftHanded"), Some(&Tag::Byte(1)));
             assert_eq!(saved.get("CanPickUpLoot"), Some(&Tag::Byte(1)));
             assert!(game.mob_set_left_handed(mob, false));
@@ -1820,8 +1889,8 @@ mod tests {
             assert_eq!(game.mob_restrict_radius(stale), None);
             assert_eq!(game.mob_has_restriction(stale), None);
             assert_eq!(game.mob_is_within_restriction(stale, [0, 0, 0]), None);
-            assert!(!game.mobs[0].extra.left_handed);
-            assert!(!game.mobs[0].extra.pick_up_loot);
+            assert!(!game.remote_entities[0].extra.left_handed);
+            assert!(!game.remote_entities[0].extra.pick_up_loot);
         });
     }
 }

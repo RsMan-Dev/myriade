@@ -1,13 +1,15 @@
 //! `ElderGuardian.customServerAiStep`: when `(tickCount + id) % 1200 == 0`, mining fatigue III for 6000 ticks to the survival players
 //! closer than 50 blocks (`MobEffectUtil.addEffectToPlayersAround`, last argument 1200), and the GUARDIAN_ELDER_EFFECT game event
 //! (its parameter 1 unless silent: the client plays the curse sound for 1 only). At creation, when it has no restriction, a home
-//! of radius 16 at its block (`setHomeTo`). Allied players are not checked: no team model yet.
+//! of radius 16 at its block (`setHomeTo`). Allied players are not hit (`Entity.isAlliedTo`, the same test as survival).
 //! DOUTE : le son est émis par `HostOut::sound` à tous, alors que le paquet vanille ne va qu'aux joueurs touchés.
 //! DOUTE : `id` est l'index de l'entité ECS, pas l'identifiant du `Mob` : la phase diffère, la période et la portée non.
 use super::*;
 use crate::cow::*;
 use crate::effects::{self, Kind, PlayerEffects};
 use crate::goals::*;
+use crate::bridge::teams::allied;
+use crate::targeting::Who;
 use crate::behaviours::move_towards_restriction::Restriction;
 use crate::rules::elder_curse::{in_curse_range, takes_curse, wait_to_curse};
 
@@ -67,7 +69,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let ps = w.get_resource::<crate::hostile::PlayerState>();
     let alive = |id: u32| ps.is_none_or(|p| !p.creative(id) && !p.spectator(id) && p.health.get(id as usize).is_none_or(|h| *h > 0.0));
     w.resource::<Online>().for_near(at.x, at.z, c.p.range, |q| {
-        if alive(q.id) && in_curse_range(q.x - at.x, q.y - at.y, q.z - at.z, c.p.range) && takes(w, q.id, now, &c.p) {
+        if alive(q.id) && !allied(w, Who::Entity(e), Who::Player(q.id)) && in_curse_range(q.x - at.x, q.y - at.y, q.z - at.z, c.p.range) && takes(w, q.id, now, &c.p) {
             hit.push(q.id);
         }
     });

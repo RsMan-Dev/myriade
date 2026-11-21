@@ -92,7 +92,7 @@ mod tests {
         let mut mob = Mob::new(game.next_entity, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
         mob.health = 0.0;
         mob.last_damage = Some((damage, 0));
-        game.mobs.push(mob.clone());
+        game.remote_entities.push(mob.clone());
         mob
     }
 
@@ -133,9 +133,9 @@ mod tests {
                 let mut mob = sheep(game, player_blow);
                 // The last hurt by a player, so the death rolls experience.
                 mob.ai.last_hurt_by_player = 100;
-                game.mobs.last_mut().unwrap().ai.last_hurt_by_player = 100;
+                game.remote_entities.last_mut().unwrap().ai.last_hurt_by_player = 100;
                 // The blow that killed it, at the attack: mob_killed's moment.
-                game.native_kill_event(game.mobs.len() - 1);
+                game.native_kill_event(game.remote_entities.len() - 1);
                 game.mob_died(&mob);
                 assert_eq!(
                     *heard.lock().unwrap(),
@@ -184,7 +184,7 @@ mod tests {
                     },
                 );
                 mob.health = 20.0;
-                game.mobs.last_mut().unwrap().health = 20.0;
+                game.remote_entities.last_mut().unwrap().health = 20.0;
                 // `/kill` replaces the earlier damage source with generic_kill.
                 game.kill_target(crate::game::commands::Target::Mob(mob.id));
                 assert_eq!(*heard.lock().unwrap(), ["death", "loot", "post"]);
@@ -208,7 +208,7 @@ mod tests {
                 game.mob_died(&mob);
                 assert_eq!(*heard.lock().unwrap(), ["death"]);
                 assert_eq!(
-                    game.mobs.last().unwrap().health,
+                    game.remote_entities.last().unwrap().health,
                     0.0,
                     "cancellation alone does not heal the body"
                 );

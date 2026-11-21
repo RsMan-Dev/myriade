@@ -376,7 +376,7 @@ impl Game<'_> {
         let look = v3(super::view_vector(self.yaw, self.pitch));
         let reach = attack_reach(range, self.creative);
         let camera = self.remote_camera_id();
-        let boxes: Vec<(usize, Aabb)> = (self.mobs.iter().enumerate())
+        let boxes: Vec<(usize, Aabb)> = (self.remote_entities.iter().enumerate())
             .filter(|(_, m)| !m.removed && Some(m.id) != self.riding && Some(m.id) != camera)
             .map(|(i, m)| (i, m.bounds()))
             .collect();
@@ -392,12 +392,55 @@ impl Game<'_> {
         let nearest = super::spear::hits_in_reach(&boxes, eye, look, movement, reach, clip)
             .into_iter()
             .map(|(i, at)| {
-                let feet = self.mobs[i].position;
+                let feet = self.remote_entities[i].position;
                 (
                     i,
                     eye.distance_squared(at).sqrt(),
                     interact_location(at, feet),
                 )
+            })
+            .reduce(|a, b| if b.1 < a.1 { b } else { a });
+        if nearest.is_some() {
+            return Some(nearest);
+        }
+        let to = eye.add_vector(look.scale(f64::from(reach.1) + movement.dot(look).max(0.0)));
+        clip(eye, to)
+            .is_some_and(|block| eye.distance_squared(block) <= self.block_reach.powi(2))
+            .then_some(None)
+    }
+    /// `attack_range_pick` for the ECS mobs: the candidates are the ids near the eye from the spatial index, their boxes and feet
+    /// come from the bridge; the hit is the same test as the list's.
+    pub(in crate::game) fn attack_range_pick_ecs(&self, range: &serde_json::Value) -> Option<Option<(u32, f64, [f64; 3])>> {
+        let eye = v3(self.eye_position()?);
+        let look = v3(super::view_vector(self.yaw, self.pitch));
+        let reach = attack_reach(range, self.creative);
+        let camera = self.remote_camera_id();
+        let ids: Vec<u32> = self
+            .ecs
+            .ids_near([eye.x, eye.y, eye.z], f64::from(reach.1) + 8.0)
+            .into_iter()
+            .filter(|&id| Some(id) != self.riding && Some(id) != camera)
+            .collect();
+        let boxes: Vec<(usize, Aabb)> = ids
+            .iter()
+            .enumerate()
+            .filter_map(|(k, &id)| Some((k, self.mob_box(id)?)))
+            .collect();
+        let clip = |from: Vec3, to: Vec3| {
+            let length = from.distance_squared(to).sqrt();
+            let d = to.subtract(from).scale(1.0 / length);
+            (length > 0.0)
+                .then(|| self.clip_ray([from.x, from.y, from.z], [d.x, d.y, d.z], length))
+                .flatten()
+                .map(|hit| Vec3::new(hit.point[0], hit.point[1], hit.point[2]))
+        };
+        let movement = self.known_player_movement();
+        let nearest = super::spear::hits_in_reach(&boxes, eye, look, movement, reach, clip)
+            .into_iter()
+            .filter_map(|(k, at)| {
+                let id = ids[k];
+                let [x, y, z] = self.ecs.position(id)?;
+                Some((id, eye.distance_squared(at).sqrt(), interact_location(at, Vec3::new(x, y, z))))
             })
             .reduce(|a, b| if b.1 < a.1 { b } else { a });
         if nearest.is_some() {
@@ -611,8 +654,8 @@ impl Game<'_> {
             return self.targeting_entity_hit(entity).is_some();
         }
         let before = |d: Option<f64>| d.is_some_and(|d| self.before_block(d));
-        before(self.painting_hit().map(|h| h.1))
-            || before(self.frame_hit().map(|h| h.1))
+        before(self.aimed_painting().map(|h| h.1))
+            || before(self.aimed_frame().map(|h| h.1))
             || before(self.armor_stand_hit().map(|h| h.1))
             || before(self.cushion_hit().map(|h| h.1))
             || before(self.boat_hit().map(|h| h.1))
@@ -629,7 +672,7 @@ impl Game<'_> {
     /// (`getControlledVehicle`: its first passenger, on a server's client).
     pub(super) fn hands_busy(&self) -> bool {
         self.riding
-            .is_some_and(|id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id))
+            .is_some_and(|id| self.controls_boat(id) && self.ecs.boat_status(id).is_some())
             && [
                 winit::keyboard::KeyCode::KeyW,
                 winit::keyboard::KeyCode::KeyS,
@@ -774,8 +817,8 @@ impl Game<'_> {
     pub(super) fn crosshair_living(&self) -> Option<bool> {
         let nearest = |hits: &[Option<f64>]| hits.iter().flatten().copied().reduce(f64::min);
         let other = nearest(&[
-            self.painting_hit().map(|h| h.1),
-            self.frame_hit().map(|h| h.1),
+            self.aimed_painting().map(|h| h.1),
+            self.aimed_frame().map(|h| h.1),
             self.boat_hit().map(|h| h.1),
             self.cart_hit().map(|h| h.1),
             self.dragon_hit().map(|h| h.1),
@@ -824,17 +867,19 @@ impl Game<'_> {
     /// entity that is a `MenuProvider` (a chest or hopper minecart, a chest
     /// boat), or a block whose `showAsInteractableInSpectatorMode` holds.
     pub(super) fn spectator_crosshair(&self) -> bool {
-        let cart = self.cart_hit().map(|(i, d)| {
-            let kind = &self.carts[i].kind;
-            (d, matches!(kind, CartKind::Chest | CartKind::Hopper))
+        let cart = self.cart_hit().map(|(id, d)| {
+            (d, matches!(self.cart_genre(id), Some(CartKind::Chest | CartKind::Hopper)))
         });
-        let boat = self.boat_hit().map(|(i, d)| (d, self.boats[i].chest));
+        let boat = self.boat_hit().map(|(id, d)| {
+            let chest = self.ecs.entity_of(id).and_then(|e| self.ecs.boat_wood(e));
+            (d, chest.is_some_and(|(_, chest)| chest))
+        });
         let others = [
             self.mob_hit().map(|h| h.1),
             self.armor_stand_hit().map(|h| h.1),
             self.cushion_hit().map(|h| h.1),
-            self.painting_hit().map(|h| h.1),
-            self.frame_hit().map(|h| h.1),
+            self.aimed_painting().map(|h| h.1),
+            self.aimed_frame().map(|h| h.1),
             self.dragon_hit().map(|h| h.1),
         ];
         let nearest = cart

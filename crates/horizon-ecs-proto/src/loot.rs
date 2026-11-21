@@ -89,15 +89,16 @@ pub fn roll_table(world: &mut World, table: &str, seed: i64) -> Vec<ItemStack> {
     stacks.into_iter().filter(|s| !s.is_empty()).map(|s| ItemStack::from_loot(&s)).collect()
 }
 /// The death of `e`: its hand, then its table, on the ground where it died. Run before the entity goes.
-pub fn on_death(world: &mut World, e: Entity) {
-    let Some(at) = world.get::<Pos>(e).map(|p| p.0) else { return };
+/// The item names it left on the ground, in order (empty when nothing drops).
+pub fn on_death(world: &mut World, e: Entity) -> Vec<&'static str> {
+    let Some(at) = world.get::<Pos>(e).map(|p| p.0) else { return Vec::new() };
     // A bench world drops nothing (`orb::NoXp`): a bench player never picks anything up, and the stacks and orbs left among the herd cost
     // each tick for thousands of ticks (items and orbs that no player collects), where a game collects them within seconds.
     if world.get_resource::<crate::orb::NoXp>().is_some() {
         crate::size::split_on_death(world, e);
-        return;
+        return Vec::new();
     }
-    let Some(kind) = world.get::<TypeName>(e).map(|t| t.0) else { return };
+    let Some(kind) = world.get::<TypeName>(e).map(|t| t.0) else { return Vec::new() };
     let now = now_of(world, e);
     let on_fire = world.get::<Burning>(e).is_some_and(|b| b.until > now);
     let baby = match (world.get::<Sizes>(e), world.get::<Body>(e)) {
@@ -120,10 +121,13 @@ pub fn on_death(world: &mut World, e: Entity) {
             }
         }
     }
+    out.extend(crate::mount_inventory::death_stacks(world, e));
     out.extend(roll(world, kind, on_fire, baby, seed));
     let uid = world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32);
     let mut r = LegacyRandom::new(death_seed(seed, uid));
+    let mut names = Vec::with_capacity(out.len());
     for stack in out {
+        names.extend(crate::items::item_name(crate::items::item_id(&stack.item)));
         crate::item::spawn_at_location(world, stack, at, &mut r);
     }
     // What a body of a size leaves: the smaller ones.
@@ -133,4 +137,5 @@ pub fn on_death(world: &mut World, e: Entity) {
         let amount = xp_amount(x.min, x.max, &mut r);
         crate::orb::award(world, at, amount, &mut r);
     }
+    names
 }

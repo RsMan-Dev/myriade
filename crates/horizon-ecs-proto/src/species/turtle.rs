@@ -14,6 +14,7 @@ pub static DEF: Def = Def {
     name: "minecraft:turtle",
     reference: None,
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.15, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.2, water: Some(7), ..panic::Params::DEFAULT }),
         Entry::new(&breed::MODULE, 1, &breed::Params { speed: 1.0, foods: &["minecraft:seagrass"], carries: true, xp: true, ..breed::Params::DEFAULT }).when(&NOT_CARRYING),
         Entry::new(&lay_egg::MODULE, 1, &lay_egg::Params { radius: 9.0, dig_ticks: 200, floor: "minecraft:sand", name: "minecraft:turtle_egg", states: &[&[("eggs","1")], &[("eggs","2")], &[("eggs","3")], &[("eggs","4")]], sound: Some(("entity.turtle.lay_egg", 0.3)), ..lay_egg::Params::DEFAULT }),

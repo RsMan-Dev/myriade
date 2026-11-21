@@ -27,10 +27,9 @@ impl Game<'_> {
     /// `ServerPlayer.openHorseInventory` for mount `mob`: the open menu
     /// closes, the client gets the mount screen and the menu's slots.
     pub(super) fn lan_open_mount(&mut self, conn: u32, mob: u32) {
-        let Some(index) = self.mobs.iter().position(|m| m.id == mob) else {
+        let Some(columns) = self.mount_columns_of(mob) else {
             return;
         };
-        let columns = super::mount_menu::mount_columns(&self.mobs[index]);
         if !self.guest_may_open(conn, "minecraft:horse_inventory", None) {
             return;
         }
@@ -53,20 +52,20 @@ impl Game<'_> {
         self.player_menu_opening(conn);
     }
 
-    /// `HorseInventoryMenu` over mount `index`, with the player's inventory
+    /// `HorseInventoryMenu` over mount `mob`, with the player's inventory
     /// loaded by the caller.
-    fn mount_engine_menu(&self, index: usize, columns: usize) -> Menu {
+    fn mount_engine_menu(&self, mob: u32, columns: usize) -> Option<Menu> {
         let env = self.menu_env();
         let mut menu = Menu::new(Kind::Mount(columns));
         menu.set_registry_id(Some("horizon:mount_inventory"));
-        menu.mount = Some(self.mobs[index].kind.id.to_string());
-        let (saddle, body, items) = self.mount_contents(index);
+        menu.mount = Some(self.mount_kind_of(mob)?);
+        let (saddle, body, items) = self.mount_contents_of(mob)?;
         menu.load_slot(0, saddle);
         menu.load_slot(1, body.flatten());
         for (k, item) in items.into_iter().take(columns * 3).enumerate() {
             menu.set_slot(&env, 2 + k, item);
         }
-        menu
+        Some(menu)
     }
 
     /// The menu's slots (the mount's, then the inventory and the hotbar)
@@ -79,13 +78,15 @@ impl Game<'_> {
             return;
         };
         let (mob, columns) = (gm.mob, gm.columns);
-        let Some(index) = self.mobs.iter().position(|m| m.id == mob) else {
+        if !self.mob_exists(mob) {
             return;
-        };
+        }
         let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
             return;
         };
-        let (saddle, body, items) = self.mount_contents(index);
+        let Some((saddle, body, items)) = self.mount_contents_of(mob) else {
+            return;
+        };
         let mut slots = vec![saddle, body.flatten()];
         slots.extend(items.into_iter().take(columns * 3));
         slots.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
@@ -137,13 +138,13 @@ impl Game<'_> {
         if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn)
             && !host.hub.guests[gi].spectator()
             && self.lan_mount_valid(&host.hub.guests[gi], mob)
-            && let Some(index) = self.mobs.iter().position(|m| m.id == mob)
+            && self.mob_exists(mob)
+            && let Some(mut menu) = self.mount_engine_menu(mob, columns)
         {
-            let mut menu = self.mount_engine_menu(index, columns);
             self.guest_menu_op(gi, &mut menu, |menu, env| {
                 let _ = menu.click(env, i32::from(p.slot), i32::from(p.button), input(p.input));
             });
-            self.lan_mount_store(index, columns, &menu);
+            self.lan_mount_store(mob, columns, &menu);
         }
         // The client is told what the server has, whatever it predicted.
         let Some(host) = self.lan.as_mut() else {
@@ -160,17 +161,19 @@ impl Game<'_> {
         true
     }
 
-    /// The engine menu's mount slots back on mount `index`.
+    /// The engine menu's mount slots back on mount `mob`.
     fn lan_store_slots(menu: &Menu, columns: usize) -> Vec<Option<ItemStack>> {
         (0..columns * 3)
             .map(|k| menu.slot(2 + k).cloned())
             .collect()
     }
-    fn lan_mount_store(&mut self, index: usize, columns: usize, menu: &Menu) {
-        let (_, body, _) = self.mount_contents(index);
+    fn lan_mount_store(&mut self, mob: u32, columns: usize, menu: &Menu) {
+        let Some((_, body, _)) = self.mount_contents_of(mob) else {
+            return;
+        };
         let body = body.map(|_| menu.slot(1).cloned());
         let items = Self::lan_store_slots(menu, columns);
-        self.mount_store(index, menu.slot(0).cloned(), body, items);
+        self.mount_store_of(mob, menu.slot(0).cloned(), body, items);
     }
 
     /// `AbstractContainerMenu.removed` of the guest's mount menu (`window`;
@@ -204,10 +207,7 @@ impl Game<'_> {
     /// guest's eyes are within the entity interaction range (3, 5 in creative)
     /// plus 4 of its box (`Player.isWithinEntityInteractionRange(mount, 4.0)`).
     pub(super) fn lan_mount_valid(&self, g: &horizon_client::lan::guest::Guest, mob: u32) -> bool {
-        self.mobs
-            .iter()
-            .find(|m| m.id == mob)
-            .is_some_and(|m| m.alive() && guest_within_entity_range(g, &m.bounds(), 4.0))
+        self.mob_alive(mob) && self.mob_box(mob).is_some_and(|b| guest_within_entity_range(g, &b, 4.0))
     }
 
     /// Each tick: a mount menu whose mount died or is out of reach closes

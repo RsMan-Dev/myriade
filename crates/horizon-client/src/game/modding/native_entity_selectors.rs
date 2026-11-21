@@ -155,7 +155,7 @@ mod tests {
                 game.as_guest(12, |game| {
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     for (id, x) in [(111, 1.0), (112, 2.0), (113, 1.5), (114, 0.5), (115, 3.0)] {
-                        game.mobs.push(horizon_client::mobs::Mob::new(
+                        game.remote_entities.push(horizon_client::mobs::Mob::new(
                             id,
                             kind.clone(),
                             Vec3::new(x, 0.0, 0.0),

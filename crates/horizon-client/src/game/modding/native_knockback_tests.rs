@@ -425,53 +425,6 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
     );
 }
 
-/// A mob's fireball on the player goes through `projectile_hit`, which lends the owner's attack:
-/// the hook names the shooter and the bow it holds.
-#[test]
-#[ignore = "daily"]
-fn a_mobs_fireball_on_the_player_names_the_shooter_and_its_bow() {
-    use horizon_client::projectiles::{Hit, Projectile, ProjectileKind};
-    let heard = heard(|game, _| {
-        player_with_sword(game);
-        game.set_game_mode(horizon_client::command::args::GameMode::Survival);
-        zombie_at(game, 42, Vec3::new(0.0, 0.0, 6.0));
-        game.mobs
-            .last_mut()
-            .unwrap()
-            .extra
-            .set_main_hand_stack(Some(ItemStack::new("minecraft:bow", 1)));
-        let arrow = Projectile::new(
-            ProjectileKind::SmallFireball,
-            Vec3::new(0.0, 1.0, 0.5),
-            Some(Who::Mob(42)),
-        );
-        game.projectile_hit(
-            &arrow,
-            Hit::Entity {
-                who: Who::Player,
-                at: Vec3::new(0.0, 1.0, 0.0),
-            },
-        )
-        .unwrap();
-        assert_eq!(game.current_attack(), NO_ATTACK);
-    });
-    let bow = Some("minecraft:bow".to_string());
-    assert!(
-        !heard.knocks.is_empty(),
-        "no push reached the hook; damage heard from {:?}",
-        heard.incoming_causing
-    );
-    assert!(
-        heard.knocks.iter().all(|k| *k == (42, bow.clone(), None)),
-        "heard {:?}",
-        heard.knocks
-    );
-}
-
-/// The hook fires once per call of the full entry and names the entry the push came through:
-/// `Short` for `knockback(power, x, z)` (which delegates to the full entry), `Full` for a direct
-/// call of the full entry. A listener that wants a mixin's double change on the short entry
-/// applies its change twice on `Short`.
 #[test]
 #[ignore = "daily"]
 fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {

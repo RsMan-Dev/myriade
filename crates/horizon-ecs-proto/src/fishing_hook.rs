@@ -5,10 +5,14 @@
 //! through `HostEvent`; the host rolls the loot and gives the xp.
 use crate::cow::*;
 use crate::goals::{sparse_any, Events, Online};
+use crate::host_out_hook::{HookEvent, HookOut};
+use crate::targeting::Who;
 use crate::hostile::PlayerState;
 use crate::item::{Item, ItemIndex};
 use crate::projectile::entity_hit;
-use crate::rules::fishing_hook::{bite_impulse, buoyancy_force, lure_tease, lure_wait, path_margin, pull_toward, reel_damage};
+use crate::hook_wait::{Approach, Wait};
+use crate::rules::fishing_hook::{bite_impulse, buoyancy_force, path_margin, pull_toward};
+use crate::rules::hook_wait::{approach_distance, lured_after};
 use crate::targeting::player_box;
 use crate::type_tags::TagId;
 use bevy_ecs::prelude::*;
@@ -35,7 +39,7 @@ pub struct Params {
 }
 pub static PARAMS: Params = Params { gravity: 0.03_f32 as f64, drag: 0.92, water_drag: [0.3, 0.2, 0.3], hooked_height: 0.8, pull: 0.1, reach2: 1024.0, life: 1200 };
 /// The side of the hook's box (`FishingHook` SIZE 0.25), also the width of a dropped item.
-const SIZE: f64 = 0.25;
+pub(crate) const SIZE: f64 = 0.25;
 
 /// `FishingHook.state`: flying, floating, or hooked to a target.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,6 +118,7 @@ pub fn cast(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, lure: i32, luck
         last_deflected: None,
     };
     let e = w.spawn((Pos(at), Vel(velocity), hook, OwnTime)).id();
+    crate::hook_wait::own(w, owner, e);
     let pitch = with_level_random(w, |r| 0.4 / (r.next_float() * 0.4 + 0.8));
     sound(w, "minecraft:entity.fishing_bobber.throw", at, 0.5, pitch);
     e
@@ -135,7 +140,7 @@ fn take(w: &mut World, e: Entity) -> Option<Hook> {
 fn put(w: &mut World, e: Entity, h: Hook) {
     w.entity_mut(e).insert(h);
 }
-fn cell(p: Vec3) -> [i32; 3] {
+pub(crate) fn cell(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 /// The random of a synchronized draw (`FishingHook.syncronizedRandom`): the hook and the game time, not the level's draws.
@@ -199,15 +204,51 @@ fn calculate_open_water(w: &World, b: [i32; 3]) -> bool {
     true
 }
 
-/// The bite: the window of 20 to 40 ticks and the plunge of the synchronized draw (`trigger_bite`).
-fn trigger_bite(w: &mut World, e: Entity, h: &mut Hook, vel: &mut Vec3) {
+/// The bite: the window of 20 to 40 ticks, a deadline on the wheel (`end_bite`), and the plunge of the synchronized draw.
+fn trigger_bite(w: &mut World, e: Entity, h: &mut Hook, vel: &mut Vec3, pitch: f32) {
     h.nibble = 20 + h.rng.next_int_bound(21).unwrap_or(0);
+    after(w, e, h.nibble, end_bite);
+    push_hook(w, HookEvent::Bite { hook: e, pitch });
     let time = w.resource::<Clock>().0;
     vel.y = bite_impulse(&mut sync_random(e, time));
 }
 
-/// `FishingHook.catchingFish`: the speed of the fish (rain, sky), the bite window, the fish's path and the lure's tease.
-fn catching_fish(w: &mut World, e: Entity, h: &mut Hook, pos: Vec3, vel: &mut Vec3, b: [i32; 3]) {
+/// The bite window's deadline: the window closes and the lure starts again (`FishingHook.catchingFish` with the nibble at 0).
+fn end_bite(w: &mut World, e: Entity) {
+    let Some(mut h) = take(w, e) else { return };
+    h.nibble = 0;
+    h.time_until_lured = 0;
+    h.time_until_hooked = 0;
+    put(w, e, h);
+}
+
+/// The hook holds `t`: the host is told which target (`Attached`).
+fn attached(w: &mut World, e: Entity, t: Target, owner: u32) {
+    push_hook(w, HookEvent::Attached { hook: e, target: t, by: Who::Player(owner) });
+}
+
+fn push_hook(w: &mut World, ev: HookEvent) {
+    w.init_resource::<HookOut>();
+    w.resource_mut::<HookOut>().0.push(ev);
+}
+
+/// `FishingHook.catchingFish` on a hook in the water that has no counter yet: the fish's speed is drawn and the lure's wait starts.
+/// A hook already waiting is visited here only in its approach, for the trail.
+fn catching_fish(w: &mut World, e: Entity, h: &mut Hook, pos: Vec3, b: [i32; 3]) {
+    if h.nibble > 0 {
+        return;
+    }
+    if w.get::<Wait>(e).is_none() {
+        let speed = fish_speed(w, h, b);
+        let left = lured_after(&mut h.rng, h.lure);
+        crate::hook_wait::arm_lure(w, e, left, speed);
+    } else {
+        approach_trail(w, e, h, pos);
+    }
+}
+
+/// The fish's speed (`catchingFish`'s rain and sky draws): 1, one more under the rain, one less out of the sky.
+fn fish_speed(w: &World, h: &mut Hook, b: [i32; 3]) -> i32 {
     let mut speed = 1;
     let above = [b[0], b[1] + 1, b[2]];
     let (raining, sky) = {
@@ -221,59 +262,80 @@ fn catching_fish(w: &mut World, e: Entity, h: &mut Hook, pos: Vec3, vel: &mut Ve
     if h.rng.next_float() < 0.5 && !sky {
         speed -= 1;
     }
-    if h.nibble > 0 {
-        h.nibble -= 1;
-        if h.nibble <= 0 {
-            h.time_until_lured = 0;
-            h.time_until_hooked = 0;
+    speed
+}
+
+/// The approach's trail (`catchingFish` with the fish on its way): the path turns, the fish's place is `approach_distance` away.
+fn approach_trail(w: &mut World, e: Entity, h: &mut Hook, pos: Vec3) {
+    let left = crate::hook_wait::left_now(w, e);
+    h.fish_angle += h.rng.triangle(0.0, 9.188) as f32;
+    let angle = h.fish_angle * (std::f64::consts::PI / 180.0) as f32;
+    let (sin, cos) = (trig::sin(f64::from(angle)), trig::cos(f64::from(angle)));
+    let distance = approach_distance(left);
+    let fish = [pos.x + f64::from(sin * distance), f64::from(pos.y.floor() as f32 + 1.0), pos.z + f64::from(cos * distance)];
+    if water_block(w, fish) {
+        if h.rng.next_float() < 0.15 {
+            let spread = [f64::from(sin), 0.1, f64::from(cos)];
+            particles(w, "bubble", [fish[0], fish[1] - f64::from(0.1_f32), fish[2]], spread, 0.0, 1);
         }
-    } else if h.time_until_hooked > 0 {
-        h.time_until_hooked -= speed;
-        if h.time_until_hooked > 0 {
-            h.fish_angle += h.rng.triangle(0.0, 9.188) as f32;
-            let angle = h.fish_angle * (std::f64::consts::PI / 180.0) as f32;
-            let (sin, cos) = (trig::sin(f64::from(angle)), trig::cos(f64::from(angle)));
-            let distance = h.time_until_hooked as f32 * 0.1;
-            let fish = [pos.x + f64::from(sin * distance), f64::from(pos.y.floor() as f32 + 1.0), pos.z + f64::from(cos * distance)];
-            if water_block(w, fish) {
-                if h.rng.next_float() < 0.15 {
-                    let spread = [f64::from(sin), 0.1, f64::from(cos)];
-                    particles(w, "bubble", [fish[0], fish[1] - f64::from(0.1_f32), fish[2]], spread, 0.0, 1);
-                }
-                let (x, z) = (sin * 0.04, cos * 0.04);
-                for side in [1.0_f32, -1.0] {
-                    particles(w, "fishing", fish, [f64::from(z * side), 0.01, f64::from(-x * side)], 1.0, 0);
-                }
-            }
-        } else {
-            let pitch = 1.0 + (h.rng.next_float() - h.rng.next_float()) * 0.4;
-            sound(w, "minecraft:entity.fishing_bobber.splash", pos, 0.25, pitch);
-            let at = [pos.x, pos.y + 0.5, pos.z];
-            let count = (1.0 + SIZE as f32 * 20.0) as u32;
-            let spread = [SIZE, 0.0, SIZE];
-            particles(w, "bubble", at, spread, f64::from(0.2_f32), count);
-            particles(w, "fishing", at, spread, f64::from(0.2_f32), count);
-            trigger_bite(w, e, h, vel);
+        let (x, z) = (sin * 0.04, cos * 0.04);
+        for side in [1.0_f32, -1.0] {
+            particles(w, "fishing", fish, [f64::from(z * side), 0.01, f64::from(-x * side)], 1.0, 0);
         }
-    } else if h.time_until_lured > 0 {
-        h.time_until_lured -= speed;
-        let tease = lure_tease(h.time_until_lured);
-        if h.rng.next_float() < tease {
-            let angle = (h.rng.next_float() * 360.0) * (std::f64::consts::PI / 180.0) as f32;
-            let distance = h.rng.next_float() * 35.0 + 25.0;
-            let fish = [pos.x + f64::from(trig::sin(f64::from(angle)) * distance) * 0.1, f64::from(pos.y.floor() as f32 + 1.0), pos.z + f64::from(trig::cos(f64::from(angle)) * distance) * 0.1];
-            if water_block(w, fish) {
-                let count = 2 + h.rng.next_int_bound(2).unwrap_or(0) as u32;
-                particles(w, "splash", fish, [f64::from(0.1_f32), 0.0, f64::from(0.1_f32)], 0.0, count);
-            }
-        }
-        if h.time_until_lured <= 0 {
-            h.fish_angle = h.rng.next_float() * 360.0;
-            h.time_until_hooked = 20 + h.rng.next_int_bound(61).unwrap_or(0);
-        }
-    } else {
-        h.time_until_lured = lure_wait(&mut h.rng, h.lure);
     }
+}
+
+/// A splash of the lure (`catchingFish` with the tease drawn): a place 25 to 60 blocks out, a splash there if it is water.
+pub(crate) fn lure_splash(w: &mut World, e: Entity) {
+    let Some(mut h) = take(w, e) else { return };
+    let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    let angle = (h.rng.next_float() * 360.0) * (std::f64::consts::PI / 180.0) as f32;
+    let distance = h.rng.next_float() * 35.0 + 25.0;
+    let fish = [pos.x + f64::from(trig::sin(f64::from(angle)) * distance) * 0.1, f64::from(pos.y.floor() as f32 + 1.0), pos.z + f64::from(trig::cos(f64::from(angle)) * distance) * 0.1];
+    if water_block(w, fish) {
+        let count = 2 + h.rng.next_int_bound(2).unwrap_or(0) as u32;
+        particles(w, "splash", fish, [f64::from(0.1_f32), 0.0, f64::from(0.1_f32)], 0.0, count);
+    }
+    put(w, e, h);
+}
+
+/// The fish's speed read again for a hook in the water: an event (rain or sky changed), never a tick.
+fn refresh_speed(w: &mut World, e: Entity) {
+    let Some(mut h) = take(w, e) else { return };
+    let b = w.get::<Pos>(e).map_or([0; 3], |p| cell(p.0));
+    let speed = fish_speed(w, &mut h, b);
+    put(w, e, h);
+    crate::hook_wait::speed_changed(w, e, speed);
+}
+/// The weather changed (rain or none): the hooks waiting in the water read their fish's speed again.
+pub fn weather_changed(w: &mut World) {
+    let hooks: Vec<Entity> = w.query_filtered::<Entity, With<Wait>>().iter(w).collect();
+    for e in hooks {
+        refresh_speed(w, e);
+    }
+}
+/// A block changed at `c`: the hooks whose sky is that block read their fish's speed again.
+pub fn block_changed(w: &mut World, c: [i32; 3]) {
+    for e in crate::hook_wait::waiting_at(w, [c[0], c[1] - 1, c[2]]) {
+        crate::hook_wait::leave_water(w, e);
+    }
+}
+
+/// The approach's end (`FishingHook.catchingFish` with the fish at its place): the splash, the bite window and the plunge.
+pub(crate) fn bite_due(w: &mut World, e: Entity) {
+    let Some(mut h) = take(w, e) else { return };
+    let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    let mut vel = w.get::<Vel>(e).map_or(Vec3::ZERO, |v| v.0);
+    let pitch = 1.0 + (h.rng.next_float() - h.rng.next_float()) * 0.4;
+    sound(w, "minecraft:entity.fishing_bobber.splash", pos, 0.25, pitch);
+    let at = [pos.x, pos.y + 0.5, pos.z];
+    let count = (1.0 + SIZE as f32 * 20.0) as u32;
+    let spread = [SIZE, 0.0, SIZE];
+    particles(w, "bubble", at, spread, f64::from(0.2_f32), count);
+    particles(w, "fishing", at, spread, f64::from(0.2_f32), count);
+    trigger_bite(w, e, &mut h, &mut vel, pitch);
+    w.entity_mut(e).insert(Vel(vel));
+    put(w, e, h);
 }
 
 /// The creature, player or dropped item whose box the path `from`..`to` enters, nearest first; the owner and the spectators are skipped.
@@ -344,7 +406,7 @@ fn fly(world: &mut World) {
     if !sparse_any::<Hook>(world) {
         return;
     }
-    let hooks: Vec<Entity> = world.query_filtered::<Entity, With<Hook>>().iter(world).collect();
+    let hooks: Vec<Entity> = world.query_filtered::<Entity, (With<Hook>, Or<(Without<Wait>, With<Approach>)>)>().iter(world).collect();
     for e in hooks {
         step(world, e);
     }
@@ -412,16 +474,18 @@ fn step(w: &mut World, e: Entity) {
             Some((_, t)) => {
                 h.phase = Phase::Hooked(t);
                 vel = Vec3::ZERO;
+                attached(w, e, t, h.owner);
             }
             None => {}
         }
     }
+    let mut armed = false;
     if h.phase == Phase::Bobbing {
         // The floating force: the hook is pushed up to the surface (`surface`), the water fights its fall.
         let force = buoyancy_force(pos.y, vel.y, b[1], liquid);
         let r = f64::from(h.rng.next_float());
         vel = Vec3::new(vel.x * 0.9, vel.y - force * r * 0.2, vel.z * 0.9);
-        if h.nibble <= 0 && h.time_until_hooked <= 0 {
+        if h.nibble <= 0 && !crate::hook_wait::approaching(w, e) {
             h.open_water = true;
         } else {
             h.open_water = h.open_water && h.out_of_water < 10 && calculate_open_water(w, b);
@@ -433,8 +497,11 @@ fn step(w: &mut World, e: Entity) {
                 let mut s = sync_random(e, time);
                 vel.y += -0.1 * f64::from(s.next_float()) * f64::from(s.next_float());
             }
-            catching_fish(w, e, &mut h, pos, &mut vel, b);
+            let waiting = w.get::<Wait>(e).is_some();
+            catching_fish(w, e, &mut h, pos, b);
+            armed = !waiting && w.get::<Wait>(e).is_some();
         } else {
+            crate::hook_wait::leave_water(w, e);
             h.out_of_water = (h.out_of_water + 1).min(10);
         }
     }
@@ -451,43 +518,77 @@ fn step(w: &mut World, e: Entity) {
     }
     let k = params.drag;
     w.entity_mut(e).insert((Pos(end), Vel(Vec3::new(vel.x * k, vel.y * k, vel.z * k))));
+    if armed {
+        crate::hook_wait::settle(w, e, b[1], liquid);
+    }
     put(w, e, h);
 }
 
-/// The reel of an owner's hooks (`FishingHook.retrieve`): a hooked target is pulled towards the owner (0.1 of the offset), a bite
-/// is a catch, and every hook of the owner is taken back. The rod's damage goes to the host: 5 (3 for an item) on a hooked target,
-/// 1 (2 on the ground) for a catch, 2 on the ground otherwise.
-pub fn reel(w: &mut World, owner: u32) {
-    let hooks: Vec<Entity> = w.query::<(Entity, &Hook)>().iter(w).filter(|(_, h)| h.owner == owner).map(|(e, _)| e).collect();
-    for e in hooks {
-        let Some(mut h) = take(w, e) else { continue };
-        let at = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
-        let hooked = match h.phase {
-            Phase::Hooked(Target::Entity(c)) => Some(w.get::<Item>(c).is_some()),
-            Phase::Hooked(Target::Player(_)) => Some(false),
-            _ => None,
-        };
-        let damage = reel_damage(hooked, h.nibble > 0, h.on_ground);
-        match h.phase {
-            Phase::Hooked(target) => {
-                let pull = pull_offset(w, owner, at);
-                match target {
-                    Target::Entity(c) => w.resource_mut::<Events>().host.pull_entity(c, pull),
-                    Target::Player(id) => w.resource_mut::<Events>().host.push_player(id, pull),
-                }
-            }
-            _ if h.nibble > 0 => {
-                let xp = h.rng.next_int_bound(6).unwrap_or(0) as u32 + 1;
-                w.resource_mut::<Events>().host.fishing_catch(owner, [at.x, at.y, at.z], h.on_ground, h.open_water, h.luck, xp);
-            }
-            _ => {}
-        }
-        w.resource_mut::<Events>().host.hook_retrieved(owner, damage);
-        w.despawn(e);
-    }
-}
 /// The pull of a hooked target towards its owner: the offset from the hook to the owner times 0.1 (`pullEntity`).
-fn pull_offset(w: &World, owner: u32, at: Vec3) -> [f64; 3] {
+pub fn pull_offset(w: &World, owner: u32, at: Vec3) -> [f64; 3] {
     let Some(p) = w.resource::<Online>().get(owner) else { return [0.0; 3] };
     pull_toward([p.x, p.y, p.z], at, PARAMS.pull)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn world() -> World {
+        let mut w = World::new();
+        w.init_resource::<Events>();
+        w.init_resource::<Clock>();
+        w.init_resource::<Wheel>();
+        w
+    }
+    fn test_hook(owner: u32) -> Hook {
+        Hook {
+            params: &PARAMS,
+            owner,
+            phase: Phase::Bobbing,
+            rng: LegacyRandom::new(1),
+            lure: 0,
+            luck: 0,
+            tick_count: 0,
+            life: 0,
+            on_ground: false,
+            out_of_water: 0,
+            open_water: false,
+            nibble: 0,
+            time_until_lured: 0,
+            time_until_hooked: 0,
+            fish_angle: 0.0,
+            deflect: None,
+            last_deflected: None,
+        }
+    }
+
+    #[test]
+    fn bite_window_closes_at_its_deadline_on_the_wheel() {
+        let mut w = world();
+        let e = w.spawn_empty().id();
+        let mut h = test_hook(7);
+        let mut vel = Vec3::ZERO;
+        trigger_bite(&mut w, e, &mut h, &mut vel, 1.0);
+        let window = h.nibble;
+        assert!((20..=40).contains(&window));
+        assert_eq!(w.resource::<Wheel>().due_len(window as u64), 1);
+        put(&mut w, e, h);
+        end_bite(&mut w, e);
+        let h = w.get::<Hook>(e).unwrap();
+        assert_eq!((h.nibble, h.time_until_lured, h.time_until_hooked), (0, 0, 0));
+    }
+
+    #[test]
+    fn bite_and_hold_are_pushed_to_the_host() {
+        let mut w = world();
+        let e = w.spawn_empty().id();
+        let mut h = test_hook(7);
+        let mut vel = Vec3::ZERO;
+        trigger_bite(&mut w, e, &mut h, &mut vel, 1.0);
+        attached(&mut w, e, Target::Player(8), 7);
+        let out = std::mem::take(&mut w.resource_mut::<HookOut>().0);
+        assert!(matches!(out[0], HookEvent::Bite { hook, .. } if hook == e));
+        assert_eq!(out[1], HookEvent::Attached { hook: e, target: Target::Player(8), by: Who::Player(7) });
+    }
 }

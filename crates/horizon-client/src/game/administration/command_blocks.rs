@@ -314,10 +314,10 @@ impl Game<'_> {
     }
     /// The `BaseCommandBlock` an edit screen shows: the block entity's or the
     /// minecart's.
-    fn edit_base(&self, s: &CommandBlockScreen) -> Option<&CommandBlock> {
+    fn edit_base(&self, s: &CommandBlockScreen) -> Option<CommandBlock> {
         match s.cart {
-            Some(id) => self.carts.iter().find(|c| c.id == id).map(|c| &c.command),
-            None => self.command_block(s.pos),
+            Some(id) => self.ecs.cart_command(id),
+            None => self.command_block(s.pos).cloned(),
         }
     }
     fn block_state_at(&self, pos: Pos) -> Option<&'static BlockState> {
@@ -855,7 +855,7 @@ impl Game<'_> {
             Some(Button::Output) => {
                 s.track_output = !s.track_output;
                 if let Some(block) = self.edit_base(&s) {
-                    s.show_previous(block);
+                    s.show_previous(&block);
                 }
             }
             Some(Button::Mode) => s.mode = s.mode.next(),

@@ -146,6 +146,15 @@ pub fn reload(w: &mut World, root: &std::path::Path, species: &[Species]) {
 
 /// Inserts the markers of the species' tags on `e`, in one move of its archetype. Called at the creation of an entity with a `SpeciesId`.
 pub fn mark(w: &mut World, e: Entity, species: u8) {
+    // `Entity.isIgnoringBlockTriggers`: a capability of the species, read once here (no name is compared in a system).
+    let ignores = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::IgnoresTriggers));
+    if ignores {
+        w.entity_mut(e).insert(crate::inside::IgnoresTriggers);
+    }
+    let no_berry = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::IgnoresBerryBush));
+    if no_berry {
+        w.entity_mut(e).insert(crate::inside_effects::IgnoresBerryBush);
+    }
     let Some(list) = w.get_resource_mut::<TypeTags>().and_then(|mut t| t.by_species.get_mut(usize::from(species)).map(std::mem::take)) else {
         return;
     };

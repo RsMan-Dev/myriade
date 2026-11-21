@@ -25,16 +25,17 @@ use horizon_client::{
 };
 use horizon_core::{
     biome::BiomeZoom,
-    geometry::{Aabb, Vec3},
+    geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use horizon_world::dimension_type::DimensionFacts;
+use horizon_ecs_proto::bridge::{host::Select, view};
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
 use std::collections::HashMap;
 use std::sync::Arc;
 use {
-    horizon_core::nbt::{Compound, Tag},
+    horizon_core::nbt::Compound,
     horizon_world::registry::BlockStateId,
 };
 
@@ -1057,9 +1058,17 @@ impl horizon_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
         self.game.res.mob_types().contains_key(id) || self.game.entity_type_exists(id)
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
-        let mobs = self
-            .mobs_near(bounds)
-            .filter(|&(i, b, ..)| self.game.mobs[i].kind.id == id && b.intersects(bounds))
+        // The ECS index over the box's circumscribed sphere, then the boxes' own test on each position.
+        let ecs = &self.game.ecs;
+        let (Some(w), c) = (ecs.world(), bounds.center()) else {
+            return 0;
+        };
+        let half = |a: Axis| (bounds.max(a) - bounds.min(a)) / 2.0;
+        let r = (half(Axis::X).powi(2) + half(Axis::Y).powi(2) + half(Axis::Z).powi(2)).sqrt();
+        let mobs = ecs
+            .select(&Select { kind: Some(id.to_owned()), tag: None, near: Some(([c.x, c.y, c.z], r)), limit: usize::MAX })
+            .into_iter()
+            .filter(|&e| view::position(w, e).is_some_and(|p| bounds.contains(Vec3::new(p[0], p[1], p[2]))))
             .count();
         let pending = self
             .pending_ids
@@ -1158,7 +1167,7 @@ impl<'a> Game<'a> {
     pub(super) fn resolve_spawn_ids(
         &mut self,
         mut groups: [&mut [Mob]; 2],
-        rides: &[(u32, u32)],
+        _rides: &[(u32, u32)],
     ) -> HashMap<u32, u32> {
         let mut links: HashMap<u32, u32> = HashMap::new();
         for group in groups.iter_mut() {
@@ -1182,13 +1191,6 @@ impl<'a> Game<'a> {
                 }
             }
         }
-        for (chicken, rider) in rides {
-            let rider = links.get(rider).copied().unwrap_or(*rider);
-            if let Some(c) = self.mobs.iter_mut().find(|m| m.id == *chicken) {
-                c.extra.jockey = true;
-                c.extra.rider = Some(rider);
-            }
-        }
         links
     }
     /// Adds the mobs a spawn pass created: ids and the links that need them
@@ -1199,23 +1201,13 @@ impl<'a> Game<'a> {
         &mut self,
         pending: Vec<Mob>,
         created: Vec<Mob>,
-        rides: Vec<(u32, u32)>,
-        persistent: bool,
+        _rides: Vec<(u32, u32)>,
+        _persistent: bool,
     ) {
-        let _save_lease = horizon_client::join_seq::visibility::PassLease::enter();
-        let mut pending = pending;
-        let mut created = created;
-        for m in pending.iter_mut() {
-            m.persistent = persistent;
-        }
-        self.resolve_spawn_ids([&mut pending, &mut created], &rides);
-        for mob in pending {
-            self.mobs.push(mob);
-            self.native_mobs_joined(self.mobs.len() - 1, true);
-        }
-        for mob in created {
-            self.mobs.push(mob);
-            self.native_mobs_joined(self.mobs.len() - 1, true);
+        // The mobs go into the ECS level, by kind and place (their rides and persistence are not carried yet).
+        for m in pending.iter().chain(created.iter()) {
+            let at = [m.position.x, m.position.y, m.position.z];
+            self.ecs_spawn_natural(&m.kind.id, at);
         }
     }
     /// Every player in the level in place: the local player, and the LAN
@@ -1357,7 +1349,10 @@ impl<'a> Game<'a> {
         }
         let from = self.lan_synced_from();
         horizon_client::spans::time("spawn_raids", || self.tick_raids());
-        horizon_client::spans::time("spawn_natural", || self.spawn_natural());
+        // The ECS level's own natural pass (`spawning::step`, with its counts) replaces the host's.
+        if !self.ecs.is_active() {
+            horizon_client::spans::time("spawn_natural", || self.spawn_natural());
+        }
         // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
         if self
             .ui
@@ -1540,7 +1535,7 @@ impl<'a> Game<'a> {
             return;
         };
         for nbt in added {
-            self.load_mob(Tag::Compound(nbt), None);
+            self.ecs_load(&nbt);
         }
     }
     fn generation_creatures<Q: RandomSource + 'static>(
@@ -1589,6 +1584,7 @@ impl<'a> Game<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use horizon_core::nbt::Tag;
 
     /// `Level.hasNearbyAlivePlayer` as spawners ask it, against the same
     /// test on every player's full record (`level_players`).

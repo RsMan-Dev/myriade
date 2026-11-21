@@ -480,7 +480,7 @@ impl Game<'_> {
         match t {
             Target::Player => self.player_entity(),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m))
@@ -670,7 +670,7 @@ impl Game<'_> {
             eq[2 + i] = a.as_ref().map(item_view);
         }
         let vehicle = self.riding.and_then(|id| {
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| Box::new(self.mob_entity(m)))
@@ -733,7 +733,7 @@ impl Game<'_> {
             position: [b.position.x, b.position.y, b.position.z],
             on_ground: b.on_ground,
             passengers: self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| m.extra.mount == Some(b.id))
                 .map(|m| self.mob_entity(m))
@@ -785,7 +785,7 @@ impl Game<'_> {
         }
 
         let passengers: Vec<EntityView> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|r| r.extra.mount == Some(m.id))
             .map(|r| self.mob_entity(r))
@@ -1457,7 +1457,7 @@ impl Game<'_> {
         });
     }
     /// `KilledByArrowTrigger`: what the arrow killed and the weapon it came from.
-    pub(super) fn trigger_killed_by_arrow(
+    pub(in crate::game) fn trigger_killed_by_arrow(
         &mut self,
         victims: &[EntityView],
         weapon: Option<&ItemStack>,
@@ -1498,7 +1498,7 @@ impl Game<'_> {
         let dead = p.health.dead_or_dying();
         let lava = self
             .riding
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
             .is_some_and(|m| m.fluids.in_lava);
         match (falling, self.adv.marks.fall) {
             (true, None) => {
@@ -1758,7 +1758,7 @@ impl Game<'_> {
             return None;
         }
         Some(match t {
-            Target::Mob(id) => self.mob_entity(self.mobs.iter().find(|m| m.id == id)?),
+            Target::Mob(id) => self.mob_entity(self.remote_entities.iter().find(|m| m.id == id)?),
             Target::Boat(id) => self.boat_entity(self.boats.iter().find(|b| b.id == id)?),
             other => self.entity_view_of(other),
         })
@@ -1870,7 +1870,7 @@ impl Game<'_> {
             self.trigger_item_entity("minecraft:thrown_item_picked_up_by_entity", stack, &me);
             me
         } else if let Some(id) = self.mob_by_uuid(thrower) {
-            let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+            let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
                 return;
             };
             self.mob_entity(m)
@@ -2188,7 +2188,7 @@ impl Game<'_> {
     /// for every `ServerPlayer` in `entityToRide.getIndirectPassengersStream()`.
     pub(super) fn trigger_started_riding(&mut self, vehicle: u32) {
         let mounts: Vec<(u32, Option<u32>)> =
-            self.mobs.iter().map(|m| (m.id, m.extra.mount)).collect();
+            self.remote_entities.iter().map(|m| (m.id, m.extra.mount)).collect();
         let aboard = super::boarding::passenger_vehicles(vehicle, &mounts);
         self.for_each_player(|g| {
             if g.riding.is_some_and(|v| aboard.contains(&v)) {
@@ -2859,7 +2859,7 @@ mod tests {
         .unwrap();
         game.build_registries();
         let kind = game.res.mob_types()["minecraft:pig"].clone();
-        game.mobs.push(horizon_client::mobs::Mob::new(
+        game.remote_entities.push(horizon_client::mobs::Mob::new(
             12500,
             kind,
             Vec3::new(4.5, 200.0, 4.5),
@@ -2897,15 +2897,15 @@ mod tests {
             ),
         ] {
             let text = horizon_client::scoreboard::comp_text(&name);
-            game.mobs[0].custom_name = Some(text.plain());
-            game.mobs[0].custom_name_text = Some(text);
+            game.remote_entities[0].custom_name = Some(text.plain());
+            game.remote_entities[0].custom_name_text = Some(text);
             for key in ["components", "minecraft:components"] {
                 assert!(matches(&game, key, name.clone()), "{key}: {name}");
                 assert!(!matches(&game, key, unequal.clone()), "{key}: {unequal}");
             }
         }
-        game.mobs[0].custom_name = None;
-        game.mobs[0].custom_name_text = None;
+        game.remote_entities[0].custom_name = None;
+        game.remote_entities[0].custom_name_text = None;
         for key in ["components", "minecraft:components"] {
             assert!(!matches(&game, key, serde_json::json!("Bob")));
         }
@@ -2954,7 +2954,7 @@ mod tests {
             mob.no_gravity = true;
             mob
         };
-        game.mobs.push(actor(32300));
+        game.remote_entities.push(actor(32300));
         let matches = |game: &Game<'_>, id, effects: Value| {
             let view = game.entity_view_of(Target::Mob(id));
             assert_eq!(view.kind, "minecraft:zombie");
@@ -2967,9 +2967,9 @@ mod tests {
         };
         let speed_two = serde_json::json!({"minecraft:speed": {"amplifier": 2}});
         assert!(!matches(&game, 32300, speed_two.clone()));
-        game.mobs[0].add_effect_with("minecraft:speed", -1, 2, false, false);
+        game.remote_entities[0].add_effect_with("minecraft:speed", -1, 2, false, false);
         assert_eq!(
-            game.mobs[0].extra.effects,
+            game.remote_entities[0].extra.effects,
             vec![horizon_client::mobs::StoredEffect {
                 show_icon: false,
                 ..horizon_client::mobs::StoredEffect::new("minecraft:speed", -1, 2)
@@ -2985,7 +2985,7 @@ mod tests {
             32300,
             serde_json::json!({"minecraft:speed": {"amplifier": 5}})
         ));
-        game.mobs[0].add_effect("minecraft:fire_resistance", 400, 0);
+        game.remote_entities[0].add_effect("minecraft:fire_resistance", 400, 0);
         assert!(matches(
             &game,
             32300,
@@ -2996,7 +2996,7 @@ mod tests {
         ));
         let mut finite = actor(32301);
         finite.add_effect("minecraft:speed", 400, 0);
-        game.mobs.push(finite);
+        game.remote_entities.push(finite);
         assert!(matches(
             &game,
             32301,
@@ -3573,7 +3573,7 @@ mod custom_data_equipment_tests {
                     .find(|(_, value)| **value == uuid)
                     .expect("actual admitted UUID")
                     .0;
-                let mob = game.mobs.iter().find(|m| m.id == id).unwrap();
+                let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
                 assert!(mob.no_ai);
                 let stack = finalize::item_stack(mob, finalize::MAINHAND)
                     .expect("actual loaded equipment stack");
@@ -3612,7 +3612,7 @@ mod custom_data_equipment_tests {
                     assert!(stack.custom_data().is_none());
                     assert!(game.run_command(&format!("execute unless data entity {actor} equipment.mainhand.components.\"minecraft:custom_data\"")));
                 }
-                let mob = game.mobs.iter().find(|m| m.id == id).unwrap();
+                let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
                 let view = game.mob_entity(mob);
                 assert_eq!(
                     (
@@ -3732,7 +3732,7 @@ mod movement_predicate_tests {
             .find(|(_, u)| **u == [673, 0, 0, 1])
             .unwrap()
             .0;
-        let mob = game.mobs.iter().find(|m| m.id == id).unwrap();
+        let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
         assert_eq!(mob.velocity, Vec3::ZERO);
         assert_eq!(mob.fall_distance, 0.0);
         assert!(mob.no_ai && mob.no_gravity);

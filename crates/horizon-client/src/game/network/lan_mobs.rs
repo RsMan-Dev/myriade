@@ -4,10 +4,7 @@
 //! guest it targets until it lets go. What it then does to `Who::Player`
 //! (hits, pushes, fire, its projectiles) runs with that guest swapped in.
 use super::Game;
-use horizon_client::{
-    mobs::{Mob, MobEvent, PlayerView, Species, Who},
-    projectiles::{Hit, Projectile},
-};
+use horizon_client::mobs::{Mob, MobEvent, PlayerView, Species, Who};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::packets::play::{self, Clientbound as C};
 
@@ -292,20 +289,6 @@ impl Game<'_> {
             })
             .collect()
     }
-    /// The same guests' cast fishing hooks, for `GameLevel::trigger_projectiles`.
-    pub(super) fn lan_hook_triggers(&self, out: &mut Vec<(Aabb, bool)>) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        out.extend(
-            host.hub
-                .guests
-                .simulation_iter()
-                .filter(|g| host.hub.here(g) && g.loaded && !g.dead && !g.spectator())
-                .filter_map(|g| host.play.get(&g.conn)?.hook.as_ref())
-                .map(|hook| (hook.bounds(), hook.applies_block_effects())),
-        );
-    }
     /// The same guests' feet and whether they stand on the ground, for the
     /// blocks that also ask that (`BigDripleafBlock.canEntityTilt`).
     pub(super) fn lan_guest_feet(&self) -> Vec<([f64; 3], bool)> {
@@ -333,29 +316,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// A projectile that hit a guest: its hit runs as theirs. False when
-    /// `id` is not a guest.
-    pub(super) fn lan_projectile_hit(&mut self, p: &Projectile, id: u32, at: Vec3) -> bool {
-        let Some(host) = self.lan.as_ref() else {
-            return false;
-        };
-        let conn = host
-            .hub
-            .guests
-            .iter()
-            .find(|g| g.entity_id as u32 == id)
-            .map(|g| g.conn);
-        if let Some(conn) = conn {
-            self.guest_hit_by(conn, |g| {
-                let hit = Hit::Entity {
-                    who: Who::Player,
-                    at,
-                };
-                let _ = g.projectile_hit(p, hit);
-            });
-        }
-        conn.is_some()
-    }
 }
 
 impl Game<'_> {

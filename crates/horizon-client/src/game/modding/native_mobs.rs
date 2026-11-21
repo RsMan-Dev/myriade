@@ -6,6 +6,7 @@
 //! mobs they are out of the level: a mob a hook spawns then joins it after the
 //! tick, and the others read as gone.
 use super::{Game, commands::Target};
+use horizon_core::nbt::{JavaString, Tag};
 
 /// The `EquipmentSlot` names of `Mob::equipment_stacks`, in its order.
 const MOB_SLOTS: [&str; 8] = [
@@ -39,9 +40,13 @@ impl Game<'_> {
         if !self.native_equipment_listened() {
             return;
         }
+        // The ECS's slots reach the mods through its host events (`ecs_equipment_event`): nothing to read here.
+        if self.ecs.is_active() {
+            return;
+        }
         let ticking = self.entity_ticking_area();
         let mut changes = Vec::new();
-        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
+        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
             if !ticking(m.position.x.floor() as i32, m.position.z.floor() as i32) {
                 continue;
             }
@@ -194,6 +199,24 @@ impl Game<'_> {
         if monster && self.ui.difficulty == 0 {
             return None;
         }
+        if self.ecs.is_active() {
+            // The options are the saved fields of the entity (vanilla's keys), written on the ECS entity the spawn returns.
+            let id = self.ecs_spawn(&qualified, pos, None)?;
+            self.ecs_put_flag(id, "NoAI", options.no_ai);
+            self.ecs_put_flag(id, "Invisible", options.invisible);
+            self.ecs_put_flag(id, "Silent", options.silent);
+            self.ecs_put_flag(id, "Invulnerable", options.invulnerable);
+            self.ecs_put_flag(id, "NoGravity", options.no_gravity);
+            if let Some(name) = &options.name {
+                self.ecs_put(id, "CustomName", Tag::String(JavaString::from(name.as_str())));
+                self.ecs_put_flag(id, "CustomNameVisible", true);
+            }
+            if let Some(health) = options.health.filter(|h| h.is_finite() && *h > 0.0) {
+                // Capped to the maximum by the bridge, as the mob's own health is.
+                self.ecs.set_health(id, health);
+            }
+            return Some(id);
+        }
         let id = self.spawn_mob(
             kind,
             pos,
@@ -203,7 +226,7 @@ impl Game<'_> {
             ),
         )?;
         // A jockey's other mob comes after it: this one is found by its id.
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.no_ai = options.no_ai;
             m.invisible = options.invisible;
             m.silent = options.silent;
@@ -232,16 +255,36 @@ impl Game<'_> {
         if !self.native_mob_level(dimension) {
             return None;
         }
-        let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            return self.native_mob_ecs(id);
+        }
+        let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         mob.alive().then(|| self.native_mob_of(mob))
     }
+    /// The living mob `id` the ECS holds, read through the view.
+    fn native_mob_ecs(&self, id: u32) -> Option<NativeMob> {
+        self.ecs_mod_live(id)?;
+        Some(NativeMob {
+            id,
+            dimension: self.dim.id().to_owned(),
+            kind: horizon_client::command::args::normalize(self.ecs_mob_kind(id)?),
+            pos: self.ecs.position(id)?,
+            yaw: self.ecs.yaw(id)?,
+            health: self.ecs.health(id)?,
+            max_health: self.ecs.max_health(id)?,
+        })
+    }
     /// The living mobs in the level in place, `dimension`; none on a client's
-    /// copy.
-    pub(super) fn native_mobs(&self, dimension: &str) -> Vec<NativeMob> {
+    /// copy. The ECS lists its mobs from its index, linking the ids a mod names.
+    pub(super) fn native_mobs(&mut self, dimension: &str) -> Vec<NativeMob> {
         if !self.native_mob_level(dimension) {
             return Vec::new();
         }
-        self.mobs
+        if self.ecs.is_active() {
+            let ids = self.ecs_mod_mobs();
+            return ids.into_iter().filter_map(|id| self.native_mob_ecs(id)).collect();
+        }
+        self.remote_entities
             .iter()
             .filter(|m| !m.removed && m.alive())
             .map(|m| self.native_mob_of(m))

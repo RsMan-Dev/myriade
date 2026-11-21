@@ -37,6 +37,8 @@ pub struct Despawn {
     pub born: u64,
     /// The own-time tick from which the chance of going has come up (`u64::MAX`: none armed).
     pub deadline: u64,
+    /// The own-time tick its `noActionTime` count started at (`touch` restarts it): `noActionTime` is now minus this.
+    pub idle_since: u64,
 }
 /// A mob the world must keep (`Mob.persistenceRequired`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -82,7 +84,7 @@ pub fn ensure(w: &mut World) {
 pub fn admit(w: &mut World, e: Entity, def: DespawnDef, nearest_sqr: f64) {
     ensure(w);
     let born = crate::cow::now_of(w, e);
-    w.entity_mut(e).insert(Despawn { def, born, deadline: u64::MAX });
+    w.entity_mut(e).insert(Despawn { def, born, deadline: u64::MAX, idle_since: born });
     let mut r = w.resource_mut::<Radii>();
     if !r.0.contains(&def.distance) {
         r.0.push(def.distance);
@@ -114,9 +116,41 @@ fn arm(w: &mut World, e: Entity) {
 }
 /// `noActionTime = 0` (a creature hurt, as `ai::after_hurt` does): the count starts again, unless a player is within the ring.
 pub fn touch(w: &mut World, e: Entity) {
+    let now = crate::cow::now_of(w, e);
+    if let Some(mut d) = w.get_mut::<Despawn>(e) {
+        d.idle_since = now;
+    }
     if w.get::<Despawn>(e).is_some() && !inside_ring(w, e) {
         arm(w, e);
     }
+}
+/// `noActionTime` of a creature with a rule, in its own ticks (saturated); None without one.
+/// Inside a ring the count is 0 (`checkDespawn` resets it while a player is within 32 blocks).
+pub fn idle_for(w: &World, e: Entity) -> Option<i32> {
+    let d = w.get::<Despawn>(e)?;
+    if inside_ring(w, e) {
+        return Some(0);
+    }
+    Some(i32::try_from(crate::cow::now_of(w, e).saturating_sub(d.idle_since)).unwrap_or(i32::MAX))
+}
+/// Sets `noActionTime` to `ticks` (a creature with a rule only): the count started `ticks` ago, and the chance of going is drawn from
+/// that start, as `arm` draws it from now. Nothing is counted per tick.
+pub fn set_idle(w: &mut World, e: Entity, ticks: i32) {
+    let Some(d) = w.get::<Despawn>(e).copied() else { return };
+    let since = crate::cow::now_of(w, e).saturating_sub(u64::try_from(ticks.max(0)).unwrap_or(0));
+    if let Some(mut m) = w.get_mut::<Despawn>(e) {
+        m.idle_since = since;
+    }
+    if w.get::<Persistent>(e).is_some() || inside_ring(w, e) {
+        return;
+    }
+    let g = {
+        let mut r = w.resource_mut::<DespawnRng>();
+        crate::cow::geometric(&mut r.0, d.def.chance)
+    };
+    let at = rule::deadline(since, d.def.idle, g);
+    w.get_mut::<Despawn>(e).unwrap().deadline = at;
+    crate::cow::arm_at(w, e, at, Due::Despawn);
 }
 /// `setPersistenceRequired` (named, tamed, picked something up): it never goes, and the spawn caps no longer count it.
 pub fn keep(w: &mut World, e: Entity) {
@@ -201,6 +235,11 @@ pub fn step(
         if has.contains(e) {
             commands.queue(move |w: &mut World| {
                 if !inside_ring(w, e) {
+                    // Left the ring: the count starts again from the leave (`serverAiStep` counts up from 0).
+                    let now = crate::cow::now_of(w, e);
+                    if let Some(mut d) = w.get_mut::<Despawn>(e) {
+                        d.idle_since = now;
+                    }
                     arm(w, e);
                 }
             });

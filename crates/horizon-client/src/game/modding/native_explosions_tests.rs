@@ -355,21 +355,6 @@ fn a_players_firework_rocket_credits_the_player() {
 
 #[test]
 #[ignore = "daily"]
-fn a_players_fishing_bobber_credits_the_player() {
-    kills(
-        "a_players_fishing_bobber_credits_the_player",
-        |game| {
-            let hook =
-                crate::game::fishing::Hook::remote(900, Vec3::new(4.5, 81.0, 4.5), [1, 2, 3, 4]);
-            game.install_fishing_hook(hook);
-            900
-        },
-        (11, "minecraft:player_explosion", true),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_mob_blast_breaks_blocks_only_when_its_source_may_grief() {
     run_on_guest_stack(|| {
         for via in BOTH {

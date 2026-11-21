@@ -136,7 +136,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.awardStat`: `n` more of the statistic `ty` (a bare type
     /// such as `used`) and `key`, unless a native mod cancels the award.
-    pub(super) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
+    pub(in crate::game) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
         if self.lan_acting_fake {
             return;
         }
@@ -159,7 +159,7 @@ impl Game<'_> {
         self.stats.add(ty, key, n);
     }
     /// `Player.awardStat(Identifier)`: `n` more of the custom statistic `key`.
-    pub(super) fn award_custom_stat(&mut self, key: &str, n: i32) {
+    pub(in crate::game) fn award_custom_stat(&mut self, key: &str, n: i32) {
         namespaced(key, |key| self.award_stat("custom", key, n));
     }
     /// The per-tick counters (`Player.tick`/`ServerPlayer.tick` awardStat).
@@ -231,7 +231,7 @@ impl Game<'_> {
         );
         let climbing = p.last_climbable.is_some() && d.y > 0.0;
         let riding = self.riding.map(|id| {
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| m.species())
@@ -446,7 +446,7 @@ mod tests {
             );
             game.spawn_phantoms();
             assert!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .all(|mob| (mob.position.x - 1000.0).abs() > 20.0)
             );

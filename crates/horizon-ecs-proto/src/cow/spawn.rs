@@ -53,13 +53,18 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
-        Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
+        Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency, max_air: sp.max_air },
         crate::targeting::Eye(sp.eye_height),
         FluidState::default(),
         Recheck,
         Moving,
     )
+}
+
+/// `bit` when the species has the capability `cap`, else 0.
+fn cap_bit(sp: &Species, cap: crate::behaviours::Cap, bit: u32) -> u32 {
+    if sp.caps.contains(&cap) { bit } else { 0 }
 }
 
 /// `Living`: health, damage, growth, air, cold, what it resists and is immune to.
@@ -71,7 +76,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Frozen(0),
         Air(sp.max_air),
         Resist(sp.knockback_resistance),
-        Immune(crate::rules::attrs_of(sp.rules).immune),
+        Immune(crate::rules::attrs_of(sp.rules).immune | cap_bit(sp, crate::behaviours::Cap::FireImmune, crate::effects::IMMUNE_FIRE) | cap_bit(sp, crate::behaviours::Cap::WitherImmune, crate::effects::IMMUNE_WITHER) | cap_bit(sp, crate::behaviours::Cap::PoisonImmune, crate::effects::IMMUNE_POISON) | cap_bit(sp, crate::behaviours::Cap::WeaknessImmune, crate::effects::IMMUNE_WEAKNESS)),
     )
 }
 
@@ -244,11 +249,24 @@ pub fn schedule() -> Schedule {
     crate::stand::register(&mut s);
     crate::eye::register(&mut s);
     crate::fishing_hook::register(&mut s);
+    crate::inside::register(&mut s);
+    crate::inside_effects::register(&mut s);
+    crate::inside_more::register(&mut s);
     crate::poi::register(&mut s);
     crate::block_watch::register(&mut s);
     crate::chest_index::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
+    crate::seat::register(&mut s);
+    crate::boat_tick::register(&mut s);
+    crate::boat_effects::register(&mut s);
+    crate::cart_move::register(&mut s);
+    crate::cart_variants::register(&mut s);
+    crate::general::register(&mut s);
+    crate::colony_register::register(&mut s);
+    crate::tnt_tick::register(&mut s);
+    crate::move_events::register(&mut s);
+    crate::vehicle_push::register(&mut s);
     s
 }

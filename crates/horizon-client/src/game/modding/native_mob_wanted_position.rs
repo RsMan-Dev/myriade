@@ -18,7 +18,11 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return Ok(false);
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        if self.ecs.is_active() {
+            // The move control is the ECS mob's `mov` state: a live mob takes the wish through the bridge.
+            return Ok(self.ecs_mod_live(id).is_some() && self.ecs.set_wanted(id, at, speed));
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
             return Ok(false);
         };
         mob.ai.mov.set_wanted(at[0], at[1], at[2], speed);
@@ -29,8 +33,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.wanted(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -43,8 +50,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.move_speed_modifier(id));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai

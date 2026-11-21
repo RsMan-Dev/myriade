@@ -2,7 +2,7 @@
 //! end crystals on a server's client (`ClientPacketListener.handleAddEntity`
 //! and `handleSetEntityData`): the server simulates them, the client draws
 //! them where it says and interpolates their moves.
-use super::{FallStep, FallingBlock, Game, fireworks::fireworks_of};
+use super::{FallingBlock, Game, fireworks::fireworks_of};
 use horizon_client::items::ItemStack;
 use horizon_client::projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld};
 use horizon_client::{
@@ -669,7 +669,7 @@ impl Game<'_> {
             let eye = self.eye_position()?;
             return Some(Vec3::new(eye[0], eye[1], eye[2]));
         }
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(Vec3::new(
             m.position.x,
             m.position.y + m.eye_height(),
@@ -748,23 +748,6 @@ impl Game<'_> {
         for p in smoking {
             self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
-        // FallingBlockEntity.tick runs on a client too: the block falls by
-        // itself between the server's updates (every 20 ticks), then waits
-        // where it lands for the server to place it and remove it.
-        let mut falling = self.falling.lift();
-        #[cfg(test)]
-        nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Falling);
-        falling.for_each_mut(|f| {
-            if let Ok(FallStep::Landed(_)) = self.fall_step(f, false, &[]) {
-                // Block.updateEntityMovementAfterFallOn, then getAirDrag 0.98F.
-                let drag = f64::from(0.98_f32);
-                f.velocity = Vec3::new(f.velocity.x * drag, 0.0, f.velocity.z * drag);
-            }
-        });
-        self.falling.restore(
-            falling,
-            horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
         // Projectiles tick on the client too and fly on between the tracker's
         // updates (10 to 20 ticks apart); a block stops them there, and only
         // the server decides what they hit.
@@ -850,7 +833,7 @@ impl Game<'_> {
                 if me == Some(target) {
                     continue;
                 }
-                if let Some(m) = self.mobs.iter().find(|m| m.id == target) {
+                if let Some(m) = self.remote_entities.iter().find(|m| m.id == target) {
                     // Another player's motion is not known here: its step.
                     r.velocity = Vec3::new(
                         m.position.x - r.previous.x,

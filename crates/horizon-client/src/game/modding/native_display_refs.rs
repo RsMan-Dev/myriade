@@ -564,26 +564,13 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
-    use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
+    use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_core::geometry::Vec3;
     use mod_api::WorldEpoch;
 
     fn push(game: &mut Game<'_>, id: u32, kind: &str) -> DisplayRef {
         game.options.dedicated = Some(Vec::new());
-        game.others.push(OtherEntity {
-            attachment_lifetime: Default::default(),
-            knot_check: None,
-            eye: None,
-            join: Default::default(),
-            item_transformation: None,
-            interaction: None,
-            id,
-            kind: kind.into(),
-            position: Vec3::new(1.0, 70.0, 1.0),
-            yaw: 0.0,
-            pitch: 0.0,
-        });
+        game.load_other_as(id, kind, [1.0, 70.0, 1.0]);
         let entity = game.entity(id).unwrap();
         game.display(entity).unwrap()
     }
@@ -599,19 +586,7 @@ mod tests {
             assert_eq!(block.kind(game), Some(DisplayKind::Block));
             assert_eq!(item.kind(game), Some(DisplayKind::Item));
             assert_eq!(text.entity(), game.entity(21).unwrap());
-            game.others.push(OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 24,
-                kind: "minecraft:marker".into(),
-                position: Vec3::ZERO,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(24, "minecraft:marker", [0.0; 3]);
             assert!(game.display(game.entity(24).unwrap()).is_none());
 
             assert_eq!(text.transformation(game), Some(Transformation::IDENTITY));

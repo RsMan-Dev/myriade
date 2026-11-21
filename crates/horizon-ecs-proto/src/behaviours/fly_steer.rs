@@ -4,7 +4,7 @@
 //! DOUTE : les constantes de vitesse et de montée viennent de l'espèce (`Params`) ; leurs valeurs vanilles ne sont pas relues ici.
 //! DOUTE : le sens « avant » suit le lacet (`-sin`, `cos`), comme `Entity.getViewVector` ; à vérifier au test de pilotage.
 use crate::cow::*;
-use crate::mount::Mount;
+use crate::mount::{Mount, RiderInput};
 use crate::rules::fly_steer::steer_velocity;
 use bevy_ecs::prelude::*;
 
@@ -25,11 +25,10 @@ impl Params {
 }
 
 /// One tick of the steer: the first rider's input moves the flier; a passenger's input is ignored.
-pub fn drive_one(mount: &Mount, yaw: &Yaw, vel: &mut Vel, p: &Params) {
+pub fn drive_one(mount: &Mount, input: RiderInput, yaw: &Yaw, vel: &mut Vel, p: &Params) {
     if mount.rider.is_none() {
         return;
     }
-    let input = mount.input;
     vel.0 = steer_velocity(f64::from(input.forward), f64::from(input.strafe), f64::from(input.jump), f64::from(yaw.0), p.speed, p.climb, p.sink);
 }
 

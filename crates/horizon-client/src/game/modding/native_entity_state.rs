@@ -10,6 +10,7 @@ use super::{Game, commands::Target};
 use horizon_client::mobs::{Mob, Species, sync};
 use horizon_client::motion::PlayerMotion;
 use horizon_client::pose::Pose;
+use horizon_core::nbt::Tag;
 use mod_api::EntityRef;
 
 /// `Pose`'s serialized names by id (`Pose.STANDING` is 0).
@@ -59,6 +60,8 @@ fn player_pose(pose: Pose) -> &'static str {
 enum Body<'a> {
     Player(&'a PlayerMotion),
     Mob(&'a Mob),
+    /// A mob of this level's ECS world, read by network id through its NBT.
+    Ecs(u32),
     Other(Target),
 }
 
@@ -72,7 +75,8 @@ impl Game<'_> {
         Some(match target {
             Target::Player => Body::Player(self.player.as_ref()?),
             Target::Guest(conn) => Body::Player(self.command_guest(conn)?.motion.as_deref()?),
-            Target::Mob(id) => Body::Mob(self.mobs.iter().find(|m| m.id == id)?),
+            Target::Mob(id) if self.ecs_has(id) => Body::Ecs(id),
+            Target::Mob(id) => Body::Mob(self.remote_entities.iter().find(|m| m.id == id)?),
             t => Body::Other(t),
         })
     }
@@ -112,7 +116,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
-            Body::Other(_) => None,
+            Body::Ecs(_) | Body::Other(_) => None,
         }
     }
     /// Whether the entity is in lava (`Entity.isInLava`): players and mobs.
@@ -120,7 +124,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
-            Body::Other(_) => None,
+            Body::Ecs(_) | Body::Other(_) => None,
         }
     }
     /// The fluids the entity touched at its last fluid update, each with how deep its box is in
@@ -139,7 +143,8 @@ impl Game<'_> {
                     (m.fluids.water, m.fluids.in_water),
                     (m.fluids.lava, m.fluids.in_lava),
                 ),
-                Body::Other(_) => return None,
+                // An ECS mob's fluid state has no bridge read yet (listed in the report).
+                Body::Ecs(_) | Body::Other(_) => return None,
             },
         )
     }
@@ -152,7 +157,7 @@ impl Game<'_> {
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
                 Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
-                Body::Other(_) => return None,
+                Body::Ecs(_) | Body::Other(_) => return None,
             },
         )
     }
@@ -162,7 +167,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(_) => Some(false),
             Body::Mob(m) => Some(horizon_client::mobs::spawn_rules::fire_immune(m.species())),
-            Body::Other(_) => None,
+            Body::Ecs(_) | Body::Other(_) => None,
         }
     }
     /// The ticks the entity burns for (`Entity.getRemainingFireTicks`):
@@ -171,6 +176,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fire_ticks),
             Body::Mob(m) => Some(m.fire_ticks),
+            Body::Ecs(id) => self.ecs_number(id, "Fire"),
             Body::Other(Target::Stand(id)) => {
                 Some(self.armor_stands.iter().find(|s| s.id == id)?.fire_ticks)
             }
@@ -288,7 +294,10 @@ impl Game<'_> {
                     p.fire_ticks = ticks;
                     true
                 }),
-            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+            Some(Target::Mob(id)) if self.ecs_has(id) => {
+                self.ecs_put(id, "Fire", Tag::Short(ticks as i16))
+            }
+            Some(Target::Mob(id)) => self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.fire_ticks = ticks;
                 m.needs_sync = true;
                 true
@@ -325,6 +334,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.air),
             Body::Mob(m) => Some(m.air),
+            Body::Ecs(id) => self.ecs_number(id, "Air"),
             Body::Other(_) => None,
         }
     }
@@ -349,7 +359,8 @@ impl Game<'_> {
                 }
                 None => false,
             },
-            Some(Target::Mob(id)) => match self.mobs.iter_mut().find(|mob| mob.id == id) {
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put(id, "Air", Tag::Short(air as i16)),
+            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|mob| mob.id == id) {
                 Some(mob) => {
                     mob.air = air;
                     mob.needs_sync = true;
@@ -365,6 +376,7 @@ impl Game<'_> {
     pub(super) fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(max_air(Some(m.species()))),
+            // An ECS mob's species has no bridge read yet: the default air (listed in the report).
             _ => Some(max_air(None)),
         }
     }
@@ -374,6 +386,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(_) => Some(false),
             Body::Mob(m) => Some(m.silent),
+            Body::Ecs(id) => self.ecs_flag(id, "Silent"),
             Body::Other(_) => None,
         }
     }
@@ -383,7 +396,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
-        match self.mobs.iter_mut().find(|m| m.id == id) {
+        if self.ecs_has(id) {
+            return self.ecs_put_flag(id, "Silent", silent);
+        }
+        match self.remote_entities.iter_mut().find(|m| m.id == id) {
             Some(m) => {
                 m.silent = silent;
                 true
@@ -403,8 +419,9 @@ impl Game<'_> {
                     .get("invisibility")
                     .is_some(),
             ),
+            Target::Mob(id) if self.ecs_has(id) => self.ecs_flag(id, "Invisible"),
             Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id)?;
+                let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 Some(m.is_invisible())
             }
             Target::Stand(id) => Some(self.armor_stands.iter().find(|s| s.id == id)?.invisible),
@@ -426,7 +443,8 @@ impl Game<'_> {
                     p.ticks_frozen = ticks;
                     true
                 }),
-            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put(id, "TicksFrozen", Tag::Int(ticks)),
+            Some(Target::Mob(id)) => self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.ticks_frozen = ticks;
                 m.needs_sync = true;
                 true
@@ -445,6 +463,7 @@ impl Game<'_> {
     pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
+            Body::Ecs(id) => self.ecs_flag(id, "NoGravity"),
             _ => None,
         }
     }
@@ -453,6 +472,7 @@ impl Game<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.ticks_frozen),
             Body::Mob(m) => Some(m.ticks_frozen),
+            Body::Ecs(id) => self.ecs_number(id, "TicksFrozen"),
             _ => None,
         }
     }
@@ -460,7 +480,8 @@ impl Game<'_> {
     /// experience orbs and minecarts. Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
+            Target::Mob(id) if self.ecs_has(id) => self.ecs.age(id)?,
+            Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.age as i32,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
@@ -472,7 +493,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
-        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+        if self.ecs_has(id) {
+            return self.ecs.set_glowing(id, glowing);
+        }
+        self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
             m.glowing = glowing;
             m.needs_sync = true;
             true
@@ -483,7 +507,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
-        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+        if self.ecs_has(id) {
+            return self.ecs_put_flag(id, "NoGravity", no_gravity);
+        }
+        self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
             m.no_gravity = no_gravity;
             m.needs_sync = true;
             true
@@ -492,7 +519,8 @@ impl Game<'_> {
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
     pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put_flag(id, "Invisible", invisible),
+            Some(Target::Mob(id)) => self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.invisible = invisible;
                 m.needs_sync = true;
                 true
@@ -515,6 +543,7 @@ impl Game<'_> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => player_pose(p.pose),
             Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
+            Body::Ecs(id) => self.ecs.pose(id)?,
             Body::Other(_) => POSES[0],
         })
     }
@@ -600,29 +629,29 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
             let entity = game.entity(42).unwrap();
             assert!(entity.set_air_supply(game, -7));
-            assert_eq!(game.mobs[0].air, -7);
+            assert_eq!(game.remote_entities[0].air, -7);
             assert!(entity.set_remaining_fire_ticks(game, 37));
-            assert_eq!(game.mobs[0].fire_ticks, 37);
+            assert_eq!(game.remote_entities[0].fire_ticks, 37);
             assert!(entity.clear_fire(game));
-            assert_eq!(game.mobs[0].fire_ticks, 0);
+            assert_eq!(game.remote_entities[0].fire_ticks, 0);
             assert!(game.entity_set_remaining_fire_ticks(entity, -12));
             assert!(game.entity_clear_fire(entity));
-            assert_eq!(game.mobs[0].fire_ticks, -12);
+            assert_eq!(game.remote_entities[0].fire_ticks, -12);
             assert!(entity.set_ticks_frozen(game, 31));
-            assert_eq!(game.mobs[0].ticks_frozen, 31);
+            assert_eq!(game.remote_entities[0].ticks_frozen, 31);
             assert!(entity.set_invisible(game, true));
-            assert!(game.mobs[0].invisible);
-            game.mobs[0].add_effect("minecraft:invisibility", 100, 0);
+            assert!(game.remote_entities[0].invisible);
+            game.remote_entities[0].add_effect("minecraft:invisibility", 100, 0);
             assert!(entity.set_invisible(game, false));
             assert_eq!(entity.is_invisible(game), Some(false));
             assert!(entity.set_glowing(game, true));
-            assert!(game.mobs[0].glowing);
+            assert!(game.remote_entities[0].glowing);
             assert!(entity.set_no_gravity(game, true));
-            assert!(game.mobs[0].no_gravity);
-            assert!(game.mobs[0].needs_sync);
+            assert!(game.remote_entities[0].no_gravity);
+            assert!(game.remote_entities[0].needs_sync);
         });
     }
 
@@ -658,8 +687,8 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
-            game.mobs[0].fire_ticks = 37;
+            game.remote_entities.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
+            game.remote_entities[0].fire_ticks = 37;
             let mob = game.entity(42).unwrap();
             assert_eq!(mob.fire_ticks(game), Some(37));
 
@@ -714,9 +743,9 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
-            game.mobs[0].age = 2401;
-            game.mobs[0].extra.age = -24000;
+            game.remote_entities.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
+            game.remote_entities[0].age = 2401;
+            game.remote_entities[0].extra.age = -24000;
             let mob = game.entity(42).unwrap();
             assert_eq!(mob.tick_count(game), Some(2401));
 
@@ -810,7 +839,7 @@ mod tests {
 
             // A mob counts down from `setPortalCooldown`'s 300 as the level ticks.
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.mobs.push(Mob::new(40, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(40, kind, Vec3::ZERO, 0.0));
             let mob = game.entity(40).unwrap();
             assert_eq!(mob.portal_cooldown(game), Some(0));
             game.set_portal_cooldown(40);
@@ -978,7 +1007,7 @@ mod tests {
             }
             game.world.set(0, 64, 8, portal).unwrap();
             game.world.set(0, 65, 8, portal).unwrap();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(40, zombie, Vec3::new(0.5, 64.0, 8.5), 0.0));
             game.load_ticking_neighbourhood(0, 0);
             game.update_chunk_tickets();
@@ -995,7 +1024,7 @@ mod tests {
             game.find_entity_portals();
             game.handle_entity_portals();
             assert!(
-                game.mobs.iter().any(|m| m.id == 40),
+                game.remote_entities.iter().any(|m| m.id == 40),
                 "the mob stays in its portal"
             );
             let held = mob.portal_cooldown(game).unwrap();
@@ -1006,7 +1035,7 @@ mod tests {
             );
 
             // Out of the portal, the value counts down one per tick.
-            game.mobs.iter_mut().find(|m| m.id == 40).unwrap().position =
+            game.remote_entities.iter_mut().find(|m| m.id == 40).unwrap().position =
                 Vec3::new(0.5, 64.0, 12.5);
             game.handle_entity_portals();
             assert_eq!(mob.portal_cooldown(game), Some(held - 1));
@@ -1016,13 +1045,13 @@ mod tests {
             assert_eq!(mob.portal_cooldown(game), Some(held - 1));
 
             // 0 lets it enter on the next tick.
-            game.mobs.iter_mut().find(|m| m.id == 40).unwrap().position = Vec3::new(0.5, 64.0, 8.5);
+            game.remote_entities.iter_mut().find(|m| m.id == 40).unwrap().position = Vec3::new(0.5, 64.0, 8.5);
             assert!(mob.set_portal_cooldown(game, 0));
             assert_eq!(mob.portal_cooldown(game), Some(0));
             game.find_entity_portals();
             game.handle_entity_portals();
             assert!(
-                !game.mobs.iter().any(|m| m.id == 40),
+                !game.remote_entities.iter().any(|m| m.id == 40),
                 "0 lets the mob through"
             );
         });
@@ -1345,7 +1374,7 @@ mod tests {
                 ),
                 (0.0, 0.0, false, false, Vec::new(), None),
             ] {
-                let fluids = &mut game.mobs.iter_mut().find(|m| m.id == 15).unwrap().fluids;
+                let fluids = &mut game.remote_entities.iter_mut().find(|m| m.id == 15).unwrap().fluids;
                 fluids.water = water;
                 fluids.lava = lava;
                 fluids.in_water = water > 0.0;

@@ -1,12 +1,13 @@
 //! `NearestPlayers` (`AnimalBrain.sense_players`): every scan (the period of the species), the nearest player who is alive, not a
 //! spectator and strictly inside the follow range is the player the brain knows (`nearest_players`). It is visible when the
 //! animal's sight test passes (`nearest_visible_player`), and attackable when it is visible and the difficulty is not Peaceful
-//! and the player is not creative (`nearest_visible_targetable_player(s)`). Each memory is written, or erased when empty; no
+//! and the player is not creative nor in the animal's team (`nearest_visible_targetable_player(s)`). Each memory is written, or erased when empty; no
 //! expiry: the next scan rewrites it.
 use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::{d2, Online};
+use crate::bridge::teams::allied;
 use crate::hostile::PlayerState;
 use crate::targeting::{Eye, FollowRange, Who};
 use horizon_core::geometry::Vec3;
@@ -56,7 +57,7 @@ fn scan(w: &mut World, e: Entity, _: &Ctx) {
     let visible = near.filter(|&id| visible_to(w, e, id));
     let attackable = visible.filter(|&id| {
         let ps = w.resource::<PlayerState>();
-        !ps.peaceful && !ps.creative(id)
+        !ps.peaceful && !ps.creative(id) && !allied(w, Who::Entity(e), Who::Player(id))
     });
     set(w, e, &NEAREST_PLAYERS, MemValue::Whos(near.map(Who::Player).into_iter().collect()), None);
     write_one(w, e, &NEAREST_VISIBLE_PLAYER, visible);

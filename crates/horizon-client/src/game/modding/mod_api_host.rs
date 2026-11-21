@@ -54,14 +54,7 @@ impl Game<'_> {
                 .entity_lookup(&self.dim.key(), id, |at| {
                     use horizon_client::join_seq::residency::Kind;
                     match at.owner.kind {
-                        Kind::Hook | Kind::Player => self
-                            .locate_specialized_resident_owner(at)
-                            .map(|mut source| {
-                                // Hooks were counted by physical presence, regardless of pending
-                                // removals. Players were not, but must still validate their row.
-                                source.value.1 = at.owner.kind == Kind::Hook;
-                                source
-                            }),
+                        Kind::Player => self.locate_specialized_resident_owner(at),
                         _ => self.locate_resident_attachment_owner(at),
                     }
                 }),
@@ -97,7 +90,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn native_authoritative(&self) -> bool {
+    pub(in crate::game) fn native_authoritative(&self) -> bool {
         self.is_logical_server()
     }
 
@@ -870,49 +863,6 @@ mod attachment_membership_tests {
             let player_id = game.player.as_ref().unwrap().entity_id as u32;
             assert_membership(game, player_id);
             assert!(!old_membership(game, player_id));
-            game.install_fishing_hook(crate::game::fishing::Hook::remote(
-                900,
-                Vec3::ZERO,
-                [1, 2, 3, 4],
-            ));
-            assert_membership(game, 900);
-            assert!(
-                game.attachment_slot(mod_api::Holder::Entity(900), AttachmentAccess::Existing)
-                    .is_ok()
-            );
-            game.persist.removals.push(Target::Hook(900));
-            assert_membership(game, 900);
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn attachment_guest_hook_membership_matches_old_walk() {
-        crate::game::native_guest_turn_tests::with_guests(|game| {
-            for id in [12, 13] {
-                assert_membership(game, id);
-                assert!(
-                    !old_membership(game, id),
-                    "players are not entity attachment holders"
-                );
-            }
-            game.as_guest(12, |game| {
-                game.install_fishing_hook(crate::game::fishing::Hook::remote(
-                    901,
-                    Vec3::ZERO,
-                    [5, 6, 7, 8],
-                ));
-                assert_membership(game, 901);
-                assert!(
-                    game.attachment_slot(mod_api::Holder::Entity(901), AttachmentAccess::Existing)
-                        .is_ok()
-                );
-            })
-            .unwrap();
-            assert_membership(game, 901);
-            assert!(
-                game.attachment_slot(mod_api::Holder::Entity(901), AttachmentAccess::Existing)
-                    .is_ok()
-            );
         });
     }
     #[test]

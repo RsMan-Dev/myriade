@@ -117,7 +117,7 @@ impl Game<'_> {
     /// The entities of the level in place: mobs, items, orbs, projectiles, vehicles, falling blocks,
     /// hangings, armor stands, cushions, tridents, rockets and primed TNT.
     fn entity_count(&self) -> usize {
-        self.mobs.iter().filter(|m| !m.removed).count()
+        self.remote_entities.iter().filter(|m| !m.removed).count()
             + self.dropped.len()
             + self.orbs.len()
             + self.creatures.projectiles.len()

@@ -66,17 +66,22 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(index) = self.mobs.iter().position(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            // The pathfinder runs in the ECS with the mob world lent; the mob's own navigation is its state there.
+            return self.ecs_mod_live(id).is_some()
+                && self.ecs_with_mw(|ecs, mw| ecs.nav_move_to(mw, id, at, speed));
+        }
+        let Some(index) = self.remote_entities.iter().position(|m| m.id == id) else {
             return false;
         };
         // The pathfinder reads terrain only. Take the mob list so its selected
         // mob can be mutably borrowed alongside the shared MobWorld, just as
         // the mob tick does. No mod hook fires during pathfinding.
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let moved = mobs[index].nav_move_to(&self.mob_world_base(&[]), at, speed);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         moved
     }
@@ -103,18 +108,26 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return Err(MoveToPathError::Unavailable);
         };
-        let Some(index) = self.mobs.iter().position(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            if self.ecs_mod_live(id).is_none() {
+                return Err(MoveToPathError::Unavailable);
+            }
+            let nodes: Vec<[f64; 3]> = nodes.iter().map(|n| [n.x, n.y, n.z]).collect();
+            let followed = self.ecs_with_mw(|ecs, mw| ecs.nav_move_to_supplied(mw, id, &nodes, speed));
+            return supplied_path_refusal(followed);
+        }
+        let Some(index) = self.remote_entities.iter().position(|m| m.id == id) else {
             return Err(MoveToPathError::Unavailable);
         };
         let nodes: Vec<[f64; 3]> = nodes.iter().map(|n| [n.x, n.y, n.z]).collect();
         // The pathfinder reads terrain only. Take the mob list so its selected
         // mob can be mutably borrowed alongside the shared MobWorld, as the
         // mob tick does. No mod hook fires during classification.
-        let mut mobs = self.mobs.lift();
+        let mut mobs = self.remote_entities.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let followed = mobs[index].nav_move_to_supplied(&self.mob_world_base(&[]), &nodes, speed);
-        self.mobs
+        self.remote_entities
             .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
         supplied_path_refusal(followed)
     }
@@ -125,7 +138,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.nav_stop(id);
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         mob.nav_stop();
@@ -138,7 +154,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        Some(self.mobs.iter().find(|m| m.id == id)?.ai.nav.is_done())
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.nav_is_done(id));
+        }
+        Some(self.remote_entities.iter().find(|m| m.id == id)?.ai.nav.is_done())
     }
 
     /// `PathNavigation.getSpeedModifier`: the multiplier the current path
@@ -149,7 +168,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        Some(self.mobs.iter().find(|m| m.id == id)?.ai.nav.speed_modifier)
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.nav_speed_modifier(id));
+        }
+        Some(self.remote_entities.iter().find(|m| m.id == id)?.ai.nav.speed_modifier)
     }
 
     /// The live supported navigation's `can_open_doors` flag; unavailable mobs refuse.
@@ -157,7 +179,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.nav_flag(id, "can_open_doors"));
+        }
+        let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         navigation_flags_supported(mob).then_some(mob.ai.nav.can_open_doors)
     }
 
@@ -166,7 +191,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_nav_flag(id, "can_open_doors", value);
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -181,7 +209,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.nav_flag(id, "can_pass_doors"));
+        }
+        let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         navigation_flags_supported(mob).then_some(mob.ai.nav.can_pass_doors)
     }
 
@@ -190,7 +221,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_nav_flag(id, "can_pass_doors", value);
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -205,7 +239,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.nav_flag(id, "can_float"));
+        }
+        let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         navigation_flags_supported(mob).then_some(mob.ai.nav.can_float)
     }
 
@@ -214,7 +251,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_nav_flag(id, "can_float", value);
+        }
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -232,8 +272,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.malus(id, kind));
+        }
         Some(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .malus(kind),
@@ -257,7 +300,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_malus(id, kind, malus);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.set_malus(kind, malus))
@@ -276,7 +322,10 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.mobs
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_nav_speed_modifier(id, speed);
+        }
+        self.remote_entities
             .iter_mut()
             .find(|m| m.id == id)
             .map(|m| m.ai.nav.speed_modifier = speed)
@@ -355,7 +404,7 @@ mod tests {
                 .clone();
             let mut zombie = Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
             zombie.on_ground = true;
-            game.mobs.push(zombie);
+            game.remote_entities.push(zombie);
             let entity = game.entity(99).unwrap();
             let mob = game.mob(entity).unwrap();
             assert_eq!(mob.is_done(game), Some(true));
@@ -367,7 +416,7 @@ mod tests {
                 },
             );
             assert_eq!(mob.is_done(game), Some(false));
-            assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
+            assert_eq!(game.remote_entities[0].ai.nav.speed_modifier, 1.25);
             assert!(!mob.move_to(game, [f64::NAN, 65.0, 3.5], 1.0));
             assert_eq!(mob.is_done(game), Some(false));
             assert!(mob.stop(game));
@@ -376,10 +425,10 @@ mod tests {
             let compare_extreme =
                 |game: &mut super::super::Game<'_>, extreme: f64, boundary: f64| {
                     let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
-                    let path = game.mobs[0].ai.nav.path.clone();
+                    let path = game.remote_entities[0].ai.nav.path.clone();
                     mob.stop(game);
                     assert_eq!(mob.move_to(game, [10.5, extreme, 3.5], 1.0), result);
-                    assert_eq!(game.mobs[0].ai.nav.path, path);
+                    assert_eq!(game.remote_entities[0].ai.nav.path, path);
                     mob.stop(game);
                 };
             let top = f64::from(game.world.top_y() - 1);
@@ -399,10 +448,10 @@ mod tests {
             assert!(!stale.move_to(game, [5.0, 65.0, 3.0], 1.0));
             assert!(!stale.stop(game));
             assert_eq!(stale.is_done(game), None);
-            let taken = game.mobs.lift();
+            let taken = game.remote_entities.lift();
             assert_eq!(mob.is_done(game), None);
             assert!(!mob.stop(game));
-            game.mobs.restore(
+            game.remote_entities.restore(
                 taken,
                 horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
             );
@@ -422,13 +471,13 @@ mod tests {
                 .get("minecraft:parrot")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(100, parrot, Vec3::new(3.5, 66.0, 5.5), 0.0));
             let flying = game.mob(game.entity(100).unwrap()).unwrap();
             assert!(flying.move_to(game, [9.5, 66.0, 5.5], 1.0));
             assert_eq!(flying.is_done(game), Some(false));
             let cod = game.res.mob_types().get("minecraft:cod").unwrap().clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(101, cod, Vec3::new(3.5, 65.0, 7.5), 0.0));
             let fish = game.mob(game.entity(101).unwrap()).unwrap();
             assert!(!fish.move_to(game, [9.5, 65.0, 7.5], 1.0));
@@ -448,7 +497,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0));
             let entity = game.entity(99).unwrap();
             let mob = game.mob(entity).unwrap();
@@ -489,7 +538,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0));
             let entity = game.entity(99).unwrap();
             let mob = game.mob(entity).unwrap();
@@ -497,11 +546,11 @@ mod tests {
             assert_eq!(mob.navigation_speed(game), Some(0.0));
             assert!(mob.set_navigation_speed(game, 1.25));
             assert_eq!(mob.navigation_speed(game), Some(1.25));
-            assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
+            assert_eq!(game.remote_entities[0].ai.nav.speed_modifier, 1.25);
             assert!(!mob.set_navigation_speed(game, f64::NAN));
-            assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
+            assert_eq!(game.remote_entities[0].ai.nav.speed_modifier, 1.25);
             // Not the movement-speed attribute.
-            let attribute = game.mobs[0].movement_speed();
+            let attribute = game.remote_entities[0].movement_speed();
             assert_ne!(attribute, 1.25);
             let stale = MobRef::new(EntityRef::new(
                 WorldEpoch::new(entity.epoch().get() + 1),
@@ -509,7 +558,7 @@ mod tests {
             ));
             assert_eq!(stale.navigation_speed(game), None);
             assert!(!stale.set_navigation_speed(game, 1.0));
-            assert_eq!(game.mobs[0].ai.nav.speed_modifier, 1.25);
+            assert_eq!(game.remote_entities[0].ai.nav.speed_modifier, 1.25);
         });
     }
 }

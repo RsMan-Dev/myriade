@@ -151,17 +151,9 @@ impl Game<'_> {
         let first_contact_drop = self.next_entity + 1;
         self.with_level(|b, level, ticks| {
             // LilyPadBlock.entityInside: a boat inside a lily pad breaks it.
+            // The ECS entities report their touched cells themselves (`HostEvent::Inside`); here only the table is handed over.
+            crate::game::ecs::inside::arm(b, level.ecs);
             scratch.boat_cells.clear();
-            for bounds in level.boat_trigger_boxes() {
-                let (lo, hi) = (bounds.min_position(), bounds.max_position());
-                for x in (lo.x + 1e-7).floor() as i32..=(hi.x - 1e-7).floor() as i32 {
-                    for y in (lo.y + 1e-7).floor() as i32..=(hi.y - 1e-7).floor() as i32 {
-                        for z in (lo.z + 1e-7).floor() as i32..=(hi.z - 1e-7).floor() as i32 {
-                            scratch.boat_cells.push(BlockPos::new(x, y, z));
-                        }
-                    }
-                }
-            }
             for pos in scratch.boat_cells.drain(..) {
                 b.boat_inside(level, ticks, pos);
             }
@@ -188,11 +180,6 @@ impl Game<'_> {
             });
             for crystal in level.crystals {
                 touch(crystal.bounds());
-            }
-            for &(bounds, applies) in &level.trigger_hooks {
-                if applies {
-                    touch(bounds);
-                }
             }
             for &bounds in &level.trigger_extras {
                 touch(bounds);

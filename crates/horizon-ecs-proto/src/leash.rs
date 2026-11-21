@@ -111,18 +111,20 @@ fn player_state(p: Player) -> HolderState {
 /// `Leashable.canHaveALeashAttachedTo` and the lead put on: false when it is not leashable, already held, or the holder is out of reach.
 pub fn attach(w: &mut World, e: Entity, holder: Holder) -> bool {
     let Some(l) = w.get::<Leashable>(e).copied() else { return false };
-    if w.get::<Leash>(e).is_some() {
+    let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return false };
+    let Some(state) = holder_state(w, holder) else { return false };
+    if center_of(b).distance(state.center) > l.snap {
         return false;
     }
-    let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return false };
-    let state = match holder {
-        Holder::Player(id) => w.resource::<Online>().get(id).map(player_state),
-        Holder::Entity(h) => entity_state(w, h),
-        Holder::Knot(p) => Some(knot_state(p)),
-    };
-    let Some(state) = state else { return false };
-    let mine = center_of(b);
-    if mine.distance(state.center) > l.snap {
+    attach_from_save(w, e, holder)
+}
+
+/// The lead put on with no reach test: `setLeashedTo` as `Leashable.restoreLeashFromSave` calls it. False when `e` is not leashable, already held, or the holder is absent.
+pub fn attach_from_save(w: &mut World, e: Entity, holder: Holder) -> bool {
+    if w.get::<Leashable>(e).is_none() || w.get::<Leash>(e).is_some() || w.get::<Bounds>(e).is_none() {
+        return false;
+    }
+    if holder_state(w, holder).is_none() {
         return false;
     }
     let goal = [i32::MIN; 3];
@@ -136,8 +138,17 @@ pub fn detach(w: &mut World, e: Entity) -> Option<Holder> {
     let h = w.get::<Leash>(e)?.holder;
     w.entity_mut(e).remove::<(Leash, crate::spots::Home)>();
     w.resource_mut::<Events>().unleashed.push(e);
+    w.resource_mut::<Events>().host.unleashed(e);
     Some(h)
 }
+fn holder_state(w: &World, holder: Holder) -> Option<HolderState> {
+    match holder {
+        Holder::Player(id) => w.resource::<Online>().get(id).map(player_state),
+        Holder::Entity(h) => entity_state(w, h),
+        Holder::Knot(p) => Some(knot_state(p)),
+    }
+}
+
 fn entity_state(w: &World, h: Entity) -> Option<HolderState> {
     let (p, b) = (w.get::<Pos>(h)?.0, w.get::<Bounds>(h)?.0);
     let (lo, hi) = (b.min_position(), b.max_position());

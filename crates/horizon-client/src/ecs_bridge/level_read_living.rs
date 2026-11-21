@@ -1,0 +1,103 @@
+//! Reads of a living entity's state by network id (greffe L0, lot 42): effects, flags, attributes, pose, equipment and capabilities,
+//! read from the ECS world through the level's table. The effects come back as the registry path builds them.
+use super::level::EcsLevel;
+use horizon_client::{effects::EffectInstance, items::ItemStack};
+use horizon_client_core::potions::{self, EffectDef};
+use horizon_core::geometry::Aabb;
+use horizon_ecs_proto::{
+    attr_mod::Operation,
+    bridge::{host::Flag, host_read_living::{effect_kind, effect_name}},
+    effects::{AMBIENT, Effect, HIDDEN, Kind},
+};
+use horizon_world::attribute_map::ValueKind;
+use mod_api::{AttributeModifier, AttributeOperation, Identifier};
+
+/// The kind of the registry effect at `index`, with its definition; None for a mod's effect (its name is not `minecraft:`).
+fn kind_at(index: usize) -> Option<(&'static EffectDef, Kind)> {
+    let def = potions::effect_by_index(index)?;
+    Some((def, effect_kind(&format!("minecraft:{}", def.id))?))
+}
+
+/// The instance of `def` with the effect's amplifier, flags and remaining ticks (the icon shows as the particles do).
+fn instance(def: &EffectDef, x: Effect, remaining: i32) -> EffectInstance {
+    let mut i = EffectInstance::from_def(def, remaining, x.amp);
+    i.ambient = x.flags & AMBIENT != 0;
+    i.visible = x.flags & HIDDEN == 0;
+    i.show_icon = i.visible;
+    i
+}
+
+/// The state name a flag reads by (`EcsWorld::flag`); `Gliding` has no ECS state.
+fn flag_name(flag: Flag) -> Option<&'static str> {
+    Some(match flag {
+        Flag::OnFire => "on_fire",
+        Flag::Sleeping => "sleeping",
+        Flag::Invisible => "invisible",
+        Flag::Frozen => "frozen",
+        Flag::Gliding => return None,
+    })
+}
+
+impl EcsLevel {
+    /// `LivingEntity.getEffect` for the registry effect at `index`, or None when `id` has none.
+    pub fn effect(&self, id: u32, index: usize) -> Option<EffectInstance> {
+        let (ecs, e) = (self.ecs()?, self.entity_of(id)?);
+        let (def, kind) = kind_at(index)?;
+        Some(instance(def, ecs.effect(e, kind)?, ecs.effect_remaining(e, kind)?))
+    }
+    pub fn has_effect(&self, id: u32, index: usize) -> bool {
+        let (Some(ecs), Some(e)) = (self.ecs(), self.entity_of(id)) else { return false };
+        kind_at(index).is_some_and(|(_, kind)| ecs.has_effect(e, kind))
+    }
+    /// `LivingEntity.getActiveEffects`: every effect of `id`, empty when it has none.
+    pub fn effects(&self, id: u32) -> Vec<EffectInstance> {
+        let (Some(ecs), Some(e)) = (self.ecs(), self.entity_of(id)) else { return Vec::new() };
+        ecs.effects(e)
+            .into_iter()
+            .filter_map(|x| Some(instance(potions::effect(effect_name(x.kind))?, x, ecs.effect_remaining(e, x.kind)?)))
+            .collect()
+    }
+    pub fn flag(&self, id: u32, flag: Flag) -> Option<bool> {
+        self.ecs()?.flag(self.entity_of(id)?, flag_name(flag)?)
+    }
+    /// The value of an attribute: `Computed` with its modifiers, `Base` without them.
+    pub fn attribute(&self, id: u32, name: &str, kind: ValueKind) -> Option<f64> {
+        let (ecs, e) = (self.ecs()?, self.entity_of(id)?);
+        let v = ecs.attribute(e, name)?;
+        Some(match kind {
+            ValueKind::Computed => v,
+            ValueKind::Base => v - ecs.attribute_modifiers(e, name).iter().map(|m| m.amount).sum::<f64>(),
+        })
+    }
+    pub fn attribute_modifiers(&self, id: u32, name: &str) -> Option<Vec<AttributeModifier>> {
+        let (ecs, e) = (self.ecs()?, self.entity_of(id)?);
+        Some(
+            ecs.attribute_modifiers(e, name)
+                .into_iter()
+                .filter_map(|m| {
+                    let op = match m.operation {
+                        Operation::AddValue => AttributeOperation::AddValue,
+                        Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
+                        Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
+                    };
+                    Some(AttributeModifier::new(Identifier::parse(&m.id).ok()?, m.amount, op))
+                })
+                .collect(),
+        )
+    }
+    pub fn pose_dimensions(&self, id: u32, pose: u8) -> Option<(f32, f32, f32)> {
+        self.ecs()?.pose_dimensions(self.entity_of(id)?, pose)
+    }
+    pub fn equipment_stack(&self, id: u32, slot: usize) -> Option<ItemStack> {
+        self.ecs()?.equipment_stack(self.entity_of(id)?, slot)
+    }
+    pub fn can_freeze(&self, id: u32) -> Option<bool> {
+        Some(self.ecs()?.can_freeze(self.entity_of(id)?))
+    }
+    pub fn breathes_water(&self, id: u32) -> Option<bool> {
+        Some(self.ecs()?.breathes_water(self.entity_of(id)?))
+    }
+    pub fn melee_reaches(&self, id: u32, bounds: Aabb) -> Option<bool> {
+        Some(self.ecs()?.melee_reaches(self.entity_of(id)?, bounds))
+    }
+}

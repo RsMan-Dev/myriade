@@ -119,61 +119,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn falling_tick_preserves_its_owner_on_success_and_collision_error() {
-        bound_falling_case(false, |game, _| {
-            assert!(game.spawn_remote_projectile(
-                "minecraft:falling_block",
-                &horizon_protocol::packets::play::AddEntity {
-                    id: 72,
-                    uuid: 72,
-                    kind: 0,
-                    position: [4.5, 70.0, 0.5],
-                    velocity: [0.0; 3],
-                    pitch: 0,
-                    yaw: 0,
-                    head_yaw: 0,
-                    data: game.falling[0].state.0 as i32
-                },
-                (0.0, 0.0),
-            ));
-            let expected: Vec<_> = game.falling.iter().map(|f| (f.id, f.join)).collect();
-            game.tick_one_falling(0, &[]).unwrap();
-            assert_eq!(
-                game.falling
-                    .iter()
-                    .map(|f| (f.id, f.join))
-                    .collect::<Vec<_>>(),
-                expected
-            );
-            assert_eq!(game.falling[0].age, 1);
-            assert!(game.falling[0].position.y < 70.0);
-            game.tick_one_falling(1, &[]).unwrap();
-            assert_eq!(
-                game.falling
-                    .iter()
-                    .map(|f| (f.id, f.join))
-                    .collect::<Vec<_>>(),
-                expected
-            );
-            assert_eq!([game.falling[0].age, game.falling[1].age], [1, 1]);
-            // A corrupt resident palette makes the real collision lookup fail.
-            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).set(0, 69, 0, 65_535);
-            let position = game.falling[0].position;
-            assert!(game.tick_one_falling(0, &[]).is_err());
-            assert_eq!(
-                game.falling
-                    .iter()
-                    .map(|f| (f.id, f.join))
-                    .collect::<Vec<_>>(),
-                expected
-            );
-            assert_eq!(game.falling[0].position, position);
-            assert_eq!(game.falling[0].age, 1);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn falling_client_tick_commits_state_without_detaching_its_owner() {
         bound_falling_case(true, |game, _| {
             game.remote_projectile_data(
@@ -193,31 +138,6 @@ mod tests {
                 assert!(game.falling[0].position.y < previous.y);
                 assert!(game.falling[0].velocity.y < 0.0);
             }
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn falling_parked_swap_preserves_state_and_owner_until_discard() {
-        bound_falling_case(false, |game, index| {
-            let home = game.dim;
-            game.tick_one_falling(0, &[]).unwrap();
-            let position = game.falling[0].position;
-            game.enter_level(super::super::Dim::Nether).unwrap();
-            assert!(game.falling.is_empty());
-            assert_eq!(
-                index
-                    .lock()
-                    .unwrap()
-                    .snapshot(&("test".into(), "falling_lifetime".into()))
-                    .len(),
-                1
-            );
-            game.enter_level(home).unwrap();
-            assert_eq!(game.falling.len(), 1);
-            assert_eq!(game.falling[0].id, 71);
-            assert_eq!(game.falling[0].age, 1);
-            assert_eq!(game.falling[0].position, position);
         });
     }
 

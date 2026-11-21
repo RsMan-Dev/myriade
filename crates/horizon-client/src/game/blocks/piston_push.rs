@@ -13,7 +13,6 @@
 use super::{
     Game,
     entity::{Entity, EntityHandle, with_entity, with_entity_mut},
-    minecarts::CartHit,
     move_gate::MoveWho,
 };
 use horizon_client::collisions::{
@@ -134,11 +133,10 @@ impl Game<'_> {
         end: Aabb,
         pricked: &mut Vec<u32>,
     ) {
-        let id = match target {
-            MoveWho::Entity(EntityHandle::Boat(i)) => self.boats[i].id,
-            MoveWho::Entity(EntityHandle::Cart(i)) => self.carts[i].id,
-            _ => return,
-        };
+        let MoveWho::Ecs(id) = target else { return };
+        if self.ecs.boat_status(id).is_none() && self.ecs.cart_damage(id).is_none() {
+            return;
+        }
         let eps = f64::from(1.0e-5_f32);
         let (a, b) = (start.min_position(), end.min_position());
         let lo = Vec3::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z));
@@ -162,10 +160,10 @@ impl Game<'_> {
     /// not tick entities never wears it off, so the fifth breaks it).
     fn hurt_cactus_pricked_vehicles(&mut self, pricked: Vec<u32>) {
         for id in pricked {
-            if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                self.hurt_boat(i, 1.0, false);
-            } else if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-                self.hurt_cart(i, 1.0, false, false, CartHit::default());
+            if self.ecs.boat_status(id).is_some() {
+                self.hurt_boat(id, 1.0, false);
+            } else {
+                self.hurt_cart_id(id, 1.0, false, false, None);
             }
         }
     }
@@ -443,6 +441,9 @@ impl Game<'_> {
     /// sharing it are spared (`isPassengerOfSameVehicle`); none for a box.
     fn lid_root(&self, lid: Lid) -> Option<u32> {
         let id = lid.shulker()?;
+        if self.ecs.is_active() {
+            return Some(self.ecs_root_vehicle(id));
+        }
         self.native_root_vehicle_id(id, super::commands::Target::Mob(id))
     }
 
@@ -468,20 +469,7 @@ impl Game<'_> {
             )
             .intersects(area)
         };
-        let mut i = 0;
-        while i < self.paintings.len() {
-            // A painting a mod keeps stays at `i`.
-            if !(meets(self.paintings[i].bounds()) && self.break_painting_by(i, false, None)) {
-                i += 1;
-            }
-        }
-        let mut i = 0;
-        while i < self.item_frames.len() {
-            let f = &self.item_frames[i];
-            if f.fixed || !meets(f.bounds()) || !self.break_frame_by(i, None) {
-                i += 1;
-            }
-        }
+        // Paintings and frames broken by a piston: not yet bridged (the ECS keeps them).
         let mut i = 0;
         while i < self.cushions.len() {
             let c = &self.cushions[i];
@@ -495,7 +483,11 @@ impl Game<'_> {
 
     /// Whether a pushed body is a shulker, which a shulker's lid leaves out.
     fn pushed_shulker(&self, target: MoveWho) -> bool {
-        matches!(target, MoveWho::Entity(EntityHandle::Mob(i)) if self.mobs[i].species() == Species::Shulker)
+        match target {
+            MoveWho::Entity(EntityHandle::Mob(i)) => self.mobs[i].species() == Species::Shulker,
+            MoveWho::Ecs(id) => self.ecs_kind(id).as_deref() == Some("minecraft:shulker"),
+            _ => false,
+        }
     }
 
     /// The id of the lowest vehicle under a pushed body: its own when it
@@ -507,6 +499,7 @@ impl Game<'_> {
         match target {
             MoveWho::Player => self.riding.and_then(vehicle_root),
             MoveWho::Guest(conn) => self.command_guest(conn)?.vehicle.and_then(vehicle_root),
+            MoveWho::Ecs(id) => Some(self.ecs_root_vehicle(id)),
             MoveWho::Entity(handle) => {
                 let (id, named) =
                     with_entity!(self, handle, entity => (entity.id(), entity.selector_target()));
@@ -885,6 +878,18 @@ impl Game<'_> {
                         .is_some_and(|m| pos.is_some() && m.ground.supporting_block == pos),
                 })
             }
+            MoveWho::Ecs(id) => {
+                let v = self.ecs_view(id)?;
+                let p = v.position;
+                Some(Body {
+                    bounds: self.ecs_mob_bounds(id)?,
+                    position: Vec3::new(p[0], p[1], p[2]),
+                    on_ground: v.on_ground,
+                    // The step height and the support of an ECS body are P's: not read here (QUESTION).
+                    step_height: 0.6,
+                    supported: false,
+                })
+            }
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
                 if !entity.is_alive() || entity.get_piston_push_reaction() == IgnoreEntity {
                     return None;
@@ -925,6 +930,11 @@ impl Game<'_> {
         let Some(limited) = self.limit_piston(target, movement, accumulators) else {
             return;
         };
+        if let MoveWho::Ecs(id) = target {
+            // P's `Entity.move` by the piston, its collisions and its block effects in one call.
+            self.ecs.piston_move(id, limited, piston_direction);
+            return;
+        }
         // `limitPistonMovement` returns zero once the tick's budget is spent.
         if limited == Vec3::ZERO {
             // `Entity.move` stops there; `moveEntityByPiston` still applies
@@ -1063,9 +1073,6 @@ impl Game<'_> {
         if let Some((i, from, ..)) = tnt {
             self.finish_tnt_piston_move(i, from, resolved);
         }
-        if let MoveWho::Entity(EntityHandle::Falling(i)) = target {
-            self.finish_falling_piston_move(i, resolved);
-        }
         if let Some((i, from)) = projectile_from {
             self.projectile_piston_block_effects(i, from);
         }
@@ -1152,6 +1159,7 @@ impl Game<'_> {
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
             MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.mobs[i].piston),
+            MoveWho::Ecs(id) => self.ecs.piston_limit(id, movement, time),
             _ => limit(accumulators.entry(target).or_default()),
         }
     }
@@ -1180,6 +1188,8 @@ impl Game<'_> {
                     g.entity_id as u32
                 })
             }),
+            // P moved it in `piston_move`; the section it left is tracked by its id.
+            MoveWho::Ecs(id) => Some(id),
             MoveWho::Entity(handle) => {
                 let id = with_entity_mut!(self, handle, entity => {
                     entity.move_entity(gate, movement);
@@ -1237,6 +1247,7 @@ impl Game<'_> {
                     motion.velocity = piston_push::bounce_velocity(movement, motion.velocity);
                 }
             }
+            MoveWho::Ecs(id) => self.ecs.piston_slime_bounce(id, movement),
             MoveWho::Entity(handle) => {
                 with_entity_mut!(self, handle, entity => Entity::piston_slime_bounce(entity, movement))
             }
@@ -2272,8 +2283,9 @@ mod lid_push_tests {
             }])
             .unwrap();
             assert_eq!(item_y(game), 200.25, "the item rises with the lid");
+            let boat = game.ecs.boats_in(Vec3::ZERO, Vec3::new(64.0, 256.0, 64.0))[0];
             assert_eq!(
-                game.boats[0].position.y, 200.25,
+                game.ecs.position(boat).unwrap()[1], 200.25,
                 "the boat rises with the lid"
             );
             assert_eq!(arrow_y(game), 200.25, "the arrow rises with the lid");
@@ -2375,14 +2387,14 @@ mod lid_push_tests {
         with_game(|game| {
             let shulker = shulker(game);
             assert!(game.run_command("summon minecraft:oak_boat 2.5 200 6.5"));
-            let boat = game.boats[0].id;
+            let boat = game.ecs.boats_in(Vec3::ZERO, Vec3::new(64.0, 256.0, 64.0))[0];
             let i = game.mobs.iter().position(|m| m.id == shulker).unwrap();
             game.mobs[i].extra.mount = Some(boat);
             game.riding = Some(boat);
             let (around, lift) = (area(1.0, 1.0, 4.0, 8.0), Vec3::new(0.0, 0.25, 0.0));
             game.lid_push(Lid::Shulker(shulker), around, lift);
             assert_eq!(
-                game.boats[0].position.y, 200.0,
+                game.ecs.position(boat).unwrap()[1], 200.0,
                 "the shulker's vehicle stays"
             );
             let player_y = |game: &Game<'_>| game.player.as_ref().unwrap().position.y;

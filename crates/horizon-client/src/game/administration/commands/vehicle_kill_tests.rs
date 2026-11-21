@@ -41,40 +41,21 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
     game.set_allow_commands(true);
     let clock = game.world.game_time;
     let mut differences = Vec::new();
-    for (index, kind) in [
-        "oak_chest_boat",
-        "bamboo_chest_raft",
-        "chest_minecart",
-        "hopper_minecart",
-        "oak_boat",
-    ]
-    .iter()
-    .enumerate()
-    {
+    // Minecarts left the host list (`game.carts`): their kill is the ECS's, not this host test.
+    for (index, kind) in ["oak_chest_boat", "bamboo_chest_raft", "oak_boat"].iter().enumerate() {
         let uuid = [51, 0, 0, index as i32 + 1];
         let source = r#"{Pos:[5.25d,200d,4.75d],NoGravity:1b,Items:[{Slot:0b,id:"minecraft:diamond",count:3,components:{"minecraft:custom_data":{h051:1}}},{Slot:1b,id:"minecraft:dirt",count:5},{Slot:2b,id:"minecraft:stick",count:7}]}"#.to_string();
         let (tag, _) = parse_snbt(&source).unwrap();
-        let boat = kind.contains("boat") || kind.contains("raft");
-        let (id, mut slots) = if boat {
-            game.load_boat(tag, Some(uuid), &format!("minecraft:{kind}"));
-            let b = game.boats.last().unwrap();
-            assert_eq!(b.position, Vec3::new(5.25, 200.0, 4.75));
-            (b.id, b.items.clone())
-        } else {
-            game.load_cart(tag, Some(uuid), &format!("minecraft:{kind}"));
-            let c = game.carts.last().unwrap();
-            (c.id, c.items.clone())
-        };
-        let container = index < 4;
+        game.load_boat(tag, Some(uuid), &format!("minecraft:{kind}"));
+        let b = game.boats.last().unwrap();
+        assert_eq!(b.position, Vec3::new(5.25, 200.0, 4.75));
+        let (id, mut slots) = (b.id, b.items.clone());
+        let container = index < 2;
         assert_eq!(
             slots.iter().flatten().map(|s| s.count).sum::<u32>(),
             if container { 15 } else { 0 }
         );
-        let target = if boat {
-            Target::Boat(id)
-        } else {
-            Target::Cart(id)
-        };
+        let target = Target::Boat(id);
         assert_eq!(
             game.command_target_nbt(target).unwrap().get("UUID"),
             Some(&horizon_core::nbt::Tag::IntArray(uuid.to_vec()))

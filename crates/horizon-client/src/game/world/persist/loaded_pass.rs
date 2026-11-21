@@ -8,9 +8,20 @@ impl Game<'_> {
         let loaded = std::mem::take(&mut self.world.loaded_entities);
         for (key, tags) in loaded {
             let count = tags.len();
-            for pending in tags {
-                let (tag, reason) = pending.into_parts();
-                self.spawn_loaded_entity_reason(key, tag, None, reason);
+            if self.ecs.is_active() {
+                let entities: Vec<_> = tags
+                    .into_iter()
+                    .filter_map(|pending| match pending.into_parts().0 {
+                        Tag::Compound(c) => Some(c),
+                        _ => None,
+                    })
+                    .collect();
+                self.ecs_load_chunk(key.0, key.1, &entities);
+            } else {
+                for pending in tags {
+                    let (tag, reason) = pending.into_parts();
+                    self.spawn_loaded_entity_reason(key, tag, None, reason);
+                }
             }
             self.native_entities_load(self.dim.id(), [key.0, key.1], count);
         }

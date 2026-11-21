@@ -179,15 +179,9 @@ macro_rules! server_ctx {
 
 /// The vehicle `id` leaves the level it is in, at the point its rider
 /// arrives. It keeps its entity id, so the ride is never broken.
-/// A guest leaving for another level leaves its fishing hook behind in the
-/// old one, where vanilla's hook stays until its distance check ends it. A
-/// guest's hook lives on the guest here, so it ends now: it must not act on
-/// the blocks of the level the guest arrives in.
-fn drop_hook(host: &mut LanHost, conn: u32) {
-    if let Some(play) = host.play.get_mut(&conn) {
-        play.hook.discard();
-    }
-}
+/// A guest leaving for another level leaves its fishing hook behind in the old one: the hook is an entity of that level's
+/// ECS, whose own owner check (`FishingHook.shouldStopFishing`) ends it there, so nothing acts in the level of arrival.
+fn drop_hook(_host: &mut LanHost, _conn: u32) {}
 
 fn take_vehicle<
     T: Rideable
@@ -912,7 +906,7 @@ impl Game<'_> {
         let vehicle = direct_vehicle.filter(|id| {
             self.mob_object(*id).is_some_and(|mob| !mob.removed)
                 || self.boats.iter().any(|b| b.id == *id)
-                || self.carts.iter().any(|c| c.id == *id)
+                || self.ecs.cart_kind(*id).is_some()
         });
         let source = self.dim;
         let end = plan.is_none();
@@ -1409,13 +1403,6 @@ impl Game<'_> {
             .map(|body| (body.position, [body.yaw, 0.0]))
             .or_else(|| {
                 parked
-                    .carts
-                    .iter()
-                    .find(|body| body.id == id)
-                    .map(|body| (body.position, [body.yaw, 0.0]))
-            })
-            .or_else(|| {
-                parked
                     .mobs
                     .iter()
                     .find(|body| body.id == id)
@@ -1428,8 +1415,6 @@ impl Game<'_> {
         // admitted: teleportCrossDimension copies passengers before the root.
         let vehicle = if let Some(body) = take_vehicle(&mut parked.boats, id, at, yaw, motion) {
             OffLevel::Boat(body)
-        } else if let Some(body) = take_vehicle(&mut parked.carts, id, at, yaw, motion) {
-            OffLevel::Cart(body)
         } else if let Some(body) = take_vehicle(&mut parked.mobs, id, at, yaw, motion) {
             OffLevel::Mob(body)
         } else {
@@ -1708,11 +1693,10 @@ mod tests {
                 game.native_joins_skip();
                 let base = game.next_entity;
                 game.next_entity += 2;
-                game.carts.push(minecarts::Minecart::new(
-                    base + 1,
-                    minecarts::CartKind::Rideable,
-                    Vec3::ZERO,
-                ));
+                game.ecs_with(|ecs, mw| {
+                    ecs.spawn_cart_id(mw, minecarts::CartKind::Rideable.id(), [0.0; 3], 0.0, &mut || base + 1)
+                })
+                .unwrap();
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 let mut child = Mob::new(base + 10, kind, Vec3::ZERO, 0.0);
                 child.extra.mount = Some(base + 1);
@@ -1724,11 +1708,10 @@ mod tests {
                 game.portals.carried_cooldown.insert(base + 1, 7);
                 let source = game.dim;
                 game.enter_level(Dim::Nether).unwrap();
-                game.carts.push(minecarts::Minecart::new(
-                    base + 2,
-                    minecarts::CartKind::Rideable,
-                    Vec3::ZERO,
-                ));
+                game.ecs_with(|ecs, mw| {
+                    ecs.spawn_cart_id(mw, minecarts::CartKind::Rideable.id(), [0.0; 3], 0.0, &mut || base + 2)
+                })
+                .unwrap();
                 game.native_joins_flush(false, 0);
                 game.arrive_vehicle(source, base + 1, Vec3::ZERO, 0.0);
                 assert!(
@@ -1881,7 +1864,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn natural_carrier_retains_a_vehicle_root_refused_by_its_passenger() {
-        for (kind, uuid) in [("minecraft:oak_boat", 705), ("minecraft:minecart", 706)] {
+        // Minecart roots left the host list: their off-level retention is the ECS's, not this host test.
+        for (kind, uuid) in [("minecraft:oak_boat", 705)] {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 let tag = horizon_core::nbt::parse_snbt(&format!(
@@ -1891,12 +1875,7 @@ mod tests {
                 ))
                 .unwrap()
                 .0;
-                let root = if kind.ends_with("boat") {
-                    game.load_boat_transferred(tag, Some([uuid, 0, 0, 1]), kind, None)
-                } else {
-                    game.load_cart_transferred(tag, Some([uuid, 0, 0, 1]), kind, None)
-                }
-                .unwrap();
+                let root = game.load_boat_transferred(tag, Some([uuid, 0, 0, 1]), kind, None).unwrap();
                 let pig = game.mob_passenger_ids(root)[0];
                 let chicken = game.mob_passenger_ids(pig)[0];
                 assert!(game.persist.off_level.contains_key(&pig));
@@ -1907,8 +1886,8 @@ mod tests {
                 assert!(game.entity(chicken).is_some());
                 assert!(game.entity(root).is_none());
                 assert!(game.boats.iter().all(|b| b.id != root));
-                assert!(game.carts.iter().all(|c| c.id != root));
-                assert!(game.boat_object(root).is_some() || game.cart_object(root).is_some());
+                assert!(game.ecs.cart_kind(root).is_none());
+                assert!(game.is_boat(root));
                 assert_eq!(game.mob_object(pig).unwrap().extra.mount, Some(root));
                 assert_eq!(game.mob_object(chicken).unwrap().extra.mount, Some(pig));
                 assert!(game.mobs_below_off_level().contains(&pig));
@@ -1919,7 +1898,7 @@ mod tests {
                     assert!(game.mob_object(id).is_none());
                 }
                 assert!(game.boats.iter().all(|b| b.id != root));
-                assert!(game.carts.iter().all(|c| c.id != root));
+                assert!(game.ecs.cart_kind(root).is_none());
             });
         }
     }
@@ -1985,26 +1964,6 @@ mod tests {
         });
     }
 
-    /// A minecart a player rides through a portal rolls on at the motion it
-    /// crossed with, clamped to 0.4 along x and z (`PositionMoveRotation.of`
-    /// takes `OldMinecartBehavior.getKnownMovement`), not at rest. Vanilla
-    /// 26.3 sent the client a cart arriving with motion (0.4, 0, 0).
-    #[test]
-    fn a_minecart_a_player_rides_keeps_its_clamped_motion_through_a_portal() {
-        let mut carts: horizon_client::join_seq::JoinList<_> = [minecarts::Minecart::new(
-            3,
-            minecarts::CartKind::Rideable,
-            Vec3::new(9.9, 100.0, 4.5),
-        )]
-        .into_iter()
-        .collect();
-        let at = Vec3::new(1.5, 100.0, 0.5);
-        let cart = take_vehicle(&mut carts, 3, at, 0.0, Vec3::new(1.6, -0.1, -0.7))
-            .expect("the cart travels");
-        assert_eq!(cart.position, at);
-        assert_eq!(cart.velocity, Vec3::new(0.4, -0.1, -0.4));
-    }
-
     /// The vehicle a player rides travels with it through a portal: it
     /// leaves the level the player came from, keeps its entity id (so the
     /// ride is never broken) and stands where its rider arrives
@@ -2020,7 +1979,6 @@ mod tests {
         )]
         .into_iter()
         .collect();
-        let mut carts = horizon_client::join_seq::JoinList::<minecarts::Minecart>::default();
         let mut mobs = horizon_client::join_seq::JoinList::<Mob>::default();
         let at = Vec3::new(1.5, 65.0, -2.5);
         let boat = take_vehicle(&mut boats, 7, at, 90.0, Vec3::ZERO)
@@ -2034,8 +1992,6 @@ mod tests {
         assert_eq!(boat.yaw, 90.0, "it looks where its rider looks");
         assert_eq!(boat.velocity, Vec3::ZERO, "it comes with no motion");
         // A vehicle that is not in the level does not travel.
-        assert!(take_vehicle(&mut carts, 9, at, 0.0, Vec3::ZERO).is_none());
-        assert!(carts.is_empty());
         assert!(take_vehicle(&mut mobs, 9, at, 0.0, Vec3::ZERO).is_none());
         assert!(mobs.is_empty());
     }
@@ -2082,18 +2038,13 @@ mod transfer_lifetime_tests {
 
     #[test]
     fn transfer_removal_retires_before_returning_the_vehicle() {
-        removal(minecarts::Minecart::new(
-            71,
-            minecarts::CartKind::Rideable,
-            Vec3::ZERO,
-        ));
         removal(boats::Boat::new(72, Arc::from("oak"), Vec3::ZERO, 0.0));
     }
 
     #[test]
     #[ignore = "daily"]
     fn transfer_arrival_rebinds_only_bound_owners_with_the_same_id() {
-        for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
+        for kind in ["minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     game.tickets.update(None);
@@ -2108,7 +2059,6 @@ mod transfer_lifetime_tests {
                         _ => panic!("unexpected vehicle target"),
                     };
                     let old_join = match kind {
-                        "minecraft:minecart" => game.carts[0].join_seq(),
                         "minecraft:oak_boat" => game.boats[0].join_seq(),
                         _ => game.mobs[0].join_seq(),
                     };
@@ -2138,7 +2088,6 @@ mod transfer_lifetime_tests {
                         };
                     }
                     match kind {
-                        "minecraft:minecart" => slot!(carts),
                         "minecraft:oak_boat" => slot!(boats),
                         _ => slot!(mobs),
                     }
@@ -2167,7 +2116,6 @@ mod transfer_lifetime_tests {
                         }};
                     }
                     match kind {
-                        "minecraft:minecart" => transferred!(carts),
                         "minecraft:oak_boat" => transferred!(boats),
                         _ => transferred!(mobs),
                     }
@@ -2178,9 +2126,6 @@ mod transfer_lifetime_tests {
                     assert_eq!(rows.len(), usize::from(bound));
                     if let Some(old) = old {
                         let current = match kind {
-                            "minecraft:minecart" => game
-                                .carts
-                                .update(0, |e| e.attachment_lifetime().registration().unwrap()),
                             "minecraft:oak_boat" => game
                                 .boats
                                 .update(0, |e| e.attachment_lifetime().registration().unwrap()),

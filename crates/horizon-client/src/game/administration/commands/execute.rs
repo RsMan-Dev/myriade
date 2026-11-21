@@ -126,8 +126,9 @@ impl Game<'_> {
             Target::Guest(conn) => self
                 .command_guest(conn)
                 .map_or([0.0; 2], |g| [g.yaw, g.pitch]),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs_mob_rotation(id),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map_or([0.0; 2], |m| [m.yaw, m.head_pitch]),
@@ -141,11 +142,7 @@ impl Game<'_> {
                 .iter()
                 .find(|b| b.id == id)
                 .map_or([0.0; 2], |b| [b.yaw, b.pitch]),
-            Target::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map_or([0.0; 2], |c| [c.yaw, c.pitch]),
+            Target::Cart(id) => self.ecs_view(id).map_or([0.0; 2], |v| [v.yaw, 0.0]),
             Target::Fangs(id) => self
                 .fangs
                 .list
@@ -173,8 +170,9 @@ impl Game<'_> {
                 .as_ref()
                 .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
             Target::Guest(conn) => self.command_guest(conn).map_or(1.62, |g| g.eye_height()),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs_mob_eye_offset(id).unwrap_or(0.0),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .map_or(0.0, |m| m.eye_y() - m.position.y),
@@ -734,6 +732,36 @@ impl Game<'_> {
             _ => return Err(err("command.unknown.command", &[])),
         })
     }
+    /// Whether a player rides the mob `id`: the bridge's rider of its entity on the ECS level, else the listed mob's.
+    fn mob_has_rider(&self, id: u32) -> bool {
+        if self.ecs.is_active() {
+            self.ecs_mob_has_rider(id)
+        } else {
+            self.remote_entities.iter().any(|m| m.id == id && m.rider.is_some())
+        }
+    }
+    /// `Mob.ai.last_hurt_by` (attacker) or `ai.target` of the mob `id`: by the bridge's id reads on the ECS level, else the listed mob's.
+    fn mob_ai_target(&self, id: u32, attacker: bool) -> Option<horizon_client::mobs::Who> {
+        if self.ecs.is_active() {
+            self.ecs_mob_ai_target(id, attacker)
+        } else {
+            self.remote_entities
+                .iter()
+                .find(|m| m.id == id)
+                .and_then(|m| if attacker { m.ai.last_hurt_by } else { m.ai.target })
+        }
+    }
+    /// The summoner of the vex `id` (`counter2`): by the bridge on the ECS level, else the listed vex's.
+    fn mob_vex_owner(&self, id: u32) -> Option<u32> {
+        if self.ecs.is_active() {
+            self.ecs_vex_owner(id)
+        } else {
+            self.remote_entities
+                .iter()
+                .find(|m| m.id == id && m.kind.id == "minecraft:vex")
+                .map(|m| m.extra.counter2 as u32)
+        }
+    }
     /// `ExecuteCommand.createRelationOperations`: the entities `on <relation>` reaches.
     fn relation(&mut self, c: &Context, s: Source) -> Vec<Source> {
         let Some(entity) = s.entity else {
@@ -744,10 +772,7 @@ impl Game<'_> {
                 // OwnableEntity.getOwner → EntityReference.getLivingEntity:
                 // a marker or a display with that UUID is not an owner.
                 Target::Mob(id) => self
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id)
-                    .and_then(|m| m.extra.owner)
+                    .mob_owner_uuid(id)
                     // A guest owner too, not only the player in place.
                     .and_then(|u| {
                         self.target_by_uuid(horizon_client::lan::playerdata::ints_uuid(u))
@@ -768,10 +793,18 @@ impl Game<'_> {
             },
             // Leashable.getLeashHolder: the server's resolved holder, not a
             // saved UUID that is still waiting for tickLeash to restore it.
+            Some("leasher") if self.ecs.is_active() => match entity {
+                Target::Mob(id) | Target::Boat(id) => self
+                    .ecs_leash_uuid(id)
+                    .and_then(|u| self.target_by_uuid(horizon_client::lan::playerdata::ints_uuid(u)))
+                    .into_iter()
+                    .collect(),
+                _ => Vec::new(),
+            },
             Some("leasher") => {
                 let leash =
                     match entity {
-                        Target::Mob(id) => self.mobs.iter().find(|m| m.id == id).and_then(|m| {
+                        Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id).and_then(|m| {
                             m.extra.leash.map(|holder| (holder, m.extra.leash_player))
                         }),
                         Target::Boat(id) => self
@@ -798,33 +831,24 @@ impl Game<'_> {
             // TraceableEntity.getOwner: who shot a projectile, who threw an
             // item, who summoned a vex.
             Some("origin") => match entity {
+                // Projectile.getOwner: the ECS keeps the shooter as a `Who`; a guest is found by its entity id.
                 Target::Projectile(id) => self
-                    .creatures
-                    .projectiles
-                    .iter()
-                    .find(|p| p.id == id)
-                    .and_then(|p| {
-                        // Projectile.getOwner resolves EntityReference<Entity>,
-                        // including loaded owners that cannot be a Who.
-                        let Some(owner) = p.owner else {
-                            return p.owner_uuid.and_then(|uuid| {
-                                self.target_by_uuid(horizon_client::lan::playerdata::ints_uuid(
-                                    uuid,
-                                ))
-                            });
-                        };
-                        match (owner, p.guest) {
-                            // A guest's shot: `Who::Player` is them.
-                            (horizon_client::mobs::Who::Player, Some(conn))
-                                if self.lan_acting == Some(conn) =>
-                            {
-                                Some(Target::Player)
-                            }
-                            (horizon_client::mobs::Who::Player, Some(conn)) => {
-                                Some(Target::Guest(conn))
-                            }
-                            (horizon_client::mobs::Who::Player, None) => Some(Target::Player),
-                            (horizon_client::mobs::Who::Mob(id), _) => Some(Target::Mob(id)),
+                    .ecs
+                    .projectile_owner(id)
+                    .and_then(|owner| match owner {
+                        horizon_ecs_proto::targeting::Who::Player(eid) => {
+                            let guest = self
+                                .lan
+                                .as_ref()
+                                .and_then(|l| l.hub.guests.iter().find(|g| g.entity_id as u32 == eid))
+                                .map(|g| g.conn);
+                            Some(match guest {
+                                Some(conn) if self.lan_acting != Some(conn) => Target::Guest(conn),
+                                _ => Target::Player,
+                            })
+                        }
+                        horizon_ecs_proto::targeting::Who::Entity(e) => {
+                            self.ecs.network_id(e).map(Target::Mob)
                         }
                     })
                     .into_iter()
@@ -843,10 +867,7 @@ impl Game<'_> {
                     .into_iter()
                     .collect(),
                 Target::Mob(id) => self
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id && m.kind.id == "minecraft:vex")
-                    .map(|m| m.extra.counter2 as u32)
+                    .mob_vex_owner(id)
                     .filter(|owner| *owner != 0)
                     .map(Target::Mob)
                     .into_iter()
@@ -866,7 +887,7 @@ impl Game<'_> {
                 passengers
             }
             Some("controller") => match entity {
-                Target::Mob(id) if self.mobs.iter().any(|m| m.id == id && m.rider.is_some()) => {
+                Target::Mob(id) if self.mob_has_rider(id) => {
                     vec![Target::Player]
                 }
                 _ => Vec::new(),
@@ -875,16 +896,7 @@ impl Game<'_> {
                 let attacker = c.literals.last().is_some_and(|l| l == "attacker");
                 match entity {
                     Target::Mob(id) => self
-                        .mobs
-                        .iter()
-                        .find(|m| m.id == id)
-                        .and_then(|m| {
-                            if attacker {
-                                m.ai.last_hurt_by
-                            } else {
-                                m.ai.target
-                            }
-                        })
+                        .mob_ai_target(id, attacker)
                         .map(|w| match w {
                             horizon_client::mobs::Who::Player => {
                                 // LivingEntity.getLastHurtByMob is the player
@@ -1463,7 +1475,7 @@ mod passenger_relation_tests {
                     actor(parent)
                 )));
                 assert_eq!(
-                    game.mobs
+                    game.remote_entities
                         .iter()
                         .find(|m| m.id == ids[child - 1])
                         .unwrap()
@@ -1530,7 +1542,7 @@ mod passenger_relation_tests {
             }
             assert!(game.run_command(&format!("ride {} dismount", actor(2))));
             assert_eq!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .find(|m| m.id == ids[1])
                     .unwrap()
@@ -1665,7 +1677,7 @@ mod terminal_fork_tests {
         for n in [1, 2] {
             assert!(game.run_command(&format!("summon pig {} 200 4.5 {{UUID:[I;147,0,0,{n}],Health:10f,NoAI:1b,NoGravity:1b,Tags:[\"h147\"]}}", n as f64 + 0.5)));
             assert!(
-                game.mobs
+                game.remote_entities
                     .iter()
                     .any(|m| game.persist.uuids.get(&m.id) == Some(&[147, 0, 0, n])
                         && m.kind.id == "minecraft:pig"

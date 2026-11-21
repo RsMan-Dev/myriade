@@ -59,17 +59,21 @@ fn a_boat_in_a_cactus_takes_two_hits_a_tick_and_each_is_heard() {
     assert!(game.run_command("summon minecraft:oak_boat 4.5 100 4.5"));
     capture();
     game.tick_world(true).unwrap();
-    assert_eq!(game.boats.len(), 1);
-    let b = &game.boats[0];
-    assert_eq!((b.damage, b.hurt_time), (20.0, 10));
-    let at = [b.position.x, b.position.y, b.position.z];
+    let boats = game.ecs.boats_in(
+        horizon_core::geometry::Vec3::new(0.0, 90.0, 0.0),
+        horizon_core::geometry::Vec3::new(9.0, 110.0, 9.0),
+    );
+    assert_eq!(boats.len(), 1);
+    let id = boats[0];
+    assert_eq!((game.ecs.boat_damage(id), game.ecs.boat_hurt_time(id)), (Some(20.0), Some(10)));
+    let at = game.ecs.position(id).unwrap();
     let expected: Vec<Posted> = vec![("minecraft:entity_damage", at, None); 2];
     assert_eq!(damage_events(), expected);
     game.tick_world(true).unwrap();
-    assert_eq!(game.boats[0].damage, 39.0);
+    assert_eq!(game.ecs.boat_damage(id), Some(39.0));
     game.tick_world(true).unwrap();
     assert!(
-        game.boats.is_empty(),
+        game.ecs.boat_damage(id).is_none(),
         "the third tick's first hit breaks it"
     );
 }

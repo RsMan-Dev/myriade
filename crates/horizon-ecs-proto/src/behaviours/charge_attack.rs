@@ -147,8 +147,7 @@ fn charge_run(
         }
         vel.0.x *= c.p.hit_slow;
         vel.0.z *= c.p.hit_slow;
-        cmd.entity(e).remove::<Target>();
-        events.target_lost.push(e);
+        cmd.queue(move |w: &mut World| targeting::clear_target(w, e));
         end(&mut reqs);
     }
 }

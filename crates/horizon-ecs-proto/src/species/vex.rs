@@ -14,13 +14,14 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::PLAYER),
     ],
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { flap: crate::behaviours::move_emission::Flap::Every { period: 4, flying_only: false, offset: false }, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&g::VEX_CHARGE, 4, &g::Params::DEFAULT),
         Entry::new(&g::VEX_RANDOM_MOVE, 8, &g::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&limited_life::MODULE, 10, &()),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Direct, noclip: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

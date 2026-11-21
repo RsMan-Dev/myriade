@@ -88,6 +88,7 @@ pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
     if let Who::Player(id) = owner {
         w.resource_mut::<Pets>().0.entry(id).or_default().push(e);
     }
+    w.resource_mut::<Events>().host.tamed(e, owner);
     order_sit(w, e, true);
     wake(w, e, &crate::behaviours::follow_owner::MODULE);
     // `Not(is_tame)` is read at the start only: a tamed animal that is running away (from players, from llamas) stops (the `Mob` tests `!tame` each tick).

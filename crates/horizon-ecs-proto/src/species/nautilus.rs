@@ -24,7 +24,7 @@ pub static DEF: Def = Def {
         Entry::new(&charge_attack::MODULE, 3, &charge_attack::Params { speed: 0.6, ..charge_attack::Params::DEFAULT }),
         Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params { speed: 1.0, interval: 1 }),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune]),
     locomotion: LOCOMOTION,
     ..Def::EMPTY
 };

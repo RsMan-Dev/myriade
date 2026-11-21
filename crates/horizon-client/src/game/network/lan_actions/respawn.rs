@@ -327,8 +327,8 @@ impl Game<'_> {
         if host.hub.guests[gi].health <= 0.0 && !host.hub.guests[gi].dead {
             self.guest_forget_digging(conn);
             // FishingHook.shouldStopFishing: its owner is dead.
-            if let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) {
-                play.hook.discard();
+            if let Some(id) = self.ecs_own_hook() {
+                self.remove_fishing_hook(id);
             }
         }
         let Some(host) = self.lan.as_mut() else {

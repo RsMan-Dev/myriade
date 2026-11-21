@@ -26,8 +26,7 @@ impl Game<'_> {
             .get(index)?
             .clone()
     }
-    /// A hopper cart's tick owns its metadata while its resident row is lent out.
-    /// Publish only a pending inventory for this access, then recover the result.
+    /// A hopper cart's tick reads its contents from the ECS after the first access rolls them there.
     pub(super) fn unpack_ticked_cart_loot(
         &mut self,
         cart: &mut super::minecarts::Minecart,
@@ -35,30 +34,14 @@ impl Game<'_> {
         if cart.loot.is_none() {
             return true;
         }
-        let Some(i) = self
-            .carts
-            .iter()
-            .position(|c| c.id == cart.id && c.join == cart.join)
-        else {
+        if self.ecs.cart_kind(cart.id).is_none() {
             return false;
-        };
-        self.carts.update(i, |owner| {
-            owner.loot = cart.loot.take();
-            owner.items.clone_from(&cart.items);
-            owner.position = cart.position;
-        });
+        }
         self.unpack_loot(LootTarget::Cart(cart.id), None);
-        let Some(i) = self
-            .carts
-            .iter()
-            .position(|c| c.id == cart.id && c.join == cart.join)
-        else {
-            return false;
-        };
-        self.carts.update(i, |owner| {
-            cart.loot = owner.loot.take();
-            cart.items.clone_from(&owner.items);
-        });
+        cart.loot = None;
+        if let Some(items) = self.ecs.cart_items(cart.id) {
+            cart.items = items;
+        }
         true
     }
     /// Consumes metadata before callbacks, so reentrant access cannot roll twice.
@@ -82,22 +65,24 @@ impl Game<'_> {
                 )
             }
             LootTarget::Cart(id) => {
-                let Some(i) = self.carts.iter().position(|c| c.id == id) else {
+                let Some(view) = self.ecs_view(id) else {
                     return;
                 };
-                let Some(pending) = self.carts.update(i, |c| c.loot.take()) else {
+                let Some((table, seed)) = self.ecs.cart_take_loot(id) else {
                     return;
+                };
+                let pending = PendingContainerLoot {
+                    table: Tag::String(table.as_str().into()),
+                    seed: Some(Tag::Long(seed)),
                 };
                 self.store_cart_items((i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32));
-                let c = &self.carts[i];
+                let [x, y, z] = view.position;
                 (
                     pending,
-                    (
-                        c.position.x.floor() as i32,
-                        c.position.y.floor() as i32,
-                        c.position.z.floor() as i32,
-                    ),
-                    c.items.iter().any(Option::is_some),
+                    (x.floor() as i32, y.floor() as i32, z.floor() as i32),
+                    self.ecs
+                        .cart_items(id)
+                        .is_some_and(|items| items.iter().any(Option::is_some)),
                 )
             }
             LootTarget::Boat(id) => {
@@ -167,11 +152,7 @@ impl Game<'_> {
                 .block_entities
                 .get(&key)
                 .map(|e| e.slots().to_vec()),
-            LootTarget::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| c.items.clone()),
+            LootTarget::Cart(id) => self.ecs.cart_items(id),
             LootTarget::Boat(id) => self
                 .boats
                 .iter()
@@ -182,10 +163,9 @@ impl Game<'_> {
         };
         let origin = match target {
             LootTarget::Block(_) => [pos.0 as f64 + 0.5, pos.1 as f64 + 0.5, pos.2 as f64 + 0.5],
-            LootTarget::Cart(id) => {
-                let p = self.carts.iter().find(|c| c.id == id).unwrap().position;
-                [p.x, p.y, p.z]
-            }
+            LootTarget::Cart(id) => self
+                .ecs_view(id)
+                .map_or([pos.0 as f64, pos.1 as f64, pos.2 as f64], |v| v.position),
             LootTarget::Boat(id) => {
                 let p = self.boats.iter().find(|b| b.id == id).unwrap().position;
                 [p.x, p.y, p.z]
@@ -212,8 +192,8 @@ impl Game<'_> {
                 }
             }
             LootTarget::Cart(id) => {
-                if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-                    self.carts.update(i, |c| c.items = slots);
+                for (slot, stack) in slots.iter().cloned().enumerate() {
+                    self.ecs.cart_set_slot(id, slot, stack);
                 }
             }
             LootTarget::Boat(id) => {
@@ -228,11 +208,7 @@ impl Game<'_> {
         };
         if let Some(id) = id {
             let items = match target {
-                LootTarget::Cart(_) => self
-                    .carts
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map(|c| c.items.clone()),
+                LootTarget::Cart(_) => self.ecs.cart_items(id),
                 _ => self
                     .boats
                     .iter()
@@ -343,17 +319,21 @@ impl super::GameLevel<'_> {
     pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
         debug_assert!(player.is_none());
         if let LootTarget::Cart(id) = target {
-            let Some(i) = self.carts.iter().position(|c| c.id == id) else {
+            let Some(view) = self.ecs_view(id) else {
                 return;
             };
-            let Some(pending) = self.carts.update(i, |c| c.loot.take()) else {
+            let Some((table, seed)) = self.ecs.cart_take_loot(id) else {
                 return;
+            };
+            let pending = PendingContainerLoot {
+                table: Tag::String(table.as_str().into()),
+                seed: Some(Tag::Long(seed)),
             };
             let Some(loot) = self.loot.as_ref() else {
                 return;
             };
-            let p = self.carts[i].position;
-            let pos = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let [x, y, z] = view.position;
+            let pos = (x.floor() as i32, y.floor() as i32, z.floor() as i32);
             let biome = self.world.chunks.get(&(pos.0 >> 4, pos.2 >> 4)).map(|c| {
                 self.biomes
                     .get(c.biome(pos.0 & 15, pos.1, pos.2 & 15))
@@ -361,12 +341,12 @@ impl super::GameLevel<'_> {
                     .clone()
             });
             let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
-            let mut slots = self.carts[i].items.clone();
+            let mut slots = self.ecs.cart_items(id).unwrap_or_default();
             if let Some(BlockEntity::Chest(open)) = self.world.block_entities.get(&key) {
                 slots.clone_from(open);
             }
             if slots.iter().any(Option::is_some) {
-                self.carts.update(i, |cart| cart.items = slots);
+                self.put_cart_slots(id, slots);
                 return;
             }
             let loot = loot.clone();
@@ -387,7 +367,7 @@ impl super::GameLevel<'_> {
                     self.container_fill_hook(
                         &pending.table_id(),
                         target,
-                        [p.x, p.y, p.z],
+                        [x, y, z],
                         player,
                         items,
                     )
@@ -395,10 +375,10 @@ impl super::GameLevel<'_> {
             );
             self.world.random = random;
             *self.rand_sequences = sequences;
-            self.carts.update(i, |cart| cart.items = slots);
             if let Some(BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
-                open.clone_from(&self.carts[i].items);
+                open.clone_from(&slots);
             }
+            self.put_cart_slots(id, slots);
             return;
         }
         let LootTarget::Block(key) = target else {
@@ -460,11 +440,17 @@ impl super::GameLevel<'_> {
 mod tests;
 
 impl super::GameLevel<'_> {
-    /// The other lists stay shared while carts can be mutated by inventory reads.
+    /// The other lists stay shared; carts are the ECS's, not a list of the walk.
     pub(super) fn entities(&self) -> super::entity::EntityLists<'_> {
         super::entity::EntityLists {
-            carts: &*self.carts,
+            carts: &[],
             ..self.other_entities
+        }
+    }
+    /// Writes the contents of the cart `id` slot by slot through the ECS.
+    fn put_cart_slots(&mut self, id: u32, slots: Vec<Option<horizon_client::items::ItemStack>>) {
+        for (slot, stack) in slots.into_iter().enumerate() {
+            self.ecs.cart_set_slot(id, slot, stack);
         }
     }
     /// Detector rails prioritize command carts, then read the first container.
@@ -473,41 +459,35 @@ impl super::GameLevel<'_> {
         pos: horizon_core::position::BlockPos,
         powered: bool,
     ) -> i32 {
-        use horizon_core::geometry::{Aabb, Vec3};
+        use horizon_core::geometry::Vec3;
         if !powered {
             return 0;
         }
+        use super::minecarts::CartKind;
         let (x, y, z) = (pos.x as f64, pos.y as f64, pos.z as f64);
-        let area = Aabb::new(
+        let ids = self.ecs.carts_in(
             Vec3::new(x + 0.2, y, z + 0.2),
             Vec3::new(x + 0.8, y + 0.8, z + 0.8),
         );
         let mut container = None;
-        for (i, ((lo, hi), cart)) in self.cart_boxes.iter().zip(self.carts.iter()).enumerate() {
-            if !area.intersects(Aabb::new(
-                Vec3::new(lo[0], lo[1], lo[2]),
-                Vec3::new(hi[0], hi[1], hi[2]),
-            )) {
-                continue;
-            }
-            match cart.kind {
-                super::minecarts::CartKind::CommandBlock => return cart.command.success_count,
-                super::minecarts::CartKind::Chest | super::minecarts::CartKind::Hopper
-                    if container.is_none() =>
-                {
-                    container = Some(i)
+        for id in ids {
+            match self.ecs.cart_kind(id).and_then(CartKind::from_id) {
+                Some(CartKind::CommandBlock) => {
+                    return self.ecs.cart_command(id).map_or(0, |c| c.success_count);
+                }
+                Some(CartKind::Chest | CartKind::Hopper) if container.is_none() => {
+                    container = Some(id)
                 }
                 _ => {}
             }
         }
-        let Some(i) = container else { return 0 };
-        self.unpack_loot(LootTarget::Cart(self.carts[i].id), None);
-        let cart = &self.carts[i];
-        let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, cart.id as i32);
+        let Some(id) = container else { return 0 };
+        self.unpack_loot(LootTarget::Cart(id), None);
+        let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
         let slots = match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Chest(open)) => open,
-            _ => &cart.items,
+            Some(BlockEntity::Chest(open)) => open.clone(),
+            _ => self.ecs.cart_items(id).unwrap_or_default(),
         };
-        super::minecarts::Minecart::container_signal(slots, self.items)
+        super::minecarts::Minecart::container_signal(&slots, self.items)
     }
 }

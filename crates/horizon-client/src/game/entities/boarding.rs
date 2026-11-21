@@ -110,7 +110,7 @@ impl Game<'_> {
     /// player aboard hears the trigger; a host's turn can fire it now, while
     /// a guest's turn (the hub held by its action) leaves it for
     /// [`Self::flush_started_riding`] once every player is back in place.
-    pub(super) fn note_started_riding(&mut self, vehicle: u32) {
+    pub(in crate::game) fn note_started_riding(&mut self, vehicle: u32) {
         self.started_riding.push(vehicle);
         if self.lan.is_some() && self.lan_acting.is_none() {
             self.flush_started_riding();

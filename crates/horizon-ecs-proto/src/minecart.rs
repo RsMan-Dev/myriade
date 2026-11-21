@@ -5,6 +5,7 @@
 //! and are listed in the notes as doubts.
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+pub use crate::cart_state::{BlastPower, Cart, CartHurt, CommandBlock, Contents, Display, Enabled, Spawner};
 pub use crate::rules::minecart::{FUSE, GRAVITY, MAX_LAND, MAX_WATER, RIDDEN_FRICTION, Rail, SLIDE, TRACK_FRICTION, WATER_DRAG, blast_power, bounds_at, can_park, command_due, container_signal, container_slowdown, fall_step, furnace_max_speed, furnace_slowdown, fuse_step, hopper_box, hopper_enabled_on_activator, ignites_by_collision, off_track_drag, off_track_velocity, push_from, rail_point, settle, slowdown, tnt_primed_by};
 
 /// The variant of a cart: configuration only, the state of a variant lives in its own component.

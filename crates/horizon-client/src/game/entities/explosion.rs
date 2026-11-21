@@ -333,10 +333,7 @@ impl Game<'_> {
 
     fn explosion_cause_resolves(&self, cause: &ExplosionCause) -> bool {
         if !cause.player {
-            return self
-                .mobs
-                .iter()
-                .any(|m| m.id == cause.entity.0 && !m.removed);
+            return self.creature_is(cause.entity.0, true);
         }
         let acting = self
             .lan_acting_entity
@@ -362,7 +359,7 @@ impl Game<'_> {
         // longer resolves for kill credit, unlike Horizon's early exploders.
         if let Some(cause) = &cause
             && cause.species.is_some()
-            && !self.mobs.iter().any(|m| m.id == cause.entity.0)
+            && !self.creature_is(cause.entity.0, false)
             && !self
                 .combat
                 .exploded
@@ -407,7 +404,7 @@ impl Game<'_> {
         if let Some(cause) = &self.combat.explicit_explosion_cause {
             return cause.as_ref().map(|c| {
                 let name = (!c.player)
-                    .then(|| self.mob_display_name(c.entity.0))
+                    .then(|| self.blast_creature_name(c.entity.0))
                     .flatten()
                     .unwrap_or_else(|| c.entity.1.clone());
                 (c.entity.0, name)
@@ -420,7 +417,7 @@ impl Game<'_> {
             blast_cause(
                 self.combat.explosion_owner,
                 self.combat.explosion_source,
-                |id| self.mob_display_name(id),
+                |id| self.blast_creature_name(id),
                 &self.combat.exploded,
             )
         })
@@ -429,7 +426,7 @@ impl Game<'_> {
     /// primed TNT's owner, the mob whose blast it is, or a projectile's owner.
     /// An explicit crystal or cart cause has no indirect source (`Explosion`'s
     /// switch).
-    fn blast_indirect_source(&self) -> Option<Who> {
+    pub(in crate::game) fn blast_indirect_source(&self) -> Option<Who> {
         if self.combat.explicit_explosion_cause.is_some() {
             return None;
         }
@@ -439,18 +436,10 @@ impl Game<'_> {
             }
             // `PrimedTnt.getOwner` is an `EntityReference`: a removed owner
             // does not resolve, though the TNT still saves its UUID.
-            return self
-                .mobs
-                .iter()
-                .any(|m| m.id == *id && !m.removed)
-                .then_some(Who::Mob(*id));
+            return self.creature_is(*id, true).then_some(Who::Mob(*id));
         }
         if let Some(id) = self.combat.explosion_owner {
-            return self
-                .mobs
-                .iter()
-                .any(|m| m.id == id && !m.removed)
-                .then_some(Who::Mob(id));
+            return self.creature_is(id, true).then_some(Who::Mob(id));
         }
         // The exploding mob itself: `Explosion.getIndirectSourceEntity` names
         // it directly, even after its own tick marked it removed.
@@ -1038,8 +1027,7 @@ impl Game<'_> {
                 self.combat
                     .explosion_owner
                     .or(exploding)
-                    .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-                    .map(|m| m.species())
+                    .and_then(|id| self.creature_species(id))
             });
         // `ServerExplosion.hurtEntities`: every entity in reach, on the walk. Each
         // answers `ignoreExplosion` itself (`Entity::ignores_explosion`); the rest
@@ -1057,9 +1045,6 @@ impl Game<'_> {
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
             spared: exploding.filter(|_| self.combat.explosion_source_named),
         };
-        // `VehicleEntity.hurtServer` credits its ENTITY_DAMAGE to
-        // `DamageSource.getEntity`, which for a blast is its indirect source.
-        let blast_by = self.explosion_kill_credit();
         let mut destroyed_contents = Vec::new();
         macro_rules! blocked_damage {
             ($id:expr, $kind:expr) => {{
@@ -1259,25 +1244,6 @@ impl Game<'_> {
                             destroyed = self.orbs[i].hurt(amount);
                         }
                     }
-                    // `VehicleEntity.hurtServer` (explosions ignite TNT carts);
-                    // a destroyed one is gone before the push.
-                    EntityHandle::Cart(i) => {
-                        let kind = self.carts[i].kind.id();
-                        if !blocked_damage!(entity as i32, kind) {
-                            let Some(EntityHandle::Cart(i)) =
-                                self.refresh_entity_handle(entity, handle)
-                            else {
-                                continue;
-                            };
-                            self.hurt_cart(
-                                i,
-                                amount,
-                                false,
-                                true,
-                                super::minecarts::CartHit::attributed(blast_by),
-                            );
-                        }
-                    }
                     // `VehicleEntity.hurtServer`: damage * 10, broken past 40.
                     EntityHandle::Boat(i) => {
                         let kind = self.boats[i].entity_type();
@@ -1319,9 +1285,6 @@ impl Game<'_> {
                 };
                 match handle {
                     EntityHandle::Item(_) | EntityHandle::Orb(_) if destroyed => {}
-                    EntityHandle::Cart(i) => {
-                        self.carts.update(i, |cart| cart.push_from_explosion(push))
-                    }
                     EntityHandle::Boat(i) => {
                         self.boats.update(i, |boat| boat.push_from_explosion(push))
                     }
@@ -1339,7 +1302,6 @@ impl Game<'_> {
         // BlockAttachedEntity.kill / ArmorStand.kill credit DamageSource.getEntity.
         // VehicleEntity.destroy above uses Entity.kill and keeps the vehicle as source.
         if hurts {
-            self.explosion_breaks_frames(center, diameter, interaction);
             self.explosion_breaks_decorations(center, diameter, interaction);
         }
         pushed
@@ -1347,7 +1309,7 @@ impl Game<'_> {
 
     /// Decoration kills credit `DamageSource.getEntity`: the explicit blast
     /// cause, including a TNT igniter or the player who broke an end crystal.
-    pub(super) fn explosion_kill_credit(&self) -> Option<super::commands::Target> {
+    pub(in crate::game) fn explosion_kill_credit(&self) -> Option<super::commands::Target> {
         use super::commands::Target;
         // An explicit crystal or cart source names its own cause.
         if let Some(cause) = &self.combat.explicit_explosion_cause {
@@ -1419,7 +1381,7 @@ impl Game<'_> {
             .in_water
     }
     /// `ServerExplosion.hurtEntities` for paintings, cushions and armour
-    /// stands (item frames: `explosion_breaks_frames`). A painting or cushion
+    /// stands. A painting or cushion
     /// in reach is killed and dropped (`BlockAttachedEntity.hurtServer`,
     /// `Painting.dropItem`, `Cushion.dropItem`). An armour stand that is
     /// neither invisible nor a marker breaks (`ArmorStand.hurtServer` with
@@ -1491,22 +1453,8 @@ impl Game<'_> {
         self.native_explosion_start(start, &mut cancel);
         cancel
     }
-    /// Paintings and cushions in reach (`BlockAttachedEntity.hurtServer`).
+    /// Cushions in reach (`BlockAttachedEntity.hurtServer`). Paintings are broken by the ECS (`hanging_more`), not here.
     fn explosion_breaks_hanging(&mut self, center: [f64; 3], diameter: f64) {
-        let mut i = 0;
-        while i < self.paintings.len() {
-            // HangingEntity.recalculateBoundingBox: a painting stands at the
-            // centre of its box.
-            let (lo, hi) = self.paintings[i].bounds();
-            let at = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
-            // A painting a mod keeps stays at `i`.
-            if !(self.combat.visits(self.paintings[i].id)
-                && blast_reaches(center, diameter, at)
-                && self.break_painting_by(i, false, self.explosion_kill_credit()))
-            {
-                i += 1;
-            }
-        }
         let mut i = 0;
         while i < self.cushions.len() {
             let p = self.cushions[i].position;
@@ -1673,6 +1621,11 @@ impl Game<'_> {
         // Explosion.explode: the blast is heard.
         let ctx = horizon_client::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
+        // The ECS level's creatures are P's (`explode_ecs`, which breaks no block); its players are hurt by the host's walk below
+        // (P's player hurt has no consumer), and the blocks are the host's. The ECS objects are hurt here.
+        if self.ecs.is_active() {
+            self.explode_ecs(center, radius, fire, source.entity.map(|(id, _)| id));
+        }
         let mut targets =
             self.exploded_positions(center, radius, resists, source.portal_proof, &start);
         // `shouldBlockExplode`: a calculator that explodes no blocks keeps none.

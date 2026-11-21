@@ -341,8 +341,8 @@ impl Game<'_> {
         };
         if let Some(i) = self.boats.iter().position(|b| b.id == id) {
             self.dismount(i);
-        } else if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-            self.dismount_cart(i);
+        } else if self.ecs.cart_kind(id).is_some() {
+            self.dismount_cart(id);
         } else {
             self.riding = None;
         }

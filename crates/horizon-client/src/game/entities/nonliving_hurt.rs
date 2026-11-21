@@ -43,25 +43,25 @@ fn cells_named(game: &Game, bounds: Aabb, name: &str) -> Vec<[i32; 3]> {
 impl Game<'_> {
     /// `VehicleEntity.hurtServer`'s `gameEvent(ENTITY_DAMAGE, source.getEntity())`
     /// at the vehicle, after the damage is added and before it breaks.
-    pub(super) fn vehicle_damage_event(&mut self, at: [f64; 3], by: Option<Target>) {
+    pub(in crate::game) fn vehicle_damage_event(&mut self, at: [f64; 3], by: Option<Target>) {
         self.sculk_prepare();
         self.entity_event_by("minecraft:entity_damage", at, by);
     }
     /// `ItemEntity.hurtServer`'s `gameEvent(ENTITY_DAMAGE, source.getEntity())`
     /// at the item, before a hit that empties its health destroys it.
-    pub(super) fn item_damage_event(&mut self, at: Vec3, by: Option<Target>) {
+    pub(in crate::game) fn item_damage_event(&mut self, at: Vec3, by: Option<Target>) {
         self.sculk_prepare();
         self.entity_event_by("minecraft:entity_damage", [at.x, at.y, at.z], by);
     }
     /// [`Self::hurt_boat`] for a source that names an entity.
     pub(super) fn hurt_boat_by(
         &mut self,
-        i: usize,
+        id: u32,
         damage: f32,
         creative: bool,
         by: Option<Target>,
     ) -> bool {
-        self.hurt_boat_result(i, damage, creative, by)
+        self.hurt_boat_result(id, damage, creative, by)
             .unwrap_or(false)
     }
     /// The cactus hits of one of `AbstractBoat.tick`'s `applyEffectsFromBlocks`:
@@ -69,7 +69,7 @@ impl Game<'_> {
     /// meets on its move (`steps`: where it started, then where it got to),
     /// each once, while `Entity.checkInsideBlocks` walks them, before the
     /// fire the walk queues. True when a hit broke it.
-    pub(super) fn boat_cactus_pass(&mut self, i: usize, steps: &[Aabb]) -> bool {
+    pub(super) fn boat_cactus_pass(&mut self, id: u32, steps: &[Aabb]) -> bool {
         let mut seen: Vec<[i32; 3]> = Vec::new();
         for &bounds in steps {
             for cell in cells_named(self, bounds, "minecraft:cactus") {
@@ -77,7 +77,7 @@ impl Game<'_> {
                     continue;
                 }
                 seen.push(cell);
-                if self.burn_boat(i, 1.0, "minecraft:cactus") {
+                if self.burn_boat(id, 1.0, "minecraft:cactus") {
                     return true;
                 }
             }

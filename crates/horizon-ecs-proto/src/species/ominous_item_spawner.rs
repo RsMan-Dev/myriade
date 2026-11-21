@@ -2,4 +2,4 @@
 use super::Def;
 use crate::behaviours::Cap;
 
-pub static DEF: Def = Def { name: "minecraft:ominous_item_spawner", caps: Some(&[Cap::Transform]), ..Def::EMPTY };
+pub static DEF: Def = Def { name: "minecraft:ominous_item_spawner", caps: Some(&[Cap::Transform, Cap::IgnoresTriggers]), ..Def::EMPTY };

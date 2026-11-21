@@ -1259,13 +1259,8 @@ impl Game<'_> {
                 twinkle: false,
             }],
         ));
-        let rocket = self.new_rocket(
-            Vec3::new(at[0], at[1], at[2]),
-            &stack,
-            false,
-            &mut random_source::entity(),
-        );
-        self.rockets.push(rocket);
+        let rocket = self.new_rocket(Vec3::new(at[0], at[1], at[2]), &stack, false);
+        self.push_rocket(rocket, &stack);
     }
     /// `BehaviorUtils.throwItem`: a hero's gift tossed toward the player.
     pub(super) fn throw_gift(&mut self, table: &str, from: [f64; 3], to: [f64; 3]) {

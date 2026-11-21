@@ -5,6 +5,8 @@
 //! value lies within reach); it ends at 6 000 ticks (a deadline of the wheel). A death drops its experience as orbs (`award`).
 use crate::cow::*;
 use crate::goals::{Events, Online, PlayerWatch};
+use crate::host_out_items::{ItemEvent, ItemEvents};
+use crate::item::{ExpiryPolicy, Expiring};
 use crate::rules::orb::{attraction, check_wait, expire_tick, is_scan_tick, merged_age_base, same_merge_group, throw_velocity, LIFE, REACH};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::entities::ExperienceOrb;
@@ -76,7 +78,7 @@ pub struct OrbIndex {
     awake: usize,
 }
 impl OrbIndex {
-    fn near(&self, area: Aabb) -> Vec<Entity> {
+    pub fn near(&self, area: Aabb) -> Vec<Entity> {
         let (min, max) = (area.min_position(), area.max_position());
         let (lo, hi) = (cell_of(Vec3::new(min.x - 0.25, min.y, min.z - 0.25)), cell_of(Vec3::new(max.x + 0.25, max.y, max.z + 0.25)));
         let mut out = Vec::new();
@@ -133,7 +135,7 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             Body { width: 0.5, height: 0.5, step_height: 0.0, gravity: 0.03, speed: 0.0, fall_factor: 1.0, object: true, orb: true, tnt: false, lava_walker: false },
             Bounds(ExperienceOrb::box_at(at)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
-            Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
+            Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
             FluidParams { eye_height: f64::from(0.425_f32), can_float: false, water_slowdown: 0.8, water_efficiency: 0.0, max_air: 300 },
             FluidState::default(),
             Recheck,
@@ -222,14 +224,31 @@ fn arm_expire(world: &mut World, e: Entity) {
 }
 pub fn expire_due(world: &mut World, e: Entity, token: u32) {
     let Some(o) = world.get::<Orb>(e) else { return };
-    if o.expire != token {
+    if o.expire != token || world.get::<Expiring>(e).is_some() {
         return;
     }
     if now_of(world, e) < o.age_base + LIFE {
         arm_expire(world, e);
         return;
     }
-    world.entity_mut(e).despawn();
+    if !world.resource::<ExpiryPolicy>().orbs {
+        world.entity_mut(e).despawn();
+        return;
+    }
+    let value = o.value;
+    let at = world.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    world.entity_mut(e).insert(Expiring);
+    if let Some(mut ev) = world.get_resource_mut::<ItemEvents>() {
+        ev.0.push(ItemEvent::OrbExpiring { entity: e, value, at: [at.x, at.y, at.z] });
+    }
+}
+/// The end of life pushed back by `ticks` (the age goes down as much, never past now), the hold ended.
+pub fn extend_life(world: &mut World, e: Entity, ticks: u32) {
+    let now = now_of(world, e);
+    let Some(mut o) = world.get_mut::<Orb>(e) else { return };
+    o.age_base = (o.age_base + u64::from(ticks)).min(now);
+    world.entity_mut(e).remove::<Expiring>();
+    arm_expire(world, e);
 }
 /// The next tick of the orb that is 1 modulo 20 (`ExperienceOrb.tick`: `tickCount % 20 == 1` scans for merges and looks for a player).
 fn arm_check(world: &mut World, e: Entity) {

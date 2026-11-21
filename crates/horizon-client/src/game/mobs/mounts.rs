@@ -127,14 +127,14 @@ fn seat_of(m: &horizon_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
 impl Game<'_> {
     pub(super) fn mount_index(&self) -> Option<usize> {
         let id = self.riding?;
-        self.mobs.iter().position(|m| m.id == id)
+        self.remote_entities.iter().position(|m| m.id == id)
     }
     /// `Entity.interact` / `Mob.canShearEquipment` / `Mob.attemptToShearEquipment`
     /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
     /// before its mobInteract can ride it, with the saddle's shearing sound.
     /// An occupied mount is not sheared: its mobInteract runs instead.
     pub(super) fn shear_saddle(&mut self, index: usize, item: &str) -> Option<bool> {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         // EntityTypeTags.CAN_EQUIP_SADDLE.
         let saddleable = matches!(
             m.species(),
@@ -158,7 +158,7 @@ impl Game<'_> {
             || self.ridden_by_guest(id)
             || equine::is_vehicle(m)
             || self
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|r| r.alive() && !r.removed && r.extra.mount == Some(id))
         {
@@ -186,12 +186,12 @@ impl Game<'_> {
         let at = m.position;
         let offset = horizon_client::mobs::riders::passenger_attachment(m)[1];
         self.damage_held_tool();
-        self.mobs[index].set_saddle(None);
+        self.remote_entities[index].set_saddle(None);
         let context = self.who_context(Some(Who::Player), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], context);
         self.mob_equip_event(id, [at.x, at.y, at.z], false);
         self.spawn_at_location(at, offset, saddle.clone());
-        let target = self.mob_entity(&self.mobs[index]);
+        let target = self.mob_entity(&self.remote_entities[index]);
         self.trigger_item_entity("minecraft:player_sheared_equipment", &saddle, &target);
         // attemptToShearEquipment: playSound(equippable.shearingSound()).
         if !silent {
@@ -207,7 +207,7 @@ impl Game<'_> {
     /// `Pig` / `Strider.mobInteract`: saddle an adult, or ride a saddled one.
     fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
         let held = self.inventory[self.selected].clone();
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
             return false;
         }
@@ -221,8 +221,8 @@ impl Game<'_> {
             };
             self.audio.play(sound, Some(at), 1.0, 1.0);
             self.consume_held();
-            let id = self.mobs[index].id;
-            let pos = self.mobs[index].position;
+            let id = self.remote_entities[index].id;
+            let pos = self.remote_entities[index].position;
             self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
             self.world
                 .modified
@@ -248,16 +248,22 @@ impl Game<'_> {
     }
     /// `FoodOnAStickItem.use` while riding: boost the mount, wear the stick.
     pub(super) fn use_steering_stick(&mut self, item: &str) -> bool {
-        let (species, wear) = match item {
-            "minecraft:carrot_on_a_stick" => (Species::Pig, 7),
-            "minecraft:warped_fungus_on_a_stick" => (Species::Strider, 1),
+        let (species, kind, wear) = match item {
+            "minecraft:carrot_on_a_stick" => (Species::Pig, "minecraft:pig", 7),
+            "minecraft:warped_fungus_on_a_stick" => (Species::Strider, "minecraft:strider", 1),
             _ => return false,
         };
-        let Some(i) = self.mount_index() else {
-            return false;
-        };
-        if self.mobs[i].species() != species || !equine::boost(&mut self.mobs[i]) {
-            return false;
+        if self.ecs.is_active() {
+            if !self.ecs_boost_steered(kind) {
+                return false;
+            }
+        } else {
+            let Some(i) = self.mount_index() else {
+                return false;
+            };
+            if self.remote_entities[i].species() != species || !equine::boost(&mut self.remote_entities[i]) {
+                return false;
+            }
         }
         if let Some(stack) = self.inventory[self.selected].clone() {
             let (updated, broken) = self.damage_stack(&stack, wear, true);
@@ -280,9 +286,31 @@ impl Game<'_> {
         true
     }
     /// `AbstractHorse.mobInteract`. Returns whether the click was used.
+    /// `Mob.mobInteract` of the ECS mount `id` (saddle, feed, steer, tame, seat): P's `EcsLevel::mount_interact`, by the acting player.
+    /// The guest check is the host's.
+    pub(in crate::game) fn interact_mount_ecs(&mut self, id: u32, item: &str) -> bool {
+        if self.ridden_by_guest(id) {
+            return false;
+        }
+        let sneaking = self.keys.held(Action::Sneak);
+        let Some(player) = self.acting_player_uuid_id() else {
+            return false;
+        };
+        self.ecs.entity_of(id).is_some_and(|e| self.ecs.mount_interact(e, player, item, sneaking))
+    }
+    /// Shears on the ECS mount `id`'s saddle: P takes it off (`EcsLevel::shear_saddle`, missing); the drop and the sound stay the host's.
+    pub(in crate::game) fn shear_saddle_ecs(&mut self, id: u32, item: &str) -> Option<bool> {
+        let e = self.ecs.entity_of(id)?;
+        self.ecs.shear_saddle(e, item)
+    }
+    /// `Start riding jump` on the ECS mount `id`: P's `handleStartJump` gate and sound (`EcsLevel::start_jump`, missing).
+    pub(in crate::game) fn start_riding_jump_ecs(&mut self, id: u32, data: i32) -> Option<(&'static str, f32)> {
+        let e = self.ecs.entity_of(id)?;
+        self.ecs.start_jump(e, data)
+    }
     pub(super) fn interact_mount(&mut self, index: usize, item: &str) -> bool {
         let held = self.held().cloned();
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let species = m.species();
         // A server player rides it already (`isVehicle`: no seat, no feeding).
         if self.ridden_by_guest(m.id) {
@@ -309,7 +337,7 @@ impl Game<'_> {
         let id = m.id;
         if !matches!(species, Species::Camel | Species::CamelHusk)
             && self
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|p| p.extra.mount == Some(id) && !p.removed && p.alive())
         {
@@ -329,7 +357,7 @@ impl Game<'_> {
             .any(|s| &*s.item == "minecraft:golden_dandelion");
         let mut events = Vec::new();
         match equine::held_item(
-            &mut self.mobs[index],
+            &mut self.remote_entities[index],
             item,
             sneaking,
             dandelion,
@@ -342,7 +370,7 @@ impl Game<'_> {
             }
             None => {}
         }
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         // AbstractHorse.mobInteract: shift + use opens a tamed adult's inventory.
         if !m.is_baby() && m.extra.tame && sneaking {
             self.open_mount_menu(index);
@@ -351,7 +379,7 @@ impl Game<'_> {
         if self.feed_mount(index, item) {
             return true;
         }
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         if m.is_baby() {
             return false;
         }
@@ -390,7 +418,7 @@ impl Game<'_> {
         };
         if let Some(sound) = sound {
             let chest = item == "minecraft:chest";
-            let m = &mut self.mobs[index];
+            let m = &mut self.remote_entities[index];
             let silent = m.silent;
             // `LivingEntity.onEquipItem`: a saddle's or armour's equip sound plays
             // at the mount's feet at pitch `1.0F`, seeded with the mount's own
@@ -416,8 +444,8 @@ impl Game<'_> {
             }
             self.consume_held();
             if !chest {
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
+                let id = self.remote_entities[index].id;
+                let pos = self.remote_entities[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
             }
             self.world
@@ -427,11 +455,11 @@ impl Game<'_> {
         }
         // doPlayerRide: `AbstractHorse.doPlayerRide` turns the rider to the
         // horse's yaw before it seats them.
-        let id = self.mobs[index].id;
+        let id = self.remote_entities[index].id;
         if !self.native_may_board(id) {
             return true;
         }
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         m.extra.flag = false;
         m.extra.counter = 0;
         self.yaw = m.yaw;
@@ -442,10 +470,10 @@ impl Game<'_> {
     }
     /// `AbstractHorse.handleEating`.
     fn feed_mount(&mut self, index: usize, item: &str) -> bool {
-        let Some((heal, age_up, temper, love)) = eating(self.mobs[index].species(), item) else {
+        let Some((heal, age_up, temper, love)) = eating(self.remote_entities[index].species(), item) else {
             return false;
         };
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         let mut used = false;
         let mut loved = false;
         if love && m.extra.tame && m.extra.age == 0 && m.extra.in_love <= 0 {
@@ -513,7 +541,7 @@ impl Game<'_> {
         // Animal.setInLove: entity event 18.
         if loved {
             self.love_cause.insert(id, self.lan_acting);
-            let kind = self.mobs[index].kind.id.clone();
+            let kind = self.remote_entities[index].kind.id.clone();
             self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
@@ -523,7 +551,7 @@ impl Game<'_> {
     /// `LocalPlayer.aiStep`'s riding jump: the bar charges while jump is
     /// held; on release, the jump's strength (0 when there is none).
     pub(super) fn charge_mount_jump(&mut self, i: usize, keys: Keys) -> f32 {
-        let saddled = self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species());
+        let saddled = self.remote_entities[i].extra.saddled() && Self::jumps(self.remote_entities[i].species());
         let mut jump = 0.0;
         if saddled {
             let st = &mut self.mount;
@@ -568,7 +596,44 @@ impl Game<'_> {
             .is_some_and(|(height, _)| f64::from(by) + f64::from(height) > y)
     }
     /// The rider's input for this tick; returns false when not on a mount.
+    /// `Player.rideTick` for the ECS mount the player rides: the sneak, the dead mount and the water dismounts are P's to
+    /// decide (`EcsLevel::ride_tick`, missing); the input and the jump go to P's rider.
+    fn tick_mount_riding_ecs(&mut self, keys: Keys) -> bool {
+        let Some(id) = self.riding else {
+            return false;
+        };
+        let Some(e) = self.ecs.entity_of(id) else {
+            return false;
+        };
+        if keys.shift || !self.ecs.alive(e) || self.ecs.dismounts_in_water(e, self.rider_eyes_in_water()) {
+            self.dismount_mount();
+            return true;
+        }
+        let strafe = f32::from(u8::from(keys.left)) - f32::from(u8::from(keys.right));
+        let forward = f32::from(u8::from(keys.forward)) - f32::from(u8::from(keys.backward));
+        let jump = self.charge_mount_jump_ecs(id, keys);
+        self.ecs.ride_input(e, [strafe, forward], jump, keys.jump, keys.sprint || self.keys.held(Action::Sprint), keys.shift, self.yaw, self.pitch);
+        true
+    }
+    /// `LocalPlayer.aiStep`'s jump charge on the ECS mount `id`: P charges and rears it (`EcsLevel::charge_jump`, missing).
+    fn charge_mount_jump_ecs(&mut self, id: u32, keys: Keys) -> f32 {
+        let Some(e) = self.ecs.entity_of(id) else {
+            return 0.0;
+        };
+        let jump = self.ecs.charge_jump(e, keys.jump);
+        // AbstractHorse.playJumpSound: the sound and volume of the jump capability, None for a mount that does not jump.
+        if jump > 0.0
+            && let Some((sound, volume)) = self.ecs.jump_sound(e)
+        {
+            let at = self.ecs.position(id).unwrap_or_default();
+            self.audio.play(&format!("minecraft:{sound}"), Some(at), volume, 1.0);
+        }
+        jump
+    }
     pub(super) fn tick_mount_riding(&mut self, keys: Keys) -> bool {
+        if self.ecs.is_active() {
+            return self.tick_mount_riding_ecs(keys);
+        }
         let Some(i) = self.mount_index() else {
             return false;
         };
@@ -577,11 +642,11 @@ impl Game<'_> {
         // of the `dismounts_underwater` tag (a server's player too: `leave_guest` tells their
         // client). When `entity_mount` keeps it on, the mount still reads this tick's input.
         let i = if keys.shift
-            || !self.mobs[i].alive()
-            || (dismounts_underwater(self.mobs[i].species()) && self.rider_eyes_in_water())
+            || !self.remote_entities[i].alive()
+            || (dismounts_underwater(self.remote_entities[i].species()) && self.rider_eyes_in_water())
         {
             self.dismount_mount();
-            let Some(i) = self.mount_index().filter(|&i| self.mobs[i].alive()) else {
+            let Some(i) = self.mount_index().filter(|&i| self.remote_entities[i].alive()) else {
                 return true;
             };
             i
@@ -592,12 +657,12 @@ impl Game<'_> {
         let forward = f32::from(u8::from(keys.forward)) - f32::from(u8::from(keys.backward));
         // LocalPlayer.aiStep: the riding jump charges while space is held.
         let steer = steering_item(
-            self.mobs[i].species(),
+            self.remote_entities[i].species(),
             self.held().map(|s| s.item.as_ref()),
             self.offhand.as_ref().map(|s| s.item.as_ref()),
         );
         let jump = self.charge_mount_jump(i, keys);
-        let m = &mut self.mobs[i];
+        let m = &mut self.remote_entities[i];
         if jump > 0.0 {
             // AbstractHorse.onPlayerJump: slide on the keys and rear (horses,
             // donkeys and mules).
@@ -612,7 +677,7 @@ impl Game<'_> {
                 self.audio.play(&sound, Some(at), 0.4, 1.0);
             }
         }
-        let m = &mut self.mobs[i];
+        let m = &mut self.remote_entities[i];
         let pending = m.rider.map_or(0.0, |r| r.jump);
         m.rider = Some(equine::Rider {
             strafe,
@@ -633,14 +698,19 @@ impl Game<'_> {
     /// `LivingEntity.baseTick` for the mobs that ride a mount of the `dismounts_underwater` tag (a baby
     /// zombie on a chicken): with their eyes in water they get off it.
     pub(super) fn dismount_underwater_mob_riders(&mut self) {
+        if self.ecs.is_active() {
+            // P has no dismount of riders under water (grep empty in horizon-ecs-proto): `EcsLevel::dismount_underwater` (missing).
+            self.ecs.dismount_underwater();
+            return;
+        }
         let blocked = self.mobs_below_off_level();
         let swimmers: Vec<u32> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| !blocked.contains(&m.id) && m.alive() && m.fluids.eye_in_water)
             .filter_map(|m| {
                 let mount = m.extra.mount?;
-                let under = self.mobs.iter().find(|v| v.id == mount)?;
+                let under = self.remote_entities.iter().find(|v| v.id == mount)?;
                 dismounts_underwater(under.species()).then_some(m.id)
             })
             .collect();
@@ -650,10 +720,18 @@ impl Game<'_> {
     }
     /// `positionRider`: the player sits on the mount after it moves.
     pub(super) fn position_rider(&mut self) {
+        if self.ecs.is_active() {
+            // P seats the player on the ECS mount (`mount::seats`, mount.rs:397); the host reads the seat back (`EcsLevel::rider_seat`, missing).
+            let seat = self.riding.and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.ecs.rider_seat(e));
+            if let Some(at) = seat {
+                self.pose_player_on(Vec3::new(at[0], at[1], at[2]));
+            }
+            return;
+        }
         let Some(i) = self.mount_index() else {
             return;
         };
-        let m = &self.mobs[i];
+        let m = &self.remote_entities[i];
         // `Entity.getPassengerRidingPosition`: the vehicle type's own passenger
         // attachment (`EntityAttachments`, `getClamped(PASSENGER, 0, yRot)`),
         // turned with the vehicle, less the player's own vehicle attachment
@@ -682,6 +760,10 @@ impl Game<'_> {
         // sets the old position too: the camera must not sweep from where the
         // player stood to the seat. The ticks after it move with the mount and
         // are interpolated as usual.
+        self.pose_player_on(at);
+    }
+    /// The player's seat `at` on its mount: a teleport the tick it takes it, then interpolated as the mount moves.
+    fn pose_player_on(&mut self, at: Vec3) {
         let first = self.posed_rider != self.riding;
         self.posed_rider = self.riding;
         if let Some(p) = self.player.as_mut() {
@@ -701,7 +783,10 @@ impl Game<'_> {
             return;
         }
         self.riding = None;
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            return self.dismount_mount_ecs(id);
+        }
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return;
         };
         m.rider = None;
@@ -769,10 +854,17 @@ impl Game<'_> {
         if let Some(i) = self.boats.iter().position(|b| b.id == vehicle) {
             return Some(self.boat_player_dismount_target(i, yaw));
         }
-        if let Some(i) = self.carts.iter().position(|c| c.id == vehicle) {
-            return Some(self.cart_player_dismount_target(i));
+        if self.ecs.cart_kind(vehicle).is_some() {
+            return Some(self.cart_player_dismount_target(vehicle));
         }
-        let mount = self.mobs.iter().find(|m| m.id == vehicle)?;
+        if self.ecs.is_active() {
+            // `getDismountLocationForPassenger` of the ECS mount, P's (`EcsLevel::dismount_point`), read in the mob world.
+            let e = self.ecs.entity_of(vehicle)?;
+            let mw = self.mob_world_base(&[]);
+            let at = self.ecs.dismount_point(&mw, e)?;
+            return Some(Vec3::new(at[0], at[1], at[2]));
+        }
+        let mount = self.remote_entities.iter().find(|m| m.id == vehicle)?;
         if mount.species() == Species::HappyGhast {
             return Some(on_top(mount));
         }
@@ -781,14 +873,17 @@ impl Game<'_> {
     /// `AbstractHorse.tameWithName`: the acting player owns `mob`, then gets
     /// the `tame_animal` trigger.
     fn tame_mount(&mut self, mob: u32) {
+        if self.ecs.is_active() {
+            return self.tame_mount_ecs(mob);
+        }
         // RunAroundLikeCrazyGoal.tick: tameWithName by the player on its
         // back, unless AnimalTameEvent is cancelled, which fails the roll
         // instead. Inside a guest's turn the acting ids are the guest's.
-        let index = self.mobs.iter().position(|m| m.id == mob);
+        let index = self.remote_entities.iter().position(|m| m.id == mob);
         if let Some(index) = index {
             let (tamer, tamer_entity_id) = (self.native_acting_id(), self.own_entity_id());
             if self.animal_tame_cancelled(index, tamer, tamer_entity_id) {
-                let m = &mut self.mobs[index];
+                let m = &mut self.remote_entities[index];
                 let mut events = Vec::new();
                 horizon_client::mobs::equine::refuse_rider(m, &mut events);
                 if let Err(e) = self.handle_mob_events(events) {
@@ -798,7 +893,7 @@ impl Game<'_> {
             }
         }
         let owner = self.acting_player_uuid();
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
             // `asks_animal_tame` left the flag for this handler to set.
             m.extra.tame = true;
             m.extra.owner = Some(owner);
@@ -807,7 +902,7 @@ impl Game<'_> {
             self.mob_event_particles(mob, 7);
         }
         if let Some(view) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == mob)
             .map(|m| self.mob_entity(m))
@@ -815,7 +910,7 @@ impl Game<'_> {
             self.trigger_entity("minecraft:tame_animal", "entity", &view);
         }
         if let Some(kind) = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == mob)
             .map(|m| m.kind.id.clone())
@@ -864,12 +959,22 @@ impl Game<'_> {
             // `Entity.ejectPassengers` before the mob moved off `from`: each
             // rider's `dismountVehicle` reads the vehicle where it stood.
             MobEvent::EjectPassengers { mob, from } => {
-                let Some(i) = self.mobs.iter().position(|m| m.id == mob) else {
+                if self.ecs.is_active() {
+                    // P's `eject_passengers` (mount.rs:441) lets the ECS riders off; the mount's `from` is not passed yet (listed).
+                    if self.riding == Some(mob) {
+                        self.stop_riding();
+                    }
+                    if let Some(e) = self.ecs.entity_of(mob) {
+                        self.ecs.eject_passengers(e);
+                    }
+                    return;
+                }
+                let Some(i) = self.remote_entities.iter().position(|m| m.id == mob) else {
                     return;
                 };
-                let moved = (self.mobs[i].position, self.mobs[i].previous);
-                self.mobs[i].position = from;
-                self.mobs[i].previous = from;
+                let moved = (self.remote_entities[i].position, self.remote_entities[i].previous);
+                self.remote_entities[i].position = from;
+                self.remote_entities[i].previous = from;
                 if self.riding == Some(mob) {
                     self.stop_riding();
                 }
@@ -885,7 +990,7 @@ impl Game<'_> {
                     self.as_guest(conn, |g| g.stop_riding());
                 }
                 let riders: Vec<u32> = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .filter(|m| m.extra.mount == Some(mob))
                     .map(|m| m.id)
@@ -893,7 +998,7 @@ impl Game<'_> {
                 for rider in riders {
                     self.dismount_mob(rider);
                 }
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
+                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                     (m.position, m.previous) = moved;
                     m.extra.rider = None;
                 }
@@ -925,14 +1030,21 @@ impl Game<'_> {
         for conn in guests {
             self.guest_hit_by(conn, |g| g.rider_fall_damage(distance, modifier));
         }
+        if self.ecs.is_active() {
+            // The ECS riders take the fall through P (`EcsLevel::fall_riders`, missing): their `causeFallDamage` and its events.
+            if let Some(e) = self.ecs.entity_of(mob) {
+                self.ecs.fall_riders(e, distance, modifier);
+            }
+            return;
+        }
         let riders: Vec<u32> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| m.extra.mount == Some(mob))
             .map(|m| m.id)
             .collect();
         for rider in riders {
-            if let Some(r) = self.mobs.iter_mut().find(|m| m.id == rider) {
+            if let Some(r) = self.remote_entities.iter_mut().find(|m| m.id == rider) {
                 let mut events = Vec::new();
                 r.cause_fall_damage_from(
                     &self.loop_context,
@@ -976,8 +1088,12 @@ impl Game<'_> {
     /// `Player.jumpableVehicle`: a saddled mount that jumps (not a pig or a
     /// strider, which a saddle only steers).
     pub(super) fn jumpable_mount(&self) -> bool {
+        if self.ecs.is_active() {
+            // P's saddle and jump test for the ECS mount (`EcsLevel::jumpable`, missing).
+            return self.riding.and_then(|id| self.ecs.entity_of(id)).is_some_and(|e| self.ecs.jumpable(e));
+        }
         self.mount_index()
-            .is_some_and(|i| self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species()))
+            .is_some_and(|i| self.remote_entities[i].extra.saddled() && Self::jumps(self.remote_entities[i].species()))
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(super) fn mount_jumping(&self) -> bool {
@@ -986,13 +1102,21 @@ impl Game<'_> {
     /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
     /// layer, only while riding a mount). Returns the mount's heart count
     /// (`getVehicleMaxHearts`).
+    /// The mount's (max health, health) for the HUD: the bridge's view of the ECS mount, else the host's.
+    fn mount_health(&self) -> Option<(f32, f32)> {
+        if self.ecs.is_active() {
+            let e = self.riding.and_then(|id| self.ecs.entity_of(id))?;
+            return self.ecs.vehicle_health(e);
+        }
+        let m = &self.remote_entities[self.mount_index()?];
+        Some((m.attrs.max_health, m.health))
+    }
     pub(super) fn draw_mount_hud(&mut self, batch: &mut HudBatch, w: i32, h: i32) -> i32 {
-        let Some(i) = self.mount_index() else {
+        let Some((max_health, health)) = self.mount_health() else {
             return 0;
         };
-        let m = &self.mobs[i];
-        let hearts = horizon_client::hud_layout::vehicle_max_hearts(m.attrs.max_health);
-        let draws = horizon_client::hud_layout::vehicle_health(w, h, hearts, m.health);
+        let hearts = horizon_client::hud_layout::vehicle_max_hearts(max_health);
+        let draws = horizon_client::hud_layout::vehicle_health(w, h, hearts, health);
         self.keep_status_rows(&draws, w, h);
         self.gui_layer("minecraft:vehicle_health", batch, |g, batch| {
             horizon_client::hud_layout::paint(batch, &g.gui.atlas, &draws);
@@ -1001,17 +1125,23 @@ impl Game<'_> {
     }
     /// The jump bar when it is the contextual bar.
     pub(super) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
-        let Some(i) = self.mount_index() else {
-            return;
-        };
-        let m = &self.mobs[i];
         // JumpableVehicleBar: `getJumpCooldown`, which only the camel's and
         // the nautilus' dash have; a horse always shows the progress.
-        let cooldown = i32::from(
-            self.mount.jump_ticks < 0
-                && (matches!(m.species(), Species::Camel | Species::CamelHusk)
-                    || horizon_client::mobs::nautilus::is_nautilus(m.species())),
-        );
+        let has_cooldown = if self.ecs.is_active() {
+            let Some(e) = self.riding.and_then(|id| self.ecs.entity_of(id)) else {
+                return;
+            };
+            // P's dash test for the ECS mount (`EcsLevel::has_jump_cooldown`, missing).
+            self.ecs.has_jump_cooldown(e)
+        } else {
+            let Some(i) = self.mount_index() else {
+                return;
+            };
+            let m = &self.remote_entities[i];
+            matches!(m.species(), Species::Camel | Species::CamelHusk)
+                || horizon_client::mobs::nautilus::is_nautilus(m.species())
+        };
+        let cooldown = i32::from(self.mount.jump_ticks < 0 && has_cooldown);
         let draws = horizon_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
         horizon_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
@@ -1399,7 +1529,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.mobs.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
             game.riding = Some(21);
             let mut stick = ItemStack::new("minecraft:carrot_on_a_stick", 1);
             let max = game.items().get(&stick.item).unwrap().max_damage;
@@ -1829,8 +1959,8 @@ mod tests {
         m.extra.tame = true;
         m.health = m.attrs.max_health;
         m.random = horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(seed));
-        game.mobs.clear();
-        game.mobs.push(m);
+        game.remote_entities.clear();
+        game.remote_entities.push(m);
     }
 
     /// `AbstractHorse.handleEating`'s growth particle position draws:
@@ -1858,8 +1988,8 @@ mod tests {
         // A silent baby horse fed wheat: the particle's draws, the growth, the
         // event, and no eating sound (so no pitch draws).
         mount(&mut game, "minecraft:horse", 1, [1.5, 64.0, -2.5], 7);
-        game.mobs[0].extra.age = -24000;
-        game.mobs[0].silent = true;
+        game.remote_entities[0].extra.age = -24000;
+        game.remote_entities[0].silent = true;
         let level_random = game.world.random.clone().next_long();
         let (used, shown) = feed(&mut game, "minecraft:wheat");
         assert!(used, "wheat is horse food");
@@ -1868,9 +1998,9 @@ mod tests {
         let at = [1.5, 64.0, -2.5];
         assert!(shown.sounds.is_empty(), "Silent: {shown:?}");
         assert_eq!(shown.events, vec![("minecraft:eat", at, Some(Who::Mob(1)))]);
-        assert_eq!(game.mobs[0].extra.age, -23600, "wheat ages a horse by 20 s");
+        assert_eq!(game.remote_entities[0].extra.age, -23600, "wheat ages a horse by 20 s");
         assert_eq!(
-            game.mobs[0].random.clone().next_double(),
+            game.remote_entities[0].random.clone().next_double(),
             r.next_double(),
             "three doubles for the particle, none for a silent pitch"
         );
@@ -1883,8 +2013,8 @@ mod tests {
         // A hurt adult draws no particle and eats at its feet, its pitch from
         // its own random, after healing.
         mount(&mut game, "minecraft:horse", 2, [0.5, 64.0, 0.5], 11);
-        game.mobs[0].health = game.mobs[0].attrs.max_health - 5.0;
-        let max = game.mobs[0].attrs.max_health;
+        game.remote_entities[0].health = game.remote_entities[0].attrs.max_health - 5.0;
+        let max = game.remote_entities[0].attrs.max_health;
         let (used, shown) = feed(&mut game, "minecraft:wheat");
         assert!(used);
         let mut r = horizon_core::random::LegacyRandom::new(11);
@@ -1895,22 +2025,22 @@ mod tests {
             vec![("minecraft:entity.horse.eat".to_string(), at, 1.0, pitch)],
             "{shown:?}"
         );
-        assert_eq!(game.mobs[0].health, max - 3.0, "wheat heals 2");
+        assert_eq!(game.remote_entities[0].health, max - 3.0, "wheat heals 2");
         assert_eq!(shown.events, vec![("minecraft:eat", at, Some(Who::Mob(2)))]);
 
         // An age-locked baby that is tamed and whole eats nothing at all.
         mount(&mut game, "minecraft:horse", 3, [0.5, 64.0, 2.5], 13);
-        game.mobs[0].extra.age = -24000;
-        game.mobs[0].extra.age_locked = true;
+        game.remote_entities[0].extra.age = -24000;
+        game.remote_entities[0].extra.age_locked = true;
         let (used, shown) = feed(&mut game, "minecraft:wheat");
         assert!(!used, "a locked baby leaves the wheat alone: {shown:?}");
         assert!(
             shown.sounds.is_empty() && shown.events.is_empty(),
             "{shown:?}"
         );
-        assert_eq!(game.mobs[0].extra.age, -24000);
+        assert_eq!(game.remote_entities[0].extra.age, -24000);
         assert_eq!(
-            game.mobs[0].random.clone().next_double(),
+            game.remote_entities[0].random.clone().next_double(),
             horizon_core::random::LegacyRandom::new(13).next_double(),
             "nothing drawn"
         );
@@ -1918,7 +2048,7 @@ mod tests {
         // A baby camel fed cactus: `Camel.handleEating` draws the same particle,
         // then eats and posts EAT, the three doubles before the two floats.
         mount(&mut game, "minecraft:camel", 4, [0.5, 64.0, 4.5], 21);
-        game.mobs[0].extra.age = -24000;
+        game.remote_entities[0].extra.age = -24000;
         let (used, shown) = feed(&mut game, "minecraft:cactus");
         assert!(used, "cactus is camel food");
         let mut r = horizon_core::random::LegacyRandom::new(21);
@@ -1931,7 +2061,7 @@ mod tests {
             "{shown:?}"
         );
         assert_eq!(shown.events, vec![("minecraft:eat", at, Some(Who::Mob(4)))]);
-        assert_eq!(game.mobs[0].extra.age, -23800, "camel cactus ages 10 s");
+        assert_eq!(game.remote_entities[0].extra.age, -23800, "camel cactus ages 10 s");
     }
 
     /// Equips `item` on mob 0 and collects the sounds and the `minecraft:equip`
@@ -1992,7 +2122,7 @@ mod tests {
         let mut r = horizon_core::random::LegacyRandom::new(7);
         r.next_long();
         assert_eq!(
-            game.mobs[0].random.clone().next_double(),
+            game.remote_entities[0].random.clone().next_double(),
             r.next_double(),
             "one nextLong for the equip sound's seed, and nothing else"
         );
@@ -2014,7 +2144,7 @@ mod tests {
         r.next_long();
         r.next_long();
         assert_eq!(
-            game.mobs[0].random.clone().next_double(),
+            game.remote_entities[0].random.clone().next_double(),
             r.next_double(),
             "a nextLong for each equip sound"
         );
@@ -2048,7 +2178,7 @@ mod tests {
         // event still goes out.
         let feet = [0.5, 64.0, 2.5];
         mount(&mut game, "minecraft:horse", 3, feet, 13);
-        game.mobs[0].silent = true;
+        game.remote_entities[0].silent = true;
         let (used, shown) = equip(&mut game, "minecraft:saddle");
         assert!(used, "a silent horse still takes the saddle");
         assert!(shown.sounds.is_empty(), "{shown:?}");
@@ -2057,7 +2187,7 @@ mod tests {
             vec![("minecraft:equip", feet, Some(Who::Mob(3)))]
         );
         assert_eq!(
-            game.mobs[0].random.clone().next_double(),
+            game.remote_entities[0].random.clone().next_double(),
             horizon_core::random::LegacyRandom::new(13).next_double(),
             "a silent mount's equip draws nothing"
         );
@@ -2096,7 +2226,7 @@ mod tests {
             let equip_events = crate::game::sculk::TEST_POSTED_EVENTS
                 .with(|events| events.borrow_mut().take().unwrap_or_default());
             crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
-            assert!(game.mobs[0].extra.chested, "{kind} wears the chest");
+            assert!(game.remote_entities[0].extra.chested, "{kind} wears the chest");
             assert_eq!(sounds.len(), 1, "{kind}: {sounds:?}");
             assert_eq!(sounds[0].0, sound, "{kind} chest sound");
             assert_eq!(sounds[0].2, 1.0, "{kind} chest sound volume");
@@ -2133,9 +2263,9 @@ mod tests {
             return;
         };
         mount(&mut game, "minecraft:camel_husk", 7, [1.5, 64.0, -2.5], 7);
-        assert!(!game.mobs[0].persistent);
+        assert!(!game.remote_entities[0].persistent);
         assert!(
-            !horizon_client::mobs::ai::requires_custom_persistence(&game.mobs[0]),
+            !horizon_client::mobs::ai::requires_custom_persistence(&game.remote_entities[0]),
             "nothing else keeps it: the click must"
         );
         game.inventory[0] = Some(ItemStack::new("minecraft:saddle", 1));
@@ -2144,8 +2274,8 @@ mod tests {
             location: [0.0; 3],
         });
         assert!(game.interact_mob(target).unwrap(), "the saddle is used");
-        assert!(game.mobs[0].extra.saddled(), "the saddle went on");
-        assert!(game.mobs[0].persistent, "a clicked camel husk stays");
+        assert!(game.remote_entities[0].extra.saddled(), "the saddle went on");
+        assert!(game.remote_entities[0].persistent, "a clicked camel husk stays");
     }
 }
 
@@ -2162,7 +2292,7 @@ mod off_level_tests {
                 let mut m = horizon_client::mobs::Mob::new(id, pig.clone(), Vec3::ZERO, 0.0);
                 m.extra.mount = mount;
                 m.fluids.eye_in_water = true;
-                game.mobs.push(m);
+                game.remote_entities.push(m);
             }
             let ghost = horizon_client::mobs::Mob::new(72, pig, Vec3::ZERO, 0.0);
             game.persist

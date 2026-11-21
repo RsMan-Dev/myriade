@@ -524,12 +524,6 @@ impl RenderEntityBounds for Cushion {
     }
 }
 
-/// Whether this projectile still lives its list's tick: an arrow's state was
-/// not removed. A thrown projectile leaves its list through the batch's own
-/// keep flags, not a field of its own.
-fn shot_alive(shot: &Projectile) -> bool {
-    shot.arrow.as_ref().is_none_or(|a| !a.removed)
-}
 
 /// The item's view of the shared inside walk: its box, its life, the batch's
 /// blocks, and the part's contact, fired mid-walk over a lent level. An item
@@ -589,57 +583,6 @@ impl horizon_client::block_contact::InsideWalk for ItemInside<'_, '_> {
     }
 }
 
-/// The projectile's view of the shared inside walk, the item's shape of it.
-pub(in crate::game) struct ProjectileInside<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
-    pub(in crate::game) shot: &'a mut Projectile,
-}
-
-impl horizon_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
-    type Error = ();
-    fn bounds_at(&self, at: Vec3) -> Aabb {
-        let b = self.shot.bounds();
-        let d = at.subtract(self.shot.position);
-        Aabb::new(
-            b.min_position().add_vector(d),
-            b.max_position().add_vector(d),
-        )
-    }
-    fn is_alive(&self) -> bool {
-        shot_alive(self.shot)
-    }
-    fn block(&self, at: horizon_core::position::BlockPos) -> horizon_world::registry::BlockStateId {
-        self.game.world.block(at.x, at.y, at.z)
-    }
-    fn is_air(&self, state: horizon_world::registry::BlockStateId) -> bool {
-        self.game.pack.assets.registry.state(state).is_none_or(|d| {
-            matches!(
-                d.name.as_str(),
-                "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
-            )
-        })
-    }
-    fn inside_shape(
-        &mut self,
-        _state: horizon_world::registry::BlockStateId,
-        _at: horizon_core::position::BlockPos,
-    ) -> horizon_client::block_contact::InsideShape {
-        horizon_client::block_contact::InsideShape::Full
-    }
-    fn entity_inside(
-        &mut self,
-        at: horizon_core::position::BlockPos,
-        state: horizon_world::registry::BlockStateId,
-        _step: i32,
-        precise: bool,
-        effects: &mut mod_api::InsideEffects,
-    ) -> std::result::Result<(), ()> {
-        let (id, kind) = (self.shot.id, self.shot.entity_type());
-        self.game
-            .fire_batch_inside(id as i32, kind, state, at, precise, effects);
-        Ok(())
-    }
-}
 #[cfg(test)]
 mod render_bounds_tests {
     use super::*;
@@ -825,65 +768,6 @@ impl Game<'_> {
         }
     }
 
-    /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
-    /// item's is: the shared walk over its move, the staged fire over a lent
-    /// level, and the flush into this projectile's own tick.
-    pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
-        if !horizon_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
-        {
-            return;
-        }
-        let mut effects = mod_api::InsideEffects::default();
-        let mut inside = ProjectileInside { game: self, shot };
-        let movement = horizon_world::entity_move::MovementRecord {
-            from: inside.shot.previous,
-            to: inside.shot.position,
-            original: None,
-        };
-        let mut visited = crate::fast_hash::FxHashSet::default();
-        let _ = horizon_client::block_contact::sweep_movements(
-            &mut inside,
-            &[movement],
-            &mut visited,
-            &mut effects,
-        );
-        let ProjectileInside { game, shot } = inside;
-        for planned in effects.take_planned() {
-            if !shot_alive(shot) {
-                break;
-            }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_projectile_write(shot, write);
-            }
-        }
-    }
-
-    /// A typed entity write for a projectile, applied in its own tick. A
-    /// projectile takes no effects, no damage table and keeps no stuck
-    /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
-    /// movement once, as vanilla's projectiles keep none of the three.
-    fn apply_projectile_write(&mut self, shot: &mut Projectile, write: mod_api::EntityWrite) {
-        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        match write {
-            mod_api::EntityWrite::Push(v) => {
-                shot.velocity = shot.velocity.add_vector(triple(v));
-            }
-            mod_api::EntityWrite::SetMovement(v) => shot.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
-                shot.velocity = Vec3::new(
-                    shot.velocity.x * v[0],
-                    shot.velocity.y * v[1],
-                    shot.velocity.z * v[2],
-                );
-            }
-            mod_api::EntityWrite::ResetFallDistance => shot.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => shot.fire_ticks = ticks,
-            mod_api::EntityWrite::Hurt { .. } | mod_api::EntityWrite::AddEffect { .. } => {}
-        }
-    }
-
     /// An `entity_inside` part's contact for a kind the batch ticks, fired
     /// mid-walk over a lent level, the whole callback staged: only an answering
     /// callback's writes join the walk, and a panic there is contained, leaving
@@ -1049,6 +933,8 @@ macro_rules! define_entity_handles {
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
         pub(super) enum EntityHandle {
             $($kind(usize),)*
+            /// An entity of P's ECS, by its network id: no typed list holds it.
+            Ecs(u32),
         }
 
         /// Allocation-free storage-order walk with stable IDs and verified index hints.
@@ -1264,6 +1150,7 @@ macro_rules! match_entity {
             $($crate::game::entity::EntityHandle::$kind(i) => {
                 $crate::game::entity::entity_access!($borrow, $game$(.$list)+, i, $entity, $body)
             })*
+            $crate::game::entity::EntityHandle::Ecs(_) => unreachable!("an ECS entity has no typed body: its branch comes first"),
         }
     };
 }
@@ -1437,10 +1324,6 @@ macro_rules! load_entity_of_any_kind {
     };
 }
 
-/// The type ids the minecart kind loads.
-fn loads_as_cart(kind: &str) -> bool {
-    super::minecarts::CartKind::from_id(kind).is_some()
-}
 /// The type id the primed TNT kind loads.
 fn loads_as_tnt(kind: &str) -> bool {
     kind == "minecraft:tnt"
@@ -1522,7 +1405,7 @@ impl Game<'_> {
             .chain(self.resident_entities.knots.iter().map(|e| e.id))
             // Cast hooks live with their players, not in the saveable lists.
             // Keep both their identities and attachment holders until they leave.
-            .chain(self.fishing_hooks_here().map(|(hook, _)| hook.id()))
+            .chain(self.fishing_hooks_here().map(|(id, _)| id))
             .chain(self.natural_knot_id_iter())
     }
     /// The ids of every entity in the level that is not removed: one walk.
@@ -1985,34 +1868,23 @@ impl Entity for Minecart {
     fn native_type(&self) -> Cow<'static, str> {
         self.kind.id().into()
     }
+    /// Carts are saved and loaded by the ECS level (`ecs_mob_tree`, `ecs_spawn`): no host list holds them on a server.
     fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
+        _game: &mut Game<'_>,
+        _index: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        game.save_cart(index, keys)
+        None
     }
     fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        uuid: Option<[i32; 4]>,
+        _game: &mut Game<'_>,
+        _kind: &str,
+        _uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
+        _transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
-        if !loads_as_cart(kind) {
-            return Err(tag);
-        }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_cart,
-            load_cart_transferred,
-            tag,
-            uuid,
-            kind
-        );
-        Ok(())
+        Err(tag)
     }
     stored_motion!();
     fn is_vehicle(&self) -> bool {

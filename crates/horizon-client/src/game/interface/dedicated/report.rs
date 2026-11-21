@@ -310,8 +310,7 @@ impl Game<'_> {
     fn active_perf_view(&self) -> super::super::levels::EntityCountView<'_> {
         super::super::levels::entity_count_view!(
             self,
-            &self.creatures.projectiles,
-            &self.resident_entities.general.rows,
+            &[],
             &self.resident_entities.knots
         )
     }
@@ -324,7 +323,7 @@ impl Game<'_> {
     /// Health samples count every typed family using lengths only.
     pub(in crate::game) fn perf_world_counts(&self) -> WorldCounts {
         let (mut chunks, mut entities) = (self.world.chunks.len(), self.perf_entity_count());
-        for (_, world, view) in self.levels.parked_perf_views() {
+        for (_, world, view, _) in self.levels.parked_perf_views() {
             chunks += world.chunks.len();
             entities += view.total();
         }
@@ -345,7 +344,8 @@ impl Game<'_> {
     pub(in crate::game) fn level_counts(&self) -> Vec<LevelCounts> {
         let level = |dim: Dim,
                      world: &horizon_client::world::World,
-                     view: super::super::levels::EntityCountView<'_>| {
+                     view: super::super::levels::EntityCountView<'_>,
+                     ecs_kinds: &[(&'static str, usize)]| {
             let mut block_entities = BTreeMap::<String, u32>::new();
             for entity in world.block_entities.values() {
                 *block_entities.entry(entity.id().to_owned()).or_default() += 1;
@@ -353,15 +353,15 @@ impl Game<'_> {
             LevelCounts {
                 dimension: dim.id().to_owned(),
                 chunks: world.chunks.len() as u32,
-                entities: view.registry_counts(),
+                entities: view.registry_counts(ecs_kinds),
                 block_entities: block_entities.into_iter().collect(),
             }
         };
-        std::iter::once(level(self.dim, &self.world, self.active_perf_view()))
+        std::iter::once(level(self.dim, &self.world, self.active_perf_view(), &self.ecs.count_by_kind()))
             .chain(
                 self.levels
                     .parked_perf_views()
-                    .map(|(dim, world, view)| level(dim, world, view)),
+                    .map(|(dim, world, view, kinds)| level(dim, world, view, &kinds)),
             )
             .collect()
     }
@@ -552,7 +552,7 @@ mod tests {
         let at = horizon_core::geometry::Vec3::new(0.5, 4.0, 0.5);
         let mut cow = horizon_client::mobs::Mob::new(1, kind, at, 0.0);
         cow.custom_name = Some("Zorblax".into());
-        game.mobs.push(cow);
+        game.remote_entities.push(cow);
         let sign = SignData {
             front: SignText {
                 lines: [

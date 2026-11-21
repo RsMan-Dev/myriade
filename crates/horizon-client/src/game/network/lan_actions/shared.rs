@@ -100,8 +100,6 @@ pub(super) struct GuestPlay {
     modifiers: Vec<(String, String)>,
     equipped: Option<Vec<Option<ItemStack>>>,
     craft_grid: Vec<Option<ItemStack>>,
-    /// The guest's cast fishing hook (`Player.fishing`).
-    pub(super) hook: horizon_client::join_seq::ResidentSlot<super::fishing::Hook>,
     sculk: super::sculk::PlayerEvents,
     /// What `ServerPlayer` last recorded for the guest's scoreboard criteria
     /// (`lastRecordedHealthAndAbsorption` and the others).
@@ -3348,9 +3346,6 @@ mod crack_feedback_tests;
 #[path = "tests/menu_still_valid_tests.rs"]
 mod menu_still_valid_tests;
 
-#[cfg(test)]
-#[path = "tests/projectile_lifecycle_tests.rs"]
-mod projectile_lifecycle_tests;
 
 #[cfg(test)]
 #[path = "tests/spin_target_tests.rs"]

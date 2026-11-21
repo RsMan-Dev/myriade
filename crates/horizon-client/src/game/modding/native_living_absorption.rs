@@ -25,10 +25,8 @@ impl Game<'_> {
                         }),
                 )
             }
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.absorption(id),
+            Target::Mob(id) => self.remote_mob(id)
                 .map(|m| m.absorption),
             _ => None,
         }
@@ -52,9 +50,13 @@ impl Game<'_> {
                 })
                 .flatten()
                 .is_some(),
+            Some(Target::Mob(id)) if self.ecs.is_active() => {
+                self.journal_mob_health(id);
+                self.ecs.set_absorption(id, amount)
+            }
             Some(Target::Mob(id)) => {
                 self.journal_mob_health(id);
-                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self.remote_mob_mut(id) else {
                     return false;
                 };
                 let max = horizon_client::mobs::armor::max_absorption(m);
@@ -135,7 +137,7 @@ mod tests {
     fn a_mobs_absorption_takes_a_hit_before_its_health() {
         with_game(|game| {
             let zombie = absorbing_zombie(game);
-            game.mobs.push(zombie);
+            game.remote_entities.push(zombie);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             let full = living.health(game).unwrap();
             assert!(living.set_absorption(game, 9.0));
@@ -161,11 +163,11 @@ mod tests {
     fn a_mobs_set_absorption_survives_a_save_and_reload() {
         with_game(|game| {
             let zombie = absorbing_zombie(game);
-            game.mobs.push(zombie);
+            game.remote_entities.push(zombie);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             assert!(living.set_absorption(game, 3.0));
             let saved = horizon_client::entity_nbt::mob_to_nbt(
-                &game.mobs[0],
+                &game.remote_entities[0],
                 [1, 0, 0, 1],
                 None,
                 None,
@@ -195,14 +197,14 @@ mod tests {
             game.player = Some(player);
             bind_local_player(game, 20, 123);
             let zombie = absorbing_zombie(game);
-            game.mobs.push(zombie);
-            game.mobs[0].needs_sync = false;
+            game.remote_entities.push(zombie);
+            game.remote_entities[0].needs_sync = false;
             let player = game.living(game.entity(20).unwrap()).unwrap();
             let mob = game.living(game.entity(12).unwrap()).unwrap();
             assert!(player.set_absorption(game, 5.0));
             assert!(mob.set_absorption(game, 2.0));
             let events = game.player.as_ref().unwrap().events.len();
-            game.mobs[0].needs_sync = false;
+            game.remote_entities[0].needs_sync = false;
             let abort = game.transaction_open();
             assert!(player.set_absorption(game, 9.0));
             assert!(mob.set_absorption(game, 4.0));
@@ -210,14 +212,14 @@ mod tests {
             assert_eq!(player.absorption(game), Some(5.0));
             assert_eq!(mob.absorption(game), Some(2.0));
             assert_eq!(game.player.as_ref().unwrap().events.len(), events);
-            assert!(!game.mobs[0].needs_sync);
+            assert!(!game.remote_entities[0].needs_sync);
             let commit = game.transaction_open();
             assert!(player.set_absorption(game, 9.0));
             assert!(mob.set_absorption(game, 4.0));
             game.transaction_close(&commit, true);
             assert_eq!(player.absorption(game), Some(9.0));
             assert_eq!(mob.absorption(game), Some(4.0));
-            assert!(game.mobs[0].needs_sync);
+            assert!(game.remote_entities[0].needs_sync);
         });
     }
 }

@@ -33,7 +33,7 @@ impl Game<'_> {
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement
     /// limit, which `native_sweep_attack` may force or stop for the hit on `target`.
-    pub(super) fn sweep_attack_position(
+    pub(in crate::game) fn sweep_attack_position(
         &mut self,
         scale: f32,
         crit: bool,
@@ -67,7 +67,7 @@ impl Game<'_> {
     /// `Player.doSweepAttack` after a successful hit, in vanilla's order: the
     /// sweep sound, the victims around `target` (its box, and the mob that
     /// was hit, when there is one) and then the arc.
-    pub(super) fn sweep_attack(
+    pub(in crate::game) fn sweep_attack(
         &mut self,
         at: [f64; 3],
         from: Option<[f64; 3]>,
@@ -147,7 +147,7 @@ impl Game<'_> {
 
     /// `critical_hit` around the box `area` of entity `id` (`magic`: the
     /// enchanted hit instead of the crit).
-    pub(super) fn area_critical_hit(&mut self, id: i32, area: Aabb, magic: bool) {
+    pub(in crate::game) fn area_critical_hit(&mut self, id: i32, area: Aabb, magic: bool) {
         let (feet, size) = (area.bottom_center(), area.size());
         self.critical_hit(
             self.lan_acting,
@@ -181,23 +181,13 @@ impl Game<'_> {
             return false;
         }
         // A painting nearer than the targeted block and mob breaks instead.
-        if let Some((i, d)) = self.painting_hit()
-            && self.mob_hit().is_none_or(|m| d < m.1)
-            && self.before_block(d)
-        {
-            // BlockAttachedEntity.skipAttackInteraction: a player may not
-            // touch a decoration where `mayInteract` refuses (spawn
-            // protection, the world border), and the attack goes no further.
-            let p = self.paintings[i].pos;
-            if !self.may_interact_at(BlockPos::new(p[0], p[1], p[2])) {
-                return true;
-            }
-            // `BlockAttachedEntity.hurtServer` refuses first through `isInvulnerableToBase`.
-            if self.native_player_hit_invulnerable(self.paintings[i].id, "minecraft:painting") {
-                self.attack_ticks = 0;
-            } else {
-                self.break_painting(i, true);
-            }
+        // Under the ECS, the creatures are found by `ecs_mob_hit` (their real boxes), so they keep their place before the paintings.
+        let mob_distance = if self.ecs.is_active() {
+            self.ecs_mob_hit().map(|m| m.1)
+        } else {
+            self.mob_hit().map(|m| m.1)
+        };
+        if self.aimed_painting().is_some_and(|(_, d)| mob_distance.is_none_or(|md| d < md) && self.before_block(d)) && self.attack_painting() {
             return true;
         }
         // A ghast's fireball or a wind charge in front: turned back.
@@ -211,6 +201,17 @@ impl Game<'_> {
             || self.attack_cart()
             || self.attack_dragon()
         {
+            return true;
+        }
+        if self.ecs.is_active() {
+            let Some((id, distance)) = self.ecs_mob_hit() else {
+                return false;
+            };
+            if !self.before_block(distance) || !self.held_range_allows(distance) {
+                return false;
+            }
+            self.attack_entity(id);
+            self.swing_arm();
             return true;
         }
         let Some((index, distance, _)) = self.mob_hit() else {
@@ -439,7 +440,7 @@ impl Game<'_> {
     }
     /// Player.attack admits its hurt/tail before the item's damage bonus. Keep
     /// that predicate with the one damage evaluation, including its RNG draws.
-    pub(super) fn melee_damage_with_admission(
+    pub(in crate::game) fn melee_damage_with_admission(
         &mut self,
         target_kind: &str,
         living: bool,

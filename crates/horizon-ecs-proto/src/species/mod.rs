@@ -14,6 +14,7 @@ pub mod lists;
 pub mod mob_heads;
 pub mod minecart;
 pub mod cushion;
+pub mod arrow;
 pub mod leash_knot;
 pub mod end_crystal;
 pub mod chicken;
@@ -145,6 +146,8 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &armor_stand::DEF,
     &cushion::DEF,
     &leash_knot::DEF,
+    &arrow::ARROW,
+    &arrow::SPECTRAL_ARROW,
     &minecart::RIDEABLE,
     &minecart::CHEST,
     &minecart::HOPPER,
@@ -258,6 +261,13 @@ pub struct Def {
     pub llama_strength: bool,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
+/// `ALL_CAPS` for a species of `EntityType.fireImmune` (blaze, magma cube, zoglin, zombified piglin).
+pub const FIRE_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune];
+/// `ALL_CAPS` for the cave spider (`Spider.canBeAffected`) and for the parched (`Parched.canBeAffected`).
+pub const POISON_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune];
+pub const WEAKNESS_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::WeaknessImmune];
+/// The wither skeleton: fire immune and refusing the wither effect.
+pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
@@ -774,6 +784,8 @@ mod tests {
         ("minecraft:item", &[]),
         ("minecraft:experience_orb", &[]),
         ("minecraft:trident", &[]),
+        ("minecraft:arrow", &[]),
+        ("minecraft:spectral_arrow", &[]),
         ("minecraft:firework_rocket", &[]),
         ("minecraft:area_effect_cloud", &[]),
         ("minecraft:evoker_fangs", &[]),
@@ -907,3 +919,4 @@ pub mod sulfur_cube;
 pub mod villager;
 pub mod warden;
 pub mod wither;
+pub mod boats;

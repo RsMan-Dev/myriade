@@ -71,7 +71,7 @@ fn spawn_batches_refuse_saves_until_all_rows_are_published() {
             });
             assert_eq!(calls.load(Ordering::SeqCst), 2);
             assert_eq!(succeeded.load(Ordering::SeqCst), 0);
-            assert_eq!(game.mobs.len(), 2);
+            assert_eq!(game.ecs_count("minecraft:pig", [5.0, 64.0, 5.0], 16.0), 2);
             game.save.flush().unwrap();
             assert!(game.save.load_entities(0, 0).is_empty());
             game.save_game().unwrap();

@@ -48,11 +48,15 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
         }
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        // An ECS level has no list to scan, and `drain_modified` belongs to the tracker: ECS sizes are not asked yet (listed in the report).
+        if self.ecs.is_active() {
+            return;
+        }
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             let (id, pose, vanilla, previous) = (m.id, m.pose(), m.vanilla_dims(), m.size_answer);
             if let Some(answer) = self.ask_entity_size(id, pose, vanilla, previous)
-                && let Some(m) = self.mobs.get_mut(i)
+                && let Some(m) = self.remote_entities.get_mut(i)
                 && m.id == id
             {
                 m.size_answer = Some(answer);
@@ -168,11 +172,11 @@ mod tests {
                         crate::game::creatures::SpawnSite::Plain,
                     )
                     .unwrap();
-                let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-                let vanilla = game.mobs[i].vanilla_dims();
+                let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
+                let vanilla = game.remote_entities[i].vanilla_dims();
                 game.native_mob_sizes();
                 let grown = [vanilla[0] * 2.0, vanilla[1] * 2.0, vanilla[2]];
-                let m = &game.mobs[i];
+                let m = &game.remote_entities[i];
                 assert_eq!((m.width(), m.height()), (grown[0], grown[1]));
                 assert_eq!(m.eye_height(), f64::from(vanilla[2]));
                 assert!((m.bounds().size().y - f64::from(grown[1])).abs() < 1e-9);
@@ -183,12 +187,12 @@ mod tests {
                     &[(m_pose(game, i), vanilla, vanilla)]
                 );
                 // Grown down to a baby: asked again, from the size it had.
-                horizon_client::mobs::finalize::set_baby(&mut game.mobs[i], true);
+                horizon_client::mobs::finalize::set_baby(&mut game.remote_entities[i], true);
                 game.native_mob_sizes();
                 let calls = calls.lock().unwrap();
                 assert_eq!(calls.len(), 2);
                 assert_eq!(calls[1].1, grown);
-                assert_eq!(calls[1].2, game.mobs[i].vanilla_dims());
+                assert_eq!(calls[1].2, game.remote_entities[i].vanilla_dims());
             })
         });
     }
@@ -220,9 +224,9 @@ mod tests {
                         crate::game::creatures::SpawnSite::Plain,
                     )
                     .unwrap();
-                let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-                let vanilla = game.mobs[i].vanilla_dims();
-                let default_dims = game.mobs[i].dims();
+                let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
+                let vanilla = game.remote_entities[i].vanilla_dims();
+                let default_dims = game.remote_entities[i].dims();
                 for invalid in [
                     f32::NAN,
                     f32::INFINITY,
@@ -235,33 +239,33 @@ mod tests {
                         let mut answer = vanilla;
                         answer[axis] = invalid;
                         *size.lock().unwrap() = answer;
-                        game.mobs[i].size_answer = None;
+                        game.remote_entities[i].size_answer = None;
                         game.native_mob_sizes();
-                        let mob = &game.mobs[i];
+                        let mob = &game.remote_entities[i];
                         assert_eq!(mob.size_answer.unwrap().effective(), vanilla, "{answer:?}");
                         assert_eq!(mob.dims(), default_dims, "{answer:?}");
                     }
                 }
                 // The reported crash input must never become a pathfinding extent.
                 *size.lock().unwrap() = [1e30; 3];
-                game.mobs[i].size_answer = None;
+                game.remote_entities[i].size_answer = None;
                 game.native_mob_sizes();
-                assert_eq!(game.mobs[i].dims(), default_dims);
+                assert_eq!(game.remote_entities[i].dims(), default_dims);
                 // Both endpoints are valid: zero-size entities are vanilla too.
                 for accepted in [0.0, 32.0] {
                     *size.lock().unwrap() = [accepted; 3];
-                    game.mobs[i].size_answer = None;
+                    game.remote_entities[i].size_answer = None;
                     game.native_mob_sizes();
                     assert_eq!(
-                        game.mobs[i].dims(),
+                        game.remote_entities[i].dims(),
                         (accepted.into(), accepted.into(), accepted.into())
                     );
                 }
                 *size.lock().unwrap() = [0.0; 3];
-                game.mobs[i].size_answer = None;
+                game.remote_entities[i].size_answer = None;
                 for _ in 0..4 {
                     game.native_mob_sizes();
-                    let mob = &game.mobs[i];
+                    let mob = &game.remote_entities[i];
                     let path_mob = mob.path_mob();
                     assert_eq!((path_mob.width, path_mob.height), (0.0, 0.0));
                     let world = game.mob_world_base(&[]);
@@ -317,13 +321,13 @@ mod tests {
                             crate::game::creatures::SpawnSite::Plain,
                         )
                         .unwrap();
-                    let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-                    let vanilla = game.mobs[i].vanilla_dims();
+                    let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
+                    let vanilla = game.remote_entities[i].vanilla_dims();
                     for answer in [[0.0; 3], [1e-30; 3], [1e-45; 3], vanilla] {
                         *size.lock().unwrap() = answer;
-                        game.mobs[i].size_answer = None;
+                        game.remote_entities[i].size_answer = None;
                         game.native_mob_sizes();
-                        let mut mob = game.mobs[i].path_mob();
+                        let mut mob = game.remote_entities[i].path_mob();
                         mob.on_ground = true;
                         let world = game.mob_world_base(&[]);
                         let finder = Finder::new(&world, &mob, Evaluator::Walk);
@@ -338,11 +342,11 @@ mod tests {
                             crate::game::creatures::SpawnSite::Plain,
                         )
                         .unwrap();
-                    let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-                    game.mobs[i].extra.model_scale = 0.0625;
-                    *size.lock().unwrap() = game.mobs[i].vanilla_dims();
+                    let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
+                    game.remote_entities[i].extra.model_scale = 0.0625;
+                    *size.lock().unwrap() = game.remote_entities[i].vanilla_dims();
                     game.native_mob_sizes();
-                    let mut mob = game.mobs[i].path_mob();
+                    let mut mob = game.remote_entities[i].path_mob();
                     mob.on_ground = true;
                     assert!((mob.width - 0.025).abs() < 1e-8);
                     assert!((mob.height - 0.01875).abs() < 1e-8);
@@ -362,6 +366,6 @@ mod tests {
     }
 
     fn m_pose(game: &crate::game::Game<'_>, i: usize) -> Pose {
-        game.mobs[i].pose()
+        game.remote_entities[i].pose()
     }
 }

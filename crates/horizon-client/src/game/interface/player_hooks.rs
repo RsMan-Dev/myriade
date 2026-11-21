@@ -547,7 +547,7 @@ impl Game<'_> {
         };
         engine::tick(&mut Models {
             own: self.player_model.as_mut(),
-            mobs: &mut self.mobs,
+            mobs: &mut self.remote_entities,
             remote,
         });
     }

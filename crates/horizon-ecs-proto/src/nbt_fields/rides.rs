@@ -1,10 +1,12 @@
 //! The keys of the vehicles, stands, frames and riders: the armor stand's flags, pose and disabled slots (`Stand`, `Pose`, `DisabledSlots`),
-//! a hanging entity's item, rotation, facing and block (`Frame`, `Attached`), a furnace or TNT cart (`Furnace`, `Fuse`), and the riders of
+//! a hanging entity's item, rotation, facing and block (`Held`, `Attached`), a furnace or TNT cart (`Furnace`, `Fuse`), and the riders of
 //! a mount (`Passengers`, written by the mount's compound, the riders not saved a second time by `save_all`).
-use crate::hanging::{Attached, Frame};
+use crate::frame_item::Held;
+use crate::hanging::Attached;
 use crate::minecart::{Fuse, Furnace};
 use crate::mount::Mount;
 use crate::nbt::{owner, Field};
+use crate::seat::{self, Seats};
 use crate::stand::{set_pose, DisabledSlots, Pose, Stand, DEFAULT_POSE, INVISIBLE, MARKER, NO_BASE_PLATE, SHOW_ARMS, SMALL};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
@@ -21,15 +23,15 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Invisible"), write: write_invisible, read: read_invisible, accepts: byte, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("Pose"), write: write_pose, read: read_pose, accepts: compound, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("DisabledSlots"), write: write_disabled, read: read_disabled, accepts: crate::nbt::accept::int, owner: Some(owner::<DisabledSlots>) },
-    Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Frame>) },
-    Field { key: Cow::Borrowed("ItemRotation"), write: write_rotation, read: read_rotation, accepts: byte, owner: Some(owner::<Frame>) },
+    Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Held>) },
+    Field { key: Cow::Borrowed("ItemRotation"), write: write_rotation, read: read_rotation, accepts: byte, owner: Some(owner::<Held>) },
     Field { key: Cow::Borrowed("Facing"), write: write_facing, read: read_facing, accepts: byte, owner: Some(owner::<Attached>) },
     Field { key: Cow::Borrowed("block_pos"), write: write_block_pos, read: read_block_pos, accepts: int_array, owner: Some(owner::<Attached>) },
     Field { key: Cow::Borrowed("PushX"), write: write_push_x, read: read_push_x, accepts: double, owner: Some(owner::<Furnace>) },
     Field { key: Cow::Borrowed("PushZ"), write: write_push_z, read: read_push_z, accepts: double, owner: Some(owner::<Furnace>) },
     Field { key: Cow::Borrowed("Fuel"), write: write_fuel, read: read_fuel, accepts: crate::nbt::accept::short, owner: Some(owner::<Furnace>) },
     Field { key: Cow::Borrowed("fuse"), write: write_fuse, read: read_fuse, accepts: crate::nbt::accept::int, owner: Some(owner::<Fuse>) },
-    Field { key: Cow::Borrowed("Passengers"), write: write_passengers, read: read_passengers, accepts: riders, owner: Some(owner::<Mount>) },
+    Field { key: Cow::Borrowed("Passengers"), write: write_passengers, read: read_passengers, accepts: riders, owner: None },
 ];
 
 /// The creators: a key of a component the entity lacks (a component added in play, then saved) gives it back to that component. Never
@@ -184,28 +186,28 @@ fn read_disabled(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 fn write_item(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(item) = w.get::<Frame>(e).and_then(|f| f.item.as_deref()) {
+    if let Some(item) = w.get::<Held>(e).and_then(|h| h.stack.as_ref()) {
         c.insert("Item".into(), item_to_nbt(item));
     }
 }
 
 fn read_item(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Some(item) = item_from_nbt(t) else { return false };
-    let Some(mut f) = w.get_mut::<Frame>(e) else { return false };
-    f.item = Some(Box::new(item));
+    let Some(mut h) = w.get_mut::<Held>(e) else { return false };
+    h.stack = Some(item);
     true
 }
 
 fn write_rotation(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(f) = w.get::<Frame>(e) {
-        c.insert("ItemRotation".into(), Tag::Byte(f.rotation));
+    if let Some(h) = w.get::<Held>(e) {
+        c.insert("ItemRotation".into(), Tag::Byte(h.rotation as i8));
     }
 }
 
 fn read_rotation(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
-    let Some(mut f) = w.get_mut::<Frame>(e) else { return false };
-    f.rotation = *v % 8;
+    let Some(mut h) = w.get_mut::<Held>(e) else { return false };
+    h.rotation = v.rem_euclid(8) as u8;
     true
 }
 
@@ -292,30 +294,35 @@ fn read_fuse(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// The riders of a mount that are creatures, each as its own compound (`save`: their keys and theirs, recursively). A player is not
-/// written: it is saved with its player data.
+/// The creature riders of a vehicle (its seats, or its mount's riders), each as its own compound (`save`: their keys and theirs,
+/// recursively). A player is not written: it is saved with its player data.
 fn write_passengers(w: &World, e: Entity, c: &mut Compound) {
-    let Some(m) = w.get::<Mount>(e) else { return };
-    let list: Vec<Tag> = [m.rider, m.passenger]
-        .into_iter()
-        .flatten()
-        .filter_map(|who| match who {
-            Who::Entity(r) => crate::nbt::save(w, r).map(Tag::Compound),
-            Who::Player(_) => None,
-        })
-        .collect();
+    let mut riders = seat::riders_of(w, e);
+    if let Some(m) = w.get::<Mount>(e) {
+        for who in [m.rider, m.passenger].into_iter().flatten() {
+            if let Who::Entity(r) = who && !riders.contains(&r) {
+                riders.push(r);
+            }
+        }
+    }
+    let list: Vec<Tag> = riders.into_iter().filter_map(|r| crate::nbt::save(w, r).map(Tag::Compound)).collect();
     if !list.is_empty() {
         c.insert("Passengers".into(), Tag::List(list));
     }
 }
 
-/// Restores each rider compound as an entity and seats it: a rider that is refused is not seated.
+/// Restores each rider compound as an entity and seats it in the vehicle's seats (or its mount): a rider that is refused is not seated.
 fn read_passengers(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::List(list) = t else { return false };
+    let seated = crate::seat::seats_of(w, e).is_some();
     for c in list {
         let Tag::Compound(c) = c else { continue };
         if let Some(r) = crate::nbt::restore(w, c) {
-            crate::mount::ride(w, e, Who::Entity(r));
+            if seated {
+                seat::board(w, r, e, None);
+            } else {
+                crate::mount::ride(w, e, Who::Entity(r));
+            }
         }
     }
     true

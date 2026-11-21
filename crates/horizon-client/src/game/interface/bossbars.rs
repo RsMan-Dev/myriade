@@ -637,7 +637,7 @@ impl Game<'_> {
         if viewer.here {
             let range = f64::from(10.min(viewer.view_chunks.max(0)) * 16);
             for m in self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| m.species() == Species::Wither && m.alive() && !m.removed)
             {

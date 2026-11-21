@@ -8,6 +8,24 @@ impl Game<'_> {
     /// server plays is broadcast to the players near the mount, the rider
     /// included (their own client plays none).
     pub(super) fn lan_start_riding_jump(&mut self, conn: u32, data: i32) {
+        if self.ecs.is_active() {
+            let vehicle = self.lan.as_ref().and_then(|h| h.hub.guest(conn)).and_then(|g| g.vehicle);
+            let Some(vehicle) = vehicle else {
+                return;
+            };
+            let Some((sound, volume)) = self.start_riding_jump_ecs(vehicle, data) else {
+                return;
+            };
+            let Some(at) = self.ecs.position(vehicle) else {
+                return;
+            };
+            let name = format!("minecraft:{sound}");
+            self.send_level_sound(
+                LevelSound::new(&name, at, volume, 1.0).in_source(SoundSource::Neutral),
+                None,
+            );
+            return;
+        }
         let index = self.as_guest(conn, |g| g.mount_index());
         let Some(Some(index)) = index else {
             return;

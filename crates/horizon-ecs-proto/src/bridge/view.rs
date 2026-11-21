@@ -1,7 +1,7 @@
 //! What `EntityState` reads of an entity, from its components, on demand (no cache). The entities whose view changed are queued by
 //! the act that changes them (`mark`) and by the `NetId` hook; a sleeping entity (`Disabled`) is never queued, and nothing scans
 //! the entities.
-use crate::cow::{Contact, Pos, TypeName, Vel, Yaw};
+use crate::cow::{Contact, Health, Pos, SpeciesId, TypeName, Vel, Yaw};
 use crate::goals::{Equipment, Head, Uid};
 use crate::leash::{Holder, Leash};
 use crate::mount::Mount;
@@ -25,6 +25,9 @@ pub struct EntityView {
     pub rider: Option<Who>,
     pub passenger: Option<Who>,
     pub leash: Option<Holder>,
+    /// A creature: a species and its health. A vehicle: a boat or a cart (`minecart::Kind`). Read from the components, no scan.
+    pub is_creature: bool,
+    pub is_vehicle: bool,
 }
 
 /// The view of `e`, or None when it has no position or sleeps (`Disabled`: not ticked, not tracked).
@@ -49,6 +52,8 @@ pub fn view(world: &World, e: Entity) -> Option<EntityView> {
         rider: mount.and_then(|m| m.rider),
         passenger: mount.and_then(|m| m.passenger),
         leash: r.get::<Leash>().map(|l| l.holder),
+        is_creature: r.contains::<SpeciesId>() && r.contains::<Health>(),
+        is_vehicle: r.contains::<crate::boat::Boat>() || r.contains::<crate::minecart::Kind>(),
     })
 }
 

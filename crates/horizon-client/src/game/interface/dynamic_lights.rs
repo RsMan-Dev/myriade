@@ -63,7 +63,7 @@ impl Game<'_> {
                 )
             });
             let mobs = self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| !m.removed)
                 .filter_map(move |m| {

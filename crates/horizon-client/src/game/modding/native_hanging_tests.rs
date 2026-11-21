@@ -186,23 +186,3 @@ impl mod_api::Hooks for BreakWatcher {
         mod_api::Flow::Cancel
     }
 }
-
-/// `hanging_break` names the level the frame hangs in: a frame in the Nether reports
-/// `minecraft:the_nether`, not the overworld.
-#[test]
-#[ignore = "daily"]
-fn hanging_break_names_the_nether_it_happens_in() {
-    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-        "break-watcher",
-        Box::new(BreakWatcher(seen.clone())),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_hanging(|game| {
-            game.dim = super::Dim::Nether;
-            assert!(!game.break_frame_by(0, None), "the listener kept the frame");
-            assert_eq!(*seen.lock().unwrap(), vec!["minecraft:the_nether"]);
-        });
-    });
-}

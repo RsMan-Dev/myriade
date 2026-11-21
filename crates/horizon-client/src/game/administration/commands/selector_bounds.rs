@@ -28,26 +28,21 @@ impl Game<'_> {
             Target::General(_) => None,
             Target::Player => self.player.as_ref().map(|p| p.bounds()),
             Target::Guest(conn) => self.command_guest(conn).map(|p| p.bounds()),
-            Target::Hook(id) => self.fishing_hook_by_id(id).map(|(h, _)| h.bounds()),
+            Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| crate::game::fishing::bounds(p)),
             Target::DragonPart(id) => self
                 .resident_dragon_part(id)
                 .map(|(d, i)| d.part_geometry(i).1),
             Target::Mob(id) => self.mobs.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Item(id) => self.dropped.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Orb(id) => self.orbs.iter().find(|e| e.id == id).map(Entity::bounds),
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|e| e.id == id)
-                .map(Entity::bounds),
+            Target::Projectile(id) => self.ecs.entity_of(id).and_then(|e| self.ecs.bounds(e)),
             Target::Stand(id) => self
                 .armor_stands
                 .iter()
                 .find(|e| e.id == id)
                 .map(Entity::bounds),
             Target::Boat(id) => self.boats.iter().find(|e| e.id == id).map(Entity::bounds),
-            Target::Cart(id) => self.carts.iter().find(|e| e.id == id).map(Entity::bounds),
+            Target::Cart(id) => self.ecs.bounds(id),
             Target::Tnt(id) => self.tnts.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Falling(id) => self.falling.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Rocket(id) => self.rockets.iter().find(|e| e.id == id).map(Entity::bounds),

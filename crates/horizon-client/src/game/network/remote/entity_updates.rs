@@ -36,7 +36,7 @@ impl Game<'_> {
         let v = Vec3::new(velocity[0], velocity[1], velocity[2]);
         // `falling` and `tnts` are searched from the back: AddEntity calls this right after
         // appending the block or TNT, so a spawn doesn't walk the whole list.
-        if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
+        if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, id as u32) {
             // Squid.aiStep derives its body pitch and roll from network motion.
             m.velocity = v;
         } else if let Some(d) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
@@ -108,7 +108,7 @@ impl Game<'_> {
     /// Put the copy under the landing spot.
     pub(super) fn place_ghast_under_body(&mut self, id: u32, spot: Vec3) {
         let Some(m) = self
-            .mobs
+            .remote_entities
             .iter_mut()
             .find(|m| m.id == id && m.species() == horizon_client::mobs::Species::HappyGhast)
         else {
@@ -148,7 +148,7 @@ impl Game<'_> {
             .entity
             .as_ref()
             .and_then(|e| {
-                let m = self.mobs.iter().find(|m| m.id == e.id as u32)?;
+                let m = self.remote_entities.iter().find(|m| m.id == e.id as u32)?;
                 let y = if e.anchor == EYES {
                     m.eye_y()
                 } else {

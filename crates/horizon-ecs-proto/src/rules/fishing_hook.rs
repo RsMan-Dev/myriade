@@ -41,6 +41,11 @@ pub fn buoyancy_force(y: f64, vel_y: f64, cell_y: i32, liquid: f32) -> f64 {
     force
 }
 
+/// The height where the float rests in the water: the buoyancy force is zero there, with no velocity (`cell_y` + the liquid's height).
+pub fn rest_height(cell_y: i32, liquid: f32) -> f64 {
+    f64::from(cell_y) + f64::from(liquid)
+}
+
 /// The pull of a hooked target towards its owner at `player`: the offset from `at` times `share` (`pullEntity`).
 pub fn pull_toward(player: [f64; 3], at: Vec3, share: f64) -> [f64; 3] {
     [(player[0] - at.x) * share, (player[1] - at.y) * share, (player[2] - at.z) * share]

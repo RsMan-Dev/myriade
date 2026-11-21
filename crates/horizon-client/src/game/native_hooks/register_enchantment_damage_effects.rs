@@ -169,8 +169,8 @@ mod tests {
                             10.0,
                         ),
                     ] {
-                        game.mobs.clear();
-                        game.mobs
+                        game.remote_entities.clear();
+                        game.remote_entities
                             .push(Mob::new(21, golem.clone(), Vec3::new(1.0, 64.0, 0.0), 0.0));
                         let mut weapon = ItemStack::new("minecraft:stick", 1);
                         weapon.damage = 11;
@@ -180,9 +180,9 @@ mod tests {
                             .collect();
                         game.inventory[game.selected] = Some(weapon);
                         game.attack_ticks = 100;
-                        let before = game.mobs[0].health;
+                        let before = game.remote_entities[0].health;
                         game.attack_mob(0);
-                        assert_eq!(before - game.mobs[0].health, expected);
+                        assert_eq!(before - game.remote_entities[0].health, expected);
                     }
                     let mut trident = horizon_client::projectiles::Projectile::new(
                         horizon_client::projectiles::ProjectileKind::Trident,

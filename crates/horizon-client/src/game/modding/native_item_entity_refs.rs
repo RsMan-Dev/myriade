@@ -185,7 +185,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(99, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(99, kind, Vec3::ZERO, 0.0));
             let thrower = game.entity(99).unwrap();
             game.dropped[0].thrower = Some(uuid_ints(game.entity_uuid(thrower).unwrap()));
             assert_eq!(item.owner(game), Some(thrower));

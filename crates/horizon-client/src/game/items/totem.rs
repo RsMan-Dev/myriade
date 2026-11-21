@@ -42,7 +42,7 @@ impl Game<'_> {
                     .and_then(|info| info.death_protection.clone()),
             }
         };
-        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
+        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
             if m.extra.main_hand_id().is_none() && m.extra.off_hand_id().is_none() {
                 m.extra.hand_protection = None;
                 continue;
@@ -55,6 +55,14 @@ impl Game<'_> {
                 ),
             });
         }
+    }
+    /// `sync_mob_death_protection` for the ECS entity `id`: its hands are read from its components, not from a mob.
+    pub(in crate::game) fn hand_protection_ecs(&self, id: u32) -> Option<horizon_client::mobs::HandProtection> {
+        let items = self.items();
+        let of = |s: Option<ItemStack>| s.and_then(|s| s.death_protection(items.get(&s.item)).map(<[_]>::to_vec));
+        let off = self.ecs_item(id, horizon_ecs_proto::goals::Slot::Off).map(|n| ItemStack::new(&n, 1));
+        let main = self.ecs_main_hand(id);
+        (main.is_some() || off.is_some()).then(|| horizon_client::mobs::HandProtection { main: of(main), off: of(off) })
     }
     /// Whether either hand holds a death-protection item, for the next hurt:
     /// the window's player once a tick, a server's player for each of its

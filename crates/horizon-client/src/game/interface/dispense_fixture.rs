@@ -155,17 +155,24 @@ impl Game<'_> {
         self.block_ticks = Ticks::new(0);
         self.tick_chunks.clear();
         self.sync_tick_chunks();
-        self.mobs.clear();
+        self.remote_entities.clear();
         self.dragon.discard();
         self.dropped.clear();
-        self.creatures.projectiles.clear();
         self.tnts.clear();
         self.boats.clear();
         self.carts.clear();
         self.armor_stands.clear();
         self.crystals.clear();
-        self.paintings.clear();
-        self.item_frames.clear();
+        for f in self.ecs_frames() {
+            if let Some(e) = self.ecs.entity_of(f.id) {
+                self.ecs.despawn(e);
+            }
+        }
+        for p in self.ecs_paintings() {
+            if let Some(e) = self.ecs.entity_of(p.id) {
+                self.ecs.despawn(e);
+            }
+        }
         self.rockets.clear();
         self.potions.clear_thrown();
         self.level_events.clear();
@@ -295,7 +302,7 @@ impl Game<'_> {
                 Some(Target::Mob(h)) => horizon_client::mobs::leash::Holder::Mob(*h),
                 _ => continue,
             };
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == *id) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == *id) {
                 m.extra.leash = Some(holder);
             }
         }
@@ -304,7 +311,7 @@ impl Game<'_> {
         self.world.block_log = Some(Vec::new());
         self.audio.capture = Some(Vec::new());
         LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
-        let old_mobs: Vec<u32> = self.mobs.iter().map(|m| m.id).collect();
+        let old_mobs: Vec<u32> = self.remote_entities.iter().map(|m| m.id).collect();
         let old_stands: Vec<u32> = self.armor_stands.iter().map(|s| s.id).collect();
         let old_vehicles: Vec<u32> = (self.boats.iter().map(|b| b.id))
             .chain(self.carts.iter().map(|c| c.id))
@@ -543,15 +550,10 @@ impl Game<'_> {
             from,
             None,
         );
-        arrow.velocity = horizon_core::geometry::Vec3::new(0.0, 0.0, 1.0);
         arrow.arrow.as_mut().unwrap().pierce = u8::from(op["pierce"].as_bool().unwrap_or(false));
-        self.projectile_hit(
-            &arrow,
-            horizon_client::projectiles::Hit::Entity {
-                who: horizon_client::mobs::Who::Player,
-                at: horizon_core::geometry::Vec3::ZERO,
-            },
-        )?;
+        let shot = self.arrow_shot_of(arrow.arrow.as_deref().expect("an arrow has its state"), None);
+        self.ecs_shoot_arrow([from.x, from.y, from.z], [0.0, 0.0, 1.0], None, shot, None);
+        self.tick_ecs()?;
         let out = vec![format!(
             "shield health={} used={} stack={}",
             num(f64::from(self.player.as_ref().unwrap().health.health())),
@@ -837,15 +839,15 @@ impl Game<'_> {
         let (bonus, hurt) = match targets.first() {
             Some(&Target::Mob(id)) => {
                 let index = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .position(|m| m.id == id)
                     .ok_or("the target is gone")?;
-                let kind = self.mobs[index].kind.id.clone();
+                let kind = self.remote_entities[index].kind.id.clone();
                 let bonus = self.smash_damage_bonus(&kind);
                 let hurt = self.hurt_by_player(index, base + bonus, source);
                 // The hurt sound the mob raised, where it stands.
-                for event in std::mem::take(&mut self.mobs[index].outbox) {
+                for event in std::mem::take(&mut self.remote_entities[index].outbox) {
                     if let horizon_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
                         self.audio
                             .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
@@ -913,7 +915,7 @@ impl Game<'_> {
         ));
         for (i, t) in targets.iter().enumerate() {
             let (health, v) = match *t {
-                Target::Mob(id) => match self.mobs.iter().find(|m| m.id == id) {
+                Target::Mob(id) => match self.remote_entities.iter().find(|m| m.id == id) {
                     Some(m) => (num(f64::from(m.health)), m.velocity),
                     None => continue,
                 },
@@ -935,7 +937,7 @@ impl Game<'_> {
         }
         // What the first target wears, worn by its Thorns.
         if let Some(&Target::Mob(id)) = targets.first()
-            && let Some(m) = self.mobs.iter().find(|m| m.id == id)
+            && let Some(m) = self.remote_entities.iter().find(|m| m.id == id)
         {
             use horizon_client::mobs::finalize as f;
             for (slot, name) in [
@@ -1288,7 +1290,7 @@ impl Game<'_> {
             world_items!(self),
             &mut mob,
         );
-        self.mobs.push(mob);
+        self.remote_entities.push(mob);
         Ok(Target::Mob(id))
     }
 
@@ -1339,7 +1341,7 @@ impl Game<'_> {
                 }
             }
             Target::Mob(id) => {
-                let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+                let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
                     return line + "removed";
                 };
                 line.push_str(&m.kind.id);
@@ -1369,7 +1371,7 @@ impl Game<'_> {
                         Species::Bogged => Some(!x.sheared),
                         Species::SnowGolem => Some(!x.sheared),
                         Species::CopperGolem => Some(self.golem_shearable(
-                            self.mobs.iter().position(|o| o.id == id).unwrap_or(0),
+                            self.remote_entities.iter().position(|o| o.id == id).unwrap_or(0),
                         )),
                         _ => None,
                     };
@@ -1416,7 +1418,7 @@ impl Game<'_> {
             }
             l
         };
-        for m in self.mobs.iter().filter(|m| !old_mobs.contains(&m.id)) {
+        for m in self.remote_entities.iter().filter(|m| !old_mobs.contains(&m.id)) {
             let (p, v) = (m.position, m.velocity);
             out.push(line(&m.kind.id, [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
         }
@@ -1451,24 +1453,11 @@ impl Game<'_> {
                 &canon_stack(Some(&d.stack)),
             ));
         }
-        for shot in &self.creatures.projectiles {
-            let kind = match &shot.kind {
-                ProjectileKind::Arrow {
-                    effect: Some(("minecraft:glowing", 200)),
-                    ..
-                } => "minecraft:spectral_arrow",
-                ProjectileKind::Arrow { .. } => "minecraft:arrow",
-                ProjectileKind::Snowball => "minecraft:snowball",
-                ProjectileKind::Egg => "minecraft:egg",
-                ProjectileKind::SmallFireball => "minecraft:small_fireball",
-                ProjectileKind::WindCharge => "minecraft:wind_charge",
-                ProjectileKind::Potion(_, true) => "minecraft:lingering_potion",
-                ProjectileKind::Potion(..) => "minecraft:splash_potion",
-                ProjectileKind::ExperienceBottle => "minecraft:experience_bottle",
-                _ => "minecraft:unknown_projectile",
+        for id in self.ecs.projectiles_in([-1.0e9; 3], [1.0e9; 3]) {
+            let (Some(kind), Some(m)) = (self.ecs.projectile_kind(id), self.ecs.motion(id)) else {
+                continue;
             };
-            let (p, v) = (shot.position, shot.velocity);
-            out.push(line(kind, [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
+            out.push(line(kind, m.position, m.velocity, ""));
         }
         for (kind, p, v) in self.potions.thrown_entities() {
             out.push(line(kind, [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
@@ -1519,10 +1508,10 @@ impl Game<'_> {
         // A hanging entity's position is its box's centre (HangingEntity.recalculateBoundingBox).
         let centre =
             |(lo, hi): ([f64; 3], [f64; 3])| std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
-        for p in &self.paintings {
+        for p in self.ecs_paintings().iter() {
             out.push(line("minecraft:painting", centre(p.bounds()), [0.0; 3], ""));
         }
-        for f in &self.item_frames {
+        for f in self.ecs_frames().iter() {
             let kind = if f.glow {
                 "minecraft:glow_item_frame"
             } else {

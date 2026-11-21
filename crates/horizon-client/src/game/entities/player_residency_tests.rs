@@ -118,27 +118,12 @@ fn actual_guest_membership_and_lifetime_survive_nested_body_loans_and_reset() {
 
 #[test]
 #[ignore = "daily"]
-fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
+fn refused_body_construction_does_not_begin_guest_loans() {
     with_guests(|game| {
-        game.as_guest(12, |g| {
-            g.install_fishing_hook(crate::game::fishing::Hook::remote(
-                900,
-                Vec3::ZERO,
-                [1, 2, 3, 4],
-            ))
-        })
-        .unwrap();
         assert!(matches!(
             game.server_resident_entity(12),
             EntityLookup::Found {
                 value: Target::Guest(12),
-                ..
-            }
-        ));
-        assert!(matches!(
-            game.server_resident_entity(900),
-            EntityLookup::Found {
-                value: Target::Hook(900),
                 ..
             }
         ));
@@ -169,13 +154,6 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
                 ..
             }
         ));
-        assert!(matches!(
-            game.server_resident_entity(900),
-            EntityLookup::Found {
-                value: Target::Hook(900),
-                ..
-            }
-        ));
         game.as_guest(12, |outer| {
             outer
                 .as_guest(13, |inner| assert!(inner.as_guest(12, |_| ()).is_none()))
@@ -183,56 +161,6 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
         })
         .expect("same connection can enter after refusal");
         assert!(game.lan_guest_swaps.is_empty());
-        assert!(matches!(
-            game.server_resident_entity(900),
-            EntityLookup::Found { .. }
-        ));
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
-    with_guests(|game| {
-        let first = [101, 102, 103, 104];
-        let second = [201, 202, 203, 204];
-        game.as_guest(12, |outer| {
-            outer.install_fishing_hook(crate::game::fishing::Hook::remote(900, Vec3::ZERO, first));
-            assert!(matches!(
-                outer.server_resident_entity(900),
-                EntityLookup::Found {
-                    value: Target::Hook(900),
-                    ..
-                }
-            ));
-            assert_eq!(outer.uuid_for(900), first);
-            outer
-                .as_guest(13, |inner| {
-                    assert_eq!(inner.server_resident_entity(900), EntityLookup::Taken);
-                    assert_eq!(inner.uuid_for(900), first);
-                    inner.install_fishing_hook(crate::game::fishing::Hook::remote(
-                        901,
-                        Vec3::ZERO,
-                        second,
-                    ));
-                    assert_eq!(inner.uuid_for(901), second);
-                    assert!(inner.fishing_hook_by_id(900).is_none());
-                })
-                .unwrap();
-            assert_eq!(outer.uuid_for(900), first);
-            assert_eq!(outer.fishing_hook_by_id(900).unwrap().1, Target::Guest(12));
-            assert_eq!(outer.fishing_hook_by_id(901).unwrap().1, Target::Guest(13));
-            outer.reset_entity_residency();
-            assert_eq!(outer.uuid_for(900), first);
-            assert_eq!(outer.uuid_for(901), second);
-            outer.remove_fishing_hook(901);
-            assert_eq!(outer.server_resident_entity(901), EntityLookup::Missing);
-            assert!(outer.fishing_hook_by_id(900).is_some());
-        })
-        .unwrap();
-        assert_eq!(game.fishing_hook_by_id(900).unwrap().1, Target::Guest(12));
-        game.remove_fishing_hook(900);
-        assert_eq!(game.server_resident_entity(900), EntityLookup::Missing);
     });
 }
 

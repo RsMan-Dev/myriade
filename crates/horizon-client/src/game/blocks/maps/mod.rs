@@ -430,7 +430,7 @@ impl MapData {
     }
     /// `MapItemSavedData.isTrackedCountOverLimit`: more than `limit`
     /// decorations count (`MapDecorationType.trackCount`).
-    pub(super) fn tracked_over_limit(&self, limit: usize) -> bool {
+    pub(in crate::game) fn tracked_over_limit(&self, limit: usize) -> bool {
         self.decorations
             .iter()
             .filter(|d| tracks_count(d.sprite))
@@ -883,7 +883,7 @@ impl Game<'_> {
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
-    pub(super) fn with_map<R>(&self, id: i32, f: impl FnOnce(&MapData) -> R) -> Option<R> {
+    pub(in crate::game) fn with_map<R>(&self, id: i32, f: impl FnOnce(&MapData) -> R) -> Option<R> {
         map_read(
             self.maps.data.get(&id),
             || {
@@ -1512,7 +1512,7 @@ impl Game<'_> {
         });
     }
     /// `MapItem.update` for the player holding map `id`.
-    fn update_map(&mut self, id: i32) {
+    pub(in crate::game) fn update_map(&mut self, id: i32) {
         let dim = self.dimension_id();
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;

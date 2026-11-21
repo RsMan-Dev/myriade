@@ -1,4 +1,5 @@
 use super::*;
+use horizon_ecs_proto::bridge::select::Select;
 use mod_api::{
     BlockPart, BreakBlockEvent, CanDropFromExplosionEvent, CanEntityDestroyEvent, ExpDropEvent,
     ExplosionResistanceEvent, Flow, Hooks, LevelHost, OnBlockExplodedEvent, Registrar, ServerHost,
@@ -588,17 +589,14 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
             // blasts at radius 1 and keeps it readable while the stone's part is asked.
             let survives = |game: &mut Game<'_>| {
                 game.world.set(2, 64, 0, stone).unwrap();
-                let mut skull = horizon_client::projectiles::Projectile::new(
-                    horizon_client::projectiles::ProjectileKind::WitherSkull { dangerous: true },
-                    Vec3::new(1.5, 64.25, 0.5),
-                    None,
-                );
-                skull.velocity = Vec3::new(0.6, 0.0, 0.0);
-                game.spawn_mob_projectile(skull);
+                assert!(game.run_command(
+                    "summon minecraft:wither_skull 1.5 64.25 0.5 {dangerous:1b,Motion:[0.6d,0.0d,0.0d]}"
+                ));
                 for _ in 0..5 {
-                    game.tick_projectiles_now().unwrap();
+                    game.tick_ecs().unwrap();
                 }
-                assert!(game.creatures.projectiles.is_empty(), "the skull hit");
+                let skulls = Select { kind: Some("minecraft:wither_skull".into()), ..Default::default() };
+                assert!(game.ecs.select(&skulls).is_empty(), "the skull hit");
                 game.world.block(2, 64, 0) == stone
             };
             // Capped at 0.8, a step through the stone costs (0.8 + 0.3) × 0.3 = 0.33.

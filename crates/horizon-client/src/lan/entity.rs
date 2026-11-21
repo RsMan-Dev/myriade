@@ -313,6 +313,8 @@ struct ServerEntity {
     watching: bool,
     /// Likewise for a player a native mod hid.
     hidden: Option<u8>,
+    /// Held by event (`tick_changed`): the level's sweep never removes it, since it does not list it.
+    by_event: bool,
 }
 
 /// SectionPos.of(entity).
@@ -416,6 +418,7 @@ impl ServerEntity {
             spectator: e.spectator,
             watching: e.watching,
             hidden: e.hidden,
+            by_event: false,
         }
     }
 
@@ -1494,6 +1497,7 @@ impl Entities {
                     if kept != v.tracker.seen.len() {
                         let Tracker { seen, events, .. } = &mut *v.tracker;
                         seen.retain(|id, tracked| match states.get(id) {
+                            Some(s) if s.by_event => true,
                             Some(s) if s.seen == now && flags[s.index] & TRACKS != 0 => true,
                             other => {
                                 if let (Some(gone), Some(s)) = (v.gone.as_deref_mut(), other) {
@@ -1547,8 +1551,117 @@ impl Entities {
         }
         // ChunkMap.removeEntity for the ones no longer in the level.
         if self.states.len() > stamped {
-            self.states.retain(|s| s.seen == now);
+            self.states.retain(|s| s.seen == now || s.by_event);
         }
+    }
+
+    /// `tick` for the entities the ECS changed this tick (`changed`) and the ones it removed (`gone`), without a pass over the
+    /// level: a changed entity's changes go to the clients tracking it, the clients it comes into range of start tracking it,
+    /// and the clients it leaves lose it. A removed one is taken from every client tracking it.
+    pub fn tick_changed(
+        &mut self,
+        changed: &[EntityState],
+        gone: &[i32],
+        riding: &Riding,
+        viewers: &mut [Viewer],
+        mut kind: impl FnMut(&str) -> Option<i32>,
+    ) {
+        for &id in gone {
+            let base = self.states.get(&id).map(|s| s.base);
+            for v in viewers.iter_mut() {
+                if let Some(tracked) = v.tracker.seen.remove(&id) {
+                    v.tracker.verified.clear();
+                    v.tracker.events.push(TrackEvent { start: false, entity: id, tracked });
+                    v.out.push(play::Clientbound::RemoveEntities(play::RemoveEntities { ids: vec![id] }).encode().into());
+                    if let (Some(gone), Some(base)) = (v.gone.as_deref_mut(), base) {
+                        gone.push(base);
+                    }
+                }
+            }
+            self.states.remove(id);
+        }
+        self.states.begin();
+        for e in changed {
+            let (slot, added) = match self.states.meet(e.id) {
+                Some((slot, _)) => (slot, false),
+                None => {
+                    let slot = self.states.insert(e.id, ServerEntity::new(e, kind(&e.kind), riding));
+                    self.states.met_new(e.id, slot);
+                    (slot, true)
+                }
+            };
+            // The vehicle's range is its widest indirect passenger's (`pair_after_tick`).
+            let mut widest = 0;
+            let mut pending = riding.passengers(e.id).to_vec();
+            while let Some(id) = pending.pop() {
+                if let Some(p) = self.states.get(&id) {
+                    widest = widest.max(p.range);
+                }
+                pending.extend_from_slice(riding.passengers(id));
+            }
+            let s = self.states.at_mut(slot);
+            let section = section_of(e.position);
+            let moved = added
+                || section != s.section
+                || e.spectator != s.spectator
+                || e.watching != s.watching
+                || e.hidden != s.hidden;
+            (s.section, s.spectator, s.watching, s.hidden) = (section, e.spectator, e.watching, e.hidden);
+            s.by_event = true;
+            self.packets.clear();
+            if !added {
+                if e.idle && !moved && !e.needs_sync {
+                    s.send_leash(e, &mut self.packets);
+                } else {
+                    s.send_changes(e, riding, &mut self.packets);
+                }
+            }
+            s.added = false;
+            let changes = (!self.packets.is_empty()).then(|| Bodies::of(&self.packets));
+            let range = s.range.max(widest);
+            let range = self.range_percent.map_or(range * 16, |p| p * (range * 16) / 100);
+            let chunks = [((e.position[0].floor() as i32) >> 4, (e.position[2].floor() as i32) >> 4)];
+            let probe = Probe {
+                x: e.position[0],
+                z: e.position[2],
+                id: e.id,
+                uuid: e.uuid,
+                range,
+                chunk: 0,
+                spectator: e.spectator,
+                watching: e.watching,
+                hidden: e.hidden,
+            };
+            let mut pairing: Option<Bodies> = None;
+            for v in viewers.iter_mut() {
+                let tracks = v.tracker.seen.contains_key(&e.id);
+                let seen = v.entity_id != e.id && sees(v, &probe, &chunks, &mut [0]);
+                if tracks && !seen {
+                    if let Some(tracked) = v.tracker.seen.remove(&e.id) {
+                        v.tracker.verified.clear();
+                        v.tracker.events.push(TrackEvent { start: false, entity: e.id, tracked });
+                        v.out.push(play::Clientbound::RemoveEntities(play::RemoveEntities { ids: vec![e.id] }).encode().into());
+                        if let Some(gone) = v.gone.as_deref_mut() {
+                            gone.push(s.base);
+                        }
+                    }
+                } else if tracks {
+                    if let Some(changes) = &changes {
+                        v.out.extend(changes.to(v).iter().cloned());
+                    }
+                } else if seen && !e.bare && let Some(kind) = s.kind {
+                    let bodies = pairing.get_or_insert_with(|| {
+                        let mut packets = Vec::new();
+                        s.pairing(e, kind, riding, &mut packets);
+                        Bodies::of(&packets)
+                    });
+                    v.out.extend(bodies.to(v).iter().cloned());
+                    v.tracker.seen.insert(e.id, Arc::clone(&s.tracked));
+                    v.tracker.events.push(TrackEvent { start: true, entity: e.id, tracked: Arc::clone(&s.tracked) });
+                }
+            }
+        }
+        self.states.end();
     }
 
     /// Whether this tick's send pass runs on several threads: with many clients and many
@@ -2554,6 +2667,10 @@ mod tests {
             }
         }
         fn tick(&mut self, level: &mut Entities, entities: &[&EntityState]) {
+            self.run(level, entities, None);
+        }
+        /// One pass of `tick`, or of `tick_changed` for `changed` (the entities) and `gone` (the removed ids).
+        fn run(&mut self, level: &mut Entities, entities: &[&EntityState], changed: Option<(&[EntityState], &[i32])>) {
             for sent in &mut self.sent {
                 sent.clear();
             }
@@ -2589,7 +2706,12 @@ mod tests {
                     gone: None,
                 },
             ];
-            level.tick(entities, &Riding::default(), &mut viewers, |_| Some(100));
+            match changed {
+                Some((changed, gone)) => {
+                    level.tick_changed(changed, gone, &Riding::default(), &mut viewers, |_| Some(100))
+                }
+                None => level.tick(entities, &Riding::default(), &mut viewers, |_| Some(100)),
+            }
             for (out, sent) in self.out.iter_mut().zip(&self.sent) {
                 *out = sent.iter().map(|b| b.to_vec()).collect();
             }
@@ -2598,6 +2720,41 @@ mod tests {
 
     fn body(p: play::Clientbound) -> Vec<u8> {
         p.encode()
+    }
+
+    /// The ECS's pass: a modified entity is paired, then sent its change once to every client; an unmodified one sends nothing;
+    /// a removed one leaves the clients that track it, with one removal packet each.
+    #[test]
+    fn an_entity_held_by_event_survives_the_sweep() {
+        let mut level = Entities::default();
+        let mut clients = Clients::new();
+        let one = [state(0.0)];
+        clients.run(&mut level, &[], Some((&one, &[])));
+        clients.tick(&mut level, &[]);
+        assert!(level.tracks(7));
+        assert!(clients.trackers[0].is_tracking(7) && clients.trackers[1].is_tracking(7));
+    }
+
+    #[test]
+    fn tick_changed_sends_what_changed_and_removes_what_left() {
+        let mut level = Entities::default();
+        let mut clients = Clients::new();
+        let mut e = state(0.0);
+        let (one, none, nothing): (&[EntityState], &[i32], &[EntityState]) = (&[e.clone()], &[], &[]);
+        clients.run(&mut level, &[], Some((one, none)));
+        assert!(clients.trackers[0].is_tracking(7) && clients.trackers[1].is_tracking(7));
+        clients.run(&mut level, &[], Some((nothing, none)));
+        assert!(clients.out[0].is_empty() && clients.out[1].is_empty());
+        e.meta.push((0, 0, Value::Byte(1)));
+        let changed = [e.clone()];
+        clients.run(&mut level, &[], Some((&changed, none)));
+        assert!(!clients.out[0].is_empty());
+        assert_eq!(clients.out[0], clients.out[1]);
+        let removed: &[i32] = &[7];
+        clients.run(&mut level, &[], Some((nothing, removed)));
+        assert!(!clients.trackers[0].is_tracking(7) && !clients.trackers[1].is_tracking(7));
+        assert_eq!(clients.out[0].len(), 1);
+        assert_eq!(clients.out[1].len(), 1);
     }
 
     /// ChunkMap checks a pair again only when one side moves: a zombie

@@ -284,11 +284,8 @@ impl Game<'_> {
     pub(super) fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
         let entity_type = if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == pos.2) {
             cart.kind.id().to_owned()
-        } else if let Some(boat) = self.boats.iter().find(|b| b.id as i32 == pos.2) {
-            if !boat.chest {
-                return false;
-            }
-            boat.entity_type()
+        } else if self.boat_has_chest(pos.2 as u32) == Some(true) {
+            self.ecs.kind(pos.2 as u32).unwrap_or_default().to_owned()
         } else {
             return false;
         };
@@ -311,13 +308,9 @@ impl Game<'_> {
         // later transfer finds them. A stand-in another guest's menu still
         // backs is not this use's to remove: the close is only for the one
         // nobody is looking at.
-        let boat = self
-            .boats
-            .iter()
-            .position(|b| b.id as i32 == pos.2 && b.chest);
-        let spectator_pending = boat.is_some_and(|i| {
-            host.hub.guest(conn).is_some_and(|g| g.spectator())
-                && self.boat_loot_pending(self.boats[i].id)
+        let boat = (self.boat_has_chest(pos.2 as u32) == Some(true)).then_some(pos.2 as u32);
+        let spectator_pending = boat.is_some_and(|id| {
+            host.hub.guest(conn).is_some_and(|g| g.spectator()) && self.boat_loot_pending(id)
         });
         if spectator_pending {
             // ServerPlayer.openMenu: the refused spectator's action bar, red.
@@ -348,13 +341,12 @@ impl Game<'_> {
             }
             return true;
         }
-        if let Some(i) = boat
-            && self.boat_loot_pending(self.boats[i].id)
+        if let Some(id) = boat
+            && self.boat_loot_pending(id)
         {
-            let id = self.boats[i].id;
-            self.unpack_boat_loot(i, true);
+            self.unpack_boat_loot(id, true);
             // Advancement rewards can remove the boat while generating its loot.
-            if !self.boats.iter().any(|boat| boat.id == id) {
+            if self.ecs.boat_status(id).is_none() {
                 return false;
             }
         }
@@ -487,8 +479,8 @@ impl Game<'_> {
         if !other_viewers {
             self.world.block_entities.remove(&key);
         }
-        let at = if let Some(b) = self.boats.iter().find(|b| b.id as i32 == key.2) {
-            Some([b.position.x, b.position.y, b.position.z])
+        let at = if self.boat_has_chest(key.2 as u32).is_some() {
+            self.ecs.position(key.2 as u32)
         } else if let Some(c) = self.carts.iter().find(|c| c.id as i32 == key.2) {
             (c.kind == crate::game::minecarts::CartKind::Chest).then_some([
                 c.position.x,
@@ -649,12 +641,7 @@ impl Game<'_> {
             .iter()
             .find(|c| c.id as i32 == id)
             .map(|c| c.bounds())
-            .or_else(|| {
-                self.boats
-                    .iter()
-                    .find(|b| b.id as i32 == id)
-                    .map(|b| b.bounds())
-            });
+            .or_else(|| self.ecs.boat_status(id as u32).and_then(|_| self.ecs.bounds(id as u32)));
         bounds.is_some_and(|b| guest_within_entity_range(g, &b, 4.0))
     }
 }

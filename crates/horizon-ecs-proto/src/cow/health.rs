@@ -52,7 +52,7 @@ pub struct Burning {
 
 /// `Entity.igniteForSeconds`: on fire for `ticks` more (the later end wins); the first burn comes with the wheel as for a fire under it.
 pub fn set_on_fire(w: &mut World, e: Entity, ticks: u64) {
-    if w.get::<Health>(e).is_none() {
+    if w.get::<Health>(e).is_none() || w.get::<Immune>(e).is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
         return;
     }
     let now = now_of(w, e);
@@ -99,6 +99,8 @@ pub struct Hit {
     pub target: Entity,
     pub amount: f32,
     pub cause: Cause,
+    /// The vanilla damage type's name (`DamageTypes`), as the death event says it.
+    pub damage: &'static str,
     /// The attacker's position (x, z); `None` for an attacker without one or an environmental cause.
     pub from: Option<(f64, f64)>,
     /// Who did it (a player of the bench's `Online` list, or a creature), for the target of a `HurtByTarget`.
@@ -111,25 +113,25 @@ pub struct Hit {
 
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, from: None, by: None, direct: false, power: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: None, by: None, direct: false, power: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "player_attack", from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None });
     }
     /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
     pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(who), direct: false, power: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: cause_name(Cause::Entity, Some(who)), from: Some(from), by: Some(who), direct: false, power: None });
     }
     /// A blow of a creature at `from` that pushes its target with `power` (`LivingEntity.knockback`), as a ram does.
     pub fn add_ram(&mut self, target: Entity, amount: f32, from: (f64, f64), power: f64) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: None, direct: false, power: Some(power) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: None, direct: false, power: Some(power) });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, from: Some(from), by: None, direct: false, power: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: Some(from), by: None, direct: false, power: None });
     }
 }
 
@@ -138,6 +140,12 @@ impl DamageQueue {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cause {
     Cactus,
+    /// `DamageTypes.SWEET_BERRY_BUSH`.
+    SweetBerry,
+    /// `DamageTypes.CAMPFIRE`.
+    Campfire,
+    /// `DamageTypes.HOT_FLOOR`: a magma block under the feet.
+    HotFloor,
     InFire,
     OnFire,
     Lava,
@@ -161,6 +169,12 @@ pub enum Cause {
     Lightning,
     /// `DamageTypes.FALLING_ANVIL` and `FALLING_BLOCK`: a block that fell on the creature (`falling_block.rs`).
     FallingBlock,
+}
+impl Cause {
+    /// The damage type tag `IS_FIRE` (in_fire, campfire, on_fire, lava, hot_floor) that `fireImmune` and fire resistance block.
+    pub fn is_fire(self) -> bool {
+        matches!(self, Cause::InFire | Cause::OnFire | Cause::Lava | Cause::HotFloor | Cause::Campfire)
+    }
 }
 
 /// The causes of the hurts of this step, in the order of `Hurts` (read by the goals that depend on the damage type).
@@ -330,6 +344,52 @@ impl Hazards {
     }
 }
 
+/// What a lethal hit does: with `vetoable`, the entity stays as `Dying` until `EcsWorld::resolve_death` (a totem's rule). Absent or
+/// false: the death goes on at once, as before.
+#[derive(Resource, Default)]
+pub struct DeathPolicy {
+    pub vetoable: bool,
+}
+
+/// Set by the host while a mod hears `hurt_enemy`: a hit of an attacker is then said (`HitDealt`); else nothing is written.
+#[derive(Resource, Default)]
+pub struct HitWatched(pub bool);
+
+/// A lethal hit held by `DeathPolicy`: the health it ended at (at or under 0). Only the held entities carry it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Dying {
+    pub health: f32,
+}
+
+/// The vanilla damage type's name of a hit (`DamageTypes`): a player's or a creature's blow is `player_attack` or `mob_attack`.
+pub fn cause_name(cause: Cause, by: Option<crate::targeting::Who>) -> &'static str {
+    match cause {
+        Cause::Entity => match by {
+            Some(crate::targeting::Who::Player(_)) => "player_attack",
+            _ => "mob_attack",
+        },
+        Cause::Cactus => "cactus",
+        Cause::SweetBerry => "sweet_berry_bush",
+        Cause::Campfire => "campfire",
+        Cause::HotFloor => "hot_floor",
+        Cause::InFire => "in_fire",
+        Cause::OnFire => "on_fire",
+        Cause::Lava => "lava",
+        Cause::Freeze => "freeze",
+        Cause::Fall => "fall",
+        Cause::Drown => "drown",
+        Cause::OutOfWorld => "out_of_world",
+        Cause::InWall => "in_wall",
+        Cause::Cramming => "cramming",
+        Cause::Magic => "magic",
+        Cause::Wither => "wither",
+        Cause::Blast => "explosion",
+        Cause::Lightning => "lightning_bolt",
+        Cause::FallingBlock => "falling_block",
+    }
+}
+
 /// The last attacker (`LivingEntity.getLastHurtByMob`): written by `apply_damage` for every hit that has an attacker; `at` is
 /// the entity's own time (a module forgets it after 100 ticks as the `Mob` does).
 #[derive(Component, Clone, Copy, Debug)]
@@ -379,15 +439,15 @@ pub struct Intake(pub fn(&mut World, Entity, Cause));
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
-    mut idx: ResMut<Index>,
     mut wheel: ResMut<Wheel>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
     mut events: ResMut<crate::goals::Events>,
+    watched: Option<Res<HitWatched>>,
     intakes: Query<&Intake>,
     mut commands: Commands,
 ) {
@@ -402,9 +462,16 @@ pub(crate) fn apply_damage(
                 continue;
             }
         }
-        let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid, spiky)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, _, pos, mut v, c, rng, resist, immune, armor, sid, spiky, dying, blast_resist)) = q.get_mut(e) else {
             continue;
         };
+        // A stack that resists fire or explosions takes no such hit, and no event of it.
+        if dying
+            || (hit.cause.is_fire() && immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)))
+            || (hit.cause == Cause::Blast && blast_resist)
+        {
+            continue;
+        }
         if spiky {
             let (by, direct, cause) = (hit.by, hit.direct, hit.cause);
             commands.queue(move |w: &mut World| crate::behaviours::guardian_thorns::blow(w, e, by, direct, cause));
@@ -426,24 +493,17 @@ pub(crate) fn apply_damage(
         }
         *hurt = HurtAt { at: now, last: hit.amount };
         h.0 -= applied;
+        if let Some(who) = hit.by
+            && watched.as_ref().is_some_and(|w| w.0)
+        {
+            events.host.hit_dealt(who, e, applied);
+        }
+        let by_who = hit.by;
+        commands.queue(move |w: &mut World| crate::item::hurt_event(w, e, by_who));
         if h.0 <= 0.0 {
-            if cell.0 != u32::MAX {
-                idx.remove(e, cell.0);
-            }
-            events.killed.push(crate::behaviours::celebrate::Kill {
-                victim: e,
-                killer: hit.by,
-                species: sid.map_or(u8::MAX, |s| s.0),
-                at: [pos.0.x, pos.0.y, pos.0.z],
-            });
-            // What it leaves on the ground (`LivingEntity.die`), then it goes.
-            commands.queue(move |w: &mut World| {
-                crate::loot::on_death(w, e);
-                crate::spawn_trial::forget(w, e);
-                if let Ok(mut m) = w.get_entity_mut(e) {
-                    m.despawn();
-                }
-            });
+            // A totem may save it, the host may keep it `Dying`: `using::lethal` ends the hit once the commands run.
+            let (damage, at, left) = (hit.damage, [pos.0.x, pos.0.y, pos.0.z], h.0);
+            commands.queue(move |w: &mut World| crate::using::lethal(w, e, damage, by_who, at, left));
             continue;
         }
         hurts.0.push(e);
@@ -508,11 +568,13 @@ pub(crate) fn hazard_tick(
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams)>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams, Option<&Immune>)>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, h, mut frozen, burning, pos, b, sid) in &mut q {
+    for (e, h, mut frozen, burning, pos, b, sid, immune) in &mut q {
+        // A stack that resists fire does not catch fire from the lava or the flames (its hits are refused in `apply_damage`).
+        let fire_proof = immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE));
         let now = clock.of(e);
         let f = h.0;
         // Water and lava as the `Mob` reads them: the fluid height at the cow's box, not the column.
@@ -529,7 +591,7 @@ pub(crate) fn hazard_tick(
                 events.extinguished.push(e);
             }
         } else {
-            let seconds = if in_lava { 300 } else if lit { 160 } else { 0 };
+            let seconds = if fire_proof { 0 } else if in_lava { 300 } else if lit { 160 } else { 0 };
             if seconds > 0 {
                 let until = now + seconds;
                 match burning {

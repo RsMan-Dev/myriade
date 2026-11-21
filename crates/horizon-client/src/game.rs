@@ -112,6 +112,7 @@ pub mod points {
         log::warn!("point {point}: a value has no API form; its listeners were skipped");
     }
 }
+mod ecs;
 mod host;
 mod native_hooks;
 use event_loop::EventLoopCtl;
@@ -415,23 +416,13 @@ struct GameLevel<'w> {
     /// ancestor bodies; None outside one, where `guest_boxes` are those players.
     building_player_boxes: Option<Vec<([f64; 3], [f64; 3])>>,
     player_collision: Option<PlayerCollision>,
-    /// Minecart boxes (detector rails).
-    cart_boxes: Vec<([f64; 3], [f64; 3])>,
-    /// The item frames a comparator reads through a conductor.
-    item_frames: &'w [horizon_client::entities::ItemFrame],
-    /// The minecarts, in `cart_boxes` order, for a detector rail's comparator.
-    carts: &'w mut horizon_client::join_seq::JoinList<minecarts::Minecart, false>,
-    /// Arrow and thrown trident boxes (wooden buttons).
-    arrow_boxes: Vec<([f64; 3], [f64; 3])>,
+    /// The level's ECS: the minecarts, arrows, hooks and item frames the block
+    /// triggers and comparators read, by zone; inert on a client.
+    ecs: &'w mut horizon_client::ecs_bridge::EcsLevel,
     /// Every entity on the walk; see `entity::for_each_entity`.
     other_entities: entity::EntityLists<'w>,
     /// End crystals, which aren't on the walk yet.
     crystals: &'w [dragon::Crystal],
-    /// The fishing hooks here, which aren't on the walk either. None ignores
-    /// block triggers, so each counts on a plate or tripwire. The flag says
-    /// whether it also reaches `entityInside` (`applyEffectsFromBlocks`): not
-    /// a hook on an entity, whose tick skips that step.
-    trigger_hooks: Vec<(Aabb, bool)>,
     /// The lightning bolts here: none ignores block triggers
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
@@ -547,10 +538,6 @@ fn server_only_block_use(
         .any(|class| block.has_class(class))
 }
 impl GameLevel<'_> {
-    /// `LilyPadBlock.entityInside`: the boxes of the boats that can break a pad.
-    fn boat_trigger_boxes(&self) -> impl Iterator<Item = Aabb> + '_ {
-        self.entities().boats.iter().map(boats::Boat::bounds)
-    }
     /// How many entities in `area` press plates and tripwires, or with
     /// `LIVING` only the living ones; a constant so a list of other kinds
     /// compiles to no loop at all.
@@ -570,7 +557,7 @@ impl GameLevel<'_> {
     /// Every entity box that blocks building: the players who aren't
     /// spectators, the minecarts and the `Blockers` (a removed mob or a marker
     /// armor stand, whose box is empty, doesn't).
-    fn building_blocker_boxes(&self) -> Vec<Aabb> {
+    fn building_blocker_boxes(&self, zone: Aabb) -> Vec<Aabb> {
         let boxed = |(lo, hi): &([f64; 3], [f64; 3])| {
             Aabb::new(
                 Vec3::new(lo[0], lo[1], lo[2]),
@@ -585,8 +572,8 @@ impl GameLevel<'_> {
                     .as_ref()
                     .unwrap_or(&self.guest_boxes),
             )
-            .chain(&self.cart_boxes)
             .map(boxed)
+            .chain(self.ecs.cart_bounds_in(zone))
             .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
             .chain(
                 b.armor_stands
@@ -1321,9 +1308,11 @@ struct Game<'a> {
     /// Chunks a respawn search waits for this tick, kept loading beside the
     /// player's own (taken by `update_world`).
     spawn_wait: Vec<(i32, i32)>,
-    mobs: horizon_client::join_seq::JoinList<Mob>,
-    /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
-    mob_index: mob_index::MobIndex,
+    /// The dimension's ECS world (`ecs_bridge::EcsLevel`); inert on a client.
+    ecs: horizon_client::ecs_bridge::EcsLevel,
+    remote_entities: horizon_client::join_seq::JoinList<Mob>,
+    /// `remote_entities` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
+    remote_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
     raiding: raids::Raiding,
@@ -2715,29 +2704,6 @@ impl Game<'_> {
                 leather_boots: worn_boots::leather_boots(&self.armor),
             }
         });
-        let cart_boxes = self
-            .carts
-            .iter()
-            .map(|c| {
-                let p = c.position;
-                (
-                    [p.x - 0.49, p.y, p.z - 0.49],
-                    [p.x + 0.49, p.y + 0.7, p.z + 0.49],
-                )
-            })
-            .collect();
-        let arrow_boxes = self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.arrow.is_some())
-            .map(|p| p.position)
-            .chain(self.tridents.iter().map(|t| t.position))
-            .map(|at| {
-                let b = horizon_client::arrows::arrow_bounds(at);
-                (b.min_position().components(), b.max_position().components())
-            })
-            .collect();
         let guest_boxes = self.lan_block_trigger_boxes();
         let building_player_boxes = self
             .lan_acting
@@ -2758,12 +2724,6 @@ impl Game<'_> {
                     .map(|g| g.position)
             }))
             .collect();
-        let mut trigger_hooks: Vec<(Aabb, bool)> = self
-            .hook
-            .iter()
-            .map(|h| (h.bounds(), h.applies_block_effects()))
-            .collect();
-        self.lan_hook_triggers(&mut trigger_hooks);
         // EntityType.LIGHTNING_BOLT: 0 x 0.
         let trigger_extras: Vec<Aabb> = self
             .bolts
@@ -2819,13 +2779,9 @@ impl Game<'_> {
                 .enabled_features
                 .iter()
                 .any(|feature| feature == "minecraft:redstone_experiments"),
-            cart_boxes,
-            item_frames: &self.item_frames,
-            carts: &mut self.carts,
-            arrow_boxes,
+            ecs: &mut self.ecs,
             other_entities,
             crystals: &self.crystals,
-            trigger_hooks,
             trigger_extras,
             world: &mut self.world,
             facts: self.res.facts(),
@@ -4474,8 +4430,6 @@ impl Game<'_> {
         }
         self.begin_ordered_ticks();
         if running {
-            horizon_client::spans::time("tick_paintings", || self.tick_paintings());
-            horizon_client::spans::time("tick_item_frames", || self.tick_item_frames());
             self.tick_explicit_knots();
             self.tick_summoned_eyes();
             self.ordered_before(ordered_tick::Batch::ArmorStands)?;
@@ -4487,9 +4441,7 @@ impl Game<'_> {
             span("portal_arrivals", || self.land_portal_arrivals());
             span("vehicle_portals", || self.handle_vehicle_portals());
             self.ordered_before(ordered_tick::Batch::Boats)?;
-            horizon_client::spans::time("tick_boats", || self.tick_boats());
             self.ordered_before(ordered_tick::Batch::Carts)?;
-            horizon_client::spans::time("tick_carts", || self.tick_carts());
             self.tick_vehicle_watch();
             let from = self.lan_synced_from();
             horizon_client::spans::time("tick_thunder", || self.tick_thunder());
@@ -4498,11 +4450,8 @@ impl Game<'_> {
             horizon_client::spans::time("tick_maps", || self.tick_maps());
             self.tick_lodestone_compasses();
             horizon_client::spans::time("tick_bolts", || self.tick_bolts());
-            horizon_client::spans::time("tick_fishing", || self.tick_fishing());
             self.ordered_before(ordered_tick::Batch::Tridents)?;
-            horizon_client::spans::time("tick_tridents", || self.tick_tridents());
             self.ordered_before(ordered_tick::Batch::Rockets)?;
-            horizon_client::spans::time("tick_rockets", || self.tick_rockets());
             horizon_client::spans::time("tick_ominous_item_spawners", || {
                 self.tick_ominous_item_spawners()
             });
@@ -4520,7 +4469,6 @@ impl Game<'_> {
             // Merged, burnt, despawned or picked up.
             span("mods_leaves_flush", || self.native_leaves_flush());
             span("mods_joins_flush", || self.native_joins_flush(false, 0));
-            horizon_client::spans::time("touch_arrows", || self.touch_arrows());
         }
         horizon_client::spans::time("spawn_loaded_entities", || self.spawn_loaded_entities());
         // The ride the player's file names, once the vehicle is in the world.
@@ -6185,7 +6133,7 @@ impl Game<'_> {
     }
     fn tick_mobs(&mut self) -> Result<()> {
         self.sync_mob_death_protection();
-        self.tick_creatures()?;
+        self.tick_ecs()?;
         if !self.entity_attachments.is_empty() {
             self.prune_entity_attachments();
         }
@@ -6329,6 +6277,7 @@ impl Game<'_> {
         // The ride the player's file names, once the vehicle is in the world.
         self.pending_vehicle = level.root_vehicle;
         self.level = level;
+        self.ecs = self.new_ecs_level(dim, self.level.seed);
         self.check_mod_mismatch();
         self.world_adopted = true;
         // ServerRecipeBook.loadUntrusted: recipes the manager does not have are dropped.
@@ -7637,6 +7586,7 @@ impl Game<'_> {
                 self.world.weather.thundering = false;
                 self.world.weather.rain_time = 0;
                 self.world.weather.thunder_time = 0;
+                self.ecs_weather_changed();
             }
             if self.sleeping.is_some() {
                 self.wake_up(false, false);
@@ -10703,8 +10653,9 @@ impl<'a> Game<'a> {
             spawn_spiral: Default::default(),
             player_spawn: None,
             spawn_wait: Vec::new(),
-            mobs: Default::default(),
-            mob_index: Default::default(),
+            ecs: horizon_client::ecs_bridge::EcsLevel::inert(),
+            remote_entities: Default::default(),
+            remote_index: Default::default(),
             creatures: Default::default(),
             sculk: Default::default(),
             raiding: Default::default(),

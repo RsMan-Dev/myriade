@@ -2534,13 +2534,12 @@ mod tests {
                     ..Default::default()
                 })),
             );
-            let mut cart = super::super::minecarts::Minecart::new(
-                99,
-                super::super::minecarts::CartKind::CommandBlock,
-                Vec3::new(1.0, 64.0, 1.0),
-            );
-            cart.command.command = "origin".into();
-            game.carts.push(cart);
+            game.ecs_with(|ecs, mw| {
+                ecs.spawn_cart_id(mw, "minecraft:command_block_minecart", [1.0, 64.0, 1.0], 0.0, &mut || 99)
+            });
+            let mut cart = game.ecs.cart_command(99).unwrap();
+            cart.command = "origin".into();
+            assert!(game.ecs.set_cart_command(99, &cart));
             test(game);
         });
     }
@@ -3922,8 +3921,9 @@ mod tests {
                     );
                     assert_eq!(source.permission(), Permission::Gamemasters);
                     assert!(game.perform_cart_command(99));
-                    assert_eq!(game.carts[0].command.success_count, 1);
-                    assert!(game.carts[0].command.last_output.is_some());
+                    let state = game.ecs.cart_command(99).unwrap();
+                    assert_eq!(state.success_count, 1);
+                    assert!(state.last_output.is_some());
                     assert!(
                         matches!(heard.lock().unwrap().last().unwrap(), CommandSource::CommandBlockMinecart { entity, .. } if entity.id() == 99)
                     );
@@ -4373,7 +4373,7 @@ pub(super) mod fake_action_tests {
     }
 
     use super::super::{
-        boats::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
+        boats::Boat, minecarts::CART_KEY_Y,
         respawn_anchor::RespawnConfig, stations::Kind, stations::Station,
     };
 
@@ -4445,11 +4445,13 @@ pub(super) mod fake_action_tests {
             let at = horizon_core::geometry::Vec3::new(2.5, 64.0, 0.5);
             let diamonds = Some(ItemStack::new("minecraft:diamond", 5));
             let mut vehicles = Vec::new();
-            for (id, kind) in [(6100, CartKind::Chest), (6101, CartKind::Hopper)] {
-                let mut cart = Minecart::new(id, kind, at);
-                cart.items[3] = diamonds.clone();
+            for (id, kind) in [(6100, "minecraft:chest_minecart"), (6101, "minecraft:hopper_minecart")] {
+                let spawned = game.ecs_with(|ecs, mw| {
+                    ecs.spawn_cart_id(mw, kind, [2.5, 64.0, 0.5], 0.0, &mut || id)
+                });
+                assert_eq!(spawned, Some(id));
+                assert!(game.ecs.cart_set_slot(id, 3, diamonds.clone()));
                 vehicles.push((id, false));
-                game.carts.push(cart);
             }
             let mut boat = Boat::new(6102, "oak".into(), at, 0.0).with_chest();
             boat.items[3] = diamonds.clone();
@@ -4482,14 +4484,10 @@ pub(super) mod fake_action_tests {
                         "vehicle {id} left a stand-in",
                     );
                     assert!(game.container.is_none());
-                    let items = game
-                        .carts
-                        .iter()
-                        .find(|c| c.id == id)
-                        .map(|c| &c.items)
-                        .or_else(|| game.boats.iter().find(|b| b.id == id).map(|b| &b.items))
-                        .unwrap();
-                    assert_eq!(items[3], diamonds, "vehicle {id} lost its items");
+                    let items = game.ecs.cart_items(id).or_else(|| {
+                        game.boats.iter().find(|b| b.id == id).map(|b| b.items.to_vec())
+                    });
+                    assert_eq!(items.unwrap()[3], diamonds, "vehicle {id} lost its items");
                 }
             }
         });
@@ -4501,15 +4499,16 @@ pub(super) mod fake_action_tests {
     #[test]
     #[ignore = "daily"]
     fn a_viewer_keeps_the_vehicle_menu_a_fake_player_used() {
-        use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
+        use super::super::minecarts::CART_KEY_Y;
         use horizon_client::containers::BlockEntity;
         use horizon_client::lan::menu::Slots;
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, fake_conn, real_conn) = fake(game, None, 0);
-            let at = horizon_core::geometry::Vec3::new(2.5, 64.0, 0.5);
-            let mut cart = Minecart::new(6110, CartKind::Chest, at);
-            cart.items[3] = Some(ItemStack::new("minecraft:diamond", 5));
-            game.carts.push(cart);
+            let spawned = game.ecs_with(|ecs, mw| {
+                ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [2.5, 64.0, 0.5], 0.0, &mut || 6110)
+            });
+            assert_eq!(spawned, Some(6110));
+            assert!(game.ecs.cart_set_slot(6110, 3, Some(ItemStack::new("minecraft:diamond", 5))));
             let gi = game
                 .lan
                 .as_ref()
@@ -4576,7 +4575,7 @@ pub(super) mod fake_action_tests {
             assert_eq!(items[4], emerald, "the staging kept the viewer's edit");
             game.guest_close_all(real_conn);
             assert!(!game.world.block_entities.contains_key(&key));
-            let items = &game.carts.iter().find(|c| c.id == 6110).unwrap().items;
+            let items = game.ecs.cart_items(6110).unwrap();
             assert_eq!(
                 items[3],
                 Some(ItemStack::new("minecraft:diamond", 5)),
@@ -4715,7 +4714,7 @@ pub(super) mod fake_action_tests {
                 .perform_action_scoped(game, PlayerAction::UseItem { hand: Hand::Main }, setup)
                 .unwrap();
             assert_eq!(rod.outcome, ActionOutcome::Consumed, "the rod casts");
-            assert!(game.hook.is_none(), "no hook is left for nobody to reel in");
+            assert!(game.ecs_own_hook().is_none(), "no hook is left for nobody to reel in");
         });
     }
 

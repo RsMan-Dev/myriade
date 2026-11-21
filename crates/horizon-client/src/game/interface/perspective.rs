@@ -440,7 +440,7 @@ impl Game<'_> {
         // attributes (the happy ghast's is 8, the default 4).
         let mount = self
             .riding
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
             .map(|m| {
                 let attribute = |name: &str, default: f64| {
                     m.kind.attributes.get(name).copied().unwrap_or(default)
@@ -737,7 +737,7 @@ impl Game<'_> {
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
             return Some(RiddenBody::Boat(b.yaw));
         }
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(RiddenBody::Living(m.body_yaw))
     }
     /// `Entity.setOldRot` after a server sets the player's rotation

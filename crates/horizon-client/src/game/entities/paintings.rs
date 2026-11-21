@@ -3,16 +3,8 @@
 //! checks every 100 ticks, breaking by attack (`dropItem`), saving, and
 //! `PaintingRenderer` quads.
 use super::{Game, Hit, entity_culling::default_range};
-use horizon_client::{
-    entities::{ItemFrame, Painting},
-    items::ItemStack,
-    mesher::Vertex,
-    random_source,
-};
-use horizon_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
+use horizon_client::{items::ItemStack, mesher::Vertex, random_source};
+use horizon_ecs_proto::targeting::Who;
 use std::sync::Arc;
 
 /// A `painting_variant` and whether `#placeable` lists it (in tag order).
@@ -88,27 +80,6 @@ impl PaintingVariants {
             .cloned()
     }
 }
-fn overlaps(a: ([f64; 3], [f64; 3]), b: ([f64; 3], [f64; 3])) -> bool {
-    (0..3).all(|i| a.0[i] < b.1[i] && b.0[i] < a.1[i])
-}
-/// `HangingEntity.canCoexist(true)` for an item frame.
-pub(super) fn frame_coexists(f: &ItemFrame, frames: &[ItemFrame], paintings: &[Painting]) -> bool {
-    !frames
-        .iter()
-        .any(|o| o.id != f.id && o.facing == f.facing && overlaps(o.bounds(), f.bounds()))
-        && !paintings
-            .iter()
-            .any(|o| o.step() == f.step() && overlaps(o.bounds(), f.bounds()))
-}
-/// `HangingEntity.canCoexist(false)` for a painting.
-fn painting_coexists(p: &Painting, paintings: &[Painting], frames: &[ItemFrame]) -> bool {
-    !paintings
-        .iter()
-        .any(|o| o.id != p.id && overlaps(o.bounds(), p.bounds()))
-        && !frames
-            .iter()
-            .any(|o| o.step() == p.step() && overlaps(o.bounds(), p.bounds()))
-}
 
 /// `HangingEntityItem.mayPlace` for a painting: not a floor or ceiling.
 /// Direction.get2DDataValue: south 0, west 1, north 2, east 3.
@@ -131,88 +102,8 @@ fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
 }
 
 impl Game<'_> {
-    /// `HangingEntity.survives`: no block collision in the box, solid blocks
-    /// (or diodes) behind it and no conflicting hanging entity overlapping it.
-    pub(super) fn painting_survives(&self, p: &Painting) -> bool {
-        let (lo, hi) = p.bounds();
-        let bounds = Aabb::new(
-            Vec3::new(lo[0], lo[1], lo[2]),
-            Vec3::new(hi[0], hi[1], hi[2]),
-        );
-        let mut scene = horizon_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        if !scene.unobstructed(bounds).unwrap_or(false) {
-            return false;
-        }
-        // calculateSupportBox: moved half a block into the wall, deflated.
-        let s = p.step().map(f64::from);
-        let (slo, shi) = (
-            std::array::from_fn::<f64, 3, _>(|i| lo[i] - s[i] * 0.5 + 1.0e-7),
-            std::array::from_fn::<f64, 3, _>(|i| hi[i] - s[i] * 0.5 - 1.0e-7),
-        );
-        for x in slo[0].floor() as i32..=shi[0].floor() as i32 {
-            for y in slo[1].floor() as i32..=shi[1].floor() as i32 {
-                for z in slo[2].floor() as i32..=shi[2].floor() as i32 {
-                    let f = self.res.facts().get(self.world.block(x, y, z));
-                    if !(f.legacy_solid || f.has_class("DiodeBlock")) {
-                        return false;
-                    }
-                }
-            }
-        }
-        painting_coexists(p, &self.paintings, &self.item_frames)
-    }
-    /// `HangingEntityItem.useOn` on a client level: SUCCESS once
-    /// `Painting.create` finds a surviving variant (and the stack's
-    /// `painting/variant`, if any, also survives). The random pick and
-    /// spawn are the server's.
-    pub(super) fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:painting" {
-            return false;
-        }
-        let Some(facing) = painting_facing(hit.face) else {
-            return false;
-        };
-        let pos = [
-            hit.pos[0] + hit.face[0],
-            hit.pos[1],
-            hit.pos[2] + hit.face[2],
-        ];
-        let mut candidate = Painting {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: self.next_entity.wrapping_add(1),
-            pos,
-            facing,
-            variant: Arc::from(""),
-            width: 1,
-            height: 1,
-            check_interval: 0,
-        };
-        let mut any = false;
-        for id in &self.painting_variants.placeable {
-            let Some(v) = self.painting_variants.get(id) else {
-                continue;
-            };
-            (candidate.width, candidate.height) = (v.width, v.height);
-            if self.painting_survives(&candidate) {
-                any = true;
-                break;
-            }
-        }
-        if !any {
-            return false;
-        }
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
-            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
-            return self.painting_survives(&candidate);
-        }
-        true
-    }
-    /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
+    /// `HangingEntityItem.useOn` for a painting against `hit`'s face: P draws the variant (the stack's `painting/variant` when it
+    /// names one) and hangs it; its `PaintingPlaced` event follows. CONSUME when nothing hangs.
     pub(super) fn place_painting(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:painting" {
             return false;
@@ -222,99 +113,32 @@ impl Game<'_> {
             self.use_failed = true;
             return true;
         };
-        let pos = [
-            hit.pos[0] + hit.face[0],
-            hit.pos[1],
-            hit.pos[2] + hit.face[2],
-        ];
-        self.next_entity += 1;
-        let mut candidate = Painting {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: self.next_entity,
-            pos,
-            facing,
-            variant: Arc::from(""),
-            width: 1,
-            height: 1,
-            check_interval: 0,
-        };
-        // Painting.create: the largest placeable variants that survive, one at random.
-        let mut fitting: Vec<Variant> = Vec::new();
-        for id in self.painting_variants.placeable.clone() {
-            let Some(v) = self.painting_variants.get(&id).cloned() else {
-                continue;
-            };
-            (candidate.width, candidate.height) = (v.width, v.height);
-            if self.painting_survives(&candidate) {
-                fitting.push(v);
-            }
+        let at: [i32; 3] = std::array::from_fn(|i| hit.pos[i] + hit.face[i]);
+        let variant = self.painting_variants.of_stack(stack).map(|v| v.id.to_string());
+        if self.hanging_place_cancelled("minecraft:painting", at) {
+            return true;
         }
-        // Nothing fits: CONSUME, which ItemStack.useOn still counts as a use.
-        let Some(largest) = fitting.iter().map(|v| v.width * v.height).max() else {
+        let mut next = self.next_entity;
+        let hung = self.ecs_with(|ecs, mw| {
+            ecs.hang_painting(
+                mw,
+                at,
+                facing,
+                variant.as_deref(),
+                Some(Who::Player),
+                &mut |n| random_source::entity().next_int_bound(n as i32).unwrap_or(0) as usize,
+                &mut || {
+                    next += 1;
+                    next
+                },
+            )
+        });
+        self.next_entity = next;
+        if hung.is_none() {
+            // Nothing fits: CONSUME, which ItemStack.useOn still counts as a use.
             self.award_stat("used", &stack.item, 1);
             return true;
-        };
-        fitting.retain(|v| v.width * v.height >= largest);
-        // Util.getRandomSafe(variants, candidate.random): the painting's own random.
-        let pick = random_source::entity()
-            .next_int_bound(fitting.len() as i32)
-            .unwrap_or(0) as usize;
-        let v = &fitting[pick];
-        (candidate.variant, candidate.width, candidate.height) = (v.id.clone(), v.width, v.height);
-        // EntityType.createDefaultStackConfig -> Painting.applyImplicitComponents:
-        // the stack's `painting/variant` replaces the random pick, and that
-        // painting has to survive where it goes (else the use is CONSUME).
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
-            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
-            if !self.painting_survives(&candidate) {
-                self.award_stat("used", &stack.item, 1);
-                return true;
-            }
         }
-        // `updateCustomEntityTag`: the item's `custom_data` and its `entity_data`
-        // merged over the painting, so a `variant` there replaces the pick (and
-        // has to survive, else the use is CONSUME).
-        let own = horizon_client::entity_nbt::painting_to_nbt(&candidate, [0; 4], None);
-        let mut raw = horizon_client::block_entity_item::stack_configured_entity(
-            stack,
-            "minecraft:painting",
-            &own,
-        );
-        if let Some((_, _, Some(variant))) = horizon_client::entity_nbt::painting_from_nbt(&raw)
-            && *candidate.variant != *variant
-            && let Some(v) = self
-                .painting_variants
-                .get(&horizon_world::datafix::dynamic::namespaced(&variant))
-                .cloned()
-        {
-            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
-            if !self.painting_survives(&candidate) {
-                self.award_stat("used", &stack.item, 1);
-                return true;
-            }
-        }
-        if let horizon_core::nbt::Tag::Compound(map) = &mut raw {
-            map.remove(&"UUID".into());
-        }
-        if self.hanging_place_cancelled("minecraft:painting", pos) {
-            return true;
-        }
-        self.persist.raw.insert(candidate.id, raw);
-        let (lo, hi) = candidate.bounds();
-        let at = [
-            (lo[0] + hi[0]) / 2.0,
-            (lo[1] + hi[1]) / 2.0,
-            (lo[2] + hi[2]) / 2.0,
-        ];
-        self.audio
-            .play("minecraft:entity.painting.place", Some(at), 1.0, 1.0);
-        // HangingEntityItem.useOn: ENTITY_PLACE at the painting, by the player, before it is
-        // added; ItemStack.useOn then counts the use.
-        let ctx = self.player_context(None);
-        self.post_game_event("minecraft:entity_place", at, ctx);
-        self.paintings.push(candidate);
-        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         if !self.creative {
             self.consume_held();
         }
@@ -323,135 +147,21 @@ impl Game<'_> {
         self.swing_arm();
         true
     }
-    /// The painting under the crosshair within reach and its distance.
-    pub(super) fn painting_hit(&self) -> Option<(usize, f64)> {
+    /// The painting the player aims at within reach: its id and distance (P's ray).
+    pub(super) fn aimed_painting(&self) -> Option<(u32, f64)> {
         let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let mut best: Option<(usize, f64)> = None;
-        for (i, p) in self.paintings.iter().enumerate() {
-            let (lo, hi) = p.bounds();
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
-                best = Some((i, t0));
-            }
-        }
-        best
+        self.ecs.aimed_painting(eye, dir, self.entity_reach)
     }
-    /// `BlockAttachedEntity.hurtServer` -> `kill` and `dropItem`. False when a mod kept it
-    /// (`native_hanging_break`): it stays at `index`.
-    pub(super) fn break_painting(&mut self, index: usize, by_player: bool) -> bool {
-        self.break_painting_by(
-            index,
-            by_player,
-            by_player.then_some(super::commands::Target::Player),
-        )
-    }
-    /// `BlockAttachedEntity.kill`: `ENTITY_DIE` at the painting, then `dropItem`.
-    pub(super) fn break_painting_by(
-        &mut self,
-        index: usize,
-        by_player: bool,
-        source: Option<super::commands::Target>,
-    ) -> bool {
-        let Some((p, at)) = self.remove_painting(index, by_player) else {
+    /// `HangingEntity.hurtServer` from the player: P breaks the painting and its `PaintingBroke` event follows.
+    pub(super) fn attack_painting(&mut self) -> bool {
+        let Some((id, d)) = self.aimed_painting() else {
             return false;
         };
-        // BlockAttachedEntity.kill, before dropItem.
-        self.entity_killed_event_by(at, source);
-        self.drop_painting(p, at, by_player);
-        true
-    }
-    /// `BlockAttachedEntity.tick`: a painting whose `survives()` failed is
-    /// `discard()`ed and drops its item, with no game event.
-    pub(super) fn discard_painting(&mut self, index: usize) -> bool {
-        let Some((p, at)) = self.remove_painting(index, false) else {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
-        };
-        self.drop_painting(p, at, false);
-        true
-    }
-    /// The removal `kill` and `discard` share: the mod hook, the entity, its
-    /// chunk's save mark and the centre of its box.
-    fn remove_painting(&mut self, index: usize, by_player: bool) -> Option<(Painting, [f64; 3])> {
-        let (id, pos) = (self.paintings[index].id, self.paintings[index].pos);
-        if self.hanging_break_cancelled("minecraft:painting", pos, by_player) {
-            return None;
         }
-        // The hook had `&mut self`: find the painting again by id.
-        let index = self.paintings.iter().position(|p| p.id == id)?;
-        let p = self.paintings.remove(index);
-        let (lo, hi) = p.bounds();
-        let at = [
-            (lo[0] + hi[0]) / 2.0,
-            (lo[1] + hi[1]) / 2.0,
-            (lo[2] + hi[2]) / 2.0,
-        ];
-        self.world.modified.insert((p.pos[0] >> 4, p.pos[2] >> 4));
-        Some((p, at))
-    }
-    /// `Painting.dropItem`: the break sound, then the item unless drops are off
-    /// or the player who broke it has infinite materials.
-    fn drop_painting(&mut self, p: Painting, at: [f64; 3], by_player: bool) {
-        if !self
-            .ui
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
-        {
-            return;
-        }
-        self.audio
-            .play("minecraft:entity.painting.break", Some(at), 1.0, 1.0);
-        if by_player && self.creative {
-            return;
-        }
-        let stack = ItemStack {
-            item: Arc::from("minecraft:painting"),
-            count: 1,
-            damage: 0,
-            extra: None,
-        };
-        self.spawn_item(
-            stack,
-            super::frames::hanging_drop_position(at, p.step()),
-            [0.0; 3],
-            10,
-        );
-    }
-    /// BlockAttachedEntity.tick: check survival every 100 ticks.
-    pub(super) fn tick_paintings(&mut self) {
-        // ServerLevel.tick: only entities in entity-ticking chunks tick.
-        let ticking = self.entity_ticking_area();
-        let mut i = 0;
-        while i < self.paintings.len() {
-            let (lo, hi) = self.paintings[i].bounds();
-            let centre = [0, 2].map(|k| ((lo[k] + hi[k]) / 2.0).floor() as i32);
-            if !ticking(centre[0], centre[1]) {
-                i += 1;
-                continue;
-            }
-            self.paintings[i].check_interval += 1;
-            if self.paintings[i].check_interval >= 100 {
-                self.paintings[i].check_interval = 0;
-                let p = self.paintings[i].clone();
-                if !self.painting_survives(&p) && self.discard_painting(i) {
-                    continue;
-                }
-            }
-            i += 1;
-        }
+        let creative = self.creative;
+        self.ecs_with(|ecs, mw| ecs.painting_hit(mw, id, Who::Player, creative))
     }
     /// PaintingRenderer: the variant on the front, the back texture behind and
     /// on the edges.
@@ -609,47 +319,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hanging_entities_block_overlapping_other_types() {
-        let p = Painting {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 1,
-            pos: [0, 0, 0],
-            facing: 0,
-            variant: Arc::from("minecraft:kebab"),
-            width: 1,
-            height: 1,
-            check_interval: 0,
-        };
-        let mut f = ItemFrame {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 2,
-            pos: [0, 0, 0],
-            facing: 3,
-            glow: false,
-            item: None,
-            rotation: 0,
-            drop_chance: 1.0,
-            fixed: false,
-            invisible: false,
-            check_interval: 0,
-            custom_name: None,
-            random: horizon_core::random::EntityRandom::own(horizon_client::random_source::entity()),
-        };
-        for glow in [false, true] {
-            f.glow = glow;
-            assert!(!frame_coexists(&f, &[], std::slice::from_ref(&p)));
-            assert!(!painting_coexists(&p, &[], std::slice::from_ref(&f)));
-            f.pos = [2, 0, 0];
-            assert!(frame_coexists(&f, &[], std::slice::from_ref(&p)));
-            assert!(painting_coexists(&p, &[], std::slice::from_ref(&f)));
-            f.pos = [0, 0, 0];
-        }
-    }
-
     /// `HangingEntityItem.useOn` returns SUCCESS (the hand swings) when a
     /// painting is created on a wall. Floor, ceiling, or a failed create is
     /// CONSUME: no swing.

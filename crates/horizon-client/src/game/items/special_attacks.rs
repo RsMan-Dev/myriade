@@ -1,5 +1,5 @@
 //! Accepted melee hits on special targets and their shared attacker tail.
-use super::{dragon::Hurt, minecarts::CartHit, *};
+use super::{dragon::Hurt, *};
 use horizon_client::mobs::DamageKind;
 
 impl Game<'_> {
@@ -57,7 +57,7 @@ impl Game<'_> {
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
     pub(super) fn attack_cart(&mut self) -> bool {
-        let Some((i, d)) = self.cart_hit() else {
+        let Some((cart, d)) = self.cart_hit() else {
             return false;
         };
         if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
@@ -66,10 +66,11 @@ impl Game<'_> {
         let burning = self
             .held()
             .is_some_and(|s| s.enchantment_level("minecraft:fire_aspect") > 0);
-        let area = self.carts[i].bounds();
+        let (Some(area), Some(kind)) = (self.ecs.bounds(cart), self.ecs.cart_kind(cart)) else {
+            return false;
+        };
         // Player.attack's full damage against the cart's entity type.
-        let id = self.carts[i].id as i32;
-        let kind = self.carts[i].kind.id();
+        let id = cart as i32;
         let (damage, scale, _, magic) = self.melee_damage(kind, false, Some(id as u32));
         let sweep = self.sweep_before_hit(kind, false);
         let attacker = self.own_entity_id();
@@ -84,7 +85,7 @@ impl Game<'_> {
         if !crate::game::entity::damage_level_of!(self, scoped).invulnerability_check(
             horizon_client::health::Hurting::Entity(id, kind, source),
             vanilla,
-        ) && self.hurt_cart_result(i, damage, self.creative, burning, CartHit::player())
+        ) && self.cart_player_hurt(cart, attacker, damage, burning)
             && damage > 0.0
         {
             let (knockback, _) = self.extra_knockback(kind, scale);

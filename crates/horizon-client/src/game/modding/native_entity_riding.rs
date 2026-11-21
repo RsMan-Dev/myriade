@@ -11,7 +11,7 @@ use horizon_client::{
 use mod_api::{EntityRef, LeashHolder, LivingRef};
 
 impl Game<'_> {
-    /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
+    /// The dismount search with a vehicle or passenger lent out of `self.remote_entities`.
     pub(super) fn scoped_mob_dismount_location(
         &self,
         vehicle: Option<&Mob>,
@@ -63,6 +63,7 @@ impl Game<'_> {
         match t {
             Target::Player => self.riding,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle,
+            Target::Mob(id) if self.ecs.exists(id) => self.ecs_vehicle_of(id),
             Target::Mob(id) => self.mob_object(id).filter(|m| !m.removed)?.extra.mount,
             // A general row rides the row its tree loaded with; a row queued
             // for removal rides nothing, as a removed mob does not.
@@ -107,7 +108,7 @@ impl Game<'_> {
     pub(super) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
         let mut root = id;
         let mut next = self.native_vehicle_id(target);
-        for _ in 0..=self.mobs.len() + self.persist.off_level.len() + 1 {
+        for _ in 0..=self.remote_entities.len() + self.persist.off_level.len() + 1 {
             let Some(vehicle) = next else {
                 return Some(root);
             };
@@ -220,13 +221,13 @@ impl Game<'_> {
         match vehicle {
             Target::Boat(_) if is_player => Some(LivingRef::new(first)),
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                let mob = self.remote_entities.iter().find(|m| m.id == id)?;
                 if is_player {
                     return self
                         .native_player_controls(mob, rider)
                         .then(|| LivingRef::new(first));
                 }
-                let rider = self.mobs.iter().find(|m| m.id == first.id())?;
+                let rider = self.remote_entities.iter().find(|m| m.id == first.id())?;
                 let tagged = self
                     .res
                     .mob_data()
@@ -316,7 +317,7 @@ impl Game<'_> {
     pub(super) fn entity_leash_holder(&self, entity: EntityRef) -> Option<LeashHolder> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                let mob = self.remote_entities.iter().find(|m| m.id == id)?;
                 if mob.extra.leash_pending.is_some() {
                     return None;
                 }
@@ -436,6 +437,7 @@ impl Game<'_> {
         if previous_vehicle.is_some() {
             match rider {
                 Target::Player => self.stop_riding(),
+                Target::Mob(id) if self.ecs.exists(id) => self.ecs_dismount(id),
                 Target::Mob(id) => {
                     if previous_vehicle.is_some_and(|v| {
                         self.persist.mount_notifications.contains(&(id, v, false))
@@ -470,7 +472,7 @@ impl Game<'_> {
                     // rider keeps their view, whatever the vehicle's yaw.
                     Target::Boat(_) => {}
                     Target::Mob(id) => {
-                        if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
+                        if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                             mob.extra.flag = false;
                             mob.extra.counter = 0;
                         }
@@ -490,8 +492,15 @@ impl Game<'_> {
                 self.seat_acting_player(vehicle_id);
                 self.trigger_player("minecraft:started_riding");
             }
+            Target::Mob(id) if self.ecs.exists(id) => {
+                if !self.ecs_mount(id, vehicle_id) {
+                    return false;
+                }
+                // Gap: the ECS places the rider, so `seat_mob` (host list) is not called here.
+                self.break_leash(id, true, false);
+            }
             Target::Mob(id) => {
-                horizon_client::mobs::riders::link(&mut self.mobs, id, vehicle_id);
+                horizon_client::mobs::riders::link(&mut self.remote_entities, id, vehicle_id);
                 self.seat_mob(id);
                 // `Mob.startRiding`: `dropLeash()`, before the rider is seated.
                 self.break_leash(id, true, false);
@@ -516,8 +525,8 @@ impl Game<'_> {
             | Target::Other(id) => id,
             _ => return None,
         };
-        if self.entity(vehicle_id).is_none()
-            || matches!(rider, Target::Mob(id) if self.mobs.iter().all(|m| m.id != id || m.removed))
+        if (self.entity(vehicle_id).is_none() && !self.ecs.exists(vehicle_id))
+            || matches!(rider, Target::Mob(id) if !self.ecs.exists(id) && self.remote_entities.iter().all(|m| m.id != id || m.removed))
             || !matches!(rider, Target::Player | Target::Mob(_))
             || rider == vehicle
             || self.native_vehicle_id(rider) == Some(vehicle_id)
@@ -526,7 +535,8 @@ impl Game<'_> {
         }
         // Intermediate vehicles can be retained objects, not ordinary handles.
         let mut current = Some(vehicle_id);
-        for _ in 0..=self.mobs.len() + self.persist.off_level.len() + 1 {
+        // The ECS chains are bounded by their own limit (64), beside the host's lists.
+        for _ in 0..=self.remote_entities.len() + self.persist.off_level.len() + 64 {
             let Some(id) = current else { break };
             if rider == Target::Mob(id) {
                 return None;
@@ -541,8 +551,12 @@ impl Game<'_> {
                 Target::Player if self.keys.held(horizon_client::actions::Action::Sneak) => {
                     return None;
                 }
+                Target::Mob(id) if self.ecs.exists(id) && !self.ecs.boarding_ready(id) => {
+                    return None;
+                }
                 Target::Mob(id)
-                    if self.mobs.iter().find(|m| m.id == id).is_none_or(|m| {
+                    if !self.ecs.exists(id)
+                        && self.remote_entities.iter().find(|m| m.id == id).is_none_or(|m| {
                         m.extra.boarding_cooldown > 0
                             || matches!(
                                 m.species(),
@@ -566,7 +580,7 @@ impl Game<'_> {
                 }
             }
             Target::Cart(id) => {
-                if !self.carts.iter().any(|cart| cart.id == id)
+                if self.ecs.cart_kind(id).is_none()
                     || self.riding == Some(id)
                     || self.ridden_by_guest(id)
                     || !self.seated_passengers(id).is_empty()
@@ -574,8 +588,14 @@ impl Game<'_> {
                     return None;
                 }
             }
+            Target::Mob(id) if self.ecs.exists(id) => {
+                // A free seat is the ECS's: `ecs_mount` refuses a full vehicle, and `force` skips the check.
+                if !force && !self.ecs.has_free_seat(id) {
+                    return None;
+                }
+            }
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id && m.alive())?;
+                let mob = self.remote_entities.iter().find(|m| m.id == id && m.alive())?;
                 let seats = self.seated_passengers(id);
                 let players = seats
                     .iter()
@@ -767,19 +787,7 @@ mod tests {
                     if vehicle_kind == "minecraft:armor_stand" {
                         game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
                     } else {
-                        game.others.push(super::super::commands::OtherEntity {
-                            attachment_lifetime: Default::default(),
-                            knot_check: None,
-                            eye: None,
-                            join: Default::default(),
-                            item_transformation: None,
-                            interaction: None,
-                            id,
-                            kind: vehicle_kind.into(),
-                            position: Vec3::ZERO,
-                            yaw: 0.0,
-                            pitch: 0.0,
-                        });
+                        game.load_other_as(id, vehicle_kind, [0.0; 3]);
                     }
                     let vehicle = game.entity(id).unwrap();
                     let rider = add_mob(game, id + 1, "minecraft:zombie", Vec3::ZERO);
@@ -1021,7 +1029,6 @@ mod tests {
         use super::super::{
             InteractTarget,
             boats::Boat,
-            minecarts::{CartKind, Minecart},
         };
         use horizon_client::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1036,8 +1043,7 @@ mod tests {
             assert_eq!(game.riding, Some(60));
             assert_eq!(game.yaw, 10.0, "mounting keeps the rider's view");
             game.riding = None;
-            game.carts
-                .push(Minecart::new(61, CartKind::Rideable, Vec3::ZERO));
+            assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 61)).is_some());
             assert!(game.interact_cart(Some(InteractTarget {
                 id: 61,
                 location: [0.0; 3]
@@ -1052,15 +1058,12 @@ mod tests {
         use super::super::{
             InteractTarget,
             boats::Boat,
-            minecarts::{CartKind, Minecart},
         };
         use horizon_client::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.carts
-                .push(Minecart::new(61, CartKind::Rideable, Vec3::ZERO));
-            game.carts
-                .push(Minecart::new(62, CartKind::Rideable, Vec3::ZERO));
+            assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 61)).is_some());
+            assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 62)).is_some());
             let mut chest_boat = Boat::new(63, "oak".into(), Vec3::ZERO, 0.0);
             chest_boat.chest = true;
             game.boats.push(chest_boat);
@@ -1231,7 +1234,7 @@ mod tests {
             assert_eq!(stale(top).is_vehicle(game), None);
             let other_root = add_mob(game, 85, "minecraft:cow", Vec3::ZERO);
             let index = game
-                .mobs
+                .remote_entities
                 .iter()
                 .position(|m| m.id == other_root.id())
                 .unwrap();
@@ -1557,7 +1560,7 @@ mod tests {
     fn a_mob_gets_off_where_the_query_says() {
         use super::super::{
             boats::Boat,
-            minecarts::{CartKind, Minecart},
+            minecarts::CartKind,
         };
         super::super::native_entity_refs::tests::with_game(|game| {
             lay_floor(game);
@@ -1584,7 +1587,8 @@ mod tests {
             let boat = game.entity(106).unwrap();
             assert_near(get_off(game, rider, boat), [0.5, 64.0, 1.77229]);
             // A cart facing south lets it off to the north.
-            game.carts.push(Minecart::new(107, CartKind::Rideable, at));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, CartKind::Rideable.id(), [at.x, at.y, at.z], 0.0, &mut || 107))
+                .unwrap();
             let cart = game.entity(107).unwrap();
             assert_near(get_off(game, rider, cart), [0.5, 64.0, -0.5]);
         });
@@ -1595,7 +1599,7 @@ mod tests {
     fn a_player_gets_off_where_the_query_says() {
         use super::super::{
             boats::Boat,
-            minecarts::{CartKind, Minecart},
+            minecarts::CartKind,
         };
         use horizon_client::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1630,7 +1634,8 @@ mod tests {
             let boat = game.entity(123).unwrap();
             assert_near(get_off(game, player, boat), [0.5, 64.0, 1.77229]);
             // As for a mob, a cart facing south lets it off to the north.
-            game.carts.push(Minecart::new(124, CartKind::Rideable, at));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, CartKind::Rideable.id(), [at.x, at.y, at.z], 0.0, &mut || 124))
+                .unwrap();
             let cart = game.entity(124).unwrap();
             assert_near(get_off(game, player, cart), [0.5, 64.0, -0.5]);
         });
@@ -1698,19 +1703,7 @@ mod tests {
             // A player with no motion state has nothing to measure.
             assert_eq!(cow.dismount_location(game, LivingRef::new(player)), None);
             // An entity Horizon doesn't simulate keeps no box to stand on.
-            game.others.push(super::super::commands::OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 132,
-                kind: "minecraft:marker".into(),
-                position: at,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(132, "minecraft:marker", [at.x, at.y, at.z]);
             let marker = game.entity(132).unwrap();
             assert_eq!(marker.dismount_location(game, living), None);
         });

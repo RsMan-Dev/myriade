@@ -5,6 +5,7 @@ use crate::species::Def;
 
 pub static DEF: Def = Def {
     name: "minecraft:zoglin",
+    caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),

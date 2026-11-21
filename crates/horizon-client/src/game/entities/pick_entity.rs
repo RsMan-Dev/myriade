@@ -60,9 +60,8 @@ impl Game<'_> {
             }),
             self.mob_hit()
                 .map(|(index, distance, _)| hit(self.mobs[index].id, distance, true)),
-            self.redirectable_hit().map(|(index, distance)| {
-                hit(self.creatures.projectiles[index].id, distance, false)
-            }),
+            self.redirectable_hit()
+                .map(|(id, distance)| hit(id, distance, false)),
             self.dragon_hit().map(|(id, distance)| CrosshairEntityHit {
                 id: id as i32,
                 distance,

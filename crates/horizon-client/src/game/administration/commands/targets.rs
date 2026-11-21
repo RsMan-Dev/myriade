@@ -37,12 +37,7 @@ impl Game<'_> {
                 .iter()
                 .find(|o| o.id == id)
                 .map(|o| [o.position.x, o.position.y, o.position.z]),
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|a| a.id == id)
-                .map(|a| [a.position.x, a.position.y, a.position.z]),
+            Target::Projectile(id) => self.ecs_view(id).map(|v| v.position),
             Target::Stand(id) => self
                 .armor_stands
                 .iter()
@@ -69,11 +64,7 @@ impl Game<'_> {
                 .iter()
                 .find(|b| b.id == id)
                 .map(|b| [b.position.x, b.position.y, b.position.z]),
-            Target::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| [c.position.x, c.position.y, c.position.z]),
+            Target::Cart(id) => self.ecs_view(id).map(|v| v.position),
             Target::Other(id) => self
                 .others
                 .iter()
@@ -114,10 +105,7 @@ impl Game<'_> {
                 .find(|r| r.id == id)
                 .map(|r| [r.position.x, r.position.y, r.position.z]),
             Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
-            Target::Hook(id) => self.fishing_hook_by_id(id).map(|(h, _)| {
-                let p = h.position;
-                [p.x, p.y, p.z]
-            }),
+            Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| [p.x, p.y, p.z]),
             Target::Trident(id) => self
                 .tridents
                 .iter()
@@ -133,14 +121,7 @@ impl Game<'_> {
                 let p = horizon_client::mobs::leash::knot_state(fence).position;
                 [p.x, p.y, p.z]
             }),
-            // Stage 3's insertion joins live rows; a selector cannot find one yet.
-            Target::General(id) => self
-                .resident_entities
-                .general
-                .rows
-                .iter()
-                .find(|row| row.id == id)
-                .map(|row| [row.position.x, row.position.y, row.position.z]),
+            Target::General(id) => self.ecs_view(id).map(|v| v.position),
         }
     }
     pub(in crate::game) fn target_type(&self, t: Target) -> String {
@@ -155,14 +136,9 @@ impl Game<'_> {
                 }),
             Target::Item(_) => "minecraft:item".into(),
             Target::Orb(_) => "minecraft:experience_orb".into(),
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|p| p.id == id)
-                .map_or_else(String::new, |p| p.entity_type().into()),
+            Target::Projectile(id) => self.ecs_mob_kind(id).unwrap_or_default().into(),
             Target::Stand(_) => "minecraft:armor_stand".into(),
-            Target::General(_) => String::new(),
+            Target::General(id) => self.ecs_mob_kind(id).unwrap_or_default().into(),
             Target::Frame(id) => {
                 if self.item_frames.iter().any(|f| f.id == id && f.glow) {
                     "minecraft:glow_item_frame".into()
@@ -177,10 +153,9 @@ impl Game<'_> {
                 .find(|b| b.id == id)
                 .map_or_else(|| "minecraft:oak_boat".into(), |b| b.entity_type()),
             Target::Cart(id) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
+                .ecs
+                .cart_kind(id)
+                .map_or_else(|| "minecraft:minecart".into(), Into::into),
             Target::Other(id) => self
                 .others
                 .iter()

@@ -182,9 +182,17 @@ impl Game<'_> {
         {
             self.as_fight_player(player.who, |g| g.apply_nausea_effect_to_player(source));
         }
+        if self.ecs.is_active() {
+            for (id, kind) in self.ecs_gas_reached(source, area) {
+                if self.can_be_affected(Some(id as i32), &kind, "nausea") {
+                    self.ecs_add_effect(id, "nausea", EFFECT_DURATION_IN_TICKS, 0);
+                }
+            }
+            return;
+        }
         let mut near = Vec::new();
         if !self.mobs_in_pass(area, &mut near) {
-            near.extend(0..self.mobs.len() as u32);
+            near.extend(0..self.remote_entities.len() as u32);
         }
         let level = ParticleLevel {
             world: &self.world,
@@ -196,7 +204,7 @@ impl Game<'_> {
         // The gas reads blocks only, so the mobs it reaches can be found
         // before any gets its effect.
         near.retain(|&j| {
-            let mob = &self.mobs[j as usize];
+            let mob = &self.remote_entities[j as usize];
             mob.alive()
                 && mob.bounds().intersects(area)
                 && can_be_reached_by_noxious_gas(
@@ -211,13 +219,13 @@ impl Game<'_> {
         let reached: Vec<_> = near
             .into_iter()
             .map(|j| {
-                let m = &self.mobs[j as usize];
+                let m = &self.remote_entities[j as usize];
                 (m.id, m.kind.id.clone())
             })
             .collect();
         for (id, kind) in reached {
             if self.can_be_affected(Some(id as i32), &kind, "nausea")
-                && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+                && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
             {
                 apply_nausea_effect_to_mob(m);
             }
@@ -235,7 +243,7 @@ impl Game<'_> {
         let Some(pass) = self.pass_mobs.as_mut() else {
             return false;
         };
-        let mobs = &self.mobs;
+        let mobs = &self.remote_entities;
         if pass
             .grid
             .as_ref()
@@ -368,18 +376,21 @@ impl Game<'_> {
         let area = launch_area(pos, height);
         let limit = f64::from(0.3f32) + f64::from(water_blocks) * 0.1;
         let push = f64::from(0.2f32);
+        if self.ecs.is_active() {
+            return self.ecs_geyser_launch(area, limit, push);
+        }
         let mut near = Vec::new();
         if !self.mobs_in_pass(area, &mut near) {
-            near.extend(0..self.mobs.len() as u32);
+            near.extend(0..self.remote_entities.len() as u32);
         }
         near.retain(|&j| {
-            let m = &self.mobs[j as usize];
+            let m = &self.remote_entities[j as usize];
             m.alive() && m.bounds().intersects(area)
         });
         let tags = &self.res.stations().enchantments.entity_tags;
         let immune = tags.get("minecraft:not_affected_by_geysers");
         for &j in &near {
-            let mob = &mut self.mobs[j as usize];
+            let mob = &mut self.remote_entities[j as usize];
             // Entity.checkFallDistanceAccumulation.
             if mob.velocity.y > -0.5 && mob.fall_distance > 1.0 {
                 mob.fall_distance = 1.0;
@@ -395,7 +406,7 @@ impl Game<'_> {
         if !near.is_empty()
             && let Some(pass) = self.pass_mobs.as_mut()
         {
-            pass.wrote(&self.mobs);
+            pass.wrote(&self.remote_entities);
         }
         for item in self
             .dropped
@@ -580,8 +591,8 @@ mod pass_tests {
 
     /// The mobs whose box meets `area`, by walking them all.
     fn scan(game: &Game<'_>, area: Aabb) -> Vec<u32> {
-        (0..game.mobs.len() as u32)
-            .filter(|&j| game.mobs[j as usize].bounds().intersects(area))
+        (0..game.remote_entities.len() as u32)
+            .filter(|&j| game.remote_entities[j as usize].bounds().intersects(area))
             .collect()
     }
     /// The same from the pass's grid.
@@ -591,7 +602,7 @@ mod pass_tests {
             game.mobs_in_pass(area, &mut near),
             "a small area reads the grid"
         );
-        near.retain(|&j| game.mobs[j as usize].bounds().intersects(area));
+        near.retain(|&j| game.remote_entities[j as usize].bounds().intersects(area));
         near
     }
 
@@ -641,16 +652,16 @@ mod pass_tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(1, kind.clone(), Vec3::new(1.5, 64.0, 1.5), 0.0));
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(2, kind.clone(), Vec3::new(65.5, 64.0, 1.5), 0.0));
             // The six-block-wide nausea query, expanded by the zombie's width
             // plus SeenGrid's margin, spans 3 x 3 four-block grid columns.
             // Populate distinct distant columns so candidates uses the grid
             // rather than its small-population scan fallback. Keep mob 2 in slot 1.
             for i in 0..64u32 {
-                game.mobs.push(Mob::new(
+                game.remote_entities.push(Mob::new(
                     i + 3,
                     kind.clone(),
                     Vec3::new(256.5 + f64::from(i) * 8.0, 64.0, 256.5),
@@ -663,8 +674,8 @@ mod pass_tests {
             mod_platform::testing::with_mods(mods, || {
                 game.pass_mobs = Some(PassMobs::default());
                 game.server_nausea_effect_ticker((1, 63, 1));
-                assert_eq!(game.mobs[1].position, Vec3::new(33.5, 64.0, 1.5));
-                assert!(game.mobs[1].extra.effects.is_empty());
+                assert_eq!(game.remote_entities[1].position, Vec3::new(33.5, 64.0, 1.5));
+                assert!(game.remote_entities[1].extra.effects.is_empty());
                 let second_area = nearby_living_area([33, 65, 1]);
                 assert_eq!(
                     from_grid(game, second_area),
@@ -673,7 +684,7 @@ mod pass_tests {
                 );
                 game.server_nausea_effect_ticker((33, 63, 1));
                 assert!(
-                    !game.mobs[1].extra.effects.is_empty(),
+                    !game.remote_entities[1].extra.effects.is_empty(),
                     "the second geyser applies nausea"
                 );
             });
@@ -698,7 +709,7 @@ mod pass_tests {
             };
             for id in 0..60u32 {
                 let kind = kinds[id as usize % kinds.len()].clone();
-                game.mobs.push(Mob::new(id + 1, kind, place(&mut rng), 0.0));
+                game.remote_entities.push(Mob::new(id + 1, kind, place(&mut rng), 0.0));
             }
             let areas: Vec<Aabb> = (0..40)
                 .map(|i| {
@@ -715,17 +726,17 @@ mod pass_tests {
                 }
             };
             check(game, "as built");
-            game.mobs[7].position = areas[0].center();
+            game.remote_entities[7].position = areas[0].center();
             check(game, "a mob moved into a geyser");
             let kind = kinds[2].clone();
-            game.mobs
+            game.remote_entities
                 .insert(0, Mob::new(100, kind, areas[1].center(), 0.0));
             check(game, "a mob added in front");
-            game.mobs.retain(|m| m.id % 5 != 0);
+            game.remote_entities.retain(|m| m.id % 5 != 0);
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
-            game.mobs[3].velocity.y += 0.2;
-            game.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
+            game.remote_entities[3].velocity.y += 0.2;
+            game.pass_mobs.as_mut().unwrap().wrote(&game.remote_entities);
             check(game, "a push");
         });
     }

@@ -30,6 +30,7 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { attach_reach: Some(4.5), ..nearest_target::Params::PLAYER }),
     ],
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { events: false, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 1, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&homing_shot::MODULE, 4, &homing_shot::Params {
             reach_sq: 400.0,
@@ -64,6 +65,6 @@ pub static DEF: Def = Def {
         }),
     ],
     rules: &[RuleEntry::new(&attached_face::RULE, &attached_face::Params { colour: 16, covered: true })],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::FireImmune]),
     ..Def::EMPTY
 };

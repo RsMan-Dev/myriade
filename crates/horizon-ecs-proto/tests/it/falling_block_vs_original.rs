@@ -6,7 +6,13 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::falling_block::{fall, FallingBlock};
+use horizon_ecs_proto::host_out::HostEvent;
 use horizon_world::registry::BlockStateId;
+
+/// The block states the host was asked to set since the last call (`SetBlock`).
+fn set_states(h: &mut Herd) -> Vec<BlockStateId> {
+    h.drain_host_out().into_iter().filter_map(|ev| if let HostEvent::SetBlock { state, .. } = ev { Some(state) } else { None }).collect()
+}
 
 /// The first solid cell under `(x, z)` from `from` down, as its top.
 fn floor_under(h: &Herd, x: i32, z: i32, from: i32) -> i32 {
@@ -48,8 +54,10 @@ fn a_falling_block_lands_on_the_reference_tick_and_is_placed() {
     let start = h.world.get::<Pos>(e).unwrap().0.y;
     let want = reference(start, f64::from(top));
     let mut landed = None;
+    let mut placed = Vec::new();
     for t in 1..=400u64 {
         h.tick();
+        placed.extend(set_states(&mut h));
         if h.world.get_entity(e).is_err() {
             landed = Some(t);
             break;
@@ -57,8 +65,8 @@ fn a_falling_block_lands_on_the_reference_tick_and_is_placed() {
     }
     assert_eq!(landed, Some(want), "the landing tick");
     h.tick();
-    let mw = h.world.resource::<Level>().mw.0;
-    assert_eq!(mw.world.block(0, top, 0), stone(&h), "the block is placed on the floor");
+    placed.extend(set_states(&mut h));
+    assert!(placed.contains(&stone(&h)), "the host is asked to set the block it lands as");
     assert!(h.world.query::<&FallingBlock>().iter(&h.world).next().is_none());
 }
 
@@ -116,11 +124,12 @@ fn concrete_powder_landing_in_water_sets_as_concrete() {
     let mw = h.world.resource::<Level>().mw.0;
     let powder = horizon_ecs_proto::blocks::resolve(mw, "minecraft:white_concrete_powder", &[]).unwrap();
     fall(&mut h.world, [0, top + 4, 0], powder, None);
+    let mut placed = Vec::new();
     for _ in 0..80 {
         h.tick();
+        placed.extend(set_states(&mut h));
     }
     let concrete = horizon_ecs_proto::blocks::resolve(mw, "minecraft:white_concrete", &[]).unwrap();
-    let placed = (top - 1..=top + 4).map(|y| mw.world.block(0, y, 0)).collect::<Vec<_>>();
     assert!(placed.contains(&concrete), "concrete where the powder landed: {placed:?}");
     assert!(!placed.contains(&powder), "no powder left");
 }
@@ -152,6 +161,35 @@ fn a_falling_block_follows_horizons_own_golden_tick_by_tick() {
             assert!((at - want).abs() < 1e-9, "tick {t}: ecs {at}, Horizon {want}");
         }
     }
+}
+
+/// A block saved in the air comes back falling and goes on to the jar's limit: the 100 ticks it spent in the air are not spent twice.
+#[test]
+fn a_falling_block_saved_mid_fall_reloads_and_keeps_the_limit_left() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab_awake(16, true, false);
+    let top = floor_under(&h, 0, 0, 40);
+    let sand = stone(&h);
+    let e = fall(&mut h.world, [0, top + 10, 0], sand, None);
+    h.world.get_mut::<Body>(e).unwrap().gravity = 0.0;
+    for _ in 0..100 {
+        h.tick();
+    }
+    let saved = horizon_ecs_proto::nbt::save(&h.world, e).expect("a falling block is saved");
+    h.world.entity_mut(e).despawn();
+    let r = horizon_ecs_proto::nbt::restore(&mut h.world, &saved).expect("it is restored");
+    h.world.get_mut::<Body>(r).unwrap().gravity = 0.0;
+    let mut gone = None;
+    for t in 1..=700u64 {
+        h.tick();
+        if h.world.get_entity(r).is_err() {
+            gone = Some(t);
+            break;
+        }
+    }
+    assert_eq!(gone, Some(501), "removed on the limit less the 100 ticks it spent in the air");
 }
 
 /// `FallingBlockEntity.causeFallDamage` of an anvil (read with javap: `ceil(fall - 1)`, 2 a block, at most 40, the worn anvil with chance
@@ -189,12 +227,13 @@ fn an_anvil_hurts_the_creature_under_it_and_wears_as_the_jar_says() {
         let steps = (fell - 1.0).ceil() as i32;
         let damage = ((steps as f32 * 2.0).floor() as i32).min(40) as f32;
         let worn = LegacyRandom::new(seed).next_float() < 0.05 + steps as f32 * 0.05;
+        let mut placed = Vec::new();
         for _ in 0..80 {
             h.tick();
+            placed.extend(set_states(&mut h));
         }
         let got = hp - h.world.get::<Health>(cow).map_or(hp, |x| x.0);
         assert_eq!(got, damage, "seed {seed}: damage (steps {steps})");
-        let placed = (top - 1..=top + 8).map(|y| mw.world.block(0, y, 0)).collect::<Vec<_>>();
         let chipped = horizon_ecs_proto::blocks::resolve(mw, "minecraft:chipped_anvil", &[]).unwrap();
         assert_eq!(placed.contains(&chipped), worn, "seed {seed}: worn");
         assert_eq!(placed.contains(&anvil), !worn, "seed {seed}: anvil kept");

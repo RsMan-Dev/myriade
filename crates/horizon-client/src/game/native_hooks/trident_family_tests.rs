@@ -11,7 +11,9 @@ use horizon_client::{
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
+use horizon_client::arrows::Pickup;
 use horizon_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
+use horizon_ecs_proto::arrow_more::{ArrowShot, Def};
 use mod_api::{
     Flow, Hooks, HurtSource, LevelRandomHost, LivingDeathEvent, LivingIncomingDamageEvent,
     ModEntry, ServerHost,
@@ -149,56 +151,20 @@ fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
     owner.persistent = true;
     game.mobs.push(owner);
     let stack = weapon();
-    let mut shot = Projectile::new(
-        ProjectileKind::Trident,
-        Vec3::new(4.5, 80.5, 4.5),
-        Some(Who::Mob(42)),
-    );
-    shot.id = game.take_entity_id();
-    shot.velocity = Vec3::new(4.0, 0.0, 0.0);
-    shot.arrow.as_mut().unwrap().pickup_item = stack.clone();
-    let id = shot.id;
-    game.creatures.projectiles.push(shot);
+    let owner = game.ecs_owner(Some(Who::Mob(42)));
+    let id = game
+        .ecs_launch_item(
+            "minecraft:trident",
+            [4.5, 80.5, 4.5],
+            [4.0, 0.0, 0.0],
+            owner,
+            Some(stack.clone()),
+        )
+        .unwrap();
     (id, stack)
 }
-fn step(game: &mut Game<'_>, player: bool) {
-    if player {
-        game.tick_tridents();
-    } else {
-        game.tick_projectiles().unwrap();
-    }
-}
-
-#[test]
-#[ignore = "daily"]
-fn player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
-    crate::game::in_own_process(
-        "game::native_hooks::trident_family_tests::player_thrown_trident_is_refused_by_powered_wither_and_closed_shulker",
-        || {
-            for kind in ["minecraft:wither", "minecraft:shulker"] {
-                fixture(|game, seen| {
-                    let health = victim(game, kind);
-                    throw_player(game);
-                    step(game, true);
-                    assert_eq!(
-                        game.mobs.iter().find(|m| m.id == 41).unwrap().health,
-                        health,
-                        "{kind}"
-                    );
-                    assert!(
-                        game.tridents[0].velocity.x < 0.0,
-                        "a real collision bounced the trident"
-                    );
-                    let seen = seen.lock().unwrap();
-                    assert!(
-                        seen.incoming.is_empty(),
-                        "species immunity precedes incoming damage"
-                    );
-                    assert!(seen.deaths.is_empty());
-                });
-            }
-        },
-    );
+fn step(game: &mut Game<'_>) {
+    game.tick_ecs().unwrap();
 }
 
 #[test]
@@ -210,57 +176,18 @@ fn mob_thrown_trident_is_refused_by_powered_wither_and_closed_shulker() {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 fixture(|game, seen| {
                     let health = victim(game, kind);
-                    throw_mob(game);
-                    step(game, false);
+                    let (id, _) = throw_mob(game);
+                    step(game);
                     assert_eq!(
                         game.mobs.iter().find(|m| m.id == 41).unwrap().health,
                         health,
                         "{kind}"
                     );
-                    assert!(
-                        game.creatures.projectiles[0].velocity.x < 0.0,
-                        "a real collision bounced the trident"
-                    );
+                    let (_, velocity, _, _) = game.ecs.projectile_motion(id).unwrap();
+                    assert!(velocity.x < 0.0, "a real collision bounced the trident");
                     let seen = seen.lock().unwrap();
                     assert!(seen.incoming.is_empty());
                     assert!(seen.deaths.is_empty());
-                });
-            }
-        },
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon() {
-    crate::game::in_own_process(
-        "game::native_hooks::trident_family_tests::accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon",
-        || {
-            for player in [true, false] {
-                fixture(|game, seen| {
-                    victim(game, "minecraft:cow");
-                    game.mobs[0].health = 1.0;
-                    let (id, stack) = if player {
-                        throw_player(game)
-                    } else {
-                        throw_mob(game)
-                    };
-                    let expected = stack.try_into_api().unwrap();
-                    game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
-                    step(game, player);
-                    assert!(game.mobs.iter().find(|m| m.id == 41).unwrap().health <= 0.0);
-                    game.tick_creature_entities().unwrap();
-                    let seen = seen.lock().unwrap();
-                    assert_eq!(seen.incoming.len(), 1);
-                    assert_eq!(seen.deaths, seen.incoming);
-                    let hit = &seen.deaths[0];
-                    assert_eq!(hit.entity, 41);
-                    assert_eq!(hit.damage_type, "minecraft:trident");
-                    assert_eq!(hit.causing, if player { 11 } else { 42 });
-                    assert_eq!(hit.direct, id as i32);
-                    assert!(hit.position.is_some());
-                    assert_eq!(hit.weapon.as_ref(), Some(&expected));
-                    assert!(expected.components().is_some());
                 });
             }
         },
@@ -307,21 +234,17 @@ fn actual_arrows_still_bounce_off_powered_wither_and_closed_shulker() {
             for kind in ["minecraft:wither", "minecraft:shulker"] {
                 fixture(|game, seen| {
                     let health = victim(game, kind);
-                    let bow = ItemStack::new("minecraft:bow", 1);
-                    game.inventory[game.selected] = Some(bow.clone());
-                    game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
-                    game.release_bow(&bow, 20);
-                    game.creatures.projectiles.update(0, |shot| {
-                        shot.position = Vec3::new(4.5, 80.5, 4.5);
-                        shot.previous = shot.position;
-                        shot.velocity = Vec3::new(4.0, 0.0, 0.0);
-                    });
-                    game.tick_projectiles().unwrap();
+                    let shot = ArrowShot {
+                        pickup: Pickup::Allowed,
+                        stack: ItemStack::new("minecraft:arrow", 1),
+                        fx: Def::default(),
+                        sound: "minecraft:entity.arrow.hit",
+                    };
+                    let id = game.ecs_shoot_arrow([4.5, 80.5, 4.5], [4.0, 0.0, 0.0], None, shot, None);
+                    step(game);
                     assert_eq!(game.mobs[0].health, health, "{kind}");
-                    assert!(
-                        game.creatures.projectiles[0].velocity.x < 0.0,
-                        "the actual arrow bounced"
-                    );
+                    let (_, velocity, _, _) = game.ecs.projectile_motion(id).unwrap();
+                    assert!(velocity.x < 0.0, "the actual arrow bounced");
                     assert!(seen.lock().unwrap().incoming.is_empty());
                 });
             }

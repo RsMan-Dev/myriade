@@ -7,8 +7,9 @@ use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     cow::{DamageQueue, Herd},
-    effect_cloud::{self, EffectCloud},
-    effects::{self, Brew, PotionId},
+    cloud_tick,
+    effect_cloud::CloudSpec,
+    effects::{self, Brew},
 };
 
 /// `instant` of the client at full strength (a splash's hit creature) and at half strength (a cloud), for `base << level`.
@@ -55,23 +56,10 @@ fn a_lingering_harming_cloud_harms_at_half_strength_as_the_origin_does() {
     let (_, mut h) = flat_pair();
     let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     h.tick();
-    let spec = EffectCloud {
-        radius: 2.0,
-        radius_per_tick: 0.0,
-        radius_on_use: 0.0,
-        duration_on_use: 0,
-        age: 0,
-        wait: 0,
-        duration: -1,
-        reapplication_delay: 20,
-        duration_scale: 1.0,
-        hidden: &[],
-        ambient: &[],
-        owner: None,
-    };
-    effect_cloud::spawn(&mut h.world, [0.5, 1.0, 0.5], PotionId("minecraft:harming"), spec);
+    let spec = CloudSpec { wait: 0, duration: -1, ..CloudSpec::new(2.0, "minecraft:harming", None) };
+    cloud_tick::spawn(&mut h.world, Vec3::new(0.5, 1.0, 0.5), spec);
     for _ in 0..5 {
-        effect_cloud::tick(&mut h.world);
+        h.tick();
     }
     assert_eq!(queued(&mut h, hit), vec![origin_cloud(0)], "the cloud's first dose at tick 5");
 }

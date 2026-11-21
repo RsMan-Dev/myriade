@@ -282,24 +282,17 @@ fn lifecycle_fixture_walks_fangs_owners() {
 fn lifecycle_fixture_walks_other_owners() {
     LifecycleFixture {
         seed: |game, entries| {
-            game.others.clear();
             for &(id, at) in entries {
-                game.others.push(crate::game::commands::OtherEntity {
-                    attachment_lifetime: Default::default(),
-                    knot_check: None,
-                    eye: None,
-                    join: Default::default(),
-                    id,
-                    kind: "minecraft:marker".into(),
-                    position: horizon_core::geometry::Vec3::new(at[0], at[1], at[2]),
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    item_transformation: None,
-                    interaction: None,
-                });
+                game.load_other_as(id, "minecraft:marker", at);
             }
         },
-        ids: |game| game.others.iter().map(|entity| entity.id).collect(),
+        ids: |game| {
+            let Some(w) = game.ecs.world() else { return Vec::new() };
+            let q = horizon_ecs_proto::bridge::host::Select { kind: Some("minecraft:marker".into()), tag: None, near: None, limit: usize::MAX };
+            let mut ids: Vec<u32> = game.ecs.select(&q).into_iter().filter_map(|e| horizon_ecs_proto::bridge::ids::id_of(w, e)).collect();
+            ids.sort_unstable();
+            ids
+        },
         target: crate::game::commands::Target::Other,
         unloads_with_chunk: true,
         remote: None,

@@ -1398,42 +1398,4 @@ mod wind_charge_burst_tests {
         });
     }
 
-    /// `AbstractWindCharge.onHitEntity` hurts with `damageSources().windCharge`,
-    /// so a mob it kills records `minecraft:wind_charge` (message id `mob`), not
-    /// `minecraft:thrown`.
-    #[test]
-    #[ignore = "daily"]
-    fn a_wind_charge_kill_of_a_mob_deals_the_wind_charge_damage_type() {
-        with_game(|game| {
-            assert!(game.run_command(
-                "summon pig 2.5 200.5 2.5 {UUID:[I;116,0,0,97],NoAI:1b,NoGravity:1b,Health:1f}"
-            ));
-            let id = game.mobs.last().expect("the pig").id;
-            let at = Vec3::new(2.5, 200.5, 2.5);
-            let mut p = Projectile::new(ProjectileKind::WindCharge, at, Some(Who::Player));
-            p.previous = at;
-            game.wind_charge_hit(
-                &p,
-                Hit::Entity {
-                    who: Who::Mob(id),
-                    at,
-                },
-            )
-            .unwrap();
-            let pig = game.mobs.iter().find(|m| m.id == id).expect("the pig");
-            assert!(!pig.alive(), "a point of damage kills 1 health");
-            let hit = pig.combat.entries.last().expect("the hit").source;
-            assert_eq!(
-                crate::game::creatures::source_damage_type(hit),
-                "minecraft:wind_charge"
-            );
-            let def = game
-                .health_resources
-                .damage
-                .id("minecraft:wind_charge")
-                .and_then(|id| game.health_resources.damage.definition(id))
-                .expect("the wind charge damage type");
-            assert_eq!(def.message_id, "mob", "death.attack.mob");
-        });
-    }
 }

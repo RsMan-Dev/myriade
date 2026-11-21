@@ -290,7 +290,7 @@ impl Game<'_> {
         // every entry of a busy server's player list.
         // Build once: resolving each player must not scan every level entity.
         let players: HashMap<_, _> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, m)| &*m.kind.id == "minecraft:player")
@@ -301,10 +301,10 @@ impl Game<'_> {
                 continue;
             };
             let (skin, is_slim) = self.drawn_skin(uuid, skin_of(&skins, uuid));
-            let kind = self.mobs[i].kind.clone();
+            let kind = self.remote_entities[i].kind.clone();
             let skin_3d = self.skin_3d_model(&kind, &skin, is_slim);
             let cape = capes.get(&uuid).filter(|c| self.again_skin(c)).cloned();
-            let mob = &mut self.mobs[i];
+            let mob = &mut self.remote_entities[i];
             mob.skin = Some(skin);
             mob.slim = is_slim;
             mob.skin_3d = skin_3d;
@@ -339,7 +339,7 @@ impl Game<'_> {
         // mannequin's DATA_PROFILE `textures` property resolves like a
         // player's, never required to be signed.
         let mannequins: Vec<(usize, horizon_client::skins::Textures)> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, m)| &*m.kind.id == "minecraft:mannequin" && m.profile.is_some())
@@ -392,7 +392,7 @@ impl Game<'_> {
         for (i, skin, slim) in resolved {
             let skin = skin.filter(|s| !s.starts_with("skins/") || self.again_skin(s));
             // Resolution and atlas uploads do not insert or remove mobs.
-            let mob = &mut self.mobs[i];
+            let mob = &mut self.remote_entities[i];
             mob.slim = slim && skin.is_some();
             mob.skin = skin;
         }

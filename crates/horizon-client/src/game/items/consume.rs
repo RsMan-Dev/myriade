@@ -166,7 +166,7 @@ impl Game<'_> {
         &mut self,
         decision: &horizon_client::mobs::fox::Consumption,
     ) -> bool {
-        if !self.mobs.iter().any(|m| decision.still_valid(m)) {
+        if !self.remote_entities.iter().any(|m| decision.still_valid(m)) {
             return false;
         }
         let Some(consumer) = self.entity(decision.mob).and_then(|e| self.living(e)) else {
@@ -189,7 +189,7 @@ impl Game<'_> {
         let consumed = std::cell::OnceCell::new();
         let result: Result<bool, ()> = mod_api::run_transaction(self, |game, _| {
             {
-                let mut mobs = game.mobs.lift();
+                let mut mobs = game.remote_entities.lift();
                 if let Some(mob) = mobs.iter_mut().find(|m| m.id == decision.mob) {
                     let mut events = Vec::new();
                     horizon_client::mobs::fox::consumed_before_effects(
@@ -198,13 +198,13 @@ impl Game<'_> {
                         &mut events,
                         &decision.stack,
                     );
-                    game.mobs
+                    game.remote_entities
                         .restore(mobs, horizon_client::join_seq::RestoreOrder::SpawnsFirst);
                     if game.handle_mob_events(events).is_err() {
                         return Ok(false);
                     }
                 } else {
-                    game.mobs
+                    game.remote_entities
                         .restore(mobs, horizon_client::join_seq::RestoreOrder::SpawnsFirst);
                     return Ok(false);
                 }
@@ -230,14 +230,14 @@ impl Game<'_> {
                         if teleport.apply(&mut actor, dim).is_err() {
                             return Ok(false);
                         }
-                    } else if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == decision.mob) {
+                    } else if let Some(mob) = game.remote_entities.iter_mut().find(|m| m.id == decision.mob) {
                         mob.apply_consume_effect(
                             crate::game::entity::damage_level_of!(game),
                             effect,
                         );
                     }
                 }
-                if let Some(mob) = game.mobs.iter().find(|m| m.id == decision.mob) {
+                if let Some(mob) = game.remote_entities.iter().find(|m| m.id == decision.mob) {
                     let event = horizon_client::mobs::MobEvent::GameEvent {
                         event: if consumable.animation == UseAnimation::Drink {
                             "minecraft:drink"
@@ -253,11 +253,74 @@ impl Game<'_> {
                     }
                 }
             }
-            let Some(m) = game.mobs.iter_mut().find(|m| m.id == decision.mob) else {
+            let Some(m) = game.remote_entities.iter_mut().find(|m| m.id == decision.mob) else {
                 return Ok(false);
             };
             let position = m.position;
             Ok(decision.finish(m, position, remainder))
+        });
+        result.unwrap_or(false)
+    }
+
+    /// `apply_fox_consumption` for the ECS fox `decision.mob`: the same steps, the mob side through the bridge.
+    pub(super) fn apply_fox_consumption_ecs(&mut self, decision: &horizon_client::mobs::fox::Consumption) -> bool {
+        if !self.ecs.fox_still_valid(decision) {
+            return false;
+        }
+        let Some(consumer) = self.entity(decision.mob).and_then(|e| self.living(e)) else {
+            return false;
+        };
+        let Some(consumable) = self.consumable(&decision.stack) else {
+            return false;
+        };
+        let remainder = self
+            .items()
+            .get(&decision.stack.item)
+            .and_then(|info| info.use_remainder.as_deref())
+            .map(std::sync::Arc::<str>::from);
+        let remainder = horizon_client::item_sync::use_remainder(&decision.stack, remainder.map(|value| value.to_string()))
+            .map(std::sync::Arc::<str>::from);
+        let dim = self.dim;
+        let consumed = std::cell::OnceCell::new();
+        let result: Result<bool, ()> = mod_api::run_transaction(self, |game, _| {
+            let events = game.ecs.fox_consumed_before_effects(decision.mob, &decision.stack);
+            if game.handle_mob_events(events).is_err() {
+                return Ok(false);
+            }
+            for effect in &consumable.effects {
+                if let ConsumeEffect::PlaySound(_) = effect {
+                    if game.apply_consume_effect(&decision.stack, effect, Some(consumer)).is_none() {
+                        return Ok(false);
+                    }
+                } else if let ConsumeEffect::TeleportRandomly(teleport) = effect {
+                    let consumed = consumed.get_or_init(|| consumed_snapshot(&decision.stack));
+                    let mut actor = EcsFoxTeleporter {
+                        game,
+                        consumer,
+                        decision,
+                        dim,
+                        consumed: consumed.as_ref(),
+                    };
+                    if teleport.apply(&mut actor, dim).is_err() {
+                        return Ok(false);
+                    }
+                } else {
+                    game.ecs.apply_fox_consume_effect(decision.mob, effect, crate::game::entity::damage_level_of!(game));
+                }
+            }
+            let Some(at) = game.ecs.position(decision.mob) else {
+                return Ok(false);
+            };
+            let event = horizon_client::mobs::MobEvent::GameEvent {
+                event: if consumable.animation == UseAnimation::Drink { "minecraft:drink" } else { "minecraft:eat" },
+                at,
+                source: decision.mob,
+                state: horizon_world::registry::BlockStateId(0),
+            };
+            if game.handle_mob_events(vec![event]).is_err() {
+                return Ok(false);
+            }
+            Ok(game.ecs.finish_fox_use(decision.mob, remainder.clone()))
         });
         result.unwrap_or(false)
     }
@@ -385,7 +448,7 @@ impl Game<'_> {
             return;
         }
         let spawned = {
-            let Some(m) = self.mobs.iter_mut().find(|m| m.id == id as u32) else {
+            let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id as u32) else {
                 return;
             };
             let from = [m.previous.x, m.previous.y, m.previous.z];
@@ -402,6 +465,21 @@ impl Game<'_> {
             );
             spawned
         };
+        let options = ParticleOptions::simple(ParticleType::Portal);
+        for (p, v) in spawned {
+            self.particles.add(&options, p, v);
+        }
+    }
+    /// `entity_teleport_particles` for the ECS mob `id`: its previous and current place, its box and its random come from the bridge.
+    pub(super) fn entity_teleport_particles_ecs(&mut self, id: i32) {
+        if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+            self.portal_particles();
+            return;
+        }
+        let Some((from, to, width, height)) = self.ecs.teleport_box(id as u32) else { return };
+        let Some(random) = self.ecs.random_mut(id as u32) else { return };
+        let mut spawned = Vec::with_capacity(128);
+        horizon_client::particles::living_teleport_particles(random, from, to, width, height, |p, v| spawned.push((p, v)));
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
             self.particles.add(&options, p, v);
@@ -446,10 +524,7 @@ impl Game<'_> {
                 } else if self.persist.removals.contains(&cart)
                     || self.persist.destroying_vehicles.contains(&cart)
                 {
-                    self.carts
-                        .iter()
-                        .find(|vehicle| vehicle.id == id)
-                        .map(|vehicle| vehicle.position.y)
+                    self.ecs_view(id).map(|v| v.position[1])
                 } else {
                     None
                 }
@@ -463,8 +538,8 @@ impl Game<'_> {
         }
         if let Some(i) = self.boats.iter().position(|b| b.id == id) {
             self.dismount(i);
-        } else if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-            self.dismount_cart(i);
+        } else if self.ecs.cart_kind(id).is_some() {
+            self.dismount_cart(id);
         } else if let Some(c) = self.cushions.iter().find(|c| c.id == id).cloned() {
             self.get_up_from_cushion(&c);
         } else if self.seat(id).is_some() {
@@ -655,7 +730,7 @@ struct FoxTeleporter<'a, 'g> {
 impl FoxTeleporter<'_, '_> {
     fn at(&self) -> Result<Vec3, ()> {
         self.game
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == self.decision.mob && m.alive() && !m.removed)
             .map(|m| m.position)
@@ -678,7 +753,7 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
     fn random_source(&mut self, id: u32) -> &mut LegacyRandom {
         &mut self
             .game
-            .mobs
+            .remote_entities
             .iter_mut()
             .find(|m| m.id == id)
             .expect("get_random validated the actor without an intervening callback")
@@ -692,7 +767,7 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
     }
     fn is_passenger(&mut self) -> Result<bool, ()> {
         self.game
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == self.decision.mob)
             .map(|m| m.extra.passenger)
@@ -723,7 +798,7 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
                 Some(super::commands::Target::Mob(id)) if id == self.decision.mob)
             || !self
                 .game
-                .mobs
+                .remote_entities
                 .iter()
                 .any(|m| self.decision.still_valid_at(m, from))
         {
@@ -778,7 +853,7 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
     fn reset_fall_distance(&mut self) -> Result<(), ()> {
         let m = self
             .game
-            .mobs
+            .remote_entities
             .iter_mut()
             .find(|m| m.id == self.decision.mob)
             .ok_or(())?;
@@ -787,6 +862,101 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
     }
     fn reset_impulse(&mut self) -> Result<(), ()> {
         // The existing mob model has no separate CurrentImpulseContext state.
+        Ok(())
+    }
+}
+
+/// `FoxTeleporter` for an ECS fox: the position, the random, the riding and the fall come from the bridge.
+struct EcsFoxTeleporter<'a, 'g> {
+    game: &'a mut Game<'g>,
+    consumer: mod_api::LivingRef,
+    decision: &'a horizon_client::mobs::fox::Consumption,
+    dim: Dim,
+    consumed: Option<&'a mod_api::ItemStack>,
+}
+impl EcsFoxTeleporter<'_, '_> {
+    fn at(&self) -> Result<Vec3, ()> {
+        self.game.ecs.alive_position(self.decision.mob).ok_or(())
+    }
+}
+impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
+    type Error = ();
+    type Level = Dim;
+    type Random = u32;
+    type Source = LegacyRandom;
+    fn position_field(&self) -> Vec3 {
+        self.at().unwrap_or(self.decision.from)
+    }
+    fn get_random(&mut self) -> Result<u32, ()> {
+        self.at()?;
+        Ok(self.decision.mob)
+    }
+    fn random_source(&mut self, id: u32) -> &mut LegacyRandom {
+        self.game.ecs.random_mut(id).expect("get_random validated the actor without an intervening callback")
+    }
+    fn min_y(&mut self, _: Dim) -> Result<i32, ()> {
+        Ok(self.game.world.shape.min_y)
+    }
+    fn logical_height(&mut self, _: Dim) -> Result<i32, ()> {
+        Ok(self.game.world.shape.logical_height)
+    }
+    fn is_passenger(&mut self) -> Result<bool, ()> {
+        Ok(self.game.ecs_vehicle_of(self.decision.mob).is_some())
+    }
+    fn stop_riding(&mut self) -> Result<(), ()> {
+        self.game.ecs_dismount(self.decision.mob);
+        Ok(())
+    }
+    fn position(&mut self) -> Result<Vec3, ()> {
+        self.at()
+    }
+    fn teleport_allowed(&mut self, target: &mut Vec3) -> Result<bool, ()> {
+        let from = self.at()?;
+        let mut to = [target.x, target.y, target.z];
+        let mut cancel = false;
+        if let Some(consumed) = self.consumed {
+            self.game.native_item_consumption_teleport(self.consumer, consumed, [from.x, from.y, from.z], &mut to, &mut cancel);
+        }
+        if self.game.dim != self.dim
+            || !matches!(self.game.native_living_target(self.consumer),
+                Some(super::commands::Target::Mob(id)) if id == self.decision.mob)
+            || !self.game.ecs.fox_still_valid_at(self.decision, from)
+        {
+            return Err(());
+        }
+        if to.iter().all(|v| v.is_finite()) {
+            let shape = self.game.world.shape;
+            let high = shape.min_y + shape.logical_height - 1;
+            *target = Vec3::new(to[0], to[1].clamp(f64::from(shape.min_y), f64::from(high)), to[2]);
+        }
+        Ok(!cancel)
+    }
+    fn random_teleport(&mut self, at: Vec3) -> Result<bool, ()> {
+        Ok(self.game.living_random_teleport(self.consumer, [at.x, at.y, at.z], Some("minecraft:consumable_does_not_teleport_to")))
+    }
+    fn teleport_event(&mut self, _: Dim, old: Vec3) -> Result<(), ()> {
+        let ctx = self.game.who_context(Some(Who::Mob(self.decision.mob)), None);
+        self.game.post_game_event("minecraft:teleport", [old.x, old.y, old.z], ctx);
+        Ok(())
+    }
+    fn is_fox(&self) -> bool {
+        true
+    }
+    fn teleport_sound(&mut self, _: Dim, at: Vec3, _: bool) -> Result<(), ()> {
+        self.game.audio.play("minecraft:entity.fox.teleport", Some([at.x, at.y, at.z]), 1.0, 1.0);
+        Ok(())
+    }
+    fn block_position(&mut self) -> Result<BlockPos, ()> {
+        Ok(BlockPos::containing(self.at()?))
+    }
+    fn directional_particles(&mut self, _: Dim, origin: BlockPos, offset: i32) -> Result<(), ()> {
+        self.game.level_event_at(2017, [origin.x, origin.y, origin.z], offset);
+        Ok(())
+    }
+    fn reset_fall_distance(&mut self) -> Result<(), ()> {
+        self.game.ecs.reset_fall_distance(self.decision.mob).ok_or(())
+    }
+    fn reset_impulse(&mut self) -> Result<(), ()> {
         Ok(())
     }
 }
@@ -1108,14 +1278,14 @@ mod fox_consumption_hook_tests {
                     for _ in 0..3 {
                         expected_random.next_double();
                     }
-                    game.mobs.push(actor);
+                    game.remote_entities.push(actor);
                     let applied = game.apply_fox_consumption(&decision);
                     assert_eq!(applied, action <= 1);
                     assert_eq!(
                         heard.lock().unwrap().last(),
                         Some(&(id, test_snapshot(&stack)))
                     );
-                    let actor = game.mobs.iter_mut().find(|m| m.id == id && !m.removed);
+                    let actor = game.remote_entities.iter_mut().find(|m| m.id == id && !m.removed);
                     match action {
                         0 => {
                             let m = actor.unwrap();
@@ -1205,7 +1375,7 @@ mod fox_consumption_hook_tests {
                     if id == 200 {
                         actor.velocity = Vec3::new(0.2, 0.0, 0.0);
                     }
-                    game.mobs.push(actor);
+                    game.remote_entities.push(actor);
                 }
                 game.tick_creature_entities().unwrap();
                 let heard = heard.lock().unwrap();
@@ -1214,7 +1384,7 @@ mod fox_consumption_hook_tests {
                     [200, 204]
                 );
                 assert!(heard.iter().all(|(_, stack)| stack.count() == 7));
-                let first = game.mobs.iter().find(|m| m.id == 200).unwrap();
+                let first = game.remote_entities.iter().find(|m| m.id == 200).unwrap();
                 assert_eq!(first.age, 1, "base tick must not repeat after the callback");
                 assert_eq!(
                     first.previous,
@@ -1226,20 +1396,20 @@ mod fox_consumption_hook_tests {
                     first.position.x < 6.0,
                     "movement resumes at the redirected landing"
                 );
-                let next = game.mobs.iter().find(|m| m.id == 201).unwrap();
+                let next = game.remote_entities.iter().find(|m| m.id == 201).unwrap();
                 assert_eq!(next.age, 1);
                 assert_eq!(
                     &*next.extra.main_hand_stack().unwrap().item,
                     "minecraft:stone"
                 );
                 assert_eq!(next.previous, Vec3::new(12.5, 64.0, 8.5));
-                assert!(!game.mobs.iter().any(|m| m.id == 202));
-                let last = game.mobs.iter().find(|m| m.id == 204).unwrap();
+                assert!(!game.remote_entities.iter().any(|m| m.id == 202));
+                let last = game.remote_entities.iter().find(|m| m.id == 204).unwrap();
                 assert_eq!(last.age, 1);
                 assert_eq!(last.extra.main_hand_stack().unwrap().count, 6);
                 let spawned = spawned.lock().unwrap();
                 assert_eq!(spawned.len(), 1);
-                let cow = game.mobs.iter().find(|m| m.id == spawned[0]).unwrap();
+                let cow = game.remote_entities.iter().find(|m| m.id == spawned[0]).unwrap();
                 assert_eq!(
                     cow.age, 0,
                     "a listener's new entity waits until the next batch"
