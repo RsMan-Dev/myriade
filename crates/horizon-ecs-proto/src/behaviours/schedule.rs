@@ -51,8 +51,17 @@ pub struct Params {
     pub baby: &'static [Slice],
 }
 
-fn can_start(_: &mut World, _: Entity, _: &Ctx) -> bool {
-    true
+/// Only when a memory is not as the hour says (a slice began or ended, or a key was wiped): while every memory is right the start
+/// would write the same values with the same expiry, so it is not asked.
+fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
+    let t = Times::now(w);
+    let p = c.get::<Params>();
+    let slices = if w.get::<GrowAt>(e).is_some() { p.baby } else { p.adult };
+    let active = |s: &Slice| s.from <= t && t < s.to;
+    slices.iter().any(|s| {
+        let on = active(s) || slices.iter().any(|a| active(a) && std::ptr::eq(a.key, s.key));
+        present(w, e, s.key) != on
+    })
 }
 fn start(w: &mut World, e: Entity, c: &Ctx) {
     let t = Times::now(w);
