@@ -232,6 +232,7 @@ pub fn schedule() -> Schedule {
     crate::fishing_hook::register(&mut s);
     crate::poi::register(&mut s);
     crate::block_watch::register(&mut s);
+    crate::chest_index::register(&mut s);
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);

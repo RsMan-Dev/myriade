@@ -37,6 +37,7 @@ pub mod move_to_block;
 pub mod occupancy;
 pub mod poi;
 pub mod block_watch;
+pub mod chest_index;
 pub mod profile;
 pub mod projectile;
 pub mod raids;

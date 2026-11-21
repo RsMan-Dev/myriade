@@ -140,3 +140,31 @@ fn a_golem_takes_from_a_copper_chest_as_the_mob_does() {
     assert!(mob_took, "the Mob golem never took from the chest");
     assert!(ecs_took, "the ECS golem never took from the chest");
 }
+
+/// 30000 chests far from the golem (500 chunks away) cost it nothing: its search reads the chunks of its box from the index of chests,
+/// never the whole store. The time of 1500 ticks of 8 golems that search is printed (before the index: a walk of 30000 entries per search).
+#[test]
+fn a_golem_search_does_not_walk_the_block_entities() {
+    if skip_golem() {
+        return;
+    }
+    let stack = || ItemStack { item: Arc::from("minecraft:cobblestone"), count: 8, damage: 0, extra: None };
+    let mut h = Herd::with_slab_awake(60, true, false);
+    h.tick();
+    h.set_block(2, 1, 0, "minecraft:copper_chest");
+    set_chest(*h.world.resource::<Level>(), 2, 1, 0, vec![Some(stack()), None, None]);
+    for i in 0..30000 {
+        set_chest(*h.world.resource::<Level>(), 8000 + (i % 200) * 3, 1, 8000 + (i / 200) * 3, vec![None; 3]);
+    }
+    for k in 0..8u64 {
+        ecs_golem(&mut h, -1.0 - k as f64 * 0.01, 0.5, 31 + k);
+    }
+    let mut took = 0usize;
+    let t = std::time::Instant::now();
+    for _ in 0..1500 {
+        h.tick();
+        took += h.world.resource_mut::<Events>().host.drain().filter(|e| matches!(e, HostEvent::ChestSlot { .. })).count();
+    }
+    eprintln!("golem search with 30000 far chests: 1500 ticks in {:?}, {took} chest slot events", t.elapsed());
+    assert!(took > 0, "no golem took from the near chest");
+}

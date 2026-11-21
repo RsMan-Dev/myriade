@@ -4,9 +4,10 @@
 //! The visited and unreachable chests are memories that expire 6000 ticks after their last change; a trip that finds no chest, or that
 //! visits more than 10 (50 unreachable), enters the cooldown. The contents are read from the world's block entities; the changes, the lid
 //! and the animation state are host events. Left out: the path search (a travel is tested with the path memory only, not a path end)
-//! and the golem's leash; the block entities are scanned whole (the store has no index of chests).
+//! and the golem's leash. The chests come from `ChestIndex` (by chunk, kept by block events).
 use crate::behaviours::Cap;
 use crate::blocks;
+use crate::chest_index::ChestIndex;
 use crate::brain::*;
 use crate::cow::{Bounds, Pos};
 use crate::goals::{d2, main_hand, set_main_hand, Events};
@@ -229,6 +230,8 @@ fn update_invalid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size
         return false;
     }
     stop_targeting(w, e);
+    w.init_resource::<ChestIndex>();
+    w.resource_mut::<ChestIndex>().ensure(mw);
     match find_target(w, e, mw, me) {
         Some(t) => {
             let pos = t.pos;
@@ -309,16 +312,21 @@ fn sees_a_side(mw: &MobWorld, p: [i32; 3], eye: [f64; 3]) -> bool {
     })
 }
 
+const CHEST: &str = "minecraft:chest";
+const TRAPPED_CHEST: &str = "minecraft:trapped_chest";
+/// The block tag of the copper chests.
+const COPPER_CHESTS: &str = "minecraft:copper_chests";
+
 fn is_chest_block(name: &str) -> bool {
-    matches!(name, "minecraft:chest" | "minecraft:trapped_chest") || name.ends_with("copper_chest")
+    matches!(name, CHEST | TRAPPED_CHEST) || name.ends_with("copper_chest")
 }
 
 /// `wanted`: an empty hand takes from a copper chest, a full one puts into a chest.
 fn wanted(w: &World, e: Entity, mw: &MobWorld, name: &str) -> bool {
     if main_hand(w, e).is_none() {
-        mw.has_tag("minecraft:copper_chests", name)
+        mw.has_tag(COPPER_CHESTS, name)
     } else {
-        matches!(name, "minecraft:chest" | "minecraft:trapped_chest")
+        matches!(name, CHEST | TRAPPED_CHEST)
     }
 }
 
@@ -387,7 +395,7 @@ impl JavaKey for PosKey {
 }
 
 /// `find_target`: the chunks around the golem's chunk that the search box reaches, each one's chests in Java hash order; the nearest
-/// wanted one wins, a tie keeps the first found. The chunks are grouped from one scan of the block entities (no index of chests).
+/// wanted one wins, a tie keeps the first found. The chests of a chunk come from `ChestIndex`.
 fn find_target(w: &World, e: Entity, mw: &MobWorld, me: Vec3) -> Option<Target> {
     let (bx, by, bz) = (me.x.floor() as i32, me.y.floor() as i32, me.z.floor() as i32);
     let (h, v) = (SEARCH_H, SEARCH_V);
@@ -395,16 +403,11 @@ fn find_target(w: &World, e: Entity, mw: &MobWorld, me: Vec3) -> Option<Target> 
     let unreachable = mem_list(w, e, &UNREACHABLE);
     let (cx, cz) = (bx >> 4, bz >> 4);
     let r = h.div_euclid(16) + 1;
-    let mut by_chunk: std::collections::HashMap<(i32, i32), Vec<[i32; 3]>> = Default::default();
-    for (k, be) in &mw.world.block_entities {
-        if matches!(be, BlockEntity::Chest(_)) {
-            by_chunk.entry((k.0 >> 4, k.2 >> 4)).or_default().push([k.0, k.1, k.2]);
-        }
-    }
+    let index = w.get_resource::<ChestIndex>()?;
     let mut best: Option<(f64, Target)> = None;
     for z in cz - r..=cz + r {
         for x in cx - r..=cx + r {
-            let Some(list) = by_chunk.get_mut(&(x, z)) else { continue };
+            let mut list = index.chunk(x, z).to_vec();
             list.sort();
             let mut map: JavaHashMap<PosKey, ()> = JavaHashMap::default();
             for p in list.iter() {
