@@ -52,8 +52,12 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return true;
     }
     let mut found: Option<[i32; 3]> = None;
+    let mut water = Column::default();
     // `BlockPos.withinManhattan`: by distance, then x, then y, then +z before -z.
     'search: for distance in 0..=18i32 {
+        if distance == 0 && !may_hold_water(mw, p) {
+            break;
+        }
         for x in -6..=6i32 {
             for y in -6..=6i32 {
                 let z = distance - x.abs() - y.abs();
@@ -61,7 +65,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
                     continue;
                 }
                 for q in [Some([p[0] + x, p[1] + y, p[2] + z]), (z != 0).then_some([p[0] + x, p[1] + y, p[2] - z])].into_iter().flatten() {
-                    if (q[0] == p[0] && q[2] == p[2]) || mw.fluid(q[0], q[1], q[2]) != Fluid::Water || mw.block_name(q[0], q[1], q[2]) != "minecraft:water" {
+                    if (q[0] == p[0] && q[2] == p[2]) || water.at(mw, q) != Fluid::Water || mw.block_name(q[0], q[1], q[2]) != "minecraft:water" {
                         continue;
                     }
                     if mw.block_name(q[0], q[1] + 1, q[2]).ends_with("air") {
@@ -82,4 +86,51 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     }
     w.entity_mut(e).insert(Until(now + 40));
     true
+}
+
+/// Whether a section of the 13-block box around `p` has a water state in its palette: where none has, the scan cannot find a block.
+fn may_hold_water(mw: &horizon_client_lib::mobs::MobWorld, p: [i32; 3]) -> bool {
+    for cz in (p[2] - 6) >> 4..=(p[2] + 6) >> 4 {
+        for cx in (p[0] - 6) >> 4..=(p[0] + 6) >> 4 {
+            let Some(chunk) = mw.world.chunks.get(&(cx, cz)) else { continue };
+            for cy in (p[1] - 6) >> 4..=(p[1] + 6) >> 4 {
+                let Some(sec) = chunk.section_holding(cy << 4) else { continue };
+                let wet = |id: u32| mw.facts.get(horizon_world::registry::BlockStateId(id)).fluid == Fluid::Water;
+                match sec.blocks.palette() {
+                    Some(list) => {
+                        if list.iter().any(|&id| wet(id)) {
+                            return true;
+                        }
+                    }
+                    None if sec.blocks.is_global() => return true,
+                    None => {
+                        if let Some(v) = sec.blocks.uniform() && wet(v) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// The fluid at a cell, the column's chunk kept between reads (the scan walks a 13-block box: a handful of chunks).
+#[derive(Default)]
+struct Column {
+    key: Option<(i32, i32)>,
+    chunk: Option<std::sync::Arc<horizon_client_render::chunk::Chunk>>,
+}
+impl Column {
+    fn at(&mut self, mw: &horizon_client_lib::mobs::MobWorld, q: [i32; 3]) -> Fluid {
+        let key = (q[0] >> 4, q[2] >> 4);
+        if self.key != Some(key) {
+            self.key = Some(key);
+            self.chunk = mw.world.chunks.get(&key).cloned();
+        }
+        match &self.chunk {
+            Some(c) if c.section_index(q[1]).is_some() => mw.facts.get(c.block(q[0], q[1], q[2])).fluid,
+            _ => Fluid::None,
+        }
+    }
 }
