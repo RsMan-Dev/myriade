@@ -984,7 +984,7 @@ fn targetable(w: &World, e: Entity, who: Who) -> bool {
     let (Some(pos), Some(eye), Some(range)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<crate::targeting::Eye>(e), w.get::<crate::targeting::FollowRange>(e)) else { return false };
     let vis = match who {
         Who::Player(id) => w.resource::<crate::hostile::PlayerState>().visibility(id),
-        Who::Entity(_) => i.visibility,
+        Who::Entity(c) => crate::targeting::creature_visibility_to(w, c, w.get::<crate::cow::SpeciesId>(e).map(|s| s.0)),
     };
     if i.exempt && i.player {
         return false;

@@ -305,7 +305,7 @@ fn drop_tiny(v: &mut Vel, fp: &FlyParams) {
 /// and `PhantomMoveControl` (turn toward the point by at most 4 degrees a tick; speed up toward 1.8 on a straight line, down toward 0.2 in a
 /// turn; a wall turns it round and slows it to 0.1: the speed is `Drive.speed`). The tiny motions are dropped first (`aiStep`).
 #[allow(clippy::type_complexity)]
-fn fly_controls(
+pub fn fly_controls(
     level: Res<Level>,
     mut q: Query<(&Pos, &Bounds, &mut Vel, &mut MoveTo, &mut Yaw, &mut Drive, &Contact, &FlyParams, Option<&mut FloatState>, &mut Rng), (With<FlyMode>, With<Moving>)>,
 ) {
@@ -314,10 +314,10 @@ fn fly_controls(
         match fp.control {
             Control::Float => {
                 let Some(mut st) = st else { continue };
+                drop_tiny_motion(&mut v);
                 if !m.active {
                     continue;
                 }
-                drop_tiny_motion(&mut v);
                 // `floatDuration-- <= 0`: the test is on the value before the decrement.
                 let before = st.0;
                 st.0 -= 1;

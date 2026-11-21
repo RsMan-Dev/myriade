@@ -280,6 +280,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         found = best.map(Who::Player);
     } else if !n.mask.is_empty() && w.get_resource::<crate::goals::Carriers>().is_none_or(|c| n.mask.any_alive(&c.1.0)) {
         let mut cands: Vec<(f64, Entity, Vec3, f64)> = Vec::new();
+        let looker = w.get::<SpeciesId>(e).map(|s| s.0);
         w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| {
             if c == e {
                 return;
@@ -297,7 +298,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         cands.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for (_, c, cp, ceye) in cands {
             let feet = d2(pos, cp);
-            let vis = if w.get::<crate::effects::Invisible>(c).is_some() { INVISIBLE } else { 1.0 };
+            let vis = targeting::creature_visibility_to(w, c, looker);
             if feet > targeting::sight_range(range, vis).powi(2) || n.p.beyond_sqr.is_some_and(|d| feet <= d) {
                 continue;
             }

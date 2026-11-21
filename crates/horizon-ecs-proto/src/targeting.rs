@@ -106,7 +106,19 @@ pub fn creature_visibility(invisible: bool, eq: Option<&Equipment>) -> f64 {
         return 1.0;
     }
     let worn = eq.map_or(0, |q| [q.head, q.chest, q.legs, q.feet].iter().filter(|&&i| i != 0).count());
-    0.7 * (worn as f64 / 4.0).max(0.1)
+    // The jar computes the cover as a float, widened before the product: 0.7 x (double) 0.1f.
+    0.7 * f64::from((worn as f32 / 4.0).max(0.1))
+}
+/// `LivingEntity.getVisibilityPercent` of the creature `c` for a looker of species `looker`: [`creature_visibility`] times the worn head's
+/// `mob_visibility` for that species (a skeleton skull fools a skeleton, not a stray), clamped to 0..=10. Crouching is not held by a creature.
+pub fn creature_visibility_to(w: &World, c: Entity, looker: Option<u8>) -> f64 {
+    let eq = w.get::<Equipment>(c);
+    let base = creature_visibility(w.get::<Invisible>(c).is_some(), eq);
+    let head = eq.map_or(0, |q| q.head);
+    let (true, Some(looker)) = (head != 0, looker) else { return base };
+    let name = crate::species::registry().species[usize::from(looker)].name;
+    let fooled = crate::species::mob_heads::MOB_HEADS.iter().any(|(item, who)| who.contains(&name) && crate::items::item_id(item) == head);
+    (if fooled { base * 0.5 } else { base }).clamp(0.0, 10.0)
 }
 /// [`Targets::info`] for the code that holds the world.
 pub fn info(w: &World, who: Who) -> Option<Info> {

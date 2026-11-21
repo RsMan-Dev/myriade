@@ -64,9 +64,9 @@ fn the_shulker_opens_and_fires_as_a_mob_does() {
     assert!(mob_shots.len() >= 3 && ecs_shots.len() >= 3, "mob {mob_shots:?}, ecs {ecs_shots:?}");
     assert!((mob_shots[0] - ecs_shots[0]).abs() <= 2, "first shot: mob {}, ecs {}", mob_shots[0], ecs_shots[0]);
     let gaps = |v: &[i64]| v.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>();
-    // The wait is `20 + 10 x nextInt(10)` on both sides, from their own random source: the gaps are drawn, not equal.
+    // The wait is `20 + nextInt(10) * 20 / 2` (jar: ShulkerAttackGoal.tick, 20 to 110) on both sides, from their own random source: the gaps are drawn, not equal.
     for g in gaps(&mob_shots).into_iter().chain(gaps(&ecs_shots)) {
-        assert!((30..=110).contains(&g) && g % 10 == 0, "a gap of {g}: not 20 + 10 x n");
+        assert!((20..=110).contains(&g) && g % 10 == 0, "a gap of {g}: not 20 + 10 x n");
     }
 }
 

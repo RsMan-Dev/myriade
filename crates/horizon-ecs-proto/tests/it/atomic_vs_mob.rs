@@ -2,6 +2,7 @@
 //! (`move_relative`, `stable_destination`, `walk_target_value`): a grid of inputs, no tolerance.
 use crate::common;
 use common::*;
+use bevy_ecs::system::RunSystemOnce as _;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::*, locomotion::fly, spots};
 
@@ -98,4 +99,74 @@ fn walk_target_value_is_the_mob_walk_target_value() {
             }
         }
     }
+}
+
+/// `LivingEntity.getVisibilityPercent` of a creature for a looker: invisible by armour cover, the head items that fool one species only.
+/// The ECS function against `Seen::visibility_percent`, every combination, bit for bit (clamped to 0..=10 as the game does).
+#[test]
+fn creature_visibility_is_the_mob_visibility_percent() {
+    use horizon_client_lib::mobs::Species;
+    use horizon_ecs_proto::goals::Slot;
+    if !have_data() {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let i = r.add(Vec3::new(0.5, 1.0, 0.5));
+    let e = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
+    let items = r.w.items.expect("items");
+    let heads = [None, Some("minecraft:skeleton_skull"), Some("minecraft:zombie_head"), Some("minecraft:creeper_head"), Some("minecraft:piglin_head"), Some("minecraft:diamond_helmet")];
+    let worn = [None, Some("minecraft:diamond_chestplate")];
+    let lookers = [
+        (Species::Skeleton, "minecraft:skeleton"),
+        (Species::Zombie, "minecraft:zombie"),
+        (Species::Creeper, "minecraft:creeper"),
+        (Species::Piglin, "minecraft:piglin"),
+        (Species::PiglinBrute, "minecraft:piglin_brute"),
+        (Species::Stray, "minecraft:stray"),
+    ];
+    for invisible in [false, true] {
+        for head in heads {
+            for chest in worn {
+                r.mobs[i].invisible = invisible;
+                r.mobs[i].extra.set_slot_id(horizon_items::equipment::HEAD, head.map(Into::into));
+                r.mobs[i].extra.set_slot_id(horizon_items::equipment::CHEST, chest.map(Into::into));
+                if invisible {
+                    h.world.entity_mut(e).insert(horizon_ecs_proto::effects::Invisible);
+                } else {
+                    h.world.entity_mut(e).remove::<horizon_ecs_proto::effects::Invisible>();
+                }
+                horizon_ecs_proto::equipment::set_slot(&mut h.world, e, Slot::Head, head.map_or(0, horizon_ecs_proto::items::item_id));
+                horizon_ecs_proto::equipment::set_slot(&mut h.world, e, Slot::Chest, chest.map_or(0, horizon_ecs_proto::items::item_id));
+                let seen = r.mobs[i].seen(None, items);
+                for (sp, name) in lookers {
+                    let Some(id) = horizon_ecs_proto::species::registry().id(name) else { continue };
+                    let mob = seen.visibility_percent(sp).clamp(0.0, 10.0);
+                    let ecs = horizon_ecs_proto::targeting::creature_visibility_to(&h.world, e, Some(id as u8));
+                    assert_eq!(mob.to_bits(), ecs.to_bits(), "invisible {invisible} head {head:?} chest {chest:?} looker {name}");
+                }
+            }
+        }
+    }
+}
+
+/// `LivingEntity.aiStep` drops a motion under 0.003 on an axis whatever the move control does: a ghast with no wanted spot (its control
+/// idle) loses a tiny velocity at the next tick, on the Mob and in the ECS.
+#[test]
+fn a_ghast_with_no_wanted_spot_drops_a_tiny_motion_as_a_mob_does() {
+    if !have_data() || wrong_species(&["minecraft:ghast"]) {
+        return;
+    }
+    let (mut r, mut h) = flat_pair();
+    let i = r.add(Vec3::new(0.5, 5.0, 0.5));
+    let e = ecs_cow(&mut h, 0.5, 5.0, 0.5, 5);
+    let tiny = Vec3::new(0.002, -0.002, 0.001);
+    r.mobs[i].velocity = tiny;
+    r.step(None);
+    assert_eq!(bits(r.mobs[i].velocity), bits(Vec3::ZERO), "the Mob dropped the tiny motion: {:?}", r.mobs[i].velocity);
+    // The ECS: the move control alone (the goals pick a spot of their own), with no wanted spot: the tiny motion goes.
+    h.world.get_mut::<MoveTo>(e).unwrap().active = false;
+    h.world.get_mut::<Vel>(e).unwrap().0 = tiny;
+    h.world.run_system_once(horizon_ecs_proto::locomotion::fly::fly_controls).unwrap();
+    let c = h.world.get::<Vel>(e).unwrap().0;
+    assert_eq!(bits(c), bits(Vec3::ZERO), "the ECS drops it too: {c:?}");
 }
