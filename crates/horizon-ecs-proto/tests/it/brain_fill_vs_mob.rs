@@ -63,7 +63,7 @@ fn the_temptation_restarts_after_its_cooldown_as_the_mob_does() {
         r.step(Some(&p));
         h.tick();
         for (k, &(i, e)) in ids.iter().enumerate() {
-            let now = (r.names(i).contains(&"Tempt"), h.world.get::<Tempting>(e).is_some());
+            let now = (r.names(i).iter().any(|n| n.contains("Tempt")), h.world.get::<Tempting>(e).is_some());
             if now.0 && !was[k].0 {
                 mob_starts += 1;
             }
