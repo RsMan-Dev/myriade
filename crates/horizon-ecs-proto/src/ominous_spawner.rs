@@ -33,6 +33,7 @@ pub fn spawn(w: &mut World, item: ItemStack, at: Vec3, after_ticks: u32) -> Enti
     let e = w.spawn((Pos(at), OwnTime, Uid(next_uid()), OminousSpawner { item, after: after_ticks }))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::OMINOUS_ITEM_SPAWNER);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::OMINOUS_ITEM_SPAWNER));
     if after_ticks > ABOUT_TO_SPAWN {
         after(w, e, (after_ticks - ABOUT_TO_SPAWN) as i32, about_to_spawn);
     }

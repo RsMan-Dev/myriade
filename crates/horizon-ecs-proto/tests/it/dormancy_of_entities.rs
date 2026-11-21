@@ -8,13 +8,19 @@ use horizon_ecs_proto::{
 };
 use std::fmt::Write as _;
 
-const N: usize = 60;
+const N0: usize = 60;
+fn count() -> usize {
+    std::env::var("DORMANCY_N").ok().and_then(|v| v.parse().ok()).unwrap_or(N0)
+}
 const TICKS: u64 = 100;
+fn ticks() -> u64 {
+    std::env::var("DORMANCY_TICKS").ok().and_then(|v| v.parse().ok()).unwrap_or(TICKS)
+}
 /// Instructions per entity and tick above which an awake identifier fails.
 const LIMIT: u64 = 40;
 
 fn make(h: &mut Herd, id: &str, i: usize) -> Option<bevy_ecs::entity::Entity> {
-    let (x, z) = (0.5 + (i % 10) as f64, 0.5 + (i / 10) as f64);
+    let (x, z) = (0.5 + (i % 20) as f64, 0.5 + (i / 20) as f64);
     match species_table().0.into_iter().find(|s| s.name == id) {
         Some(sp) => Some(spawn_species(&mut h.world, &sp, x, z, 1 + i as u64)),
         None => {
@@ -29,7 +35,7 @@ fn run(id: Option<&str>) -> (Vec<(String, u64)>, usize) {
     h.tick();
     let mut made = 0;
     if let Some(id) = id {
-        let es: Vec<_> = (0..N).filter_map(|i| make(&mut h, id, i)).collect();
+        let es: Vec<_> = (0..count()).filter_map(|i| make(&mut h, id, i)).collect();
         made = es.len();
         h.admit_spawned(&es);
     }
@@ -38,7 +44,7 @@ fn run(id: Option<&str>) -> (Vec<(String, u64)>, usize) {
         h.tick();
     }
     profile::reset(&shared);
-    for _ in 0..TICKS {
+    for _ in 0..ticks() {
         h.tick();
     }
     let asleep = h.world.query_filtered::<(), (bevy_ecs::query::With<horizon_ecs_proto::zone::Dormant>, bevy_ecs::prelude::Allow<bevy_ecs::entity_disabling::Disabled>)>().iter(&h.world).count();
@@ -47,6 +53,7 @@ fn run(id: Option<&str>) -> (Vec<(String, u64)>, usize) {
 }
 
 #[test]
+#[ignore = "measure: the instruction counter needs a quiet process; run it alone (DORMANCY_REPORT=file)"]
 fn what_an_entity_costs_when_no_player_is_near() {
     if !super::common::have_data() {
         return;
@@ -61,12 +68,12 @@ fn what_an_entity_costs_when_no_player_is_near() {
         let mut costly: Vec<(String, u64)> = rows
             .iter()
             .zip(&base)
-            .filter_map(|((n, a), (_, b))| (a.saturating_sub(*b) / (N as u64 * TICKS) > 0).then(|| (n.clone(), a.saturating_sub(*b) / (N as u64 * TICKS))))
+            .filter_map(|((n, a), (_, b))| (a.saturating_sub(*b) / (count() as u64 * ticks()) > 0).then(|| (n.clone(), a.saturating_sub(*b) / (count() as u64 * ticks()))))
             .collect();
         costly.sort_by_key(|c| std::cmp::Reverse(c.1));
         let total: u64 = costly.iter().map(|c| c.1).sum();
-        let _ = writeln!(out, "- `{id}`: asleep {asleep}/{N}; {total} instr per entity-tick{}", costly.iter().take(4).map(|(n, c)| format!(" [{n} {c}]")).collect::<String>());
-        if asleep < N && total > LIMIT {
+        let _ = writeln!(out, "- `{id}`: asleep {asleep}/{}; {total} instr per entity-tick{}", count(), costly.iter().take(4).map(|(n, c)| format!(" [{n} {c}]")).collect::<String>());
+        if asleep < count() && total > LIMIT {
             bad.push(format!("{id}: {total}"));
         }
     }

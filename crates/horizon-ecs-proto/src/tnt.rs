@@ -27,6 +27,7 @@ pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -
         .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), Moving))
         .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::TNT);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::TNT));
     let fuse_at = now_of(w, e) + fuse.max(0) as u64;
     w.entity_mut(e).insert(Primed { fuse_at, power });
     after(w, e, fuse, primed_due);

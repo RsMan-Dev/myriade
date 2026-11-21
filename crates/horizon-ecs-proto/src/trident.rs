@@ -81,6 +81,7 @@ pub fn throw(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, owne
     let t = Trident { owner, loyalty, pickup, dealt: false, stack };
     let e = world.spawn((Pos(at), Vel(velocity), t, Projectile { owner, age: 0, left_owner: false, expires: 0 }, TridentFlying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, crate::species::lists::TRIDENT);
+    world.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::TRIDENT));
     e
 }
 

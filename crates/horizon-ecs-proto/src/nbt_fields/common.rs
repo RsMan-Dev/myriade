@@ -4,7 +4,7 @@
 use crate::behaviours::breed::Love;
 use crate::behaviours::elder_curse::Silent;
 use crate::behaviours::neutral_anger::Anger;
-use crate::cow::{now_of, Burning, Frozen, HurtAt, LastHurtBy, Yaw};
+use crate::cow::{tag, now_of, Burning, Frozen, HurtAt, LastHurtBy, Yaw};
 use crate::despawn::Persistent;
 use crate::effects::{self, Effects, Kind, AMBIENT, HIDDEN};
 use crate::nbt::{accept, owner, Field};
@@ -40,14 +40,14 @@ pub const DEFAULTS: &[(&str, fn() -> Tag)] = &[
     ("Invulnerable", zero_byte),
     ("PortalCooldown", zero_int),
     ("fall_distance", zero_double),
-    ("AbsorptionAmount", zero_float),
+    ("Fire", zero_short),
 ];
 
 /// What a living creature's save writes when its state is at the game's default (`LivingEntity` and `Mob.addAdditionalSaveData` write these
 /// whatever their value): written only when no field of the entity gave the key. `NoGravity`, `Glowing` and `TicksFrozen` are not here:
 /// `Entity.saveWithoutId` writes them only when set.
 pub const LIVING_DEFAULTS: &[(&str, fn() -> Tag)] = &[
-    ("Fire", zero_short),
+    ("AbsorptionAmount", zero_float),
     ("DeathTime", zero_short),
     ("HurtTime", zero_short),
     ("FallFlying", zero_byte),
@@ -58,6 +58,67 @@ pub const LIVING_DEFAULTS: &[(&str, fn() -> Tag)] = &[
 
 /// What a `Mob` (a creature with goals) writes on top: `Mob.addAdditionalSaveData`.
 pub const MOB_DEFAULTS: &[(&str, fn() -> Tag)] = &[("LeftHanded", zero_byte), ("CanPickUpLoot", zero_byte), ("PersistenceRequired", zero_byte)];
+
+/// What a class of creature saves at the game's default, chosen by the class bits of its species (`cow::tag`), never by name: written only
+/// when no field of the entity gave the key; a free key equal to it is dropped on load. `gate` lets a state the ecs does hold keep its place.
+pub struct Tagged {
+    pub tag: u32,
+    pub key: &'static str,
+    pub default: fn() -> Tag,
+    pub gate: fn(&World, Entity) -> bool,
+}
+
+fn always(_: &World, _: Entity) -> bool {
+    true
+}
+/// A horse without an owner (a tamed one saves its own `Tame`).
+fn untamed(w: &World, e: Entity) -> bool {
+    w.get::<crate::cow::SpeciesId>(e).is_none_or(|id| crate::cow::tags_of_id(*id) & tag::CAMEL == 0) && w.get::<crate::tame::Owner>(e).is_none_or(|o| o.0.is_none())
+}
+
+pub const TAGGED_DEFAULTS: &[Tagged] = &[
+    Tagged { tag: tag::AGEING, key: "Age", default: zero_int, gate: always },
+    Tagged { tag: tag::AGEING, key: "AgeLocked", default: zero_byte, gate: always },
+    Tagged { tag: tag::FORCED_AGE, key: "ForcedAge", default: zero_int, gate: always },
+    Tagged { tag: tag::ANIMAL, key: "InLove", default: zero_int, gate: always },
+    Tagged { tag: tag::EQUINE, key: "Tame", default: zero_byte, gate: untamed },
+    Tagged { tag: tag::CAMEL, key: "Tame", default: one_byte, gate: always },
+    Tagged { tag: tag::EQUINE, key: "Bred", default: zero_byte, gate: always },
+    Tagged { tag: tag::EQUINE, key: "EatingHaystack", default: zero_byte, gate: always },
+    Tagged { tag: tag::CHESTED, key: "ChestedHorse", default: zero_byte, gate: always },
+    Tagged { tag: tag::ZOMBIE, key: "CanBreakDoors", default: zero_byte, gate: always },
+    Tagged { tag: tag::ZOMBIE, key: "InWaterTime", default: minus_one, gate: always },
+    Tagged { tag: tag::ZOMBIE, key: "DrownedConversionTime", default: minus_one, gate: always },
+    Tagged { tag: tag::BABY_FLAG, key: "IsBaby", default: zero_byte, gate: always },
+    Tagged { tag: tag::RAIDER, key: "CanJoinRaid", default: zero_byte, gate: always },
+    Tagged { tag: tag::RAIDER, key: "PatrolLeader", default: zero_byte, gate: always },
+    Tagged { tag: tag::RAIDER, key: "Patrolling", default: zero_byte, gate: always },
+    Tagged { tag: tag::RAIDER, key: "Wave", default: zero_int, gate: always },
+    Tagged { tag: tag::PICKS_UP, key: "CanPickUpLoot", default: one_byte, gate: always },
+    Tagged { tag: tag::ANGER_ZERO, key: "anger_end_time", default: zero_long, gate: always },
+    Tagged { tag: tag::ANGER_UNSET, key: "anger_end_time", default: minus_one_long, gate: always },
+    Tagged { tag: tag::TADPOLE, key: "FromBucket", default: one_byte, gate: always },
+    Tagged { tag: tag::BUCKETABLE, key: "FromBucket", default: zero_byte, gate: always },
+];
+
+/// The tagged defaults that apply to the entity (its species' class bits and the gate).
+pub fn tagged_of(w: &World, e: Entity) -> impl Iterator<Item = &'static Tagged> + '_ {
+    let bits = w.get::<crate::cow::SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
+    TAGGED_DEFAULTS.iter().filter(move |t| bits & t.tag != 0 && (t.gate)(w, e))
+}
+
+fn zero_long() -> Tag {
+    Tag::Long(0)
+}
+fn minus_one_long() -> Tag {
+    Tag::Long(-1)
+}
+fn one_byte() -> Tag {
+    Tag::Byte(1)
+}
+fn minus_one() -> Tag {
+    Tag::Int(-1)
+}
 
 fn zero_rotation() -> Tag {
     Tag::List(vec![Tag::Float(0.0f32.to_bits()), Tag::Float(0.0f32.to_bits())])
@@ -93,6 +154,10 @@ pub fn drop_default(key: &str, t: &Tag) -> bool {
 /// True when `key` has a default that `e` writes (`DEFAULTS`, and the tables of a living creature or a mob when it is one) and `t` equals it:
 /// the free key is then not kept, the save writes it again.
 pub fn drop_default_of(w: &World, e: Entity, key: &str, t: &Tag) -> bool {
+    // A key the species' class gives its own default is judged against that one only.
+    if let Some(d) = tagged_of(w, e).find(|d| d.key == key) {
+        return (d.default)() == *t;
+    }
     let living = w.get::<crate::cow::Health>(e).is_some().then_some(LIVING_DEFAULTS);
     let mob = w.get::<crate::goals::GoalSet>(e).is_some().then_some(MOB_DEFAULTS);
     DEFAULTS.iter().chain(living.into_iter().flatten()).chain(mob.into_iter().flatten()).any(|(k, d)| *k == key && d() == *t)
@@ -178,16 +243,29 @@ fn read_persistent(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `Rotation`: [yaw, pitch] as floats. The pitch is not modelled: written 0, ignored on read.
+/// The pitch a loaded `Rotation` carried when it is not 0 (a creature's own pitch is not modelled): kept to be written back.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Pitch(pub f32);
+
+/// `Rotation`: [yaw, pitch] as floats; the pitch is the one loaded (`Pitch`, only when not 0), else 0.
 fn write_rotation(w: &World, e: Entity, c: &mut Compound) {
     let Some(y) = w.get::<Yaw>(e) else { return };
-    c.insert("Rotation".into(), Tag::List(vec![Tag::Float(y.0.to_bits()), Tag::Float(0.0f32.to_bits())]));
+    let pitch = w.get::<Pitch>(e).map_or(0.0, |p| p.0);
+    c.insert("Rotation".into(), Tag::List(vec![Tag::Float(y.0.to_bits()), Tag::Float(pitch.to_bits())]));
 }
 
 fn read_rotation(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::List(l) = t else { return false };
-    let [Tag::Float(yaw), Tag::Float(_)] = l.as_slice() else { return false };
-    w.entity_mut(e).insert(Yaw(f32::from_bits(*yaw)));
+    let [Tag::Float(yaw), Tag::Float(pitch)] = l.as_slice() else { return false };
+    let pitch = f32::from_bits(*pitch);
+    let mut em = w.entity_mut(e);
+    em.insert(Yaw(f32::from_bits(*yaw)));
+    if pitch == 0.0 {
+        em.remove::<Pitch>();
+    } else {
+        em.insert(Pitch(pitch));
+    }
     true
 }
 
@@ -271,7 +349,9 @@ fn read_hurt_by(w: &mut World, e: Entity, t: &Tag) -> bool {
 /// `anger_end_time`: the end of the anger countdown (a long), the `until` of `Anger` (own time, as the rest of the component).
 fn write_anger_end(w: &World, e: Entity, c: &mut Compound) {
     if let Some(a) = w.get::<Anger>(e) {
-        c.insert("anger_end_time".into(), Tag::Long(a.until as i64));
+        // A bee or a wolf holds -1 until an anger sets the end (synched data default).
+        let unset = a.until == 0 && w.get::<crate::cow::SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & tag::ANGER_UNSET != 0);
+        c.insert("anger_end_time".into(), Tag::Long(if unset { -1 } else { a.until as i64 }));
     }
 }
 

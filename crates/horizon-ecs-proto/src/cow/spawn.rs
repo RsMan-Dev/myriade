@@ -54,7 +54,7 @@ pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
         Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-        FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency },
+        FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency, max_air: sp.max_air },
         crate::targeting::Eye(sp.eye_height),
         FluidState::default(),
         Recheck,
@@ -69,7 +69,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Health(sp.max_health),
         HurtAt { at: 0, last: 0.0 },
         Frozen(0),
-        Air(300),
+        Air(sp.max_air),
         Resist(sp.knockback_resistance),
         Immune(crate::rules::attrs_of(sp.rules).immune | if sp.breathes_water { BREATHES_WATER } else { 0 }),
     )
@@ -150,6 +150,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     }
     if has(crate::behaviours::Cap::Goals) {
         e.insert(goals_part(sp, uid, rng));
+    }
+    if sp.persistent {
+        e.insert(crate::despawn::Persistent);
     }
     if has(crate::behaviours::Cap::Rideable) {
         e.insert(crate::mount::Mount::default());

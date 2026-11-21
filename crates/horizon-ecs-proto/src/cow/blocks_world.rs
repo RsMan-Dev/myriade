@@ -142,6 +142,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     for (i, name) in names.into_iter().enumerate() {
         // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
         let kind = Arc::new(types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
+        let is_creature = types.types.contains_key(name);
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
         table.push(Species {
             id: i as u8,
@@ -178,6 +179,9 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             caps: crate::species::registry().by_name(name).unwrap().caps,
             brain: crate::species::registry().by_name(name).unwrap().brain,
             modes: crate::species::registry().by_name(name).unwrap().modes,
+            tags: if is_creature { crate::cow::species::tags_of(&mob, &kind) } else { 0 },
+            max_air: if is_creature { mob.max_air_supply() } else { 300 },
+            persistent: is_creature && mob.persistent,
         });
         if name == chosen {
             chosen_kind = Some(kind);

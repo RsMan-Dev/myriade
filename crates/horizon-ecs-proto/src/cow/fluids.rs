@@ -68,10 +68,12 @@ pub struct FluidParams {
     pub can_float: bool,
     pub water_slowdown: f32,
     pub water_efficiency: f32,
+    /// `Entity.getMaxAirSupply`.
+    pub max_air: i32,
 }
 
 impl FluidParams {
-    pub const DEFAULT: FluidParams = FluidParams { eye_height: 0.0, can_float: false, water_slowdown: 0.8, water_efficiency: 0.0 };
+    pub const DEFAULT: FluidParams = FluidParams { eye_height: 0.0, can_float: false, water_slowdown: 0.8, water_efficiency: 0.0, max_air: 300 };
 }
 
 /// Does not drown under water.
@@ -140,14 +142,14 @@ pub(crate) fn breathing(
         };
         let id = uid.0 as u32;
         let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, 300, breath, true)
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, fp.max_air, breath, true)
             && let Some(damage) = d.damage
         {
             queue.add(e, damage, Cause::Drown);
         }
-        if air.0 < 300 && !low {
+        if air.0 < fp.max_air && !low {
             commands.entity(e).insert(AirLow);
-        } else if air.0 >= 300 && low && !in_fluid {
+        } else if air.0 >= fp.max_air && low && !in_fluid {
             commands.entity(e).remove::<AirLow>();
         }
     }

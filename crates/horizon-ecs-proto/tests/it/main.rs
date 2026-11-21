@@ -15,6 +15,7 @@ mod nbt_types;
 mod creation_cost;
 mod dormancy_of_entities;
 mod nbt_conformance;
+mod nbt_roundtrip_objects;
 mod bow_vs_mob;
 mod brain_vs_mob;
 mod capabilities;

@@ -136,7 +136,7 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             Bounds(ExperienceOrb::box_at(at)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
             Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
-            FluidParams { eye_height: f64::from(0.425_f32), can_float: false, water_slowdown: 0.8, water_efficiency: 0.0 },
+            FluidParams { eye_height: f64::from(0.425_f32), can_float: false, water_slowdown: 0.8, water_efficiency: 0.0, max_air: 300 },
             FluidState::default(),
             Recheck,
             Moving,

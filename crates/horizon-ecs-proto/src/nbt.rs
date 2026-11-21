@@ -68,6 +68,9 @@ pub mod accept {
     pub fn short(t: &Tag) -> bool {
         matches!(t, Tag::Short(_))
     }
+    pub fn float_or_short(t: &Tag) -> bool {
+        matches!(t, Tag::Float(_) | Tag::Short(_))
+    }
     pub fn float(t: &Tag) -> bool {
         matches!(t, Tag::Float(_))
     }
@@ -212,12 +215,17 @@ pub fn save(w: &World, e: Entity) -> Option<Compound> {
             (reg.fields[i].0.write)(w, e, &mut c);
         }
     }
+    for d in crate::nbt_fields::common::tagged_of(w, e) {
+        if c.get(&JavaString::from(d.key)).is_none() {
+            c.insert(d.key.into(), (d.default)());
+        }
+    }
     for &(key, default) in crate::nbt_fields::common::DEFAULTS {
         if c.get(&JavaString::from(key)).is_none() {
             c.insert(key.into(), default());
         }
     }
-    for (present, table) in [(w.get::<crate::cow::Health>(e).is_some(), crate::nbt_fields::common::LIVING_DEFAULTS), (w.get::<crate::goals::GoalSet>(e).is_some(), crate::nbt_fields::common::MOB_DEFAULTS)] {
+    for (present, table) in [(w.get::<crate::cow::Health>(e).is_some() && !w.get::<crate::cow::Body>(e).is_some_and(|b| b.object), crate::nbt_fields::common::LIVING_DEFAULTS), (w.get::<crate::goals::GoalSet>(e).is_some(), crate::nbt_fields::common::MOB_DEFAULTS)] {
         if !present {
             continue;
         }
@@ -357,7 +365,7 @@ pub const COMMON: &[Field] = &[
     Field { key: Cow::Borrowed("Pos"), owner: Some(owner::<Pos>), accepts: accept::vec3, write: write_pos, read: read_pos },
     Field { key: Cow::Borrowed("Motion"), owner: Some(owner::<Vel>), accepts: accept::vec3, write: write_motion, read: read_motion },
     Field { key: Cow::Borrowed("Air"), owner: Some(owner::<Air>), accepts: accept::short, write: write_air, read: read_air },
-    Field { key: Cow::Borrowed("Health"), owner: Some(owner::<Health>), accepts: accept::float, write: write_health, read: read_health },
+    Field { key: Cow::Borrowed("Health"), owner: Some(owner::<Health>), accepts: accept::float_or_short, write: write_health, read: read_health },
     Field { key: Cow::Borrowed("id"), owner: None, accepts: accept::string, write: write_id, read: read_id },
 ];
 
@@ -409,13 +417,19 @@ fn read_air(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 fn write_health(w: &World, e: Entity, c: &mut Compound) {
     if let Some(h) = w.get::<Health>(e) {
-        c.insert("Health".into(), Tag::Float(h.0.to_bits()));
+        // An object (a dropped stack, an orb) saves its health as a short (`ItemEntity`, `ExperienceOrb`).
+        let tag = if w.get::<crate::cow::Body>(e).is_some_and(|b| b.object) { Tag::Short(h.0 as i16) } else { Tag::Float(h.0.to_bits()) };
+        c.insert("Health".into(), tag);
     }
 }
 
 fn read_health(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Float(bits) = t else { return false };
-    w.entity_mut(e).insert(Health(f32::from_bits(*bits)));
+    let health = match t {
+        Tag::Float(bits) => f32::from_bits(*bits),
+        Tag::Short(v) => f32::from(*v),
+        _ => return false,
+    };
+    w.entity_mut(e).insert(Health(health));
     true
 }
 

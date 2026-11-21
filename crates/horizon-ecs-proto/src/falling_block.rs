@@ -35,6 +35,7 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
     let e = w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0 }, FluidState::default(), FallingBlock { state, drop, fell: 0.0 }, Moving))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::FALLING_BLOCK);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::FALLING_BLOCK));
     after(w, e, LIMIT + 1, expire);
     e
 }

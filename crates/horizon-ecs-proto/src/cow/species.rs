@@ -168,6 +168,99 @@ pub struct Species {
     pub brain: Option<&'static crate::brain::Plan>,
     /// The modes of locomotion (`locomotion.rs`).
     pub modes: &'static [crate::locomotion::ModeEntry],
+    /// The class bits of the type (`tag::*`): what its save writes at the game's default (`nbt_fields::common::TAGGED_DEFAULTS`).
+    pub tags: u32,
+    /// `Entity.getMaxAirSupply` of the type (300; the axolotl and the dolphin more).
+    pub max_air: i32,
+    /// The type is persistent from its constructor (`setPersistenceRequired`: the elder guardian, the copper golem).
+    pub persistent: bool,
+}
+
+/// The class bits of a type, as data of its row (no per-entity byte): the groups of species whose class saves a state at its default.
+pub mod tag {
+    /// `Animal`: saves `InLove`.
+    pub const ANIMAL: u32 = 1;
+    /// `AgeableMob` that can be a baby (and the tadpole): saves `Age` and `AgeLocked`.
+    pub const AGEING: u32 = 1 << 1;
+    /// `AgeableMob` but the tadpole: saves `ForcedAge`.
+    pub const FORCED_AGE: u32 = 1 << 2;
+    /// `AbstractHorse` and the camels: save `Tame`, `Bred`, `EatingHaystack`.
+    pub const EQUINE: u32 = 1 << 3;
+    /// `AbstractChestedHorse` and llamas: save `ChestedHorse`.
+    pub const CHESTED: u32 = 1 << 4;
+    /// `Zombie` and its subclasses: save `CanBreakDoors` and the conversion tracker.
+    pub const ZOMBIE: u32 = 1 << 5;
+    /// `Raider` (`EntityTypeTags.RAIDERS`): saves `CanJoinRaid`, `PatrolLeader`, `Patrolling`, `Wave`.
+    pub const RAIDER: u32 = 1 << 6;
+    /// A zombie that can be a baby (saves `IsBaby`).
+    pub const BABY_FLAG: u32 = 1 << 7;
+    /// `Bucketable` fish and the axolotl: save `FromBucket`.
+    pub const BUCKETABLE: u32 = 1 << 8;
+    /// The camels (`Camel.isTamed` is always true): their `Tame` default is 1.
+    pub const CAMEL: u32 = 1 << 9;
+    /// The tadpole (`fromBucket` is always true).
+    pub const TADPOLE: u32 = 1 << 10;
+    /// Its constructor sets `canPickUpLoot` (the fox, the panda, the dolphin, the villager, the piglins).
+    pub const PICKS_UP: u32 = 1 << 11;
+    /// `NeutralMob` whose `persistentAngerEndTime` is a plain field (default 0): saves `anger_end_time`.
+    pub const ANGER_ZERO: u32 = 1 << 12;
+    /// `NeutralMob` whose end time is synched data (the bee, the wolf): default -1.
+    pub const ANGER_UNSET: u32 = 1 << 13;
+}
+
+/// The class bits of a species.
+pub(crate) fn tags_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> u32 {
+    use horizon_client_lib::mobs::{doors, equine, finalize, raider, species::can_be_a_baby, Species as S};
+    let s = mob.species();
+    let mut t = 0;
+    // `flags.animal` also marks the allay and the giant, which do not extend `Animal`.
+    if (kind.flags.animal && !matches!(s, S::Allay | S::Giant)) || s == S::Hoglin {
+        t |= tag::ANIMAL;
+    }
+    if s == S::Tadpole || (finalize::ageable(s) && can_be_a_baby(s)) {
+        t |= tag::AGEING;
+        if s != S::Tadpole {
+            t |= tag::FORCED_AGE;
+        }
+    }
+    if equine::is_equine(s) {
+        t |= tag::EQUINE;
+    }
+    if mob.can_pick_up_loot() {
+        t |= tag::PICKS_UP;
+    }
+    if matches!(s, S::Bee | S::Wolf) {
+        t |= tag::ANGER_UNSET;
+    } else if horizon_client_lib::mobs::persistent_anger(s) {
+        t |= tag::ANGER_ZERO;
+    }
+    if s == S::Tadpole {
+        t |= tag::TADPOLE;
+    }
+    if matches!(s, S::Camel | S::CamelHusk) {
+        t |= tag::CAMEL;
+    }
+    if equine::is_chested(s) {
+        t |= tag::CHESTED;
+    }
+    if doors::is_zombie(s) {
+        t |= tag::ZOMBIE;
+    }
+    if raider::is_raider(s) {
+        t |= tag::RAIDER;
+    }
+    if matches!(s, S::Zombie | S::Husk | S::Drowned | S::ZombieVillager | S::ZombifiedPiglin | S::Piglin | S::Zoglin) {
+        t |= tag::BABY_FLAG;
+    }
+    if matches!(s, S::Cod | S::Salmon | S::Pufferfish | S::TropicalFish | S::Axolotl) {
+        t |= tag::BUCKETABLE;
+    }
+    t
+}
+
+/// The class bits of the species of an entity (0 when no level was built).
+pub fn tags_of_id(id: SpeciesId) -> u32 {
+    TABLE.get().and_then(|t| t.get(usize::from(id.0))).map_or(0, |s| s.tags)
 }
 
 /// The type of the entity (`minecraft:cow`...), for the data keyed by type of the host (breathing).

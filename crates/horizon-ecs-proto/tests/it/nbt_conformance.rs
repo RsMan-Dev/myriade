@@ -21,16 +21,10 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "LastRestock", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
     ("*", "RestocksToday", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
     ("*", "Xp", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
-    ("*", "Age", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "AgeLocked", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "AttackTick", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "BatFlags", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "Bred", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "CanBreakDoors", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "CanJoinRaid", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "CannotBeHunted", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "CannotHunt", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "ChestedHorse", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "CollarColor", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Color", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "ConversionTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
@@ -38,23 +32,16 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "Crouching", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "DarkTicksRemaining", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "DespawnDelay", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "DrownedConversionTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "DuplicationCooldown", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "EatingHaystack", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "EggLayTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "ExplosionPower", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "ForcedAge", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "FreezingTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "FromBucket", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "GotFish", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "HasLeftHorn", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "HasRightHorn", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "HiddenGene", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "InLove", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "InWaterTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Inventory", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Invul", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "IsBaby", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "IsChickenJockey", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "IsImmuneToZombification", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "IsScreamingGoat", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
@@ -65,8 +52,6 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "Moistness", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "MoreCarrotTicks", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "NoGravity", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "PatrolLeader", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "Patrolling", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Peek", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "PlayerCreated", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "PuffState", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
@@ -82,7 +67,6 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "StrayConversionTime", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Strength", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "StunTick", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "Tame", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "TicksSincePollination", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "TimeInOverworld", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Trusted", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
@@ -92,11 +76,9 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "Variant", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "VillagerData", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "VillagerDataFinalized", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "Wave", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "Xp", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "anchor_pos", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "anger", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "anger_end_time", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "equipment", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "from_bucket", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "fuse", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
@@ -121,13 +103,14 @@ const KNOWN: &[(&str, &str, &str, &str)] = &[
     ("*", "variant", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "wasOnGround", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
     ("*", "weather_state", "missing", "state absent from the ecs: the origin writes it at creation, the ecs writes it only when it holds the state"),
-    ("*", "Air", "value", "the ecs holds no per-species maximum air at creation (origin writes the species maximum)"),
-    ("*", "CanPickUpLoot", "value", "the species default pick-up flag is not in the ecs state"),
     ("*", "Health", "value", "the size-dependent maximum health of the cube is not applied at creation"),
-    ("*", "PersistenceRequired", "value", "the origin sets it at creation for these species; the ecs state starts false"),
-    ("*", "anger_end_time", "value", "the ecs writes no anger end time at its default (-1 in the origin)"),
     ("*", "attributes", "value", "attribute modifiers and bases are not in the ecs state (state absent)"),
 ];
+
+/// Whether Horizon has a creature writer for the identifier (the others go to the round trip of `nbt_roundtrip_objects`).
+pub fn is_creature(id: &str) -> bool {
+    has_mob_kind(id)
+}
 
 fn len_of(t: &Tag) -> usize {
     match t {
@@ -163,7 +146,7 @@ fn horizon_save(id: &str) -> Result<Compound, &'static str> {
             _ => Err("the writer gave no compound"),
         };
     }
-    Err("no Horizon writer builds it from nothing")
+    Err("no Horizon writer builds it from nothing (round trip of a reference: nbt_roundtrip_objects)")
 }
 
 #[derive(Default)]

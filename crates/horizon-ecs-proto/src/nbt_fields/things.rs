@@ -355,7 +355,7 @@ fn read_dangerous(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 fn write_life(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(p) = w.get::<Projectile>(e) {
+    if let Some(p) = w.get::<Projectile>(e).filter(|p| p.age > 0) {
         c.insert("Life".into(), Tag::Int(p.age.min(i32::MAX as u32) as i32));
     }
 }

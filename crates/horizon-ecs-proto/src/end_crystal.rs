@@ -89,6 +89,7 @@ pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
     let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::END_CRYSTAL);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::END_CRYSTAL));
     after(w, e, 1, first_tick);
     e
 }
