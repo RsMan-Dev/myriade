@@ -464,7 +464,8 @@ pub struct Restored {
 
 /// Composes the NBT of every `Saved` entity, in query order: `each` gets the entity and its compound. `Saving` is sent on each entity first.
 pub fn save_all(w: &mut World, mut each: impl FnMut(Entity, Compound)) {
-    let saved: Vec<Entity> = w.query_filtered::<Entity, With<Saved>>().iter(w).collect();
+    // A sleeping entity (`Disabled`) is saved like any other: it is kept in the world, only out of the systems.
+    let saved: Vec<Entity> = w.query_filtered::<Entity, (With<Saved>, Allow<bevy_ecs::entity_disabling::Disabled>)>().iter(w).collect();
     for e in saved {
         // A `Saved` entity with no identifier is not saved.
         if written_by_mount(w, e) || id_of_entity(w, e).is_none() {

@@ -191,15 +191,24 @@ const LIFE: u64 = 1200;
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(StuckIndex::default());
 }
+/// Some projectile is in flight, or one starts to fall: the system is skipped otherwise (its parameters cost about two thousand instructions a tick).
+fn flights(q: Query<(), With<Flying>>, stuck: Res<StuckIndex>) -> bool {
+    !q.is_empty() || !stuck.falling.is_empty()
+}
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(stuck_wake.after(block_changes).before(crate::targeting::sight_eval));
-    s.add_systems(fly.after(travel).before(reindex));
+    s.add_systems(fly.after(travel).before(reindex).run_if(flights));
 }
 /// Launches a projectile at `at` with `velocity`, owned by `owner`; saved (`Saved`, in the same insert) when its identifier is.
 pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner: Option<Who>) -> Entity {
     let id = flight.id;
     let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, id);
+    // Launched in a chunk that does not tick: it waits there (`ServerLevel.tick` does not tick it).
+    if world.get_resource::<Index>().is_some_and(|i| !i.zone.simulated_at(at.x, at.z)) {
+        let now = world.resource::<Clock>().0;
+        crate::zone::freeze(world, e, now);
+    }
     e
 }
 /// The builder of every projectile identifier (`nbt::Builder`): the kind of its saved `id` in `KINDS`, launched at the saved `Pos` with no
@@ -463,7 +472,26 @@ pub fn fly(
         }
         if pos.0.y < mw.world.below_world_y() || p.age >= f.max_age && !f.sticks {
             commands.entity(e).despawn();
+        } else if !idx.zone.simulated_at(pos.0.x, pos.0.z) {
+            // Out of the chunks that tick: it stops where it is, and flies on from there when a player comes back (`zone::thaw`).
+            commands.queue(move |w: &mut World| {
+                let now = w.resource::<Clock>().0;
+                crate::zone::freeze(w, e, now);
+            });
         }
+    }
+}
+/// A stuck projectile whose block went while it was frozen: it starts to fall at the end of the tick, as if it had been ticked.
+pub fn recheck_stuck(w: &mut World, e: Entity) {
+    let (Some(s), Some(p)) = (w.get::<Stuck>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { return };
+    let level = w.resource::<Level>();
+    let mw = level.mw.0;
+    if no_block_collision(mw, Aabb::new(p, p).inflate(Vec3::new(0.06, 0.06, 0.06))) {
+        let mut st = w.resource_mut::<StuckIndex>();
+        if let Some(v) = st.at.get_mut(&s.block) {
+            v.retain(|&o| o != e);
+        }
+        st.falling.push(e);
     }
 }
 /// A deadline of the wheel for a stuck projectile: it is gone once its life is over (the deadline is the wheel's reach,

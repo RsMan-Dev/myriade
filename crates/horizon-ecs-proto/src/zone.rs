@@ -44,6 +44,9 @@ pub enum Stashed {
     Touching,
     Overlapping,
     Crowded,
+    /// A projectile's flight markers (`wake_object` puts them back).
+    Flying,
+    TridentFlying,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -206,10 +209,16 @@ pub fn zone_step(world: &mut World) {
         let mut slept: Vec<Entity> = Vec::new();
         let mut woke: Vec<Entity> = Vec::new();
         let dirty = world.resource::<Players>().dirty;
+        let (mut down, mut up) = (false, false);
         if dirty {
             let list = world.resource::<Players>().list.clone();
             idx.zone.sync_players(&list);
             for (k, ticks) in idx.zone.transitions() {
+                if ticks {
+                    up = true;
+                } else {
+                    down = true;
+                }
                 let mut found = Vec::new();
                 in_chunk(&idx, k, &mut found);
                 for e in found {
@@ -241,7 +250,73 @@ pub fn zone_step(world: &mut World) {
             wake(world, e, now);
             idx.zone.stats.woke += 1;
         }
+        // The objects outside the index (projectiles, hooks, eyes) are not listed by chunk: on a chunk that began or ceased to tick, the
+        // ones in flight (or stuck) are looked at once, by event and never per tick, and the frozen ones likewise. Cost: one pass over those
+        // sets per change of a player's chunk that flipped a chunk, nothing per entity and nothing while no player moves.
+        if down {
+            let list: Vec<Entity> = world.query_filtered::<(Entity, &crate::cow::Pos), (Loose, Without<Dormant>)>().iter(world).filter(|(_, p)| !idx.zone.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect();
+            idx.zone.stats.slept += list.len() as u64;
+            for e in list {
+                freeze(world, e, now);
+            }
+        }
+        if up {
+            let list: Vec<Entity> = world
+                .query_filtered::<(Entity, &crate::cow::Pos), (Loose, With<Dormant>, Allow<Disabled>)>()
+                .iter(world)
+                .filter(|(_, p)| idx.zone.simulated_at(p.0.x, p.0.z))
+                .map(|(e, _)| e)
+                .collect();
+            idx.zone.stats.woke += list.len() as u64;
+            for e in list {
+                thaw(world, e, now);
+            }
+        }
     });
+}
+
+/// The objects that have a tick of their own and no row in the creature index: a projectile, a fishing hook, an eye of ender.
+type Loose = Or<(With<crate::projectile::Projectile>, With<crate::fishing_hook::Hook>, With<crate::eye::Eye>)>;
+
+/// Freezes an object whose chunk does not tick (`ServerLevel.tick`: `inEntityTickingRange` gates `Entity.tick`): out of the queries
+/// (`Disabled`), its flight markers and its wheel entries (a stuck projectile's life) put aside, its own time stopped.
+pub fn freeze(world: &mut World, e: Entity, now: u64) {
+    if world.get_entity(e).is_err_and(|_| true) || world.entity(e).contains::<Dormant>() {
+        return;
+    }
+    let entries = world.resource_mut::<Wheel>().take_entries(e);
+    let wheel = entries.into_iter().map(|(at, d)| (at - now, d)).collect();
+    let mut em = world.entity_mut(e);
+    let mut stash = Vec::new();
+    if em.take::<crate::projectile::Flying>().is_some() {
+        stash.push(Stashed::Flying);
+    }
+    if em.take::<crate::trident::TridentFlying>().is_some() {
+        stash.push(Stashed::TridentFlying);
+    }
+    em.insert((Disabled, Dormant { since: now, wheel, stash }));
+}
+
+/// Thaws a frozen object: its own time resumes, the markers and the entries come back where they were, and a stuck projectile looks
+/// again at whether its block still holds it (the check `AbstractArrow.tick` makes every tick it is ticked).
+pub fn thaw(world: &mut World, e: Entity, now: u64) {
+    let mut em = world.entity_mut(e);
+    let Some(mut dormant) = em.get_mut::<Dormant>() else { return };
+    let (since, wheel, stash) = (dormant.since, std::mem::take(&mut dormant.wheel), std::mem::take(&mut dormant.stash));
+    em.remove::<(Disabled, Dormant)>();
+    for s in stash {
+        match s {
+            Stashed::Flying => drop(em.insert(crate::projectile::Flying)),
+            Stashed::TridentFlying => drop(em.insert(crate::trident::TridentFlying)),
+            _ => {}
+        }
+    }
+    world.resource_mut::<Clock>().sleep_for(e, now - since);
+    let mut wh = world.resource_mut::<Wheel>();
+    for (rem, due) in wheel {
+        wh.push(now + rem, e, due);
+    }
+    crate::projectile::recheck_stuck(world, e);
 }
 
 /// Turns the zone on for `radius` chunks around the players (their list as `Players` holds it now): every creature of a
@@ -328,6 +403,8 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
             Stashed::Touching => drop(em.insert(Touching)),
             Stashed::Overlapping => drop(em.insert(Overlapping)),
             Stashed::Crowded => drop(em.insert(Crowded)),
+            Stashed::Flying => drop(em.insert(crate::projectile::Flying)),
+            Stashed::TridentFlying => drop(em.insert(crate::trident::TridentFlying)),
         }
     }
     // The world may have changed under it while it slept (a block, a fluid): its physics looks again.
