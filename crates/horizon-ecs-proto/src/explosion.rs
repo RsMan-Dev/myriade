@@ -83,11 +83,13 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
                         }
                     };
                     let f = mw.facts.get(state);
-                    let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
-                    if !mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None {
+                    let wet = f.fluid != horizon_client_lib::blocks::Fluid::None;
+                    let fluid = if wet { 100.0_f32 } else { 0.0 };
+                    let air = mw.facts.is_air(state);
+                    if !air || wet {
                         let mut res = f.explosion_resistance.max(fluid);
                         // `WitherSkull.getBlockExplosionResistance`: a blue skull's blast gives the wither-destroyable blocks at most 0.8.
-                        if skull && !mw.facts.is_air(state) && !(match immune.iter().find(|t| t.0 == state.0) {
+                        if skull && !air && !(match immune.iter().find(|t| t.0 == state.0) {
                             Some(t) => t.1,
                             None => {
                                 let v = crate::level::has_block_tag(w, "minecraft:wither_immune", pos);
@@ -99,7 +101,7 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
                         }
                         power -= (res + 0.3) * 0.3;
                     }
-                    if power > 0.0 && (!mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None) && !set.contains(&pos) {
+                    if power > 0.0 && (!air || wet) && !set.contains(&pos) {
                         set.push(pos);
                     }
                     xp += xd * f64::from(0.3_f32);
