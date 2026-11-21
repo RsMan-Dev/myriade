@@ -24,6 +24,8 @@ pub struct DataPack {
     source: ResourceSource,
     /// Whether this entry is one of the resources root's feature packs.
     pub feature: bool,
+    /// A pack the selection always holds (`Selectable.required`): added when missing.
+    pub required: bool,
 }
 impl DataPack {
     /// Whether this repository entry comes from the feature-pack source.
@@ -36,6 +38,7 @@ impl DataPack {
             id,
             source,
             feature: false,
+            required: false,
         }
     }
     pub fn source(&self) -> &ResourceSource {
@@ -102,6 +105,7 @@ impl DataPack {
             id,
             source: source.open()?,
             feature: false,
+            required: false,
         })
     }
     /// The built-in `vanilla` pack: the game's own data directory.
@@ -110,6 +114,7 @@ impl DataPack {
             id: "vanilla".into(),
             source: ResourceSource::directory(root.to_path_buf()),
             feature: false,
+            required: false,
         }
     }
 }
@@ -152,6 +157,7 @@ pub(crate) fn discover_folder_with(
                 id: format!("file/{name}"),
                 source: ResourceSource::directory(path),
                 feature: false,
+            required: false,
             });
         } else if path
             .file_name()
@@ -163,6 +169,7 @@ pub(crate) fn discover_folder_with(
                 id: format!("file/{name}"),
                 source: ResourceSource::opened_archive(z),
                 feature: false,
+            required: false,
             });
         }
     }
@@ -202,6 +209,7 @@ pub fn feature_packs(resources: &Path) -> Vec<DataPack> {
                 id: e.file_name().to_string_lossy().into_owned(),
                 source: ResourceSource::directory(path),
                 feature: true,
+                required: false,
             });
         }
     }
@@ -1107,17 +1115,24 @@ pub fn enabled_ids(world: &Path, packs: &[DataPack], enabled_features: &[String]
     selected_ids(packs.iter(), &enabled)
 }
 
-/// Rebuild a data-pack selection, preserving its order: the selected packs the repository holds.
+/// Rebuild a data-pack selection, preserving its order (`PackRepository.rebuildSelected`): the
+/// selected packs the repository holds, then every required one it lacks.
 pub fn selected_ids<'a>(
     packs: impl Iterator<Item = &'a DataPack>,
     selected: &[String],
 ) -> Vec<String> {
-    let ids: Vec<&str> = packs.map(|pack| pack.id.as_str()).collect();
-    selected
+    let packs: Vec<&DataPack> = packs.collect();
+    let mut out: Vec<String> = selected
         .iter()
-        .filter(|id| ids.contains(&id.as_str()))
+        .filter(|id| packs.iter().any(|p| p.id == **id))
         .cloned()
-        .collect()
+        .collect();
+    for pack in packs.iter().filter(|p| p.required) {
+        if !out.contains(&pack.id) {
+            out.push(pack.id.clone());
+        }
+    }
+    out
 }
 
 /// The level stems of `packs` (`data/<namespace>/dimension/<path>.json`, lowest priority first,

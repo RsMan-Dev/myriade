@@ -1,10 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-pub const KINDS: [&str; 7] = [
-    "load", "generate", "decorate", "finish", "light", "mesh", "other",
-];
+pub const KINDS: [&str; 6] = ["load", "generate", "decorate", "finish", "light", "other"];
 static ENABLED: AtomicBool = AtomicBool::new(false);
-static NANOS: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
-static COUNT: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
+static NANOS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+static COUNT: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
 pub fn enable(on: bool) {
     ENABLED.store(on, Ordering::Relaxed);
 }

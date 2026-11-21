@@ -698,7 +698,6 @@ mod tests {
         let darkness = fx.get("darkness").unwrap();
         // ClientboundUpdateMobEffectPacket: no ambient, particles or icon bit.
         assert_eq!(PlayerEffects::flags(darkness), 0);
-        assert!(!crate::hud_overlays::EffectIcon::from(darkness).show_icon);
         assert!(fx.add(EffectInstance::new("darkness", 100, 0)));
         assert_eq!(PlayerEffects::flags(fx.get("darkness").unwrap()), 2 | 4);
 

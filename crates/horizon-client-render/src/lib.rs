@@ -36,6 +36,7 @@ pub mod api_context;
 pub mod random_source;
 pub mod sculk;
 pub mod section_mask;
+pub mod block_entity_anim;
 pub mod shulker_box;
 pub mod signs;
 pub mod skins;

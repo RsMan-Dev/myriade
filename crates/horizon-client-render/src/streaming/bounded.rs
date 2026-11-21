@@ -1,8 +1,8 @@
-//! Bounded submission: the light and mesh stages hand the workers only the
+//! Bounded submission: the light stage hands the workers only the
 //! nearest of what is ready.
 
-/// The nearest `room` of the `candidates`, ordered: the light and mesh
-/// stages submit bounded work, chosen from everything that is ready each
+/// The nearest `room` of the `candidates`, ordered: the light stage submits
+/// bounded work, chosen from everything that is ready each
 /// `update`, so what runs is always the nearest of what is left — chosen
 /// again, from the current centre, as capacity frees, the way vanilla's
 /// chunk task queues follow the current ticket levels. The selection is
@@ -19,7 +19,7 @@ pub(super) fn nearest_first<T: Ord>(candidates: &mut Vec<T>, room: usize) {
 mod tests {
     use super::*;
 
-    /// The light and mesh stages submit bounded work, the nearest first:
+    /// The light stage submits bounded work, the nearest first:
     /// what exceeds the room stays dirty, to be chosen again — from the
     /// current centre — as capacity frees. Submitted whole, the queue once
     /// held every ready column's jobs and grew with the render distance
