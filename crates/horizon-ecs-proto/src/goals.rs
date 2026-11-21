@@ -843,6 +843,8 @@ pub struct Events {
     pub item_touched: Ev<(Entity, Entity)>,
     /// An item appeared on the ground (`item::drop_item`): the item (read by `move_to_item`).
     pub item_dropped: Ev,
+    /// A creature died of a damage hit (`cow::apply_damage`): read by `celebrate`, the targeters of the victim party.
+    pub killed: Ev<crate::behaviours::celebrate::Kill>,
 }
 impl Events {
     pub fn swap(&mut self) {
@@ -879,6 +881,7 @@ impl Events {
         self.vibration.swap();
         self.touched.swap();
         self.item_touched.swap();
+        self.killed.swap();
     }
 }
 

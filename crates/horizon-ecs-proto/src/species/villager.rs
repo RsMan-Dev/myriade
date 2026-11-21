@@ -6,7 +6,7 @@ use super::Def;
 use crate::behaviours::Cap;
 use crate::behaviours::{bed::NEAREST_BED, composter, crop_harvest, jump_on_bed, nearest_bed, nearby_babies, panda_state, play_tag, poi_strolls, gossip, raid, reach_block, ring_bell, schedule, sleep_in_bed, stroll_near_block, summon_defender, victory_celebrate};
 use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, walk_away, walk_to_look_target};
-use crate::brain::sensors::{hurt_by, living, secondary_job_site::{self, SECONDARY_JOB_SITE}};
+use crate::brain::sensors::{hurt_by, living, nearest_wanted_item, recent_sighting, secondary_job_site::{self, SECONDARY_JOB_SITE}, villager_babies};
 use crate::brain::*;
 // lot 6
 use crate::behaviours::play_tag::INTERACTION_TARGET;
@@ -265,7 +265,8 @@ pub static DEF: Def = Def {
     name: "minecraft:villager",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
-        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&crate::brain::sensors::nearest_players::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40), SensorEntry::new(&nearby_babies::SENSOR, 20).with(&nearby_babies::Params::SAME), SensorEntry::new(&nearest_bed::SENSOR, 20).with(&nearest_bed::Params { nearest: &NEAREST_BED, candidate: &nearest_bed::BED_CANDIDATE, follow_range: 48.0 }), SensorEntry::new(&village_hostile::SENSOR, 20).with(&HOSTILES)],
+        // The order of the `Mob`'s sensors (its draws of the first due, `make_brain`): living, players, items, bed, hurt, hostiles, babies, secondary, golem.
+        sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&crate::brain::sensors::nearest_players::SENSOR, 20), SensorEntry::new(&nearest_wanted_item::SENSOR, 20).with(&nearest_wanted_item::Params { tag: "minecraft:villager_picks_up", range: 4.0 }), SensorEntry::new(&nearest_bed::SENSOR, 20).with(&nearest_bed::Params { nearest: &NEAREST_BED, candidate: &nearest_bed::BED_CANDIDATE, follow_range: 48.0 }), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&village_hostile::SENSOR, 20).with(&HOSTILES), SensorEntry::new(&villager_babies::SENSOR, 20), SensorEntry::new(&secondary_job_site::SENSOR, 40), SensorEntry::new(&recent_sighting::SENSOR, 200).with(&recent_sighting::Params { seen: iron_golem })],
         activities: ACTIVITIES,
         pick: PICK,
         initial: &[],
@@ -345,3 +346,10 @@ pub static DEF: Def = Def {
     },
     ..Def::EMPTY
 };
+
+/// The iron golem the villagers summon (`GolemSensor` looks for it): the species of the species table, resolved once.
+fn iron_golem(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
+    static ID: std::sync::OnceLock<Option<u8>> = std::sync::OnceLock::new();
+    let id = *ID.get_or_init(|| crate::species::registry().id("minecraft:iron_golem").map(|i| i as u8));
+    id.is_some_and(|id| w.get::<crate::cow::SpeciesId>(e).is_some_and(|s| s.0 == id))
+}

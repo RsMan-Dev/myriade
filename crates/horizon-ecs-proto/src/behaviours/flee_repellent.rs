@@ -13,11 +13,21 @@ pub struct Params {
     pub species: &'static [&'static str],
     pub horizontal: f64,
     pub vertical: i32,
+    /// The found spot counts only inside this shape: a box (the scan) or a sphere of `horizontal` around the animal (the Mob's
+    /// `distance_sqr < 64` of the repellent goals, piglin and hoglin).
+    pub shape: Shape,
+    /// The blocks of `blocks` that repel only while lit (`lit=true`): a soul campfire (`PiglinSpecificSensor`).
+    pub lit: &'static [&'static str],
     /// Ticks the spot stays remembered (the avoid ttl).
     pub ttl: u64,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Box,
+    Sphere,
+}
 impl Params {
-    pub const DEFAULT: Self = Self { blocks: &[], species: &[], horizontal: 8.0, vertical: 4, ttl: 120 };
+    pub const DEFAULT: Self = Self { blocks: &[], species: &[], horizontal: 8.0, vertical: 4, shape: Shape::Box, lit: &[], ttl: 120 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Flee(pub &'static Params);
@@ -114,7 +124,11 @@ fn repellent_near(w: &World, e: Entity, f: &Params) -> Option<[f64; 3]> {
     // On a tie the first of the walk x, z, y wins (as the scan of the cube did): the key is (distance, x, z, y).
     let mut key_best = [i32::MAX; 3];
     if let Some(bw) = w.get_resource::<crate::block_watch::BlockWatch>() {
-        bw.near(f.blocks, [at.x, at.y, at.z], f.horizontal, f.vertical, |p| {
+        for name in f.blocks {
+        bw.near(&[*name], [at.x, at.y, at.z], f.horizontal, f.vertical, |p| {
+            if f.lit.contains(name) && crate::blocks::world_of(w).prop(p[0], p[1], p[2], "lit") != Some("true") {
+                return;
+            }
             let c = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
             let d = (c[0] - at.x).powi(2) + (c[1] - at.y).powi(2) + (c[2] - at.z).powi(2);
             // The spot kept is the bottom centre of the block (`Vec3.atBottomCenterOf`), the choice goes by the centre.
@@ -126,6 +140,7 @@ fn repellent_near(w: &World, e: Entity, f: &Params) -> Option<[f64; 3]> {
                 best = Some(c);
             }
         });
+        }
     }
     if !f.species.is_empty()
         && let Some(o) = goals::repellent_near(w, e, &[], f.species, f.horizontal, f.vertical)
@@ -135,5 +150,5 @@ fn repellent_near(w: &World, e: Entity, f: &Params) -> Option<[f64; 3]> {
             best = Some(o);
         }
     }
-    best
+    best.filter(|b| f.shape == Shape::Box || (b[0] - at.x).powi(2) + (b[1] - at.y).powi(2) + (b[2] - at.z).powi(2) < f.horizontal * f.horizontal)
 }

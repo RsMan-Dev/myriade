@@ -164,6 +164,10 @@ mod lot_fin_villager_new;
 mod lot_fin_goat;
 mod lot_fin2_hero_gift;
 mod lot_fin2_distance_maps;
+mod lot_lectures_goat;
+mod lot_horns_goat;
+mod lot_lectures;
+mod lot_lectures_villager;
 // lot V4
 mod lot_v4_work;
 // lot V3

@@ -17,7 +17,7 @@ pub fn living_candidates(w: &World, e: Entity, out: &mut Vec<(Who, f64)>) {
     let area = bounds.inflate(Vec3::new(r, r, r));
     w.resource::<Index>().for_radius(p.x, p.z, r + 2.0, |o| {
         if o != e
-            && w.get::<Health>(o).is_some()
+            && w.get::<Health>(o).is_some_and(|h| h.0 > 0.0)
             && let Some(b) = w.get::<Bounds>(o)
             && b.0.intersects(area)
         {
@@ -57,7 +57,7 @@ mod tests {
         let mut found: Vec<(Who, f64)> = Vec::new();
         w.resource::<Index>().for_radius(p.x, p.z, r + 2.0, |o| {
             if o != e
-                && w.get::<Health>(o).is_some()
+                && w.get::<Health>(o).is_some_and(|h| h.0 > 0.0)
                 && let Some(b) = w.get::<Bounds>(o)
                 && b.0.intersects(area)
             {

@@ -54,7 +54,7 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
     }
     match reached {
         Some(bed) => set(w, e, p.nearest, MemValue::Block(bed), None),
-        None if targets.is_empty() && tried < 5 => cache.0.retain(|(_, until)| *until >= last_update),
+        None if tried < 5 => cache.0.retain(|(_, until)| *until >= last_update),
         None => {}
     }
     w.entity_mut(e).insert(BedCache(cache.0));

@@ -2,14 +2,16 @@
 //! la chèvre choisit la cible la plus proche vue (16 blocs, pas une chèvre), cherche à 4 à 7 blocs un départ d'où elle la
 //! rejoint, y va à 1,25, baisse la tête (20 ticks), puis charge à 3,0 jusqu'à la toucher ou finir son chemin.
 //! Replis (fiche 99) : le recul est le recul standard (`Cause::Entity`, sans colère : pas de `by`), pas de cornes, pas de
-//! sonde de chemin pour le départ (le plus proche des départs marchables est retenu), pas de joueur pour cible, pas d'amour
-//! (pas d'état lisible) ; la tentation (un joueur à portée tenant la nourriture) la fait céder.
+//! sonde de chemin pour le départ (le plus proche des départs marchables est retenu) ; la tentation (un joueur à portée
+//! tenant la nourriture) et l'amour (`breed::Love`) la font céder. Joueurs visés et touchés, tête baissée (événements 58/59).
 use crate::IFloor as _;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::spots::stable_destination;
+use crate::hostile::PlayerState;
 use crate::targeting::{self, Eye, Who};
+use horizon_client_lib::items::ItemStack;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
@@ -18,6 +20,12 @@ use horizon_core::geometry::Vec3;
 pub struct Params {
     /// `RAMS` : le compte à rebours après une charge (uniforme), et le minimum après un échec.
     pub cooldown: (i32, i32),
+    /// A variant a marker picks (its countdown and sounds); None: the countdown and sounds above.
+    pub marked: Option<Variant>,
+    pub prepare_sound: &'static str,
+    pub impact_sound: &'static str,
+    /// The parts a ram can snap off (`Goat.dropHorn`); None: none can come off.
+    pub shed: Option<ShedDef>,
     pub prepare_wait: u64,
     pub min_distance: i32,
     pub max_distance: i32,
@@ -30,6 +38,10 @@ pub struct Params {
 impl Params {
     pub const DEFAULT: Self = Self {
         cooldown: (600, 6000),
+        marked: None,
+        prepare_sound: "entity.goat.prepare_ram",
+        impact_sound: "entity.goat.ram_impact",
+        shed: None,
         prepare_wait: 20,
         min_distance: 4,
         max_distance: 7,
@@ -40,6 +52,27 @@ impl Params {
         charge_speed: 3.0,
     };
 }
+
+/// A marked variant of an animal: its marker's test, and its own countdown and sounds.
+#[derive(Clone, Copy, Debug)]
+pub struct Variant {
+    pub is: fn(&World, Entity) -> bool,
+    pub cooldown: (i32, i32),
+    pub prepare_sound: &'static str,
+    pub impact_sound: &'static str,
+    pub shed: Option<ShedDef>,
+}
+
+/// What a ram can snap off: the items a part drops (one picked by the animal's random) and the sound of the break.
+#[derive(Clone, Copy, Debug)]
+pub struct ShedDef {
+    pub items: &'static [&'static str],
+    pub break_sound: &'static str,
+}
+
+/// The parts snapped off so far: bit 0 the left, bit 1 the right. Absent: all of them are there.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Shed(pub u8);
 
 /// `RAM_COOLDOWN_TICKS` : la date (temps propre) à partir de laquelle le bélier peut recommencer. Lue par `long_jump`.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -56,7 +89,7 @@ enum Phase {
 struct Candidate {
     start: [i32; 3],
     target_pos: [i32; 3],
-    target: Entity,
+    target: Who,
 }
 
 /// L'état du but sur la chèvre : ses paramètres, l'échéance armée, et la charge en cours.
@@ -71,6 +104,8 @@ pub struct Rammer {
     ram_target: Option<Vec3>,
     ram_direction: Vec3,
     time: i32,
+    /// The head is down (`Goat.setLoweredHead`, the entity events 58 and 59 sent when it changes).
+    lowering: bool,
 }
 
 /// Le but tourne (son `tick` le visite).
@@ -95,7 +130,7 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert((
-        Rammer { slot: inst.slot, p, armed: None, phase: Phase::Done, candidate: None, reached_at: None, ram_target: None, ram_direction: Vec3::ZERO, time: 0 },
+        Rammer { slot: inst.slot, p, armed: None, phase: Phase::Done, candidate: None, reached_at: None, ram_target: None, ram_direction: Vec3::ZERO, time: 0, lowering: false },
         RamCooldown(0),
     ));
 }
@@ -127,6 +162,45 @@ fn set_cooldown(w: &mut World, e: Entity, ticks: i32) {
     schedule(w, e, date);
     // The goat's long jump activity holds while the ram cools down: it is asked now (no polling for the end of the ram).
     crate::goals::wake(w, e, &crate::behaviours::long_jump::MODULE);
+}
+
+/// `RAMS` of this animal: the marked variant's range when its marker is there.
+fn rams(w: &World, e: Entity) -> (i32, i32) {
+    let Some(p) = w.get::<Rammer>(e).map(|r| r.p) else { return (600, 6000) };
+    match p.marked {
+        Some(v) if (v.is)(w, e) => v.cooldown,
+        _ => p.cooldown,
+    }
+}
+
+/// The sounds of the prepare and of the impact, the marked variant's when its marker is there.
+fn sounds(w: &World, e: Entity) -> (&'static str, &'static str) {
+    let Some(p) = w.get::<Rammer>(e).map(|r| r.p) else { return ("", "") };
+    match p.marked {
+        Some(v) if (v.is)(w, e) => (v.prepare_sound, v.impact_sound),
+        _ => (p.prepare_sound, p.impact_sound),
+    }
+}
+
+/// `Mob.voice_pitch` of a goat: 1 ± 0,2 as an adult, 1,5 ± 0,2 as a baby (`GrowAt`), from two draws of its own random.
+fn voice_pitch(w: &mut World, e: Entity) -> f32 {
+    let base = if w.get::<GrowAt>(e).is_some() { 1.5 } else { 1.0 };
+    with_rng(w, e, |r| {
+        let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;
+        let b = (r.next_u32() >> 8) as f32 / 16_777_216.0;
+        (a - b) * 0.2 + base
+    })
+}
+
+/// `Goat.setLoweredHead` and the entity event (58 down, 59 up) a server sends when the head changes.
+fn lower(w: &mut World, e: Entity, down: bool) {
+    let Some(mut r) = w.get_mut::<Rammer>(e) else { return };
+    if r.lowering == down {
+        return;
+    }
+    r.lowering = down;
+    drop(r);
+    w.resource_mut::<Events>().host.entity_event(e, if down { 58 } else { 59 });
 }
 
 /// Premier compte à rebours : `finalize` tire `[600, 6000]`.
@@ -162,7 +236,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         schedule(w, e, date);
         return false;
     }
-    !super::tempt::tempted(w, e)
+    !super::tempt::tempted(w, e) && super::long_jump::breeding_until(w, e).is_none()
 }
 
 fn start(w: &mut World, e: Entity, _: Inst) {
@@ -185,7 +259,8 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Ramming>();
     let phase = w.get::<Rammer>(e).map(|r| r.phase);
     if phase == Some(Phase::Prepare) {
-        let wait = w.get::<Rammer>(e).map_or(600, |r| r.p.cooldown.0);
+        lower(w, e, false);
+        let wait = rams(w, e).0;
         set_cooldown(w, e, wait);
     }
     if let Some(mut r) = w.get_mut::<Rammer>(e) {
@@ -200,9 +275,26 @@ fn tick(w: &mut World) {
     }
 }
 
-/// La cible vit (une créature : sa vie est lue ici, `targeting::info` ne la donne pas).
-fn alive(w: &World, c: Entity) -> bool {
-    w.get::<Health>(c).is_none_or(|h| h.0 > 0.0)
+/// La cible vit (une créature : sa vie est lue ici, `targeting::info` ne la donne pas ; un joueur vivant a une fiche).
+fn alive(w: &World, c: Who) -> bool {
+    match c {
+        Who::Entity(c) => w.get::<Health>(c).is_none_or(|h| h.0 > 0.0),
+        Who::Player(_) => true,
+    }
+}
+
+/// `RAM_TARGET_CONDITIONS` for a creature: not the goat itself, alive, not of its species. A player is always a candidate here
+/// (`targeting::info` says whether it can be targeted).
+fn ram_target_ok(w: &World, e: Entity, who: Who) -> bool {
+    match who {
+        Who::Entity(c) => {
+            c != e
+                && alive(w, who)
+                && !crate::brain::behaviours::play_dead::is_playing_dead(w, c)
+                && w.get::<SpeciesId>(c).copied() != w.get::<SpeciesId>(e).copied()
+        }
+        Who::Player(_) => true,
+    }
 }
 
 /// `Goal.canContinueToUse` puis `tick`, chaque tick : finir quand la cible vit, le temps n'a pas expiré, ou la charge est en route.
@@ -213,7 +305,8 @@ fn run(w: &mut World, e: Entity) {
         Phase::Prepare => {
             r.time <= r.p.prepare_timeout
                 && !super::tempt::tempted(w, e)
-                && r.candidate.is_some_and(|c| targeting::info(w, Who::Entity(c.target)).is_some() && alive(w, c.target))
+                && super::long_jump::breeding_until(w, e).is_none()
+                && r.candidate.is_some_and(|c| targeting::info(w, c.target).is_some() && alive(w, c.target))
         }
         Phase::RamStart | Phase::Ram => r.ram_target.is_some() && r.time <= r.p.ram_timeout,
     };
@@ -268,7 +361,7 @@ fn nav_done(w: &World, e: Entity) -> bool {
 fn prepare_tick(w: &mut World, e: Entity) {
     let Some(r) = w.get::<Rammer>(e).copied() else { return };
     let Some(c) = r.candidate else { return };
-    let Some(t) = targeting::info(w, Who::Entity(c.target)) else { return };
+    let Some(t) = targeting::info(w, c.target) else { return };
     look(w, e, [t.pos.x, t.eye, t.pos.z]);
     let now = now_of(w, e);
     let pos = pos_of(w, e);
@@ -278,9 +371,11 @@ fn prepare_tick(w: &mut World, e: Entity) {
     }
     if block_of(t.pos) != c.target_pos {
         // La cible a changé de case : un nouveau choix.
+        lower(w, e, false);
         stop_nav(w, e);
         choose(w, e, c.target);
     } else if block_of(pos) == c.start {
+        lower(w, e, true);
         let since = match r.reached_at {
             Some(s) => s,
             None => {
@@ -293,6 +388,9 @@ fn prepare_tick(w: &mut World, e: Entity) {
         if now - since >= r.p.prepare_wait {
             let edge = |t: i32, s: i32| f64::from(t) + 0.5 + 0.5 * f64::from((t - s).signum());
             let (x, z) = (edge(c.target_pos[0], c.start[0]), edge(c.target_pos[2], c.start[2]));
+            let pitch = voice_pitch(w, e);
+            let (prepare, _) = sounds(w, e);
+            w.resource_mut::<Events>().host.sound(prepare, [pos.x, pos.y, pos.z], 1.0, pitch);
             if let Some(mut m) = w.get_mut::<Rammer>(e) {
                 m.ram_target = Some(Vec3::new(x, f64::from(c.target_pos[1]), z));
                 m.phase = Phase::RamStart;
@@ -303,12 +401,12 @@ fn prepare_tick(w: &mut World, e: Entity) {
 }
 
 /// `PrepareRamNearestTarget.chooseRamPosition`.
-fn choose(w: &mut World, e: Entity, target: Entity) {
+fn choose(w: &mut World, e: Entity, target: Who) {
     if let Some(mut r) = w.get_mut::<Rammer>(e) {
         r.reached_at = None;
         r.candidate = None;
     }
-    let Some(i) = targeting::info(w, Who::Entity(target)) else { return };
+    let Some(i) = targeting::info(w, target) else { return };
     let target_pos = block_of(i.pos);
     let start = ramming_start(w, e, target_pos);
     if let (Some(start), Some(mut r)) = (start, w.get_mut::<Rammer>(e)) {
@@ -341,7 +439,8 @@ fn ramming_start(w: &World, e: Entity, target: [i32; 3]) -> Option<[i32; 3]> {
     }
     let here = block_of(pos_of(w, e));
     starts.sort_by_key(|s| (0..3).map(|i| i64::from(s[i] - here[i]).pow(2)).sum::<i64>());
-    starts.into_iter().next()
+    // `create_path_to(p, 0).reached`: the first start a walk reaches, nearest first.
+    starts.into_iter().find(|&s| crate::behaviours::long_jump::reaches_on_foot(w, e, s))
 }
 
 fn level_mw(w: &World) -> &'static MobWorld<'static> {
@@ -356,21 +455,22 @@ fn walkable(w: &World, e: Entity, mw: &MobWorld, p: [i32; 3]) -> bool {
     stable_destination(mw, p) && malus == 0.0
 }
 
-/// La créature vivante la plus proche dans `sense_range`, vue, d'une autre espèce. Repli : les joueurs ne sont pas cibles.
-fn nearest_target(w: &mut World, e: Entity) -> Option<Entity> {
+/// La cible la plus proche dans `sense_range`, vue : les joueurs d'abord (`PrepareRamNearestTarget`), puis les créatures
+/// d'une autre espèce ; un joueur ne remplace que par une distance strictement plus courte.
+fn nearest_target(w: &mut World, e: Entity) -> Option<Who> {
     let range = w.get::<Rammer>(e)?.p.sense_range;
     let pos = pos_of(w, e);
-    let my_species = w.get::<SpeciesId>(e).copied();
     let mut near = Vec::new();
-    w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| near.push(c));
+    w.resource::<Online>().for_near(pos.x, pos.z, range, |p| near.push(Who::Player(p.id)));
+    w.resource::<Index>().for_radius(pos.x, pos.z, range, |c| near.push(Who::Entity(c)));
     let mw = level_mw(w);
     let eye = w.get::<Eye>(e).map_or(0.0, |y| y.0);
-    let mut best: Option<(Entity, f64)> = None;
-    for c in near {
-        if c == e || w.get::<Health>(c).is_some_and(|h| h.0 <= 0.0) || w.get::<SpeciesId>(c).copied() == my_species {
+    let mut best: Option<(Who, f64)> = None;
+    for who in near {
+        if !ram_target_ok(w, e, who) {
             continue;
         }
-        let Some(i) = targeting::info(w, Who::Entity(c)) else { continue };
+        let Some(i) = targeting::info(w, who) else { continue };
         if i.exempt {
             continue;
         }
@@ -380,7 +480,7 @@ fn nearest_target(w: &mut World, e: Entity) -> Option<Entity> {
         }
         let from = Vec3::new(pos.x, pos.y + eye, pos.z);
         if mw.line_of_sight_for(Some(pos.y), from, Vec3::new(i.pos.x, i.eye, i.pos.z)) {
-            best = Some((c, d));
+            best = Some((who, d));
         }
     }
     best.map(|b| b.0)
@@ -391,28 +491,98 @@ fn ram_tick(w: &mut World, e: Entity) {
     let pos = pos_of(w, e);
     if let Some(target) = rammed(w, e) {
         let amount = w.get::<AttackDamage>(e).map_or(0.0, |a| a.0);
-        w.resource_mut::<DamageQueue>().add_from(target, amount, Cause::Entity, (pos.x, pos.z));
+        let power = ram_power(w, e);
+        match target {
+            Who::Entity(c) => w.resource_mut::<DamageQueue>().add_ram(c, amount, (pos.x, pos.z), power),
+            // `noAggroMobAttack`: the hit angers no one, so no attacker is named.
+            Who::Player(id) => {
+                let tick = w.resource::<Clock>().0;
+                w.resource_mut::<PlayerState>().hurt(tick, id, amount, (pos.x, pos.z), None);
+                // The push of `LivingEntity.knockback` away from the goat, on the ground (the player's own velocity is the host's).
+                let (px, pz) = crate::area::player_xz(w, id);
+                let (dx, dz) = (px - pos.x, pz - pos.z);
+                let l = (dx * dx + dz * dz).sqrt().max(1.0e-5);
+                crate::area::push_player(w, id, [dx / l * power, power.min(0.4), dz / l * power]);
+            }
+        }
         finish_ram(w, e);
+        let (_, impact) = sounds(w, e);
+        w.resource_mut::<Events>().host.sound(impact, [pos.x, pos.y, pos.z], 1.0, 1.0);
     } else if rammed_horn_block(w, e, pos) {
-        // Repli : la corne ne tombe pas (table des cornes absente).
+        let (_, impact) = sounds(w, e);
+        w.resource_mut::<Events>().host.sound(impact, [pos.x, pos.y, pos.z], 1.0, 1.0);
+        if let Some(snap) = drop_horn(w, e, pos) {
+            w.resource_mut::<Events>().host.sound(snap, [pos.x, pos.y, pos.z], 1.0, 1.0);
+        }
         finish_ram(w, e);
     } else if nav_done(w, e) || w.get::<Rammer>(e).is_some_and(|r| r.ram_target.is_none()) {
         finish_ram(w, e);
     }
 }
 
-/// La première créature de la boîte de la chèvre (vivante, autre espèce).
-fn rammed(w: &World, e: Entity) -> Option<Entity> {
+/// The shed of this animal: its marked variant's when the marker is there.
+fn shed_of(w: &World, e: Entity) -> Option<ShedDef> {
+    let p = w.get::<Rammer>(e).map(|r| r.p)?;
+    match p.marked {
+        Some(v) if (v.is)(w, e) => v.shed,
+        _ => p.shed,
+    }
+}
+
+/// `Mob.getEffect` level (amplifier + 1, 0 without the effect) of `kind` on this animal.
+fn effect_level(w: &World, e: Entity, kind: crate::effects::Kind) -> i32 {
+    w.get::<crate::effects::Effects>(e).and_then(|f| f.list.iter().find(|x| x.kind == kind)).map_or(0, |x| x.amp + 1)
+}
+
+/// `Goat.ramTarget` power: the charge speed's factor (with the speed and slowness effects) times 2.5, or 1.0 as a baby.
+fn ram_power(w: &World, e: Entity) -> f64 {
+    let speed = w.get::<Rammer>(e).map_or(3.0, |r| r.p.charge_speed) as f32;
+    let boost = 0.25 * (effect_level(w, e, crate::effects::Kind::Speed) - effect_level(w, e, crate::effects::Kind::Slowness)) as f32;
+    let factor = (speed * 1.65).clamp(0.2, 3.0) + boost;
+    let force = if w.get::<GrowAt>(e).is_some() { 1.0 } else { 2.5 };
+    f64::from(factor) * force
+}
+
+/// `Goat.dropHorn`: an adult that still has a part to lose snaps one off (the left or the right by a coin when both are there),
+/// which falls from it with a push. Returns the break sound to play, or None when nothing came off.
+fn drop_horn(w: &mut World, e: Entity, pos: Vec3) -> Option<&'static str> {
+    let def = shed_of(w, e)?;
+    if w.get::<GrowAt>(e).is_some() {
+        return None;
+    }
+    let lost = w.get::<Shed>(e).map_or(0, |s| s.0);
+    if lost == 3 {
+        return None;
+    }
+    let left = match lost {
+        0 => with_rng(w, e, |r| r.next_u32() & 1 == 1),
+        1 => false,
+        _ => true,
+    };
+    let (vx, vy, vz) = with_rng(w, e, |r| {
+        let mut between = |min: f64, max: f64| (r.next_f64() * (max - min) + min);
+        (between(-0.2, 0.2), between(0.3, 0.7), between(-0.2, 0.2))
+    });
+    let bit = if left { 1 } else { 2 };
+    w.entity_mut(e).insert(Shed(lost | bit));
+    // `Goat.createHorn`: the instrument is drawn from a random seeded with the hash of the goat's UUID (here its `Uid`, folded).
+    let uid = w.get::<Uid>(e).map_or(0, |u| u.0);
+    let mut random = horizon_core::random::LegacyRandom::new(i64::from(((uid >> 32) as i32) ^ (uid as i32)));
+    let pick = random.next_int_bound(def.items.len() as i32).unwrap_or(0) as usize;
+    let stack = ItemStack::new(def.items[pick], 1);
+    crate::item::drop_item(w, stack, pos, Vec3::new(vx, vy, vz), 10);
+    Some(def.break_sound)
+}
+
+/// Le premier joueur, puis la première créature, de la boîte de la chèvre (vivants, ciblables, autre espèce).
+fn rammed(w: &World, e: Entity) -> Option<Who> {
     let bounds = w.get::<Bounds>(e)?.0;
     let pos = pos_of(w, e);
-    let my_species = w.get::<SpeciesId>(e).copied();
     let mut near = Vec::new();
-    w.resource::<Index>().for_radius(pos.x, pos.z, 3.0, |c| near.push(c));
-    near.into_iter().find(|&c| {
-        c != e
-            && w.get::<Health>(c).is_none_or(|h| h.0 > 0.0)
-            && w.get::<SpeciesId>(c).copied() != my_species
-            && w.get::<Bounds>(c).is_some_and(|b| b.0.intersects(bounds))
+    w.resource::<Online>().for_near(pos.x, pos.z, 3.0, |p| near.push(Who::Player(p.id)));
+    w.resource::<Index>().for_radius(pos.x, pos.z, 3.0, |c| near.push(Who::Entity(c)));
+    near.into_iter().find(|&who| {
+        ram_target_ok(w, e, who) && targeting::info(w, who).is_some_and(|i| !i.exempt && i.bounds.intersects(bounds))
     })
 }
 
@@ -428,8 +598,12 @@ fn rammed_horn_block(w: &World, e: Entity, pos: Vec3) -> bool {
 
 /// `RamTarget.finishRam` : la cible est quittée, le compte à rebours tiré dans `RAMS` part.
 fn finish_ram(w: &mut World, e: Entity) {
-    let Some(p) = w.get::<Rammer>(e).map(|r| r.p) else { return };
-    let t = with_rng(w, e, |r| sample(r, p.cooldown));
+    if w.get::<Rammer>(e).is_none() {
+        return;
+    }
+    lower(w, e, false);
+    let range = rams(w, e);
+    let t = with_rng(w, e, |r| sample(r, range));
     set_cooldown(w, e, t);
     if let Some(mut r) = w.get_mut::<Rammer>(e) {
         r.ram_target = None;

@@ -5,6 +5,7 @@
 use crate::IFloor as _;
 use crate::cow::*;
 use crate::goals::*;
+use crate::effects::Invisible;
 use crate::hostile::{ChangedBlocks, PlayerState};
 use bevy_ecs::{prelude::*, system::SystemParam};
 use horizon_core::geometry::{Aabb, Vec3};
@@ -64,23 +65,25 @@ pub struct Info {
     pub player: bool,
     /// A player that cannot be targeted (creative, spectator) or a creature that is dead.
     pub exempt: bool,
+    /// The visibility of a creature (`creature_visibility`); 1 for a player, whose visibility is read from `PlayerState`.
+    pub visibility: f64,
 }
 pub fn player_box(p: &Player) -> Aabb {
     Aabb::new(Vec3::new(p.x - 0.3, p.y, p.z - 0.3), Vec3::new(p.x + 0.3, p.y + 1.8, p.z + 0.3))
 }
 /// The reading of a target from the resources and a creature lookup.
-fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<(Vec3, Aabb, u8, bool, f64)>) -> Option<Info> {
+fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<(Vec3, Aabb, u8, bool, f64, f64)>) -> Option<Info> {
     match who {
         Who::Player(id) => {
             let p = on.get(id)?;
             if !ps.alive(id) {
                 return None;
             }
-            Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: !ps.targetable(id) })
+            Some(Info { pos: Vec3::new(p.x, p.y, p.z), eye: p.y + 1.62, bounds: player_box(&p), baby: false, species: u8::MAX, player: true, exempt: !ps.targetable(id), visibility: 1.0 })
         }
         Who::Entity(e) => {
-            let (pos, bounds, sid, baby, eye) = ent(e)?;
-            Some(Info { pos, eye: pos.y + eye, bounds, baby, species: sid, player: false, exempt: false })
+            let (pos, bounds, sid, baby, eye, visibility) = ent(e)?;
+            Some(Info { pos, eye: pos.y + eye, bounds, baby, species: sid, player: false, exempt: false, visibility })
         }
     }
 }
@@ -89,17 +92,26 @@ fn read(on: &Online, ps: &PlayerState, who: Who, ent: impl Fn(Entity) -> Option<
 pub struct Targets<'w, 's> {
     pub on: Res<'w, Online>,
     pub ps: Res<'w, PlayerState>,
-    ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>, &'static Eye)>,
+    ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>, &'static Eye, Has<Invisible>, Option<&'static Equipment>)>,
 }
 impl Targets<'_, '_> {
     pub fn info(&self, who: Who) -> Option<Info> {
-        read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l)| (p.0, b.0, s.0, g, l.0)))
+        read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l, i, q)| (p.0, b.0, s.0, g, l.0, creature_visibility(i, q))))
     }
+}
+/// `LivingEntity.getVisibilityPercent` of a creature: invisible, it is scaled by the worn slots (at least a tenth). Crouching and
+/// the items' own factors are not held by the ECS: they count 1 here.
+pub fn creature_visibility(invisible: bool, eq: Option<&Equipment>) -> f64 {
+    if !invisible {
+        return 1.0;
+    }
+    let worn = eq.map_or(0, |q| [q.head, q.chest, q.legs, q.feet].iter().filter(|&&i| i != 0).count());
+    0.7 * (worn as f64 / 4.0).max(0.1)
 }
 /// [`Targets::info`] for the code that holds the world.
 pub fn info(w: &World, who: Who) -> Option<Info> {
     read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
-        Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some(), w.get::<Eye>(e)?.0))
+        Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some(), w.get::<Eye>(e)?.0, creature_visibility(w.get::<Invisible>(e).is_some(), w.get::<Equipment>(e))))
     })
 }
 /// `TargetingConditions`: the range an attacker sees a target at: the follow range, scaled by the target's visibility,

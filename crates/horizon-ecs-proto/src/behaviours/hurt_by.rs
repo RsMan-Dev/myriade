@@ -25,9 +25,11 @@ pub struct Params {
     pub alert_if_baby: bool,
     /// Attackers of these species (names) are never answered (`HurtByTarget.ignoring`: the drowned ignore the drowned, the dolphin the guardians).
     pub ignoring: &'static [&'static str],
+    /// The attacker's own state: when this holds, the hit is not answered (`HoglinAi.maybeRetaliate`: a piglin that is avoiding).
+    pub attacker_when: Option<fn(&World, Entity) -> bool>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None, ends_on_shot: false, alert_if_baby: false, ignoring: &[] };
+    pub const DEFAULT: Self = Self { alert: false, alert_types: &[], alert_except: &[], unseen_memory: 300, spare_owner: false, alert_when: None, ends_on_shot: false, alert_if_baby: false, ignoring: &[], attacker_when: None };
     pub const ALERT: Self = Self { alert: true, ..Self::DEFAULT };
 }
 /// The state: the last hit (who, tick) and the one the goal answered, the kinds resolved to masks.
@@ -101,6 +103,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     if let Who::Entity(o) = who
         && w.get::<SpeciesId>(o).is_some_and(|s| g.ignore.contains(s.0))
+    {
+        return false;
+    }
+    if let Who::Entity(o) = who
+        && g.p.attacker_when.is_some_and(|f| f(w, o))
     {
         return false;
     }

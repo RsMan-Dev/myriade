@@ -11,3 +11,7 @@ pub mod tempting;
 pub mod repellent_and_adult;
 // lot V3
 pub mod village_hostile;
+// lot lectures villageois
+pub mod recent_sighting;
+pub mod nearest_wanted_item;
+pub mod villager_babies;

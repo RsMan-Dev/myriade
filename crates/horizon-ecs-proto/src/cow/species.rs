@@ -176,6 +176,8 @@ pub struct Species {
     pub persistent: bool,
     /// The chance of a screaming goat at birth (`Def::screaming`): a draw only when it is there.
     pub screaming: Option<f64>,
+    /// The chance of a horn lost at a natural spawn (`Def::lost_horn`).
+    pub lost_horn: Option<f64>,
 }
 
 /// The class bits of a type, as data of its row (no per-entity byte): the groups of species whose class saves a state at its default.

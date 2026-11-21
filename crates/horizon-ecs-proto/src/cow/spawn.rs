@@ -170,7 +170,13 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     {
         e.insert(crate::brain::bundle(plan));
     }
-    e.id()
+    let id = e.id();
+    // `Goat.finalizeSpawn`: a natural adult may have lost one horn (the coin and the chance of its species, drawn after the yaw).
+    if natural && world.get::<GrowAt>(id).is_none() && sp.lost_horn.is_some_and(|c| rng.next_f64() < c) {
+        let left = rng.next_u32() & 1 == 1;
+        world.entity_mut(id).insert(crate::behaviours::ram::Shed(if left { 1 } else { 2 }));
+    }
+    id
 }
 
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.

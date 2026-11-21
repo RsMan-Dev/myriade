@@ -73,7 +73,8 @@ pub fn nearest_player_holding(w: &World, e: Entity, items: &[&str], range: f64) 
     w.resource::<Online>().for_near(at[0], at[2], range, |p| {
         let eye = [p.x, p.eye(), p.z];
         let holds = items.iter().any(|n| items::is(n, p.main) || items::is(n, p.off));
-        if holds && dist2(at, eye) <= range * range {
+        // `PiglinAi.isPlayerHoldingLovedItem`: the distance is to the feet, and the player must be in sight (`can_see_player`).
+        if holds && dist2(at, [p.x, p.y, p.z]) <= range * range && crate::targeting::sees(w, e, crate::targeting::Who::Player(p.id)) {
             nearer(&mut best, at, eye);
         }
     });

@@ -18,6 +18,6 @@ fn tick(w: &mut World) {
     let late: Vec<(Entity, Option<(f64, f64)>)> = w.query::<(Entity, &Lifespan, &Health, &Pos)>().iter(w).filter(|(_, l, h, _)| l.0 <= now && h.0 > 0.0).map(|(e, _, _, p)| (e, Some((p.0.x, p.0.z)))).collect();
     let mut q = w.resource_mut::<DamageQueue>();
     for (e, from) in late {
-        q.0.push(Hit { target: e, amount: 1.0, cause: Cause::Magic, from, by: None, direct: false });
+        q.0.push(Hit { target: e, amount: 1.0, cause: Cause::Magic, from, by: None, direct: false, power: None });
     }
 }

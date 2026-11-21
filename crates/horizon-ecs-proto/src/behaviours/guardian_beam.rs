@@ -128,7 +128,7 @@ fn strike(w: &mut World, e: Entity, who: Who, p: Params) {
             let tick = w.resource::<Clock>().0;
             w.resource_mut::<PlayerState>().hurt(tick, id, magic, from, Some(Who::Entity(e)));
         }
-        Who::Entity(t) => w.resource_mut::<DamageQueue>().0.push(Hit { target: t, amount: magic, cause: Cause::Magic, from: Some(from), by: Some(Who::Entity(e)), direct: false }),
+        Who::Entity(t) => w.resource_mut::<DamageQueue>().0.push(Hit { target: t, amount: magic, cause: Cause::Magic, from: Some(from), by: Some(Who::Entity(e)), direct: false, power: None }),
     }
     crate::hostile::strike(w, e, who, p.damage);
 }

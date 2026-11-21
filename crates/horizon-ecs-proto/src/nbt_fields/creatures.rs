@@ -3,8 +3,11 @@
 //! n'écrit pas.
 use crate::behaviours::attached_face::Attached;
 use crate::behaviours::bee::Bee;
+use crate::behaviours::hunt_prey::{CannotHunt, Hunt};
 use crate::behaviours::cat_state::Trusting;
 use crate::behaviours::pufferfish_puff::Puff;
+use crate::behaviours::long_jump::LongJumpState;
+use crate::behaviours::ram::{Rammer, Shed};
 use crate::goals::{Occupied, OCC_SITTING};
 use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant};
 use crate::behaviours::do_nothing::Invulnerable;
@@ -21,6 +24,10 @@ use std::borrow::Cow;
 fn byte(t: &Tag) -> bool {
     matches!(t, Tag::Byte(_))
 }
+/// `CannotHunt` is read as a byte or an int (`AbstractPiglin.readAdditionalSaveData` takes either), written as a byte.
+fn byte_or_int(t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_) | Tag::Int(_))
+}
 
 /// The declared fields, by behaviour: sized (`Size`), creeper (`Fuse`, `ExplosionRadius`, `powered`), wither (`Invul`), llama (`Strength`).
 pub const FIELDS: &[Field] = &[
@@ -30,6 +37,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Charged>) },
     Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Invulnerable>) },
     Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Screaming>) },
+    Field { key: Cow::Borrowed("Brain"), write: write_brain, read: read_brain, accepts: compound, owner: Some(owner::<LongJumpState>) },
+    Field { key: Cow::Borrowed("HasLeftHorn"), write: write_left_horn, read: read_left_horn, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("HasRightHorn"), write: write_right_horn, read: read_right_horn, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("CannotHunt"), write: write_cannot_hunt, read: read_cannot_hunt, accepts: byte_or_int, owner: Some(owner::<Hunt>) },
     Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<LlamaStrength>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Attached>) },
@@ -122,10 +133,79 @@ fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `AbstractPiglin.addAdditionalSaveData`: `CannotHunt` is always written, 0 or 1 (the marker), for a hunter.
+fn write_cannot_hunt(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("CannotHunt".into(), Tag::Byte(w.get::<CannotHunt>(e).is_some() as i8));
+}
+
+fn read_cannot_hunt(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let v = match t {
+        Tag::Byte(v) => *v as i32,
+        Tag::Int(v) => *v,
+        _ => return false,
+    };
+    if v != 0 {
+        w.entity_mut(e).insert(CannotHunt);
+    }
+    true
+}
 /// `Goat.addAdditionalSaveData`: `IsScreamingGoat` is written as a byte only when the marker is there (`false` is the default).
 fn write_screaming(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<Screaming>(e).is_some() {
         c.insert("IsScreamingGoat".into(), Tag::Byte(1));
+    }
+}
+
+/// `Goat.addAdditionalSaveData`: `HasLeftHorn` / `HasRightHorn` only while a part is off (`Shed`); a whole goat writes none.
+/// `Brain` memories (`minecraft:long_jump_cooling_down`, the ticks left of the long jump cooldown): written only while it runs.
+fn write_brain(w: &World, e: Entity, c: &mut Compound) {
+    let Some(left) = crate::behaviours::long_jump::cooldown_left(w, e) else { return };
+    let Tag::Compound(brain) = c.entry("Brain".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    let Tag::Compound(memories) = brain.entry("memories".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    memories.insert("minecraft:long_jump_cooling_down".into(), Tag::compound([("value", Tag::Int(left as i32))]));
+}
+
+/// Reads the memory back: its ticks left, or none (the cooldown is over) when the memory is absent.
+fn read_brain(w: &mut World, e: Entity, t: &Tag) -> bool {
+    if !matches!(t, Tag::Compound(_)) {
+        return false;
+    }
+    let left = match t.get("memories").and_then(|m| m.get("minecraft:long_jump_cooling_down")).and_then(|m| m.get("value")) {
+        Some(Tag::Int(v)) => Some(i64::from(*v).max(0) as u64),
+        _ => None,
+    };
+    crate::behaviours::long_jump::set_cooldown_left(w, e, left);
+    true
+}
+
+fn write_left_horn(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("HasLeftHorn".into(), Tag::Byte(i8::from(w.get::<Shed>(e).map_or(0, |s| s.0) & 1 == 0)));
+}
+
+fn write_right_horn(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("HasRightHorn".into(), Tag::Byte(i8::from(w.get::<Shed>(e).map_or(0, |s| s.0) & 2 == 0)));
+}
+
+fn read_left_horn(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    set_horn(w, e, 1, *v == 0);
+    true
+}
+
+fn read_right_horn(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    set_horn(w, e, 2, *v == 0);
+    true
+}
+
+/// Sets (`lost`) or clears the bit of one part in `Shed`, and takes the component away when no part is off.
+fn set_horn(w: &mut World, e: Entity, bit: u8, lost: bool) {
+    let s = w.get::<Shed>(e).map_or(0, |s| s.0);
+    let s = if lost { s | bit } else { s & !bit };
+    if s == 0 {
+        w.entity_mut(e).remove::<Shed>();
+    } else {
+        w.entity_mut(e).insert(Shed(s));
     }
 }
 
