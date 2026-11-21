@@ -102,6 +102,8 @@ pub(crate) fn fluid_update(
         if f.in_water || f.in_lava {
             v.0 = mw.pushed_by_currents(b.0, v.0);
         }
+        // `BubbleColumnBlock.entityInside`: a column of bubbles in the box lifts or drags it (no cost out of a fluid).
+        horizon_client_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
         if f.in_water {
             c.fall_distance = 0.0;
         }

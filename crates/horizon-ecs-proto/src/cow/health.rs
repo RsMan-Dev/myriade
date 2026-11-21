@@ -189,7 +189,7 @@ pub(crate) fn hazard_bit(name: &str) -> u8 {
     match name {
         "minecraft:lava" => HAZ_LAVA,
         "minecraft:fire" => HAZ_FIRE,
-        "minecraft:water" => HAZ_WATER,
+        "minecraft:water" | "minecraft:bubble_column" => HAZ_WATER,
         "minecraft:powder_snow" => HAZ_SNOW,
         "minecraft:cactus" => HAZ_CACTUS,
         _ => 0,

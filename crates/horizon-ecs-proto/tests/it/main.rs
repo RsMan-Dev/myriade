@@ -91,6 +91,7 @@ mod variants_vs_mob;
 mod zombie_vs_mob;
 mod zone_default;
 mod zone_vs_mob;
+mod world_effects;
 mod illagers_vs_mob;
 mod raids_vs_mob;
 mod rest_wakes;
