@@ -11,10 +11,18 @@ pub fn tracker_visible(w: &mut World, e: Entity, t: Tracker) -> bool {
 }
 fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(look) = look_target(w, e) else { return false };
-    if !tracker_visible(w, e, look) {
-        return false;
-    }
-    if let Some(at) = look.position(w) {
+    // One read of the target's components serves both the existence test and the point looked at.
+    let at = match look {
+        Tracker::Entity(who, eye) => {
+            let Some(i) = crate::targeting::info(w, who) else { return false };
+            if !visible_contains(w, e, who) {
+                return false;
+            }
+            Some([i.pos.x, if eye { i.eye } else { i.pos.y }, i.pos.z])
+        }
+        _ => look.position(w),
+    };
+    if let Some(at) = at {
         look_at(w, e, at);
     }
     true
