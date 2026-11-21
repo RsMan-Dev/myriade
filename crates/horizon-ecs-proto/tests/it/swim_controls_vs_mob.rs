@@ -131,7 +131,7 @@ fn guardians_swim_to_the_bit_as_their_mobs_do() {
 #[test]
 fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
     // The species of the legs comes from HORIZON_SPECIES: this one is meant for the pufferfish.
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:pufferfish") {
+    if !have_data() || horizon_ecs_proto::cow::species_var().as_deref() != Ok("minecraft:pufferfish") {
         return;
     }
     let _ = flat_pair();
@@ -141,7 +141,7 @@ fn a_pufferfish_swims_to_the_bit_as_its_mob_does() {
 
 #[test]
 fn an_axolotl_swims_to_the_bit_out_of_the_water_too() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:axolotl") {
+    if !have_data() || horizon_ecs_proto::cow::species_var().as_deref() != Ok("minecraft:axolotl") {
         return;
     }
     let _ = flat_pair();
@@ -152,7 +152,7 @@ fn an_axolotl_swims_to_the_bit_out_of_the_water_too() {
 /// The frog (`SmoothSwimmingMoveControl(85, 10, 0.02, 0.1, true)`, `Frog.travelInWater`, the amphibious navigation): the legs in the pool and across the land.
 #[test]
 fn a_frog_swims_and_hops_to_the_bit_as_its_mob_does() {
-    if !have_data() || std::env::var("HORIZON_SPECIES").as_deref() != Ok("minecraft:frog") {
+    if !have_data() || horizon_ecs_proto::cow::species_var().as_deref() != Ok("minecraft:frog") {
         return;
     }
     let _ = flat_pair();

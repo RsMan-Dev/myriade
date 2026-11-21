@@ -170,7 +170,7 @@ fn name_of(entry: &str) -> &str {
 
 #[test]
 fn the_ecs_saves_exactly_what_horizon_saves() {
-    if !super::common::have_data() || std::env::var("HORIZON_SPECIES").is_ok_and(|s| s != "minecraft:cow") {
+    if !super::common::have_data() || horizon_ecs_proto::cow::species_var().is_ok_and(|s| s != "minecraft:cow") {
         return;
     }
     let mut h = Herd::new(0, 1.0, true, false, 1);

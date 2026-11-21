@@ -22,7 +22,7 @@ fn no_player_means_every_creature_sleeps_and_a_player_wakes_only_its_radius() {
     }
     let mut h = Herd::with_slab(HALF, true, false);
     // (the registry exists once a herd is built) An object (armor stand, crystal...) is not a creature: the zone does not put it to sleep.
-    if let Ok(id) = std::env::var("HORIZON_SPECIES")
+    if let Ok(id) = horizon_ecs_proto::cow::species_var()
         && !crate::nbt_conformance::is_creature(&id)
     {
         return;

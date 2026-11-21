@@ -46,7 +46,7 @@ fn on() -> bool {
     if !have_data() {
         return false;
     }
-    let sp = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| "minecraft:cow".into());
+    let sp = horizon_ecs_proto::cow::species_var().unwrap_or_else(|_| "minecraft:cow".into());
     if sp != "minecraft:cow" {
         horizon_ecs_proto::cow::skip_note("lot2_vs_mob", &format!("written for HORIZON_SPECIES=minecraft:cow, not {sp}"));
         return false;

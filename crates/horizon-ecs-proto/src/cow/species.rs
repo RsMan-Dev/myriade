@@ -308,6 +308,11 @@ pub fn species_table() -> SpeciesTable {
 /// line to the file at every read (`pass.sh --classify` tells the tests that depend on the identifier from those that do not);
 /// `HORIZON_SPECIES_FORBID=1` makes a read panic (the run of the common tests: one that reads the identifier turns red, it is never run unseen).
 pub fn species_env() -> String {
+    species_var().unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into())
+}
+
+/// `HORIZON_SPECIES` as `std::env::var` gives it (absent = `Err`): EVERY read of the identifier goes through here, the harness's and the tests'.
+pub fn species_var() -> Result<String, std::env::VarError> {
     if std::env::var_os("HORIZON_SPECIES_FORBID").is_some() {
         panic!("a test of the common group read HORIZON_SPECIES: it depends on the identifier (pass.sh --classify, then rerun)");
     }
@@ -317,7 +322,7 @@ pub fn species_env() -> String {
             let _ = f.write_all(b"read\n");
         }
     }
-    std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| crate::species::PROCESS_DEFAULT.into())
+    std::env::var("HORIZON_SPECIES")
 }
 
 /// The name of the species of the process (`HORIZON_SPECIES`), readable before any level is built (`species()` is not).

@@ -14,12 +14,12 @@ fn wakes(name: &str, warm: u64, ticks: u64) -> u64 {
         h.tick();
     }
     let before = h.world.resource::<Wheel>().fired_total;
-    let visits = || horizon_ecs_proto::behaviours::drink_potion::VISITS.load(std::sync::atomic::Ordering::Relaxed);
-    let v0 = visits();
+    let visits = |h: &Herd| h.world.get_resource::<horizon_ecs_proto::behaviours::drink_potion::Visits>().map_or(0, |v| v.0);
+    let v0 = visits(&h);
     for _ in 0..ticks {
         h.tick();
     }
-    let n = h.world.resource::<Wheel>().fired_total - before + (visits() - v0);
+    let n = h.world.resource::<Wheel>().fired_total - before + (visits(&h) - v0);
     eprintln!("REST_WAKES {name} {n} on {ticks} ticks");
     n
 }

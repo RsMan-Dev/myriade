@@ -195,7 +195,7 @@ pub fn have_data() -> bool {
 }
 /// Whether the run's species (`HORIZON_SPECIES`, required) is none of `names`: the test is then skipped, and the skip is noted (printed and logged), never silent.
 pub fn wrong_species(names: &[&str]) -> bool {
-    let sp = std::env::var("HORIZON_SPECIES").expect("HORIZON_SPECIES absent : une espèce par passe, ex. HORIZON_SPECIES=minecraft:cow");
+    let sp = horizon_ecs_proto::cow::species_var().expect("HORIZON_SPECIES absent : une espèce par passe, ex. HORIZON_SPECIES=minecraft:cow");
     let wrong = !names.contains(&sp.as_str());
     if wrong {
         let t = std::thread::current();
@@ -205,7 +205,7 @@ pub fn wrong_species(names: &[&str]) -> bool {
 }
 /// Whether the run's species is one of `names`, whose own rule changes what the test asserts (the reason is noted with the skip, never silent).
 pub fn unfit_species(names: &[&str], why: &str) -> bool {
-    let sp = std::env::var("HORIZON_SPECIES").expect("HORIZON_SPECIES absent");
+    let sp = horizon_ecs_proto::cow::species_var().expect("HORIZON_SPECIES absent");
     let unfit = names.contains(&sp.as_str());
     if unfit {
         let t = std::thread::current();

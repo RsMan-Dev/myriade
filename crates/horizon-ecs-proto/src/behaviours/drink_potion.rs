@@ -73,11 +73,13 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Drinker(params::<Params>(p)));
 }
-/// How many drinkers `tick` visited (the tests of the rest cost read it; before `Thirsty` every drinker was visited every tick).
-pub static VISITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// How many drinkers `tick` visited IN THIS WORLD (the tests of the rest cost read it; before `Thirsty` every drinker was visited every tick).
+/// A resource of the world, not a global: tests running side by side in one process must not count each other's visits.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub struct Visits(pub u64);
 fn tick(w: &mut World) {
     let es: Vec<(Entity, &'static Params)> = w.query_filtered::<(Entity, &Drinker), With<Thirsty>>().iter(w).map(|(e, d)| (e, d.0)).collect();
-    VISITS.fetch_add(es.len() as u64, std::sync::atomic::Ordering::Relaxed);
+    w.get_resource_or_insert_with(Visits::default).0 += es.len() as u64;
     for (e, p) in es {
         if w.get::<Health>(e).is_none_or(|h| h.0 <= 0.0) {
             continue;

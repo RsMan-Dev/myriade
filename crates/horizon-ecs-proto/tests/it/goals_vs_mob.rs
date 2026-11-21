@@ -448,7 +448,7 @@ fn a_baby_follows_at_the_same_distances_as_a_mob() {
 #[test]
 fn looking_goals_start_as_often_as_a_mob_s() {
     // KNOWN: the llama's look goals start at another rate than the Mob's (lot 6 a2 reworks its entries); skipped until then.
-    if std::env::var("HORIZON_SPECIES").is_ok_and(|s| s == "minecraft:llama") {
+    if horizon_ecs_proto::cow::species_var().is_ok_and(|s| s == "minecraft:llama") {
         horizon_ecs_proto::cow::skip_note("looking_goals_start_as_often_as_a_mob_s", "llama look goals differ (known, lot 6)");
         return;
     }
@@ -885,7 +885,7 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
     if horizon_ecs_proto::cow::skip_unless_walker("the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees") {
         return;
     }
-    let name = std::env::var("HORIZON_SPECIES").unwrap_or_else(|_| horizon_ecs_proto::species::PROCESS_DEFAULT.into());
+    let name = horizon_ecs_proto::cow::species_var().unwrap_or_else(|_| horizon_ecs_proto::species::PROCESS_DEFAULT.into());
     let entries = horizon_ecs_proto::species::config(&name).entries;
     let look = entries.iter().find(|e| std::ptr::eq(e.module, &random_look::MODULE)).map(|e| e.priority);
     let stopped = look.and_then(|l| entries.iter().find(|e| e.module.flags & MOVE != 0 && e.priority > l).map(|e| e.module.name));
