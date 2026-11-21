@@ -765,21 +765,22 @@ fn step(w: &mut World, e: Entity) {
     }
     {
         bp!("step", "start loop");
-        for &id in &plan.order {
-            let rd = { bp!("step", "ready"); w.get::<Brain>(e).is_some_and(|b| b.ready(id)) };
-            if rd {
-                try_start(w, e, plan, id);
-            }
+        // One read of the brain finds the next behaviour that can be asked; the walk goes on after it (a start changes the flags).
+        let mut i = 0;
+        while i < plan.order.len() {
+            let Some(k) = w.get::<Brain>(e).and_then(|b| plan.order[i..].iter().position(|&id| b.ready(id))) else { break };
+            try_start(w, e, plan, plan.order[i + k]);
+            i += k + 1;
         }
     }
     let mut any;
     {
         bp!("step", "tick loop");
-        for &id in &plan.order {
-            // One read of the brain per behaviour (the running flags change as the earlier ones are ticked).
-            if w.get::<Brain>(e).is_some_and(|b| b.run[id as usize].running) {
-                tick_or_stop(w, e, plan, id);
-            }
+        let mut i = 0;
+        while i < plan.order.len() {
+            let Some(k) = w.get::<Brain>(e).and_then(|b| plan.order[i..].iter().position(|&id| b.run[id as usize].running)) else { break };
+            tick_or_stop(w, e, plan, plan.order[i + k]);
+            i += k + 1;
         }
     }
     {
