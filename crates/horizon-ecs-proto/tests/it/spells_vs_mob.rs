@@ -44,7 +44,7 @@ fn mob_wololo(blue: bool) -> Option<usize> {
     None
 }
 fn ecs_wololo(blue: bool) -> Option<usize> {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     let ev = named(&h, "minecraft:evoker");
     let sheep = idle(named(&h, "minecraft:sheep"));
@@ -103,7 +103,7 @@ fn mob_blind(hard: bool) -> Vec<usize> {
     at
 }
 fn ecs_blind(hard: bool) -> Vec<usize> {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     h.world.insert_resource(Difficulty(if hard { 3 } else { 1 }));
     h.set_online(&[(0.5, 6.5)]);
@@ -157,7 +157,7 @@ fn golem_behind_wall() -> (bool, bool) {
         r.step(None);
         r.mobs[g].position = Vec3::new(6.5, 1.0, 0.5);
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     for &(x, y, z) in &cells {
         h.set_block(x, y, z, "minecraft:stone");

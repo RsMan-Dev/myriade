@@ -46,7 +46,7 @@ fn spider_keeps(day: bool, ticks: usize) -> (bool, bool) {
     mob_day(&mut r, day);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:spider"));
     r.mobs[i].ai.target = Some(MWho::Player);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.set_daylight(day);
     h.set_day(day);
     let e = ecs_mob(&mut h, "minecraft:spider", 0.5, 5);
@@ -82,7 +82,7 @@ fn drowned_stops() -> ((bool, bool), Option<usize>, Option<usize>) {
     mob_day(&mut r, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:drowned"));
     r.mobs[i].ai.target = Some(MWho::Player);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.set_daylight(false);
     h.set_day(false);
     let e = ecs_mob(&mut h, "minecraft:drowned", 0.5, 6);
@@ -136,7 +136,7 @@ fn an_adult_polar_bear_takes_the_player_who_hits_its_cub_as_the_mob_does() {
     let cub = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:polar_bear"));
     r.mobs[cub].extra.age = -24000;
     let adult = r.add_kind(Vec3::new(4.5, 1.0, 0.5), mob_kind("minecraft:polar_bear"));
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let cub_e = ecs_mob(&mut h, "minecraft:polar_bear", 0.5, 7);
     h.make_baby(cub_e, 24000);
     let adult_e = ecs_mob(&mut h, "minecraft:polar_bear", 4.5, 8);
@@ -167,7 +167,7 @@ fn a_witch_outside_a_raid_takes_the_nearest_player_as_the_mob_does() {
     let pv = player_view(at, None);
     let mut r = MobRef::new(40, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:witch"));
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let e = ecs_mob(&mut h, "minecraft:witch", 0.5, 9);
     online(&mut h, at);
     for _ in 0..60 {

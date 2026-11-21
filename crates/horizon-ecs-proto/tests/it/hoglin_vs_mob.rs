@@ -385,7 +385,7 @@ fn a_hoglin_walks_away_from_a_repellent_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let c = Vec3::new(0.5, 1.0, 0.5);
     r.set_block(0, 1, 0, "minecraft:warped_fungus");
     r.apply_block_events();

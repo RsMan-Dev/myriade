@@ -86,7 +86,7 @@ fn a_hit_polar_bear_takes_the_player_as_the_mob_does() {
     }
     let mut r = MobRef::new(40, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), horizon_ecs_proto::cow::mob_kind("minecraft:polar_bear"));
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let sp = species_of(&h, "minecraft:polar_bear");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;

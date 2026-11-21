@@ -13,6 +13,7 @@ mod nbt_rides;
 mod nbt_things;
 mod nbt_types;
 mod creation_cost;
+mod dormancy_of_entities;
 mod nbt_conformance;
 mod bow_vs_mob;
 mod brain_vs_mob;
