@@ -64,13 +64,17 @@ fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     // The job site is a block of the world, as on the Mob's side: its validation (`poi_validate`) drops a memory with no block under it.
     super::villager_misc_vs_mob::insert_trade_data(&mut h);
     h.set_block(JOB[0], JOB[1], JOB[2], "minecraft:composter");
+    h.set_block(BELL[0], BELL[1], BELL[2], "minecraft:bell");
+    // The bed is a world block too (its head is the home POI that `poi_validate` checks).
+    h.set_block_state(BED[0], BED[1], BED[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);
+    h.set_block_state(BED[0] - 1, BED[1], BED[2], "minecraft:red_bed", &[("part", "foot"), ("facing", "east")]);
     h.tick();
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
     let e = spawn_species(&mut h.world, &sp, SPAWN.0, SPAWN.1, 1);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
-    set(&mut h.world, e, &horizon_ecs_proto::behaviours::bed::NEAREST_BED, MemValue::Block(BED), None);
+    set(&mut h.world, e, &horizon_ecs_proto::species::villager::HOME, MemValue::Block(BED), None);
     set(&mut h.world, e, &JOB_SITE, MemValue::Block(JOB), None);
     set(&mut h.world, e, &MEETING_POINT, MemValue::Block(BELL), None);
     let mut out = Vec::with_capacity(days.len());

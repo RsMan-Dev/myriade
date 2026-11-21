@@ -13,8 +13,10 @@ impl Params {
     pub const DEFAULT: Self = Self { speed: 0.5 };
 }
 
+/// The villager's bed is its `home` (`SleepInBed` reads `MemoryModuleType.HOME`, jar); the nearest bed of a baby stands in for it
+/// when the home is not held.
 fn bed(w: &World, e: Entity) -> Option<[i32; 3]> {
-    match get(w, e, &NEAREST_BED)? {
+    match get(w, e, &crate::species::villager::HOME).or_else(|| get(w, e, &NEAREST_BED))? {
         MemValue::Block(p) => Some(*p),
         _ => None,
     }
@@ -62,4 +64,4 @@ fn stop(w: &mut World, e: Entity, _: &Ctx) {
     w.entity_mut(e).remove::<Sleeping>();
 }
 
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "sleep_in_bed", mems: &[&NEAREST_BED], can_start, start, tick, stop, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "sleep_in_bed", mems: &[&NEAREST_BED, &crate::species::villager::HOME], can_start, start, tick, stop, ..Behaviour::DEFAULT };

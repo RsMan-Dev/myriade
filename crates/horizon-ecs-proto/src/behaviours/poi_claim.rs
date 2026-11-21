@@ -42,12 +42,20 @@ pub struct Claim {
 }
 
 /// Le réessai d'une prise : `delay` croît de `rand(40) + 40`, plafonné à 400 ; oublié après 400 ticks sans essai.
-#[derive(Component, Clone, Copy, Default)]
-#[component(storage = "SparseSet")]
+#[derive(Clone, Copy, Default)]
 pub struct Retry {
     pub previous: i64,
     pub next: i64,
     pub delay: i32,
+}
+
+/// Un réessai par mémoire visée (chaque `AcquirePoi` du `Mob` a le sien : le point de rencontre manquant ne retarde pas le lit).
+#[derive(Component, Clone, Default)]
+#[component(storage = "SparseSet")]
+pub struct Retries(pub Vec<(&'static str, Retry)>);
+
+fn retry_of(w: &World, e: Entity, key: &MemKey) -> Option<Retry> {
+    w.get::<Retries>(e)?.0.iter().find(|(k, _)| *k == key.name).map(|x| x.1)
 }
 
 /// Index des prises par position : `lose_claims` ne visite que les entités concernées.
@@ -59,17 +67,20 @@ pub fn block_of(w: &World, e: Entity) -> [i32; 3] {
     w.get::<Pos>(e).map_or([0; 3], |p| [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32])
 }
 
-fn mark_retry(w: &mut World, e: Entity) {
+fn mark_retry(w: &mut World, e: Entity, key: &MemKey) {
     let now = now_of(w, e) as i64;
     let jitter = w.get_mut::<Rng>(e).map_or(0, |mut r| (r.next_u32() % 40) as i32);
-    let mut r = w.get::<Retry>(e).copied().unwrap_or_default();
+    let mut r = retry_of(w, e, key).unwrap_or_default();
     if now - r.previous >= 400 {
         r.delay = 0;
     }
     r.previous = now;
     r.delay = (r.delay + jitter + 40).min(400);
     r.next = now + i64::from(r.delay);
-    w.entity_mut(e).insert(r);
+    let mut all = w.get::<Retries>(e).cloned().unwrap_or_default();
+    all.0.retain(|(k, _)| *k != key.name);
+    all.0.push((key.name, r));
+    w.entity_mut(e).insert(all);
 }
 
 /// Le premier point libre dans la portée, que `filter` laisse passer.
@@ -88,12 +99,12 @@ fn nearest(w: &World, e: Entity, p: &Params) -> Option<[i32; 3]> {
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
-    if present(w, e, p.memory) || w.get::<Retry>(e).is_some_and(|r| (now_of(w, e) as i64) < r.next) {
+    if present(w, e, p.memory) || retry_of(w, e, p.memory).is_some_and(|r| (now_of(w, e) as i64) < r.next) {
         return false;
     }
     let free = nearest(w, e, p).is_some();
     if !free {
-        mark_retry(w, e);
+        mark_retry(w, e, p.memory);
     }
     free
 }
@@ -101,10 +112,10 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 fn start(w: &mut World, e: Entity, c: &Ctx) {
     let p = c.get::<Params>();
     let Some(poi) = nearest(w, e, p) else {
-        return mark_retry(w, e);
+        return mark_retry(w, e, p.memory);
     };
     if !w.resource_mut::<PoiRegistry>().acquire(poi) {
-        return mark_retry(w, e);
+        return mark_retry(w, e, p.memory);
     }
     set(w, e, p.memory, MemValue::Block(poi), None);
     let claim = Claim { pos: poi, memory: p.memory, on_lost: p.on_lost };

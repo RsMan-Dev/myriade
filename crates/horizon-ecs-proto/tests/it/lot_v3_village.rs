@@ -110,6 +110,8 @@ fn home_walk_awake() {
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 3);
     h.tick();
     h.tick();
+    // The homeless walk: the bed is found by `AcquirePoi` at the first tick, so the home is forgotten to put the villager in that case.
+    erase(&mut h.world, e, &HOME);
     let ecs = (village_home_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&HOME_WALK));
     let mut r = mob_ref();
     bed_mob(&r);

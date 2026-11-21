@@ -152,7 +152,7 @@ static CORE: &[BEntry] = &[
     BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
     BEntry { behaviour: &walk_away::BEHAVIOUR, activity: "panic", priority: 1, params: &walk_away::Params { speed: 0.75, desired: 6.0, memory: &HURT_BY_ENTITY }, needs: &[(&HURT_BY_ENTITY, Need::Present)], duration: None, kids: &[] },
     BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 1, params: &panic::Params { speed: 0.75, threat: Some(&HURT_BY_ENTITY) }, needs: &[], duration: Some((60, 60)), kids: &[] },
-    BEntry { behaviour: &sleep_in_bed::BEHAVIOUR, activity: "rest", priority: 0, params: &sleep_in_bed::Params::DEFAULT, needs: &[(&NEAREST_BED, Need::Present)], duration: None, kids: &[] },
+    BEntry { behaviour: &sleep_in_bed::BEHAVIOUR, activity: "rest", priority: 0, params: &sleep_in_bed::Params::DEFAULT, needs: &[], duration: None, kids: &[] },
     BEntry { behaviour: &run_one::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[], duration: None, kids: IDLE_KIDS },
     BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
 ];
@@ -305,7 +305,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &poi_validate::BEHAVIOUR, activity: "rest", priority: 3, params: &VALIDATE_HOME, needs: &[(&HOME, Need::Present)], duration: None, kids: &[] },
             // lot V3 : la promenade de la panique est liée aux villages (`VillageBoundStroll`, remplace le `RandomStroll` approximatif)
             BEntry { behaviour: &village_stroll::BEHAVIOUR, activity: "panic", priority: 3, params: &village_stroll::Params { speed: 0.75, xz: 2, y: 2 }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "rest", priority: 5, params: &(), needs: &[(&NEAREST_BED, Need::Absent)], duration: None, kids: HOMELESS_KIDS },
+            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "rest", priority: 5, params: &(), needs: &[(&HOME, Need::Absent)], duration: None, kids: HOMELESS_KIDS },
             BEntry { behaviour: &walk_away::BEHAVIOUR, activity: "panic", priority: 1, params: &walk_away::Params { speed: 0.75, desired: 6.0, memory: &village_hostile::NEAREST_HOSTILE }, needs: &[(&village_hostile::NEAREST_HOSTILE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "pre_raid", priority: 0, params: &(), needs: &[], duration: None, kids: PRE_RAID_KIDS },
             BEntry { behaviour: &hide::HIDDEN_STATE, activity: "hide", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
