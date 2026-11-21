@@ -25,7 +25,7 @@ pub static DEF: Def = Def {
         Entry::new(&wander_to_position::MODULE, 2, &wander_to_position::Params::DEFAULT),
         Entry::new(&move_towards_restriction::MODULE, 4, &move_towards_restriction::Params::DEFAULT),
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.35, ..stroll::Params::DEFAULT }),
-        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&look_at_player::INTERACT, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
     ],
     ..Def::EMPTY

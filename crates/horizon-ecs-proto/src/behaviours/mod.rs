@@ -215,6 +215,7 @@ pub mod breed;
 pub mod swim_with_player;
 pub mod climb_on_powder_snow;
 pub mod do_nothing;
+pub mod timed_idle;
 pub mod silverfish_wake_up_friends;
 #[cfg(test)]
 pub mod example;
@@ -412,6 +413,7 @@ pub static TABLE: &[&Module] = &[
     &follow_player_vehicle::MODULE,
     &follow_parent::MODULE,
     &look_at_player::MODULE,
+    &look_at_player::INTERACT,
     &random_look::MODULE,
     &random_stand::MODULE,
     &float::MODULE,
@@ -453,6 +455,7 @@ pub static TABLE: &[&Module] = &[
     &climb_on_powder_snow::MODULE,
     &silverfish_wake_up_friends::MODULE,
     &do_nothing::MODULE,
+    &timed_idle::MODULE,
     &fish_swim::MODULE,
     &look_for_player::MODULE,
     &take_block::MODULE,
@@ -565,6 +568,9 @@ pub static TABLE: &[&Module] = &[
     &hold_ground_attack::MODULE,
     &drink_item::MODULE,
     &wander_to_position::MODULE,
+    // lot V4
+    &warden_look_target::MODULE,
+    &warden_drop_invalid_target::MODULE,
 ];
 pub mod act_phase;
 pub mod admire;
@@ -630,6 +636,9 @@ pub mod reach_block;
 pub mod regen;
 pub mod ring_bell;
 pub mod roar_at_target;
+// lot V4
+pub mod warden_drop_invalid_target;
+pub mod warden_look_target;
 pub mod schedule;
 pub mod side_heads;
 pub mod sky_spot;

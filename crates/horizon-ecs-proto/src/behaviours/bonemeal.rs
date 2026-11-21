@@ -8,6 +8,7 @@ use super::inventory;
 use crate::blocks;
 use crate::brain::*;
 use crate::cow::now_of;
+use crate::goals::with_rng;
 use bevy_ecs::prelude::Component;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
@@ -27,13 +28,16 @@ const BONE_MEAL: &str = "minecraft:bone_meal";
 pub struct Params {
     /// A culture that bone meal can still grow (`bonemeal_valid`: a crop below its maximum age).
     pub growable: Pred,
-    pub grow: fn(&'static MobWorld<'static>, [i32; 3]) -> Option<BlockStateId>,
+    /// Grows the crop by `ages` steps (the module draws 2 to 5, `BoneMealItem.growCrop`).
+    pub grow: fn(&'static MobWorld<'static>, [i32; 3], i32) -> Option<BlockStateId>,
 }
 
-/// The last session (tick, 0 before the first) and the crop it works on.
+/// The last session's end (tick), the work cycles done (80 at most) and the next cycle's tick.
 #[derive(Component, Default, Clone, Copy)]
 pub struct Session {
     pub last: u64,
+    pub worked: i32,
+    pub next_work: u64,
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -58,26 +62,33 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     let Some(q) = pick_in_reach(w, e, c.get::<Params>().growable) else { return };
     walk_to(w, e, q, 0.5, 1);
     look_block(w, e, q);
+    let last = w.get::<Session>(e).map_or(0, |s| s.last);
+    w.entity_mut(e).insert(Session { last, worked: 0, next_work: 0 });
 }
 
-/// Within reach of the crop: take one bone meal and grow it, then the session ends.
+/// Within reach of the crop, at each cycle's tick (`UseBonemeal.tick`): a bone meal grows it by 2 to 5 ages and the
+/// next cycle waits 40 ticks; without one the cycle is spent. The session ends after 80 cycles or when the brain stops it.
 fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
     let Some(WalkTarget { target: Tracker::Block(q), .. }) = walk_target(w, e) else { return false };
     let mw = blocks::world_of(w);
-    if !(p.growable)(mw, q) {
+    let now = now_of(w, e);
+    let mut s = w.get::<Session>(e).copied().unwrap_or_default();
+    if s.worked >= 80 || !(p.growable)(mw, q) {
+        w.entity_mut(e).insert(Session { last: now, ..s });
         return false;
     }
     let Some(here) = block_at(w, e) else { return false };
-    if (0..3).all(|i| (here[i] - q[i]).abs() <= 1) {
+    if now >= s.next_work && (0..3).all(|i| (here[i] - q[i]).abs() <= 1) {
         if inventory::take(w, e, BONE_MEAL, 1) {
-            if let Some(id) = (p.grow)(mw, q) {
+            let ages = with_rng(w, e, |r| r.next_int(4)) + 2;
+            if let Some(id) = (p.grow)(mw, q, ages) {
                 blocks::set_state_id(w, q, id);
             }
+            s.next_work = now + 40;
         }
-        let now = now_of(w, e);
-        w.entity_mut(e).insert(Session { last: now });
-        return false;
+        s.worked += 1;
+        w.entity_mut(e).insert(s);
     }
     true
 }

@@ -272,6 +272,10 @@ impl MobRef {
             world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
         }
     }
+    /// A property of the `Mob` world's block at (x, y, z) (`open` of a door, `type` of a chest), as the golems read it.
+    pub fn prop(&self, x: i32, y: i32, z: i32, key: &str) -> Option<String> {
+        horizon_ecs_proto::blocks::property(self.w, [x, y, z], key)
+    }
     /// Applies to the `Mob` world the block changes the mobs asked for since the last call.
     pub fn apply_block_events(&mut self) {
         let fresh: Vec<(i32, i32, i32, &'static str)> = self.events[self.applied..]
@@ -312,6 +316,15 @@ impl MobRef {
     }
 }
 
+/// A chest in the block entities of a world (`MobRef::level`, or `*h.world.resource::<Level>()`) with these slots: the block entity the
+/// golems read. The block itself is placed by `set_block`.
+pub fn set_chest(level: Level, x: i32, y: i32, z: i32, slots: Vec<Option<horizon_client_lib::items::ItemStack>>) {
+    // SAFETY: the test thread owns the world between two steps; no reference to its block entities is alive.
+    unsafe {
+        let world = &mut *level.blocks.0;
+        world.block_entities.insert((x, y, z), horizon_client_render::chunk::block_entity::BlockEntity::Chest(slots));
+    }
+}
 pub fn flat_pair() -> (MobRef, Herd) {
     (MobRef::new(20, false), Herd::new_awake(0, 6.0, true, false, 3))
 }

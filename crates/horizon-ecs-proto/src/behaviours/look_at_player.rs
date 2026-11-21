@@ -36,18 +36,36 @@ pub struct Glance2(pub Glance);
 pub struct Glancing {
     pub who: Who,
     pub until: u64,
-    pub nth: u8,
+    pub slot: u8,
 }
+/// The look of this entry: the first or the second component, by the entry's slot (two modules of the same name are two entries).
 fn get(w: &World, e: Entity, inst: Inst) -> Option<Glance> {
-    if inst.nth == 0 { w.get::<Glance>(e).copied() } else { w.get::<Glance2>(e).map(|g| g.0) }
+    let g = w.get::<Glance>(e).copied().filter(|g| g.slot == inst.slot);
+    g.or_else(|| w.get::<Glance2>(e).map(|g| g.0).filter(|g| g.slot == inst.slot))
 }
 fn with<R>(w: &mut World, e: Entity, inst: Inst, f: impl FnOnce(&mut Glance) -> R) -> Option<R> {
-    if inst.nth == 0 { w.get_mut::<Glance>(e).map(|mut g| f(&mut g)) } else { w.get_mut::<Glance2>(e).map(|mut g| f(&mut g.0)) }
+    if w.get::<Glance>(e).is_some_and(|g| g.slot == inst.slot) { w.get_mut::<Glance>(e).map(|mut g| f(&mut g)) } else { w.get_mut::<Glance2>(e).map(|mut g| f(&mut g.0)) }
 }
 
 pub static MODULE: Module = Module {
     name: "look_at_player",
     flags: LOOK,
+    blocked: Some(blocked),
+    equip,
+    arm,
+    fired,
+    can_use,
+    start,
+    stop,
+    systems,
+    requires: &[Cap::Body, Cap::Head],
+    ..Module::DEFAULT
+};
+/// `InteractGoal` (`mobs/goals.rs:1322-1390`): the same look, holding MOVE too. The `Mob` walks nowhere in it: the flag keeps the
+/// movement goals out while the look runs. Its systems are the look's (a species carrying both runs them twice: DOUBT).
+pub static INTERACT: Module = Module {
+    name: "interact_player",
+    flags: MOVE | LOOK,
     blocked: Some(blocked),
     equip,
     arm,
@@ -69,7 +87,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
         SpeciesSet::of(p.species.iter().filter_map(|n| reg.id(n)))
     };
     let g = Glance { range: p.range, period: p.period, armed: false, slot: inst.slot, pick: Who::Player(0), species };
-    if inst.nth == 0 {
+    if w.get::<Glance>(e).is_none() {
         w.entity_mut(e).insert(g);
     } else {
         w.entity_mut(e).insert(Glance2(g));
@@ -171,7 +189,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let id = get(w, e, inst).unwrap().pick;
     // `reducedTickDelay(40 + nextInt(40))` asks of 2 ticks.
     let n = with_rng(w, e, |r| r.next_int(40));
-    w.entity_mut(e).insert(Glancing { who: id, nth: inst.nth, until: now + 2 * ((40 + n as u64 + 1) / 2) });
+    w.entity_mut(e).insert(Glancing { who: id, slot: inst.slot, until: now + 2 * ((40 + n as u64 + 1) / 2) });
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Glancing>();
@@ -201,7 +219,7 @@ fn glance_run(
     mut cmd: Commands,
 ) {
     for ((e, pos, mut look, looking, _, _), g, g1, g2) in &mut q {
-        let data = if g.nth == 0 { g1 } else { &g2.unwrap().0 };
+        let data = if g.slot == g1.slot { g1 } else { &g2.unwrap().0 };
         // The feet (the range test) and the point looked at.
         let t = match g.who {
             Who::Player(id) => on.get(id).map(|p| (Vec3::new(p.x, p.y, p.z), [p.x, p.eye(), p.z])),

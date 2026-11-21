@@ -115,6 +115,11 @@ fn has_shelter(w: &World, e: Entity, mw: &MobWorld) -> bool {
     let wv = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
     !mw.can_see_sky(at[0], at[1], at[2]) && walk_target_value(mw, wv, at) >= 0.0
 }
+/// `alertable` of the entity's own feet, as the lookout asks it (`Lookout.Params.alarm`).
+pub fn alarmed(w: &World, e: Entity) -> bool {
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return false };
+    alertable(w, e, p, w.resource::<Level>().mw.0)
+}
 /// `Fox.alertable`: a creature that is not a fox within 12 blocks (|dy| <= 6), or a player alive, not creative, not
 /// spectator, not sneaking, within `max(12 x visibility, 2)` blocks. A creature of the fox's own species is no alarm (the
 /// `Mob` says `Species::Fox`); every other one counts as untamed (no tame state here).

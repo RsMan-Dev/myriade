@@ -1,6 +1,7 @@
 //! All the integration tests in ONE binary: every test binary loads the vanilla data (seconds of CPU), so 52 binaries cost 52 loads per
 //! species. One binary, one load.
 mod common;
+mod brain_fill_vs_mob;
 mod allay_vs_mob;
 mod avoid_sun_vs_mob;
 mod bat_vs_mob;
@@ -108,6 +109,9 @@ mod ravager_vs_mob;
 mod goat_ram_vs_mob;
 mod hoglin_vs_mob;
 mod fox_vs_mob;
+mod lot_fin_lookout;
+mod lot_fin_timed_idle;
+mod lot_fin_interact;
 mod happy_ghast_vs_mob;
 mod spawn_vs_mob;
 mod spawn_spawner_vs_mob;
@@ -153,3 +157,14 @@ mod type_tags_vs_original;
 mod nbt_tag;
 mod nbt_creatures;
 mod passive_entities_vs_original;
+mod lot_fin_villager_wiring;
+mod lot_fin_villager_new;
+mod lot_fin_goat;
+// lot V4
+mod lot_v4_work;
+// lot V3
+mod lot_v3_village;
+// lot V2
+mod lot_v2_trade;
+// lot V1
+mod lot_v1_poi;

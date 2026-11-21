@@ -116,9 +116,11 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
 }
 
 /// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
-pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
+pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64, natural: bool) -> Entity {
     let mut rng = Rng(seed | 1);
     let yaw = (rng.next_u32() % 360) as f32;
+    // `Goat.finalizeSpawn`: the screaming draw follows the yaw, only for a species that has a chance (the Mob draws it at the spawn too).
+    let screams = natural && sp.screaming.is_some_and(|c| rng.next_f64() < c);
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
@@ -126,6 +128,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     crate::type_tags::mark(world, id, sp.id);
     let saved = crate::nbt::is_saved(world, sp.name);
     let mut e = world.entity_mut(id);
+    if screams {
+        e.insert(crate::species::goat::Screaming);
+    }
     e.insert(transform_bundle(sp, x, z, uid));
     if saved {
         e.insert(crate::nbt::Saved);
@@ -171,7 +176,7 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
 pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) -> Entity {
     let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];
-    let e = spawn_declared(world, &sp, x, z, seed);
+    let e = spawn_declared(world, &sp, x, z, seed, false);
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
     e
@@ -187,7 +192,7 @@ pub fn spawn_armed(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -
 
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
-    let e = spawn_declared(world, sp, x, z, seed);
+    let e = spawn_declared(world, sp, x, z, seed, true);
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
     crate::brain::start(world, e);

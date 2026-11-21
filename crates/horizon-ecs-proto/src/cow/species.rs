@@ -174,6 +174,8 @@ pub struct Species {
     pub max_air: i32,
     /// The type is persistent from its constructor (`setPersistenceRequired`: the elder guardian, the copper golem).
     pub persistent: bool,
+    /// The chance of a screaming goat at birth (`Def::screaming`): a draw only when it is there.
+    pub screaming: Option<f64>,
 }
 
 /// The class bits of a type, as data of its row (no per-entity byte): the groups of species whose class saves a state at its default.
@@ -206,6 +208,8 @@ pub mod tag {
     pub const ANGER_ZERO: u32 = 1 << 12;
     /// `NeutralMob` whose end time is synched data (the bee, the wolf): default -1.
     pub const ANGER_UNSET: u32 = 1 << 13;
+    /// `Goat`: saves `IsScreamingGoat` (`false` unless the screaming marker is there).
+    pub const SCREAMER: u32 = 1 << 14;
 }
 
 /// The class bits of a species.

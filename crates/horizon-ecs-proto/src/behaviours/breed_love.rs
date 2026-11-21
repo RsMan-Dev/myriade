@@ -62,6 +62,7 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
     let seed = goals::with_rng(w, e, |r| r.next_u32() as u64);
     let at = w.get::<Pos>(m.partner).unwrap().0;
     let baby = spawn_like(w, e, at.x, at.z, seed);
+    crate::species::goat::inherit_screaming(w, baby, e, m.partner);
     w.entity_mut(baby).insert(GrowAt(now + GROWN));
     bed_for_child(w, e, baby);
     for p in [e, m.partner] {

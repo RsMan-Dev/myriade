@@ -597,8 +597,11 @@ fn optimal_jump_vector(w: &mut World, e: Entity, p: &Params, mw: &MobWorld, targ
 fn leap_now(w: &mut World, e: Entity, jump: Vec3) {
     let now = now_of(w, e);
     let len = jump.length();
-    // `jump_boost` (repli : pas de bonus lu, DOUTE) : boost 0.
-    let boost = 0.0;
+    // `jump_boost`: 0.1 x (level + 1), in f32 as the Mob computes it; 0 without the effect.
+    let boost = w
+        .get::<effects::Effects>(e)
+        .and_then(|f| f.list.iter().find(|x| x.kind == effects::Kind::JumpBoost).map(|x| f64::from(0.1_f32 * (x.amp + 1) as f32)))
+        .unwrap_or(0.0);
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.discard_friction = true;
     }

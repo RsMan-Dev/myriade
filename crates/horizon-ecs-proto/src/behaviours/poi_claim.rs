@@ -1,17 +1,29 @@
 //! Prend un point d'intérêt libre (lit, poste de travail, point de rencontre) et le tient jusqu'à sa perte.
 //! Réessai à attente croissante (`Retry`, comme `villager_brain.rs:1330`). La perte est événementielle : `lose_claims`
 //! ne lit que les points sortis du registre (`removed()`) et n'atteint que les entités qui les tiennent (`ClaimIndex`).
+use crate::blocks::world_of;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Pos, Rng};
+use super::profession::Profession;
 use crate::poi::PoiRegistry;
 use horizon_world::poi::PoiType;
 use std::collections::HashMap;
+
+/// Filtre en plus de `accept` : `FreeBed` saute les lits occupés (comme le Mob pour Home) ; `OwnJob` garde
+/// les points du métier de l'entité s'il en a un (comme le Mob pour un villageois déjà employé).
+#[derive(Clone, Copy, PartialEq)]
+pub enum Filter {
+    Any,
+    FreeBed,
+    OwnJob,
+}
 
 pub struct Params {
     pub memory: &'static MemKey,
     pub accept: fn(PoiType) -> bool,
     pub range: i32,
+    pub filter: Filter,
     /// Appelé à la prise (ex. changement de métier) et à la perte (ex. remise à zéro du métier).
     pub on_acquired: fn(&mut World, Entity, [i32; 3]),
     pub on_lost: fn(&mut World, Entity),
@@ -60,12 +72,26 @@ fn mark_retry(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(r);
 }
 
+/// Le premier point libre dans la portée, que `filter` laisse passer.
+fn nearest(w: &World, e: Entity, p: &Params) -> Option<[i32; 3]> {
+    let found = w.resource::<PoiRegistry>().in_range(block_of(w, e), p.range, true, p.accept);
+    let own = w.get::<Profession>(e).map(|j| j.0);
+    found.into_iter().find_map(|(q, k)| {
+        let ok = match p.filter {
+            Filter::Any => true,
+            Filter::FreeBed => world_of(w).prop(q[0], q[1], q[2], "occupied") != Some("true"),
+            Filter::OwnJob => own.is_none_or(|j| j == k),
+        };
+        ok.then_some(q)
+    })
+}
+
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
     if present(w, e, p.memory) || w.get::<Retry>(e).is_some_and(|r| (now_of(w, e) as i64) < r.next) {
         return false;
     }
-    let free = !w.resource::<PoiRegistry>().in_range(block_of(w, e), p.range, true, p.accept).is_empty();
+    let free = nearest(w, e, p).is_some();
     if !free {
         mark_retry(w, e);
     }
@@ -74,8 +100,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 
 fn start(w: &mut World, e: Entity, c: &Ctx) {
     let p = c.get::<Params>();
-    let here = block_of(w, e);
-    let Some(&(poi, _)) = w.resource::<PoiRegistry>().in_range(here, p.range, true, p.accept).first() else {
+    let Some(poi) = nearest(w, e, p) else {
         return mark_retry(w, e);
     };
     if !w.resource_mut::<PoiRegistry>().acquire(poi) {

@@ -28,6 +28,8 @@ pub enum Kind {
     MiningFatigue,
     /// `MobEffects.BLINDNESS`: the illusioner's spell; nothing for a creature (the sight is the Mob's own, not ported).
     Blindness,
+    /// `MobEffects.JUMP_BOOST`: the long jump's velocity grows by 0.1 x (level + 1) (`Frog`, `Goat`); not periodic.
+    JumpBoost,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).

@@ -2,6 +2,7 @@
 //! for the host to apply; here a module writes one at the moment of the act (an event, never a scan) and the host reads them all
 //! once per tick with `drain`. One queue (a field of `goals::Events`, `events.host`), empty at rest: no allocation and no byte per entity. Fire and forget, as
 //! the `Mob`'s: the host's refusal of a block is not reported back.
+use horizon_client_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
 
 /// One output, one for one with the `MobEvent` of the same name.
@@ -37,6 +38,12 @@ pub enum HostEvent {
     PullEntity { entity: bevy_ecs::entity::Entity, velocity: [f64; 3] },
     /// A hook taken back: `damage` to the rod of `owner`.
     HookRetrieved { owner: u32, damage: i32 },
+    /// `MobEvent::ChestOpen`: a chest's lid moves for the mob `entity`.
+    ChestOpen { chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity },
+    /// `MobEvent::ChestSlot`: a chest's slot now holds `stack` (none: empty).
+    ChestSlot { chest: [i32; 3], slot: usize, stack: Option<ItemStack> },
+    /// `copper_golem` animation state of a golem (`IDLE`, `GETTING_ITEM`...): the `Mob`'s `variant3`.
+    GolemState { entity: bevy_ecs::entity::Entity, state: u8 },
 }
 
 #[derive(Default)]
@@ -48,6 +55,15 @@ impl HostOut {
     /// `MobEvent::SetBlock`.
     pub fn set_block(&mut self, pos: [i32; 3], state: BlockStateId) {
         self.out.push(HostEvent::SetBlock { pos, state });
+    }
+    pub fn chest_open(&mut self, chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity) {
+        self.out.push(HostEvent::ChestOpen { chest, open, entity });
+    }
+    pub fn chest_slot(&mut self, chest: [i32; 3], slot: usize, stack: Option<ItemStack>) {
+        self.out.push(HostEvent::ChestSlot { chest, slot, stack });
+    }
+    pub fn golem_state(&mut self, entity: bevy_ecs::entity::Entity, state: u8) {
+        self.out.push(HostEvent::GolemState { entity, state });
     }
     pub fn darkness(&mut self, at: [f64; 3], radius: f64) {
         self.out.push(HostEvent::Darkness { at, radius });

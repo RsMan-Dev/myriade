@@ -1,6 +1,6 @@
 //! `AbstractFish.FishSwimGoal` (`RandomSwimmingGoal`): now and then (one chance in `interval` per ask) swim to a random spot of the water:
 //! `DefaultRandomPos(10, 7)` drawn again, up to 10 times, until the block of the spot can be swum through. The wait, the arming and
-//! the walk to the spot are `stroll`'s (the same state), only the pick differs. A school (`FollowFlockLeader`) is not ported.
+//! the walk to the spot are `stroll`'s (the same state), only the pick differs. The school is `follow_flock_leader`'s, configured beside it.
 use super::*;
 use crate::{cow::*, goals::*};
 

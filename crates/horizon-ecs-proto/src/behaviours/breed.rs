@@ -262,6 +262,7 @@ pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
     // The baby is of its parents' species (the mate was checked to be the same).
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
+    crate::species::goat::inherit_screaming(w, baby, a, b);
     // The parent's deadline is in its own time: the baby's own time is the world's.
     let active_baby = if active == u64::MAX { active } else { crate::cow::now_of(w, baby) + active.saturating_sub(now) };
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;

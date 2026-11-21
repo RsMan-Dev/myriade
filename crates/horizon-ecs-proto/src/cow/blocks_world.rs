@@ -144,6 +144,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
         let kind = Arc::new(types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
         let is_creature = types.types.contains_key(name);
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
+        let screaming = crate::species::registry().by_name(name).unwrap().screaming;
         table.push(Species {
             id: i as u8,
             malus: mob.ai.malus,
@@ -179,9 +180,10 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             caps: crate::species::registry().by_name(name).unwrap().caps,
             brain: crate::species::registry().by_name(name).unwrap().brain,
             modes: crate::species::registry().by_name(name).unwrap().modes,
-            tags: if is_creature { crate::cow::species::tags_of(&mob, &kind) } else { 0 },
+            tags: if is_creature { crate::cow::species::tags_of(&mob, &kind) | if screaming.is_some() { crate::cow::species::tag::SCREAMER } else { 0 } } else { 0 },
             max_air: if is_creature { mob.max_air_supply() } else { 300 },
             persistent: is_creature && mob.persistent,
+            screaming,
         });
         if name == chosen {
             chosen_kind = Some(kind);

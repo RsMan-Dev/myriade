@@ -99,6 +99,7 @@ pub const TAGGED_DEFAULTS: &[Tagged] = &[
     Tagged { tag: tag::ANGER_UNSET, key: "anger_end_time", default: minus_one_long, gate: always },
     Tagged { tag: tag::TADPOLE, key: "FromBucket", default: one_byte, gate: always },
     Tagged { tag: tag::BUCKETABLE, key: "FromBucket", default: zero_byte, gate: always },
+    Tagged { tag: tag::SCREAMER, key: "IsScreamingGoat", default: zero_byte, gate: always },
 ];
 
 /// The tagged defaults that apply to the entity (its species' class bits and the gate).
@@ -379,6 +380,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Hunger => "minecraft:hunger",
         Kind::MiningFatigue => "minecraft:mining_fatigue",
         Kind::Blindness => "minecraft:blindness",
+        Kind::JumpBoost => "minecraft:jump_boost",
     }
 }
 
@@ -397,6 +399,7 @@ fn kind_of(name: &str) -> Option<Kind> {
         Kind::Hunger,
         Kind::MiningFatigue,
         Kind::Blindness,
+        Kind::JumpBoost,
     ]
     .into_iter()
     .find(|&k| kind_name(k) == name)
