@@ -31,6 +31,11 @@ fn the_villager_follows_the_trading_player_within_four_blocks_awake() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = villager(&mut h);
+    h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
+    // `HurtAt` starts at tick 0: the first 10 ticks of a world read as "hurt" (the follow stops when hurt in the last 10), so start later.
+    for _ in 0..12 {
+        h.tick();
+    }
     h.world.entity_mut(e).insert(Trading { player: 1, session: Session::new(Vec::new(), true), since: 0 });
     h.tick();
     assert!(walk_target(&h.world, e).is_some(), "le villageois doit marcher vers le joueur");

@@ -28,6 +28,9 @@ fn ids_are_bound_refused_freed_and_reused() {
 #[test]
 fn view_reads_the_components_of_a_spawned_creature() {
     let mut h = Herd::with_slab_awake(60, true, false);
+    if !ground_walker() {
+        return;
+    }
     let sp = *species();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 21);
     let v = view::view(&h.world, e).expect("a live creature has a view");

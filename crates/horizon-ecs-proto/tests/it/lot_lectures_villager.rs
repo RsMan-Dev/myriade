@@ -133,11 +133,14 @@ fn farmland_is_a_secondary_site_of_the_farmer_only() {
     let mut h = Herd::with_slab_awake(40, true, false);
     let none = spawn_named(&mut h, "minecraft:villager", 0.5, 0.5, 41);
     let farm = spawn_named(&mut h, "minecraft:villager", 0.5, 0.5, 42);
-    h.world.entity_mut(none).insert(Merchant::new(false, 0, 0));
-    h.world.entity_mut(farm).insert(Merchant::new(false, farmer, 0));
+    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
     h.set_block(1, 0, 0, "minecraft:farmland");
     h.set_block(-1, 0, 0, "minecraft:farmland");
     h.tick();
+    // After the tick: a villager without a job site loses its profession (`ResetProfession`).
+    h.world.entity_mut(none).insert(Merchant::new(false, 0, 0));
+    h.world.entity_mut(farm).insert(Merchant::new(false, farmer, 0));
     brain_with(&mut h, none, &SENSORS);
     brain_with(&mut h, farm, &SENSORS);
     scan(&mut h, none, &secondary_job_site::SENSOR);
@@ -216,7 +219,7 @@ fn an_invisible_baby_is_seen_only_within_two_blocks() {
     if skip() {
         return;
     }
-    static SENSORS: [SensorEntry; 1] = [SensorEntry::new(&villager_babies::SENSOR, 20)];
+    static SENSORS: [SensorEntry; 2] = [SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&villager_babies::SENSOR, 20)];
     let mut h = Herd::with_slab_awake(40, true, false);
     let e = spawn_named(&mut h, "minecraft:villager", 0.5, 0.5, 71);
     let hidden = spawn_named(&mut h, "minecraft:villager", 4.5, 0.5, 72);
@@ -228,6 +231,7 @@ fn an_invisible_baby_is_seen_only_within_two_blocks() {
     h.world.entity_mut(hidden).insert(Invisible);
     h.tick();
     brain_with(&mut h, e, &SENSORS);
+    scan(&mut h, e, &living::SENSOR);
     scan(&mut h, e, &villager_babies::SENSOR);
     assert_eq!(format!("{:?}", get(&h.world, e, &NEARBY_BABIES)), format!("{:?}", Some(&MemValue::Whos(vec![Who::Entity(seen)]))), "only the visible baby is seen");
 }

@@ -205,6 +205,7 @@ pub fn wrong_species(names: &[&str]) -> bool {
 }
 pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();
+    horizon_ecs_proto::type_tags::mark(&mut h.world, e, species().id);
     horizon_ecs_proto::rules::equip_all(&mut h.world, e, species().rules);
     h.world.get_mut::<Pos>(e).unwrap().0.y = y;
     h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), species().width, species().height);
@@ -368,4 +369,11 @@ pub fn warden_has_target(m: &Mob) -> bool {
 /// The yaw (degrees, vanilla `lookAt`) a head at `from` takes to look at `to`, in the x/z plane.
 pub fn look_yaw(from: Vec3, to: Vec3) -> f32 {
     ((to.z - from.z).atan2(to.x - from.x).to_degrees() - 90.0) as f32
+}
+
+/// The species under test walks on the ground with its own locomotion (a creature standing in water, on honey or in a bubble column):
+/// objects, projectiles and flyers do not take these scenes (they have no ground mode, or no gravity to bring them to rest).
+pub fn ground_walker() -> bool {
+    let s = species();
+    s.gravity > 0.0 && s.modes.iter().any(|(m, _)| *m == horizon_ecs_proto::locomotion::Medium::Ground)
 }

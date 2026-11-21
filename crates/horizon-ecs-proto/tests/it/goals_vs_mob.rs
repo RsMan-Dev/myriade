@@ -138,6 +138,7 @@ fn have_data() -> bool {
 }
 fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     let e = h.world.spawn(cow_bundle(x, z, seed)).id();
+    horizon_ecs_proto::type_tags::mark(&mut h.world, e, species().id);
     h.world.get_mut::<Pos>(e).unwrap().0.y = y;
     h.world.get_mut::<Bounds>(e).unwrap().0 = box_at(Vec3::new(x, y, z), species().width, species().height);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;

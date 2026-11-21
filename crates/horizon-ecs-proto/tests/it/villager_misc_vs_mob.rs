@@ -71,6 +71,8 @@ fn farmer_run(seed: u64) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>)
     let farmer = horizon_client_lib::mobs::villager::profession_index("farmer").expect("the farmer profession");
     let ok = horizon_client_lib::mobs::villager::set_profession(&mut r.mobs[i], horizon_client_lib::mobs::villager::profession_table(), farmer as usize);
     let e = spawn_villager(&mut h, f64::from(x) + 0.5, f64::from(z) + 0.5, seed);
+    // The farmland is a secondary site of a farmer only (`sense_secondary`): the ecs villager takes the same profession as the Mob's.
+    let farmer_id = horizon_client_lib::mobs::villager::profession_index("farmer").expect("the farmer profession");
 
     // The ecs has no `AcquirePoi` (known gap): its job site is given at the tick the Mob's villager has claimed its composter, and the work
     // hours start right after, so that neither wanders in the idle hours before.
@@ -88,6 +90,7 @@ fn farmer_run(seed: u64) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>)
         if claimed.is_none() && horizon_client_lib::mobs::villager_brain::describe(&r.mobs[i]).is_some_and(|d| d.1.contains(" job_site=") || d.1.starts_with("job_site=")) {
             claimed = Some(t);
             set(&mut h.world, e, &JOB_SITE, MemValue::Block(job), None);
+        h.world.entity_mut(e).insert((horizon_ecs_proto::behaviours::profession::Profession(horizon_world::poi::PoiType::Farmer), horizon_ecs_proto::behaviours::trade_offers::Merchant::new(false, farmer_id, 0)));
         }
         h.tick();
         if ecs_sec.is_none() && horizon_ecs_proto::brain::present(&h.world, e, &horizon_ecs_proto::brain::sensors::secondary_job_site::SECONDARY_JOB_SITE) { ecs_sec = Some(t); }
@@ -171,7 +174,10 @@ fn a_villager_flees_the_way_away_from_a_hit_as_a_mob_does() {
     assert!(mob_peak > 3.0 && ecs_peak > 3.0, "both villagers flee east, away from the hit at x=-3 (mob {mob_peak}, ecs {ecs_peak})");
     let _ = (mob_x, mob_end);
     let end = ecs_end.expect("the ecs panic ends");
-    assert!((40..=100).contains(&end), "the ecs panic ends about 40 ticks after the hit, as `HurtBySensor` forgets it (ended at {end})");
+    // The panic starts at the first brain update that sees the hit (tick 40 measured, the activity updates are spread), and ends 40 ticks of
+    // memory plus one 20-tick sensor scan later: measured from its start, not from the hit.
+    let began = ecs_began.expect("the ecs panic began");
+    assert!((40..=65).contains(&(end - began)), "the ecs panic lasts about 40 ticks plus a sensor scan, as `HurtBySensor` forgets the hit (began {began}, ended {end})");
 }
 
 #[test]

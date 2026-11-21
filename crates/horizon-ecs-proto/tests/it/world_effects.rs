@@ -90,10 +90,14 @@ fn a_piston_wakes_a_sleeping_cow_it_reaches_and_moves_it() {
 fn a_wall_stops_a_cow_the_piston_pushes() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     // A stone wall at x = 2 (its face at 2.0). The blocks are placed at the next step.
-    h.set_block(2, 1, 0, "minecraft:stone");
-    h.set_block(2, 2, 0, "minecraft:stone");
+    // As high as the tallest species (the giant is 12 blocks) and as wide as the widest (the ghast is 4).
+    for y in 1..=14 {
+        for z in -3..=3 {
+            h.set_block(2, y, z, "minecraft:stone");
+        }
+    }
     h.tick();
-    let e = indexed_cow(&mut h, 1.1, 1.0, 0.5, 4);
+    let e = indexed_cow(&mut h, 1.55 - f64::from(horizon_ecs_proto::cow::species().width) / 2.0, 1.0, 0.5, 4);
     for _ in 0..4 {
         push(&mut h, piston(Direction::East, true), Direction::East, false);
     }
@@ -141,6 +145,9 @@ fn a_cactus_hurts_a_cow_standing_in_it_each_tick() {
 #[test]
 fn a_column_of_bubbles_lifts_a_cow_standing_in_it() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    if !ground_walker() {
+        return;
+    }
     // Water under a bubble column: an upward column (`drag=false`, the bubbles rise from a water source).
     h.set_block(0, 1, 0, "minecraft:water");
     h.set_block_state(0, 2, 0, "minecraft:bubble_column", &[("drag", "false")]);
@@ -156,6 +163,9 @@ fn a_column_of_bubbles_lifts_a_cow_standing_in_it() {
 fn a_downward_column_of_bubbles_sinks_a_cow_faster_than_no_column() {
     // Two identical herds, a cow falling from the same height; one has a downward column (`drag=true`) in its path.
     let mut column = Herd::new_awake(0, 6.0, true, false, 3);
+    if !ground_walker() {
+        return;
+    }
     column.set_block_state(0, 2, 0, "minecraft:bubble_column", &[("drag", "true")]);
     column.tick();
     let mut free = Herd::new_awake(0, 6.0, true, false, 3);
@@ -178,6 +188,9 @@ fn honey_push(h: &mut Herd, movement: Direction) {
 #[test]
 fn honey_pulls_a_cow_standing_on_it_by_the_kernel_amount() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    if !ground_walker() {
+        return;
+    }
     h.set_block(0, 1, 0, "minecraft:honey_block");
     h.tick();
     // On the honey's top (1 + 0.9375), over the block: supported by the piston's place.

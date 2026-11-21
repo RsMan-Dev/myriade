@@ -59,13 +59,22 @@ fn stable_destination_is_the_mob_stable_destination() {
         horizon_ecs_proto::cow::skip_note("stable_destination_is_the_mob_stable_destination", "the bee and the turtle have their own navigation");
         return;
     }
+    // The ground navigation's stable spot: a species that changes navigation with its medium (it has a water mode: the swim tests read the
+    // switch), a flier (its navigation reads the block itself) or a lava walker draws its spots with another one.
+    let modes = species().modes;
+    let medium = |m| modes.iter().any(|e| e.0 == m);
+    if medium(horizon_ecs_proto::locomotion::Medium::Water) || modes.first().map(|m| m.0) == Some(horizon_ecs_proto::locomotion::Medium::Air) || species().lava_walker {
+        horizon_ecs_proto::cow::skip_note("stable_destination_is_the_mob_stable_destination", "its navigation is not the ground's in every medium (water mode, flier or lava walker)");
+        return;
+    }
+    let kind = spots::Stable::Ground;
     scene(&r);
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
     for x in -12..=12 {
         for y in -1..=4 {
             for z in -12..=12 {
                 let p = [x, y, z];
-                assert_eq!(spots::stable_destination(r.w, p), r.mobs[i].stable_destination(r.w, p), "{p:?}");
+                assert_eq!(spots::stable_for(kind, r.w, p), r.mobs[i].stable_destination(r.w, p), "{p:?}");
             }
         }
     }

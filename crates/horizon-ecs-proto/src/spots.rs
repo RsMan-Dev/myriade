@@ -28,6 +28,12 @@ pub enum WalkValue {
     Guardian,
     /// `HappyGhast.getWalkTargetValue`: open air only, 10 just above the ground, else 5.
     HappyGhast,
+    /// `Hoglin.getWalkTargetValue`: crimson nylium 10, else 0 (the repellent's -1 is not modelled: no entity keeps one).
+    Hoglin,
+    /// `Strider.getWalkTargetValue`: lava 10, else 0 (the -infinity of a strider already in lava is not modelled).
+    Strider,
+    /// `Silverfish.getWalkTargetValue`: an infested host under the spot 10, else the monster's.
+    Silverfish,
 }
 /// The value of walking to the block `p` (the species' preference).
 pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
@@ -73,6 +79,27 @@ pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
                 0.0
             }
         }
+        WalkValue::Hoglin => {
+            if mw.block_name(p[0], p[1] - 1, p[2]) == "minecraft:crimson_nylium" {
+                10.0
+            } else {
+                0.0
+            }
+        }
+        WalkValue::Strider => {
+            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Lava {
+                10.0
+            } else {
+                0.0
+            }
+        }
+        WalkValue::Silverfish => {
+            if horizon_client_lib::mobs::hostile::is_infested_host(mw.block_name(p[0], p[1] - 1, p[2])) {
+                10.0
+            } else {
+                -light()
+            }
+        }
         WalkValue::Animal => {
             if mw.block_name(p[0], p[1] - 1, p[2]) == "minecraft:grass_block" {
                 10.0
@@ -98,7 +125,7 @@ pub enum Stable {
     /// Something other than air under the spot (`AmphibiousPathNavigation`: a turtle).
     Amphibious,
 }
-fn stable_for(kind: Stable, mw: &MobWorld, p: [i32; 3]) -> bool {
+pub fn stable_for(kind: Stable, mw: &MobWorld, p: [i32; 3]) -> bool {
     match kind {
         Stable::Ground => stable_destination(mw, p),
         Stable::Water => !mw.facts.get(mw.world.block(p[0], p[1], p[2])).solid_render,
