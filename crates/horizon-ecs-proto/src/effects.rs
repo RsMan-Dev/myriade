@@ -7,6 +7,7 @@
 //! instant effects, absorption and health boost, the undead that poison does not hurt, the particles and the icons.
 use crate::cow::*;
 use crate::goals::Events;
+use crate::type_tags::{self, TagId};
 use bevy_ecs::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +48,13 @@ pub struct Effect {
     pub ends: u64,
     /// The next tick a periodic effect acts on.
     pub next: u64,
+    /// `HIDDEN` and `AMBIENT`: what the effect's source set (the byte fits in the padding after `kind`).
+    pub flags: u8,
 }
+/// The effect's particles are not shown (`show_particles` 0).
+pub const HIDDEN: u8 = 1;
+/// The effect is ambient (from a beacon or a source that sets it).
+pub const AMBIENT: u8 = 2;
 #[derive(Component, Clone, Debug, Default)]
 pub struct Effects {
     pub list: Vec<Effect>,
@@ -73,6 +80,10 @@ pub fn has(w: &World, e: Entity, kind: Kind) -> bool {
 }
 /// `LivingEntity.addEffect`: a new effect, or one that replaces the same kind when it is of a higher level or of the same level and longer.
 pub fn add(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32) -> bool {
+    add_flagged(w, e, kind, amp, ticks, 0)
+}
+/// `add` with the `HIDDEN` and `AMBIENT` flags of the effect.
+pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, flags: u8) -> bool {
     if w.get::<Health>(e).is_none() {
         return false;
     }
@@ -84,7 +95,7 @@ pub fn add(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32) -> bool {
         w.entity_mut(e).insert(Effects::default());
     }
     let mut f = w.get_mut::<Effects>(e).unwrap();
-    let new = Effect { kind, amp, ends, next };
+    let new = Effect { kind, amp, ends, next, flags };
     match f.list.iter().position(|x| x.kind == kind) {
         Some(i) => {
             let old = f.list[i];
@@ -223,13 +234,13 @@ pub fn due(w: &mut World, e: Entity) {
     for (kind, _) in acts {
         match kind {
             Kind::Poison => {
-                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && w.get::<Undead>(e).is_none() {
+                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && !type_tags::has(w, *IGNORES_POISON_AND_REGEN, e) {
                     w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Magic);
                 }
             }
             Kind::Wither => w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Wither),
             Kind::Regeneration => {
-                if w.get::<Undead>(e).is_some() {
+                if type_tags::has(w, *IGNORES_POISON_AND_REGEN, e) {
                     continue;
                 }
                 if let Some(mut h) = w.get_mut::<Health>(e) {
@@ -280,27 +291,53 @@ pub static BEE_STING: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 200)]);
 pub static WITHER_SKELETON: OnHitParams = OnHitParams(&[(Kind::Wither, 0, 200)]);
 pub static HUSK: OnHitParams = OnHitParams(&[(Kind::Hunger, 0, 140)]);
 pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, 1200)]);
-/// A creature that `EntityTypeTags.UNDEAD` names: poison and regeneration do nothing to it, harming heals it and healing hurts it.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Undead;
+/// The entity type tags the effects read (resolved at their first read, once the level is built): poison and regeneration do nothing to
+/// a creature `ignores_poison_and_regen` names; harming heals and healing hurts one `inverted_healing_and_harm` names (`potions.rs`).
+pub static IGNORES_POISON_AND_REGEN: std::sync::LazyLock<TagId> =
+    std::sync::LazyLock::new(|| type_tags::id("ignores_poison_and_regen").expect("the tag ignores_poison_and_regen"));
+pub static INVERTED_HEALING_AND_HARM: std::sync::LazyLock<TagId> =
+    std::sync::LazyLock::new(|| type_tags::id("inverted_healing_and_harm").expect("the tag inverted_healing_and_harm"));
 /// The effects of the players (they are not entities): a list per player, read at the tick it is asked (an effect has its end; nothing ticks).
 /// The periodic damage and the speed of a player are the player's own system's; here the reading (a witch's choice, the sight a creature has
 /// of an invisible player, the hunger a husk gives) and the writing.
 #[derive(Resource, Default)]
 pub struct PlayerEffects(pub std::collections::HashMap<u32, Vec<(Kind, i32, u64)>>);
 pub fn add_player(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i32) {
+    add_player_flagged(w, id, kind, amp, ticks, 0);
+}
+/// `add_player` with the `HIDDEN` and `AMBIENT` flags; they are kept in `PlayerEffectFlags`, only where one is set.
+pub fn add_player_flagged(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i32, flags: u8) {
     let now = w.resource::<Clock>().0;
     let ends = now + ticks.max(0) as u64;
     // Born at the first effect of a player (a resource registered at the world's creation costs `arbitrate` even when nothing reads it).
     let mut res = w.get_resource_or_insert_with(PlayerEffects::default);
     let list = res.0.entry(id).or_default();
     list.retain(|x| x.2 > now);
-    match list.iter().position(|x| x.0 == kind) {
-        Some(i) if amp > list[i].1 || amp == list[i].1 && ends > list[i].2 => list[i] = (kind, amp, ends),
-        Some(_) => {}
-        None => list.push((kind, amp, ends)),
+    let replaced = match list.iter().position(|x| x.0 == kind) {
+        Some(i) if amp > list[i].1 || amp == list[i].1 && ends > list[i].2 => {
+            list[i] = (kind, amp, ends);
+            true
+        }
+        Some(_) => false,
+        None => {
+            list.push((kind, amp, ends));
+            true
+        }
+    };
+    drop(res);
+    if replaced {
+        if flags == 0 {
+            if let Some(mut f) = w.get_resource_mut::<PlayerEffectFlags>() {
+                f.0.remove(&(id, kind as u8));
+            }
+        } else {
+            w.get_resource_or_insert_with(PlayerEffectFlags::default).0.insert((id, kind as u8), flags);
+        }
     }
 }
+/// The flags of the players' effects, by (player, kind): only the effects that have one.
+#[derive(Resource, Default)]
+pub struct PlayerEffectFlags(pub std::collections::HashMap<(u32, u8), u8>);
 pub fn player_has(w: &World, id: u32, kind: Kind) -> bool {
     let now = w.resource::<Clock>().0;
     w.get_resource::<PlayerEffects>().is_some_and(|p| p.0.get(&id).is_some_and(|l| l.iter().any(|x| x.0 == kind && x.2 > now)))
@@ -313,6 +350,23 @@ pub enum Brew {
     /// `InstantenousMobEffect`: harming deals `6 * (level + 1)`, healing gives `4 * (level + 1)`, scaled by the nearness.
     Harm(i32),
     Heal(i32),
+}
+/// A thrown potion's id (`PotionType` key): its brews are `POTIONS`' when it splashes (`OnHit::Potion`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PotionId(pub &'static str);
+/// The base potions (level I, `Potions`): id and brews. Slowness 1 800 ticks, poison 900, weakness 1 800, harming instant.
+pub const POTIONS: &[(&str, &[Brew])] = &[
+    ("minecraft:harming", &[Brew::Harm(0)]),
+    ("minecraft:slowness", &[Brew::Timed(Kind::Slowness, 0, 1800)]),
+    ("minecraft:poison", &[Brew::Timed(Kind::Poison, 0, 900)]),
+    ("minecraft:weakness", &[Brew::Timed(Kind::Weakness, 0, 1800)]),
+];
+pub fn potion_brews(id: &str) -> Option<&'static [Brew]> {
+    POTIONS.iter().find(|(n, _)| *n == id).map(|(_, b)| *b)
+}
+/// The `PotionId` of a potion name the table knows.
+pub fn potion_id(name: &str) -> Option<PotionId> {
+    POTIONS.iter().find(|(n, _)| *n == name).map(|(n, _)| PotionId(*n))
 }
 /// `ThrownSplashPotion.onHit` / `applySplash`: the creatures within 4 blocks (2 up and down) of `at` and nearer than 4 take the brews, scaled
 /// by `1 - distance / 4` (the creature hit itself takes them whole); a timed effect lasts `(int)(scale * ticks * 0.75 + 0.5)`.
@@ -342,10 +396,10 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
                     }
                 }
                 Brew::Harm(amp) | Brew::Heal(amp) => {
-                    let undead = w.get::<Undead>(c).is_some();
+                    let undead = type_tags::has(w, *INVERTED_HEALING_AND_HARM, c);
                     let harms = matches!(brew, Brew::Harm(_)) != undead;
                     let base = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
-                    let amount = (scale * f64::from(base * (amp + 1)) + 0.5).floor() as f32;
+                    let amount = (scale * f64::from(base.wrapping_shl(amp as u32)) + 0.5).floor() as f32;
                     if harms {
                         match owner {
                             Some(crate::targeting::Who::Entity(o)) => w.resource_mut::<DamageQueue>().add_by_entity(c, amount, (at.x, at.z), o),

@@ -1,4 +1,4 @@
-//! `Interaction` : boîte cliquable, passive (`Interact` porte la boîte et la réponse).
+//! `Interaction` : boîte cliquable, passive. Données : `passive::Interact` (boîte, réponse, dernières attaque et utilisation, écrites par `interaction::{attack, click}`).
 use crate::behaviours::Cap;
 use crate::species::Def;
 

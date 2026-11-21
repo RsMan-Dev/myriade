@@ -21,6 +21,8 @@ pub enum HostEvent {
     ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
     /// An area effect cloud appeared (`radius`, `duration` in ticks).
     Cloud { at: [f64; 3], radius: f32, duration: i32 },
+    /// A display's data changed: the host resends it to the players tracking it.
+    DisplayUpdate { entity: bevy_ecs::entity::Entity },
     /// A world event (`LevelEvent`: sound and particle codes played by the client).
     LevelEvent { event: i32, at: [i32; 3], data: i32 },
     /// A game event (vibration source), by name.
@@ -29,6 +31,12 @@ pub enum HostEvent {
     Xp { at: [f64; 3], amount: u32 },
     /// A player's ender pearl landed: teleport the player to `to`, hurt it by `damage` (a fall), and spawn an endermite where it stood if `endermite`.
     Pearl { player: u32, to: [f64; 3], damage: f32, endermite: bool },
+    /// A hook reeled in a bite: the host rolls the loot (treasure in open water, `luck` added) and the `xp` orbs for `owner`.
+    FishingCatch { owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32 },
+    /// A creature pulled by a hook: its velocity is added by the host.
+    PullEntity { entity: bevy_ecs::entity::Entity, velocity: [f64; 3] },
+    /// A hook taken back: `damage` to the rod of `owner`.
+    HookRetrieved { owner: u32, damage: i32 },
 }
 
 #[derive(Default)]
@@ -71,6 +79,9 @@ impl HostOut {
     pub fn cloud(&mut self, at: [f64; 3], radius: f32, duration: i32) {
         self.out.push(HostEvent::Cloud { at, radius, duration });
     }
+    pub fn display_update(&mut self, entity: bevy_ecs::entity::Entity) {
+        self.out.push(HostEvent::DisplayUpdate { entity });
+    }
     pub fn level_event(&mut self, event: i32, at: [i32; 3], data: i32) {
         self.out.push(HostEvent::LevelEvent { event, at, data });
     }
@@ -82,6 +93,15 @@ impl HostOut {
     }
     pub fn xp(&mut self, at: [f64; 3], amount: u32) {
         self.out.push(HostEvent::Xp { at, amount });
+    }
+    pub fn fishing_catch(&mut self, owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32) {
+        self.out.push(HostEvent::FishingCatch { owner, at, on_ground, open_water, luck, xp });
+    }
+    pub fn pull_entity(&mut self, entity: bevy_ecs::entity::Entity, velocity: [f64; 3]) {
+        self.out.push(HostEvent::PullEntity { entity, velocity });
+    }
+    pub fn hook_retrieved(&mut self, owner: u32, damage: i32) {
+        self.out.push(HostEvent::HookRetrieved { owner, damage });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

@@ -1,4 +1,4 @@
-//! `Display.ItemDisplay` : passif, sans but ni tick (le serveur ne fait rien à chaque tick).
+//! `Display.ItemDisplay` : passif, sans but ni tick. Données : `display::{Transform, Shown, Stack}`.
 use crate::behaviours::Cap;
 use crate::species::Def;
 

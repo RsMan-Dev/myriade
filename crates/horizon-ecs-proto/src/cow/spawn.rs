@@ -131,9 +131,6 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
-        if sp.undead {
-            e.insert(crate::effects::Undead);
-        }
     }
     if has(crate::behaviours::Cap::Locomotion) {
         e.insert(locomotion_bundle(sp, yaw));
@@ -215,7 +212,9 @@ pub fn schedule() -> Schedule {
     crate::firework::register(&mut s);
     crate::trident::register(&mut s);
     crate::falling_block::register(&mut s);
+    crate::stand::register(&mut s);
     crate::eye::register(&mut s);
+    crate::fishing_hook::register(&mut s);
     crate::poi::register(&mut s);
     crate::block_watch::register(&mut s);
     crate::tame::register(&mut s);

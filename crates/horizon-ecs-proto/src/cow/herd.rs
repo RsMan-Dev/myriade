@@ -59,6 +59,13 @@ impl Herd {
         level.mw = Mw(w);
         *self.world.resource_mut::<Level>() = level;
     }
+    /// Rain or none (`MobWorld.raining`, the weather the fishing hook reads); the world is the same one, read again.
+    pub fn set_raining(&mut self, raining: bool) {
+        let mut level = *self.world.resource::<Level>();
+        let w: &'static MobWorld<'static> = Box::leak(Box::new(MobWorld { raining, ..level.mw.0.clone() }));
+        level.mw = Mw(w);
+        *self.world.resource_mut::<Level>() = level;
+    }
     /// Turns the natural spawning on, with the spawn lists of `biome` (the game's data) and the seed of its random.
     pub fn enable_spawning(&mut self, biome: &str, seed: i64) {
         let mw = self.world.resource::<Level>().mw.0;
@@ -98,6 +105,7 @@ impl Herd {
         world.insert_resource(level);
         let _ = species;
         world.insert_resource(species_table());
+        world.insert_resource(crate::type_tags::table());
         world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());

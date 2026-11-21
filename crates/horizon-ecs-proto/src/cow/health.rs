@@ -356,6 +356,12 @@ impl Immune {
     }
 }
 
+/// A receiver that takes the environment's fire by its own rule (`ArmorStand.hurtServer` for `on_fire` and `in_fire`): the hit is handed
+/// to it instead of the generic health. Only the entities that carry it pay the lookup, and only for a fire hit.
+#[derive(Component, Clone, Copy)]
+#[component(storage = "SparseSet")]
+pub struct Intake(pub fn(&mut World, Entity, Cause));
+
 /// `LivingEntity.hurtServer` for the queued hits: within 10 ticks of a hurt only a larger hit counts, by the
 /// difference; a cow at 0 health dies (leaves the index and the world). The effects `Mob` attaches to a hit that goes
 /// through are applied here, in the same path (read in `mobs.rs` `hurt_server`): the knockback of an entity's hit
@@ -376,12 +382,20 @@ pub(crate) fn apply_damage(
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
     mut events: ResMut<crate::goals::Events>,
+    intakes: Query<&Intake>,
     mut commands: Commands,
 ) {
     // The causes of the previous step were read by the goals (they run after this system in the chain).
     causes.0.clear();
     for hit in std::mem::take(&mut queue.0) {
         let e = hit.target;
+        if matches!(hit.cause, Cause::OnFire | Cause::InFire) {
+            if let Ok(&Intake(take)) = intakes.get(e) {
+                let cause = hit.cause;
+                commands.queue(move |w: &mut World| take(w, e, cause));
+                continue;
+            }
+        }
         let Ok((mut h, mut hurt, cell, pos, mut v, c, rng, resist, immune, armor, sid, spiky)) = q.get_mut(e) else {
             continue;
         };

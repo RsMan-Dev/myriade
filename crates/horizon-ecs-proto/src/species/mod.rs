@@ -114,6 +114,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &creeper::DEF,
     &endermite::DEF, &ender_dragon::DEF, &end_crystal::DEF, &dragon_fireball::DEF,
     &enderman::DEF,
+    &fishing_bobber::DEF,
     &silverfish::DEF,
     &piglin_brute::DEF,
     &panda::DEF,
@@ -198,6 +199,7 @@ pub static BUILTIN: &[&Def] = &[&cow::DEF, &pig::DEF, &zombie::DEF, &sheep::DEF,
     &happy_ghast::DEF,
     &piglin::DEF,
     &shulker::DEF,
+    &shulker_bullet::DEF,
     &sulfur_cube::DEF,
     &villager::DEF,
     &warden::DEF,
@@ -773,6 +775,7 @@ mod tests {
         ("minecraft:tnt", &[]),
         ("minecraft:egg", &[]),
         ("minecraft:ender_pearl", &[]),
+        ("minecraft:fishing_bobber", &[]),
         ("minecraft:experience_bottle", &[]),
         ("minecraft:wind_charge", &[]),
         ("minecraft:falling_block", &[]),
@@ -861,10 +864,12 @@ pub mod tnt;
 pub mod falling_block;
 pub mod egg;
 pub mod ender_pearl;
+pub mod fishing_bobber;
 pub mod experience_bottle;
 pub mod wind_charge;
 pub mod piglin;
 pub mod shulker;
+pub mod shulker_bullet;
 pub mod sulfur_cube;
 pub mod villager;
 pub mod warden;

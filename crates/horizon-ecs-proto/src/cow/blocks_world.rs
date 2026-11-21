@@ -188,6 +188,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
     }
     let _ = TYPES.set(types);
     let _ = TABLE.set(table.clone());
+    crate::type_tags::install(&table);
     let species = *table.iter().find(|s| s.name == chosen).expect("a known species");
     let _ = SPECIES.set(species);
     (Level { mw: Mw(mw), blocks: Blocks(blocks_ptr), occ: Box::leak(Box::default()), half }, species, chosen_kind.expect("a known species"))
