@@ -70,7 +70,7 @@ fn a_wither_skull_without_owner_hurts_by_5_and_withers_the_creature() {
     let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
     h.tick();
     let before = health(&h, cow);
-    let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
+    let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
     for _ in 0..40 {
         h.tick();
         if h.world.get_entity(e).is_err() {
@@ -194,7 +194,7 @@ fn a_skull_that_does_not_hurt_does_not_wither() {
     let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
     h.tick();
     let shoot = |h: &mut Herd| {
-        let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
+        let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
         for _ in 0..40 {
             h.tick();
             if h.world.get_entity(e).is_err() {

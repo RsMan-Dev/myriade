@@ -137,8 +137,9 @@ fn the_bullet_homes_on_the_player_tick_by_tick_as_the_mob_s_does() {
         let from = r.events.len();
         r.step(Some(&view));
         h.tick();
-        mob = r.events.drain(from..).find_map(|e| match e {
-            MobEvent::Projectile(p) => Some(p),
+        // Read in place: `apply_block_events` counts the events it has applied, and a drain would take some of them away.
+        mob = r.events[from..].iter().find_map(|e| match e {
+            MobEvent::Projectile(p) => Some(p.clone()),
             _ => None,
         });
         ecs = h.world.query::<(Entity, &horizon_ecs_proto::projectile::Projectile)>().iter(&h.world).map(|x| x.0).next();

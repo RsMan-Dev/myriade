@@ -71,7 +71,9 @@ fn modes_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
             (en.module.equip)(w, e, crate::behaviours::Inst { slot: 0, nth: 0 }, en.params);
         }
         // The first mode is the ground's when the species has one, else the first it declares.
-        let first = if m.has(Medium::Ground) { Medium::Ground } else { m.0[0].0 };
+        // A species with no mode (a block, a stand) has nothing to mark.
+        let Some(&(first_declared, _)) = m.0.first() else { return };
+        let first = if m.has(Medium::Ground) { Medium::Ground } else { first_declared };
         set_marker(w, e, first);
     });
 }

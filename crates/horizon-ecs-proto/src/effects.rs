@@ -352,7 +352,7 @@ pub fn player_has(w: &World, id: u32, kind: Kind) -> bool {
 pub enum Brew {
     /// A timed effect of this level and length (before the 0.75 and the nearness of a splash).
     Timed(Kind, i32, i32),
-    /// `InstantenousMobEffect`: harming deals `6 * (level + 1)`, healing gives `4 * (level + 1)`, scaled by the nearness.
+    /// `InstantenousMobEffect`: harming deals `6 << level`, healing gives `4 << level` (the jar shifts, it does not multiply), scaled by the nearness.
     Harm(i32),
     Heal(i32),
 }

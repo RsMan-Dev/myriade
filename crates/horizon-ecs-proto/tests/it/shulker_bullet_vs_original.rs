@@ -40,7 +40,7 @@ fn a_bullet_that_hits_a_creature_plays_its_hurt_and_is_gone() {
     h.tick();
     let before = health(&h, cow);
     let flight = Flight { bullet: true, damage: Damage::Fixed(4.0), ..Flight::SNOWBALL };
-    let e = launch(&mut h.world, flight, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.4), None);
+    let e = launch(&mut h.world, flight, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.4), None);
     let mut out = Vec::new();
     for _ in 0..40 {
         h.tick();
