@@ -4,6 +4,7 @@
 //! while the turtle is still in water.
 use super::turtle_state as ts;
 use super::*;
+use crate::rules::turtle_travel::{travel_aim, travel_point};
 use crate::spots::{Pick, pick_for};
 use crate::{cow::*, goals::*};
 
@@ -84,14 +85,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     let Some(wd) = w.get::<Wander>(e).copied() else { return false };
     let (span, vspan) = (wd.def.span, wd.def.vspan);
-    let (xt, mut yt, zt) = with_rng(w, e, |r| (r.next_int(span) - span / 2, r.next_int(vspan) - vspan / 2, r.next_int(span) - span / 2));
+    let (xt, yt, zt) = with_rng(w, e, |r| (r.next_int(span) - span / 2, r.next_int(vspan) - vspan / 2, r.next_int(span) - span / 2));
     let p = w.get::<Pos>(e).unwrap().0;
     let sea = w.resource::<Level>().mw.0.sea_level;
-    if f64::from(yt) + p.y > f64::from(sea - 1) {
-        yt = 0;
-    }
-    let point = [(f64::from(xt) + p.x).floor() as i32, (f64::from(yt) + p.y).floor() as i32, (f64::from(zt) + p.z).floor() as i32];
-    let to = [f64::from(point[0]) + 0.5, f64::from(point[1]), f64::from(point[2]) + 0.5];
+    let point = travel_point(p, [xt, yt, zt], sea);
+    let to = travel_aim(point);
     let tenth = f64::from((std::f64::consts::PI / 10.0) as f32);
     let half = f64::from(std::f32::consts::FRAC_PI_2);
     let leg = match pick_for(w, e, Pick::DefaultTowards { h: 16, v: 3, to, max_rad: tenth }) {

@@ -7,6 +7,7 @@ use crate::cow::*;
 use crate::goals::{Events, Online, Player};
 use crate::hostile::PlayerState;
 use crate::projectile::{entity_hit, Projectile};
+use crate::rules::firework::{box_at, detonation_damage, exposure, glide_boost, hit_margin, is_sideways_stop, life_ticks, rise_motion};
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::arrows::clip_block_hit;
@@ -15,8 +16,6 @@ use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::random::{LegacyRandom, RandomSource};
 use std::collections::HashMap;
 
-/// The box of a rocket: 0.25 wide and high.
-const SIZE: f64 = 0.25;
 /// `FireworkRocketEntity.explode` broadcasts this entity status before it is discarded.
 const EXPLODE_EVENT: u8 = 17;
 
@@ -72,7 +71,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 pub fn launch(w: &mut World, s: Shot, random: &mut LegacyRandom) -> Entity {
     let drawn_x = random.triangle(0.0, 0.002297);
     let drawn_z = random.triangle(0.0, 0.002297);
-    let lifetime = 10 * (1 + i32::from(s.flight)) + random.next_int_bound(6).unwrap_or(0) + random.next_int_bound(7).unwrap_or(0);
+    let lifetime = life_ticks(s.flight, random.next_int_bound(6).unwrap_or(0), random.next_int_bound(7).unwrap_or(0));
     let (velocity, angled) = match s.angled {
         Some(v) => (v, true),
         None => (Vec3::new(drawn_x, 0.05, drawn_z), false),
@@ -93,24 +92,6 @@ pub fn lifetime_over(w: &mut World, e: Entity) {
     }
 }
 
-/// `Entity.move` box of a rocket at `at`.
-fn box_at(at: Vec3) -> Aabb {
-    let w = SIZE / 2.0;
-    Aabb::new(Vec3::new(at.x - w, at.y, at.z - w), Vec3::new(at.x + w, at.y + SIZE, at.z + w))
-}
-/// `ServerPlayer.travel`'s boost of a glider: the holder's velocity, plus its look (0.1), plus the look at 1.5 minus the velocity,
-/// half (`FireworkRocketEntity.tick`, attached to a gliding player).
-fn glide_boost(v: Vec3, look: Vec3) -> Vec3 {
-    let axis = |m: f64, l: f64| m + l * 0.1 + (l * 1.5 - m) * 0.5;
-    Vec3::new(axis(v.x, look.x), axis(v.y, look.y), axis(v.z, look.z))
-}
-/// `dealExplosionDamage`'s amount for a target at `to`: `damage * sqrt((5 - distance) / 5)`, the distance in floats.
-fn blast_damage(damage: f32, from: Vec3, to: Vec3) -> f32 {
-    let (x, y, z) = ((from.x - to.x) as f32, (from.y - to.y) as f32, (from.z - to.z) as f32);
-    let distance = f64::from(x * x + y * y + z * z).sqrt() as f32;
-    damage * ((5.0 - f64::from(distance)) / 5.0).sqrt() as f32
-}
-
 /// The first creature or player the path from `from` to `motion` meets, before the block it stops at (`ProjectileUtil`'s entity
 /// hit, the box grown by the rocket's age), and whether a block stops it. The owner is spared until it has left it.
 #[allow(clippy::too_many_arguments)]
@@ -127,7 +108,7 @@ fn struck(
     let mw = level.mw.0;
     let block = clip_block_hit(mw.world, mw.facts, mw.collision, from, motion);
     let stop = block.map_or(Vec3::new(from.x + motion.x, from.y + motion.y, from.z + motion.z), |b| b.0);
-    let margin = f64::from(((age as i32 - 2) as f32 / 20.0).clamp(0.0, 0.3));
+    let margin = hit_margin(age);
     let area = box_at(from).expand_towards(motion).inflate(Vec3::new(1.0, 1.0, 1.0));
     let mut best: Option<(Who, f64)> = None;
     let mut consider = |who: Who, b: Aabb| {
@@ -167,7 +148,7 @@ fn detonate(
     holder: Option<u32>,
     explosions: u8,
 ) {
-    let damage = 5.0 + f32::from(explosions) * 2.0;
+    let damage = detonation_damage(explosions);
     let from = (at.x, at.z);
     if let Some(id) = holder {
         ps.hurt(now, id, damage, from, owner);
@@ -179,7 +160,7 @@ fn detonate(
         let feet = b.0.center();
         let feet = Vec3::new(feet.x, b.0.min_position().y, feet.z);
         let height = b.0.max_position().y - b.0.min_position().y;
-        if let Some(amount) = exposure(level, at, feet, height, damage) {
+        if let Some(amount) = exposure(level.mw.0, at, feet, height, damage) {
             match owner {
                 Some(o) => dq.add_via(c, amount, from, o),
                 None => dq.add_from(c, amount, Cause::Entity, from),
@@ -195,24 +176,10 @@ fn detonate(
         let feet = Vec3::new(pl.x, pl.y, pl.z);
         let body = player_box(&pl);
         let height = body.max_position().y - body.min_position().y;
-        if let Some(amount) = exposure(level, at, feet, height, damage) {
+        if let Some(amount) = exposure(level.mw.0, at, feet, height, damage) {
             ps.hurt(now, pl.id, amount, from, owner);
         }
     }
-}
-/// The blast's reach to a target with its feet at `feet`: within 5 blocks, and seen from the blast at its feet or its middle
-/// (`ClipContext` collider, no fluids).
-fn exposure(level: &Level, from: Vec3, feet: Vec3, height: f64, damage: f32) -> Option<f32> {
-    let d2 = (feet.x - from.x).powi(2) + (feet.y - from.y).powi(2) + (feet.z - from.z).powi(2);
-    if d2 > 25.0 {
-        return None;
-    }
-    let mw = level.mw.0;
-    let sees = (0..2).any(|step| {
-        let to = Vec3::new(feet.x, feet.y + height * 0.5 * f64::from(step), feet.z);
-        clip_block_hit(mw.world, mw.facts, mw.collision, from, Vec3::new(to.x - from.x, to.y - from.y, to.z - from.z)).is_none()
-    });
-    sees.then(|| blast_damage(damage, from, feet))
 }
 
 /// One tick of every rocket: the sound at its first tick, its deadline, its holder's boost, its speed-up and rise, its move, and
@@ -281,14 +248,12 @@ pub fn fly_rockets(
             let motion = if r.angled {
                 vel.0
             } else {
-                let f = if r.horizontal { 1.0 } else { 1.15 };
-                Vec3::new(vel.0.x * f, vel.0.y + 0.04, vel.0.z * f)
+                rise_motion(vel.0, r.horizontal)
             };
             let (who, block) = struck(&level, &idx, &on, &creatures, pos.0, motion, p.age, skip);
             let scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
             let moved = level.occ.resolve(scene, box_at(pos.0), motion, 0.0, false).unwrap_or(Vec3::ZERO);
-            let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
-            r.horizontal = differs(motion.x, moved.x) || differs(motion.z, moved.z);
+            r.horizontal = is_sideways_stop(motion, moved);
             pos.0 = Vec3::new(pos.0.x + moved.x, pos.0.y + moved.y, pos.0.z + moved.z);
             (who, block, motion)
         };

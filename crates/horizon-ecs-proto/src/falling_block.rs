@@ -7,6 +7,7 @@
 //! pushes, the block entity's data, the build-height limit (the generic fall under the world removes an object that left it), the `cancelDrop` and `dropItem` flags (a drop is always made).
 use crate::cow::*;
 use crate::item::drop_item;
+use crate::rules::falling_block::{anvil_damage, anvil_steps, anvil_wear_chance, anvil_worn_name};
 use crate::tnt::SIZE;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
@@ -101,11 +102,11 @@ fn anvil_hurts(w: &mut World, e: Entity, b: &FallingBlock, state: BlockStateId) 
     let mw = crate::blocks::world_of(w);
     let name = mw.facts.get(state).name.to_string();
     let Some(kind) = name.strip_prefix("minecraft:").and_then(|n| n.strip_suffix("anvil")) else { return (state, b.drop.clone()) };
-    let steps = (b.fell - 1.0).ceil() as i32;
+    let steps = anvil_steps(b.fell);
     if steps < 0 {
         return (state, b.drop.clone());
     }
-    let amount = ((steps as f32 * 2.0).floor() as i32).min(40) as f32;
+    let amount = anvil_damage(steps);
     if amount > 0.0 {
         let (area, at) = (w.get::<Bounds>(e).map(|x| x.0), w.get::<Pos>(e).map(|p| p.0));
         if let (Some(area), Some(at)) = (area, at) {
@@ -115,14 +116,9 @@ fn anvil_hurts(w: &mut World, e: Entity, b: &FallingBlock, state: BlockStateId) 
             }
         }
         crate::projectile_more::ensure_rng(w);
-        let worn = w.resource_mut::<crate::projectile_more::ThrownRng>().0.next_float() < 0.05 + steps as f32 * 0.05;
+        let worn = w.resource_mut::<crate::projectile_more::ThrownRng>().0.next_float() < anvil_wear_chance(steps);
         if worn {
-            let next = match kind {
-                "" => Some("minecraft:chipped_anvil"),
-                "chipped_" => Some("minecraft:damaged_anvil"),
-                _ => None,
-            };
-            return match next.and_then(|n| crate::blocks::resolve(mw, n, &[])) {
+            return match anvil_worn_name(kind).and_then(|n| crate::blocks::resolve(mw, n, &[])) {
                 Some(s) => (s, b.drop.clone()),
                 None => (crate::blocks::resolve(mw, "minecraft:air", &[]).unwrap_or(state), None),
             };

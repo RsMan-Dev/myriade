@@ -3,6 +3,7 @@
 //! (`AVOID_TARGET`, read by `walk_away` and by the goals `.when(NOT_RETREATING)`). Woken by the damage event only (`Events.hurt_by_entity`), no polling.
 use super::*;
 use crate::brain::{self, behaviours::walk_away::AVOID_TARGET, MemValue};
+use crate::rules::retreat_on_hurt as rules;
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
 
@@ -51,7 +52,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 /// `HoglinAi.retreatFromNearestTarget`: keep away from the nearest of `who`, the avoid target and the attack target.
 pub fn retreat_from_nearest(w: &mut World, e: Entity, who: Who) {
     let Some(me) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let d2 = |p: horizon_core::geometry::Vec3| (p.x - me.x).powi(2) + (p.y - me.y).powi(2) + (p.z - me.z).powi(2);
+    let d2 = |p: horizon_core::geometry::Vec3| rules::dist_sq(p, me);
     let mut best = (who, targeting::info(w, who).map_or(f64::MAX, |i| d2(i.pos)));
     let attack = w.get::<Target>(e).map(|t| t.who);
     let avoid = match brain::get(w, e, &AVOID_TARGET) {

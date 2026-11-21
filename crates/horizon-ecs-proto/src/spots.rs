@@ -6,6 +6,7 @@
 //! `ai.rs` `walk_target_value`); the random stream is the entity's `Rng` (the same laws, not the same stream).
 use crate::IFloor as _;
 use crate::cow::{Level, NavParams, Rng};
+use crate::rules::spots::outside_home;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::MobWorld;
 
@@ -131,13 +132,7 @@ impl Rng {
 impl Spotter<'_> {
     /// `GoalUtils.isRestricted(mobRestricted(mob, h), mob, p)`: near its home, a position outside it is refused.
     fn restricted(&self, h: f64, p: [i32; 3]) -> bool {
-        let Some(home) = self.home else { return false };
-        let d = |i: usize, v: f64| f64::from(home.center[i]) + 0.5 - v;
-        let (x, y, z) = (d(0, self.pos[0]), d(1, self.pos[1]), d(2, self.pos[2]));
-        let reach = f64::from(home.radius) + h + 1.0;
-        let near = x * x + y * y + z * z < reach * reach;
-        let inside = (0..3).map(|i| (f64::from(home.center[i]) - f64::from(p[i])).powi(2)).sum::<f64>() < f64::from(home.radius.wrapping_mul(home.radius));
-        near && !inside
+        self.home.is_some_and(|home| outside_home(home.center, home.radius, self.pos, h, p))
     }
     fn malus_is_zero(&self, p: [i32; 3]) -> bool {
         let t = crate::pathsearch::path_type_static(self.mw, p[0], p[1], p[2]);
@@ -169,11 +164,7 @@ impl Spotter<'_> {
     }
     /// The offset is a block offset: it is rounded first, then added to the position and rounded again.
     fn toward(&self, d: [i32; 3]) -> [i32; 3] {
-        [
-            (f64::from(d[0]) + self.pos[0]).ifloor(),
-            (f64::from(d[1]) + self.pos[1]).ifloor(),
-            (f64::from(d[2]) + self.pos[2]).ifloor(),
-        ]
+        crate::rules::spots::toward(self.pos, d)
     }
     fn in_height(&self, p: [i32; 3]) -> bool {
         p[1] >= self.mw.world.bottom_y() && p[1] < self.mw.world.top_y()

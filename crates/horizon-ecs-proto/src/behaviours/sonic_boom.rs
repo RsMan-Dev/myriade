@@ -5,6 +5,7 @@
 use super::Inst;
 use super::act_phase::{self, ActPhase, Phase};
 use super::{params, Module};
+use crate::rules::sonic_boom as rules;
 use crate::{cow::*, goals::*, targeting::{self, Target, Who}};
 use bevy_ecs::prelude::*;
 
@@ -57,8 +58,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 
 fn within(w: &World, e: Entity, who: Who, c: &Params) -> bool {
     let (Some(i), Some(p)) = (targeting::info(w, who), w.get::<Pos>(e)) else { return false };
-    let (dx, dy, dz) = (i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z);
-    dx * dx + dz * dz < c.range_h * c.range_h && dy.abs() < c.range_v
+    rules::in_reach(i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z, c.range_h, c.range_v)
 }
 
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -111,12 +111,9 @@ fn boom(w: &mut World, e: Entity) {
     let p = w.get::<Pos>(e).unwrap().0;
     let src = [p.x, p.y + c.chest, p.z];
     let eye = [i.pos.x, i.eye, i.pos.z];
-    let d = [eye[0] - src[0], eye[1] - src[1], eye[2] - src[2]];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    let n = if len < 1.0e-5 { [0.0; 3] } else { d.map(|c| c / len) };
-    for k in 1..len.floor() as i32 + 7 {
-        let s = f64::from(k);
-        let at = [src[0] + n[0] * s, src[1] + n[1] * s, src[2] + n[2] * s];
+    let (n, len) = rules::beam(src, eye);
+    for k in 1..rules::beam_steps(len) {
+        let at = rules::beam_point(src, n, k);
         w.resource_mut::<Events>().host.particles("sonic_boom", at, [0.0; 3], 0.0, 0);
     }
     act_phase::sound(w, e, c.boom_sound, 3.0, 1.0);

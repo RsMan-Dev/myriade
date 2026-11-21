@@ -4,7 +4,9 @@
 //! choice among angles drawn in a shuffled order. The species give the angles, the maximum velocity and whether the arc is tested.
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::{trig, Aabb, Vec3};
+use crate::rules::jump_arc::launch_speed;
 use horizon_core::jmath;
+pub use crate::rules::jump_arc::shuffle;
 
 /// The jumper's box for the arc's collision test.
 #[derive(Clone, Copy)]
@@ -29,14 +31,7 @@ pub fn jump_vector(pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, ang
     let y = d.y;
     let g = gravity;
     let [sin2, cos_sq, sin, cos] = angle_trig(angle, angrad);
-    let v0sq = r2 * g / (r * sin2 - 2.0 * y * cos_sq);
-    if v0sq < 0.0 {
-        return None;
-    }
-    let v0 = v0sq.sqrt();
-    if v0 > f64::from(max_velocity) {
-        return None;
-    }
+    let (v0sq, v0) = launch_speed(r2, r, y, g, sin2, cos_sq, max_velocity)?;
     let (v0r, v0y) = (v0 * cos, v0 * sin);
     if let Some((mw, foot)) = collide {
         // `ceil(r / v0r) * 2` points along the arc, each step clear of blocks.
@@ -95,13 +90,4 @@ fn clear_transition(mw: &MobWorld, foot: Footprint, from: Vec3, to: Vec3) -> boo
 /// The first of `angles` (already in the order drawn: `shuffle` does it with the entity's stream) whose arc reaches the target.
 pub fn first_reaching(angles: &[i32], pos: Vec3, gravity: f64, target: Vec3, max_velocity: f32, collide: Option<(&MobWorld, Footprint)>) -> Option<Vec3> {
     angles.iter().find_map(|&a| jump_vector(pos, gravity, target, max_velocity, a, collide))
-}
-/// `Util.shuffle` of the angles (`RandomSource.nextInt(i)` for i from the length down to 2), `draw(i)` being that draw.
-pub fn shuffle<const N: usize>(angles: [i32; N], mut draw: impl FnMut(i32) -> i32) -> [i32; N] {
-    let mut angles = angles;
-    for i in (2..=N).rev() {
-        let j = draw(i as i32) as usize;
-        angles.swap(i - 1, j);
-    }
-    angles
 }

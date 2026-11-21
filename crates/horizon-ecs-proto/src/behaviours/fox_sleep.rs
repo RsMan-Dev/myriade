@@ -10,6 +10,7 @@ use crate::{
     hostile::{Daylight, PlayerState},
     spots::{walk_target_value, WalkValue},
 };
+use crate::rules::fox_sleep::{alarm_height, alarm_range, countdown_wait, creature_alarm_reach, player_alarm_reach};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::{Axis, Vec3};
 
@@ -62,7 +63,7 @@ fn arm(w: &mut World, e: Entity, _: Inst) {
 }
 /// The countdown of `asks` asks: the first ask that looks at the conditions comes at the `asks + 1`-th, two ticks each.
 fn countdown(w: &mut World, e: Entity, slot: u8, asks: i32) {
-    let wait = 2 * (asks + 1);
+    let wait = countdown_wait(asks);
     let due = now_of(w, e) + wait as u64;
     w.entity_mut(e).insert(SleepDue(due));
     crate::goals::arm(w, e, slot, wait);
@@ -128,7 +129,7 @@ pub(super) fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
     w.resource::<Index>().for_radius(p.x, p.z, 12.0, |c| near.push(c));
     let creature = near.into_iter().any(|c| {
         c != e
-            && w.get::<Pos>(c).is_some_and(|q| (q.0.y - p.y).abs() <= 6.0 && d2(p, q.0) <= 144.0)
+            && w.get::<Pos>(c).is_some_and(|q| alarm_height(q.0.y - p.y) && creature_alarm_reach(d2(p, q.0)))
             && w.get::<SpeciesId>(c) != w.get::<SpeciesId>(e)
     });
     if creature {
@@ -138,13 +139,13 @@ pub(super) fn alertable(w: &World, e: Entity, p: Vec3, _: &MobWorld) -> bool {
     w.resource::<Online>().for_near(p.x, p.z, 12.0, |q| players.push(q));
     let ps = w.resource::<PlayerState>();
     players.into_iter().any(|q| {
-        let range = (12.0 * ps.visibility(q.id)).max(2.0);
+        let range = alarm_range(ps.visibility(q.id));
         ps.alive(q.id)
             && !ps.creative(q.id)
             && !ps.spectator(q.id)
             && !ps.sneaking(q.id)
-            && (q.y - p.y).abs() <= 6.0
-            && d2(p, Vec3::new(q.x, q.y, q.z)) <= range * range
+            && alarm_height(q.y - p.y)
+            && player_alarm_reach(d2(p, Vec3::new(q.x, q.y, q.z)), range)
     })
 }
 /// `start`: the flags of the walk go, the navigation stops, the fox sleeps.

@@ -4,6 +4,7 @@
 //! end of a stay (and at the creation) the number of asks until the stay is picked is drawn ONCE (geometric of the chance, 1 tick at least)
 //! and one wheel deadline is armed for it. A stale stay deadline left by a stop is ignored (no ask).
 use super::*;
+use crate::rules::timed_idle::asks_from_uniform;
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -75,8 +76,7 @@ fn asks_until_picked(r: &mut Rng, chance: f64) -> i32 {
     if chance >= 1.0 {
         return 1;
     }
-    let u = r.next_f64().max(1.0e-12);
-    (1 + (u.ln() / (1.0 - chance.max(1.0e-6)).ln()).floor() as i64).min(4000) as i32
+    asks_from_uniform(r.next_f64(), chance)
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(s) = w.get::<Pause>(e).copied() else { return false };

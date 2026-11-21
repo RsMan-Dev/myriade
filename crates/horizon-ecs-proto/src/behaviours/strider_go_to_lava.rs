@@ -6,10 +6,10 @@
 //! path map (lava walkable): the walk stops at the shore.
 use super::*;
 use crate::move_to_block::MoveToBlock;
+use crate::rules::{spear_use::halved_use, strider_go_to_lava as rules};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_client_lib::mobs::data::PathComputationType;
-use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -44,9 +44,6 @@ pub static MODULE: Module = Module {
     requires: &[Cap::Body, Cap::Goals, Cap::Locomotion],
     ..Module::DEFAULT
 };
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     w.entity_mut(e).insert(Lava { block: MoveToBlock::new(p.speed, p.range, p.vertical), slot: inst.slot, blocked: false });
@@ -56,22 +53,19 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     crate::goals::arm(w, e, inst.slot, 1);
 }
 fn countdown(w: &mut World, e: Entity, slot: u8) {
-    let wait = with_rng(w, e, |r| reduced(200 + r.next_int(200)));
+    let wait = with_rng(w, e, |r| halved_use(200 + r.next_int(200), true));
     crate::goals::arm(w, e, slot, wait);
 }
 /// `StriderGoToLavaGoal.isValidTarget`: lava with room to stand above.
 fn lava_target(mw: &MobWorld, p: [i32; 3]) -> bool {
     mw.block_name(p[0], p[1], p[2]) == "minecraft:lava" && mw.data.pathfindable(mw.world.block(p[0], p[1] + 1, p[2]), PathComputationType::Land)
 }
-fn block_of(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if w.get::<FluidState>(e).is_some_and(|f| f.in_lava) {
         w.get_mut::<Lava>(e).unwrap().blocked = true;
         return false;
     }
-    let base = block_of(w.get::<Pos>(e).unwrap().0);
+    let base = rules::block_of(w.get::<Pos>(e).unwrap().0);
     let mw = w.resource::<Level>().mw.0;
     let mut block = w.get::<Lava>(e).unwrap().block.clone();
     let found = block.may_find(base, mw, |s| &*mw.facts.get(s).name == "minecraft:lava") && block.find_nearest(base, mw, lava_target);
@@ -88,7 +82,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let b = block.block;
     let speed = block.speed;
     w.get_mut::<Lava>(e).unwrap().block = block;
-    go_to_at(w, e, [f64::from(b[0]) + 0.5, f64::from(b[1] + 1), f64::from(b[2]) + 0.5], speed, 1);
+    go_to_at(w, e, rules::standing_point(b), speed, 1);
     w.entity_mut(e).insert(GoingToLava);
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
@@ -121,13 +115,11 @@ fn lava_run(level: Res<Level>, mut q: Query<(Entity, &Pos, &FluidState, &mut Lav
             reqs.0.push(Req::End(e, l.slot));
             continue;
         }
-        let c = [f64::from(b[0]) + 0.5, f64::from(b[1]) + 0.5, f64::from(b[2]) + 0.5];
-        let d2 = (pos.0.x - c[0]).powi(2) + (pos.0.y - c[1]).powi(2) + (pos.0.z - c[2]).powi(2);
-        if d2 >= 1.0 {
+        if rules::still_away(pos.0, b) {
             l.block.reached = false;
             l.block.try_ticks += 1;
             if l.block.try_ticks % 20 == 0 {
-                let at = [c[0], f64::from(b[1]), c[2]];
+                let at = rules::walk_point(b);
                 let speed = l.block.speed;
                 cmd.queue(move |w: &mut World| go_to_at(w, e, at, speed, 1));
             }

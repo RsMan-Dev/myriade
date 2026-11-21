@@ -14,7 +14,7 @@ use crate::goals::*;
 use crate::rules::{no_attrs, params, Rule};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::trig::Mth;
+use crate::rules::mount::{boost_factor, charged_jump, dash_push, dist_sq, drive_forward, repath_due, seat_point, temper_after};
 use horizon_core::geometry::Vec3;
 
 /// What the rider asks of its mount this tick (`Rider`: the steering, the look, the jump bar, the sprint, the stick).
@@ -31,11 +31,7 @@ pub struct RiderInput {
     /// The rider holds the mount's steering stick (carrot or fungus on a stick): a pig and a strider obey only then.
     pub steer: bool,
 }
-/// `Player.jumpRidingTicks` to the scale of the jump bar (`Player.getJumpRidingScale`): the host that counts the ticks of a held jump key
-/// writes `RiderInput.jump` with it.
-pub fn jump_bar(ticks: u32) -> f32 {
-    if ticks < 10 { ticks as f32 * 0.1 } else { 0.8 + 2.0 / (ticks - 9) as f32 * 0.1 }
-}
+pub use crate::rules::mount::jump_bar;
 /// How a mount takes its rider's input.
 #[derive(Clone, Copy, Debug)]
 pub enum Steer {
@@ -245,7 +241,7 @@ pub fn steering_creature(w: &World, mount: Entity) -> Option<Entity> {
 /// `AbstractHorse.modifyTemper`: added, then held between 0 and the highest.
 pub fn modify_temper(w: &mut World, e: Entity, amount: i32) {
     if let Some(mut m) = w.get_mut::<Mount>(e) {
-        m.temper = (m.temper + amount).clamp(0, m.max_temper);
+        m.temper = temper_after(m.temper, amount, m.max_temper);
     }
 }
 /// `ItemBasedSteering.boost`: the stick was used; false while a boost runs or when the mount has no stick drive. The duration is drawn
@@ -261,9 +257,7 @@ pub fn boost(w: &mut World, e: Entity) -> bool {
 }
 /// The seat of a rider: where the mount carries it (forward offset along the mount's yaw, a fraction of its height).
 fn seat_at(pos: Vec3, yaw: f32, body: &Body, offset: f32, fraction: f32) -> Vec3 {
-    let a = yaw.to_radians();
-    let (dx, dz) = (f64::from(-a.msin() * offset), f64::from(a.mcos() * offset));
-    Vec3::new(pos.x + dx, pos.y + f64::from(body.height * fraction), pos.z + dz)
+    seat_point(pos, yaw, body.height, offset, fraction)
 }
 /// A creature rider steers by the navigation: the mount goes to the rider's target (`riders::drive`): every 10 ticks or when its walk
 /// is over; a shooter within 8 blocks stops instead.
@@ -276,14 +270,14 @@ fn creature_steer(w: &mut World, mount: Entity) {
         return;
     }
     let Some(pos) = w.get::<Pos>(mount).map(|p| p.0) else { return };
-    let d2 = (info.pos.x - pos.x).powi(2) + (info.pos.y - pos.y).powi(2) + (info.pos.z - pos.z).powi(2);
+    let d2 = dist_sq(info.pos, pos);
     if m.rider_ranged && d2 < 64.0 {
         stop_nav(w, mount);
         return;
     }
     let idle = w.get::<Following>(mount).is_none() && w.get::<NeedsPath>(mount).is_none();
     let beat = now_of(w, mount) + w.get::<Uid>(mount).map_or(0, |u| u.0);
-    if idle || beat.is_multiple_of(10) {
+    if repath_due(idle, beat) {
         go_to_at(w, mount, [info.pos.x, info.pos.y, info.pos.z], 1.0, 0);
     }
 }
@@ -326,19 +320,12 @@ fn ridden_drive(
                 Steer::Charged => {
                     controlled = true;
                     yaw.0 = r.yaw;
-                    let forward = if r.forward <= 0.0 { r.forward * 0.25 } else { r.forward };
+                    let forward = drive_forward(r.forward);
                     d.speed = body.speed as f32;
                     d.xxa = r.strafe * 0.5;
                     d.zza = forward;
                     if c.on_ground && r.jump > 0.0 {
-                        let s = r.yaw.to_radians();
-                        let mut v = vel.0;
-                        v.y = f64::from(m.jump_strength * r.jump);
-                        if forward > 0.0 {
-                            v.x += f64::from(-0.4 * s.msin() * r.jump);
-                            v.z += f64::from(0.4 * s.mcos() * r.jump);
-                        }
-                        vel.0 = v;
+                        vel.0 = charged_jump(vel.0, r.yaw, m.jump_strength, r.jump, forward);
                         m.input.jump = 0.0;
                     }
                 }
@@ -351,7 +338,7 @@ fn ridden_drive(
                         if b.elapsed > b.total {
                             commands.entity(e).remove::<Boosted>();
                         } else {
-                            boost = 1.0 + boost_gain * (b.elapsed as f32 / b.total as f32 * std::f32::consts::PI).msin();
+                            boost = boost_factor(b.elapsed, b.total, boost_gain);
                         }
                     }
                     d.speed = (body.speed * factor) as f32 * boost;
@@ -375,18 +362,14 @@ fn ridden_drive(
                         let ready = now >= m.ready_at;
                         d.speed = body.speed as f32 + if r.sprint && ready { sprint_bonus } else { 0.0 };
                         d.xxa = r.strafe * 0.5;
-                        d.zza = if r.forward <= 0.0 { r.forward * 0.25 } else { r.forward };
+                        d.zza = drive_forward(r.forward);
                         if r.jump > 0.0 {
                             let used = if !ready {
                                 true
                             } else if !c.on_ground {
                                 false
                             } else {
-                                let a = yaw.0.to_radians();
-                                let (dx, dz, k) = (f64::from(-a.msin()), f64::from(a.mcos()), f64::from(r.jump));
-                                vel.0.x += dx * push * k * body.speed;
-                                vel.0.z += dz * push * k * body.speed;
-                                vel.0.y += lift * k * lift_scale;
+                                vel.0 = dash_push(vel.0, yaw.0, push, lift, lift_scale, body.speed, r.jump);
                                 m.ready_at = now + cooldown;
                                 true
                             };

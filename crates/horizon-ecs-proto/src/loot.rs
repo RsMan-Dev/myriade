@@ -5,7 +5,8 @@
 use crate::cow::*;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
-use horizon_core::random::{LegacyRandom, RandomSource};
+use crate::rules::loot::{death_seed, entity_table, xp_amount};
+use horizon_core::random::LegacyRandom;
 use horizon_world::loot::{EntityLootParams, LootData, LootEntity, PackOverlay};
 
 /// The loot tables of the world's resources (loaded once, from `HORIZON_TEST_RESOURCES` in the benches and tests).
@@ -58,8 +59,7 @@ pub fn roll(world: &mut World, kind: &str, on_fire: bool, baby: bool, seed: i64)
     if !tables(world) {
         return Vec::new();
     }
-    let (ns, path) = kind.split_once(':').unwrap_or(("minecraft", kind));
-    let table = format!("{ns}:entities/{path}");
+    let table = entity_table(kind);
     let mut this = LootEntity::new(kind);
     this.on_fire = on_fire;
     this.baby = baby;
@@ -121,7 +121,8 @@ pub fn on_death(world: &mut World, e: Entity) {
         }
     }
     out.extend(roll(world, kind, on_fire, baby, seed));
-    let mut r = LegacyRandom::new(seed ^ 0x2545_F491 ^ i64::from(world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32)));
+    let uid = world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32);
+    let mut r = LegacyRandom::new(death_seed(seed, uid));
     for stack in out {
         crate::item::spawn_at_location(world, stack, at, &mut r);
     }
@@ -129,7 +130,7 @@ pub fn on_death(world: &mut World, e: Entity) {
     crate::size::split_on_death(world, e);
     // The experience: not for a baby (`LivingEntity.shouldDropExperience`).
     if let Some(x) = world.get::<XpReward>(e).copied().filter(|_| !baby) {
-        let amount = x.min + r.next_int_bound(x.max - x.min + 1).unwrap_or(0);
-        crate::orb::award(world, at, amount.max(0) as u32, &mut r);
+        let amount = xp_amount(x.min, x.max, &mut r);
+        crate::orb::award(world, at, amount, &mut r);
     }
 }

@@ -7,6 +7,7 @@
 //! instant effects, absorption and health boost, the undead that poison does not hurt, the particles and the icons.
 use crate::cow::*;
 use crate::goals::Events;
+use crate::rules::effects as rule;
 use crate::type_tags;
 use bevy_ecs::prelude::*;
 
@@ -75,7 +76,7 @@ pub struct Invisible;
 pub const IMMUNE_FIRE: u32 = 8;
 
 fn period(kind: Kind, amp: i32) -> Option<i32> {
-    kind.base().map(|b| b.wrapping_shr(amp as u32).max(1))
+    kind.base().map(|b| rule::period(b, amp))
 }
 pub fn has(w: &World, e: Entity, kind: Kind) -> bool {
     w.get::<Effects>(e).is_some_and(|f| f.list.iter().any(|x| x.kind == kind))
@@ -91,8 +92,8 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     }
     let first = now_of(w, e) + 1;
     // `tickEffects` drops the effect at the end of its last tick, before the travel of that tick: it is gone from that tick on.
-    let ends = first + (ticks.max(1) - 1) as u64;
-    let next = period(kind, amp).map_or(u64::MAX, |p| first + (ticks.max(0) as u64) % p as u64);
+    let ends = rule::ends_at(first, ticks);
+    let next = period(kind, amp).map_or(u64::MAX, |p| rule::first_act(first, ticks, p));
     if w.get::<Effects>(e).is_none() {
         w.entity_mut(e).insert(Effects::default());
     }
@@ -101,7 +102,7 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     match f.list.iter().position(|x| x.kind == kind) {
         Some(i) => {
             let old = f.list[i];
-            if amp > old.amp || amp == old.amp && ends > old.ends {
+            if rule::replaces(amp, ends, old.amp, old.ends) {
                 f.list[i] = new;
             } else {
                 return false;
@@ -221,11 +222,10 @@ pub fn due(w: &mut World, e: Entity) {
     let mut acts: Vec<(Kind, u64)> = Vec::new();
     for x in &mut f.list {
         if let Some(p) = period(x.kind, x.amp) {
-            while x.next <= now && x.next <= x.ends {
-                if x.next == now {
-                    acts.push((x.kind, now));
-                }
-                x.next += p as u64;
+            let (next, hit) = rule::settle(x.next, x.ends, now, p as u64);
+            x.next = next;
+            if hit {
+                acts.push((x.kind, now));
             }
         }
     }
@@ -325,7 +325,7 @@ pub fn add_player_flagged(w: &mut World, id: u32, kind: Kind, amp: i32, ticks: i
     let list = res.0.entry(id).or_default();
     list.retain(|x| x.2 > now);
     let replaced = match list.iter().position(|x| x.0 == kind) {
-        Some(i) if amp > list[i].1 || amp == list[i].1 && ends > list[i].2 => {
+        Some(i) if rule::replaces(amp, ends, list[i].1, list[i].2) => {
             list[i] = (kind, amp, ends);
             true
         }
@@ -394,23 +394,24 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
             continue;
         }
         let d2 = (p.x - at.x).powi(2) + (p.y - at.y).powi(2) + (p.z - at.z).powi(2);
-        if d2 >= 16.0 && hit != Some(c) {
+        let direct = hit == Some(c);
+        if !rule::splash_reaches(d2, direct) {
             continue;
         }
-        let scale = if hit == Some(c) { 1.0 } else { 1.0 - d2.sqrt() / 4.0 };
+        let scale = rule::splash_scale(d2, direct);
         for &brew in brews {
             match brew {
                 Brew::Timed(kind, amp, ticks) => {
-                    let t = (scale * f64::from(ticks) * 0.75 + 0.5) as i32;
+                    let t = rule::timed_ticks(scale, ticks);
                     if t > 0 {
                         add(w, c, kind, amp, t);
                     }
                 }
                 Brew::Harm(amp) | Brew::Heal(amp) => {
                     let undead = type_tags::is::<InvertedHealingAndHarm>(w, c);
-                    let harms = matches!(brew, Brew::Harm(_)) != undead;
+                    let harms = rule::harms(matches!(brew, Brew::Harm(_)), undead);
                     let base: i32 = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
-                    let amount = (scale * f64::from(base.wrapping_shl(amp as u32)) + 0.5).floor() as f32;
+                    let amount = rule::harm_amount(scale, base, amp);
                     if harms {
                         match owner {
                             Some(crate::targeting::Who::Entity(o)) => w.resource_mut::<DamageQueue>().add_by_entity(c, amount, (at.x, at.z), o),

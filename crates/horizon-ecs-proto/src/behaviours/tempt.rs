@@ -1,6 +1,7 @@
 //! `TemptGoal`: a player within range holds a tempting item; the animal looks at the player and walks to it, stopping
 //! 2.5 blocks away. An animal can have several (the pig: the carrot on a stick, then its foods), one entry each.
 use super::*;
+use crate::rules::tempt::{calm_end, calm_left, calm_over, calm_resumed, in_reach, runs_this_tick, tempt_reach, within_stop};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -87,9 +88,9 @@ fn wake_on_player(clock: Res<Clock>, on: Res<Online>, idx: Res<Index>, cows: Que
         idx.for_radius(n.x, n.z, SCAN, |c| {
             let Ok((pos, ts)) = cows.get(c) else { return };
             for t in &ts.0 {
-                let reach = t.range.max(2.0).powi(2);
+                let reach = tempt_reach(t.range).powi(2);
                 let was = old.is_some_and(|o| o.holds_any(t.items) && d2(&o, pos.0) <= reach);
-                if clock.of(c) >= t.calm_until && n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
+                if calm_over(clock.of(c), t.calm_until) &&n.holds_any(t.items) && d2(&n, pos.0) <= reach && !was {
                     reqs.0.push(Req::Start(c, t.slot));
                 }
             }
@@ -108,7 +109,7 @@ fn wake_on_untempt(on: Res<Online>, idx: Res<Index>, cows: Query<(&Pos, &Tempts,
                 return;
             }
             for t in &ts.0 {
-                let reach = t.range.max(2.0).powi(2);
+                let reach = tempt_reach(t.range).powi(2);
                 let held = |p: &Player| p.holds_any(t.items) && d2(p, pos.0) <= reach;
                 if held(&o) && !new.is_some_and(|n| held(&n)) {
                     for m in [&crate::behaviours::ram::MODULE, &crate::behaviours::long_jump::MODULE] {
@@ -125,14 +126,14 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let now = crate::cow::now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let Some(t) = w.get::<Tempts>(e).and_then(|ts| ts.0.get(inst.nth as usize).copied()) else { return false };
-    if now < t.calm_until {
+    if !calm_over(now, t.calm_until) {
         return false;
     }
     let mut best: Option<(u32, f64)> = None;
-    let reach = t.range.max(2.0);
+    let reach = tempt_reach(t.range);
     w.resource::<Online>().for_near(pos.x, pos.z, reach, |p| {
         let d = d2(pos, Vec3::new(p.x, p.y, p.z));
-        if p.holds_any(t.items) && d <= reach * reach && best.is_none_or(|b| d < b.1) {
+        if p.holds_any(t.items) && in_reach(d, reach) &&best.is_none_or(|b| d < b.1) {
             best = Some((p.id, d));
         }
     });
@@ -146,9 +147,9 @@ pub fn tempted(w: &World, e: Entity) -> bool {
     let (Some(pos), Some(ts)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Tempts>(e)) else { return false };
     let mut found = false;
     for t in &ts.0 {
-        let reach = t.range.max(2.0);
+        let reach = tempt_reach(t.range);
         w.resource::<Online>().for_near(pos.x, pos.z, reach, |p| {
-            found |= p.holds_any(t.items) && (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= reach * reach;
+            found |= p.holds_any(t.items) && in_reach((p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2), reach);
         });
     }
     found
@@ -165,7 +166,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     // again; the other tempt goal of the animal has its own.
     let mut ts = w.get_mut::<Tempts>(e).unwrap();
     let calm = ts.0[inst.nth as usize].calm;
-    ts.0[inst.nth as usize].calm_until = now + calm;
+    ts.0[inst.nth as usize].calm_until = calm_end(now, calm);
     arm(w, e, inst.slot, calm as i32);
 }
 /// `TemptGoal.canUse` counts its `calmDown` down each time the selector asks, and the selector asks only a goal that
@@ -190,9 +191,9 @@ fn after_change(w: &mut World, e: Entity, c: Change) {
                 let free = g.replaceable(slot);
                 if free && paused_at != 0 {
                     let t = &mut w.get_mut::<Tempts>(e).unwrap().0[i];
-                    t.calm_until += now - t.paused_at;
+                    t.calm_until = calm_resumed(t.calm_until, now, t.paused_at);
                     t.paused_at = 0;
-                    let left = t.calm_until.saturating_sub(now);
+                    let left = calm_left(t.calm_until, now);
                     arm(w, e, slot, left as i32);
                 }
             }
@@ -212,18 +213,18 @@ fn tempt_run(
         // search every other tick, as the `Mob`.
         let phase = phase.map_or(0, |p| p.0);
         let now = clock.of(e);
-        if (now + phase) % 2 == 1 && now > 1 {
+        if !runs_this_tick(now, phase) {
             continue;
         }
         let Some(t) = ts.0.get_mut(inst.0 as usize) else { continue };
-        let max_d = t.range.max(2.0).powi(2);
+        let max_d = tempt_reach(t.range).powi(2);
         let p = on.get(t.player).filter(|p| p.holds_any(t.items) && d2(Vec3::new(p.x, p.y, p.z), pos.0) <= max_d);
         let Some(p) = p else {
             reqs.0.push(Req::End(e, t.slot));
             continue;
         };
         aim(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], Some(t.look_y));
-        if d2(Vec3::new(p.x, p.y, p.z), pos.0) < t.stop * t.stop {
+        if within_stop(d2(Vec3::new(p.x, p.y, p.z), pos.0), t.stop) {
             if following || asked || t.aim.0 != i32::MIN {
                 t.aim = (i32::MIN, 0);
                 cmd.queue(move |w: &mut World| stop_nav(w, e));

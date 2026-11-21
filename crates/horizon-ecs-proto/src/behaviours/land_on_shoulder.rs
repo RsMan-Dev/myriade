@@ -4,6 +4,7 @@
 //! here), the deadline of its age, the end of a sit order; while it runs, a system visits it each tick. Deviations: the pose of
 //! sitting (`!isInSittingPose`) is the order itself here; the age is the creature's own time (`Clock::of`), not the `Mob`'s counter.
 use super::*;
+use crate::rules::land_on_shoulder::arm_wait;
 use crate::{cow::*, goals::*, hostile::PlayerState, leash::Leash, tame, targeting::{player_box, Who}};
 
 #[derive(Clone, Copy, Debug)]
@@ -93,7 +94,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     w.resource_mut::<Requests>().0.push(Req::Start(e, inst.slot));
     let age = w.resource::<Clock>().of(e);
     if age <= s.age {
-        crate::goals::arm(w, e, inst.slot, (s.age + 1 - age) as i32);
+        crate::goals::arm(w, e, inst.slot, arm_wait(age, s.age));
     }
 }
 fn tick(w: &mut World) {

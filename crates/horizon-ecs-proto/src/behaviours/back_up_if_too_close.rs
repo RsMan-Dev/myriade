@@ -2,6 +2,7 @@
 //! target in sight within `range` blocks, the head looks at the target's eye, the body follows the head, and the animal strafes
 //! `strafe` forwards every tick (negative: backwards). No flags, so the crossbow goal keeps aiming meanwhile; its marker is what ticks it.
 use super::*;
+use crate::rules::back_up_if_too_close::too_close as in_sight_too_close;
 use crate::targeting::{self, Target};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -62,7 +63,7 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 }
 /// The target is in sight and closer than `range` blocks (`closer_than` of the target's feet, `Mob.sees`).
 fn too_close(p: &Params, pos: Vec3, t: &Target, i: &targeting::Info) -> bool {
-    t.seen && pos.distance_squared(i.pos) < p.range * p.range
+    in_sight_too_close(p.range, t.seen, pos.distance_squared(i.pos))
 }
 /// `canUse`: no walk to make, and the target too close.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

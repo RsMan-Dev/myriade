@@ -15,11 +15,7 @@ use horizon_client_lib::{
 };
 use horizon_core::random::XoroshiroRandom;
 use std::collections::BTreeMap;
-
-/// ASSUMED : `invulnerableTime` de vanilla après un coup, 10 ticks ; pas de constante nommée côté ECS (`cow.rs` le documente).
-const HURT_INVULNERABLE_TICKS: u64 = 10;
-/// `TradeWithPlayer` : le joueur à 4 blocs au plus (`distanceToSqr > 16.0` au jar, comme le `Mob`).
-const TRADE_RANGE2: f64 = 16.0;
+use crate::rules::trade_session::{in_trade_range, still_invulnerable};
 
 /// Le joueur qui commerce et le côté marchand de l'écran ; `since` est le tick d'ouverture.
 #[derive(Component)]
@@ -62,13 +58,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(player) = w.get::<Trading>(e).map(|t| t.player) else { return false };
     let Some(p) = w.resource::<Online>().get(player) else { return false };
     let now = now_of(w, e);
-    let hurt = w.get::<HurtAt>(e).is_some_and(|h| (h.at != 0 || h.last != 0.0) && h.at + HURT_INVULNERABLE_TICKS > now);
+    let hurt = w.get::<HurtAt>(e).is_some_and(|h| (h.at != 0 || h.last != 0.0) && still_invulnerable(h.at, now));
     let alive = w.get::<Health>(e).is_some_and(|h| h.0 > 0.0);
     let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     let pos = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
     let d2 = (p.x - pos[0]).powi(2) + (p.y - pos[1]).powi(2) + (p.z - pos[2]).powi(2);
-    alive && !hurt && !in_water && on_ground && d2 <= TRADE_RANGE2
+    alive && !hurt && !in_water && on_ground && in_trade_range(d2)
 }
 
 fn start(w: &mut World, e: Entity, _: Inst) {

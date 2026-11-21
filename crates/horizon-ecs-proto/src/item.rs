@@ -12,8 +12,11 @@ use crate::cow::*;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::entities::{merge_with_neighbours, ItemCells, ItemEntity};
 use horizon_client_lib::items::ItemStack;
+use crate::rules::item::{check_wait, expire_at, fits_stack, max_stack, merge_due, pickup_ready, throw_velocity};
 use horizon_core::geometry::{Aabb, Vec3};
 use std::collections::HashMap;
+pub use crate::rules::item::{LIFE, SIZE};
+pub(crate) use crate::rules::item::box_at;
 
 /// A stack on the ground.
 #[derive(Component, Clone)]
@@ -40,10 +43,6 @@ pub struct Item {
 fn item_added(mut world: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
     world.commands().queue(crate::behaviours::fox_search_for_items::wake_parked);
 }
-/// The size of the box of an item (`EntityType.ITEM`).
-pub const SIZE: f64 = 0.25;
-/// `ItemEntity.getDespawnTime`'s 6 000 ticks.
-pub const LIFE: u64 = 6000;
 /// An item that moves (`Moving` was put on it): the item system visits it, and only it, until it is at rest.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet", on_add = awake_added, on_remove = awake_removed)]
@@ -105,10 +104,6 @@ impl ItemIndex {
 fn cell_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
-pub(crate) fn box_at(p: Vec3) -> Aabb {
-    let h = SIZE / 2.0;
-    Aabb::new(Vec3::new(p.x - h, p.y, p.z - h), Vec3::new(p.x + h, p.y + SIZE, p.z + h))
-}
 fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let cell = world.get::<Item>(ctx.entity).map(|d| d.cell);
     if let Some(c) = cell {
@@ -131,7 +126,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
         ix.next_id
     };
     let cell = cell_of(at);
-    let ready = if pickup_delay == i64::from(i16::MAX) || pickup_delay == i64::from(u32::MAX) { None } else { Some(pickup_delay.max(0) as u64) };
+    let ready = pickup_ready(pickup_delay);
     let e = world
         .spawn((
             Pos(at),
@@ -173,18 +168,12 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     arm_check(world, e);
     e
 }
-fn max_stack(mw: &horizon_client_lib::mobs::MobWorld<'static>, s: &ItemStack) -> u32 {
-    mw.items.and_then(|i| i.get(&s.item)).map_or(64, |i| i.max_stack).max(1)
-}
-/// The wheel reaches 4 095 ticks: a longer wait is a deadline at its end, which waits on.
-const REACH: u64 = 4000;
 fn arm_expire(world: &mut World, e: Entity) {
     let now = now_of(world, e);
     let token = world.resource_mut::<ItemIndex>().token();
     let Some(mut it) = world.get_mut::<Item>(e) else { return };
     it.expire = token;
-    let at = it.age_base + LIFE;
-    arm_at(world, e, at.min(now + REACH).max(now + 1), Due::ItemExpire(token));
+    arm_at(world, e, expire_at(it.age_base, now), Due::ItemExpire(token));
 }
 /// Arms the end of life again after the item's age was changed from outside.
 pub fn rearm_expiry(world: &mut World, e: Entity) {
@@ -207,8 +196,7 @@ fn arm_check(world: &mut World, e: Entity) {
     let token = world.resource_mut::<ItemIndex>().token();
     let Some(mut it) = world.get_mut::<Item>(e) else { return };
     it.check = token;
-    let to40 = 40 - (now - it.born) % 40;
-    arm_at(world, e, now + to40, Due::ItemCheck(token));
+    arm_at(world, e, now + check_wait(it.born, now), Due::ItemCheck(token));
 }
 pub fn check_due(world: &mut World, e: Entity, token: u32) {
     let Some(it) = world.get::<Item>(e) else { return };
@@ -239,7 +227,7 @@ fn partners(world: &World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'s
         .filter(|&o| o != e)
         .filter(|&o| {
             let (Some(q), Some(it)) = (world.get::<Pos>(o), world.get::<Item>(o)) else { return false };
-            it.target == me.target && it.stack.count < max && it.stack.count + me.stack.count <= max && it.stack.same_item_same_components(&me.stack) && box_at(q.0).intersects(area)
+            it.target == me.target && fits_stack(it.stack.count, me.stack.count, max) && it.stack.same_item_same_components(&me.stack) && box_at(q.0).intersects(area)
         })
         .collect()
 }
@@ -270,7 +258,7 @@ fn item_moved(world: &mut World) {
             ix.add(e, cell);
             world.get_mut::<Item>(e).unwrap().cell = cell;
         }
-        if ticks % if changed { 2 } else { 40 } == 0 {
+        if merge_due(ticks, changed) {
             merge(world, e, mw);
         }
         if world.get::<Item>(e).is_some() && !pending {
@@ -309,7 +297,7 @@ fn merge(world: &mut World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'
             let mut it = world.get_mut::<Item>(o).unwrap();
             it.stack.count = c.stack.count;
             it.age_base = now.saturating_sub(c.age.max(0) as u64);
-            it.ready_at = if c.pickup_delay == i64::from(i16::MAX) || c.pickup_delay == i64::from(u32::MAX) { None } else { Some(now + c.pickup_delay.max(0) as u64) };
+            it.ready_at = pickup_ready(c.pickup_delay).map(|d| now + d);
             arm_expire(world, o);
         }
     }
@@ -352,8 +340,7 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
 /// `Entity.spawnAtLocation`: a stack at `at`, thrown as `ItemEntity`'s constructor throws it (`nextDouble() * 0.2 - 0.1` sideways, 0.2 up
 /// from `random`) and not to be picked up for 10 ticks.
 pub fn spawn_at_location(world: &mut World, stack: ItemStack, at: Vec3, random: &mut impl horizon_core::random::RandomSource) -> Entity {
-    let v = Vec3::new(random.next_double() * 0.2 - 0.1, 0.2, random.next_double() * 0.2 - 0.1);
-    drop_item(world, stack, at, v, 10)
+    drop_item(world, stack, at, throw_velocity(random), 10)
 }
 /// The items on the ground whose box meets `area` (`level.getEntitiesOfClass(ItemEntity.class, area)`, in the order they joined).
 pub fn items_in(world: &World, area: Aabb) -> Vec<Entity> {

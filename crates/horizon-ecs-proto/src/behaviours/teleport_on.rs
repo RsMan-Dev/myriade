@@ -9,6 +9,7 @@ use crate::behaviours::attached_face::{Attached, Sounds, set_peek};
 use crate::cow::*;
 use crate::goals::{Events, with_rng};
 use crate::projectile::STEPS;
+use crate::rules::teleport_on::{attachment_box, cell_of, copy_refused, eps, foot_of, is_hurt_below, spot_box};
 use crate::targeting;
 use horizon_core::geometry::{Aabb, Vec3};
 
@@ -50,17 +51,17 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
     let Some(cfg) = w.get::<Spot>(e).map(|s| s.cfg) else { return };
     let hp = w.get::<Health>(e).map_or(0.0, |h| h.0);
-    if hp < crate::cow::max_health(w, e) * cfg.hurt_below && with_rng(w, e, |r| r.next_int(cfg.hurt_one_in)) == 0 {
+    if is_hurt_below(hp, crate::cow::max_health(w, e), cfg.hurt_below) && with_rng(w, e, |r| r.next_int(cfg.hurt_one_in)) == 0 {
         teleport_somewhere(w, e);
     }
 }
 
 /// The first of the tries that finds a spot. False: none, or no body to move.
 pub fn teleport_somewhere(w: &mut World, e: Entity) -> bool {
-    let (Some(old), Some(cfg)) = (w.get::<Pos>(e).map(|p| cell(p.0)), w.get::<Spot>(e).map(|s| s.cfg)) else { return false };
+    let (Some(old), Some(cfg)) = (w.get::<Pos>(e).map(|p| cell_of(p.0)), w.get::<Spot>(e).map(|s| s.cfg)) else { return false };
     for _ in 0..cfg.tries {
         let t = [old[0] + offset(w, e, cfg.radius), old[1] + offset(w, e, cfg.radius), old[2] + offset(w, e, cfg.radius)];
-        let unit = Aabb::new(corner(t), corner(t).add_vector(Vec3::new(1.0, 1.0, 1.0)));
+        let unit = spot_box(t);
         if t[1] <= bottom_y(w) || !air(w, t) || !in_border(w, t) || !box_free(w, e, unit.deflate(eps())) {
             continue;
         }
@@ -78,7 +79,7 @@ pub fn teleport_somewhere(w: &mut World, e: Entity) -> bool {
         if cfg.eject {
             crate::mount::eject_passengers(w, e);
         }
-        crate::cow::teleport(w, e, Vec3::new(f64::from(t[0]) + 0.5, f64::from(t[1]), f64::from(t[2]) + 0.5));
+        crate::cow::teleport(w, e, foot_of(t));
         targeting::clear_target(w, e);
         return true;
     }
@@ -94,7 +95,7 @@ pub fn on_projectile_hit(w: &mut World, e: Entity) {
     }
     let area = old_box.inflate(Vec3::new(cfg.crowd_radius, cfg.crowd_radius, cfg.crowd_radius));
     let others = crate::cow::count_others_of(w, e, cfg.shells, area);
-    if with_level_rng(w, |r| r.next_float()) < others as f32 / cfg.crowd_divisor {
+    if copy_refused(with_level_rng(w, |r| r.next_float()), others as f32, cfg.crowd_divisor) {
         return;
     }
     let colour = w.get::<Attached>(e).map_or(0, |a| a.color);
@@ -103,7 +104,7 @@ pub fn on_projectile_hit(w: &mut World, e: Entity) {
 
 /// `canStayAt` for the spot the body is on, with its own face.
 pub fn can_stay(w: &World, e: Entity) -> bool {
-    let (Some(p), Some(face)) = (w.get::<Pos>(e).map(|p| cell(p.0)), w.get::<Attached>(e).map(|a| a.face)) else { return false };
+    let (Some(p), Some(face)) = (w.get::<Pos>(e).map(|p| cell_of(p.0)), w.get::<Attached>(e).map(|a| a.face)) else { return false };
     stays(w, e, p, face)
 }
 fn attachable(w: &World, e: Entity, p: [i32; 3]) -> Option<u8> {
@@ -111,33 +112,16 @@ fn attachable(w: &World, e: Entity, p: [i32; 3]) -> Option<u8> {
 }
 /// The spot holds the body: its cell is air (or a moving piston driven through it), the support is a full face, the open box is free.
 fn stays(w: &World, e: Entity, p: [i32; 3], face: u8) -> bool {
-    let own = w.get::<Pos>(e).map(|q| cell(q.0));
+    let own = w.get::<Pos>(e).map(|q| cell_of(q.0));
     if !air(w, p) && (Some(p) != own || !moving_piston(w, p)) {
         return false;
     }
     let s = STEPS[face as usize];
     let support = [p[0] + s[0], p[1] + s[1], p[2] + s[2]];
-    full_face(w, support, face ^ 1) && box_free(w, e, attachment_box(p, face, size_of(w, e)))
-}
-/// The box of a body of `size`, fully open from `face` of block `p`.
-fn attachment_box(p: [i32; 3], face: u8, size: f32) -> Aabb {
-    let s = STEPS[(face ^ 1) as usize].map(f64::from);
-    let size = f64::from(size);
-    let half = size * 0.5;
-    let base = Vec3::new(f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5);
-    Aabb::new(Vec3::new(-half, 0.0, -half), Vec3::new(half, size, half)).expand_towards(Vec3::new(s[0] * size, s[1] * size, s[2] * size)).move_by(base).deflate(eps())
-}
-fn eps() -> Vec3 {
-    Vec3::new(1.0e-6, 1.0e-6, 1.0e-6)
+    full_face(w, support, face ^ 1) && box_free(w, e, attachment_box(p, STEPS[(face ^ 1) as usize], size_of(w, e)))
 }
 fn offset(w: &mut World, e: Entity, radius: i32) -> i32 {
     with_rng(w, e, |r| r.next_int(2 * radius + 1) - radius)
-}
-fn cell(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
-fn corner(t: [i32; 3]) -> Vec3 {
-    Vec3::new(f64::from(t[0]), f64::from(t[1]), f64::from(t[2]))
 }
 fn size_of(w: &World, e: Entity) -> f32 {
     crate::cow::model_scale(w, e)

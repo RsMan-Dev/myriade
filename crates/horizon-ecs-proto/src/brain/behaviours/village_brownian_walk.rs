@@ -3,6 +3,7 @@ use crate::behaviours::block_reach::block_at;
 use crate::blocks;
 use crate::brain::*;
 use crate::goals::with_rng;
+use crate::rules::village_brownian_walk::neighbours;
 
 pub struct Params {
     pub speed: f32,
@@ -19,7 +20,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if mw.can_see_sky(here[0], here[1], here[2]) {
         return false;
     }
-    let mut poses: Vec<[i32; 3]> = (-1..=1).flat_map(|z| (-1..=1).flat_map(move |y| (-1..=1).map(move |x| [here[0] + x, here[1] + y, here[2] + z]))).collect();
+    let mut poses = neighbours(here);
     for i in (1..poses.len()).rev() {
         let j = with_rng(w, e, |r| r.next_int(i as i32 + 1)) as usize;
         poses.swap(i, j);

@@ -3,6 +3,7 @@
 //! under way is not interrupted: a new spot is asked only when the path is done. Generic: the memory is a parameter.
 use crate::brain::*;
 use crate::cow::Pos;
+use crate::rules::walk_away::is_nearer_than;
 use crate::spots::Pick;
 use crate::targeting::info;
 
@@ -42,8 +43,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
 
 fn near(w: &World, e: Entity, p: &Params) -> bool {
     let (Some(from), Some(me)) = (source(w, e, p), w.get::<Pos>(e)) else { return false };
-    let (dx, dy, dz) = (from[0] - me.0.x, from[1] - me.0.y, from[2] - me.0.z);
-    dx * dx + dy * dy + dz * dz < p.desired * p.desired
+    is_nearer_than(from, [me.0.x, me.0.y, me.0.z], p.desired)
 }
 
 fn source(w: &World, e: Entity, p: &Params) -> Option<[f64; 3]> {

@@ -4,8 +4,8 @@
 //! wakes the goal, and only the running ones are visited (a hop is asked when the previous path is over). Move flag.
 use super::door_interact::closer_to_center;
 use super::*;
+use crate::rules::wander_to_position::{floored, hop_toward};
 use crate::{cow::*, goals::*};
-use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -70,12 +70,9 @@ fn run(q: Query<(Entity, Has<Following>, Has<NeedsPath>), With<Wandering>>, mut 
             if !too_far(w, e, p, g.p.stop) {
                 w.resource_mut::<Requests>().0.push(Req::End(e, g.slot));
             } else if too_far(w, e, p, 10.0) {
-                let d = Vec3::new(p[0].floor() - own.x, p[1].floor() - own.y, p[2].floor() - own.z);
-                let len = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt().max(1e-9);
-                let at = [d.x / len * 10.0 + own.x, d.y / len * 10.0 + own.y, d.z / len * 10.0 + own.z];
-                go_to_at(w, e, at, g.p.speed, 1);
+                go_to_at(w, e, hop_toward(p, own, 10.0), g.p.speed, 1);
             } else {
-                go_to_at(w, e, [p[0].floor(), p[1].floor(), p[2].floor()], g.p.speed, 1);
+                go_to_at(w, e, floored(p), g.p.speed, 1);
             }
         });
     }

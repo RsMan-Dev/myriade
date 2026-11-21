@@ -6,6 +6,7 @@
 //! "within 4 blocks in height" is not a module yet).
 use super::*;
 use crate::projectile::{launch, Flight};
+use crate::rules::charged_shot::shot_velocity;
 use crate::targeting::{self, Target, TargetWatchers, Who};
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
@@ -83,8 +84,7 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let view = [-f64::from(yaw.msin()), f64::from(yaw.mcos())];
     let half = h * 0.5;
     let ty = (i.bounds.min_position().y + i.bounds.max_position().y) * 0.5;
-    let dir = Vec3::new(i.pos.x - (pos.x + view[0] * p.forward), ty - (0.5 + pos.y + half), i.pos.z - (pos.z + view[1] * p.forward));
-    let len = (dir.x * dir.x + dir.y * dir.y + dir.z * dir.z).sqrt().max(1.0e-9);
-    let v = Vec3::new(dir.x / len * 0.1, dir.y / len * 0.1, dir.z / len * 0.1);
+    let muzzle = Vec3::new(pos.x + view[0] * p.forward, 0.5 + pos.y + half, pos.z + view[1] * p.forward);
+    let v = shot_velocity(muzzle, Vec3::new(i.pos.x, ty, i.pos.z));
     launch(w, Flight::large_fireball(p.power), Vec3::new(pos.x + view[0] * p.forward, pos.y + half + 0.5, pos.z + view[1] * p.forward), v, Some(Who::Entity(e)));
 }

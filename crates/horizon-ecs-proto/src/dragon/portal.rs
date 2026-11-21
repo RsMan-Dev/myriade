@@ -2,6 +2,7 @@
 //! `dragon_killed`, D:3035): block writes asked through `blocks::set_state`, one batch at the act, nothing per tick.
 use crate::blocks::{set_state, world_of};
 use crate::dragon::fight::EndFight;
+use crate::rules::dragon_portal as rule;
 use bevy_ecs::prelude::*;
 
 /// `EndPodiumFeature` at `origin` (the portal level); `active` fills the rim with the portal.
@@ -9,19 +10,7 @@ pub fn place_podium(w: &mut World, origin: [i32; 3], active: bool) {
     for y in origin[1] - 1..=origin[1] + 32 {
         for z in origin[2] - 4..=origin[2] + 4 {
             for x in origin[0] - 4..=origin[0] + 4 {
-                let d = f64::from((x - origin[0]).pow(2) + (y - origin[1]).pow(2) + (z - origin[2]).pow(2));
-                let inside = d < 2.5 * 2.5;
-                if !(inside || d < 3.5 * 3.5) {
-                    continue;
-                }
-                let name = match y.cmp(&origin[1]) {
-                    std::cmp::Ordering::Less if inside => "minecraft:bedrock",
-                    std::cmp::Ordering::Less => "minecraft:end_stone",
-                    std::cmp::Ordering::Greater => "minecraft:air",
-                    _ if !inside => "minecraft:bedrock",
-                    _ if active => "minecraft:end_portal",
-                    _ => "minecraft:air",
-                };
+                let Some(name) = rule::podium_block(origin, [x, y, z], active) else { continue };
                 set_state(w, [x, y, z], name, &[]);
             }
         }
@@ -51,16 +40,7 @@ pub fn place_gateway(w: &mut World, origin: [i32; 3]) {
     for y in -2i32..=2 {
         for z in -1..=1 {
             for x in -1..=1 {
-                let (sx, sy, sz, end) = (x == 0, y == 0, z == 0, y.abs() == 2);
-                let name = if sx && sy && sz {
-                    "minecraft:end_gateway"
-                } else if sy {
-                    "minecraft:air"
-                } else if end && sx && sz || (sx || sz) && !end {
-                    "minecraft:bedrock"
-                } else {
-                    "minecraft:air"
-                };
+                let name = rule::gateway_block([x, y, z]);
                 set_state(w, [origin[0] + x, origin[1] + y, origin[2] + z], name, &[]);
             }
         }

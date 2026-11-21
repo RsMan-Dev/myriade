@@ -1,7 +1,8 @@
 //! Marche jusqu'au bloc d'une mémoire (`WalkToBlockMemory`, `walk_to_block_memory`, `villager_brain.rs:3629`) et s'arrête à `range`
 //! horizontal du centre. Sert au poste de travail, à la cloche, au lit.
-use super::block_reach::centre_dist_sq;
 use crate::brain::*;
+use crate::rules::reach_block as rules;
+pub use crate::rules::reach_block::block_centre;
 use crate::cow::{now_of, Pos};
 use crate::spots::Pick;
 use bevy_ecs::prelude::*;
@@ -21,10 +22,6 @@ pub static SINCE: MemKey = MemKey::new("horizon:reach_since", Shape::Int);
 /// The random step being walked to (`WalkTarget.point`): its end is not a failure.
 pub static STEP: MemKey = MemKey::new("horizon:reach_step", Shape::Block);
 
-/// Le centre du bloc `p` au sol.
-pub fn block_centre(p: [i32; 3]) -> [f64; 3] {
-    [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5]
-}
 fn block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
     match get(w, e, k)? {
         MemValue::Block(p) => Some(*p),
@@ -32,16 +29,10 @@ fn block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
     }
 }
 fn arrived(w: &World, e: Entity, p: [i32; 3], range: f64) -> bool {
-    w.get::<Pos>(e).is_some_and(|pos| {
-        let (dx, dz) = (f64::from(p[0]) + 0.5 - pos.0.x, f64::from(p[2]) + 0.5 - pos.0.z);
-        dx * dx + dz * dz <= range * range
-    })
+    w.get::<Pos>(e).is_some_and(|pos| rules::arrived(p, pos.0, range))
 }
 fn here(w: &World, e: Entity) -> Option<[i32; 3]> {
     w.get::<Pos>(e).map(|q| [q.0.x.floor() as i32, q.0.y.floor() as i32, q.0.z.floor() as i32])
-}
-fn manhattan(a: [i32; 3], b: [i32; 3]) -> i32 {
-    (0..3).map(|i| (a[i] - b[i]).abs()).sum()
 }
 /// `PathNavigation.moveTo` with the reach of a post: the path may end beside a block with a body (a composter, a bell).
 fn walk(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
@@ -68,7 +59,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         set(w, e, &SINCE, MemValue::Int(now), None);
         return false;
     }
-    if manhattan(b, h) <= p.too_far {
+    if rules::manhattan(b, h) <= p.too_far {
         erase(w, e, &STEP);
         walk(w, e, block_centre(b), p.speed);
         return true;
@@ -77,7 +68,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     for _ in 0..1000 {
         let Some(s) = pick(w, e, Pick::DefaultTowards { h: 15, v: 7, to, max_rad: f64::from(std::f32::consts::FRAC_PI_2) }) else { continue };
         let q = [s[0].floor() as i32, s[1].floor() as i32, s[2].floor() as i32];
-        if manhattan(q, h) <= p.too_far {
+        if rules::manhattan(q, h) <= p.too_far {
             set(w, e, &STEP, MemValue::Block(q), None);
             walk(w, e, s, p.speed);
             return true;
@@ -98,7 +89,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if !nav_done(w, e) {
         return true;
     }
-    let step_reached = block(w, e, &STEP).is_some_and(|s| w.get::<Pos>(e).is_some_and(|q| centre_dist_sq(s, q.0) < 9.0));
+    let step_reached = block(w, e, &STEP).is_some_and(|s| w.get::<Pos>(e).is_some_and(|q| rules::step_reached(s, q.0)));
     if !step_reached && !present(w, e, &SINCE) {
         set(w, e, &SINCE, MemValue::Int(now_of(w, e) as i64), None);
     }

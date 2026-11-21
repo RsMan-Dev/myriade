@@ -7,6 +7,7 @@ use bevy_ecs::{
     ptr::OwningPtr,
     query::QueryBuilder,
 };
+use crate::rules::nbt_tag::tag_names;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::{collections::HashMap, ptr::NonNull};
 
@@ -109,13 +110,7 @@ pub fn write(w: &World, e: Entity, out: &mut Compound) {
 /// Replaces the tags of the entity by the `Tags` list. False, and nothing changes, when the tag is not a list of strings. Names past
 /// `MAX_TAGS` are dropped, as `addTag` drops them.
 pub fn read(w: &mut World, e: Entity, tag: &Tag) -> bool {
-    let Tag::List(items) = tag else { return false };
-    let mut new = Vec::with_capacity(items.len());
-    for item in items {
-        let Tag::String(s) = item else { return false };
-        let Ok(s) = s.to_string() else { return false };
-        new.push(s);
-    }
+    let Some(new) = tag_names(tag) else { return false };
     for old in names(w, e).into_iter().map(str::to_owned).collect::<Vec<_>>() {
         remove(w, e, &old);
     }

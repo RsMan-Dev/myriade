@@ -3,6 +3,7 @@
 use crate::brain::*;
 use crate::cow::{Pos, SpeciesId};
 use crate::poi::PoiRegistry;
+use crate::rules::village_go_to_village::{section, to_village};
 use crate::spots::Pick;
 use crate::species::villager::{HOME, JOB_SITE, MEETING_POINT, POTENTIAL_JOB_SITE};
 use crate::targeting::Who;
@@ -15,12 +16,6 @@ pub struct Params {
 }
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:go_to_closest_village", mems: &[&WALK_TARGET], one_shot: true, can_start, ..Behaviour::DEFAULT };
-
-const VILLAGE_CAP: i32 = 7;
-
-fn section(p: [f64; 3]) -> [i32; 3] {
-    [p[0].floor() as i32 >> 4, p[1].floor() as i32 >> 4, p[2].floor() as i32 >> 4]
-}
 
 fn poi_block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
     match get(w, e, k) {
@@ -55,11 +50,6 @@ fn village_sections(w: &mut World, e: Entity, near: Option<[i32; 3]>) -> Vec<[i3
     out.sort_unstable();
     out.dedup();
     out
-}
-
-/// `sectionsToVillage`: the Chebyshev distance in sections to the nearest village section, at most 7.
-fn to_village(villages: &[[i32; 3]], s: [i32; 3]) -> i32 {
-    villages.iter().map(|v| (0..3).map(|i| (v[i] - s[i]).abs()).max().unwrap_or(0)).min().unwrap_or(VILLAGE_CAP).min(VILLAGE_CAP)
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {

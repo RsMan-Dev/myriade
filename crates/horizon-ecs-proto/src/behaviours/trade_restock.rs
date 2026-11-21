@@ -5,6 +5,7 @@ use super::schedule::Times;
 use super::trade_offers::{clock, Merchant};
 use super::*;
 use crate::goals::*;
+use crate::rules::trade_restock::{next_check_at, ticks_until};
 
 pub static MODULE: Module = Module {
     name: "trade_restock",
@@ -17,17 +18,10 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 
-/// Le prochain instant où `should_restock` peut changer de réponse : 2401 ticks après le dernier réapprovisionnement s'il y en a eu un
-/// aujourd'hui, sinon le changement de jour (12001) ; un échange réveille le marchand de lui-même.
-fn next_check(t: &horizon_client_lib::merchant::Trader, game: i64) -> i64 {
-    let at = t.last_restock + if t.restocks_today == 1 { 2401 } else { 12001 };
-    at.max(game + 1)
-}
-
 /// Ticks avant le prochain contrôle, selon l'état de réapprovisionnement du marchand.
 fn delay(w: &World, e: Entity) -> i32 {
     let (game, _) = clock(w, e);
-    w.get::<Merchant>(e).map_or(1, |m| (next_check(&m.trade, game) - game).clamp(1, i64::from(i32::MAX)) as i32)
+    w.get::<Merchant>(e).map_or(1, |m| ticks_until(next_check_at(m.trade.last_restock, m.trade.restocks_today, game), game))
 }
 
 fn arm(w: &mut World, e: Entity, inst: Inst) {

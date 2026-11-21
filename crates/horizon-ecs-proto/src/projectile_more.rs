@@ -3,10 +3,11 @@
 //! `Teleport`, `Orbs`) are applied by `ends`; the species and the numbers are the configuration of the flight.
 use crate::cow::{box_at, Body, Bounds, Contact, Pos};
 use crate::projectile::{Damage, Flight, OnHit, Order};
+use crate::rules::projectile_more::{bottle_xp, endermite_roll, hatch_count};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
-use horizon_core::random::{LegacyRandom, RandomSource};
+use horizon_core::random::LegacyRandom;
 
 /// The random source of the thrown items' ends (the level's, in vanilla).
 #[derive(Resource)]
@@ -40,11 +41,7 @@ pub fn ends(w: &mut World, hit: OnHit, at: Vec3, previous: Vec3, owner: Option<W
     ensure_rng(w);
     match hit {
         OnHit::Hatch { into, one_in, many_in, many, baby } => {
-            let (n, ) = {
-                let mut r = w.resource_mut::<ThrownRng>();
-                if r.0.next_int_bound(one_in).unwrap_or(1) != 0 { return }
-                (if r.0.next_int_bound(many_in).unwrap_or(1) == 0 { many } else { 1 },)
-            };
+            let Some(n) = hatch_count(&mut w.resource_mut::<ThrownRng>().0, one_in, many_in, many) else { return };
             let Some(sp) = crate::cow::species_table().0.into_iter().find(|s| s.name == into) else { return };
             for _ in 0..n {
                 let e = crate::cow::spawn_species(w, &sp, at.x, at.z, 1);
@@ -75,17 +72,14 @@ pub fn ends(w: &mut World, hit: OnHit, at: Vec3, previous: Vec3, owner: Option<W
                     }
                 }
                 Some(Who::Player(player)) => {
-                    let roll = w.resource_mut::<ThrownRng>().0.next_float() < endermite;
+                    let roll = endermite_roll(&mut w.resource_mut::<ThrownRng>().0, endermite);
                     w.resource_mut::<crate::goals::Events>().host.pearl(player, [previous.x, previous.y, previous.z], damage, roll);
                 }
                 None => {}
             }
         }
         OnHit::Orbs { base, bound } => {
-            let amount = {
-                let mut r = w.resource_mut::<ThrownRng>();
-                base + r.0.next_int_bound(bound).unwrap_or(0) + r.0.next_int_bound(bound).unwrap_or(0)
-            };
+            let amount = bottle_xp(&mut w.resource_mut::<ThrownRng>().0, base, bound);
             w.resource_mut::<crate::goals::Events>().host.xp([at.x, at.y, at.z], amount as u32);
         }
         _ => {}

@@ -5,6 +5,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::swell::{is_close, swell_dir};
 use crate::targeting::{self, Target, Who};
 
 #[derive(Clone, Copy, Debug)]
@@ -61,13 +62,13 @@ fn alive(w: &World, who: Who) -> Option<targeting::Info> {
 /// Vivante et à moins de 3 blocs.
 fn close(w: &World, e: Entity, who: Who) -> bool {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    alive(w, who).is_some_and(|i| d2(p, i.pos) < 9.0)
+    alive(w, who).is_some_and(|i| is_close(d2(p, i.pos)))
 }
 /// `Swell.tick` : +1 si la cible est vivante, à 7 blocs au plus et vue (la vue de la cible courante), sinon -1.
 fn reading(w: &World, e: Entity, who: Who) -> i8 {
     let (Some(p), Some(i)) = (w.get::<Pos>(e).map(|p| p.0), alive(w, who)) else { return -1 };
     let seen = w.get::<Target>(e).is_some_and(|t| t.who == who && t.seen);
-    if d2(p, i.pos) <= 49.0 && seen { 1 } else { -1 }
+    swell_dir(d2(p, i.pos), seen)
 }
 /// `canUse` : le sens est +1 (le gonflement continue) ou la cible est proche.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {

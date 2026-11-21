@@ -5,6 +5,7 @@
 //! The morning gift is NOT ported (its items and its teleport are absent from the frame; the draw of `next_float` is missing with it).
 use super::cat_state::{self as cs, OwnerAsleep};
 use super::*;
+use crate::rules::cat_relax_on_owner::{goal_behind_bed, goal_f, lies_down};
 use crate::{cow::*, goals::*, tame, targeting::Who};
 use horizon_core::geometry::{Aabb, Vec3};
 
@@ -104,23 +105,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !tagged {
         return false;
     }
-    let back = match facing.as_deref() {
-        Some("north") => [0, 0, 1],
-        Some("south") => [0, 0, -1],
-        Some("east") => [-1, 0, 0],
-        Some("west") => [1, 0, 0],
-        Some("up") => [0, -1, 0],
-        Some("down") => [0, 1, 0],
-        _ => [0, 0, 0],
-    };
-    let g = [at[0] + back[0], at[1] + back[1], at[2] + back[2]];
+    let g = goal_behind_bed(at, facing.as_deref());
     if let Some(mut r) = w.get_mut::<Relax>(e) {
         r.goal = Some(g);
     }
     !occupied(w, e, g)
-}
-fn goal_f(g: [i32; 3]) -> [f64; 3] {
-    [f64::from(g[0]), f64::from(g[1]), f64::from(g[2])]
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     cs::set(w, e, |c| c.sitting_pose = false);
@@ -170,7 +159,7 @@ fn relax_step(w: &mut World, e: Entity) {
     let Some(d) = tame::owner_distance_sqr(w, e) else { return };
     if d < rr.p.stop_sqr {
         rr.on_bed += 1;
-        if rr.on_bed > cs::reduced(rr.p.relax_asks) {
+        if lies_down(rr.on_bed, rr.p.relax_asks) {
             cs::set(w, e, |c| {
                 c.lying = true;
                 c.relax = false;

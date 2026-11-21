@@ -9,6 +9,8 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::item;
+use crate::rules::fox_search_for_items::{continues, hurt_memory_end, hurt_memory_open, hurt_wait, search_ended, search_until};
+use crate::rules::follow_mob::recalc_after;
 use crate::targeting::{self, Target, Who};
 use horizon_core::geometry::Vec3;
 
@@ -60,11 +62,7 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     fs::ensure(w, e);
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert(Seek { slot: inst.slot, speed: p.speed, scan: p.scan, odds: reduced(p.asks), pending: false, redraw: false });
-}
-/// `reduced(n) = (n + 1) / 2` (`Goal.reducedTickDelay`).
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
+    w.entity_mut(e).insert(Seek { slot: inst.slot, speed: p.speed, scan: p.scan, odds: recalc_after(p.asks), pending: false, redraw: false });
 }
 fn arm_first(w: &mut World, e: Entity, _: Inst) {
     arm_draw(w, e);
@@ -110,10 +108,10 @@ fn gate(w: &World, e: Entity, now: u64) -> Gate {
         return Gate::Target;
     }
     if let Some(h) = w.get::<LastHurtBy>(e)
-        && now <= h.at + 100
+        && hurt_memory_open(now, h.at)
         && attacker_alive(w, h.who)
     {
-        return Gate::Hurt(h.at + 101);
+        return Gate::Hurt(hurt_memory_end(h.at));
     }
     if fs::has(w, e, SLEEPING | SITTING | FACEPLANTED) {
         return Gate::Moving;
@@ -157,7 +155,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
                 m.redraw = true;
             }
             set_pending(w, e, true);
-            crate::goals::arm(w, e, s.slot, (until - now).max(1) as i32);
+            crate::goals::arm(w, e, s.slot, hurt_wait(until, now));
             return false;
         }
         // A state that ends by an event (`fox_state::set` clears the flag and calls `flags_cleared`): no periodic draw meanwhile.
@@ -192,12 +190,9 @@ pub fn wake_parked(w: &mut World) {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let s = *w.get::<Seek>(e).unwrap();
     let Some(it) = point(w, e, s.scan) else { return };
-    let k = with_rng(w, e, |r| {
-        let u = r.next_f64().max(1.0e-12);
-        (u.ln() / 0.2_f64.ln()).floor() as u64
-    });
+    let k = with_rng(w, e, |r| continues(r.next_f64()));
     let now = now_of(w, e);
-    w.entity_mut(e).insert(Seeking { until: now + 2 * (k + 1) });
+    w.entity_mut(e).insert(Seeking { until: search_until(now, k) });
     let p = w.get::<Pos>(it).unwrap().0;
     go_to_at(w, e, [p.x, p.y, p.z], s.speed, 0);
 }
@@ -231,7 +226,7 @@ fn seek_run(w: &mut World) {
         let now = now_of(w, e);
         let until = w.get::<Seeking>(e).unwrap().until;
         fox_pick_up_loot::look(w, e);
-        if now >= until || !matches!(gate(w, e, now), Gate::Open) {
+        if search_ended(now, until) || !matches!(gate(w, e, now), Gate::Open) {
             end_goal(w, e, slot);
             continue;
         }

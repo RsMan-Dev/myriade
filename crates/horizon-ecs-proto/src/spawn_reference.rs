@@ -2,6 +2,7 @@
 //! chunks of the players), on the prototype's real test world (`cow::Level.mw`). The control of `spawning.rs` and the cost it is measured
 //! against. The level is the game's `NaturalLevel` with what a test world has: ONE biome (its real spawn lists), no structure, no spawn
 //! charge, no mod hook. The mobs it spawns are not finalized (a position, a species, a category): nothing in the spawn decision reads more.
+use crate::rules::spawn_reference::{chunk_near, chunk_of};
 use horizon_client_lib::biome::{BiomeInfo, SpawnEntry};
 use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
 use horizon_client_lib::mobs::spawn_selection::{self as sel, Category, Counted, Heightmap, NaturalLevel, SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt, StructureSpawns};
@@ -214,21 +215,14 @@ impl<'a> RefSpawner<'a> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for p in &self.level.players {
-            let (pcx, pcz) = ((p[0].floor() as i32) >> 4, (p[2].floor() as i32) >> 4);
+            let (pcx, pcz) = chunk_of(*p);
             for dx in -8..=8 {
                 for dz in -8..=8 {
                     let c = (pcx + dx, pcz + dz);
                     if !seen.insert(c) {
                         continue;
                     }
-                    let close = self.level.players.iter().any(|q| {
-                        let (qcx, qcz) = ((q[0].floor() as i32) >> 4, (q[2].floor() as i32) >> 4);
-                        (qcx - c.0).abs() <= 8 && (qcz - c.1).abs() <= 8 && {
-                            let (x, z) = (f64::from(c.0 * 16 + 8) - q[0], f64::from(c.1 * 16 + 8) - q[2]);
-                            x * x + z * z < 16384.0
-                        }
-                    });
-                    if close {
+                    if self.level.players.iter().any(|q| chunk_near(c, *q)) {
                         out.push(c);
                     }
                 }

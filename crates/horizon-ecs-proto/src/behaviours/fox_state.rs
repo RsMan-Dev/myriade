@@ -3,6 +3,7 @@
 //! goals read (`path_clear`, `fox.rs:1094-1121`). Not a module: nothing here is in `TABLE`.
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::fox_state::{crouch_ticks_to_full, is_selector_tick, retry_wait};
 use crate::targeting::{self, Info, Target, Who};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -62,33 +63,21 @@ pub fn set(w: &mut World, e: Entity, mask: u8, on: bool) {
     }
 }
 
-/// Ticks of crouch after which `Fox.isFullyCrouched` holds: the amount goes up 0,2 a tick from 0 and stops at 5
-/// (`fox.rs:351-358`), computed with the same float steps as the `Mob`.
-pub fn crouch_ticks_to_full() -> u64 {
-    let (mut v, mut n) = (0.0_f32, 0u64);
-    while v != 5.0 {
-        v = (v + 0.2).min(5.0);
-        n += 1;
-    }
-    n
-}
-
 /// The local time from which the fox is fully crouched, if it is crouching.
 pub fn fully_crouched_at(w: &World, e: Entity) -> Option<u64> {
     w.get::<Crouch>(e)?.0.map(|t| t + crouch_ticks_to_full())
 }
 
-/// A tick where the `Mob`'s selector asks `canUse` and ticks the goal (`ai.rs:2870`): tick + id even; the first ticks too.
+/// A tick where the `Mob`'s selector asks `canUse` and ticks the goal (`ai.rs:2870`).
 pub fn selector_tick(w: &World, e: Entity) -> bool {
-    let now = now_of(w, e);
-    now <= 1 || (now + phase_of(w, e)) % 2 == 0
+    is_selector_tick(now_of(w, e), phase_of(w, e))
 }
 
 /// Arms the deadline that asks `canUse` again, `wait` ticks from now, unless one is still pending (a refusal that repeats
 /// must not stack deadlines).
 pub fn retry_in(w: &mut World, e: Entity, slot: u8, wait: i32) {
     let now = now_of(w, e);
-    let wait = wait.max(1) as u64;
+    let wait = retry_wait(wait);
     let Some(mut r) = w.get_mut::<Retry>(e) else { return };
     if r.0.is_some_and(|t| t > now) {
         return;
@@ -133,21 +122,7 @@ pub fn feet(w: &World, e: Entity) -> Vec3 {
 
 /// `Fox.isPathClear`: six points on the way to `to`, each with only replaceable blocks in the three above it.
 pub fn path_clear(w: &World, from: Vec3, to: Vec3) -> bool {
-    let mw = w.resource::<Level>().mw.0;
-    let (zdiff, xdiff) = (to.z - from.z, to.x - from.x);
-    let slope = zdiff / xdiff;
-    for i in 0..6 {
-        let step = f64::from(i as f32 / 6.0);
-        let z = if slope == 0.0 { 0.0 } else { zdiff * step };
-        let x = if slope == 0.0 { xdiff * step } else { z / slope };
-        for j in 1..4 {
-            let at = [(from.x + x).floor() as i32, (from.y + f64::from(j)).floor() as i32, (from.z + z).floor() as i32];
-            if !mw.facts.get(mw.world.block(at[0], at[1], at[2])).replaceable {
-                return false;
-            }
-        }
-    }
-    true
+    crate::rules::fox_state::path_clear(w.resource::<Level>().mw.0, from, to)
 }
 
 /// The block the feet stand in is snow (`Fox.FoxPounceGoal`: the nose lands in the snow).

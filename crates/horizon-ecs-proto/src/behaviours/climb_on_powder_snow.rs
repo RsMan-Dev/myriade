@@ -3,7 +3,7 @@
 //! `entered_snow` event in the frame yet (DOUTE in the notes), so the wake system visits the holders that have a hazard.
 use super::*;
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
+use crate::rules::climb_on_powder_snow::{above_passable, feet_block};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -38,20 +38,12 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         w.entity_mut(e).insert(SnowWalker);
     }
 }
-fn block_of(p: &Pos) -> [i32; 3] {
-    [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32]
-}
-/// `Mob.blockPosition().above()` is powder snow, or has no collision.
-fn above_passable(mw: &MobWorld<'_>, feet: [i32; 3]) -> bool {
-    let above = [feet[0], feet[1] + 1, feet[2]];
-    mw.block_name(above[0], above[1], above[2]) == "minecraft:powder_snow" || mw.collision_bounds(above).is_none()
-}
 fn in_snow(h: Option<&Hazard>) -> bool {
     h.is_some_and(|h| h.0 & HAZ_SNOW != 0)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let mw = w.resource::<Level>().mw.0;
-    let feet = block_of(w.get::<Pos>(e).unwrap());
+    let feet = feet_block(w.get::<Pos>(e).unwrap().0);
     w.get::<SnowWalker>(e).is_some() && in_snow(w.get::<Hazard>(e)) && above_passable(mw, feet)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
@@ -72,7 +64,7 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 fn climb_wake(q: Query<(Entity, &Hazard, &GoalSet, &Pos), (With<SnowWalker>, Without<Climbing>)>, level: Res<Level>, mut reqs: ResMut<Requests>) {
     let mw = level.mw.0;
     for (e, h, g, p) in &q {
-        if h.0 & HAZ_SNOW == 0 || !above_passable(mw, block_of(p)) {
+        if h.0 & HAZ_SNOW == 0 || !above_passable(mw, feet_block(p.0)) {
             continue;
         }
         if let Some(slot) = g.slot_of(&MODULE) {
@@ -84,7 +76,7 @@ fn climb_wake(q: Query<(Entity, &Hazard, &GoalSet, &Pos), (With<SnowWalker>, Wit
 fn climb_run(mut q: Query<(Entity, &Pos, Option<&Hazard>, &GoalSet, &mut Jump), With<Climbing>>, level: Res<Level>, mut reqs: ResMut<Requests>) {
     let mw = level.mw.0;
     for (e, p, h, g, mut jump) in &mut q {
-        if in_snow(h) && above_passable(mw, block_of(p)) {
+        if in_snow(h) && above_passable(mw, feet_block(p.0)) {
             jump.0 = true;
         } else {
             jump.0 = false;
@@ -123,7 +115,7 @@ mod tests {
         (h, e)
     }
     fn feet(h: &Herd, e: Entity) -> [i32; 3] {
-        block_of(h.world.get::<Pos>(e).unwrap())
+        feet_block(h.world.get::<Pos>(e).unwrap().0)
     }
     /// Puts a block at `at` and moves the animal back onto its place (its hazards are read when its box moves).
     fn put(h: &mut Herd, e: Entity, at: [i32; 3], name: &'static str) {

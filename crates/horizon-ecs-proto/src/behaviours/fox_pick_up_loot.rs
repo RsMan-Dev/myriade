@@ -7,7 +7,8 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::item::{self, Item};
 use horizon_client_lib::items::ItemStack;
-use horizon_core::geometry::{Vec3, trig};
+use crate::rules::fox_pick_up_loot::{can_hold_item, mouth_offset, toss_velocity};
+use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -95,17 +96,13 @@ pub fn look(w: &mut World, e: Entity) {
         let name: &str = &stack.item;
         let held = main_hand(w, e).map(|h| h.item.clone());
         let held_food = held.as_deref().is_some_and(|h| l.foods.contains(&h));
-        if !can_hold(w, e, l.foods.contains(&name), held_food) {
+        if !can_hold_item(main_hand(w, e).is_none(), ticks_since_eaten(w, e), l.foods.contains(&name), held_food) {
             continue;
         }
         take(w, e, it, l);
     }
 }
 
-/// `Fox.canHoldItem`: an empty mouth, or food to swap for what is not food once it has eaten at all.
-fn can_hold(w: &World, e: Entity, item_food: bool, held_food: bool) -> bool {
-    main_hand(w, e).is_none() || (ticks_since_eaten(w, e) > 0 && item_food && !held_food)
-}
 fn ticks_since_eaten(w: &World, e: Entity) -> u64 {
     w.get::<Eaten>(e).map_or(0, |t| now_of(w, e).saturating_sub(t.0))
 }
@@ -138,8 +135,7 @@ fn take(w: &mut World, e: Entity, it: Entity, l: Loot) {
 /// The spot ahead of the fox's mouth: one block out along its heading, one block up (`Mob.aiStep` spits from there).
 fn mouth(w: &World, e: Entity, at: Vec3) -> Vec3 {
     let (yaw, pitch) = (w.get::<Yaw>(e).map_or(0.0, |y| y.0), w.get::<Head>(e).map_or(0.0, |h| h.pitch));
-    let (yr, pr) = (-yaw * trig::DEG_TO_RAD, pitch * trig::DEG_TO_RAD);
-    let (xd, zd) = (f64::from(trig::sin(f64::from(yr)) * trig::cos(f64::from(pr))), f64::from(trig::cos(f64::from(yr)) * trig::cos(f64::from(pr))));
+    let (xd, zd) = mouth_offset(yaw, pitch);
     Vec3::new(at.x + xd, at.y + 1.0, at.z + zd)
 }
 
@@ -147,7 +143,7 @@ fn mouth(w: &World, e: Entity, at: Vec3) -> Vec3 {
 /// `spawn_at_location` draws it), with the given delay.
 fn toss(w: &mut World, e: Entity, stack: ItemStack, at: Vec3, delay: i64) -> Entity {
     let (a, b) = with_rng(w, e, |r| (r.next_f64(), r.next_f64()));
-    item::drop_item(w, stack, at, Vec3::new(a * 0.2 - 0.1, 0.2, b * 0.2 - 0.1), delay)
+    item::drop_item(w, stack, at, toss_velocity(a, b), delay)
 }
 
 #[cfg(test)]

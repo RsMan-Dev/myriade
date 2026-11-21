@@ -6,6 +6,7 @@
 //! home, when stuck, or after 300 ticks of counting near home (`reduced(600)`).
 use super::turtle_state::{self as ts, Turtle};
 use super::*;
+use crate::rules::turtle_go_home::{chance_wait, home_aim, walk_goes_on};
 use crate::spots::{Pick, pick_for};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::mobs::MobWorld;
@@ -75,7 +76,7 @@ fn idle(w: &mut World, e: Entity) {
         h.armed = true;
         (h.slot, h.def.chance)
     };
-    let wait = 2 * (with_rng(w, e, |r| geometric(r, chance)) + 1);
+    let wait = chance_wait(with_rng(w, e, |r| geometric(r, chance)));
     crate::goals::arm(w, e, slot, wait);
 }
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -153,7 +154,7 @@ fn home_run(
     for (e, mut h, t, p, nav, need) in &mut q {
         let pos = [p.0.x, p.0.y, p.0.z];
         let far = !ts::is_near_home(t, pos, h.def.stop);
-        if !(far && !h.stuck && h.close_ticks <= h.def.give_up) {
+        if !walk_goes_on(far, h.stuck, h.close_ticks, h.def.give_up) {
             reqs.0.push(Req::End(e, h.slot));
             // The Mob stops this goal near home and restarts it at once (an egg: `canUse` is true), and the restart ticks:
             // the same tick draws the next spot when the path is over. The turtle is led away from its target.
@@ -196,7 +197,7 @@ fn next_spot_inner(w: &mut World, e: Entity) {
     }
     let t = ts::get(w, e);
     let speed = w.get::<GoHome>(e).map_or(1.0, |h| h.def.speed);
-    let to = [f64::from(t.home[0]) + 0.5, f64::from(t.home[1]), f64::from(t.home[2]) + 0.5];
+    let to = home_aim(t.home);
     let close = ts::close_to_home(w, e, 16.0);
     let mut next = pick_for(w, e, Pick::DefaultTowards { h: 16, v: 3, to, max_rad: PI / 10.0 })
         .or_else(|| pick_for(w, e, Pick::DefaultTowards { h: 8, v: 7, to, max_rad: FRAC_PI_2 }));

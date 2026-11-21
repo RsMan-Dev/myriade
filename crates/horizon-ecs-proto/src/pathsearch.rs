@@ -1,5 +1,6 @@
 //! Counting copy of Horizon's `Finder` (walk evaluator included), to be reduced. See suivi/ecs-portage/relais/chemin-partage.md.
 use crate::IFloor as _;
+use crate::rules::pathsearch::type_on_below;
 use horizon_world::registry::BlockStateId;
 use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType, PATH_TYPES}};
 use horizon_client_lib::blocks::Fluid;
@@ -269,17 +270,9 @@ pub fn path_type_static(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
     probe!(bump(11));
     let t = path_type_from_state(w, x, y, z);
     if t == PathType::Open && y > w.world.bottom_y() {
-        match path_type_from_state(w, x, y.saturating_sub(1), z) {
-            PathType::Open | PathType::Water | PathType::Lava | PathType::Walkable => {
-                PathType::Open
-            }
-            PathType::Fire => PathType::Fire,
-            PathType::Damaging => PathType::Damaging,
-            PathType::StickyHoney => PathType::StickyHoney,
-            PathType::PowderSnow => PathType::OnTopOfPowderSnow,
-            PathType::DamageCautious => PathType::DamageCautious,
-            PathType::Trapdoor => PathType::OnTopOfTrapdoor,
-            _ => check_neighbours(w, x, y, z, PathType::Walkable),
+        match type_on_below(path_type_from_state(w, x, y.saturating_sub(1), z)) {
+            Some(t) => t,
+            None => check_neighbours(w, x, y, z, PathType::Walkable),
         }
     } else {
         t

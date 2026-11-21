@@ -5,6 +5,7 @@
 //! value lies within reach); it ends at 6 000 ticks (a deadline of the wheel). A death drops its experience as orbs (`award`).
 use crate::cow::*;
 use crate::goals::{Events, Online, PlayerWatch};
+use crate::rules::orb::{attraction, check_wait, expire_tick, is_scan_tick, merged_age_base, same_merge_group, throw_velocity, LIFE, REACH};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::entities::ExperienceOrb;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -106,9 +107,6 @@ fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
         }
     }
 }
-const LIFE: u64 = 6000;
-/// The reach of the attraction: `getNearestPlayer(this, 8.0)`.
-const REACH: f64 = 8.0;
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(OrbIndex::default());
 }
@@ -197,8 +195,7 @@ pub fn award(world: &mut World, at: Vec3, mut amount: u32, random: &mut impl hor
                 arm_expire(world, o);
             }
             None => {
-                let vel = Vec3::new((random.next_double() * 0.2 - 0.1) * 2.0, random.next_double() * 0.2 * 2.0, (random.next_double() * 0.2 - 0.1) * 2.0);
-                spawn_orb(world, v as i32, 1, at, vel);
+                spawn_orb(world, v as i32, 1, at, throw_velocity(random));
             }
         }
     }
@@ -220,8 +217,8 @@ fn arm_expire(world: &mut World, e: Entity) {
     let token = world.resource_mut::<OrbIndex>().token();
     let Some(mut o) = world.get_mut::<Orb>(e) else { return };
     o.expire = token;
-    let at = o.age_base + LIFE;
-    arm_at(world, e, at.min(now + 4000).max(now + 1), Due::OrbExpire(token));
+    let at = expire_tick(o.age_base, now);
+    arm_at(world, e, at, Due::OrbExpire(token));
 }
 pub fn expire_due(world: &mut World, e: Entity, token: u32) {
     let Some(o) = world.get::<Orb>(e) else { return };
@@ -241,8 +238,7 @@ fn arm_check(world: &mut World, e: Entity) {
     let Some(mut o) = world.get_mut::<Orb>(e) else { return };
     o.check = token;
     let t = now - o.born;
-    let to = (21 - t % 20 - 1) % 20 + 1;
-    arm_at(world, e, now + to, Due::OrbCheck(token));
+    arm_at(world, e, now + check_wait(t), Due::OrbCheck(token));
 }
 pub fn check_due(world: &mut World, e: Entity, token: u32) {
     let Some(o) = world.get::<Orb>(e) else { return };
@@ -269,7 +265,7 @@ fn partners(world: &World, e: Entity) -> Vec<Entity> {
         .filter(|&x| x != e)
         .filter(|&x| {
             let (Some(q), Some(b)) = (world.get::<Pos>(x), world.get::<Orb>(x)) else { return false };
-            ExperienceOrb::box_at(q.0).intersects(area) && b.value == o.value && (b.id as i32).wrapping_sub(o.id as i32) % 40 == 0
+            ExperienceOrb::box_at(q.0).intersects(area) && b.value == o.value && same_merge_group(o.id, b.id)
         })
         .collect()
 }
@@ -283,7 +279,7 @@ fn scan_for_merges(world: &mut World, e: Entity) {
         };
         let me = world.get_mut::<Orb>(e).unwrap().into_inner();
         me.count += c;
-        me.age_base = now.saturating_sub((now - me.age_base).min(age));
+        me.age_base = merged_age_base(now, me.age_base, age);
         world.entity_mut(o).despawn();
     }
     if world.get::<Orb>(e).is_some() {
@@ -307,7 +303,7 @@ fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query
         {
             orb.following = None;
         }
-        if orb.following.is_none() && ticks % 20 == 1 {
+        if orb.following.is_none() && is_scan_tick(ticks) {
             let mut best: Option<(u32, f64)> = None;
             on.for_near(pos.0.x, pos.0.z, REACH, |p| {
                 let d = (p.x - pos.0.x).powi(2) + (p.y - pos.0.y).powi(2) + (p.z - pos.0.z).powi(2);
@@ -319,17 +315,13 @@ fn orb_attract(on: Res<Online>, ev: Res<Events>, clock: Res<Clock>, mut q: Query
         }
         let Some(p) = orb.following.and_then(|id| on.get(id)) else {
             // Nobody to follow after the look of its tick 1: the watch puts it back in the list when a player comes.
-            if ticks % 20 == 1 {
+            if is_scan_tick(ticks) {
                 commands.entity(e).remove::<Attracted>().insert(PlayerWatch::new(REACH as f32));
             }
             continue;
         };
-        let d = Vec3::new((p.x - pos.0.x) / REACH, (p.y + 0.81 - pos.0.y) / REACH, (p.z - pos.0.z) / REACH);
-        let length = (d.x * d.x + d.y * d.y + d.z * d.z).sqrt();
-        let power = 1.0 - length;
-        if power > 0.0 && length > 1e-6 {
-            let power = power * power;
-            vel.0 = Vec3::new(vel.0.x + d.x / length * power * 0.1, vel.0.y + d.y / length * power * 0.1, vel.0.z + d.z / length * power * 0.1);
+        if let Some(dv) = attraction(pos.0, Vec3::new(p.x, p.y, p.z)) {
+            vel.0 = Vec3::new(vel.0.x + dv.x, vel.0.y + dv.y, vel.0.z + dv.z);
             if !moving {
                 commands.entity(e).insert(Moving);
             }
@@ -362,7 +354,7 @@ fn orb_moved(world: &mut World, mut cached: Local<Option<QueryState<(Entity, &Or
             ix.cells.entry(cell).or_default().push(e);
             world.get_mut::<Orb>(e).unwrap().cell = cell;
         }
-        if ticks % 20 == 1 {
+        if is_scan_tick(ticks) {
             scan_for_merges(world, e);
         }
         if !pending && world.get::<Orb>(e).is_some() {

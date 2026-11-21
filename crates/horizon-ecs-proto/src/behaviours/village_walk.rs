@@ -4,6 +4,7 @@
 //! speed; the path ends the goal. Missing: the villager who wants a golem (the villager's brain).
 use super::*;
 use crate::poi::PoiRegistry;
+use crate::rules::village_walk::{nearby_sections, section_center, section_of};
 use crate::spots::{pick_for, Pick};
 use crate::{cow::*, goals::*};
 
@@ -89,13 +90,6 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
     edit(w, e, inst, |x| x.armed = false);
     true
 }
-fn section_of(p: horizon_core::geometry::Vec3) -> [i32; 3] {
-    [(p.x.floor() as i32) >> 4, (p.y.floor() as i32) >> 4, (p.z.floor() as i32) >> 4]
-}
-/// `SectionPos.center` as `Vec3.atBottomCenterOf` reads it.
-fn section_center(s: [i32; 3]) -> [f64; 3] {
-    [f64::from(s[0] * 16 + 8) + 0.5, f64::from(s[1] * 16 + 8), f64::from(s[2] * 16 + 8) + 0.5]
-}
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(x) = state(w, e, inst) else { return false };
     let pos = w.get::<Pos>(e).unwrap().0;
@@ -129,17 +123,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn towards_poi(w: &mut World, e: Entity, here: [i32; 3]) -> Option<[f64; 3]> {
     let sections: Vec<[i32; 3]> = {
         let reg = w.resource::<PoiRegistry>();
-        let mut v = Vec::new();
-        for z in here[2] - 2..=here[2] + 2 {
-            for y in here[1] - 2..=here[1] + 2 {
-                for x in here[0] - 2..=here[0] + 2 {
-                    if reg.sections_to_village([x, y, z]) == 0 {
-                        v.push([x, y, z]);
-                    }
-                }
-            }
-        }
-        v
+        nearby_sections(here).into_iter().filter(|s| reg.sections_to_village(*s) == 0).collect()
     };
     if sections.is_empty() {
         return None;

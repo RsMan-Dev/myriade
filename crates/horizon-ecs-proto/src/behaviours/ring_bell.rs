@@ -1,7 +1,8 @@
 //! Le villageois sonne la cloche à portée (`RingBell`, `villager_brain.rs:2447-2463`). La cloche est un bloc
 //! `minecraft:bell` à moins de 3 blocs (9 en carré) ; chaque sonnerie appelle `bell_heard::ring` et le son part par `events.host` (nom du son à confirmer, voir notes).
 use super::bell_heard::ring;
-use super::block_reach::{block_at, centre_dist_sq};
+use super::block_reach::block_at;
+use crate::rules::ring_bell as rules;
 use crate::blocks;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
@@ -24,10 +25,8 @@ fn bell_near(w: &World, e: Entity) -> Option<[i32; 3]> {
     let at = w.get::<Pos>(e)?.0;
     let c = block_at(w, e)?;
     let mw = blocks::world_of(w);
-    (-3..=3)
-        .flat_map(|x| (-3..=3).flat_map(move |y| (-3..=3).map(move |z| [c[0] + x, c[1] + y, c[2] + z])))
-        .filter(|&q| mw.block_name(q[0], q[1], q[2]) == BELL && centre_dist_sq(q, at) < 9.0)
-        .min_by(|a, b| centre_dist_sq(*a, at).total_cmp(&centre_dist_sq(*b, at)))
+    let cells = (-3..=3).flat_map(|x| (-3..=3).flat_map(move |y| (-3..=3).map(move |z| [c[0] + x, c[1] + y, c[2] + z])));
+    rules::nearest_within(cells.filter(|&q| mw.block_name(q[0], q[1], q[2]) == BELL), at, 9.0)
 }
 
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {

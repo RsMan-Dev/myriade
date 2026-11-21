@@ -9,6 +9,8 @@
 //! overworld is assumed; (4) `DEFENDING` is not a fox flag here; (5) `clear_states` (`ints[0]`) has no equivalent.
 use super::*;
 use super::fox_state;
+use crate::rules::fox_stroll_village::{block_pos, section_of, village_score};
+use crate::rules::follow_mob::recalc_after;
 use crate::{cow::*, goals::*, poi::PoiRegistry, spots::Pick, targeting::Target};
 
 #[derive(Clone, Copy, Debug)]
@@ -50,7 +52,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 /// The next chance: a geometric wait of `reduced(interval)` asks, two ticks apart (`idle_wait`).
 fn arm_chance(w: &mut World, e: Entity, inst: Inst) {
     let n = w.get::<Village>(e).map_or(200, |v| v.interval);
-    let wait = with_rng(w, e, |r| idle_wait(r, (n + 1) / 2));
+    let wait = with_rng(w, e, |r| idle_wait(r, recalc_after(n)));
     crate::goals::arm(w, e, inst.slot, wait.max(2));
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
@@ -59,12 +61,6 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 /// A deadline of the module asks `canUse`.
 fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
     true
-}
-fn block_pos(p: [f64; 3]) -> [i32; 3] {
-    [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32]
-}
-fn section_of(p: [i32; 3]) -> [i32; 3] {
-    [p[0] >> 4, p[1] >> 4, p[2] >> 4]
 }
 /// `Level.isBrightOutside` for the overworld: the day is the level's `Daylight`.
 fn daylight(w: &World) -> bool {
@@ -96,7 +92,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         let mut best: Option<([i32; 3], f64)> = None;
         for p in spots {
             let b = block_pos(p);
-            let score = -f64::from(reg.sections_to_village(section_of(b)));
+            let score = village_score(reg.sections_to_village(section_of(b)));
             if best.is_none_or(|(_, s)| score > s) {
                 best = Some((b, score));
             }

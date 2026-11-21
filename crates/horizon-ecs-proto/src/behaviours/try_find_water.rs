@@ -6,6 +6,8 @@
 //! the events `landed` and `left_fluid` start the chain again. Daylight (the drowned) is read at each ask: no event announces it.
 use super::*;
 use crate::hostile::Daylight;
+use crate::rules::teleport_on::cell_of;
+use crate::rules::try_find_water::{aim_point, box_point, clear_of_water};
 use crate::{cow::*, goals::*};
 use horizon_client_lib::blocks::Fluid;
 
@@ -84,15 +86,11 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 fn out_of_water(w: &World, e: Entity, def: Params) -> bool {
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
-    !in_water && (!def.needs_ground || on_ground)
+    clear_of_water(in_water, on_ground, def.needs_ground)
 }
 /// Every test of `canUse` before the draws: the daylight, then the background condition.
 fn place_ok(w: &World, e: Entity, def: Params) -> bool {
     (!def.needs_day || w.resource::<Daylight>().0) && out_of_water(w, e, def)
-}
-fn feet(w: &World, e: Entity) -> [i32; 3] {
-    let p = w.get::<Pos>(e).unwrap().0;
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 fn is_water(w: &World, p: [i32; 3], def: Params) -> bool {
     let mw = w.resource::<Level>().mw.0;
@@ -111,12 +109,11 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         }
         return false;
     }
-    let b = feet(w, e);
+    let b = cell_of(w.get::<Pos>(e).unwrap().0);
     for _ in 0..10 {
-        let p = with_rng(w, e, |r| [b[0] + r.next_int(20) - 10, b[1] + 2 - r.next_int(8), b[2] + r.next_int(20) - 10]);
+        let p = with_rng(w, e, |r| box_point(b, r.next_int(20), r.next_int(8), r.next_int(20)));
         if is_water(w, p, def) {
-            let d = if def.centre { 0.5 } else { 0.0 };
-            w.get_mut::<Seek>(e).unwrap().wanted = [f64::from(p[0]) + d, f64::from(p[1]), f64::from(p[2]) + d];
+            w.get_mut::<Seek>(e).unwrap().wanted = aim_point(p, def.centre);
             return true;
         }
     }

@@ -9,6 +9,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::hostile::PlayerState;
+use crate::rules::charge_attack::{charge_ends, charge_velocity};
 use crate::targeting::{self, Target, TargetWatchers, Who};
 use horizon_core::geometry::Vec3;
 
@@ -89,11 +90,8 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let (Some(p), Some(who)) = (w.get::<Pos>(e).map(|x| x.0), w.get::<Target>(e).map(|t| t.who)) else { return };
     let Some(i) = targeting::info(w, who) else { return };
     let Some(mut c) = w.get_mut::<Charger>(e) else { return };
-    let (dx, dy, dz) = (i.pos.x - p.x, i.pos.y - p.y, i.pos.z - p.z);
-    let len = (dx * dx + dy * dy + dz * dz).sqrt();
-    let v = if len < 1.0e-4 { Vec3::new(0.0, 0.0, 0.0) } else { Vec3::new(dx / len * c.p.speed, dy / len * c.p.speed, dz / len * c.p.speed) };
     c.start = p;
-    c.velocity = v;
+    c.velocity = charge_velocity(p, i.pos, c.p.speed);
     drop(c);
     w.entity_mut(e).insert(Charging);
 }
@@ -133,7 +131,7 @@ fn charge_run(
             continue;
         };
         let p = pos.0;
-        if d2(c.start, p) >= c.p.max_run_sqr || d2(i.pos, p) >= c.p.max_target_sqr || !t.seen {
+        if charge_ends(c.start, p, i.pos, t.seen, c.p.max_run_sqr, c.p.max_target_sqr) {
             end(&mut reqs);
             continue;
         }

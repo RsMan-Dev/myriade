@@ -2,6 +2,7 @@
 //! than 100 blocks from the spot it was made at walks back to within 2 blocks of it, one try per 80 ticks. The wake is the
 //! animal's column change: a brute that does not move asks nothing.
 use super::*;
+use crate::rules::brute_stroll_home::{in_home_band, retry_wait};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -51,18 +52,12 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let block = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
     w.entity_mut(e).insert(Home { block, def, next_ok: 0 });
 }
-/// `Vec3.atBottomCenterOf` of the home block: the point the distance is measured from.
-fn center(block: [i32; 3]) -> Vec3 {
-    Vec3::new(f64::from(block[0]) + 0.5, f64::from(block[1]), f64::from(block[2]) + 0.5)
-}
-/// Squared distance from the animal to home, and whether it lies in the band where the walk home applies.
+/// Whether the animal lies in the band where the walk home applies (see `in_home_band`).
 fn in_band(w: &World, e: Entity, h: &Home) -> bool {
     in_band_at(w.get::<Pos>(e).unwrap().0, h)
 }
 fn in_band_at(p: Vec3, h: &Home) -> bool {
-    let c = center(h.block);
-    let d2 = (p.x - c.x).powi(2) + (p.y - c.y).powi(2) + (p.z - c.z).powi(2);
-    d2 > h.def.near * h.def.near && d2 < h.def.far * h.def.far
+    in_home_band(p, h.block, h.def.near, h.def.far)
 }
 /// `canUse`: in the band and past the time of the last try; the try sets the next one `retry` ticks on. The path is
 /// not checked here (no service tells whether one exists: DOUTE); a path that ends at once ends the goal at once.
@@ -89,8 +84,8 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<GoingHome>();
     stop_nav(w, e);
     let Some(h) = w.get::<Home>(e).copied() else { return };
-    let left = h.next_ok.saturating_sub(now_of(w, e)).max(1);
-    crate::goals::arm(w, e, inst.slot, left as i32);
+    let wait = retry_wait(h.next_ok, now_of(w, e));
+    crate::goals::arm(w, e, inst.slot, wait);
 }
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a running goal has none.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {

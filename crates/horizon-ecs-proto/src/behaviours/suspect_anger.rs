@@ -5,6 +5,7 @@
 use super::Inst;
 use super::act_phase::{ActPhase, RareState};
 use super::{Damaged, Module, Cap, params};
+use crate::rules::{retreat_on_hurt, suspect_anger as rules};
 use crate::{cow::*, goals::*, targeting::{self, Target, Who}};
 use bevy_ecs::prelude::*;
 use std::cmp::Reverse;
@@ -69,12 +70,6 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     w.entity_mut(e).insert_if_new(RareState::default());
 }
 
-/// The anger of a suspect at `now`: None when it has run out.
-fn value(s: &Suspect, now: u64, p: &Params) -> Option<u16> {
-    let steps = now.saturating_sub(s.at) / p.step;
-    (steps < u64::from(s.anger)).then(|| s.anger - steps as u16)
-}
-
 /// The suspects that still count, highest anger first.
 pub fn live(w: &World, e: Entity) -> Vec<(Who, u16)> {
     let now = now_of(w, e);
@@ -82,7 +77,7 @@ pub fn live(w: &World, e: Entity) -> Vec<(Who, u16)> {
     let mut v: Vec<(Who, u16)> = s
         .list
         .iter()
-        .filter_map(|x| value(x, now, &s.p).map(|a| (x.who, a)))
+        .filter_map(|x| rules::remaining(x.anger, x.at, now, s.p.step).map(|a| (x.who, a)))
         .filter(|&(who, _)| targeting::can_target(w, e, who))
         .collect();
     v.sort_by_key(|&(_, a)| Reverse(a));
@@ -113,7 +108,7 @@ pub fn raise(w: &mut World, e: Entity, who: Who, amount: u16) -> u16 {
     let p = s.p;
     let anger = match s.list.iter().position(|x| x.who == who) {
         Some(i) => {
-            let cur = value(&s.list[i], now, &p).unwrap_or(0);
+            let cur = rules::remaining(s.list[i].anger, s.list[i].at, now, p.step).unwrap_or(0);
             let a = cur.saturating_add(amount).min(p.max);
             s.list[i] = Suspect { who, anger: a, at: now };
             a
@@ -154,10 +149,7 @@ fn damaged(w: &mut World, e: Entity, inst: Inst, d: &Damaged) {
         return;
     }
     let near = match (targeting::info(w, who), w.get::<Pos>(e)) {
-        (Some(i), Some(pos)) => {
-            let (dx, dy, dz) = (i.pos.x - pos.0.x, i.pos.y - pos.0.y, i.pos.z - pos.0.z);
-            dx * dx + dy * dy + dz * dz < p.hurt_target_range_sqr
-        }
+        (Some(i), Some(pos)) => retreat_on_hurt::dist_sq(i.pos, pos.0) < p.hurt_target_range_sqr,
         _ => false,
     };
     if d.direct || near {

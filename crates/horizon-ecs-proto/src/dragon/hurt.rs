@@ -8,10 +8,11 @@ use super::phases::{set_phase, PhaseId};
 use crate::area::{creature_xz, creatures_in, hurt_creature, hurt_player, player_xz, players_in, push_creature, push_player};
 use super::flight::DragonRng;
 use crate::cow::{Cause, Clock, Health, Pos, Vel};
-use horizon_core::random::RandomSource;
 use crate::explosion::blast_damage;
 use crate::goals::{Ev, Events};
 use crate::hostile::PlayerState;
+use crate::rules::dragon_hurt as rule;
+pub use crate::rules::dragon_hurt::CREDIT_TICKS;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -55,9 +56,6 @@ pub struct HurtByPlayer {
     pub tick: u32,
 }
 
-/// The kill credit window (`d.ticks - hit <= 100`).
-pub const CREDIT_TICKS: u32 = 100;
-
 /// A hit that reached `reallyHurt` (the `PartHit` of the spec). The fight (L5) reads it.
 #[derive(Clone, Copy, Debug)]
 pub struct PartHit {
@@ -99,7 +97,7 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
         return Hurt::Shrugged;
     }
     // The body parts take a quarter of the hit and at most one more; the head and neck take all of it.
-    let damage = if b.part != HEAD && b.part != NECK { b.damage / 4.0 + b.damage.min(1.0) } else { b.damage };
+    let damage = rule::part_damage(b.part, b.damage);
     if damage < MIN_DAMAGE {
         return Hurt::Refused;
     }
@@ -109,22 +107,17 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
     }
     let clock = w.get::<DragonHurt>(e).copied().unwrap_or_default();
     // `LivingEntity.hurtServer`: inside the window only the excess over the last hit lands.
-    let window = clock.window > HURT_WINDOW;
+    let window = rule::window_open(clock.window);
     if window && damage <= clock.last {
         return Hurt::Landed { full: false };
     }
-    let dealt = if window { damage - clock.last } else { damage };
+    let dealt = rule::dealt(damage, clock.last, window);
     let before = w.get::<Health>(e).map_or(0.0, |h| h.0);
-    let mut after = before - dealt;
+    let (after, dying) = rule::health_after(before, dealt, sitting);
     let full = !window;
-    if after <= 0.0 {
-        if sitting {
-            after = 0.0;
-        } else {
-            // `handleKillingBlow`: the dragon flies its dying flight first.
-            after = 1.0;
-            set_phase(w, e, DYING);
-        }
+    if dying {
+        // `handleKillingBlow`: the dragon flies its dying flight first.
+        set_phase(w, e, DYING);
     }
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = after;
@@ -136,11 +129,7 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
     if after <= 0.0 || phase_of(w, e) == DYING {
         credit(w, e, b, ticks);
     }
-    w.entity_mut(e).insert(DragonHurt {
-        window: if window { clock.window } else { HURT_INVULNERABLE },
-        last: damage,
-        time: if full { HURT_TIME } else { clock.time },
-    });
+    w.entity_mut(e).insert(DragonHurt { window: rule::window_after(window, clock.window), last: damage, time: rule::time_after(full, clock.time) });
     if full && let Some((fx, fz)) = b.from {
         let p = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
         knockback(w, e, f64::from(KNOCKBACK), fx - p.x, fz - p.z);
@@ -167,7 +156,7 @@ fn credit(w: &mut World, e: Entity, b: Blow, ticks: u32) {
     if let Some(mut f) = w.get_resource_mut::<super::fight::EndFight>() {
         f.last_blow = Some(b.cause);
     }
-    let Some(h) = w.get::<HurtByPlayer>(e).copied().filter(|h| ticks - h.tick <= CREDIT_TICKS) else { return };
+    let Some(h) = w.get::<HurtByPlayer>(e).copied().filter(|h| rule::in_credit(ticks, h.tick)) else { return };
     let by_player = b.by.is_some();
     if let Some(mut ev) = w.get_resource_mut::<super::fight::FightEvents>() {
         ev.credit.push(super::fight::KillCredit { by: h.player, last_blow: b.cause, by_player });
@@ -181,13 +170,9 @@ fn knockback(w: &mut World, e: Entity, power: f64, mut xd: f64, mut zd: f64) {
         return;
     }
     if let Some(mut rng) = w.get_mut::<DragonRng>(e) {
-        while xd * xd + zd * zd < f64::from(1.0e-5_f32) {
-            xd = (rng.0.next_double() - rng.0.next_double()) * 0.01;
-            zd = (rng.0.next_double() - rng.0.next_double()) * 0.01;
-        }
+        (xd, zd) = rule::redraw_dir(xd, zd, &mut rng.0);
     }
-    let len = (xd * xd + zd * zd).sqrt();
-    let (kx, kz) = (xd / len * power, zd / len * power);
+    let (kx, kz) = rule::push_dir(xd, zd, power);
     if let Some(mut v) = w.get_mut::<Vel>(e) {
         v.0 = Vec3::new(v.0.x / 2.0 - kx, v.0.y, v.0.z / 2.0 - kz);
     }
@@ -198,7 +183,7 @@ fn knockback(w: &mut World, e: Entity, power: f64, mut xd: f64, mut zd: f64) {
 pub fn explosion_hits(w: &World, e: Entity, center: [f64; 3], radius: f32, exposure: impl Fn(Aabb) -> f32) -> Vec<(usize, f32)> {
     let (Some(p), Some(parts)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Parts>(e)) else { return Vec::new() };
     let diameter = f64::from(radius * 2.0);
-    let dist = |at: [f64; 3]| ((at[0] - center[0]).powi(2) + (at[1] - center[1]).powi(2) + (at[2] - center[2]).powi(2)).sqrt() / diameter;
+    let dist = |at: [f64; 3]| rule::blast_dist(at, center, diameter);
     let whole = [p.x, p.y, p.z];
     std::iter::once((BODY, whole, whole_box(p)))
         .chain((0..8).map(|i| (i, parts.0[i].pos, part_box(parts, i))))
@@ -213,28 +198,13 @@ pub fn explosion_hits(w: &World, e: Entity, center: [f64; 3], radius: f32, expos
 /// blast to its eye, `(1 - distance) * exposure`. `None` outside the blast.
 pub fn explosion_push(w: &World, e: Entity, center: [f64; 3], radius: f32, exposure: f32) -> Option<[f64; 3]> {
     let p = w.get::<Pos>(e)?.0;
-    let diameter = f64::from(radius * 2.0);
-    let at = |y: f64| [p.x - center[0], y - center[1], p.z - center[2]];
-    let len = |v: [f64; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    let dist = len(at(p.y)) / diameter;
-    if dist > 1.0 {
-        return None;
-    }
-    let away = at(p.y + f64::from(EYE));
-    let l = len(away);
-    // `Vec3.normalize` gives zero below 1.0E-5F.
-    if l < 9.999_999_747_378_752e-6 {
-        return Some([0.0; 3]);
-    }
-    let power = (1.0 - dist) * f64::from(exposure);
-    Some(away.map(|d| d / l * power))
+    rule::blast_push([p.x, p.y, p.z], center, radius, exposure)
 }
 
 /// The wing and head zones of the dragon: each wing's box inflated and dropped (`WING_ZONE`, `WING_DROP`), each head's inflated.
 fn zones(parts: &Parts) -> ([Aabb; 2], [Aabb; 2], Aabb) {
-    let [x, y, z] = WING_ZONE;
-    let wing = |i: usize| part_box(parts, i).inflate(Vec3::new(x, y, z)).move_by(Vec3::new(0.0, -WING_DROP, 0.0));
-    let head = |i: usize| part_box(parts, i).inflate(Vec3::new(HEAD_ZONE, HEAD_ZONE, HEAD_ZONE));
+    let wing = |i: usize| rule::wing_box(part_box(parts, i));
+    let head = |i: usize| rule::head_box(part_box(parts, i));
     ([wing(WING_1), wing(WING_2)], [head(HEAD), head(NECK)], part_box(parts, BODY))
 }
 
@@ -250,7 +220,7 @@ pub fn contacts(w: &mut World, e: Entity) {
         Some(parts) => zones(parts),
         None => return,
     };
-    let (bc, bz) = ((body.min_position().x + body.max_position().x) / 2.0, (body.min_position().z + body.max_position().z) / 2.0);
+    let (bc, bz) = rule::centre_xz(body);
     let now = w.resource::<Clock>().0;
     for zone in wings {
         for id in players_in(w, zone) {
@@ -258,7 +228,7 @@ pub fn contacts(w: &mut World, e: Entity) {
                 continue;
             }
             let (x, z) = player_xz(w, id);
-            let push = push_from(x, z, bc, bz);
+            let push = rule::push_from(x, z, bc, bz);
             push_player(w, id, push);
             let hurt_lately = w.resource::<PlayerState>().hurt_by.get(id as usize).copied().flatten().is_some_and(|(_, at)| at + 2 >= now);
             if !sitting && !hurt_lately {
@@ -267,7 +237,7 @@ pub fn contacts(w: &mut World, e: Entity) {
         }
         for c in creatures_in(w, zone, e) {
             let (x, z) = creature_xz(w, c);
-            push_creature(w, c, push_from(x, z, bc, bz));
+            push_creature(w, c, rule::push_from(x, z, bc, bz));
             if !sitting {
                 hurt_creature(w, c, e, WING_DAMAGE);
             }
@@ -283,11 +253,4 @@ pub fn contacts(w: &mut World, e: Entity) {
             hurt_creature(w, c, e, HEAD_DAMAGE);
         }
     }
-}
-
-/// The wing's push on something at `(x, z)`: away from the body's centre, `WING_PUSH` on the ground, `WING_LIFT` up.
-fn push_from(x: f64, z: f64, bc: f64, bz: f64) -> [f64; 3] {
-    let (xd, zd) = (x - bc, z - bz);
-    let dd = (xd * xd + zd * zd).max(0.1);
-    [xd / dd * WING_PUSH, WING_LIFT, zd / dd * WING_PUSH]
 }

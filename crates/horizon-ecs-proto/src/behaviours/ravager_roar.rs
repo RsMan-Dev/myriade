@@ -3,6 +3,7 @@
 //! smoke (40 particles). Two timers on the wheel, no tick.
 use super::*;
 use crate::{cow::Pos, goals::*};
+use crate::rules::ravager_roar::fling;
 
 /// The busy reason of a roar (`Ravager.anim_ticks`).
 pub const OCC_ROARING: u32 = 256;
@@ -65,10 +66,4 @@ fn hit(w: &mut World, e: Entity) {
         push_creature(w, c, fling(from, creature_xz(w, c), r.fling));
     }
     w.resource_mut::<Events>().host.particles("poof", [at.x, at.y + 0.5, at.z], [0.5; 3], 0.0, 40);
-}
-/// `Ravager.roar`'s push: away from the ravager on the plane, a fixed lift of 0.2, the strength `s` (`dd` at least 0.001).
-pub fn fling(from: (f64, f64), to: (f64, f64), s: f64) -> [f64; 3] {
-    let (xd, zd) = (to.0 - from.0, to.1 - from.1);
-    let dd = (xd * xd + zd * zd).max(0.001);
-    [xd / dd * s, 0.2, zd / dd * s]
 }

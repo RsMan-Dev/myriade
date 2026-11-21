@@ -8,8 +8,8 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::swim_to_treasure::{near_path_target, reached_treasure, treasure_centre};
 use crate::spots::{self, Pick};
-use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -111,9 +111,7 @@ fn trip_run(
 ) {
     for (e, pos, nav, air, trip, treasure, mut sw) in &mut q {
         let p = pos.0;
-        let to = Vec3::new(f64::from(treasure.0[0]) + 0.5, f64::from(treasure.0[1]) + 0.5, f64::from(treasure.0[2]) + 0.5);
-        let here = Vec3::new(p.x, p.y.floor() + 0.5, p.z);
-        let arrived = d2(to, here) < trip.p.arrive_sqr;
+        let arrived = reached_treasure(p, treasure.0, trip.p.arrive_sqr);
         if arrived || sw.stuck {
             reqs.0.push(Req::End(e, trip.slot));
             continue;
@@ -126,10 +124,7 @@ fn trip_run(
         let close = match nav.path.as_ref() {
             None => true,
             Some(path) if path.reached => true,
-            Some(path) => {
-                let t = Vec3::new(f64::from(path.target[0]) + 0.5, f64::from(path.target[1]), f64::from(path.target[2]) + 0.5);
-                d2(p, t) < trip.p.close_sqr
-            }
+            Some(path) => near_path_target(p, path.target, trip.p.close_sqr),
         };
         if close {
             reqs.0.push(Req::Call(e, step));
@@ -140,7 +135,7 @@ fn trip_run(
 /// pi/2 replaces it; no spot means stuck. The walk is at 1,3 to within 1 block.
 fn step(w: &mut World, e: Entity) {
     let (Some(t), Some(speed)) = (w.get::<Treasure>(e).map(|t| t.0), w.get::<Trip>(e).map(|t| t.p.speed)) else { return };
-    let to = [f64::from(t[0]) + 0.5, f64::from(t[1]) + 0.5, f64::from(t[2]) + 0.5];
+    let to = treasure_centre(t);
     let eighth = std::f64::consts::PI / 8.0;
     let half = std::f64::consts::FRAC_PI_2;
     let mut next = spots::pick_for(w, e, Pick::DefaultTowards { h: 16, v: 1, to, max_rad: eighth })
@@ -170,6 +165,7 @@ mod tests {
     use crate::behaviours::Entry;
     use crate::cow::{Herd, Pos, SpeciesTable, spawn_species};
     use crate::species::Config;
+    use horizon_core::geometry::Vec3;
 
     fn config() -> Config {
         let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 1, &Params::DEFAULT)]));

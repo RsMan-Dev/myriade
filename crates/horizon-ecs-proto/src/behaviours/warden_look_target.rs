@@ -3,6 +3,7 @@
 use super::act_phase::RareState;
 use super::Inst;
 use super::Module;
+use crate::rules::warden_look_target::{block_centre, eye_point, in_follow_range, still_disturbed};
 use crate::{cow::*, goals::*, targeting::Target};
 use bevy_ecs::prelude::*;
 
@@ -10,7 +11,6 @@ use bevy_ecs::prelude::*;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 struct Watching(u8);
-const FOLLOW_RANGE_SQR: f64 = 24.0 * 24.0;
 
 pub static MODULE: Module = Module { name: "warden_look_target", flags: LOOK, can_use, start, stop, tick: Some(tick), resources, ..Module::DEFAULT };
 
@@ -26,7 +26,7 @@ fn resources(w: &mut World) {
 fn watched(w: &World, e: Entity) -> Option<[f64; 3]> {
     let who = w.get::<Target>(e)?.who;
     let (me, i) = (w.get::<Pos>(e)?.0, crate::targeting::info(w, who)?);
-    (crate::goals::d2(me, i.pos) <= FOLLOW_RANGE_SQR).then_some([i.pos.x, i.pos.y + i.eye, i.pos.z])
+    in_follow_range(crate::goals::d2(me, i.pos)).then_some(eye_point(i.pos, i.eye))
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Watching>();
@@ -44,7 +44,7 @@ fn tick(w: &mut World) {
 fn disturbance(w: &World, e: Entity) -> Option<[i32; 3]> {
     let now = now_of(w, e);
     let r = w.get::<RareState>(e)?;
-    r.disturbance.filter(|_| now < r.disturbance_until)
+    r.disturbance.filter(|_| still_disturbed(now, r.disturbance_until))
 }
 
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -61,5 +61,5 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         return;
     }
     let Some(p) = disturbance(w, e) else { return };
-    crate::brain::look_at(w, e, [p[0] as f64 + 0.5, p[1] as f64 + 0.5, p[2] as f64 + 0.5]);
+    crate::brain::look_at(w, e, block_centre(p));
 }

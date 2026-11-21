@@ -3,6 +3,7 @@
 //! DOUBT: vanilla draws each look when the previous one ends; here they are drawn together (same spread, other order).
 use super::fox_state as pose;
 use super::*;
+use crate::rules::lookout::{ask_period, look_count, look_dir, look_ticks};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -81,7 +82,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     if g.armed || g.slot != inst.slot {
         return;
     }
-    let period = (1.0 / g.p.chance).round().max(1.0) as i32;
+    let period = ask_period(g.p.chance);
     let wait = with_rng(w, e, |r| 2 * geometric(r, period));
     crate::goals::arm(w, e, inst.slot, wait);
     w.get_mut::<Lookout>(e).unwrap().armed = true;
@@ -108,11 +109,11 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         return;
     }
     let mut looks = with_rng(w, e, |r| {
-        let n = 2 + r.next_int(3);
+        let n = look_count(r.next_int(3));
         (0..n)
             .map(|_| {
-                let a = std::f64::consts::TAU * r.next_f64();
-                ([a.cos(), a.sin()], (80 + r.next_int(20) + 1) / 2)
+                let dir = look_dir(std::f64::consts::TAU * r.next_f64());
+                (dir, look_ticks(r.next_int(20)))
             })
             .collect::<Vec<([f64; 2], i32)>>()
     });

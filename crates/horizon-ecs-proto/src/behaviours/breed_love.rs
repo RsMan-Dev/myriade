@@ -9,6 +9,7 @@ use crate::cow::*;
 use crate::goals::{self, Events};
 use crate::behaviours::breed::Resting;
 use crate::behaviours::Cap;
+use crate::rules::breed_love::{birth_delay, too_far_to_mate};
 use crate::targeting::Who;
 use horizon_client_lib::items::Items;
 
@@ -30,7 +31,7 @@ const BED_RANGE: f64 = 48.0;
 /// `MakeLove.start` : la naissance est planifiée (souvenir `BIRTH_DUE`, expire à l'échéance).
 pub fn start(w: &mut World, e: Entity, partner: Entity) {
     let now = now_of(w, e);
-    let delay = goals::with_rng(w, e, |r| 275 + r.next_int(50) as u64);
+    let delay = goals::with_rng(w, e, |r| birth_delay(r.next_int(50)));
     w.entity_mut(e).insert(Mating { partner, birth: now + delay });
     set(w, e, &BIRTH_DUE, MemValue::Unit, Some(delay));
 }
@@ -134,7 +135,7 @@ fn make_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
         return false;
     }
     let (Some(a), Some(b)) = (w.get::<Pos>(e).map(|q| q.0), w.get::<Pos>(p).map(|q| q.0)) else { return false };
-    if crate::goals::d2(a, b) > 5.0 {
+    if too_far_to_mate(crate::goals::d2(a, b)) {
         return true;
     }
     lock_gaze(w, e, p);

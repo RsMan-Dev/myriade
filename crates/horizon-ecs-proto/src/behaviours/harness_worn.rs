@@ -5,6 +5,7 @@
 //! DOUTE : `goals::item_name` (identifiant vers nom) n'existe pas dans le cadre ; `is_harness` en dépend.
 use crate::behaviours::Interaction;
 use crate::cow::GrowAt;
+use crate::rules::harness_worn::is_harness_name;
 use crate::rules::{no_attrs, no_interact, Rule};
 use bevy_ecs::prelude::*;
 
@@ -33,5 +34,5 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     true
 }
 fn is_harness(item: u32) -> bool {
-    crate::items::item_name(item).is_some_and(|n| n.ends_with("_harness"))
+    crate::items::item_name(item).is_some_and(|n| is_harness_name(&n))
 }

@@ -5,7 +5,7 @@
 use super::*;
 use crate::locomotion::swim::SquidState;
 use crate::{cow::*, goals::*};
-use horizon_core::geometry::trig::Mth;
+use crate::rules::{retreat_on_hurt, spear_use::halved_use, squid_goals as rules};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {}
@@ -20,10 +20,6 @@ pub struct Wandering;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Fleeing;
-
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 
 /// `SquidRandomMovementGoal`: every tick of the goal, one chance in `reduced(50)`, or out of the water, or with no vector: a new horizontal
 /// direction at 0.2 and a vertical push of -0.1 to 0.1.
@@ -46,7 +42,7 @@ fn wander_tick(w: &mut World) {
         let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
         let Some(mut st) = w.get::<SquidState>(e).copied() else { continue };
         let (roll, a, y) = with_rng(w, e, |r| {
-            let roll = r.next_int(reduced(50)) == 0;
+            let roll = r.next_int(halved_use(50, true)) == 0;
             // The angle and the height are drawn only when the condition needs them (the `||` of the `Mob`).
             if roll || !in_water || st.vector == [0.0; 3] {
                 (true, r.next_float() * std::f32::consts::PI * 2.0, -0.1 + r.next_float() * 0.2)
@@ -55,7 +51,7 @@ fn wander_tick(w: &mut World) {
             }
         });
         if roll {
-            st.vector = [f64::from(a.mcos() * 0.2), f64::from(y), f64::from(a.msin() * 0.2)];
+            st.vector = rules::wander_vector(a, y);
             *w.get_mut::<SquidState>(e).unwrap() = st;
         }
     }
@@ -69,7 +65,7 @@ fn flee_ok(w: &World, e: Entity) -> bool {
     if now.saturating_sub(h.at) > 100 || !w.get::<FluidState>(e).is_some_and(|f| f.in_water) {
         return false;
     }
-    crate::targeting::info(w, h.who).is_some_and(|i| (p.0.x - i.pos.x).powi(2) + (p.0.y - i.pos.y).powi(2) + (p.0.z - i.pos.z).powi(2) < 100.0)
+    crate::targeting::info(w, h.who).is_some_and(|i| retreat_on_hurt::dist_sq(p.0, i.pos) < 100.0)
 }
 fn now_of_ref(w: &World, e: Entity) -> u64 {
     let c = w.resource::<Clock>();
@@ -100,26 +96,13 @@ fn flee_tick(w: &mut World) {
         }
         let (Some(h), Some(p)) = (w.get::<LastHurtBy>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { continue };
         let Some(by) = crate::targeting::info(w, h.who) else { continue };
-        let mut f = [p.x - by.pos.x, p.y - by.pos.y, p.z - by.pos.z];
+        let f = [p.x - by.pos.x, p.y - by.pos.y, p.z - by.pos.z];
         let at = [(p.x + f[0]).floor() as i32, (p.y + f[1]).floor() as i32, (p.z + f[2]).floor() as i32];
         let mw = w.resource::<Level>().mw.0;
         let air = mw.facts.is_air(mw.world.block(at[0], at[1], at[2]));
         if mw.fluid(at[0], at[1], at[2]) == horizon_client_lib::blocks::Fluid::Water || air {
-            let length = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
-            if length > 0.0 {
-                let mut avoid = 3.0;
-                if length > 5.0 {
-                    avoid -= (length - 5.0) / 5.0;
-                }
-                if avoid > 0.0 {
-                    f = f.map(|c| c * avoid);
-                }
-            }
-            if air {
-                f[1] = 0.0;
-            }
             if let Some(mut st) = w.get_mut::<SquidState>(e) {
-                st.vector = [f[0] / 20.0, f[1] / 20.0, f[2] / 20.0];
+                st.vector = rules::flee_vector(f, air);
             }
         }
     }

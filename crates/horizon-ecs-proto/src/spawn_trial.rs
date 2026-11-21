@@ -9,6 +9,8 @@ use crate::cow::{species_table, Body, Clock, Pos};
 use crate::despawn;
 use crate::goals::{Events, Online};
 use crate::item::spawn_at_location;
+use crate::rules::spawn_spawner::attempt_position;
+use crate::rules::spawn_trial::{aligned, center, next_aligned, wave_target};
 use crate::spawn_spawner::{nearest_sqr, weighted, weighted_index, Block3, SpawnerRng, Valid};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
@@ -63,10 +65,10 @@ impl Wave {
         self.potentials.iter().any(|p| p.1 > 0)
     }
     fn total_target(&self, additional: i32) -> i32 {
-        (self.total + self.total_per_player * additional as f32).floor() as i32
+        wave_target(self.total, self.total_per_player, additional)
     }
     fn simultaneous_target(&self, additional: i32) -> i32 {
-        (self.simultaneous + self.simultaneous_per_player * additional as f32).floor() as i32
+        wave_target(self.simultaneous, self.simultaneous_per_player, additional)
     }
 }
 
@@ -254,19 +256,6 @@ fn reschedule(s: &mut Trials, pos: Block3, due: Option<u64>) {
     if let Some(due) = due {
         s.wakes.entry(due).or_default().push(pos);
     }
-}
-
-fn aligned(pos: Block3, now: u64) -> bool {
-    BlockPos::new(pos[0], pos[1], pos[2]).pack().wrapping_add(now as i64) % 20 == 0
-}
-
-/// The first aligned tick after `now` (the detection's ticks).
-fn next_aligned(pos: Block3, now: u64) -> u64 {
-    (now + 1..).find(|&t| aligned(pos, t)).unwrap_or(now + 1)
-}
-
-fn center(pos: Block3) -> [f64; 3] {
-    pos.map(|v| f64::from(v) + 0.5)
 }
 
 fn disown(w: &mut World, e: Entity) {
@@ -621,12 +610,7 @@ fn spawn_mob(w: &mut World, rng: &mut LegacyRandom, env: &Env, pos: Block3, t: &
     }
     let id = t.next_species?;
     let sp = species_table().0.into_iter().find(|s| s.id == id)?;
-    let r = f64::from(t.cfg.spawn_range);
-    let at = [
-        f64::from(pos[0]) + (rng.next_double() - rng.next_double()) * r + 0.5,
-        f64::from(pos[1] + rng.next_int_bound(3).unwrap_or(0) - 1),
-        f64::from(pos[2]) + (rng.next_double() - rng.next_double()) * r + 0.5,
-    ];
+    let at = attempt_position(pos, t.cfg.spawn_range, rng);
     if !(env.valid)(w, &sp, at) || !in_line_of_sight(w, env, center(pos), at) {
         return None;
     }

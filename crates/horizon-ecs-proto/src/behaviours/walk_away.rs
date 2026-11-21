@@ -3,6 +3,7 @@
 //! `distance` blocks from it, ten tries at most, the path ending at once when none is found. Woken by the `Avoid` write.
 use crate::goals;
 use super::*;
+use crate::rules::walk_away::{dist_sqr, still_avoids};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -48,8 +49,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 /// `canUse`: a remembered point that has not expired, and closer than `within` (the animal that has walked clear stays).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let (Some(a), Some(p), Some(away)) = (w.get::<Avoid>(e), w.get::<Pos>(e), w.get::<Away>(e)) else { return false };
-    let d2 = (p.0.x - a.at[0]).powi(2) + (p.0.y - a.at[1]).powi(2) + (p.0.z - a.at[2]).powi(2);
-    now_of(w, e) < a.until && d2 < away.0.within * away.0.within
+    let d2 = dist_sqr([p.0.x, p.0.y, p.0.z], a.at);
+    still_avoids(now_of(w, e), a.until) && d2 < away.0.within * away.0.within
 }
 /// The spot `distance` blocks away from the point (`land_random_pos_away`, five blocks down and seven up at most); none
 /// found: the goal ends at once.
@@ -73,7 +74,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     let walked = w.entity_mut(e).take::<Walking>().is_some();
     stop_nav(w, e);
-    if walked && w.get::<Avoid>(e).is_some_and(|a| now_of(w, e) < a.until) {
+    if walked && w.get::<Avoid>(e).is_some_and(|a| still_avoids(now_of(w, e), a.until)) {
         arm_module(w, e, &MODULE, 1);
     }
 }

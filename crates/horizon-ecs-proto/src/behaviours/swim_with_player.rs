@@ -6,6 +6,7 @@
 //! potion effects on players in the prototype) and its 1-in-6 draw per tick; the head's look at the player (`look_at_speed`:
 //! the look is not written). The decisions are pure functions below, tested with their values.
 use super::*;
+use crate::rules::swim_with_player::{is_close, may_continue, may_start};
 use crate::targeting::{Target, Who};
 use crate::{cow::*, goals::*};
 
@@ -73,19 +74,6 @@ fn nearest(w: &World, e: Entity, range: f64) -> Option<(u32, f64)> {
     });
     best
 }
-/// The decision of `canUse`, from its parts: a swimming player within range that the animal does not target.
-pub fn may_start(swimming: Option<bool>, d2: f64, range: f64, targets_player: bool) -> bool {
-    swimming == Some(true) && d2 <= range * range && !targets_player
-}
-/// The decision of `canContinue`: the player still swims and is within `keep_sqr`.
-pub fn may_continue(swimming: Option<bool>, d2: f64, keep_sqr: f64) -> bool {
-    swimming == Some(true) && d2 < keep_sqr
-}
-/// The walk stops within `near_sqr` (`tick`: `distanceToSqr < 6.25`).
-pub fn is_close(d2: f64, near_sqr: f64) -> bool {
-    d2 < near_sqr
-}
-
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(p) = w.get::<EscortParams>(e).copied() else { return false };
     let Some((id, d2)) = nearest(w, e, p.range) else { return false };

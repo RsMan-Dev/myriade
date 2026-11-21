@@ -10,17 +10,10 @@
 //!    the deadline pass unused (it is checked when due);
 //!  - persistence is a component (`Persistent`): `keep` / `release`.
 use crate::cow::{ActiveUntil, Bounds, Cell, Due, Index, Players, Rng};
+use crate::rules::despawn as rule;
+pub use crate::rules::despawn::Removable;
 use bevy_ecs::prelude::*;
 
-/// Whether a creature that no player is near may go. The rule of its species, not of the system.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Removable {
-    Always,
-    /// Animals, villagers, golems...
-    Never,
-    /// `Cat.removeWhenFarAway`: while untamed and older than this many ticks.
-    UntamedAfter(u32),
-}
 #[derive(Clone, Copy, Debug)]
 pub struct DespawnDef {
     /// Blocks past which it goes at once (`MobCategory.getDespawnDistance`).
@@ -73,11 +66,8 @@ fn inside_ring(w: &World, e: Entity) -> bool {
     w.get::<ActiveUntil>(e).is_some_and(|a| a.0 == u64::MAX)
 }
 fn removable(w: &World, e: Entity, d: &Despawn) -> bool {
-    match d.def.removable {
-        Removable::Always => true,
-        Removable::Never => false,
-        Removable::UntamedAfter(t) => !w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some()) && crate::cow::now_of(w, e) - d.born > u64::from(t),
-    }
+    let tamed = w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some());
+    rule::removable(d.def.removable, tamed, crate::cow::now_of(w, e) - d.born)
 }
 /// The resources of the service, made when the first creature that may go away is given its rule (a world that has none does not carry them).
 pub fn ensure(w: &mut World) {
@@ -97,7 +87,7 @@ pub fn admit(w: &mut World, e: Entity, def: DespawnDef, nearest_sqr: f64) {
     if !r.0.contains(&def.distance) {
         r.0.push(def.distance);
     }
-    if nearest_sqr < f64::from(def.near).powi(2) {
+    if rule::within_ring(nearest_sqr, def.near) {
         // A player is within the ring at its birth: active without end until the ring is left.
         if let Some(mut a) = w.get_mut::<ActiveUntil>(e) {
             a.0 = u64::MAX;
@@ -118,7 +108,7 @@ fn arm(w: &mut World, e: Entity) {
         let mut r = w.resource_mut::<DespawnRng>();
         crate::cow::geometric(&mut r.0, d.def.chance)
     };
-    let at = crate::cow::now_of(w, e) + u64::from(d.def.idle) + 1 + g.max(0) as u64;
+    let at = rule::deadline(crate::cow::now_of(w, e), d.def.idle, g);
     w.get_mut::<Despawn>(e).unwrap().deadline = at;
     crate::cow::arm_at(w, e, at, Due::Despawn);
 }
@@ -183,9 +173,7 @@ fn far_check(w: &mut World, e: Entity) {
     let (mn, mx) = (b.0.min_position(), b.0.max_position());
     let (x, z) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
     w.resource_mut::<DespawnStats>().measured += 1;
-    let list = &w.resource::<Players>().list;
-    let Some(best) = list.iter().map(|p| (p.0 - x).powi(2) + (p.1 - z).powi(2)).reduce(f64::min) else { return };
-    if best > f64::from(d.def.distance).powi(2) {
+    if rule::is_far(x, z, &w.resource::<Players>().list, d.def.distance) {
         w.resource_mut::<DespawnStats>().far += 1;
         remove(w, e);
     }

@@ -9,9 +9,11 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::locomotion::hop::Hop;
+use crate::rules::cube_attack::body_yaw_toward;
+use crate::rules::nearest_target::reduced;
 use crate::size::Size;
 use crate::targeting::{self, Target, TargetWatchers, Who};
-use horizon_core::geometry::{trig, Vec3};
+use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -63,10 +65,6 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let p = params::<Params>(p);
     w.entity_mut(e).insert(Attack { tired: p.tired, bites_tiny: p.bites_tiny });
 }
-/// `reducedTickDelay`: half, rounded up.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 /// The target the goal follows: alive and not exempt (creative, spectator, dead), as `CubeMobAttackGoal.canUse`.
 fn target_of(w: &World, e: Entity) -> Option<(Who, targeting::Info)> {
     let who = w.get::<Target>(e)?.who;
@@ -106,7 +104,7 @@ fn step(w: &mut World, e: Entity) {
 /// yaw is the direction of the next bound (`Hop.dir`), `aggressive` the bite flag.
 fn aim(w: &mut World, e: Entity, at: Vec3) {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let want = trig::atan2_degrees(at.z - p.z, at.x - p.x) - 90.0;
+    let want = body_yaw_toward(p, at);
     let Some(yaw) = w.get_mut::<Yaw>(e).map(|mut y| {
         y.0 = crate::cow::rotlerp(y.0, want, 10.0);
         y.0

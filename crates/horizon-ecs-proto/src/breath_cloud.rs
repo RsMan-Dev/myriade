@@ -7,9 +7,10 @@ use crate::area;
 use crate::cow::{after, OwnTime, Pos};
 use crate::dragon::breath::{self, Cloud, CloudSpec, Step, WAIT};
 use crate::goals::Events;
+use crate::rules::breath_cloud as rule;
 use crate::targeting::{self, Who};
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Vec3;
 
 /// Marks a cloud past its wait: `tick_live` steps it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -63,9 +64,7 @@ pub fn tick_live(w: &mut World) {
     w.get_resource_or_insert_with(CloudVisits::default).0 += ids.len() as u64;
     for e in ids {
         let Some(mut c) = w.get::<Cloud>(e).cloned() else { continue };
-        let reach = c.radius.max(c.radius + c.radius_per_tick);
-        let [x, y, z] = c.at;
-        let area = Aabb::new(Vec3::new(x - f64::from(reach), y, z - f64::from(reach)), Vec3::new(x + f64::from(reach), y + 0.5, z + f64::from(reach)));
+        let area = rule::scan_box(c.at, rule::cloud_reach(c.radius, c.radius_per_tick));
         let mut cands = Vec::new();
         for id in area::players_in(w, area) {
             let who = Who::Player(id);

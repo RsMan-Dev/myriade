@@ -4,6 +4,7 @@
 use super::Inst;
 use super::act_phase::{self, ActPhase, Phase};
 use super::{params, Module};
+use crate::rules::dig::may_dig;
 use crate::{cow::*, goals::*, mount, targeting::Target};
 use bevy_ecs::prelude::*;
 
@@ -49,7 +50,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let grounded = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
     let fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water || f.in_lava);
-    let ok = (grounded || fluid) && w.get::<Target>(e).is_none() && !w.get::<Stroll>(e).is_some_and(|s| s.walking);
+    let ok = may_dig(grounded, fluid, w.get::<Target>(e).is_some(), w.get::<Stroll>(e).is_some_and(|s| s.walking));
     if !ok {
         // Asked again soon: nothing else wakes a goal that is refused for a transient reason.
         arm(w, e, inst.slot, 20);

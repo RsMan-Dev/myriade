@@ -8,6 +8,7 @@ use super::*;
 use crate::projectile::{launch, Flight};
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
+use crate::rules::{ranged_attack, ranged_crossbow as rules};
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -116,11 +117,11 @@ fn crossbow_run(
         }
         c.see_time += if sees { 1 } else { -1 };
         let d = d2(pos.0, i.pos);
-        let needs_to_move = (d > c.p.radius * c.p.radius || c.see_time < 5) && c.attack_delay == 0;
+        let needs_to_move = rules::needs_to_move(d, c.p.radius, c.see_time, c.attack_delay);
         if needs_to_move {
             c.path_delay -= 1;
             if c.path_delay <= 0 {
-                let speed = if c.phase == Phase::Uncharged { c.p.speed } else { c.p.speed * 0.5 };
+                let speed = rules::walk_speed(c.p.speed, c.phase == Phase::Uncharged);
                 let at = [i.pos.x, i.pos.y, i.pos.z];
                 cmd.queue(move |w: &mut World| go_to_at(w, e, at, speed, 0));
                 c.path_delay = 20 + rng.next_int(21);
@@ -175,12 +176,9 @@ fn shoot(w: &mut World, e: Entity, who: Who, difficulty: i32) {
     let start = Vec3::new(pos.x, pos.y + eye - f64::from(0.1_f32), pos.z);
     let height = i.bounds.max_position().y - i.bounds.min_position().y;
     let (xd, zd) = (i.pos.x - pos.x, i.pos.z - pos.z);
-    let dist = (xd * xd + zd * zd).sqrt();
-    let yd = i.pos.y + height / 3.0 - start.y + dist * f64::from(0.2_f32);
-    let dir = Vec3::new(xd, yd, zd).normalize();
-    let spread = 0.017_227_5 * f64::from((14 - difficulty * 4) as f32);
+    let dir = rules::aim_dir(xd, zd, i.pos.y, height, start.y);
+    let spread = ranged_attack::spread_of(f64::from((14 - difficulty * 4) as f32));
     let mut rng = w.get_mut::<Rng>(e).unwrap();
-    let mut triangle = |mean: f64, spread: f64| mean + spread * (rng.next_f64() - rng.next_f64());
-    let v = Vec3::new((dir.x + triangle(0.0, spread)) * 1.6, (dir.y + triangle(0.0, spread)) * 1.6, (dir.z + triangle(0.0, spread)) * 1.6);
+    let v = ranged_attack::shot_velocity(dir, spread, 1.6, || rng.next_f64());
     launch(w, Flight::ARROW, start, v, Some(Who::Entity(e)));
 }

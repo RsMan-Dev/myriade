@@ -3,6 +3,8 @@
 //! A stand at rest has no `Moving`: nothing visits it, so a placed stand costs nothing per tick. The first four bits are the client
 //! flags of the jar (`CLIENT_FLAG_*`); invisible and no gravity are entity flags of the jar, kept beside them.
 use crate::cow::*;
+pub use crate::rules::stand::clicked_slot;
+use crate::rules::stand::blow_breaks;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
@@ -83,24 +85,6 @@ pub fn swap_locked(w: &World, e: Entity, slot: usize, filled: bool) -> bool {
     let offset = if filled { 8 } else { 16 };
     let disabled = w.get::<DisabledSlots>(e).map_or(0, |d| d.0);
     disabled & (1 << (filter_flag(slot) + offset)) != 0
-}
-/// `ArmorStand.getClickedSlot` on a click at `rel_y` above the stand's feet (divided by 0.5 when small): the slot whose height it is,
-/// the main hand when none, and only where the slot has something to take (`has`).
-pub fn clicked_slot(small: bool, rel_y: f32, has: impl Fn(usize) -> bool) -> usize {
-    let y = if small { rel_y / 0.5 } else { rel_y };
-    if y >= 0.1 && y < 0.1 + if small { 0.8 } else { 0.45 } && has(2) {
-        2
-    } else if y >= 0.9 + if small { 0.3 } else { 0.0 } && y < 0.9 + if small { 1.0 } else { 0.7 } && has(4) {
-        4
-    } else if y >= 0.4 && y < 0.4 + if small { 1.0 } else { 0.8 } && has(3) {
-        3
-    } else if y >= 1.6 && has(5) {
-        5
-    } else if !has(0) && has(1) {
-        1
-    } else {
-        0
-    }
 }
 /// `ArmorStand.interact`'s choice of the slot a click acts on: with an item in hand, its own slot (`held_slot`) unless it is disabled;
 /// with an empty hand, the clicked height, or the main hand when the clicked slot is disabled. `None`: the click changes nothing.
@@ -271,14 +255,10 @@ pub enum Blow {
 /// `ArmorStand.hurtServer` for a blow: a creative player breaks it at once; otherwise the first blow wobbles it (and sets `LastHit`), and a
 /// blow within five ticks of that one breaks it. `always_kills` breaks it at once, as `#always_kills_armor_stands` does.
 pub fn blow(w: &mut World, e: Entity, now: u64, creative: bool, always_kills: bool) -> Blow {
-    if creative || always_kills {
+    let last = w.get::<LastHit>(e).map(|h| h.0);
+    if blow_breaks(last, now, creative, always_kills) {
         return Blow::Break;
     }
-    match w.get::<LastHit>(e).copied() {
-        Some(LastHit(t)) if now - t <= 5 => Blow::Break,
-        _ => {
-            w.entity_mut(e).insert(LastHit(now));
-            Blow::Wobble
-        }
-    }
+    w.entity_mut(e).insert(LastHit(now));
+    Blow::Wobble
 }

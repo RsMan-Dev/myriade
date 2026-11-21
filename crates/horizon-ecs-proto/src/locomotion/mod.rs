@@ -4,6 +4,8 @@
 //! swim)]` and no system knows a species. The active mode is a marker (`WalkMode`, `SwimMode`) that the systems of the mode
 //! filter on; `walk` is the walk of the cow, as it was before the mother (`cow.rs`: `travel`, `move_control`, `pathfind`).
 use crate::behaviours::{Entry, Module};
+use crate::rules::locomotion::{back_mode, current_mode, fluid_mode};
+pub use crate::rules::locomotion::Medium;
 use bevy_ecs::prelude::*;
 
 pub mod climb;
@@ -13,14 +15,6 @@ pub mod lava;
 pub mod swim;
 pub mod walk;
 
-/// The medium a mode moves in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Medium {
-    Ground,
-    Water,
-    Air,
-    Lava,
-}
 /// The registration: one line per mode; the modes are modules of the registry like the goals.
 pub static TABLE: &[&Module] = &[&walk::MODULE, &swim::MODULE, &fly::MODULE, &hop::MODULE, &lava::MODULE];
 
@@ -96,7 +90,7 @@ fn set_marker(w: &mut World, e: Entity, to: Medium) {
 /// fluid asks it through `fluid_changed`). An event (`Events.mode_changed`) tells the rules. False: no such mode, or already in it.
 pub fn switch(w: &mut World, e: Entity, to: Medium) -> bool {
     let Some(m) = w.get::<Modes>(e).copied() else { return false };
-    let now = if w.get::<WalkMode>(e).is_some() { Some(Medium::Ground) } else if w.get::<SwimMode>(e).is_some() { Some(Medium::Water) } else if w.get::<FlyMode>(e).is_some() { Some(Medium::Air) } else if w.get::<LavaMode>(e).is_some() { Some(Medium::Lava) } else { None };
+    let now = current_mode(w.get::<WalkMode>(e).is_some(), w.get::<SwimMode>(e).is_some(), w.get::<FlyMode>(e).is_some(), w.get::<LavaMode>(e).is_some());
     if !m.has(to) || now == Some(to) {
         return false;
     }
@@ -117,17 +111,13 @@ pub fn fluid_changed(cmd: &mut Commands, e: Entity, modes: &Modes, in_water: boo
     if !modes.has(Medium::Water) && !modes.has(Medium::Lava) {
         return;
     }
-    let back = if modes.has(Medium::Ground) { Some(Medium::Ground) } else if modes.has(Medium::Air) { Some(Medium::Air) } else { None };
+    let back = back_mode(modes.has(Medium::Ground), modes.has(Medium::Air));
     cmd.queue(move |w: &mut World| {
         if modes_has_water(w, e) {
             swim::water_changed(w, e, water);
         }
-        if water {
-            switch(w, e, Medium::Water);
-        } else if lava {
-            switch(w, e, Medium::Lava);
-        } else if let Some(b) = back {
-            switch(w, e, b);
+        if let Some(m) = fluid_mode(water, lava, back) {
+            switch(w, e, m);
         }
     });
 }

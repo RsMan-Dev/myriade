@@ -4,6 +4,7 @@
 //! (`air - 140` ticks); no ask every two ticks. Not ported: the push `move_relative(0.02, xxa/yya/zza)` of `tick` (the inputs of
 //! the mob's move control are not in the prototype: DOUTE), the sound and the bubble column's particles.
 use super::*;
+use crate::rules::breath_air::air_wait;
 use crate::{cow::*, goals::*};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::mobs::data::PathComputationType;
@@ -58,11 +59,8 @@ fn settings(w: &World, e: Entity) -> Option<AirSearch> {
 fn wait_for(w: &World, e: Entity) -> Option<i32> {
     let s = settings(w, e)?;
     let air = w.get::<Air>(e)?.0;
-    if air < s.threshold {
-        return None;
-    }
     let eyes_under = w.get::<FluidState>(e).is_some_and(|f| f.eye_in_water);
-    Some(if eyes_under { (air - s.threshold).max(1) } else { 20 })
+    air_wait(air, s.threshold, eyes_under)
 }
 /// Arms the deadline of the entry `inst` (or wakes it when the air is already short).
 fn arm_entry(w: &mut World, e: Entity, inst: Inst) {

@@ -2,6 +2,7 @@
 //! blocks away or more walks to it until the Manhattan distance in blocks is at most `stop`. No sitting check: the allay does not sit.
 //! What wakes it: the owner leaving the `start` radius (`PlayerWatch`); while it runs, a system visits it each tick.
 use super::*;
+use crate::rules::stay_close_to_owner as rules;
 use crate::{cow::*, goals::*, tame};
 
 #[derive(Clone, Copy, Debug)]
@@ -90,7 +91,7 @@ fn stay_step(world: &mut World, e: Entity) {
     let owner = tame::owner_player(world, e);
     let me = world.get::<Pos>(e).map(|p| p.0);
     let near = match (owner, me) {
-        (Some(o), Some(m)) => (o.x.floor() - m.x.floor()).abs() + (o.y.floor() - m.y.floor()).abs() + (o.z.floor() - m.z.floor()).abs() <= f64::from(s.p.stop),
+        (Some(o), Some(m)) => rules::near_owner([o.x, o.y, o.z], [m.x, m.y, m.z], f64::from(s.p.stop)),
         _ => false,
     };
     if !s.fresh && (owner.is_none() || near) {

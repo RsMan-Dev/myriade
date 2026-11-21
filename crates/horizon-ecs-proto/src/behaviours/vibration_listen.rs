@@ -4,6 +4,7 @@
 use super::Inst;
 use super::act_phase::{ActPhase, Phase, RareState};
 use super::{go_to_disturbance, params, suspect_anger::{self, Level}, Module};
+use crate::rules::vibration_listen::{RANGE, block_of, dist_sqr, hear_delay, in_range};
 use crate::{cow::*, goals::*, targeting::{self, Who}};
 use bevy_ecs::prelude::*;
 
@@ -33,9 +34,6 @@ pub struct Vibration {
     pub owner: Option<Who>,
     pub projectile: bool,
 }
-
-/// The listening range in blocks (`VibrationUser` of the warden: 16).
-const RANGE: f64 = 16.0;
 
 /// The vibration a listener heard and that is still travelling to its ear: `deliver` takes it when its delay is over.
 #[derive(Component, Default)]
@@ -69,12 +67,12 @@ fn vibration_dispatch(w: &mut World) {
                 continue;
             }
             let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { continue };
-            let d2 = (v.pos[0] - p.x).powi(2) + (v.pos[1] - p.y).powi(2) + (v.pos[2] - p.z).powi(2);
-            if d2 > RANGE * RANGE {
+            let d2 = dist_sqr(v.pos, [p.x, p.y, p.z]);
+            if !in_range(d2) {
                 continue;
             }
             w.entity_mut(e).insert(Heard(Some(v)));
-            after(w, e, d2.sqrt() as i32, deliver);
+            after(w, e, hear_delay(d2), deliver);
         }
     }
 }
@@ -92,15 +90,10 @@ pub fn listens(w: &World, e: Entity) -> bool {
     now >= st.vibration_cooldown_until && !matches!(st.phase, Phase::Burrowing | Phase::Emerging)
 }
 
-fn block(p: [f64; 3]) -> [i32; 3] {
-    p.map(|c| c.floor() as i32)
-}
-
 /// Within the owner range of the entity.
 fn near(w: &World, e: Entity, who: Who, range_sqr: f64) -> bool {
     let (Some(i), Some(p)) = (targeting::info(w, who), w.get::<Pos>(e)) else { return false };
-    let d = [i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z];
-    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < range_sqr
+    dist_sqr([i.pos.x, i.pos.y, i.pos.z], [p.0.x, p.0.y, p.0.z]) < range_sqr
 }
 
 /// `receiveVibration`: the tendrils click, the source's anger grows, and the place becomes the disturbance unless it is angry.
@@ -109,7 +102,7 @@ pub fn receive(w: &mut World, e: Entity, v: &Vibration) {
     let c = w.get::<Cfg>(e).unwrap().0;
     w.get_mut::<ActPhase>(e).unwrap().vibration_cooldown_until = now + c.cooldown;
     super::act_phase::sound(w, e, "entity.warden.tendril_clicks", 5.0, 1.0);
-    let mut at = block(v.pos);
+    let mut at = block_of(v.pos);
     match v.owner {
         Some(owner) => {
             if near(w, e, owner, c.owner_range_sqr) {
@@ -117,7 +110,7 @@ pub fn receive(w: &mut World, e: Entity, v: &Vibration) {
                     if targeting::can_target(w, e, owner)
                         && let Some(i) = targeting::info(w, owner)
                     {
-                        at = block([i.pos.x, i.pos.y, i.pos.z]);
+                        at = block_of([i.pos.x, i.pos.y, i.pos.z]);
                     }
                     suspect_anger::raise(w, e, owner, c.anger);
                 } else {

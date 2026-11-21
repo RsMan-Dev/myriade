@@ -6,6 +6,8 @@
 //! the flag of the charge (`Blaze.setCharged`). Not done: the sounds.
 use super::*;
 use crate::projectile::{launch, Flight};
+use crate::rules::burst_shot::{deviation, spread_aim};
+use crate::rules::charged_shot::shot_velocity;
 use crate::targeting::{self, Target, TargetWatchers, Who};
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
@@ -144,12 +146,10 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let half = h * 0.5;
     let (xd, zd) = (i.pos.x - pos.x, i.pos.z - pos.z);
     let yd = (i.bounds.min_position().y + i.bounds.max_position().y) * 0.5 - (pos.y + half);
-    let sqd = d2(pos, i.pos).sqrt().sqrt() * 0.5;
-    let dev = p.spread * sqd;
+    let dev = deviation(p.spread, d2(pos, i.pos));
     let mut rng = w.get_mut::<Rng>(e).unwrap();
-    let mut triangle = |mode: f64| mode + dev * (rng.next_f64() - rng.next_f64());
+    let mut triangle = |mode: f64| spread_aim(mode, dev, rng.next_f64(), rng.next_f64());
     let dir = Vec3::new(triangle(xd), yd, triangle(zd));
-    let len = (dir.x * dir.x + dir.y * dir.y + dir.z * dir.z).sqrt().max(1.0e-9);
-    let v = Vec3::new(dir.x / len * 0.1, dir.y / len * 0.1, dir.z / len * 0.1);
+    let v = shot_velocity(Vec3::new(0.0, 0.0, 0.0), dir);
     launch(w, p.flight, Vec3::new(pos.x, pos.y + half + p.up, pos.z), v, Some(Who::Entity(e)));
 }

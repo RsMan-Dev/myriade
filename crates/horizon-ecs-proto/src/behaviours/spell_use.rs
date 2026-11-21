@@ -17,8 +17,9 @@ use crate::cow::*;
 use crate::effects;
 use crate::goals::*;
 use crate::hostile::PlayerState;
+use crate::rules::spell_use as rules;
 use crate::targeting::{self, Target, Who};
-use horizon_core::geometry::{trig, Aabb, Vec3};
+use horizon_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Spell {
@@ -106,7 +107,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         // down the answers are known to be no: the deadline is the first asking (same 2-tick phase) at or after the end of the cooldown.
         let (now, n) = (now_of(w, e), (inst.nth as usize).min(2));
         let wait = w.get::<Spells>(e).map_or(0, |s| s.next[n].saturating_sub(now));
-        crate::goals::arm(w, e, inst.slot, (wait.div_ceil(2) * 2).max(2) as i32);
+        crate::goals::arm(w, e, inst.slot, rules::recheck_in(wait));
     }
     ok
 }
@@ -140,7 +141,7 @@ fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
             }
             let mut sheep: Vec<Entity> = w.resource_scope(|w: &mut World, mut qs: Mut<SheepQuery>| {
                 qs.0.iter(w)
-                    .filter(|(_, p, c, h)| c.color == 11 && h.0 > 0.0 && (p.0.x - me.x).abs() <= 16.0 && (p.0.y - me.y).abs() <= 4.0 && (p.0.z - me.z).abs() <= 16.0 && d2(p.0, me) <= 256.0)
+                    .filter(|(_, p, c, h)| c.color == 11 && h.0 > 0.0 && rules::near_sheep(p.0.x - me.x, p.0.y - me.y, p.0.z - me.z, d2(p.0, me)))
                     .map(|(x, ..)| x)
                     .collect()
             });
@@ -251,8 +252,8 @@ fn summon(w: &mut World, e: Entity, species: &'static str) {
     let (Some(me), Some(sp)) = (w.get::<Pos>(e).map(|p| p.0), w.resource::<SpeciesTable>().0.get(id).copied()) else { return };
     let now = now_of(w, e);
     for _ in 0..3 {
-        let (dx, dz, life, seed) = with_rng(w, e, |r| (r.next_int(5) - 2, r.next_int(5) - 2, 20 * (30 + r.next_int(90)), u64::from(r.next_u32())));
-        let at = Vec3::new(me.x.floor() + f64::from(dx) + 0.5, me.y.floor() + 1.0, me.z.floor() + f64::from(dz) + 0.5);
+        let (dx, dz, life, seed) = with_rng(w, e, |r| (r.next_int(5) - 2, r.next_int(5) - 2, rules::vex_life(r.next_int(90)), u64::from(r.next_u32())));
+        let at = rules::summon_spot(me, dx, dz);
         let v = spawn_species(w, &sp, at.x, at.z, seed);
         w.get_mut::<Pos>(v).unwrap().0 = at;
         w.entity_mut(v).insert(crate::tame::Owner(Some(Who::Entity(e))));
@@ -265,25 +266,7 @@ fn fangs(w: &mut World, e: Entity, _allies: &'static [&'static str]) {
     let Some(t) = w.get::<Target>(e).and_then(|t| targeting::info(w, t.who)) else { return };
     let me = w.get::<Pos>(e).unwrap().0;
     let (min_y, max_y) = (t.pos.y.min(me.y), t.pos.y.max(me.y) + 1.0);
-    let angle = (t.pos.z - me.z).atan2(t.pos.x - me.x) as f32;
-    let mut spots: Vec<(f64, f64, i32)> = Vec::new();
-    let (cos, sin) = (|a: f32| f64::from(trig::cos(f64::from(a))), |a: f32| f64::from(trig::sin(f64::from(a))));
-    if d2(me, t.pos) < 9.0 {
-        for i in 0..5 {
-            let a = angle + i as f32 * std::f32::consts::PI * 0.4;
-            spots.push((me.x + cos(a) * 1.5, me.z + sin(a) * 1.5, 0));
-        }
-        for i in 0..8 {
-            let a = angle + i as f32 * std::f32::consts::PI * 2.0 / 8.0 + std::f32::consts::PI * 2.0 / 5.0;
-            spots.push((me.x + cos(a) * 2.5, me.z + sin(a) * 2.5, 3));
-        }
-    } else {
-        for i in 0..16 {
-            let reach = 1.25 * f64::from(i + 1);
-            spots.push((me.x + cos(angle) * reach, me.z + sin(angle) * reach, i));
-        }
-    }
-    for (x, z, delay) in spots {
+    for (x, z, delay) in rules::fang_spots(me, t.pos, d2(me, t.pos) < 9.0) {
         if let Some(y) = floor(w, x, z, min_y, max_y) {
             crate::fangs::spawn_fang(w, Vec3::new(x, y, z), delay, e);
         }

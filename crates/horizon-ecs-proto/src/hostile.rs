@@ -8,6 +8,7 @@ use crate::goals::*;
 use crate::targeting::{self, Target, Who, info, player_box};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::ParamSet;
+use crate::rules::hostile::{attack_damage, burn_chance, cooldown_expired_at_restart, eye_block, failures_before, far_repath_extra, health_after, melee_reach, melee_retry_wait, melee_wait, unreachable_too_long};
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `MeleeAttackGoal`'s data (from the species: damage, interval, speed) and state.
@@ -188,10 +189,7 @@ impl PlayerState {
         if self.health.len() <= i {
             self.health.resize(i + 1, 20.0);
         }
-        self.health[i] -= amount;
-        if self.immortal {
-            self.health[i] = self.health[i].max(1.0);
-        }
+        self.health[i] = health_after(self.health[i], amount, self.immortal);
         self.hits.push(PlayerHit { tick, player, amount, from });
     }
 }
@@ -234,7 +232,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
     // The melee check's grid is in the WORLD's time (`MeleeAttackGoal.lastCanUseCheck` against `getGameTime`).
     let now = w.resource::<Clock>().0;
     w.entity_mut(e).insert(Attack {
-        damage: if damage <= 0.0 { 1.0 } else { damage },
+        damage: attack_damage(damage),
         interval: 20,
         interval_baby: None,
         follow_unseen: false,
@@ -242,7 +240,7 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         next_strike: 0,
         frozen_since: 0,
         speed: 1.0,
-        reach: 2.04_f32.sqrt() as f64 - 0.6,
+        reach: melee_reach(),
         phase: now,
         until: 0,
         recalc: 0,
@@ -263,7 +261,7 @@ pub fn arm_melee(w: &mut World, e: Entity) {
     }
     a.armed = true;
     let a_slot = a.melee_slot;
-    let wait = 20 - (now.saturating_sub(a.phase) % 20) as i32;
+    let wait = melee_wait(now, a.phase);
     let slot = a_slot;
     arm(w, e, slot, wait);
 }
@@ -277,7 +275,7 @@ pub fn arm_melee_after(w: &mut World, e: Entity) {
     }
     a.armed = true;
     let a_slot = a.melee_slot;
-    let wait = if a.follow_unseen || now >= a.phase + 20 { 1 } else { (a.phase + 20 - now) as i32 };
+    let wait = melee_retry_wait(now, a.phase, a.follow_unseen);
     let slot = a_slot;
     arm(w, e, slot, wait);
 }
@@ -297,7 +295,7 @@ pub fn start_melee(w: &mut World, e: Entity, who: Who) {
         // The goal that follows its target unseen is restarted by the frame at the end of each path: its cooldown went on meanwhile.
         if a.follow_unseen {
             // A restart within a few ticks of the stop is the frame's (the path ended): the cooldown is a date and goes on.
-            if now.saturating_sub(a.stopped_at) > 3 {
+            if cooldown_expired_at_restart(now, a.stopped_at) {
                 a.next_strike = 0;
             }
         } else {
@@ -328,7 +326,7 @@ pub fn stop_melee(w: &mut World, e: Entity) {
         nav.reach = 1;
     }
     // `StopAttackingIfTargetInvalid`: no path has reached the target for the allowed time, it is forgotten.
-    let forget = w.get::<Attack>(e).and_then(|a| a.forget_unreachable).zip(w.get::<Nav>(e)).is_some_and(|(n, nav)| nav.cant_reach_since != 0 && now_of(w, e).saturating_sub(nav.cant_reach_since) > n as u64);
+    let forget = w.get::<Attack>(e).and_then(|a| a.forget_unreachable).zip(w.get::<Nav>(e)).is_some_and(|(n, nav)| unreachable_too_long(now_of(w, e), nav.cant_reach_since, n));
     stop_nav(w, e);
     if forget {
         targeting::clear_target(w, e);
@@ -385,12 +383,7 @@ pub fn melee_run(
         if (g.seen || a.follow_unseen) && a.recalc <= 0 && (a.path_target == Vec3::ZERO || moved || rng.next_f64() < 0.05) {
             a.path_target = at;
             a.recalc = 4 + rng.next_int(7);
-            let d = d2(pos.0, at);
-            if d > 1024.0 {
-                a.recalc += 10;
-            } else if d > 256.0 {
-                a.recalc += 5;
-            }
+            a.recalc += far_repath_extra(d2(pos.0, at));
             go_to(&mut cmd, e, at.x, at.z, a.speed, 5);
         }
         a.until = (a.until - 1).max(0);
@@ -459,23 +452,6 @@ pub struct BurnsInDay {
 pub struct Exposed {
     token: u64,
 }
-fn eye_block(p: Vec3, eye: f64) -> (i32, i32, i32) {
-    (p.x.floor() as i32, (p.y + eye).floor() as i32, p.z.floor() as i32)
-}
-/// The probability per tick of a burn at this block, 0 when the light is too low or the sky is not seen.
-fn burn_chance(level: &Level, day: bool, b: (i32, i32, i32)) -> f64 {
-    let mw = level.mw.0;
-    if !day || !mw.can_see_sky(b.0, b.1, b.2) {
-        return 0.0;
-    }
-    let br = f64::from(mw.brightness(b.0, b.1, b.2));
-    if br > 0.5 { ((br - 0.4) * 2.0 / 30.0).min(1.0) } else { 0.0 }
-}
-/// The number of failed draws before the first success of a 1-in-`1/p` draw each tick.
-fn failures_before(rng: &mut Rng, p: f64) -> u64 {
-    let u = rng.next_f64().max(1.0e-12);
-    (u.ln() / (1.0 - p).ln()).floor().min(4000.0).max(0.0) as u64
-}
 /// Looks at the sun again for the monsters an event names and those whose eye changed block: only the animals whose physics is
 /// active (`Moving`, a sparse marker) are looked at, not every burner each tick (`Changed<Bounds>` scanned them all).
 #[allow(clippy::type_complexity)]
@@ -500,11 +476,11 @@ fn sun_eval(
     for e in todo {
         let Ok((pos, mut b, mut rng, exposed)) = watched.get_mut(e) else { continue };
         b.block = eye_block(pos.0, b.eye);
-        let chance = burn_chance(&level, day.0, b.block);
+        let chance = burn_chance(level.mw.0, day.0, b.block);
         if chance > 0.0 && !exposed {
             // The draw of THIS tick (the monster has moved already) is the first: it succeeds at tick now + failures.
             let now = clock.of(e);
-            let at = now + failures_before(&mut rng, chance);
+            let at = now + failures_before(rng.next_f64(), chance);
             // This tick's own draw came up: the wheel of this tick has been emptied already, so it is fired by hand.
             if at == now {
                 now_fired.0.push(e);
@@ -556,10 +532,10 @@ fn sun_burn(
                 _ => {}
             }
         }
-        let chance = burn_chance(&level, day.0, b.block);
+        let chance = burn_chance(level.mw.0, day.0, b.block);
         if chance > 0.0 {
             // The next draw is the next tick's.
-            let at = now + 1 + failures_before(&mut rng, chance);
+            let at = now + 1 + failures_before(rng.next_f64(), chance);
             wheel.push(clock.at(e, at), e, Due::Sun);
             cmd.entity(e).insert(Exposed { token: at });
         } else {

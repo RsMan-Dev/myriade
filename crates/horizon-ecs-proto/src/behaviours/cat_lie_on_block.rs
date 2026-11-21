@@ -2,11 +2,11 @@
 //! neither sitting nor lying searches for a block of `cats_can_lie_on` with air above, walks to it, and lies there while it stays
 //! reached. The search is a deadline: `reduced(40)` asks (one ask per 2 ticks), so 2 x (asks + 1) ticks between two searches.
 //! Refused while sitting, lying or untamed: nothing is armed (the wake-up when the cat is tamed or stands up is a BESOIN DU CADRE).
-use super::cat_state::{self as cs, empty_above};
+use super::cat_state::{self as cs};
 use super::*;
 use crate::move_to_block::MoveToBlock;
+use crate::rules::cat_lie_on_block::{can_lie_on, search_ticks};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -76,12 +76,8 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     w.get::<LyingDown>(e).is_none()
 }
-/// `Mob`'s `can_lie_on`: air above a block of the tag.
-pub fn can_lie_on(mw: &MobWorld, p: [i32; 3]) -> bool {
-    empty_above(mw, p) && mw.has_tag("minecraft:cats_can_lie_on", mw.block_name(p[0], p[1], p[2]))
-}
 fn period(l: &Lie) -> i32 {
-    2 * (l.p.asks + 1)
+    search_ticks(l.p.asks)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !cs::tamed(w, e) || is_occupied(w, e, OCC_SITTING) || cs::pose(w, e).lying {

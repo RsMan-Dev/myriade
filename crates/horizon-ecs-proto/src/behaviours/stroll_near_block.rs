@@ -4,6 +4,7 @@ use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use crate::goals::*;
+use crate::rules::stroll_near_block as rules;
 
 pub struct Params {
     pub memory: &'static MemKey,
@@ -22,10 +23,7 @@ fn block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
 }
 /// Distance horizontale au centre du bloc (approximation : `closer_to_center` n'est pas porté tel quel).
 fn near(w: &World, e: Entity, p: [i32; 3], d: f64) -> bool {
-    w.get::<Pos>(e).is_some_and(|pos| {
-        let (dx, dz) = (f64::from(p[0]) + 0.5 - pos.0.x, f64::from(p[2]) + 0.5 - pos.0.z);
-        dx * dx + dz * dz <= d * d
-    })
+    w.get::<Pos>(e).is_some_and(|pos| rules::near_centre(p, pos.0, d))
 }
 /// The next allowed stroll (tick), per memory (`StrollAroundPoi.nextOkStartTime`: one per behaviour instance, here per site memory).
 #[derive(Component, Default, Clone, Copy)]

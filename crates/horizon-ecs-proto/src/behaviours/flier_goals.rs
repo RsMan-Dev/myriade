@@ -9,6 +9,8 @@ use crate::IFloor as _;
 use super::*;
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
+use crate::rules::flier_goals::*;
+use crate::rules::follow_mob::recalc_after;
 use horizon_core::geometry::Vec3;
 
 /// The phantom dives (`Mob.extra.flag`).
@@ -22,14 +24,11 @@ fn target_of(w: &World, e: Entity) -> Option<(Who, targeting::Info)> {
 }
 /// One strike at the target (`Mob.doHurtTarget`): the attack damage, from the animal.
 fn hit(w: &mut World, e: Entity, who: Who) {
-    let amount = w.get::<AttackDamage>(e).map_or(1.0, |d| d.0.max(1.0));
+    let amount = w.get::<AttackDamage>(e).map_or(1.0, |d| strike_amount(d.0));
     crate::hostile::strike(w, e, who, amount);
 }
 fn wanted_active(w: &World, e: Entity) -> bool {
     w.get::<MoveTo>(e).is_some_and(|m| m.active)
-}
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
 }
 
 // ---- the vex ------------------------------------------------------------------------------------------------------
@@ -47,12 +46,12 @@ pub struct Charging;
 /// charge ends at the first contact (a strike) or when the point is reached.
 pub static VEX_CHARGE: Module = Module { name: "vex_charge", tick: Some(charge_tick), flags: MOVE, arm: arm_vex_charge, fired: charge_fired, can_use: charge_can_use, start: charge_start, stop: charge_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn arm_vex_charge(w: &mut World, e: Entity, _: Inst) {
-    let wait = with_rng(w, e, |r| idle_wait(r, reduced(7) * 2));
+    let wait = with_rng(w, e, |r| idle_wait(r, recalc_after(7) * 2));
     arm_module(w, e, &VEX_CHARGE, wait.max(2));
 }
 fn charge_ok(w: &World, e: Entity) -> bool {
     let (Some(p), Some((_, t))) = (w.get::<Pos>(e), target_of(w, e)) else { return false };
-    !wanted_active(w, e) && (t.pos.x - p.0.x).powi(2) + (t.pos.y - p.0.y).powi(2) + (t.pos.z - p.0.z).powi(2) > 4.0
+    charge_ready(wanted_active(w, e), t.pos.x - p.0.x, t.pos.y - p.0.y, t.pos.z - p.0.z)
 }
 fn charge_fired(w: &mut World, e: Entity, _: Inst) -> bool {
     if charge_ok(w, e) {
@@ -85,7 +84,7 @@ fn charge_tick(w: &mut World) {
             end(w, e, &VEX_CHARGE);
         } else if !wanted_active(w, e) {
             end(w, e, &VEX_CHARGE);
-        } else if (t.pos.x - p.x).powi(2) + (t.pos.y - p.y).powi(2) + (t.pos.z - p.z).powi(2) < 9.0 {
+        } else if charge_steers(t.pos.x - p.x, t.pos.y - p.y, t.pos.z - p.z) {
             crate::locomotion::fly::steer_to(w, e, [t.pos.x, t.eye, t.pos.z], 1.0);
         }
     }
@@ -95,7 +94,7 @@ fn charge_tick(w: &mut World) {
 /// where the vex is); the first one is the point, at speed 0.25. One shot: the goal ends at once.
 pub static VEX_RANDOM_MOVE: Module = Module { name: "vex_random_move", flags: MOVE, arm: arm_vex_random, fired: random_fired, start: random_start, stop: random_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn arm_vex_random(w: &mut World, e: Entity, _: Inst) {
-    let wait = with_rng(w, e, |r| idle_wait(r, reduced(7) * 2));
+    let wait = with_rng(w, e, |r| idle_wait(r, recalc_after(7) * 2));
     arm_module(w, e, &VEX_RANDOM_MOVE, wait.max(2));
 }
 fn random_fired(w: &mut World, e: Entity, i: Inst) -> bool {
@@ -168,23 +167,23 @@ pub struct Circle {
 #[component(storage = "SparseSet")]
 pub struct Circling;
 
-/// `PhantomAttackPlayerTargetGoal` (TARGET): one scan per `reduced(60)` asks (a deadline of 2x that): a player within (16 + width, 64, 16 +
+/// `PhantomAttackPlayerTargetGoal` (TARGET): one scan per `recalc_after(60)` asks (a deadline of 2x that): a player within (16 + width, 64, 16 +
 /// width) becomes the target (it must be seen: the target's own `must_see`, with no memory, ends it the tick it is not).
 pub static PHANTOM_ATTACK_PLAYER_TARGET: Module = Module { name: "phantom_attack_player_target", flags: TARGET, equip: scan_equip, arm: scan_arm, fired: scan_fired, can_use: scan_can_use, start: scan_start, stop: scan_stop, requires: &[Cap::Targets], ..Module::DEFAULT };
 fn scan_equip(_: &mut World, _: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {}
-/// The first scan comes after `reduced(20)` asks (`Phantom.register`), the next ones every `reduced(60)`.
+/// The first scan comes after `recalc_after(20)` asks (`Phantom.register`), the next ones every `recalc_after(60)`.
 fn scan_arm(w: &mut World, e: Entity, _: Inst) {
-    arm_module(w, e, &PHANTOM_ATTACK_PLAYER_TARGET, 2 * reduced(20));
+    arm_module(w, e, &PHANTOM_ATTACK_PLAYER_TARGET, 2 * recalc_after(20));
 }
 fn scan_rearm(w: &mut World, e: Entity) {
-    arm_module(w, e, &PHANTOM_ATTACK_PLAYER_TARGET, 2 * reduced(60));
+    arm_module(w, e, &PHANTOM_ATTACK_PLAYER_TARGET, 2 * recalc_after(60));
 }
 fn scan_pick(w: &World, e: Entity) -> Option<u32> {
     let (p, b) = (w.get::<Pos>(e)?.0, w.get::<Body>(e)?);
-    let r = 16.0 + f64::from(b.width);
+    let r = scan_range(f64::from(b.width));
     let mut found = None;
     w.resource::<Online>().for_near(p.x, p.z, r, |pl| {
-        if found.is_none() && (pl.x - p.x).abs() <= r && (pl.y - p.y).abs() <= 64.0 && (pl.z - p.z).abs() <= r {
+        if found.is_none() && in_scan_box(pl.x - p.x, pl.y - p.y, pl.z - p.z, r) {
             found = Some(pl.id);
         }
     });
@@ -220,7 +219,7 @@ fn scan_stop(w: &mut World, e: Entity, _: Inst) {
 fn anchor_above_target(w: &mut World, e: Entity) {
     let Some((_, t)) = target_of(w, e) else { return };
     let sea = w.resource::<Level>().mw.0.sea_level;
-    let y = (t.pos.y.ifloor() + 20 + with_rng(w, e, |r| r.next_int(20))).max(sea + 1);
+    let y = anchor_y(t.pos.y.ifloor(), with_rng(w, e, |r| r.next_int(20)), sea);
     w.entity_mut(e).insert(Anchor([t.pos.x.ifloor(), y, t.pos.z.ifloor()]));
 }
 /// Sets or clears the dive and wakes the goals it concerns (the sweep starts, the circle starts again when the dive ends).
@@ -247,14 +246,14 @@ fn strategy_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     target_of(w, e).is_some()
 }
 fn strategy_start(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).insert(Strategy { next_sweep: 2 * reduced(10) }).remove::<Diving>();
+    w.entity_mut(e).insert(Strategy { next_sweep: 2 * recalc_after(10) }).remove::<Diving>();
     anchor_above_target(w, e);
 }
 fn strategy_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Strategy>();
     if let Some(a) = w.get::<Anchor>(e).map(|a| a.0) {
         let top = w.resource::<Level>().mw.0.motion_blocking_height(a[0], a[2]);
-        let y = top + 10 + with_rng(w, e, |r| r.next_int(20));
+        let y = drop_anchor_y(top, with_rng(w, e, |r| r.next_int(20)));
         w.entity_mut(e).insert(Anchor([a[0], y, a[2]]));
     }
 }
@@ -283,7 +282,7 @@ fn strategy_tick(w: &mut World) {
         };
         if due {
             anchor_above_target(w, e);
-            let next = 2 * reduced((8 + with_rng(w, e, |r| r.next_int(4))) * 20);
+            let next = 2 * recalc_after((8 + with_rng(w, e, |r| r.next_int(4))) * 20);
             w.get_mut::<Strategy>(e).unwrap().next_sweep = next;
             set_diving(w, e, true);
         }
@@ -294,7 +293,7 @@ fn strategy_tick(w: &mut World) {
 /// hurt ends it; the goal ends the target.
 pub static PHANTOM_SWEEP_ATTACK: Module = Module { name: "phantom_sweep_attack", tick: Some(sweep_tick), flags: MOVE, can_use: sweep_can_use, start: sweep_start, stop: sweep_stop, requires: &[Cap::Targets, Cap::Locomotion], ..Module::DEFAULT };
 fn sweep_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Diving>(e).is_some() && w.get::<Target>(e).is_some()
+    sweep_may_start(w.get::<Diving>(e).is_some(), w.get::<Target>(e).is_some())
 }
 fn sweep_start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Sweeping);
@@ -316,7 +315,7 @@ fn sweep_tick(w: &mut World) {
             end(w, e, &PHANTOM_SWEEP_ATTACK);
             continue;
         }
-        let mid = (t.bounds.min_position().y + t.bounds.max_position().y) * 0.5;
+        let mid = sweep_mid(t.bounds.min_position().y, t.bounds.max_position().y);
         if let Some(mut m) = w.get_mut::<MoveTo>(e) {
             *m = MoveTo { active: true, x: t.pos.x, y: mid, z: t.pos.z, speed_modifier: 1.0 };
         }
@@ -343,7 +342,7 @@ fn circle_arm(w: &mut World, e: Entity, i: Inst) {
     arm(w, e, i.slot, 1);
 }
 fn circle_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Target>(e).is_none() || w.get::<Diving>(e).is_none()
+    circle_may_start(w.get::<Target>(e).is_some(), w.get::<Diving>(e).is_some())
 }
 fn select_next(w: &mut World, e: Entity) {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
@@ -351,8 +350,7 @@ fn select_next(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Anchor(a));
     let Some(mut c) = w.get_mut::<Circle>(e) else { return };
     c.angle += c.clockwise * 15.0_f32.to_radians();
-    use horizon_core::geometry::trig::Mth;
-    let at = [f64::from(a[0]) + f64::from(c.distance * c.angle.mcos()), f64::from(a[1]) + f64::from(-4.0 + c.height), f64::from(a[2]) + f64::from(c.distance * c.angle.msin())];
+    let at = circle_point(a, c.distance, c.height, c.angle);
     if let Some(mut m) = w.get_mut::<MoveTo>(e) {
         *m = MoveTo { active: true, x: at[0], y: at[1], z: at[2], speed_modifier: 1.0 };
     }
@@ -377,9 +375,9 @@ fn circle_tick(w: &mut World) {
             let (Some(p), Some(mut c)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Circle>(e).copied()) else { return };
             let mut redraw = false;
             let (h, d, a) = with_rng(w, e, |r| {
-                let h = (r.next_int(reduced(350)) == 0).then(|| -4.0 + r.next_float() * 9.0);
-                let d = r.next_int(reduced(250)) == 0;
-                let a = (r.next_int(reduced(450)) == 0).then(|| r.next_float() * 2.0 * std::f32::consts::PI);
+                let h = (r.next_int(recalc_after(350)) == 0).then(|| -4.0 + r.next_float() * 9.0);
+                let d = r.next_int(recalc_after(250)) == 0;
+                let a = (r.next_int(recalc_after(450)) == 0).then(|| r.next_float() * 2.0 * std::f32::consts::PI);
                 (h, d, a)
             });
             if let Some(h) = h {
@@ -401,7 +399,7 @@ fn circle_tick(w: &mut World) {
                 select_next(w, e);
             }
             let t = w.get::<MoveTo>(e).copied().unwrap_or(MoveTo { active: false, x: 0.0, y: 0.0, z: 0.0, speed_modifier: 1.0 });
-            if (t.x - p.x).powi(2) + (t.y - p.y).powi(2) + (t.z - p.z).powi(2) < 4.0 {
+            if circle_reached(t.x - p.x, t.y - p.y, t.z - p.z) {
                 select_next(w, e);
             }
             let mw = w.resource::<Level>().mw.0;
@@ -410,14 +408,14 @@ fn circle_tick(w: &mut World) {
             let t = w.get::<MoveTo>(e).copied().unwrap_or(t);
             if t.y < p.y && !air(x, y - 1, z) {
                 let mut c = *w.get::<Circle>(e).unwrap();
-                c.height = c.height.max(1.0);
+                c.height = raised_height(c.height);
                 *w.get_mut::<Circle>(e).unwrap() = c;
                 select_next(w, e);
             }
             let t = w.get::<MoveTo>(e).copied().unwrap_or(t);
             if t.y > p.y && !air(x, y + 1, z) {
                 let mut c = *w.get::<Circle>(e).unwrap();
-                c.height = c.height.min(-1.0);
+                c.height = lowered_height(c.height);
                 *w.get_mut::<Circle>(e).unwrap() = c;
                 select_next(w, e);
             }
