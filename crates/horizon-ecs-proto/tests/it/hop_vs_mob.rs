@@ -30,7 +30,7 @@ fn a_bound_has_the_shape_and_the_cadence_of_the_original() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let n = 24;
     let mut ids = Vec::new();
     for k in 0..n {
@@ -91,7 +91,7 @@ fn a_slime_waiting_between_bounds_is_not_visited() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 41);
     h.world.resource_mut::<Entered>().0.push(e);
     let mut waiting = 0;

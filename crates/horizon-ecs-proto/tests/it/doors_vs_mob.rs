@@ -41,7 +41,7 @@ fn opens(id: u32, seed: u64) -> (Option<usize>, Option<usize>) {
     r.mobs.push(m);
     r.searches.push(0);
 
-    let mut h = Herd::with_slab(100, false, false);
+    let mut h = Herd::with_slab_awake(100, false, false);
     let mut level = *h.world.resource::<Level>();
     level.mw = Mw(Box::leak(Box::new(MobWorld { mob_griefing: false, ..level.mw.0.clone() })));
     *h.world.resource_mut::<Level>() = level;

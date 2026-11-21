@@ -229,7 +229,7 @@ mod tests {
     /// Un bébé en (0.5, 0.5) et un adulte à `dx` blocs de lui, sur la même rangée.
     fn world(dx: f64) -> Option<(Herd, Entity, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:cow").unwrap();
         sp.goals = config();

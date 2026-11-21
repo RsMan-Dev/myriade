@@ -52,7 +52,7 @@ fn grid(spacing: f64, keep: impl Fn(f64, f64) -> bool) -> Vec<(f64, f64)> {
 }
 
 fn run(label: &str, at: Vec<(f64, f64)>, players: Vec<(f64, f64)>, walk: bool, radius: Option<i32>, ticks: usize, base: f64) -> f64 {
-    let mut herd = Herd::with_slab(half(), true, false);
+    let mut herd = Herd::with_slab_awake(half(), true, false);
     let n = at.len();
     let shared = std::env::var_os("PROF").map(|_| horizon_ecs_proto::profile::instrument(&mut herd));
     herd.populate(&at, 7);
@@ -166,7 +166,7 @@ fn main() {
             let ticks: usize = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(400);
             let at = grid(n, |_, _| true);
             let run_path = |label: &str, path: &dyn Fn(usize) -> (f64, f64), rad: Option<i32>| {
-                let mut herd = Herd::with_slab(half(), true, false);
+                let mut herd = Herd::with_slab_awake(half(), true, false);
                 herd.populate(&at, 7);
                 herd.set_players(vec![path(0)]);
                 let c = counter();
@@ -201,7 +201,7 @@ fn main() {
         "cycle" => {
             // Sleep and wake the creatures of one chunk again and again (for a profile).
             let at = grid(n, |x, z| (0.0..16.0).contains(&x) && (0.0..16.0).contains(&z));
-            let mut herd = Herd::with_slab(half(), true, false);
+            let mut herd = Herd::with_slab_awake(half(), true, false);
             let ents = herd.populate(&at, 3);
             for _ in 0..200 {
                 herd.tick();
@@ -231,7 +231,7 @@ fn burst(spacing: f64, radius: i32) {
     let at: Vec<(f64, f64)> = (0..side * side).map(|i| (-f64::from(half()) + 2.0 + f64::from(i % side) * spacing + 0.5, -f64::from(half()) + 2.0 + f64::from(i / side) * spacing + 0.5)).collect();
     let n = at.len();
     let m0 = LIVE.load(Relaxed);
-    let mut herd = Herd::with_slab(half(), true, false);
+    let mut herd = Herd::with_slab_awake(half(), true, false);
     let base = LIVE.load(Relaxed);
     herd.populate(&at, 3);
     for _ in 0..150 {
@@ -271,7 +271,7 @@ fn burst(spacing: f64, radius: i32) {
     let calm = counter.read() - c0;
     println!("(a) one chunk step: tick {step} instr (calm tick {calm}), {slept} slept, {woke} woke: {:.0} instr per creature moved (burst above the calm tick)", (step.saturating_sub(calm)) as f64 / (slept + woke).max(1) as f64);
     // (a) for the same chunk, to compare like with like.
-    let mut herd = Herd::with_slab(half(), true, false);
+    let mut herd = Herd::with_slab_awake(half(), true, false);
     let ents = herd.populate(&at, 3);
     for _ in 0..150 {
         herd.tick();

@@ -29,7 +29,7 @@ fn a_blow_that_poisons_poisons_a_creature_and_a_player() {
         return;
     }
     static RULES: [RuleEntry; 1] = [RuleEntry::new(&effects::ON_HIT, &effects::CAVE_SPIDER)];
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     set_lazy_look(&mut h.world, false);
     let mut z = species_named(&h, "minecraft:zombie");
     z.rules = &RULES;
@@ -65,7 +65,7 @@ fn poison_does_not_touch_the_undead_as_the_mob_does() {
     let mut r = MobRef::new(40, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:zombie"));
     r.mobs[i].add_effect("minecraft:poison", 100, 0);
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let z = species_named(&h, "minecraft:zombie");
     let e = spawn(&mut h, &z, 0.5, 0.5, 3);
     h.world.get_mut::<horizon_ecs_proto::cow::Pos>(e).unwrap();
@@ -87,7 +87,7 @@ fn an_invisible_player_is_not_seen_from_afar() {
         return;
     }
     let seen = |invisible: bool| {
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         set_lazy_look(&mut h.world, false);
         h.set_online(&[(10.5, 0.5)]);
         let z = species_named(&h, "minecraft:zombie");
@@ -110,7 +110,7 @@ fn an_enderman_leaves_the_water() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     set_lazy_look(&mut h.world, false);
     for x in 18..=22 {
         for z in 18..=22 {

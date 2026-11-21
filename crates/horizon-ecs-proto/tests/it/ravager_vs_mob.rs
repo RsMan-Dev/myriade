@@ -67,7 +67,7 @@ fn take_mob(events: &[MobEvent], from: usize, t: i64, log: &mut Log) {
 }
 
 fn ecs_run(at: &[(f64, f64)], ticks: i64, stun: bool) -> Log {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let idx = table.iter().position(|s| s.name == "minecraft:ravager").expect("the ravager is in the table");

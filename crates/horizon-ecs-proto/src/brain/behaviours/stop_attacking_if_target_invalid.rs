@@ -118,7 +118,7 @@ mod tests {
     /// A target that is still alive stays; once it is gone (despawned), the behaviour clears the memory and the target.
     #[test]
     fn it_stops_when_the_target_is_gone() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &DEFAULT);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
@@ -134,7 +134,7 @@ mod tests {
     /// The creaking keeps its player while he is in the visible targetable list; out of it, the target is dropped.
     #[test]
     fn a_creaking_stops_when_its_player_leaves_the_visible_list() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &CREAK);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         aim(&mut h, e, Who::Player(1));
@@ -149,7 +149,7 @@ mod tests {
     /// A target unreachable for more than 200 ticks is dropped; at exactly 200 it is kept.
     #[test]
     fn it_stops_a_target_it_could_not_reach_for_over_200_ticks() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &DEFAULT);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
@@ -166,7 +166,7 @@ mod tests {
     /// A creative player is no valid target any more: the behaviour drops him; a survival player is kept.
     #[test]
     fn it_stops_on_a_creative_player() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &DEFAULT);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 4.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         aim(&mut h, e, Who::Player(1));

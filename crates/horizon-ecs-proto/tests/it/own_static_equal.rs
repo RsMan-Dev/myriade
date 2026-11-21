@@ -127,7 +127,7 @@ fn layer_follows_block_changes() {
     if !have_data() {
         return;
     }
-    let mut herd = horizon_ecs_proto::cow::Herd::with_hazards(1, 100.0, true, false, 5, false);
+    let mut herd = horizon_ecs_proto::cow::Herd::with_hazards_awake(1, 100.0, true, false, 5, false);
     let mw = herd.world.resource::<horizon_ecs_proto::cow::Level>().mw.0;
     let sp = species_table().0.iter().find(|s| s.name == "minecraft:cow").copied().unwrap();
     let pm = PathMob {
@@ -161,7 +161,7 @@ fn layer_follows_block_changes_amphibious() {
     if !have_data() {
         return;
     }
-    let mut herd = horizon_ecs_proto::cow::Herd::with_hazards(1, 100.0, true, false, 5, false);
+    let mut herd = horizon_ecs_proto::cow::Herd::with_hazards_awake(1, 100.0, true, false, 5, false);
     let mw = herd.world.resource::<horizon_ecs_proto::cow::Level>().mw.0;
     let sp = species_table().0.iter().find(|s| s.name == "minecraft:frog").copied().unwrap();
     let pm = PathMob {

@@ -96,7 +96,7 @@ mod tests {
     /// A dolphin with the rule alone, and a stack of 5 on the ground at its feet.
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(30, false, false);
+        let mut h = Herd::with_slab_awake(30, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:dolphin").unwrap();

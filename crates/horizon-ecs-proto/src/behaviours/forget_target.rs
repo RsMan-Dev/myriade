@@ -89,7 +89,7 @@ mod tests {
     /// the llama's draw; the forget state follows it.
     fn wolf_with(strength_of_others: Option<i32>) -> (Herd, Entity, Entity) {
         // The species of the process is set by the first world built: the world comes first.
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let name = species().name;
         let names: &'static [&'static str] = Box::leak(vec![name].into_boxed_slice());
         let avoid: &'static avoid_entity::Params = Box::leak(Box::new(avoid_entity::Params {

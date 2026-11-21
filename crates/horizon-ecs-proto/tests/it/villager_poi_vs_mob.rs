@@ -53,7 +53,7 @@ fn ecs_job_site_is_taken_and_lost_with_its_block() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.world.insert_resource(ClaimIndex::default());
     h.tick();
     h.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
@@ -102,7 +102,7 @@ fn two_villagers_one_job_site_one_profession() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.world.insert_resource(ClaimIndex::default());
     h.tick();
     h.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");

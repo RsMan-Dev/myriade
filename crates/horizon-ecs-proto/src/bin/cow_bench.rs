@@ -50,7 +50,7 @@ fn main() {
     if parallel {
         bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPoolBuilder::new().num_threads(threads).build());
     }
-    let mut herd = Herd::with_mix(
+    let mut herd = Herd::with_mix_awake(
         n,
         spacing,
         mode != "awake",

@@ -43,7 +43,7 @@ fn the_registry_gives_ids_tags_and_slots_by_name() {
     if !have_data() {
         return;
     }
-    let _h = Herd::with_slab(20, false, false);
+    let _h = Herd::with_slab_awake(20, false, false);
     assert!(items::installed());
     let wheat = items::item_id("minecraft:wheat");
     assert!(wheat != 0 && items::item_name(wheat) == Some("minecraft:wheat"));
@@ -88,7 +88,7 @@ fn worn_armor_cuts_a_blow_like_the_original() {
         let (label, worn, a, t) = *pieces;
         for blow in [3.0_f32, 8.0, 19.0] {
             let mut r = MobRef::new(60, false);
-            let mut h = Herd::with_slab(60, true, false);
+            let mut h = Herd::with_slab_awake(60, true, false);
             let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 4242);
             let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
             h.world.resource_mut::<Entered>().0.push(e);
@@ -126,7 +126,7 @@ fn a_player_saddles_a_pig_and_the_slot_drives_the_mount() {
     if skip("minecraft:pig") {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let pig = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     let baby = spawn_species(&mut h.world, species(), 3.5, 0.5, 6);
     h.world.resource_mut::<Entered>().0.extend([pig, baby]);
@@ -163,7 +163,7 @@ fn a_zombie_wears_the_better_armor_it_finds_and_drops_it_at_death() {
         return;
     }
     use horizon_ecs_proto::behaviours::pick_up_gear;
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let z = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(z);
     for _ in 0..3 {
@@ -208,7 +208,7 @@ fn a_replaced_piece_falls_by_the_drop_chance() {
     use horizon_ecs_proto::behaviours::pick_up_gear;
     let (mut fell, n) = (0, 600);
     for k in 0..n {
-        let mut h = Herd::with_slab(30, false, false);
+        let mut h = Herd::with_slab_awake(30, false, false);
         let z = spawn_species(&mut h.world, species(), 0.5, 0.5, 100 + k);
         h.world.resource_mut::<Entered>().0.push(z);
         h.tick();
@@ -233,7 +233,7 @@ fn a_skeleton_takes_what_it_prefers_and_refuses_spears() {
         return;
     }
     use horizon_ecs_proto::behaviours::pick_up_gear;
-    let mut h = Herd::with_slab(30, false, false);
+    let mut h = Herd::with_slab_awake(30, false, false);
     let s = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Entered>().0.push(s);
     h.tick();
@@ -256,7 +256,7 @@ fn a_bucket_milks_a_cow_and_takes_a_fish() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = species_table().0;
     let find = |n: &str| *table.iter().find(|s| s.name == n).unwrap_or_else(|| panic!("{n}"));
     let cow = spawn_species(&mut h.world, &find("minecraft:cow"), 0.5, 0.5, 5);

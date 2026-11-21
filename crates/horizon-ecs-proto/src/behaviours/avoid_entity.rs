@@ -328,7 +328,7 @@ mod tests {
     /// A walled slab with one animal of the process's species whose only goal is this one (a test configuration: the
     /// species table is not changed), settled on the ground.
     fn herd_with(entries: &'static [Entry]) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let mut sp = *species();
         sp.goals = Config { entries };
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);

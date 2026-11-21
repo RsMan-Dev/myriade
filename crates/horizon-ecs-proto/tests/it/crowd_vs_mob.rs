@@ -27,7 +27,7 @@ fn pit_run(n: usize) -> (Vec<usize>, Vec<usize>) {
         let (jx, jz) = jitter(i);
         r.add(Vec3::new(10.5 + jx - 0.02, 1.0, 10.5 + jz - 0.02));
     }
-    let mut h = Herd::with_slab(20, true, false);
+    let mut h = Herd::with_slab_awake(20, true, false);
     if std::env::var_os("ORDERED_PUSH").is_some() {
         h.set_ordered_push(true);
     }
@@ -99,7 +99,7 @@ fn two_overlapping_animals_move_apart_as_a_mob_s_do() {
         return;
     }
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, true, false);
+    let mut h = Herd::with_slab_awake(20, true, false);
     h.tick();
     let w = f64::from(species().width);
     let three = std::env::var_os("THREE").is_some();
@@ -182,7 +182,7 @@ fn a_tight_herd_spreads_out_like_a_mob_herd() {
     }
     let mut results = vec![];
     for ordered in [false, true] {
-        let mut h = Herd::with_slab(20, true, false);
+        let mut h = Herd::with_slab_awake(20, true, false);
         let ids: Vec<Entity> = (0..n).map(|i| {
             let p = at(i);
             let e = h.world.spawn(cow_bundle(p.0, p.1, 5 + i as u64)).id();
@@ -218,7 +218,7 @@ fn trace_two_animals() {
         return;
     }
     let mut r = MobRef::new(20, false);
-    let mut h = Herd::with_slab(20, true, false);
+    let mut h = Herd::with_slab_awake(20, true, false);
     h.tick();
     let w = f64::from(species().width);
     let starts = [(0.5, 0.5), (0.5 + 0.6 * w, 0.5)];
@@ -274,7 +274,7 @@ fn small_groups_report() {
         let (mut e10, mut e40, mut sm, mut se, mut cnt) = (0.0, 0.0, 0.0, 0.0, 0.0);
         for lay in layouts(n) {
             let mut r = MobRef::new(20, false);
-            let mut h = Herd::with_slab(20, true, false);
+            let mut h = Herd::with_slab_awake(20, true, false);
             let mut ids = vec![];
             for (i, s) in lay.iter().enumerate() {
                 r.add(Vec3::new(s.0, 1.0, s.1));

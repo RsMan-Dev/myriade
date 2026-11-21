@@ -151,7 +151,7 @@ fn frog_long_jumps_on_flat_ground() {
     let (mut nm, mut ne, mut fm, mut fe) = (0usize, 0usize, Vec::new(), Vec::new());
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:frog"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, "minecraft:frog", None, 0.5, 0.5, 21_000 + j as u64, u64::from(far_id(j + 1)));
@@ -203,7 +203,7 @@ fn frog_long_jumps_across_a_trench() {
         let (mut nm, mut ne) = (0usize, 0usize);
         for j in 0..6 {
             let mut r = MobRef::new(24, false);
-            let mut h = Herd::with_slab(24, false, false);
+            let mut h = Herd::with_slab_awake(24, false, false);
             trench(&r, &mut h, water);
             set_day(&r, &mut h, day);
             let i = mob_add(&mut r, mob_kind("minecraft:frog"), Vec3::new(0.5, 1.0, 0.5), j + 1);
@@ -232,7 +232,7 @@ fn goat_rams() {
     let (mut nm, mut ne, mut fm, mut fe, mut jm, mut je) = (0usize, 0usize, Vec::new(), Vec::new(), 0usize, 0usize);
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:goat"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, "minecraft:goat", None, 0.5, 0.5, 22_000 + j as u64, u64::from(far_id(j + 1)));
@@ -294,7 +294,7 @@ fn camel_sits_and_stands() {
     let (mut tm, mut te) = (Vec::new(), Vec::new());
     for j in 0..6 {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:camel"), Vec3::new(0.5, 1.0, 0.5), j + 1);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, "minecraft:camel", None, 0.5, 0.5, 23_000 + j as u64, u64::from(far_id(j + 1)));
@@ -329,7 +329,7 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
         return;
     }
     for name in ["minecraft:goat", "minecraft:frog", "minecraft:camel", "minecraft:camel_husk", "minecraft:nautilus", "minecraft:llama", "minecraft:dolphin"] {
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let e = ecs_named(&mut h, name, None, 0.5, 0.5, 31, 3);
         h.world.resource_mut::<Online>().set(Player { id: 1, x: 5.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
         for _ in 0..60 {
@@ -337,7 +337,7 @@ fn the_species_of_lot_7_start_and_the_dolphin_breathes() {
         }
         assert!(h.world.get_entity(e).is_ok(), "{name} starts and stays alive");
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     for x in -12..=-1 {
         for z in -12..=12 {
             for y in 1..=6 {
@@ -371,7 +371,7 @@ fn goats_leave_the_walled_slab_as_often_as_the_mob() {
     let (mut out_m, mut out_e, mut n) = (0usize, 0usize, 0usize);
     for rep in 0..3_usize {
         let mut r = MobRef::new(half, false);
-        let mut h = Herd::with_slab(half, false, false);
+        let mut h = Herd::with_slab_awake(half, false, false);
         let view = player_view(Vec3::new(0.0, 1.0, 0.0), None);
         let mut ids = Vec::new();
         let mut es = Vec::new();
@@ -425,7 +425,7 @@ fn goats_beside_a_wall_leap_when_the_ram_cools_down() {
     for j in 0..n {
         // (the Mob's stroll is off when `no_action_time` is 100 or more: a player stands near, and the counter starts at 0)
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:goat"), Vec3::new(22.5, 1.0, 0.5), j + 1);
         r.mobs[i].ai.no_action_time = 0;
         let view = player_view(Vec3::new(0.0, 1.0, 0.0), None);

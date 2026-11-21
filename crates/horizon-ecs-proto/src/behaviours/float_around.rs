@@ -120,7 +120,7 @@ mod tests {
     /// A ghast (the flier this module belongs to) with this goal alone, in the air over the slab; `None` without the test resources.
     fn world(blocks: i32) -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, true, false);
+        let mut h = Herd::with_slab_awake(200, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:ghast").unwrap();

@@ -80,7 +80,7 @@ mod tests {
             return;
         }
         // Cows on a grid 1.5 blocks apart: many equal distances, so the order of ties is tested.
-        let mut herd = Herd::new(60, 1.5, false, false, 7);
+        let mut herd = Herd::new_awake(60, 1.5, false, false, 7);
         for _ in 0..3 {
             herd.tick();
         }

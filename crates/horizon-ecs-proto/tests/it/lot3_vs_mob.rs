@@ -103,7 +103,7 @@ fn raid_garden_does_the_mob_rabbit_eat() {
     let n = 16;
     let ticks = 3000;
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let kind = mob_kind("minecraft:rabbit");
     let entries: &'static [Entry] = leak([Entry::new(&raid_garden::MODULE, 5, &raid_garden::Params::DEFAULT)]);
     let (mut ids, mut es, mut spots) = (Vec::new(), Vec::new(), Vec::new());
@@ -200,7 +200,7 @@ fn schools(ecs: bool, rep: usize) -> Vec<i32> {
     let n = 30;
     let mut r = MobRef::new(24, false);
     let kind = mob_kind("minecraft:cod");
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     for x in -9..=9 {
         for z in -9..=9 {
             for y in 1..=3 {
@@ -337,7 +337,7 @@ fn the_species_of_the_first_wave_against_their_mob() {
     for (k, name) in names.iter().enumerate() {
         let full = format!("minecraft:{name}");
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let at = Vec3::new(0.5, 1.0, 0.5);
         let i = mob_add(&mut r, mob_kind(&full), at, 7 + k);
         r.mobs[i].ai.no_action_time = 0;
@@ -417,7 +417,7 @@ fn fox_search_cost_while_asleep_and_the_item_beside_a_still_fox() {
     }
     let run = |with: bool| -> f64 {
         let entries: &'static [Entry] = if with { leak([Entry::new(&fox_search_for_items::MODULE, 11, &fox_search_for_items::Params::DEFAULT)]) } else { leak([]) };
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         let es: Vec<Entity> = (0..1500).map(|j| ecs_named(&mut h, "minecraft:cow", Some(entries), -17.0 + 0.9 * (j % 40) as f64, -17.0 + 0.9 * (j / 40) as f64, 6000 + j as u64, j as u64)).collect();
         for &e in &es {
             fox_state::ensure(&mut h.world, e);
@@ -436,7 +436,7 @@ fn fox_search_cost_while_asleep_and_the_item_beside_a_still_fox() {
     eprintln!("fox_search while asleep: 1500 sleeping foxes: {b:.0} us/tick with the module, {a:.0} without: {:.3} us per fox and tick", (b - a) / 1500.0);
     // The item beside a still fox: dropped 3 blocks away at tick 100; ticks until the fox holds it (ECS side only: the pickup of the
     // `Mob` is in `game`).
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let entries: &'static [Entry] = leak([Entry::new(&fox_search_for_items::MODULE, 11, &fox_search_for_items::Params::DEFAULT), Entry::new(&fox_pick_up_loot::MODULE, 12, &fox_pick_up_loot::Params::DEFAULT)]);
     let es: Vec<Entity> = (0..20).map(|j| ecs_named(&mut h, "minecraft:cow", Some(entries), -20.0 + 4.0 * (j % 10) as f64, -10.0 + 8.0 * (j / 10) as f64, 6100 + j as u64, j as u64)).collect();
     for _ in 0..100 {
@@ -471,7 +471,7 @@ fn follow_mob_cost_with_a_parrot_and_the_wake_in_the_column() {
         return;
     }
     let run = |parrot: bool| -> f64 {
-        let mut h = Herd::with_slab(40, false, false);
+        let mut h = Herd::with_slab_awake(40, false, false);
         for j in 0..1500 {
             let e = ecs_named(&mut h, "minecraft:cow", None, -17.0 + 0.9 * (j % 40) as f64, -17.0 + 0.9 * (j / 40) as f64, 7000 + j as u64, j as u64);
             let _ = e;
@@ -491,7 +491,7 @@ fn follow_mob_cost_with_a_parrot_and_the_wake_in_the_column() {
     let (a, b) = (run(false), run(true));
     eprintln!("follow_mob cost: 1500 cows walking: {a:.0} us/tick without a parrot, {b:.0} with one: {:.1} us per tick for the parrot's existence", b - a);
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let pm = mob_add(&mut r, mob_kind("minecraft:parrot"), Vec3::new(-10.5, 1.0, 0.5), 9);
     let k = r.kind.clone();
     let cm = mob_add(&mut r, k, Vec3::new(1.5, 1.0, 0.5), 10);
@@ -530,7 +530,7 @@ fn silverfish_target_distance() {
     }
     for d in [1.5_f64, 2.5, 3.5, 5.0, 7.0] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:silverfish"), Vec3::new(0.5, 1.0, 0.5), 3);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, "minecraft:silverfish", None, 0.5, 0.5, 8000, u64::from(far_id(3)));
@@ -561,7 +561,7 @@ fn stroll_starts_at_rest() {
     for (k, name) in ["armadillo", "endermite", "creeper", "husk", "zoglin", "mooshroom"].iter().enumerate() {
         let full = format!("minecraft:{name}");
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind(&full), Vec3::new(0.5, 1.0, 0.5), 7 + k);
         r.mobs[i].ai.no_action_time = 0;
         let e = ecs_named(&mut h, &full, None, 0.5, 0.5, 5000 + k as u64, u64::from(far_id(7 + k)));
@@ -603,7 +603,7 @@ fn turtle_go_to_water_delay_after_the_water() {
         for batch in 0..3 {
             let n = 12;
             let mut r = MobRef::new(24, false);
-            let mut h = Herd::with_slab(24, false, false);
+            let mut h = Herd::with_slab_awake(24, false, false);
             let kind = mob_kind("minecraft:turtle");
             let entries: &'static [Entry] = leak([Entry::new(&turtle_go_to_water::MODULE, 3, &turtle_go_to_water::Params::DEFAULT)]);
             let (mut ids, mut es, mut land, mut wet) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -669,7 +669,7 @@ fn reset_universal_anger_without_a_held_target() {
     if !on() {
         return;
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 3.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let entries: &'static [Entry] = leak([
         Entry::new(&reset_universal_anger::MODULE, 4, &reset_universal_anger::Params::DEFAULT),
@@ -695,7 +695,7 @@ fn pufferfish_puff_with_two_players() {
     if !on() {
         return;
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     {
         let mut on = h.world.resource_mut::<Online>();
         on.set(Player { id: 1, x: 1.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });

@@ -100,7 +100,7 @@ mod tests {
 
     /// A cow with the panda goal alone (a test configuration: the species of the process is not changed).
     fn pandas(seed: u64, babies: &[bool]) -> (Herd, Vec<Entity>) {
-        let mut h = Herd::with_slab(8, true, false);
+        let mut h = Herd::with_slab_awake(8, true, false);
         let mut sp: Species = *species();
         sp.goals = Config { entries: &ENTRIES };
         let mut out = Vec::new();

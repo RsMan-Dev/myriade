@@ -30,7 +30,7 @@ fn a_killed_cow_leaves_the_loot_of_the_original_with_the_same_seed() {
     }
     let data = loot();
     let mut r = MobRef::new(16, false);
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let sp = *species();
     let mut shown = 0;
     for (k, fire) in (0..60).map(|k| (k, k % 3 == 0)) {
@@ -84,7 +84,7 @@ fn a_creature_picks_up_one_of_a_stack_after_the_delay() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let creature = spawn_species(&mut h.world, species(), 0.5, 4.5, 3);
     let item = drop_item(&mut h.world, ItemStack::new("minecraft:sweet_berries", 5), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 10);
     for _ in 0..9 {
@@ -110,7 +110,7 @@ fn what_a_creature_holds_is_dropped_and_is_left_at_its_death() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     let creature = spawn_species(&mut h.world, species(), 0.5, 4.5, 3);
     set_main_hand(&mut h.world, creature, Some(ItemStack::new("minecraft:sweet_berries", 1)));
     let mut r = horizon_core::random::LegacyRandom::new(5);

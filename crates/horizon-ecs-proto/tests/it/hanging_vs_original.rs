@@ -17,7 +17,7 @@ fn wall_gone(_: &World, _: [i32; 3], _: u8, _: (u8, u8)) -> bool {
 
 /// A slab with the walls held; the frame hangs on the south face of the block at (0, 60, 0), in front of it.
 fn scene() -> Herd {
-    let mut h = Herd::with_slab(16, true, false);
+    let mut h = Herd::with_slab_awake(16, true, false);
     insert_resources(&mut h.world);
     h.world.insert_resource(Walls(wall_held));
     h

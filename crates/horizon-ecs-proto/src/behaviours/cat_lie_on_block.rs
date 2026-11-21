@@ -158,7 +158,7 @@ mod tests {
     /// A tame wolf (owner player 1) with this goal alone, awake, at (0.5, 0.5) on the slab.
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:wolf").unwrap();

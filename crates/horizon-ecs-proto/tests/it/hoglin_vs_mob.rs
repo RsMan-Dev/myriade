@@ -58,7 +58,7 @@ fn mob_run(n: usize, r: f64, ticks: i64) -> Run {
 
 fn ecs_run(n: usize, r: f64, ticks: i64) -> Run {
     let spots = ring(n, r);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let hoglin = table.iter().position(|s| s.name == "minecraft:hoglin").expect("the hoglin species is registered");
@@ -153,7 +153,7 @@ fn hoglins_convert_after_300_ticks_as_a_mob_does() {
             }
         }
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.insert_resource(UnsafePlace(|_, _| true));
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let hoglin = table.iter().position(|s| s.name == "minecraft:hoglin").expect("the hoglin species is registered");
@@ -194,7 +194,7 @@ fn a_hurt_baby_hoglin_flees_as_a_mob_does() {
     let mut r = MobRef::new(60, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:hoglin"));
     horizon_client_lib::mobs::finalize::set_age(&mut r.mobs[i], -24000, None);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let hoglin = table.iter().position(|s| s.name == "minecraft:hoglin").unwrap();
     let e = spawn_species(&mut h.world, &table[hoglin], 0.5, 0.5, 1000);
@@ -243,7 +243,7 @@ fn hoglins_retreat_from_piglins_that_outnumber_them_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let hog = [(0.5, 0.5), (0.5, 3.5)];
     let pig = [(3.5, 0.5), (3.5, 3.0), (3.5, -2.0), (6.0, 0.5)];
     let mi: Vec<usize> = hog.iter().map(|p| r.add_kind(Vec3::new(p.0, 1.0, p.1), mob_kind("minecraft:hoglin"))).collect();
@@ -313,7 +313,7 @@ fn a_repellent_pacifies_a_hoglin_that_is_already_attacking_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = r.add_kind(Vec3::new(8.5, 1.0, 0.5), mob_kind("minecraft:hoglin"));
     let e = ecs_of(&mut h, "minecraft:hoglin", 8.5, 0.5, 5);
     h.set_online(&[(0.5, 0.5)]);

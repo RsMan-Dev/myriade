@@ -80,7 +80,7 @@ mod tests {
     /// With a look target and no walk target, the walk target is the look target at 0.5, close 3, the same tick.
     #[test]
     fn it_walks_to_what_it_looks_at() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let at = Tracker::Point([10.5, 1.0, 0.5]);
         set(&mut h.world, e, &LOOK_TARGET, MemValue::Look(at), None);
@@ -91,7 +91,7 @@ mod tests {
     /// Nothing without a look target; and a walk target that exists is never replaced by the look target.
     #[test]
     fn it_does_nothing_without_a_look_target_or_over_a_walk_target() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         step(&mut h, e);
         assert!(walk_target(&h.world, e).is_none(), "sans cible de regard, rien");
@@ -108,7 +108,7 @@ mod tests {
     /// the water, looking at air, does.
     #[test]
     fn a_same_fluid_walk_needs_the_look_target_in_the_entitys_fluid() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h);
         let ctx = Ctx { id: 0, nth: 0, params: &SAME_FLUID };
         h.world.get_mut::<FluidState>(e).unwrap().in_water = true;

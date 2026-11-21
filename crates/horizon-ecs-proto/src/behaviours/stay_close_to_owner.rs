@@ -119,7 +119,7 @@ mod tests {
 
     /// One tamed creature whose only goal is this one, owned by player 1, who stands `dx` blocks away.
     fn world(dx: f64) -> (Herd, Entity) {
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         let mut sp = *species();
         let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 3, &Params::DEFAULT)].into_boxed_slice());
         sp.goals = Config { entries };

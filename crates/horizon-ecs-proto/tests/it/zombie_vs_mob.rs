@@ -178,7 +178,7 @@ fn mob_run(n: usize, r: f64, ticks: i64, player_at: impl Fn(i64) -> Vec3, die: i
 }
 fn ecs_run(n: usize, r: f64, ticks: i64, player_at: impl Fn(i64) -> Vec3, die: i64) -> Run {
     let spots = ring(n, r);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<PlayerState>().immortal = true;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let ids: Vec<Entity> = spots.iter().enumerate().map(|(i, s)| {
@@ -296,7 +296,7 @@ fn zombies_burn_in_daylight_as_a_mob_does() {
             }
         }
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let ids: Vec<Entity> = spots.iter().enumerate().map(|(i, s)| spawn_species(&mut h.world, &table[2], s.0, s.1, 0x9E37_79B9_7F4A_7C15_u64.wrapping_mul(i as u64 + 1))).collect();
     h.set_day(true);
@@ -328,7 +328,7 @@ fn zombies_burn_in_daylight_as_a_mob_does() {
 #[test]
 fn a_hurt_zombie_alerts_the_zombies_around_it() {
     if !have_data() { return; }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let near: Vec<Entity> = (0..5).map(|i| spawn_species(&mut h.world, &table[2], -20.0 + 2.0 * i as f64, 0.5, 1 + i)).collect();
     let far = spawn_species(&mut h.world, &table[2], 50.5, 0.5, 9);
@@ -358,7 +358,7 @@ fn trace_one_zombie() {
     let start = (std::env::var("ZX").ok().and_then(|v| v.parse().ok()).unwrap_or(12.5), 0.5);
     let mut rf = Ref::new(60, false);
     rf.add(Vec3::new(start.0, 1.0, start.1));
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let e = spawn_species(&mut h.world, &table[2], start.0, start.1, 1000);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
@@ -444,7 +444,7 @@ fn the_alert_reaches_the_same_zombies_at_the_same_tick_as_a_mob_s() {
             mob_alerted[0].get_or_insert(t);
         }
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     room(&mut |x, y, z| h.set_block(x, y, z, "minecraft:stone"));
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let ids: Vec<Entity> = spots.iter().enumerate().map(|(i, s)| {
@@ -494,7 +494,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
         for s in &line {
             rf.add(Vec3::new(s.0, 1.0, s.1));
         }
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         h.world.resource_mut::<PlayerState>().immortal = true;
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let ids: Vec<Entity> = line.iter().enumerate().map(|(i, s)| {
@@ -542,7 +542,7 @@ fn a_wall_blocks_the_sight_as_it_does_for_a_mob() {
 #[test]
 fn a_roof_over_a_zombie_stops_the_sun_and_removing_it_lets_it_burn() {
     if !have_data() { return; }
-    let mut h = Herd::with_slab(20, true, false);
+    let mut h = Herd::with_slab_awake(20, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let (cx, cz) = (0.5, 0.5);
     let level_sees = |h: &Herd, x: i32, y: i32, z: i32| h.world.resource::<Level>().mw.0.can_see_sky(x, y, z);

@@ -38,7 +38,7 @@ struct World2 {
 type Species2 = horizon_ecs_proto::cow::Species;
 fn world() -> World2 {
     let r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     // The controls compare with the `Mob`, which looks around for every animal: the lazy look (on by default) is off.
     horizon_ecs_proto::goals::set_lazy_look(&mut h.world, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();

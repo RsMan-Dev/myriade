@@ -130,7 +130,7 @@ mod tests {
     /// A creature that hurt it becomes its attack target, in the memory and in the targeting service; before the hurt, nothing.
     #[test]
     fn it_takes_the_creature_that_hurt_it() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &HURT);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
@@ -145,7 +145,7 @@ mod tests {
     /// An existing target is not replaced; without it, the same hurt starts the behaviour.
     #[test]
     fn it_keeps_the_target_it_has() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &HURT);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
@@ -162,7 +162,7 @@ mod tests {
     /// A creaking takes the nearest visible player only while it is active; a creative player is never taken.
     #[test]
     fn a_creaking_takes_a_visible_player_only_while_active_and_never_a_creative_one() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &CREAK_OFF);
         player(&mut h, 1, 4.5);
         set(&mut h.world, e, &NEAREST_VISIBLE_TARGETABLE_PLAYER, MemValue::Who(Who::Player(1)), None);

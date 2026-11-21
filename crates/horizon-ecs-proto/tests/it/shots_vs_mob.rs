@@ -97,7 +97,7 @@ fn shots_of_mob(kind: &str, at: Vec3, player: Vec3, ticks: usize) -> Vec<(usize,
     shots
 }
 fn shots_of_ecs(name: &str, entry: Entry, at: Vec3, player: Vec3, ticks: usize) -> Vec<(usize, Vec3, Vec3)> {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     h.set_online(&[(player.x, player.z)]);
     let table = h.world.resource::<SpeciesTable>().0.clone();
@@ -221,7 +221,7 @@ fn mob_potion(dist: f64, effects: &[(&'static str, i32)], id: u32) -> Option<Str
 }
 /// The same with the ECS witch: the first brew of the potion it throws.
 fn ecs_potion(dist: f64, effects: &[(horizon_ecs_proto::effects::Kind, i32)], seed: u64) -> Option<horizon_ecs_proto::effects::Brew> {
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     set_lazy_look(&mut h.world, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let mut sp = *table.iter().find(|s| s.name == "minecraft:witch").unwrap();

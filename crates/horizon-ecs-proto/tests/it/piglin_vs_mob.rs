@@ -31,7 +31,7 @@ fn a_piglin_admires_gold_for_as_long_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = mob_piglin(&mut r, 0.5, 0.5, 7);
     r.mobs[i].extra.set_slot_id(horizon_items::equipment::OFFHAND, Some(Arc::from("minecraft:gold_ingot")));
     // The game starts the admiring when the piglin picks the gold up (`using_item` = 119, counted down by the Mob) and takes the
@@ -67,7 +67,7 @@ fn a_piglin_shoots_its_crossbow_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = mob_piglin(&mut r, 0.5, 0.5, 9);
     r.mobs[i].extra.set_slot_id(horizon_items::equipment::MAINHAND, Some(Arc::from("minecraft:crossbow")));
     let e = ecs_piglin(&mut h, 0.5, 0.5, 9);
@@ -103,7 +103,7 @@ fn piglins_flee_a_soul_campfire_as_a_mob_does() {
     for s in 0..20u32 {
         let n = 20;
         let mut r = MobRef::new(60, false);
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         r.set_block(0, 1, 0, "minecraft:soul_campfire");
         h.set_block(0, 1, 0, "minecraft:soul_campfire");
         let ids: Vec<(usize, Entity)> = (0..n)
@@ -138,7 +138,7 @@ fn walk_away_takes_the_first_spot_of_ten_tries() {
     let c = Vec3::new(0.5, 1.0, 0.5);
     let stayed: Vec<u32> = (0..60u32)
         .filter(|&s| {
-            let mut h = Herd::with_slab(60, true, false);
+            let mut h = Herd::with_slab_awake(60, true, false);
             h.set_block(0, 1, 0, "minecraft:soul_campfire");
             let e = ecs_piglin(&mut h, -1.5, 0.5, u64::from(s * 1001 + 1));
             for _ in 0..120 {
@@ -161,7 +161,7 @@ fn walk_away_starts_only_within_eight_blocks_of_the_point() {
     let (mut md, mut ed) = (Vec::new(), Vec::new());
     for s in 0..20u32 {
         let mut r = MobRef::new(60, false);
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         r.set_block(0, 1, 0, "minecraft:soul_campfire");
         h.set_block(0, 1, 0, "minecraft:soul_campfire");
         let id = s * 1001 + 1;

@@ -53,7 +53,7 @@ mod tests {
             eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
             return;
         }
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let bear = *table.iter().find(|s| s.name == "minecraft:polar_bear").unwrap();
         let adult = spawn_species(&mut h.world, &bear, 0.5, 0.5, 61);

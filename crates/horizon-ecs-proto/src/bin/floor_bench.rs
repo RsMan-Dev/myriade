@@ -53,7 +53,7 @@ fn main() {
     let mut units = n; // the entities the per-entity figures divide by
     match scene {
         "micro" => {
-            herd = Herd::with_slab(30, true, false);
+            herd = Herd::with_slab_awake(30, true, false);
             let level = herd.world.resource::<Level>();
             let mw = level.mw.0;
             let occ = level.occ;
@@ -98,7 +98,7 @@ fn main() {
             let np: usize = std::env::var("PLAYERS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
             let k = (np as f64).sqrt().ceil() as usize;
             let half = (((k as f64) * 24.0 / 2.0) as i32 + 20).max(30);
-            herd = Herd::with_slab(half, true, false);
+            herd = Herd::with_slab_awake(half, true, false);
             herd.world.insert_resource(horizon_ecs_proto::orb::NoXp);
             let spot = |i: usize| (-f64::from(half) + 24.0 * ((i % k) as f64 + 1.0), -f64::from(half) + 24.0 * ((i / k) as f64 + 1.0));
             for i in 0..np {
@@ -116,9 +116,9 @@ fn main() {
         "baby" | "adults" | "walk" | "rough" => {
             let (adults, per) = (20usize, n / 20);
             if scene == "walk" || scene == "rough" {
-                herd = Herd::new(n, 6.0, true, false, 42);
+                herd = Herd::new_awake(n, 6.0, true, false, 42);
             } else {
-                herd = Herd::with_slab(100, true, false);
+                herd = Herd::with_slab_awake(100, true, false);
             }
             herd.world.insert_resource(horizon_ecs_proto::orb::NoXp);
             if scene == "walk" || scene == "rough" {

@@ -31,7 +31,7 @@ fn a_rabbit_bounds_along_its_path_as_the_original() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let n = 16;
     let mut ids = Vec::new();
     for k in 0..n {
@@ -90,7 +90,7 @@ fn a_magma_cube_has_the_numbers_of_its_size_and_splits_as_the_original() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     for size in [1, 2, 4] {
         let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 77 + size as u32);
         horizon_client_lib::mobs::cube::set_size(&mut r.mobs[i], size);

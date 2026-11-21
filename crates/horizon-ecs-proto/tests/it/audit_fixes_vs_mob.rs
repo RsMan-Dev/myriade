@@ -14,7 +14,7 @@ fn cost_of_a_baby_that_waits_for_an_adult() {
     if !have_data() || wrong_species(&["minecraft:armadillo"]) {
         return;
     }
-    let mut h = Herd::new(500, 6.0, false, false, 3);
+    let mut h = Herd::new_awake(500, 6.0, false, false, 3);
     let es: Vec<_> = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).collect();
     let babies: Vec<_> = es.into_iter().filter(|e| h.world.get::<baby_follow_adult::Follow>(*e).is_some()).collect();
     for e in &babies {
@@ -39,7 +39,7 @@ fn cost_of_a_turtle_with_an_egg_and_no_sand() {
     if !have_data() || wrong_species(&["minecraft:turtle"]) {
         return;
     }
-    let mut h = Herd::new(500, 6.0, false, false, 3);
+    let mut h = Herd::new_awake(500, 6.0, false, false, 3);
     let all: Vec<_> = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).collect();
     let es: Vec<_> = all.into_iter().filter(|e| h.world.get::<ActiveUntil>(*e).is_some()).collect();
     for e in &es {
@@ -64,7 +64,7 @@ fn a_baby_follows_an_adult_that_arrives_within_twenty_five_ticks() {
     if !have_data() || wrong_species(&["minecraft:armadillo"]) {
         return;
     }
-    let mut h = Herd::new(2, 40.0, false, false, 5);
+    let mut h = Herd::new_awake(2, 40.0, false, false, 5);
     let es: Vec<_> = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).filter(|e| h.world.get::<baby_follow_adult::Follow>(*e).is_some()).collect();
     let (baby, adult) = (es[0], es[1]);
     for e in [baby, adult] {
@@ -95,7 +95,7 @@ fn a_wolf_hit_by_a_player_takes_him_again_while_it_is_angry() {
     if !have_data() || wrong_species(&["minecraft:wolf", "minecraft:zombified_piglin"]) {
         return;
     }
-    let mut h = Herd::new(1, 40.0, false, false, 9);
+    let mut h = Herd::new_awake(1, 40.0, false, false, 9);
     let wolf = h.world.query::<bevy_ecs::entity::Entity>().iter(&h.world).find(|e| h.world.get::<ActiveUntil>(*e).is_some()).unwrap();
     h.world.get_mut::<ActiveUntil>(wolf).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::hostile::PlayerState>().immortal = true;

@@ -156,7 +156,7 @@ mod tests {
     /// A cube of `name` (its size when given) and a cow 4 blocks away on x, both landed; no target yet.
     fn world(name: &str, size: Option<i32>, p: &'static Params) -> Option<(Herd, Entity, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, true, false);
+        let mut h = Herd::with_slab_awake(60, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == name).unwrap();

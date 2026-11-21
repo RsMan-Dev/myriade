@@ -7,7 +7,7 @@ use std::time::Instant;
 
 fn run(n: usize, active: impl Fn(&mut Herd, bevy_ecs::entity::Entity), has: impl Fn(&Herd, bevy_ecs::entity::Entity) -> bool, label: &str) {
     let side = (n as f64).sqrt().ceil() as usize;
-    let mut h = Herd::new(0, 6.0, true, false, 3);
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     h.tick();
     // A still player every 16 blocks over the grid, so that every creature is near one and awake.
     let half = 18.0;

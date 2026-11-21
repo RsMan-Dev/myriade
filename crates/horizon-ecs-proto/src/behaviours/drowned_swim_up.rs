@@ -171,7 +171,7 @@ mod tests {
     /// A drowned in a deep column of water over a stone platform at `sea - 12`; water from `sea - 11` to `sea + 1` over x, z -8..=8.
     fn world() -> Option<(Herd, Entity, i32)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
         let mut sp = *table.iter().find(|s| s.name == "minecraft:drowned").unwrap();

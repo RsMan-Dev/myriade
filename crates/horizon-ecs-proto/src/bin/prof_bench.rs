@@ -17,7 +17,7 @@ fn main() {
     let spacing: f64 = std::env::var("SPACING").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
     let mix = if scene == "active" && std::env::var_os("NOMIX").is_none() { 4 } else { 0 };
     horizon_ecs_proto::behaviours::long_jump::LJ_ON.store(true, std::sync::atomic::Ordering::Relaxed);
-    let mut herd = Herd::with_mix(if scene == "arrows" || scene.starts_with("item") || scene.starts_with("orb") { 1 } else { n }, spacing, true, false, 42, false, mix);
+    let mut herd = Herd::with_mix_awake(if scene == "arrows" || scene.starts_with("item") || scene.starts_with("orb") { 1 } else { n }, spacing, true, false, 42, false, mix);
     if scene == "arrows" {
         // N arrows shot at the ground from 3 blocks up, spread over the slab: they stick in the first ticks and then sleep.
         for i in 0..n {

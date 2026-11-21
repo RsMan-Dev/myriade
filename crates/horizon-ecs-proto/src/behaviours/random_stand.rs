@@ -123,7 +123,7 @@ mod tests {
 
     /// A resting animal of the process's species, whose selector holds only this goal, active without end.
     fn resting() -> (Herd, Entity) {
-        let mut herd = Herd::with_slab(20, false, false);
+        let mut herd = Herd::with_slab_awake(20, false, false);
         let e = spawn_species(&mut herd.world, species(), 0.0, 0.0, 7);
         herd.world.entity_mut(e).remove::<GoalSet>().insert((GoalSet::new(&ENTRIES), ActiveUntil(u64::MAX)));
         herd.world.flush();

@@ -101,7 +101,7 @@ mod tests {
     /// and the path data come from them).
     fn world() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         for x in 38..=46 {
             for z in -2..=6 {
                 for y in 0..=2 {

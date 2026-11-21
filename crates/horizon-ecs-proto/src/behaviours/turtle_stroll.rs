@@ -151,7 +151,7 @@ mod tests {
     }
     fn world() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, true, false);
+        let mut h = Herd::with_slab_awake(200, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         for x in 40..=44 {
             for z in 0..=4 {

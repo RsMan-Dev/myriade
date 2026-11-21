@@ -8,7 +8,7 @@ use horizon_ecs_proto::{cow::*, goals::*};
 
 /// A 200-block slab: the player in one corner, the far corner out of its sight (more than 176 blocks along an axis: 160 rounded out to bins).
 fn herd(lazy: bool, seed: u64) -> Herd {
-    let mut h = Herd::new(4000, 3.0, true, false, seed);
+    let mut h = Herd::new_awake(4000, 3.0, true, false, seed);
     set_lazy_look(&mut h.world, lazy);
     h
 }

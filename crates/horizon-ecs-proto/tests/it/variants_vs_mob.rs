@@ -19,7 +19,7 @@ fn spider_has_target(day: bool) -> (bool, bool) {
         (*w).daylight = day;
     }
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), horizon_ecs_proto::cow::mob_kind("minecraft:spider"));
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.set_daylight(day);
     let sp = species_of(&h, "minecraft:spider");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
@@ -54,7 +54,7 @@ fn a_hit_llama_takes_the_player_as_the_mob_does() {
     }
     let mut r = MobRef::new(40, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), horizon_ecs_proto::cow::mob_kind("minecraft:llama"));
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let sp = species_of(&h, "minecraft:llama");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;

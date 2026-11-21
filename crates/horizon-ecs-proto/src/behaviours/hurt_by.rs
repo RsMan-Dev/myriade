@@ -179,7 +179,7 @@ mod tests {
         if crate::cow::skip_unless_walker("hurt_by") {
             return None;
         }
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());
         let mut sp = *species();
         sp.goals = Config { entries };
@@ -217,7 +217,7 @@ mod tests {
         if crate::cow::skip_unless_walker("hurt_by") {
             return;
         }
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, &ENDS)].into_boxed_slice());
         let mut sp = *species();
         sp.goals = Config { entries };
@@ -242,7 +242,7 @@ mod tests {
             return;
         }
         for baby in [false, true] {
-            let mut h = Herd::with_slab(20, false, false);
+            let mut h = Herd::with_slab_awake(20, false, false);
             let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, &P)].into_boxed_slice());
             let mut sp = *species();
             sp.goals = Config { entries };

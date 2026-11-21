@@ -30,7 +30,7 @@ if crate::cow::skip_unless_small_body("cows_push_each_other_and_babies_grow") {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::new(0, 6.0, true, false, 3);
+    let mut herd = Herd::new_awake(0, 6.0, true, false, 3);
             let a = herd.world.spawn(cow_bundle(0.5, 0.5, 11)).id();
     let b = herd.world.spawn(cow_bundle(0.8, 0.5, 12)).id();
     let baby = herd.world.spawn(cow_bundle(10.5, 10.5, 13)).id();
@@ -67,7 +67,7 @@ if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") 
         return;
     }
     // half = 56: the patches are at (-48, -48) and (0, 0), 3 x 3 each (lava, pond, snow in the floor; fire, cactus on it).
-    let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut herd = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let mut cow = |herd: &mut Herd, x: f64, y: f64, z: f64| {
         let e = herd.world.spawn(cow_bundle(x, z, 77)).id();
         herd.world.get_mut::<Pos>(e).unwrap().0.y = y;
@@ -133,7 +133,7 @@ if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") 
 #[test]
 #[ignore = "trace"]
 fn trace_the_cactus_cow() {
-    let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut herd = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let e = herd.world.spawn(cow_bundle(-39.0, -39.0, 77)).id();
     herd.world.get_mut::<Pos>(e).unwrap().0.y = 1.0;
     herd.world.entity_mut(e).insert(ActiveUntil(0));
@@ -151,7 +151,7 @@ fn trace_the_cactus_cow() {
 #[test]
 #[ignore = "trace"]
 fn trace_a_cow_walking_into_a_cactus() {
-    let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut herd = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let e = herd.world.spawn(cow_bundle(-42.5, -39.0, 77)).id();
     herd.world.entity_mut(e).insert(ActiveUntil(0));
     let speed: f32 = std::env::var("SPEED").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.0) * 0.2;
@@ -182,7 +182,7 @@ fn trace_a_cow_walking_into_a_cactus() {
 #[test]
 #[ignore = "trace"]
 fn trace_a_cow_jumping_under_a_ceiling() {
-    let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, true);
+    let mut herd = Herd::with_hazards_awake(1, 100.0, true, false, 5, true);
     let e = herd.world.spawn(cow_bundle(-19.0, -19.0, 77)).id();
     herd.world.entity_mut(e).insert(ActiveUntil(0));
     herd.world.entity_mut(e).remove::<crate::goals::Jump>();
@@ -204,7 +204,7 @@ fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::with_mix(16, 3.0, true, false, 5, false, 2);
+    let mut herd = Herd::with_mix_awake(16, 3.0, true, false, 5, false, 2);
     let table = herd.world.resource::<SpeciesTable>().0.clone();
     let (cow, pig) = (table[0], table[1]);
     assert_ne!((cow.width, cow.height), (pig.width, pig.height));
@@ -234,7 +234,7 @@ fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
     eprintln!("carrot: cows {cows_c} pigs {pigs_c}; wheat: cows {cows_w} pigs {pigs_w}");
     assert!(cows_c == 0 && pigs_c > 0 && pigs_w == 0 && cows_w > 0);
     // A cow and a pig in love next to each other: no baby; two cows in love: a baby.
-    let mut herd = Herd::with_mix(0, 3.0, true, false, 5, false, 0);
+    let mut herd = Herd::with_mix_awake(0, 3.0, true, false, 5, false, 0);
     let spawn = |herd: &mut Herd, sp: &Species, x: f64| {
         let e = herd.world.spawn(spawn_bundle(sp, x, 0.5, 9 + x as u64)).id();
         herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
@@ -271,7 +271,7 @@ if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::with_hazards(1, 100.0, true, false, 5, false);
+    let mut herd = Herd::with_hazards_awake(1, 100.0, true, false, 5, false);
     let mut spawn = |herd: &mut Herd, x: f64, z: f64| {
         let e = herd.world.spawn(cow_bundle(x, z, 3 + x as u64)).id();
         herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
@@ -374,7 +374,7 @@ if crate::cow::skip_unless_walker("water_placed_floats_extinguishes_and_works_at
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::with_hazards(0, 100.0, true, false, 5, false);
+    let mut herd = Herd::with_hazards_awake(0, 100.0, true, false, 5, false);
     let mut spawn = |herd: &mut Herd, x: f64, z: f64| {
         let e = herd.world.spawn(cow_bundle(x, z, 3 + x as u64)).id();
         herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
@@ -460,7 +460,7 @@ if crate::cow::skip_unless_walker("a_hit_knocks_a_cow_back") {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::new(1, 100.0, true, false, 5);
+    let mut herd = Herd::new_awake(1, 100.0, true, false, 5);
     let e = herd.world.spawn(cow_bundle(10.5, 10.5, 9)).id();
     herd.world.entity_mut(e).insert(ActiveUntil(0));
     for _ in 0..5 {
@@ -491,7 +491,7 @@ if crate::cow::skip_unless_walker("the_cows_walk_sleep_and_wake_on_the_slab") {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::new(300, 3.0, true, false, 3);
+    let mut herd = Herd::new_awake(300, 3.0, true, false, 3);
     herd.set_players(vec![(0.0, 0.0)]);
     let half = f64::from(herd.world.resource::<Level>().half);
     let start: Vec<Vec3> = herd.world.query::<&Pos>().iter(&herd.world).map(|p| p.0).collect();
@@ -555,7 +555,7 @@ fn a_cow_leaving_a_standing_player_stops_being_active() {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::new(0, 6.0, true, false, 3);
+    let mut herd = Herd::new_awake(0, 6.0, true, false, 3);
     let e = herd.world.spawn(cow_bundle(0.5, 0.5, 11)).id();
     herd.set_players(vec![(0.5, 0.5)]);
     herd.tick();

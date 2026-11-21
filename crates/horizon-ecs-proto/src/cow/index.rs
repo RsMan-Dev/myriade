@@ -49,7 +49,7 @@ pub struct Index {
     pub(crate) stamp: Vec<u32>,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
     pub(crate) crossed: Vec<(Entity, u32)>,
-    /// The simulated chunks (`zone.rs`): off unless `Herd::set_simulation` turned it on.
+    /// The simulated chunks (`zone.rs`): on in the constructors of a server (`Herd::new`, `with_slab`...), off only in their `_awake` variants (benches and tests that want every creature ticked).
     pub zone: crate::zone::Zone,
     /// How many animals each block of 8 x 8 columns holds (`player_near` looks only at the blocks that hold some).
     /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.

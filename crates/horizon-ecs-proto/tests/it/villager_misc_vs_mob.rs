@@ -52,7 +52,7 @@ fn a_farmer_harvests_and_replants_the_mature_wheat_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let (x, y, z) = (0, 1, 0);
     let crop = [x + 1, y, z];
     mob_block(&r, crop[0], crop[1], crop[2], "minecraft:wheat", &[("age", "7")]);
@@ -162,7 +162,7 @@ fn a_villager_opens_the_door_in_its_way_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let door = [2, 1, 0];
     // A wall with a door across the way to a job site: the unemployed Mob villager walks to the composter through it.
     for z in -4..=4 {
@@ -258,7 +258,7 @@ fn a_baby_villager_senses_a_reachable_bed_as_a_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let bed = [20, 1, 0];
     mob_block(&r, bed[0], bed[1], bed[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);
     h.set_block_state(bed[0], bed[1], bed[2], "minecraft:red_bed", &[("part", "head"), ("facing", "east")]);

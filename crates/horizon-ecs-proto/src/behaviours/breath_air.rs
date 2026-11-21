@@ -169,7 +169,7 @@ mod tests {
             eprintln!("breath_air: skipped (HORIZON_TEST_RESOURCES unset)");
             return None;
         }
-        let mut h = Herd::with_slab(30, false, false);
+        let mut h = Herd::with_slab_awake(30, false, false);
         set_lazy_look(&mut h.world, false);
         Some(h)
     }

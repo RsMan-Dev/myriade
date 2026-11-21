@@ -144,7 +144,7 @@ mod tests {
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 8, &Params::DEFAULT)];
 
     fn pandas(seed: u64, genes: &[Gene]) -> (Herd, Vec<Entity>) {
-        let mut h = Herd::with_slab(8, true, false);
+        let mut h = Herd::with_slab_awake(8, true, false);
         let mut sp: Species = *species();
         sp.goals = Config { entries: &ENTRIES };
         let mut out = Vec::new();

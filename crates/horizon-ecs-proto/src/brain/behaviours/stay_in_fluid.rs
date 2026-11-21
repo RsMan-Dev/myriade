@@ -40,7 +40,7 @@ mod tests {
     fn it_starts_in_water_or_on_the_ground_as_its_parameter_says() {
         static WATER: Params = Params { what: Stay::Water };
         static GROUND: Params = Params { what: Stay::Ground };
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 5);
         h.world.get_mut::<FluidState>(e).unwrap().in_water = true;

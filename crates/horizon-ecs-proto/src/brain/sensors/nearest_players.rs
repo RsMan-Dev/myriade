@@ -117,7 +117,7 @@ mod tests {
     /// A player at 4 blocks is known, visible and attackable; the same player far away is forgotten by the next scan.
     #[test]
     fn a_near_player_is_known_and_a_far_one_is_forgotten() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, 0.5, 0.5);
         player(&mut h, 1, 4.5, 0.5);
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });
@@ -133,7 +133,7 @@ mod tests {
     /// A creative player is seen but not attacked: the attackable memories are absent while the others are present.
     #[test]
     fn a_creative_player_is_visible_but_not_attackable() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, 0.5, 0.5);
         player(&mut h, 1, 4.5, 0.5);
         h.world.resource_mut::<PlayerState>().creative = vec![false, true];
@@ -146,7 +146,7 @@ mod tests {
     /// A spectator is not known at all (`!p.spectator`): the witness is the same player, known once he stops spectating.
     #[test]
     fn a_spectator_is_not_known() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, 0.5, 0.5);
         player(&mut h, 1, 4.5, 0.5);
         scan(&mut h.world, e, &Ctx { id: 0, nth: 0, params: &() });

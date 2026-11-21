@@ -4,7 +4,7 @@ use crate::common::*;
 use horizon_ecs_proto::cow::*;
 
 fn wakes(name: &str, warm: u64, ticks: u64) -> u64 {
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == name).unwrap();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);

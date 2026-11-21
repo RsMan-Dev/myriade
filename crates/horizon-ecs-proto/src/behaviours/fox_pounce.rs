@@ -231,7 +231,7 @@ mod tests {
 
     fn herd() -> Option<Herd> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(30, false, false);
+        let mut h = Herd::with_slab_awake(30, false, false);
         set_lazy_look(&mut h.world, false);
         Some(h)
     }

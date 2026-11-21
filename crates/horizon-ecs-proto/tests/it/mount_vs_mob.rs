@@ -27,7 +27,7 @@ fn a_ridden_wild_horse_is_tamed_by_the_law_of_its_temper_or_throws_the_rider() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let (mut tamed, mut thrown) = (0, 0);
     for k in 0..200 {
         let e = spawn_species(&mut h.world, species(), 0.5 + (k % 40) as f64, 0.5 + (k / 40) as f64 * 3.0, 31 + k as u64);
@@ -64,7 +64,7 @@ fn the_rider_steers_the_horse_as_it_steers_the_original() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let i = r.add_id(Vec3::new(0.5, 1.0, 0.5), 31_337);
     horizon_client_lib::mobs::tame::set_tame(&mut r.mobs[i], true);
     r.mobs[i].extra.vector[0] = 0.7;
@@ -103,7 +103,7 @@ fn a_dismount_frees_the_mount_and_the_player() {
     if skip() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 5);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     assert!(ride(&mut h.world, e, Who::Player(1)));
@@ -176,7 +176,7 @@ fn the_whole_law_of_the_temper_is_the_same_on_both_sides() {
     let mean: f64 = p.iter().enumerate().map(|(r, q)| r as f64 * q).sum();
     let var: f64 = p.iter().enumerate().map(|(r, q)| q * (r as f64 - mean).powi(2)).sum();
     // The ECS side.
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let mut ecs = Vec::new();
     for k in 0..300 {

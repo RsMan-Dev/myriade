@@ -224,7 +224,7 @@ mod tests {
     /// A follower (the process species, whose goals are this one) at x = 0.5 that is armed, and an animal of another species
     /// standing still (no goal) at `x`. A test configuration: the species table is not changed.
     fn pair(x: f64) -> (Herd, Entity, Entity) {
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let mut sp = *species();
         sp.goals = Config { entries: &ENTRIES };
         let parrot = spawn_armed(&mut h.world, &sp, 0.5, 0.5, 7);

@@ -27,7 +27,7 @@ struct Scene {
 /// The species of the process at `at`, the player at `player` (the target on both sides), `main`: the item in hand (name, ECS id).
 fn scene(at: Vec3, player: Vec3, main: Option<(&str, u32)>, water: bool) -> Scene {
     let mut r = MobRef::new(40, false);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     if water {
         for x in -12..=12 {
             for z in -12..=12 {

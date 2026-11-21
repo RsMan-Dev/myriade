@@ -143,7 +143,7 @@ mod tests {
         static KEEPS: Params = Params { follow_unseen: true, ..Params::DEFAULT };
         for day in [true, false] {
             for (p, option) in [(&KEEPS, false), (&QUITS, true)] {
-                let mut h = Herd::with_slab(60, true, false);
+                let mut h = Herd::with_slab_awake(60, true, false);
                 h.set_daylight(day);
                 let mut sp = *species();
                 let entries: &'static [Entry] = Box::leak(vec![Entry::new(&MODULE, 1, p)].into_boxed_slice());

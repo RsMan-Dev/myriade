@@ -17,7 +17,7 @@ fn the_sniffer_hunts_seeds_as_the_mob_does() {
         return;
     }
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     for x in -45..=45 {
         for z in -45..=45 {
             r.set_block(x, 0, z, "minecraft:dirt");

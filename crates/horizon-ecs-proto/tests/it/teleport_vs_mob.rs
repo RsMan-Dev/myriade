@@ -38,7 +38,7 @@ fn mob_landings(tries: usize) -> Vec<(f64, f64, f64)> {
     v
 }
 fn ecs_landings(tries: usize) -> Vec<(f64, f64, f64)> {
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let mut sp = *table.iter().find(|s| s.name == "minecraft:enderman").unwrap();
     sp.goals = horizon_ecs_proto::species::Config { entries: Box::leak(Box::new([Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN)])) };
@@ -75,7 +75,7 @@ fn an_arrow_is_dodged() {
     if !on() {
         return;
     }
-    let mut h = Herd::with_slab(40, false, false);
+    let mut h = Herd::with_slab_awake(40, false, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let mut sp = *table.iter().find(|s| s.name == "minecraft:enderman").unwrap();
     sp.goals = horizon_ecs_proto::species::Config { entries: Box::leak(Box::new([Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN)])) };

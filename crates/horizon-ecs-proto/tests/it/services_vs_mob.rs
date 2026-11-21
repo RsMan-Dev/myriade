@@ -121,7 +121,7 @@ fn zoglin_keeps_its_target_and_strikes_by_age() {
     }
     for baby in [false, true] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:zoglin"), Vec3::new(0.5, 1.0, 0.5), 5);
         r.mobs[i].ai.no_action_time = 0;
         if baby {
@@ -176,7 +176,7 @@ fn panda_avoids_only_when_worried() {
     }
     for worried in [true, false] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:panda"), Vec3::new(0.5, 1.0, 0.5), 8);
         r.mobs[i].ai.no_action_time = 0;
         if worried {
@@ -215,7 +215,7 @@ fn rabbit_flees_the_player_and_the_monsters() {
     }
     for what in ["player", "zombie"] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let i = mob_add(&mut r, mob_kind("minecraft:rabbit"), Vec3::new(0.5, 1.0, 0.5), 9);
         r.mobs[i].ai.no_action_time = 100;
         let e = ecs_named(&mut h, "minecraft:rabbit", None, 0.5, 0.5, 11200, u64::from(far_id(9)));
@@ -257,7 +257,7 @@ fn snow_golem_targets_the_hostiles_only() {
     }
     for victim in ["minecraft:zombie", "minecraft:cow"] {
         let mut r = MobRef::new(24, false);
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let g = mob_add(&mut r, mob_kind("minecraft:snow_golem"), Vec3::new(0.5, 1.0, 0.5), 11);
         r.mobs[g].ai.no_action_time = 100;
         let v = mob_add(&mut r, mob_kind(victim), Vec3::new(8.5, 1.0, 0.5), 12);
@@ -288,7 +288,7 @@ fn armadillo_panics_at_the_environment_only() {
         return;
     }
     let mut r = MobRef::new(24, false);
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let i = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5, 1.0, 0.5), 13);
     r.mobs[i].ai.no_action_time = 100;
     let e = ecs_named(&mut h, "minecraft:armadillo", None, 0.5, 0.5, 11400, u64::from(far_id(13)));
@@ -316,7 +316,7 @@ fn a_hurt_panda_alerts_the_aggressive_ones_only() {
     if !on() {
         return;
     }
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     ps_immortal(&mut h);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 6.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let victim = ecs_named(&mut h, "minecraft:panda", None, 0.5, 0.5, 11500, 3);
@@ -352,7 +352,7 @@ fn avoid_target_roll_gates_the_flight() {
     for (name, roll) in [("never", never as fn(&World, Entity, f64) -> bool), ("half", half)] {
         let params: &'static avoid_entity::Params = Box::leak(Box::new(avoid_entity::Params { what: Avoid::Named(&["minecraft:zombie"]), max_dist: 8.0, target_roll: Some(roll), ..avoid_entity::Params::DEFAULT }));
         let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&avoid_entity::MODULE, 3, params)]));
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let e = ecs_named(&mut h, "minecraft:cow", Some(entries), 0.5, 0.5, 11600, 3);
         let z = ecs_named(&mut h, "minecraft:zombie", Some(Box::leak(Box::new([]))), 3.5, 0.5, 11601, 5);
         let mut starts = 0;

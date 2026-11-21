@@ -157,7 +157,7 @@ mod tests {
     /// A cow with this goal alone, on the slab, standing in a lake of water over the ground.
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(200, false, false);
+        let mut h = Herd::with_slab_awake(200, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         for x in -8..=8 {
             for z in -8..=8 {

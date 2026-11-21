@@ -32,24 +32,52 @@ pub struct Herd {
 }
 
 impl Herd {
-    /// `n` cows spaced `spacing` blocks apart on a slab just large enough.
+    // ---- the constructors of a server: the zone of simulation is ON (no player registered: every creature sleeps) --------------
+    // The `*_awake` ones below build a herd WITHOUT the zone (every creature ticks as if a player stood within range): a harness
+    // that wants it asks for it by name; it is never the state a server reaches by having no player.
+    /// The simulation distance (in chunks) of a herd built by the constructors without `_awake` (the game's default).
+    pub const SIMULATION_RADIUS: i32 = 10;
+    fn zoned(mut self) -> Self {
+        self.set_simulation(Self::SIMULATION_RADIUS);
+        self
+    }
+    /// `n` cows spaced `spacing` blocks apart, the zone on.
     pub fn new(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64) -> Self {
-        Self::with_hazards(n, spacing, sleep, parallel, seed, false)
+        Self::new_awake(n, spacing, sleep, parallel, seed).zoned()
+    }
+    pub fn with_hazards(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool) -> Self {
+        Self::with_hazards_awake(n, spacing, sleep, parallel, seed, hazards).zoned()
+    }
+    pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
+        Self::with_mix_awake(n, spacing, sleep, parallel, seed, hazards, other_every).zoned()
+    }
+    pub fn with_slab(half: i32, sleep: bool, hazards: bool) -> Self {
+        Self::with_slab_awake(half, sleep, hazards).zoned()
+    }
+    pub fn with_spawn_world_kind(half: i32, sleep: bool, kind: crate::spawning::Kind) -> Self {
+        Self::with_spawn_world_kind_awake(half, sleep, kind).zoned()
+    }
+    pub fn with_spawn_world(half: i32, sleep: bool) -> Self {
+        Self::with_spawn_world_awake(half, sleep).zoned()
+    }
+    /// `n` cows spaced `spacing` blocks apart on a slab just large enough.
+    pub fn new_awake(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64) -> Self {
+        Self::with_hazards_awake(n, spacing, sleep, parallel, seed, false)
     }
     /// With `hazards`, 3 x 3 patches of lava, water, powder snow, fire and cactus every 48 blocks.
-    pub fn with_hazards(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool) -> Self {
-        Self::with_mix(n, spacing, sleep, parallel, seed, hazards, 0)
+    pub fn with_hazards_awake(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool) -> Self {
+        Self::with_mix_awake(n, spacing, sleep, parallel, seed, hazards, 0)
     }
     /// A mixed herd: every `other_every`-th animal is of the second species (the pig), the others of the first (the
     /// cow); 0: all of the process's default species.
-    pub fn with_mix(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
+    pub fn with_mix_awake(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize) -> Self {
         let mut herd = Self::build(n, spacing, sleep, parallel, seed, hazards, other_every, None, false);
         // The loot tables are read once, now: the first death of a bench would read them in the middle of a measure.
         crate::loot::preload(&mut herd.world);
         herd
     }
     /// An empty walled slab of `half` blocks each way.
-    pub fn with_slab(half: i32, sleep: bool, hazards: bool) -> Self {
+    pub fn with_slab_awake(half: i32, sleep: bool, hazards: bool) -> Self {
         Self::build(0, 1.0, sleep, false, 5, hazards, 0, Some(half), false)
     }
     /// Day or night for the spawn rules (`MobWorld.daylight`: the sky darkens by 11 at night); the world is the same one, read again.
@@ -71,7 +99,7 @@ impl Herd {
     }
     /// An empty slab of `half` blocks each way with a real surface (grass on dirt on stone down to the bottom of the world) for the
     /// natural spawning (`spawning.rs`): the surface is the block y = 0, the creatures stand at y = 1.
-    pub fn with_spawn_world_kind(half: i32, sleep: bool, kind: crate::spawning::Kind) -> Self {
+    pub fn with_spawn_world_kind_awake(half: i32, sleep: bool, kind: crate::spawning::Kind) -> Self {
         // The kind is read by the builder: no other world is built meanwhile.
         static BUILDING: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = BUILDING.lock().unwrap_or_else(|e| e.into_inner());
@@ -80,8 +108,8 @@ impl Herd {
         crate::loot::preload(&mut h.world);
         h
     }
-    pub fn with_spawn_world(half: i32, sleep: bool) -> Self {
-        Self::with_spawn_world_kind(half, sleep, crate::spawning::Kind::Plains)
+    pub fn with_spawn_world_awake(half: i32, sleep: bool) -> Self {
+        Self::with_spawn_world_kind_awake(half, sleep, crate::spawning::Kind::Plains)
     }
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn build(n: usize, spacing: f64, sleep: bool, parallel: bool, seed: u64, hazards: bool, other_every: usize, slab: Option<i32>, spawn_world: bool) -> Self {

@@ -42,7 +42,7 @@ pub fn herd() -> Herd {
 
 /// The same world with a slab of `half` blocks each way (the gateway stands 96 blocks out).
 pub fn herd_of(half: i32) -> Herd {
-    let mut h = Herd::with_slab(half, false, false);
+    let mut h = Herd::with_slab_awake(half, false, false);
     h.world.insert_resource(FlightNodes::build(&LAYOUT, |_, _| GROUND));
     lay_ground(&mut h);
     h.world.resource_mut::<Online>().set(Player { id: PLAYER_ID, x: PLAYER.0, y: PLAYER.1, z: PLAYER.2, ..Default::default() });

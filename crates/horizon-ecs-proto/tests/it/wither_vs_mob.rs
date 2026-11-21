@@ -27,7 +27,7 @@ struct Scene {
 /// A wither in its charge on both sides (`counter` 220 on the Mob), a player 10 blocks away.
 fn scene(at: Vec3, player: Vec3) -> Scene {
     let mut r = MobRef::new(40, false);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let mob = r.add(at);
     r.mobs[mob].extra.counter = 220;
     let table = h.world.resource::<SpeciesTable>().0.clone();

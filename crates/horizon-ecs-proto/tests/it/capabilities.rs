@@ -35,7 +35,7 @@ fn an_inert_object_with_only_a_body_falls_and_rests() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let e = inert(&mut h, 0.5, 6.0, 0.5);
     for _ in 0..80 {
         h.tick();
@@ -53,7 +53,7 @@ fn an_inert_object_follows_the_block_changes_under_it() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let e = inert(&mut h, 0.5, 1.0, 0.5);
     for _ in 0..40 {
         h.tick();
@@ -73,7 +73,7 @@ fn a_living_entity_without_goals_takes_damage_and_dies() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let e = inert(&mut h, 0.5, 1.0, 0.5);
     h.world.entity_mut(e).insert((Health(6.0), HurtAt { at: 0, last: 0.0 }));
     for _ in 0..5 {
@@ -99,7 +99,7 @@ fn the_framework_events_report_landing_and_fire() {
         return;
     }
     use horizon_ecs_proto::goals::Events;
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let e = inert(&mut h, 0.5, 5.0, 0.5);
     let mut landed = false;
     for _ in 0..60 {
@@ -131,7 +131,7 @@ fn spawn_makes_only_the_declared_capabilities() {
         return;
     }
     use horizon_ecs_proto::{behaviours::Cap, goals::GoalSet};
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let mut sp = h.world.resource::<SpeciesTable>().0[0];
     let mut spawn = |h: &mut Herd, caps: &'static [Cap], x: f64| {
         sp.caps = caps;
@@ -163,7 +163,7 @@ fn no_system_of_the_framework_visits_an_entity_with_only_a_position_and_a_veloci
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     for i in 0..4 {
         spawn_species(&mut h.world, &table[0], 0.5 + f64::from(i), 0.5, 5 + i as u64);
@@ -193,7 +193,7 @@ fn a_named_condition_gates_an_entry_before_its_module() {
     if horizon_ecs_proto::cow::skip_unless(&panic::MODULE, "a_named_condition_gates_an_entry_before_its_module") {
         return;
     }
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let (gated, control) = (spawn_species(&mut h.world, &table[0], 0.5, 0.5, 21), spawn_species(&mut h.world, &table[0], 4.5, 4.5, 22));
     for _ in 0..20 {
@@ -244,7 +244,7 @@ fn a_player_item_is_handled_by_the_module_or_the_rule_that_wants_it() {
         return;
     }
     use horizon_ecs_proto::{behaviours::Interaction, goals::{interact, item_id, Love}};
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let named = |n: &str| table.iter().find(|s| s.name == n).copied().unwrap();
     let cow = spawn_species(&mut h.world, &named("minecraft:cow"), 0.5, 0.5, 1);
@@ -267,7 +267,7 @@ fn a_block_is_written_and_read_with_its_properties() {
         return;
     }
     use horizon_ecs_proto::blocks;
-    let mut h = Herd::with_slab(8, true, false);
+    let mut h = Herd::with_slab_awake(8, true, false);
     h.set_block_state(2, 1, 2, "minecraft:sweet_berry_bush", &[("age", "3")]);
     h.set_block_state(3, 1, 2, "minecraft:sweet_berry_bush", &[("age", "9")]);
     h.set_block_state(4, 1, 2, "minecraft:sweet_berry_bush", &[("size", "1")]);
@@ -290,7 +290,7 @@ fn players_entering_and_leaving_a_radius_the_gaze_and_leaving_the_ground_are_eve
         return;
     }
     use horizon_ecs_proto::{goals::{Events, Online, Player, PlayerWatch}, hostile::PlayerState};
-    let mut h = Herd::with_slab(30, true, false);
+    let mut h = Herd::with_slab_awake(30, true, false);
     let e = inert(&mut h, 0.5, 1.0, 0.5);
     h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
     for _ in 0..30 {
@@ -332,7 +332,7 @@ fn a_hundred_players_are_each_reported_once_by_a_watcher() {
         return;
     }
     use horizon_ecs_proto::goals::{Events, Online, Player, PlayerWatch};
-    let mut h = Herd::with_slab(30, true, false);
+    let mut h = Herd::with_slab_awake(30, true, false);
     let e = inert(&mut h, 0.5, 1.0, 0.5);
     h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
     for _ in 0..30 {
@@ -377,7 +377,7 @@ fn range_events_work_for_player_ids_beyond_64() {
         return;
     }
     use horizon_ecs_proto::goals::{Events, Online, Player, PlayerWatch};
-    let mut h = Herd::with_slab(30, true, false);
+    let mut h = Herd::with_slab_awake(30, true, false);
     let e = inert(&mut h, 0.5, 1.0, 0.5);
     h.world.entity_mut(e).insert(PlayerWatch::new(10.0));
     for _ in 0..30 {

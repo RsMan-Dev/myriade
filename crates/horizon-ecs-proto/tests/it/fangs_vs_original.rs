@@ -42,7 +42,7 @@ fn fangs_start_bite_and_end_on_the_vanilla_ticks() {
     }
     for warmup in [0, 3, 17] {
         let at = Vec3::new(0.5, 1.0, 0.5);
-        let mut h = Herd::with_slab(16, true, false);
+        let mut h = Herd::with_slab_awake(16, true, false);
         let owner = h.world.spawn_empty().id();
         let fang = spawn_fang(&mut h.world, at, warmup, owner);
         let (mut started, mut bitten, mut removed) = (None, None, None);

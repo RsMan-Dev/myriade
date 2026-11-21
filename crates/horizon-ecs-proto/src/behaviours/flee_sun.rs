@@ -174,7 +174,7 @@ mod tests {
         if skip("a_burning_animal_in_the_day_walks_to_its_spot") {
             return;
         }
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         h.set_day(true);
         let e = settled_animal(&mut h, -6.5, 0.5);
         force_spot(&mut h.world, e, &MODULE, (-2.5, -3.5));
@@ -198,7 +198,7 @@ mod tests {
         if skip("a_burning_animal_at_night_does_not_run") {
             return;
         }
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         h.set_day(false);
         let e = settled_animal(&mut h, -6.5, 0.5);
         force_spot(&mut h.world, e, &MODULE, (-2.5, -3.5));

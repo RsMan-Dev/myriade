@@ -27,7 +27,7 @@ struct Pair {
 }
 fn pair(n: usize) -> Pair {
     let mut r = MobRef::new(60, false);
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();
     let ids = (0..n)

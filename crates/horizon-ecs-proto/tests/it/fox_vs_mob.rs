@@ -86,7 +86,7 @@ fn fox_sleep_delay_and_wake() {
             let w = r.w as *const horizon_client_lib::mobs::MobWorld as *mut horizon_client_lib::mobs::MobWorld;
             (*w).daylight = true;
         }
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         h.world.insert_resource(horizon_ecs_proto::hostile::Daylight(true));
         let entries: &'static [Entry] = leak([Entry::new(&fox_sleep::MODULE, 7, &fox_sleep::Params::DEFAULT)]);
         let (mut ids, mut fe) = (Vec::new(), Vec::new());
@@ -164,7 +164,7 @@ fn fox_in_a_storm_walks_under_a_roof_as_the_mob_does() {
             let w = r.w as *const horizon_client_lib::mobs::MobWorld as *mut horizon_client_lib::mobs::MobWorld;
             (*w).thundering = true;
         }
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         h.world.insert_resource(shelter::Storm(true));
         let entries: &'static [Entry] = leak([Entry::new(&shelter::MODULE, 6, &shelter::Params { speed: 1.25, interval: 100, blocked: 32 })]);
         // A stone roof over x 0..=8, z -4..=4 at y 8, as the same scene on both sides.

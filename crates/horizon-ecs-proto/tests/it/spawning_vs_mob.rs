@@ -26,7 +26,7 @@ fn reference_cost_and_fill() {
         return;
     }
     let t0 = std::time::Instant::now();
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     eprintln!("world built in {:?}", t0.elapsed());
     let mw = h.world.resource::<Level>().mw.0;
@@ -78,7 +78,7 @@ fn ecs_fill_and_cost() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();
@@ -135,7 +135,7 @@ fn the_fill_follows_horizon_by_category_and_species() {
         return;
     }
     let seeds: i64 = std::env::var("SEEDS").ok().and_then(|v| v.parse().ok()).unwrap_or(40);
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();
@@ -224,7 +224,7 @@ fn one_creature_pass_alone() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();
@@ -253,7 +253,7 @@ fn when_do_creatures_come() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     let mw = h.world.resource::<Level>().mw.0;
     for seed in 0..12i64 {
@@ -290,7 +290,7 @@ fn the_counts_kept_by_event_are_the_counts_a_recount_finds() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     h.enable_spawning("minecraft:plains", 3);
     player(&mut h, 1, 0.5, 0.5);
@@ -340,7 +340,7 @@ fn cost_per_cycle_by_creatures_and_by_state() {
     use horizon_client_lib::mobs::spawn_selection::Category as C;
     let c = Counter::new();
     let read = || c.as_ref().map_or(0, Counter::read);
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     let mw = h.world.resource::<Level>().mw.0;
     let mut out = Vec::new();
@@ -410,7 +410,7 @@ fn trace_the_creature_pass_in_context() {
         return;
     }
     let seeds: i64 = std::env::var("SEEDS").ok().and_then(|v| v.parse().ok()).unwrap_or(200);
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();
@@ -471,7 +471,7 @@ fn digging_changes_the_chance_of_a_start_reaching_a_free_position() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     h.enable_spawning("minecraft:plains", 3);
     player(&mut h, 1, 0.5, 0.5);
@@ -508,7 +508,7 @@ fn a_walking_player_costs_no_tick_more_than_twice_the_median() {
     let c = Counter::new();
     let read = || c.as_ref().map_or(0, Counter::read);
     for (name, per_tick, ticks) in [("4.3 blocks/s", 0.215, 600usize), ("20 blocks/s", 1.0, 200)] {
-        let mut h = Herd::with_spawn_world(176, true);
+        let mut h = Herd::with_spawn_world_awake(176, true);
         h.set_daylight(false);
         let start = -150.0;
         player(&mut h, 1, start, 0.5);
@@ -557,7 +557,7 @@ fn the_skipped_starts_leave_the_rate_of_the_others() {
     if !have() {
         return;
     }
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();
@@ -582,7 +582,7 @@ fn category_name(i: usize) -> &'static str {
 /// The fill of a world of another kind (caves, the sea): the mean count of each species and of each category after `ticks` ticks over many
 /// seeds, the same world and the same player on both sides. Returns the worst |z| and what was seen.
 fn fill_law(kind: horizon_ecs_proto::spawning::Kind, biome: &str, at: [f64; 3], ticks: usize, seeds: i64) -> (f64, BTreeMap<String, (f64, f64)>) {
-    let mut h = Herd::with_spawn_world_kind(176, true, kind);
+    let mut h = Herd::with_spawn_world_kind_awake(176, true, kind);
     h.set_daylight(false);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: at[0], y: at[1], z: at[2], main: 0, off: 0, ..Default::default() });
     h.tick();
@@ -675,7 +675,7 @@ fn the_first_seconds_after_a_player_arrives() {
         return;
     }
     let seeds = 40i64;
-    let mut h = Herd::with_spawn_world(176, true);
+    let mut h = Herd::with_spawn_world_awake(176, true);
     h.set_daylight(false);
     player(&mut h, 1, 0.5, 0.5);
     h.tick();

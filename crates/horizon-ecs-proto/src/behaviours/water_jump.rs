@@ -183,7 +183,7 @@ mod tests {
     /// Un dauphin seul avec ce but, posé dans une mare de 110 x 110 (eau aux rangées -1 et 0) : hors de l'eau il meurt.
     fn world() -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
-        let mut h = Herd::with_slab(60, false, false);
+        let mut h = Herd::with_slab_awake(60, false, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         for x in -55..=55 {
             for z in -55..=55 {

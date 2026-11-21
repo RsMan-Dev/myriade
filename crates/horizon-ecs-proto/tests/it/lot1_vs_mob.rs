@@ -110,7 +110,7 @@ fn pandas(kind: Pk, n: usize, ticks: usize, baby: bool, variant: u8, gene: ps::G
         Pk::Lie => ps::FLAG_ON_BACK,
         Pk::Roll => ps::FLAG_ROLL,
     };
-    let mut h = Herd::with_slab(24, false, false);
+    let mut h = Herd::with_slab_awake(24, false, false);
     let es: Vec<Entity> = (0..n)
         .map(|j| {
             let p = grid(j);
@@ -244,7 +244,7 @@ fn swell_run(salt: usize) -> ((Vec<i32>, Option<usize>), (Vec<i32>, Option<usize
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&swell::MODULE, 2, &swell::Params::NO_BLAST)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 77 + salt as u64);
     h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
     let (mut ecs, mut et) = (Vec::new(), None);
@@ -312,7 +312,7 @@ fn silverfish_wake_up_friends_after_a_hit() {
     let i = mob_add(&mut r, mob_kind("minecraft:silverfish"), Vec3::new(0.5, 1.0, 0.5));
     r.mobs[i].ai.no_action_time = 0;
     let entries: &'static [Entry] = leak([Entry::new(&silver::MODULE, 3, &silver::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 91);
     for _ in 0..10 {
         r.step(None);
@@ -391,7 +391,7 @@ fn fox_faceplant_lasts_forty_ticks() {
     let mut r = MobRef::new(20, false);
     let i = mob_add(&mut r, mob_kind("minecraft:fox"), Vec3::new(0.5, 1.0, 0.5));
     let entries: &'static [Entry] = leak([Entry::new(&fox_faceplant::MODULE, 1, &fox_faceplant::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 5);
     for _ in 0..20 {
         r.step(None);
@@ -435,7 +435,7 @@ fn climb_runs_under_the_same_conditions() {
         let mut r = MobRef::new(20, false);
         let i = mob_add(&mut r, mob_kind("minecraft:rabbit"), Vec3::new(0.5, 1.0, 0.5));
         r.mobs[i].ai.no_action_time = 0;
-        let mut h = Herd::with_slab(20, false, false);
+        let mut h = Herd::with_slab_awake(20, false, false);
         let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
         for _ in 0..20 {
             r.step(None);
@@ -485,7 +485,7 @@ fn rolled_holds_the_flags_until_the_state_is_idle() {
     ]);
     let mut r = MobRef::new(20, false);
     let i = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5, 1.0, 0.5));
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
     h.world.get_mut::<Phase>(e).unwrap().0 = u64::from(r.mobs[i].id);
     for _ in 0..30 {
@@ -533,7 +533,7 @@ fn do_nothing_runs_while_the_counter_is_positive() {
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&do_nothing::MODULE, 0, &do_nothing::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let e = ecs_with(&mut h, entries, 0.5, 0.5, 3);
     for _ in 0..20 {
         h.tick();
@@ -590,7 +590,7 @@ fn fox_crouches_then_pounces_the_same_way() {
         }
     }
     let entries: &'static [Entry] = leak([Entry::new(&fox_stalk_prey::MODULE, 5, leak(fox_stalk_prey::Params { types: &["minecraft:cow"], ..fox_stalk_prey::Params::DEFAULT})), Entry::new(&fox_pounce::MODULE, 6, &fox_pounce::Params::DEFAULT)]);
-    let mut h = Herd::with_slab(20, false, false);
+    let mut h = Herd::with_slab_awake(20, false, false);
     let fe = ecs_with(&mut h, entries, 0.5, 0.5, 3);
     let pe = ecs_with(&mut h, &[], 11.5, 0.5, 4);
     for _ in 0..20 {
@@ -633,7 +633,7 @@ fn baby_follows_the_adult_between_five_and_sixteen_blocks() {
         let a = mob_add(&mut r, mob_kind("minecraft:armadillo"), Vec3::new(0.5 + d, 1.0, 0.5));
         mobs::finalize::set_baby(&mut r.mobs[b], true);
         r.mobs[a].ai.goals.clear();
-        let mut h = Herd::with_slab(24, false, false);
+        let mut h = Herd::with_slab_awake(24, false, false);
         let be = ecs_with(&mut h, entries, 0.5, 0.5, 3);
         follow_parent::make_baby(&mut h.world, be, 24_000);
         ecs_with(&mut h, &[], 0.5 + d, 0.5, 4);

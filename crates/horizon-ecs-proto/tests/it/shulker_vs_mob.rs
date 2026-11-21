@@ -17,7 +17,7 @@ fn skip() -> bool {
 fn scene() -> (MobRef, Herd, usize, Entity) {
     let at = Vec3::new(0.5, 1.0, 0.5);
     let mut r = MobRef::new(40, false);
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     let mob = r.add(at);
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == species().name).unwrap();

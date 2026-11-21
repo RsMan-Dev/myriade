@@ -277,7 +277,7 @@ impl MobRef {
 }
 
 pub fn flat_pair() -> (MobRef, Herd) {
-    (MobRef::new(20, false), Herd::new(0, 6.0, true, false, 3))
+    (MobRef::new(20, false), Herd::new_awake(0, 6.0, true, false, 3))
 }
 pub fn xz(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()

@@ -112,7 +112,7 @@ mod tests {
     /// A visible target in reach is struck once and the attack cools down; the next step does not strike again.
     #[test]
     fn it_strikes_a_target_in_reach_once_then_cools_down() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &PARAMS);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 1.5, 0.5, 92);
@@ -128,7 +128,7 @@ mod tests {
     /// Out of reach, or not visible, no blow; the same target in reach and seen does get one.
     #[test]
     fn it_does_not_strike_out_of_reach_or_unseen() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &PARAMS);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let far = spawn_species(&mut h.world, &sp, 6.5, 0.5, 92);
@@ -147,7 +147,7 @@ mod tests {
     /// A creature that cannot move (the creaking looked at) does not strike; the same creature free does.
     #[test]
     fn a_frozen_attacker_does_not_strike() {
-        let mut h = Herd::with_slab(40, true, false);
+        let mut h = Herd::with_slab_awake(40, true, false);
         let e = brained(&mut h, &FROZEN);
         let sp = h.world.resource::<SpeciesTable>().0[0];
         let prey = spawn_species(&mut h.world, &sp, 1.5, 0.5, 92);

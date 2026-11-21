@@ -21,7 +21,7 @@ fn the_points_follow_the_blocks_and_say_so() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     h.tick();
     assert!(h.world.resource::<PoiRegistry>().is_empty());
     place(&mut h, &[([3, 1, 3], "minecraft:composter"), ([5, 1, 3], "minecraft:bell"), ([-4, 1, 6], "minecraft:lectern"), ([8, 1, 8], "minecraft:stone")]);
@@ -46,7 +46,7 @@ fn the_tickets_are_the_types() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(40, true, false);
+    let mut h = Herd::with_slab_awake(40, true, false);
     place(&mut h, &[([3, 1, 3], "minecraft:composter"), ([5, 1, 3], "minecraft:bell")]);
     let mut r = h.world.resource_mut::<PoiRegistry>();
     assert!(r.acquire([3, 1, 3]));
@@ -63,7 +63,7 @@ fn the_search_and_the_distance_to_a_village() {
     if !have_data() {
         return;
     }
-    let mut h = Herd::with_slab(60, true, false);
+    let mut h = Herd::with_slab_awake(60, true, false);
     place(&mut h, &[([2, 1, 2], "minecraft:composter"), ([6, 1, 0], "minecraft:lectern"), ([-3, 1, -3], "minecraft:bell"), ([40, 1, 40], "minecraft:blast_furnace")]);
     let r = h.world.resource::<PoiRegistry>();
     let near = r.in_range([0, 1, 0], 10, false, |_| true);
