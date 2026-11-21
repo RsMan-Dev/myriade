@@ -124,14 +124,13 @@ impl Herd {
         let half = slab.unwrap_or(((f64::from(side) * spacing / 2.0) as i32 + 6).max(20));
         let mut world = World::new();
         crate::goals::reset_uids();
-        let (level, species, _kind) = if spawn_world { build_level_with(half, crate::spawning::world_builder(half)) } else { build_level(half, hazards) };
+        let level = if spawn_world { build_level_neutral_with(half, crate::spawning::world_builder(half)) } else { build_level_neutral(half, hazards) };
         world.insert_resource(Hazards::build(&level));
         world.insert_resource(DamageQueue::default());
         world.insert_resource(HurtCauses::default());
         world.insert_resource(BlockChanges::default());
         world.insert_resource(StateChanges::default());
         world.insert_resource(level);
-        let _ = species;
         world.insert_resource(species_table());
         crate::type_tags::register(&mut world, crate::effects::TYPED_TAGS);
         let tags = [crate::nbt::Field {
