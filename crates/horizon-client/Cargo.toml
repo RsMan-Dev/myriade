@@ -18,7 +18,6 @@ winresource = "0.1"
 [dependencies]
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std"] }
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-cosmetics = { path = "../horizon-cosmetics" }
 horizon-hooks = { path = "../horizon-hooks" }
 horizon-mod-runtime = { path = "../horizon-mod-runtime" }
 mod_api = { package = "horizon-mod-vocab", path = "../horizon-mod-vocab" }
@@ -26,17 +25,14 @@ horizon-engine-slots = { path = "../horizon-engine-slots" }
 horizon-mod-api-macros = { path = "../horizon-mod-api-macros" }
 horizon-client-lib = { path = "../horizon-client-lib", default-features = false }
 horizon-gameplay = { path = "../horizon-gameplay" }
-horizon-client-gameplay = { path = "../horizon-client-gameplay" }
 horizon-assets = { path = "../horizon-assets" }
 horizon-client-core = { path = "../horizon-client-core" }
-horizon-client-input = { path = "../horizon-client-input" }
 horizon-client-render = { path = "../horizon-client-render" }
 horizon-command = { path = "../horizon-command" }
 horizon-items = { path = "../horizon-items" }
 horizon-core = { path = "../horizon-core" }
 horizon-ecs-proto = { path = "../horizon-ecs-proto" }
 # OptiFine-format pack files: custom entity models, random entity textures.
-horizon-optifine = { path = "../horizon-optifine" }
 # The server thread ahead of the workers (MinecraftServer.spin's Thread.setPriority).
 horizon-threads = { path = "../horizon-threads" }
 horizon-perf-format = { path = "../horizon-perf-format" }
@@ -52,13 +48,10 @@ horizon-anticheat = { path = "../horizon-anticheat" }
 # `entry` installs it into the engine's hook (`horizon_server_files::chat_guard`).
 horizon-chat-filter = { path = "../horizon-chat-filter" }
 # Shader packs: reading them and turning their GLSL into naga modules.
-horizon-shaders = { path = "../horizon-shaders" }
 # Horizon's own shader packs: the format, the stages and the check (docs/shaders.md).
 horizon-shader-api = { path = "../horizon-shader-api" }
 # Play with Friends: invite codes and their tunnel; the `friends` feature.
-horizon-friends = { path = "../horizon-friends", optional = true }
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
-horizon-narrator = { path = "../horizon-narrator" }
 # Horizon mods: sandboxed WebAssembly components, off unless installed and turned on (docs/modding/src/how-to/content-mods.md).
 # Their runtime is the `mods` feature.
 horizon-mod-package = { path = "../horizon-mod-package", default-features = false, features = ["index", "runtime-process"] }
@@ -87,7 +80,6 @@ horizon-theme = { path = "../horizon-theme" }
 horizon-system = { path = "../horizon-system" }
 # Opt-in data collection: the game keeps, the launcher sends (docs/telemetry.md). The
 # anonymous "I'm playing" ping is the Horizon layer's (`horizon-heartbeat`, in the official executable).
-horizon-telemetry = { path = "../horizon-telemetry", default-features = false }
 horizon-bench = { path = "../horizon-bench" }
 crc32fast = "1"
 zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
@@ -95,7 +87,6 @@ zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
 gilrs = { version = "0.11", optional = true }
 # The DualSense's rumble, adaptive triggers and lights, and an Xbox One pad's impulse triggers,
 # over HID (gilrs only reads them).
-horizon-dualsense = { path = "../horizon-dualsense", optional = true }
 # HTTPS to the Minecraft services (online-mode session join).
 ureq = { version = "2", default-features = false, features = ["tls"] }
 # `LevelStorageAccess.estimateDiskSpace`: usable disk space, without unsafe code on Windows.
@@ -143,7 +134,7 @@ state-digest = []
 audio = ["horizon-client-render/audio", "horizon-client-lib/audio"]
 # Controllers: gilrs, and the DualSense's and Xbox One's own output. Without it only `horizon-ctl pad`'s
 # virtual pad.
-controllers = ["horizon-client-lib/controllers", "dep:gilrs", "dep:horizon-dualsense", "horizon-client-input/controllers"]
+controllers = ["horizon-client-lib/controllers", "dep:gilrs",]
 # Horizon's own extras over the vanilla game, for a fork that wants them out (docs/forking.md):
 # cosmetics and emotes, the "Horizon player" presence, the official server added to
 # the server list, the Horizon Settings and Mods pages and Play with Friends. Players always get
@@ -153,7 +144,7 @@ controllers = ["horizon-client-lib/controllers", "dep:gilrs", "dep:horizon-duals
 horizon-extras = ["friends"]
 # Play with Friends: sharing a world behind an invite code (game/friends.rs). Joining one is
 # horizon-friends' `game` side, which horizon-official registers (`horizon_hooks::tunnel`).
-friends = ["dep:horizon-friends"]
+friends = []
 # Records the call sites of mob random draws (`mob_ai_probe` traces).
 rng-trace = ["horizon-core/rng-trace", "horizon-client-lib/rng-trace"]
 # horizon-client-lib's own `default` (only `audio` and `controllers`, which `audio` and `controllers` above turn on
@@ -194,6 +185,5 @@ mod_api = { package = "horizon-mod-vocab", path = "../horizon-mod-vocab", featur
 horizon-client-render = { path = "../horizon-client-render", features = ["test-support"] }
 horizon-items = { path = "../horizon-items", features = ["test-support"] }
 horizon-gameplay = { path = "../horizon-gameplay", features = ["test-support"] }
-horizon-perf = { path = "../horizon-perf" }
 # Every WGSL shader translated as wgpu's DirectX 12 backend does (gfx.rs tests).
 naga = { version = "30.0.1", features = ["wgsl-in", "hlsl-out", "msl-out", "spv-out"] }
