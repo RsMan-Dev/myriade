@@ -15,7 +15,7 @@ impl Params {
 
 pub static MODULE: Module = Module {
     name: "square_or_face",
-    flags: LOOK,
+    flags: 0,
     equip,
     arm,
     can_use,

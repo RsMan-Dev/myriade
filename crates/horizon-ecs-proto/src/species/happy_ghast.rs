@@ -40,7 +40,7 @@ pub static DEF: Def = Def {
         Entry::new(&heal_weather::MODULE, 3, &heal_weather::Params { dry: 600, wet: 20, amount: 1.0, max: 20.0 }),
         Entry::new(&float::MODULE, 3, &float::Params { unless_still: true }),
         Entry::new(&animal_panic::MODULE, 1, &animal_panic::Params { speed: 2.0, ..animal_panic::Params::DEFAULT }),
-        Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.25, items: HARNESS_TEMPT, stop: 3.0, range: 16.0, look_y: 95.0, calm: 100, drift: true }),
+        Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.25, items: HARNESS_TEMPT, stop: 7.0, range: 16.0, look_y: 95.0, calm: 100, drift: true }),
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),

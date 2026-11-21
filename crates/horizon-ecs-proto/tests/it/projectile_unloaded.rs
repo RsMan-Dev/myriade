@@ -114,3 +114,20 @@ fn the_skulls_in_flight_go_when_the_wither_that_shot_them_dies() {
     assert!(h.world.get_entity(shot).is_err(), "a skull of a dead wither still flies");
     assert!(h.world.get_entity(other).is_ok(), "a skull with no shooter went with another wither");
 }
+
+/// `AbstractWindCharge.tick`: above the world's top plus 30 it bursts and is discarded, before it moves; a lower one lives on.
+#[test]
+fn a_wind_charge_above_the_world_top_plus_thirty_is_discarded() {
+    if !super::common::have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(40, true, false);
+    h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
+    let top = h.world.resource::<horizon_ecs_proto::cow::Level>().mw.0.world.top_y() - 1;
+    let low = launch(&mut h.world, horizon_ecs_proto::projectile_more::WIND_CHARGE, Vec3::new(0.5, f64::from(top + 30), 0.5), Vec3::ZERO, None);
+    let high = launch(&mut h.world, horizon_ecs_proto::projectile_more::WIND_CHARGE, Vec3::new(0.5, f64::from(top + 31), 0.5), Vec3::ZERO, None);
+    h.tick();
+    assert!(h.world.get_entity(low).is_ok(), "a charge at the top plus 30 was discarded");
+    assert!(h.world.get_entity(high).is_err(), "a charge above the top plus 30 was not discarded");
+}

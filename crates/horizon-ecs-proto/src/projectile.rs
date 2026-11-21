@@ -300,6 +300,15 @@ pub fn fly(
         if born.is_some_and(|b| b.0 == clock.0) {
             continue;
         }
+        // `AbstractWindCharge.tick`: above the top of the world plus 30 it bursts where it is and is discarded, before it moves.
+        if let OnHit::WindBurst { radius } = f.hit
+            && pos.0.y.floor() as i32 > mw.world.top_y() - 1 + 30
+        {
+            let (at, owner) = (pos.0, p.owner);
+            commands.queue(move |w: &mut World| crate::explosion::wind_burst(w, at, radius, owner));
+            commands.entity(e).despawn();
+            continue;
+        }
         p.age += 1;
         if f.order == Order::DragThenMove {
             // `ThrowableProjectile`: gravity, then inertia, before the move.

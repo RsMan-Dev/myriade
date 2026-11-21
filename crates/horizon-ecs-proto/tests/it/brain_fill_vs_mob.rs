@@ -77,10 +77,6 @@ fn the_temptation_restarts_after_its_cooldown_as_the_mob_does() {
     if tempt.is_some_and(|p| !p.items.is_empty()) {
         assert!(mob_starts > 0, "the mobs were never tempted by {name}");
     }
-    // Open deviation (suivi/ecs-ecarts.md): the happy ghast's Mob goal runs on all four for the whole minute, the ECS one starts on two and stops one tick later.
-    if std::env::var("HORIZON_SPECIES").is_ok_and(|s| s == "minecraft:happy_ghast") {
-        return;
-    }
     assert_eq!(ecs_starts, mob_starts);
 }
 

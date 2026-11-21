@@ -54,6 +54,10 @@ pub fn spawn(w: &mut World, owner: Entity, target: Who, axis: u8, seed: u64, cfg
         at = Vec3::new(at.x + f64::from(s[0]) * lift, at.y + f64::from(s[1]) * lift, at.z + f64::from(s[2]) * lift);
     }
     let e = launch(w, cfg.flight, at, Vec3::ZERO, Some(Who::Entity(owner)));
+    // Shot from outside the simulated chunks, a hurting projectile is already discarded.
+    if w.get_entity(e).is_err() {
+        return;
+    }
     let born = w.resource::<crate::cow::Clock>().0;
     w.entity_mut(e).insert(crate::projectile::BornAt(born));
     w.entity_mut(e).insert(Homing { target, dir: Some(1), steps: 0, delta: [0.0; 3], seed: seed | 1, cfg });

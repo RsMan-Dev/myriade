@@ -534,9 +534,11 @@ fn effect_level(w: &World, e: Entity, kind: crate::effects::Kind) -> i32 {
     w.get::<crate::effects::Effects>(e).and_then(|f| f.list.iter().find(|x| x.kind == kind)).map_or(0, |x| x.amp + 1)
 }
 
-/// `Goat.ramTarget` power: the charge speed's factor (with the speed and slowness effects) times 2.5, or 1.0 as a baby.
+/// `RamTarget` power: the goat's speed's factor (with the speed and slowness effects) times 2.5, or 1.0 as a baby.
 fn ram_power(w: &World, e: Entity) -> f64 {
-    let speed = w.get::<Rammer>(e).map_or(3.0, |r| r.p.charge_speed) as f32;
+    // Jar: `Goat.getSpeed()` during the charge, the movement attribute times the charge's modifier (0.2 * 3.0 for an adult).
+    let attr = w.get::<Body>(e).map_or(0.2, |b| b.speed);
+    let speed = (attr * w.get::<Rammer>(e).map_or(3.0, |r| r.p.charge_speed)) as f32;
     let boost = 0.25 * (effect_level(w, e, crate::effects::Kind::Speed) - effect_level(w, e, crate::effects::Kind::Slowness)) as f32;
     let factor = (speed * 1.65).clamp(0.2, 3.0) + boost;
     let force = if w.get::<GrowAt>(e).is_some() { 1.0 } else { 2.5 };
