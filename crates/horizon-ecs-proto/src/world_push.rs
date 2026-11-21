@@ -9,6 +9,8 @@ use horizon_client_render::collisions::SceneCollisions;
 use horizon_core::geometry::{Aabb, Direction, Vec3};
 use horizon_core::position::BlockPos;
 use horizon_world::level::data::PushReaction;
+use horizon_world::collision_context::CollisionContext;
+use horizon_world::ground_support::{find_supporting_block, GroundState};
 use horizon_world::piston_movement::PistonMovement;
 use horizon_world::piston_push::{
     bounce_velocity, collided_amount, fix_within_piston_base, move_by_position_and_progress, movement_search_area, sticky_area,
@@ -51,6 +53,8 @@ pub fn piston_push(w: &mut World, pos: BlockPos, piston: MovingPistonState, new_
         .unwrap_or(Aabb::new(Vec3::ZERO, Vec3::ZERO));
     let (mn, mx, centre) = (area.min_position(), area.max_position(), area.center());
     let mut found: Vec<Entity> = Vec::new();
+    // The displacement each collided creature got in this push: the move its ground support is read with (honey).
+    let mut moved_by: HashMap<Entity, Vec3> = HashMap::new();
     w.resource::<Index>().for_near_touching(centre.x, centre.z, (mn.x, mn.z), (mx.x, mx.z), |e| found.push(e));
     for &e in &found {
         let Some(bounds) = bounds_of(w, e) else { continue };
@@ -67,7 +71,8 @@ pub fn piston_push(w: &mut World, pos: BlockPos, piston: MovingPistonState, new_
             continue;
         }
         wake_if_asleep(w, e, now);
-        push_by(w, e, step_vector(movement).scale(amount), now);
+        let moved = push_by(w, e, step_vector(movement).scale(amount), now);
+        moved_by.insert(e, moved);
         // `fixEntityWithinPistonBase`: a retracting source piston drags an entity that is still inside its own block.
         if !piston.extending && piston.source {
             if let Some(after) = bounds_of(w, e) {
@@ -83,13 +88,26 @@ pub fn piston_push(w: &mut World, pos: BlockPos, piston: MovingPistonState, new_
         for &e in &found {
             let Some(bounds) = bounds_of(w, e) else { continue };
             let (on_ground, position) = (w.get::<Contact>(e).is_some_and(|c| c.on_ground), w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0));
-            // `supported` is the ground's support by the piston: taken as the creature's own ground contact here.
-            if sticky_entity_selected(sticky, bounds, PushReaction::PushPull, on_ground, on_ground, position) {
+            let supported = supported_by(w, e, pos, moved_by.get(&e).copied());
+            if sticky_entity_selected(sticky, bounds, PushReaction::PushPull, on_ground, supported, position) {
                 wake_if_asleep(w, e, now);
                 push_by(w, e, step_vector(movement).scale(delta), now);
             }
         }
     }
+}
+
+/// `Entity.isSupportedBy(pos)`: the block under the box is the piston's. The ground is read now (`GroundState`, the support query
+/// of `setOnGroundWithMovement`) because the ECS keeps no supporting block. `movement` is the move this push gave the creature, when
+/// it gave one: the query retries at the footprint before that move, as the game's does.
+fn supported_by(w: &World, e: Entity, pos: BlockPos, movement: Option<Vec3>) -> bool {
+    let (Some(bounds), Some(p), Some(c)) = (bounds_of(w, e), w.get::<Pos>(e), w.get::<Contact>(e)) else { return false };
+    let level = *w.resource::<Level>();
+    let mw = level.mw.0;
+    let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut ground = GroundState::default();
+    let read = ground.check_support(c.on_ground, bounds, movement, |foot| find_supporting_block(&mut scene, CollisionContext::empty(false), p.0, foot, 1_000_000));
+    read.is_ok() && ground.supporting_block == Some(pos)
 }
 
 fn bounds_of(w: &World, e: Entity) -> Option<Aabb> {
@@ -104,7 +122,7 @@ fn wake_if_asleep(w: &mut World, e: Entity, now: u64) {
 
 /// `move_pushed`: the displacement limited by the tick's budget, then run through the block collisions, and applied to the
 /// creature's position and box.
-fn push_by(w: &mut World, e: Entity, want: Vec3, now: u64) {
+fn push_by(w: &mut World, e: Entity, want: Vec3, now: u64) -> Vec3 {
     let limited = {
         let mut budget = w.resource_mut::<PistonBudget>();
         if budget.tick != now {
@@ -116,7 +134,7 @@ fn push_by(w: &mut World, e: Entity, want: Vec3, now: u64) {
         let state = budget.moves.entry(e).or_default();
         state.limit(want, || Ok::<i64, ()>(now as i64)).unwrap_or(Vec3::ZERO)
     };
-    let Some(bounds) = bounds_of(w, e) else { return };
+    let Some(bounds) = bounds_of(w, e) else { return Vec3::ZERO };
     let level = *w.resource::<Level>();
     let mw = level.mw.0;
     let (on_ground, step) = (w.get::<Contact>(e).is_some_and(|c| c.on_ground), w.get::<Body>(e).map_or(0.0, |b| f64::from(b.step_height)));
@@ -129,4 +147,5 @@ fn push_by(w: &mut World, e: Entity, want: Vec3, now: u64) {
         b.0 = b.0.move_by(moved);
     }
     w.entity_mut(e).insert((Moving, Recheck));
+    moved
 }
