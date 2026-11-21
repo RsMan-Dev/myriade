@@ -6,7 +6,7 @@ pub use crate::chunk::block_entity::{
     Banner, Beacon, BlockEntity, Brushable, Campfire, ChiseledBookshelf, Crafter, CreakingHeart,
     EndGateway, Furnace, FurnaceKind, Jukebox, Lectern, MOD_MENUS, ModBlockEntity,
     ModBlockEntityFields, ModContainer, ModEnergyBuffer, ModFluidTanks, ModRevision, PotentSulfur,
-    Shelf, Skull, SkullSkin,
+    Shelf, Skull,
 };
 use crate::items::ItemStack;
 use std::collections::HashMap;
@@ -285,36 +285,10 @@ impl Skull {
         note_block_sound: Option<String>,
         custom_name: Option<horizon_core::nbt::Tag>,
     ) -> Self {
-        let skin = profile.as_ref().map(SkullSkin::of);
         Self {
             profile,
             note_block_sound,
             custom_name,
-            skin,
-        }
-    }
-}
-impl SkullSkin {
-    pub fn of(profile: &horizon_core::nbt::Tag) -> Self {
-        let download = crate::skins::profile_skin_url_nbt(profile).and_then(|url| {
-            let location = crate::skins::skin_location(&crate::skins::texture_hash(&url)?);
-            Some((url, location))
-        });
-        // A `Dynamic` profile (a name or id only) resolves through the
-        // services when the skull is drawn.
-        let dynamic = crate::skins::dynamic_nbt(profile);
-        // DefaultPlayerSkin.get(id), or getDefaultSkin (slim steve) without an id.
-        let fallback = crate::skins::profile_uuid_nbt(profile)
-            .or_else(|| {
-                crate::skins::nbt_text(profile.get("name"))
-                    .map(|name| horizon_protocol::crypto::offline_uuid(&name))
-            })
-            .map_or("entity/player/slim/steve", crate::tab_list::default_skin);
-        Self {
-            download,
-            dynamic,
-            texture: crate::skins::profile_texture_nbt(profile),
-            fallback,
         }
     }
 }

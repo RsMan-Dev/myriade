@@ -1,15 +1,12 @@
 //! Every block state's facts and looks by its id, for a client mod drawing blocks or a map off the main thread
 //! (`native_block_states`; docs/native-mods.md): what the game knows of each state, what its model draws on each side
 //! and the texture behind each of those sprites. A copy, so the game's own tables can change shape under it.
-use crate::{
-    block_sprites::{BlockSprites, Lookup, SpriteRef},
-    streaming::WorkerContext,
-};
+use crate::streaming::WorkerContext;
 use horizon_items::blocks::{BlockFacts, MAP_COLORS, RenderShape};
 use horizon_world::{
     block_collision::BlockCollisionRegistry, fluid::FluidState, registry::BlockStateId,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 /// What one block state is, as a renderer or a map reads it.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,20 +44,14 @@ const _: () = {
 #[derive(Clone)]
 pub struct BlockStates {
     states: Arc<[BlockStateFacts]>,
-    context: Arc<WorkerContext>,
-    /// Texture names by sprite layer, across every array.
-    textures: Arc<HashMap<u32, String>>,
-    split: u32,
 }
 
 impl BlockStates {
-    /// The states of `context`'s registry, with their `facts` and `collision`, and the sprites of `context`'s
-    /// resources at `split` layers to an array (`Renderer::sprite_split`).
+    /// The states of `context`'s registry, with their `facts` and `collision`.
     pub fn new(
         facts: &BlockFacts,
         collision: &BlockCollisionRegistry<'_>,
         context: Arc<WorkerContext>,
-        split: u32,
     ) -> Self {
         let registry = context.assets.registry;
         let states = facts
@@ -88,13 +79,7 @@ impl BlockStates {
                 }
             })
             .collect();
-        let textures = crate::block_sprites::texture_names(&context.render.sprite_layers);
-        Self {
-            states,
-            context,
-            textures: Arc::new(textures),
-            split: split.max(1),
-        }
+        Self { states }
     }
 
     /// How many states there are: their ids run from 0 to one less.
@@ -117,132 +102,5 @@ impl BlockStates {
             .iter()
             .enumerate()
             .map(|(i, facts)| (BlockStateId(i as u32), facts))
-    }
-
-    /// What `state` draws on each side, as `native_block_sprites` says for a block by name; none for an id past the
-    /// last state.
-    pub fn sprites(&self, state: BlockStateId) -> Option<BlockSprites> {
-        self.get(state)?;
-        Some(Lookup::new(&self.context, self.split, &self.textures).state(state))
-    }
-
-    /// The texture `sprite` shows, by the name `native_texture_sprites` takes (`block/grass_block_top`; a mod's with
-    /// its namespace, `mymod:block/gear`).
-    pub fn texture(&self, sprite: SpriteRef) -> Option<&str> {
-        let layer = sprite
-            .array
-            .checked_mul(self.split)?
-            .checked_add(sprite.layer)?;
-        self.textures.get(&layer).map(String::as_str)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        assets::Assets, biome::Biomes, block_sprites::parse_state, light::LightTables,
-        mesher::MeshTables,
-    };
-    use horizon_assets::model::Direction;
-    use horizon_world::fluid::FluidKind;
-    use std::{path::PathBuf, sync::OnceLock};
-
-    /// Far fewer layers to an array than a GPU takes, so most sprites lie past array 0.
-    const SMALL_SPLIT: u32 = 64;
-
-    /// The game's own states from real prepared resources, loaded once for every test here.
-    fn states() -> &'static BlockStates {
-        static STATES: OnceLock<BlockStates> = OnceLock::new();
-        STATES.get_or_init(|| {
-            let root = PathBuf::from(
-                std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"),
-            );
-            let assets = Arc::new(Assets::load(&root).unwrap());
-            let source = crate::resource_source::ResourceRoot::directory(root.clone());
-            let render = Arc::new(assets.reload(&source).unwrap());
-            let facts = BlockFacts::load(&root, assets.registry).unwrap();
-            let collision = crate::collisions::load(&root, assets.registry).unwrap();
-            let visibility = crate::models::load_visibility(&root, assets.registry).unwrap();
-            let context = Arc::new(WorkerContext {
-                light: Arc::new(LightTables::load(&root, assets.registry, &facts).unwrap()),
-                tables: Arc::new(
-                    MeshTables::new(&assets, &render, &facts, visibility, None).unwrap(),
-                ),
-                assets: assets.clone(),
-                render,
-                biomes: Arc::new(Biomes::load(&source).unwrap()),
-                hidden_states: Arc::from([]),
-                part_tables: Default::default(),
-            });
-            BlockStates::new(&facts, &collision, context, SMALL_SPLIT)
-        })
-    }
-
-    fn facts(text: &str) -> &'static BlockStateFacts {
-        let states = states();
-        let id = parse_state(states.context.assets.registry, text).expect(text);
-        states.get(id).unwrap()
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_grass_block_is_a_whole_solid_grass_coloured_block() {
-        let grass = facts("grass_block");
-        assert_eq!(&*grass.name, "minecraft:grass_block");
-        assert!(!grass.air && !grass.invisible && !grass.waterlogged);
-        assert_eq!(grass.fluid.kind(), FluidKind::Empty);
-        assert_eq!(grass.emission, 0);
-        assert_eq!(&*grass.outline, [[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]);
-        assert_eq!(grass.map_color, Some(0x7F_B238), "MapColor.GRASS");
-        assert!(grass.collides);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn air_and_light_are_not_drawn() {
-        let air = facts("air");
-        assert!(air.air && air.invisible && !air.collides);
-        assert!(air.outline.is_empty());
-        assert_eq!(air.map_color, None);
-        let light = facts("light[level=15]");
-        assert!(!light.air && light.invisible);
-        assert_eq!(light.emission, 15);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_slabs_outline_is_its_half() {
-        assert_eq!(
-            &*facts("stone_slab[type=bottom]").outline,
-            [[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]]
-        );
-        assert_eq!(
-            &*facts("stone_slab[type=top]").outline,
-            [[0.0, 0.5, 0.0, 1.0, 1.0, 1.0]]
-        );
-        let wet = facts("stone_slab[type=bottom,waterlogged=true]");
-        assert!(wet.waterlogged && wet.collides);
-        assert_eq!(wet.fluid.kind(), FluidKind::Water);
-        assert!(wet.fluid.is_source());
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_face_names_its_texture() {
-        let states = states();
-        let id = parse_state(states.context.assets.registry, "grass_block").unwrap();
-        let grass = states.sprites(id).unwrap();
-        let top = grass.sides[Direction::Up as usize][0].sprite;
-        assert_eq!(states.texture(top), Some("block/grass_block_top"));
-        let north = &grass.sides[Direction::North as usize];
-        assert_eq!(
-            states.texture(north[0].sprite),
-            Some("block/grass_block_side")
-        );
-        assert_eq!(
-            states.texture(north[1].sprite),
-            Some("block/grass_block_side_overlay")
-        );
     }
 }

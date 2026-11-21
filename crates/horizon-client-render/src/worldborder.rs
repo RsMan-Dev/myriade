@@ -155,17 +155,6 @@ impl WorldBorder {
     pub fn contains(&self, x: f64, z: f64) -> bool {
         self.geometry.is_within_bounds(x, z, 0.0)
     }
-    /// `Hud.extractVignette`: how strongly the vignette turns red at
-    /// (x, z), 0 when outside the warning distance.
-    pub fn warning_strength(&self, x: f64, z: f64) -> f32 {
-        crate::hud_overlays::border_warning(
-            self.distance(x, z) as f32,
-            self.warning_distance,
-            self.warning_time,
-            self.lerp_speed(),
-            self.target_size() - self.size(),
-        )
-    }
     /// Clamp a point so a body of half-width `half` stays inside.
     pub fn clamp(&self, x: f64, z: f64, half: f64) -> [f64; 2] {
         let [min_x, min_z, max_x, max_z] = self.bounds();

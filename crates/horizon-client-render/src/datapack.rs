@@ -22,22 +22,20 @@ pub struct DataPack {
     /// `file/<name>` in `/datapack` and level.dat.
     pub id: String,
     source: ResourceSource,
-    /// Presentation and selection supplied by an additional repository source.
-    pub selection: Option<crate::pack_screen::PackInfo>,
+    /// Whether this entry is one of the resources root's feature packs.
+    pub feature: bool,
 }
 impl DataPack {
     /// Whether this repository entry comes from the feature-pack source.
     pub fn is_feature(&self) -> bool {
-        self.selection
-            .as_ref()
-            .is_some_and(|info| info.source == crate::pack_screen::Source::Feature)
+        self.feature
     }
     /// A named resource layer, retaining its open source for lazy reads.
     pub fn from_source(id: String, source: ResourceSource) -> Self {
         Self {
             id,
             source,
-            selection: None,
+            feature: false,
         }
     }
     pub fn source(&self) -> &ResourceSource {
@@ -99,11 +97,11 @@ impl DataPack {
 }
 impl DataPack {
     /// A mod's passive data layer, without reading the archive's pack metadata.
-    pub fn mod_layer(id: String, source: &crate::packs::Source) -> std::io::Result<Self> {
+    pub fn mod_layer(id: String, source: &crate::pack_meta::Source) -> std::io::Result<Self> {
         Ok(Self {
             id,
             source: source.open()?,
-            selection: None,
+            feature: false,
         })
     }
     /// The built-in `vanilla` pack: the game's own data directory.
@@ -111,7 +109,7 @@ impl DataPack {
         DataPack {
             id: "vanilla".into(),
             source: ResourceSource::directory(root.to_path_buf()),
-            selection: None,
+            feature: false,
         }
     }
 }
@@ -122,12 +120,12 @@ pub fn discover(world: &Path) -> Vec<DataPack> {
 /// `FolderRepositorySource.loadPacks`: packs in Create World's temporary
 /// folder or a world's data-pack directory, with required folder metadata.
 pub fn discover_folder(dir: &Path) -> Vec<DataPack> {
-    discover_folder_with(dir, &crate::packs::DirectoryValidator::game())
+    discover_folder_with(dir, &crate::pack_meta::DirectoryValidator::game())
 }
 /// [`discover_folder`] under an explicit `allowed_symlinks.txt` validator.
 pub(crate) fn discover_folder_with(
     dir: &Path,
-    validator: &crate::packs::DirectoryValidator,
+    validator: &crate::pack_meta::DirectoryValidator,
 ) -> Vec<DataPack> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -138,7 +136,7 @@ pub(crate) fn discover_folder_with(
         // `PackDetector.detectPackResources`: a link, or a pack holding one, is
         // not a pack unless the validator allows the target; the id stays the
         // entry's name while the contents come from the target.
-        let path = match crate::packs::detected_pack_path(&e.path(), validator) {
+        let path = match crate::pack_meta::detected_pack_path(&e.path(), validator) {
             Ok(Some(path)) => path,
             Ok(None) => continue,
             Err(err) => {
@@ -153,7 +151,7 @@ pub(crate) fn discover_folder_with(
             packs.push(DataPack {
                 id: format!("file/{name}"),
                 source: ResourceSource::directory(path),
-                selection: None,
+                feature: false,
             });
         } else if path
             .file_name()
@@ -164,7 +162,7 @@ pub(crate) fn discover_folder_with(
             packs.push(DataPack {
                 id: format!("file/{name}"),
                 source: ResourceSource::opened_archive(z),
-                selection: None,
+                feature: false,
             });
         }
     }
@@ -177,7 +175,7 @@ pub(crate) fn discover_folder_with(
 fn folder_metadata_present(path: &Path) -> bool {
     let Some(meta) = std::fs::read(path.join("pack.mcmeta"))
         .ok()
-        .and_then(|bytes| crate::packs::parse_meta(&bytes))
+        .and_then(|bytes| crate::pack_meta::parse_meta(&bytes))
     else {
         return false;
     };
@@ -200,36 +198,11 @@ pub fn feature_packs(resources: &Path) -> Vec<DataPack> {
     for e in entries.flatten() {
         let path = e.path();
         if path.join("pack.mcmeta").exists() {
-            let mut pack = DataPack {
+            packs.push(DataPack {
                 id: e.file_name().to_string_lossy().into_owned(),
                 source: ResourceSource::directory(path),
-                selection: None,
-            };
-            let meta = pack.mcmeta();
-            let (description, description_style) =
-                crate::packs::component_root(&meta["pack"]["description"]);
-            let name = format!("dataPack.{}.name", pack.id);
-            pack.selection = Some(crate::pack_screen::PackInfo {
-                id: pack.id.clone(),
-                title: if crate::lang::has(&name) {
-                    crate::text::Text::translate(&name, &[])
-                } else {
-                    crate::text::Text::literal(pack.id.clone())
-                },
-                description,
-                description_style,
-                source: crate::pack_screen::Source::Feature,
-                compat: crate::packs::compatibility_for(
-                    &meta,
-                    horizon_core::version::DATA_PACK_FORMAT,
-                ),
-                icon: None,
-                required: false,
-                position: crate::packs::Position::Bottom,
-                fixed: false,
-                hidden: false,
+                feature: true,
             });
-            packs.push(pack);
         }
     }
     packs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -252,11 +225,7 @@ pub fn feature_repository(
     packs.extend(
         additional
             .iter()
-            .filter(|pack| {
-                pack.selection
-                    .as_ref()
-                    .is_some_and(|info| info.source == crate::pack_screen::Source::Feature)
-            })
+            .filter(|pack| pack.feature)
             .map(|pack| (**pack).clone()),
     );
     packs
@@ -264,55 +233,6 @@ pub fn feature_repository(
 
 // ---- Create World ------------------------------------------------------------
 
-/// Create World's Data Packs screen (`PackSelectionScreen` on vanilla's
-/// `mcworld-` folder): the folder's packs (`PackSource.WORLD`), the
-/// built-in one (`resources` holds its `pack.png`), and the feature packs
-/// of `resources` (`PackSource.FEATURE`), available at the bottom and off
-/// until picked — the Experiments.
-pub fn screen_packs(dir: &Path, resources: &Path) -> Vec<crate::pack_screen::PackInfo> {
-    use crate::{
-        pack_screen::{Compat, PackInfo, Source, load_icon},
-        packs::Position,
-        text::{Style, Text},
-    };
-    let format = horizon_core::version::DATA_PACK_FORMAT;
-    let mut infos: Vec<PackInfo> = crate::packs::folder(dir, format)
-        .into_iter()
-        .map(|p| PackInfo {
-            icon: p.icon_png().as_deref().and_then(load_icon),
-            id: p.id,
-            title: p.title,
-            description: p.raw_description,
-            description_style: p.description_style,
-            source: Source::World,
-            compat: p.compatibility,
-            required: false,
-            position: Position::Top,
-            fixed: false,
-            hidden: false,
-        })
-        .collect();
-    infos.push(PackInfo {
-        id: "vanilla".into(),
-        title: Text::translate("dataPack.vanilla.name", &[]),
-        description: Text::translate("dataPack.vanilla.description", &[]),
-        description_style: Style::default(),
-        source: Source::BuiltIn,
-        compat: Compat::Compatible,
-        icon: std::fs::read(resources.join("pack.png"))
-            .ok()
-            .as_deref()
-            .and_then(load_icon),
-        required: false,
-        position: Position::Bottom,
-        fixed: false,
-        hidden: false,
-    });
-    for p in feature_packs(resources) {
-        infos.extend(p.selection);
-    }
-    infos
-}
 /// The folder of a game folder whose packs every new world there starts with: a modpack's profile
 /// keeps the packs of its data-only jars here (`horizon-port-pack`). Each world gets its own copy,
 /// as Create World's packs do, so a world keeps working when the folder changes. Vanilla has no
@@ -449,19 +369,19 @@ pub fn install(dir: &Path, world: &Path, selected: &[String]) -> Result<(), Stri
     let target = world.join("datapacks");
     std::fs::create_dir_all(&target).map_err(|e| err(&target, e))?;
     let mut disabled = Vec::new();
-    for pack in crate::packs::folder(dir, horizon_core::version::DATA_PACK_FORMAT) {
-        let from = match &pack.source {
-            crate::packs::Source::Dir(from) | crate::packs::Source::Zip(from) => from,
-            crate::packs::Source::Opened(_) => {
+    for (name, source) in crate::pack_meta::folder(dir) {
+        let from = match &source {
+            crate::pack_meta::Source::Dir(from) | crate::pack_meta::Source::Zip(from) => from,
+            crate::pack_meta::Source::Opened(_) => {
                 return Err(format!(
-                    "{}: an open resource layer cannot be installed as a file pack",
-                    pack.id
+                    "file/{name}: an open resource layer cannot be installed as a file pack"
                 ));
             }
         };
-        copy(from, &target.join(pack.id.trim_start_matches("file/")))?;
-        if !selected.contains(&pack.id) {
-            disabled.push(pack.id);
+        copy(from, &target.join(&name))?;
+        let id = format!("file/{name}");
+        if !selected.contains(&id) {
+            disabled.push(id);
         }
     }
     if !selected.iter().any(|id| id == "vanilla") {
@@ -1187,26 +1107,16 @@ pub fn enabled_ids(world: &Path, packs: &[DataPack], enabled_features: &[String]
     selected_ids(packs.iter(), &enabled)
 }
 
-/// Rebuild a data-pack selection, preserving its order and inserting required packs.
+/// Rebuild a data-pack selection, preserving its order: the selected packs the repository holds.
 pub fn selected_ids<'a>(
     packs: impl Iterator<Item = &'a DataPack>,
     selected: &[String],
 ) -> Vec<String> {
-    // Existing selections keep their order; mandatory additions use the same
-    // insertion rules as the pack screen.
-    let available = packs
-        .map(|pack| {
-            pack.selection.as_ref().map_or_else(
-                || crate::packs::Selectable::optional(&pack.id, true),
-                crate::pack_screen::PackInfo::selectable,
-            )
-        })
-        .collect();
-    crate::packs::SelectionModel::new(available, selected)
-        .selected
-        .into_iter()
-        .rev()
-        .map(|pack| pack.id)
+    let ids: Vec<&str> = packs.map(|pack| pack.id.as_str()).collect();
+    selected
+        .iter()
+        .filter(|id| ids.contains(&id.as_str()))
+        .cloned()
         .collect()
 }
 
@@ -2132,20 +2042,6 @@ mod tests {
             .unwrap();
         std::io::Write::write_all(&mut zip, br#"{"pack":{"pack_format":48}}"#).unwrap();
         zip.finish().unwrap();
-        let infos = screen_packs(&dir, &root);
-        let ids: Vec<&str> = infos.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, ["file/fns", "file/off", "file/old.zip", "vanilla"]);
-        let compat: Vec<_> = infos.iter().map(|p| p.compat).collect();
-        use crate::pack_screen::Compat;
-        assert_eq!(
-            compat,
-            [
-                Compat::Compatible,
-                Compat::Compatible,
-                Compat::TooOld,
-                Compat::Compatible
-            ]
-        );
         let selected = ["vanilla", "file/old.zip", "file/fns"].map(String::from);
         install(&dir, &world, &selected).unwrap();
         let packs = discover(&world);

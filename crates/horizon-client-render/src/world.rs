@@ -174,7 +174,7 @@ pub struct World {
     /// The `ShulkerBoxBlockEntity` lid state of the level, by position, copied
     /// from the block entities after each tick: the collision queries read it
     /// (`ShulkerBoxBlockEntity.getBoundingBox`), as `moving_pistons` for pistons.
-    pub shulkers: FxHashMap<[i32; 3], crate::block_entity_anim::Shulker>,
+    pub shulkers: FxHashMap<[i32; 3], crate::shulker_box::Shulker>,
 }
 /// See [`World::region_stamp`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -370,63 +370,6 @@ impl World {
             shulkers: FxHashMap::default(),
             pois: Default::default(),
         }
-    }
-    /// A controlled blockstate scene for the native scene probes: material
-    /// layers, a stepped pyramid and the model gallery. Not generated terrain.
-    pub fn test_scene(
-        assets: &crate::assets::Assets,
-        render: &crate::assets::RenderAssets,
-        radius: i32,
-    ) -> crate::Result<Self> {
-        let air = assets
-            .registry
-            .default_state("minecraft:air")
-            .ok_or("missing air state")?;
-        let mut world = Self::new(air, 0);
-        for cz in -radius..=radius {
-            for cx in -radius..=radius {
-                world
-                    .chunks
-                    .insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
-                for z in 0..16 {
-                    for x in 0..16 {
-                        for y in 0..4 {
-                            let layer = match y {
-                                0 => 0,
-                                1 | 2 => 1,
-                                _ if (cx + cz) & 1 == 0 => 2,
-                                _ => 3,
-                            };
-                            world.set(
-                                cx * 16 + x,
-                                y,
-                                cz * 16 + z,
-                                assets.material_states[layer],
-                            )?;
-                        }
-                    }
-                }
-            }
-        }
-        for y in 4..11 {
-            for z in -10_i32..=10 {
-                for x in -10_i32..=10 {
-                    if x.abs().max(z.abs()) <= 10 - (y - 4) {
-                        world.set(
-                            x,
-                            y,
-                            z,
-                            assets.material_states[if y & 1 == 0 { 4 } else { 5 }],
-                        )?;
-                    }
-                }
-            }
-        }
-        for (position, state) in &render.model_placements {
-            world.set(position.x, position.y, position.z, *state)?;
-        }
-        world.revision = 0;
-        Ok(world)
     }
     /// The column the level's chunks hold.
     pub fn layout(&self) -> ColumnLayout {

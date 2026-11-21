@@ -1,13 +1,44 @@
 //! `PotentSulfurBlockEntity`'s reads of the level: where the noxious gas of a
 //! potent sulfur block comes out, how far a geyser throws, and whether the gas
-//! reaches a point. The client's particles and the server's nausea and
-//! launches read the level the same way, through a [`ParticleLevel`].
-use crate::{blocks::Fluid, collisions::SceneCollisions, particles::ParticleLevel};
+//! reaches a point. The server's nausea and launches read the level the same
+//! way, through a [`Level`].
+use crate::{
+    blocks::{BlockFacts, Fluid},
+    collisions::SceneCollisions,
+    world::World,
+};
 use horizon_core::{
     geometry::{Vec3, traverse_blocks},
     position::BlockPos,
 };
-use horizon_world::collision_context::CollisionContext;
+use horizon_world::{
+    block_collision::BlockCollisionRegistry, collision_context::CollisionContext,
+    registry::BlockStateId,
+};
+
+/// The world reads of a potent sulfur block: its blocks, their facts and their collision shapes.
+pub struct Level<'a> {
+    pub world: &'a World,
+    pub facts: &'a BlockFacts,
+    pub collision: &'a BlockCollisionRegistry<'a>,
+}
+
+impl Level<'_> {
+    fn block_at(p: [f64; 3]) -> [i32; 3] {
+        [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32]
+    }
+
+    fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
+        let chunk = self.world.chunks.get(&(x >> 4, z >> 4)).map(|c| c.as_ref());
+        chunk.map_or(self.world.air, |c| c.block(x & 15, y, z & 15))
+    }
+
+    /// The fluid at a block and whether it is a source (`FluidState.isSource`).
+    fn fluid_source(&self, b: [i32; 3]) -> (Fluid, bool) {
+        let s = self.facts.get(self.block(b[0], b[1], b[2]));
+        (s.fluid, s.fluid_level == 8 && !s.fluid_falling)
+    }
+}
 
 /// `PotentSulfurBlock.ALLOWED_WATER_BLOCKS_ABOVE`.
 const ALLOWED_WATER_BLOCKS_ABOVE: i32 = 4;
@@ -16,7 +47,7 @@ const ALLOWED_WATER_BLOCKS_ABOVE: i32 = 4;
 /// with no collision shape for `CollisionContext.positionContext(context_y)`.
 /// Vanilla passes the height of the block under the column it reads, so
 /// scaffolding seen from below lets the gas and the geyser through.
-pub fn is_geyser_passable_block(level: &ParticleLevel, pos: [i32; 3], context_y: i32) -> bool {
+pub fn is_geyser_passable_block(level: &Level, pos: [i32; 3], context_y: i32) -> bool {
     let state = level.world.block(pos[0], pos[1], pos[2]);
     if level.facts.is_air(state) || &*level.facts.get(state).name == "minecraft:water" {
         return true;
@@ -36,7 +67,7 @@ pub fn is_geyser_passable_block(level: &ParticleLevel, pos: [i32; 3], context_y:
 
 /// `PotentSulfurBlockEntity.isWater`: the block at `pos` holds a water source
 /// (`FluidState.isSourceOfType`).
-fn is_water_source(level: &ParticleLevel, pos: [i32; 3]) -> bool {
+fn is_water_source(level: &Level, pos: [i32; 3]) -> bool {
     let (fluid, source) = level.fluid_source(pos);
     fluid == Fluid::Water && source
 }
@@ -44,7 +75,7 @@ fn is_water_source(level: &ParticleLevel, pos: [i32; 3]) -> bool {
 /// `PotentSulfurBlockEntity.findNoxiousGasSourceBlock`: the first block above
 /// the sulfur, within the water column's reach, that is not water-filled and
 /// lets gas through; None when something solid or a deeper column stops it.
-pub fn find_noxious_gas_source_block(level: &ParticleLevel, origin: [i32; 3]) -> Option<[i32; 3]> {
+pub fn find_noxious_gas_source_block(level: &Level, origin: [i32; 3]) -> Option<[i32; 3]> {
     let max_y = origin[1] + ALLOWED_WATER_BLOCKS_ABOVE + 1;
     let mut pos = [origin[0], origin[1] + 1, origin[2]];
     while pos[1] <= max_y {
@@ -65,7 +96,7 @@ pub fn find_noxious_gas_source_block(level: &ParticleLevel, origin: [i32; 3]) ->
 
 /// `PotentSulfurBlockEntity.getUnobstructedBlockCount`: how many blocks from
 /// `pos` up, at most six per water block, a geyser's push goes through.
-pub fn unobstructed_block_count(level: &ParticleLevel, pos: [i32; 3], water_blocks: i32) -> i32 {
+pub fn unobstructed_block_count(level: &Level, pos: [i32; 3], water_blocks: i32) -> i32 {
     let geyser_force_height = 6 * water_blocks;
     for i in 0..geyser_force_height {
         if !is_geyser_passable_block(level, [pos[0], pos[1] + i, pos[2]], pos[1] - 1) {
@@ -79,11 +110,11 @@ pub fn unobstructed_block_count(level: &ParticleLevel, pos: [i32; 3], water_bloc
 /// can enter, within three blocks of the source block's centre, and above
 /// water the source's water can be seen from.
 pub fn can_be_reached_by_noxious_gas(
-    level: &ParticleLevel,
+    level: &Level,
     source_block: [i32; 3],
     pos: [f64; 3],
 ) -> bool {
-    let block = ParticleLevel::block_at(pos);
+    let block = Level::block_at(pos);
     if !is_geyser_passable_block(level, block, block[1] - 1) {
         return false;
     }
@@ -95,14 +126,14 @@ pub fn can_be_reached_by_noxious_gas(
     }
     let below_source = [center[0], f64::from(source_block[1] - 1) + 0.5, center[2]];
     let below_pos = [pos[0], pos[1] - 1.0, pos[2]];
-    is_water_source(level, ParticleLevel::block_at(below_pos))
+    is_water_source(level, Level::block_at(below_pos))
         && have_line_of_sight(level, below_source, below_pos)
 }
 
 /// `PotentSulfurBlockEntity.haveLineOfSight`: a clip over collider shapes and
 /// no fluids (as the mobs' line of sight does) finds no block between the
 /// points.
-fn have_line_of_sight(level: &ParticleLevel, a: [f64; 3], b: [f64; 3]) -> bool {
+fn have_line_of_sight(level: &Level, a: [f64; 3], b: [f64; 3]) -> bool {
     let (from, to) = (Vec3::new(a[0], a[1], a[2]), Vec3::new(b[0], b[1], b[2]));
     let mut scene = SceneCollisions {
         world: level.world,

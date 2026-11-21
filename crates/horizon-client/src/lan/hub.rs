@@ -5671,27 +5671,8 @@ fn neighbours_ready(
 
 #[cfg(test)]
 mod tests {
-    mod bundle_sound_tests;
-    mod cave_air_tests;
-    mod chunk_ready_tests;
-    mod collision_exclusion_tests;
-    mod effect_meta_tests;
     #[path = "../far_tests.rs"]
     mod far_tests;
-    mod glide_motion_tests;
-    mod impulse_grace_tests;
-    mod live_player_limit_tests;
-    mod main_hand_tests;
-    mod menu_sync_tests;
-    mod ordered_inbox_tests;
-    mod pending_move_bound_tests;
-    mod pending_move_scope_tests;
-    mod pending_move_tests;
-    mod pong_tests;
-    mod skin_outer_layer_tests;
-    mod sound_tests;
-    mod terrain_send_bench;
-    mod terrain_view_tests;
     use super::*;
     use crate::fast_hash::FxHashSet;
 

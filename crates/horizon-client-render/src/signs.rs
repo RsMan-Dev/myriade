@@ -91,10 +91,6 @@ impl SignText {
     pub fn has_editable_text(&self) -> bool {
         (0..self.lines.len()).all(|i| plain_contents(&self.message(i)))
     }
-    /// `DyeColor.getTextColor` of this side.
-    pub fn text_color(&self) -> u32 {
-        crate::pack_palette::text(usize::from(self.color.min(15)))
-    }
     /// `SignText.hasAnyClickCommands`: a line whose style has a `run_command`
     /// click event.
     pub fn has_any_click_commands(&self) -> bool {
@@ -102,16 +98,6 @@ impl SignText {
             .iter()
             .flatten()
             .any(|event| matches!(click_action(event), Some(ClickAction::RunCommand(_))))
-    }
-    /// `AbstractSignRenderer.getDarkColor`.
-    pub fn dark_color(&self) -> u32 {
-        let c = self.text_color();
-        if c == 0 && self.glowing {
-            0xF0EBCC
-        } else {
-            let s = |shift: u32| ((((c >> shift) & 255) as f32 * 0.4) as u32) << shift;
-            s(16) | s(8) | s(0)
-        }
     }
     /// The component a line is saved as (`SignText.CODEC`): the one it was
     /// read as while its text is unchanged. A line edited since is a literal in
@@ -562,11 +548,5 @@ mod tests {
             editor_sprite("hanging_signs", "farmersdelight:canvas"),
             "farmersdelight:gui/hanging_signs/canvas"
         );
-        assert_eq!(SignText::default().dark_color(), 0);
-        let red = SignText {
-            color: 14,
-            ..SignText::default()
-        };
-        assert_eq!(red.dark_color(), 0x660000);
     }
 }

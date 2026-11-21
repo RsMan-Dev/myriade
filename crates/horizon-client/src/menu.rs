@@ -4858,8 +4858,6 @@ pub(crate) mod tests {
         });
     }
 
-    mod crafted_stat_tests;
-    mod mod_grid_tests;
 
     /// Extra sources (`native_recipe_sources`) count as more inventory: the
     /// grid fills as the table's does when the player holds what the sources

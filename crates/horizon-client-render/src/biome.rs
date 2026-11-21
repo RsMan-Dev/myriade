@@ -215,7 +215,8 @@ fn server_colormap(root: &ResourceSource, name: &str) -> Result<Vec<u32>> {
     }
 }
 fn decode_colormap(bytes: Vec<u8>) -> Result<Vec<u32>> {
-    let (mut reader, mut bytes) = crate::hud::read_png(bytes)?;
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info()?;
+    let mut bytes = vec![0; reader.output_buffer_size().ok_or("colormap is too large")?];
     let info = reader.next_frame(&mut bytes)?;
     let channels = info.color_type.samples();
     Ok(bytes[..info.buffer_size()]

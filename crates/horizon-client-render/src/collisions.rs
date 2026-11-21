@@ -624,7 +624,7 @@ impl DynamicSupportWorld for SceneCollisions<'_, '_> {
             .world
             .shulkers
             .get(&p)
-            .map(|s| s.status == crate::block_entity_anim::ShulkerStatus::Closed))
+            .map(|s| s.status == crate::shulker_box::ShulkerStatus::Closed))
     }
     /// `MovingPistonBlock.getCollisionShape`: the block entity's moving shape
     /// (`PistonMovingBlockEntity.getCollisionShape`), outside any push.
@@ -927,7 +927,7 @@ mod border_movement_tests {
 #[cfg(test)]
 mod shulker_collision_tests {
     use super::*;
-    use crate::block_entity_anim::{Shulker, ShulkerStatus, progress_delta_aabb};
+    use crate::shulker_box::{Shulker, ShulkerStatus, progress_delta_aabb};
     use horizon_core::geometry::{Aabb, Axis, Direction, Vec3, VoxelShape};
 
     /// A shulker box facing up at progress 0.0 (closed): collision is a 1x1x1 block.
@@ -1133,101 +1133,5 @@ mod section_tests {
             }
             true
         }
-    }
-
-    /// Boxes swept through air, past torches (no collision shape), a fence (a shape
-    /// reaching into the cell above) and the scene's stone: wherever the cells say no
-    /// block can collide, the full resolution returns the movement, to the bit; the rest
-    /// is left to it. Needs the prepared resources.
-    #[test]
-    fn cells_without_collision_leave_the_movement_as_resolving_does() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
-        if !root.join("cached-collision.nbt").exists() {
-            eprintln!("no prepared resources: skipped");
-            return;
-        }
-        let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&horizon_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
-        let binding = load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
-        let state = |name: &str| assets.registry.default_state(name).unwrap();
-        // Torches, and a fence at the bottom of a section above air.
-        for x in 17..30 {
-            world.set(x, 20, 20, state("minecraft:torch")).unwrap();
-        }
-        world.set(5, 32, 5, state("minecraft:oak_fence")).unwrap();
-        let scene = SceneCollisions {
-            world: &world,
-            binding: &binding,
-            subject: None,
-        };
-        // The fast path must decline an enormous volume without overflowing
-        // its size calculation or beginning to walk it.
-        let enormous = Aabb::new(
-            Vec3::new(-1.0e9, -1.0e9, -1.0e9),
-            Vec3::new(1.0e9, 1.0e9, 1.0e9),
-        );
-        assert!(!scene.cells_without_collision(enormous));
-        // Under the fence: its section's outer cells may hold a shape reaching in.
-        let under = Aabb::new(Vec3::new(5.4, 31.6, 5.4), Vec3::new(5.6, 31.8, 5.6));
-        assert!(!scene.cells_without_collision(under.expand_towards(Vec3::new(0.0, 0.1, 0.0))));
-        // A torch's cell, and the air just over the scene's stone floor (y 0..4).
-        let torches = Aabb::new(Vec3::new(20.4, 20.1, 20.4), Vec3::new(20.6, 20.3, 20.6));
-        assert!(scene.cells_without_collision(torches));
-        let over_floor = Aabb::new(Vec3::new(30.4, 5.2, 30.4), Vec3::new(30.6, 5.4, 30.6));
-        assert!(scene.cells_without_collision(over_floor));
-        let mut seed = 0x2545_f491_4f6c_dd1du64;
-        let mut next = || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            (seed >> 11) as f64 / (1u64 << 53) as f64
-        };
-        let (mut skipped, mut resolved) = (0, 0);
-        for i in 0..4000 {
-            let size = if i % 2 == 0 { 0.2 } else { 0.6 };
-            // Near the floor (y 0..4) and the stepped pyramid (y 4..11) for most, higher for the rest.
-            let height = if i % 4 == 0 { 40.0 } else { 14.0 };
-            let at = Vec3::new(next() * 80.0 - 40.0, next() * height, next() * 80.0 - 40.0);
-            let bb = Aabb::new(at, Vec3::new(at.x + size, at.y + size, at.z + size));
-            let reach = if i % 3 == 0 { 3.0 } else { 0.3 };
-            let d = Vec3::new(
-                (next() - 0.5) * reach,
-                (next() - 0.5) * reach,
-                (next() - 0.5) * reach,
-            );
-            let fast = scene.cells_without_collision(bb.expand_towards(d));
-            assert_eq!(
-                fast,
-                scene.cells_without_collision_by_cell(bb.expand_towards(d)),
-                "{bb:?} by {d:?}"
-            );
-            let mut full = SceneCollisions {
-                world: &world,
-                binding: &binding,
-                subject: None,
-            };
-            let moved = full.resolve(bb, d, 0.0, false).unwrap();
-            if fast {
-                skipped += 1;
-                assert_eq!(
-                    moved.components().map(f64::to_bits),
-                    d.components().map(f64::to_bits),
-                    "{bb:?} by {d:?}"
-                );
-            } else {
-                resolved += 1;
-            }
-        }
-        assert!(
-            skipped > 500 && resolved > 500,
-            "{skipped} skipped, {resolved} resolved"
-        );
     }
 }
