@@ -195,6 +195,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     if st.p.gated_by_ram {
         let Some(ram) = w.get::<crate::behaviours::ram::RamCooldown>(e).copied() else { return false };
+        if super::tempt::tempted(w, e) {
+            // A player feeds the goat: the activity is the tempt's (`GoatAi.longJumpActivity` wants no tempting player); the ask comes back
+            // at the next deadline.
+            schedule(w, e, now + 20);
+            return false;
+        }
         if ram.0 <= now {
             // The ram is on: the activity wakes when the ram sets its cooldown (`ram::set_cooldown` wakes this goal), no polling.
             return false;

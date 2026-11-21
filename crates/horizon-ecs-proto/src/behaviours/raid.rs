@@ -5,6 +5,11 @@ use bevy_ecs::prelude::*;
 
 pub static RAID_STATUS: MemKey = MemKey::new("horizon:raid_status", Shape::Int);
 
+/// Present while the villager is in the `raid` activity (posed by `SetRaidStatus`, removed by `ResetRaidStatus`): the activity's requirement.
+pub static RAID_ON: MemKey = MemKey::new("horizon:raid_on", Shape::Unit);
+/// Present while the villager is in the `pre_raid` activity.
+pub static PRE_RAID_ON: MemKey = MemKey::new("horizon:pre_raid_on", Shape::Unit);
+
 pub const RAID_NONE: i64 = 0;
 pub const RAID_ACTIVE: i64 = 1;
 pub const RAID_VICTORY: i64 = 2;

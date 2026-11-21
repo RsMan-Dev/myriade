@@ -20,6 +20,8 @@ pub struct Params {
 pub struct Lookout {
     pub p: &'static Params,
     pub slot: u8,
+    /// The next ask's deadline is in the wheel.
+    pub armed: bool,
 }
 
 /// The lookout in progress: the looks still to do (direction, ticks), the ticks left of the current one and its direction.
@@ -35,7 +37,10 @@ pub struct Looking {
 pub static MODULE: Module = Module {
     name: "lookout",
     flags: MOVE | LOOK,
+    blocked: Some(blocked),
     equip,
+    arm,
+    fired,
     can_use,
     start,
     stop,
@@ -46,7 +51,7 @@ pub static MODULE: Module = Module {
 
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(Lookout { p, slot: inst.slot });
+    w.entity_mut(e).insert(Lookout { p, slot: inst.slot, armed: false });
 }
 
 /// The module's tick, called only while a creature that carries it lives (no registered system).
@@ -64,9 +69,37 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         || w.get::<Nav>(e).is_some_and(|n| n.path.is_some())
         || alarmed
     {
+        arm(w, e, inst);
         return false;
     }
-    with_rng(w, e, |r| r.next_f64()) < f64::from(g.p.chance)
+    true
+}
+
+/// Arms the next ask: the selector asks every other tick and the goal passes one ask in `1 / chance` (a geometric wait, nothing counted).
+fn arm(w: &mut World, e: Entity, inst: Inst) {
+    let Some(g) = w.get::<Lookout>(e).copied() else { return };
+    if g.armed || g.slot != inst.slot {
+        return;
+    }
+    let period = (1.0 / g.p.chance).round().max(1.0) as i32;
+    let wait = with_rng(w, e, |r| 2 * geometric(r, period));
+    crate::goals::arm(w, e, inst.slot, wait);
+    w.get_mut::<Lookout>(e).unwrap().armed = true;
+}
+fn blocked(w: &mut World, e: Entity, inst: Inst) {
+    if let Some(mut g) = w.get_mut::<Lookout>(e) {
+        g.armed = false;
+    }
+    arm(w, e, inst);
+}
+fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
+    match w.get_mut::<Lookout>(e) {
+        Some(mut g) => {
+            g.armed = false;
+            true
+        }
+        None => false,
+    }
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
@@ -93,6 +126,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     if g.slot == inst.slot {
         pose::set(w, e, g.p.sit, false);
         w.entity_mut(e).remove::<Looking>();
+        blocked(w, e, inst);
     }
 }
 

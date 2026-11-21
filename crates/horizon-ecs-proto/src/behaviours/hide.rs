@@ -9,6 +9,8 @@ use crate::cow::{now_of, Pos};
 use crate::goals::with_rng;
 use bevy_ecs::prelude::*;
 
+/// Present from the bell to the end of the hiding: the requirement of the `hide` activity (the jar poses it with `setActiveActivityIfPossible`).
+pub static HIDE_ON: MemKey = MemKey::new("horizon:hide_on", Shape::Unit);
 pub static HIDING_PLACE: MemKey = MemKey::new("minecraft:hiding_place", Shape::Block);
 /// Set on arrival with a ttl of 300 ticks: once it expires the hiding is over.
 pub static HIDDEN: MemKey = MemKey::new("horizon:hidden", Shape::Bool);
@@ -26,23 +28,24 @@ pub struct Params {
 }
 
 /// `ReactToBell`: the bell rang and no raid is on: the `hide` activity (`raid_nearby` is any raid status but none).
-pub static REACT_TO_BELL: Behaviour = Behaviour { name: "minecraft:react_to_bell", one_shot: true, can_start: react_to_bell, ..Behaviour::DEFAULT };
+pub static REACT_TO_BELL: Behaviour = Behaviour { name: "minecraft:react_to_bell", mems: &[&HIDE_ON], one_shot: true, can_start: react_to_bell, ..Behaviour::DEFAULT };
 
 fn react_to_bell(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if int(w, e, &HEARD_BELL).is_some() && raid::status(w, e) == raid::RAID_NONE {
-        set_activity(w, e, "hide");
+        set(w, e, &HIDE_ON, MemValue::Unit, None);
     }
     true
 }
 
 /// `LocateHidingPlace`.
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:villager_locate_hiding_place", mems: &[&WALK_TARGET, &HIDING_PLACE, &LOOK_TARGET], one_shot: true, can_start: locate, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:villager_locate_hiding_place", mems: &[&WALK_TARGET, &HIDING_PLACE, &LOOK_TARGET, &HIDE_ON], one_shot: true, can_start: locate, ..Behaviour::DEFAULT };
 
 /// `SetHiddenState`.
-pub static HIDDEN_STATE: Behaviour = Behaviour { name: "minecraft:villager_set_hidden_state", mems: &[&HIDING_PLACE, &HIDDEN, &ARRIVED, &HEARD_BELL], one_shot: true, can_start: hidden, ..Behaviour::DEFAULT };
+pub static HIDDEN_STATE: Behaviour = Behaviour { name: "minecraft:villager_set_hidden_state", mems: &[&HIDING_PLACE, &HIDDEN, &ARRIVED, &HEARD_BELL, &HIDE_ON], one_shot: true, can_start: hidden, ..Behaviour::DEFAULT };
 
 fn locate(w: &mut World, e: Entity, c: &Ctx) -> bool {
-    if present(w, e, &WALK_TARGET) {
+    // `SetHiddenState` ran earlier in this step and ended the hiding: the jar changes the activity at once, here it changes at the step's end.
+    if present(w, e, &WALK_TARGET) || !present(w, e, &HIDE_ON) {
         return false;
     }
     let p = c.get::<Params>();
@@ -78,7 +81,7 @@ fn hidden(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let now = now_of(w, e) as i64;
     let arrived = present(w, e, &ARRIVED);
     if heard + 300 <= now || (arrived && !present(w, e, &HIDDEN)) {
-        for k in [&HEARD_BELL, &HIDING_PLACE, &HIDDEN, &ARRIVED] {
+        for k in [&HEARD_BELL, &HIDING_PLACE, &HIDDEN, &ARRIVED, &HIDE_ON] {
             erase(w, e, k);
         }
         restart(w, e, &schedule::BEHAVIOUR);

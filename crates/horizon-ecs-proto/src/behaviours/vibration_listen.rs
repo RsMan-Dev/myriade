@@ -140,6 +140,7 @@ pub fn receive(w: &mut World, e: Entity, v: &Vibration) {
             r.disturbance_until = now + c.disturbance_expiry;
             drop(r);
             arm_module(w, e, &go_to_disturbance::MODULE, 1);
+            arm_module(w, e, &super::warden_look_target::MODULE, 1);
         }
     }
 }

@@ -177,6 +177,8 @@ pub struct Behaviour {
     pub one_shot: bool,
     /// Nothing to do while it runs (no `tick` work): the brain is woken at its end, not every tick.
     pub passive: bool,
+    /// Woken by an item dropped within this many blocks (0 = never): the brain sleeps, nothing polls for items.
+    pub wakes_on_item: f64,
     /// While it runs and this says true, the brain is not stepped every tick: it is woken by its deadline, a memory write, or whatever the
     /// behaviour arranged itself (the end of the walk, a crossing).
     pub sleeps: fn(&World, Entity, &Ctx) -> bool,
@@ -205,6 +207,7 @@ impl Behaviour {
         requires: &[],
         one_shot: false,
         passive: false,
+        wakes_on_item: 0.0,
         gate: None,
         sleeps: no,
         equip: nothing,
@@ -308,6 +311,8 @@ pub struct Plan {
     /// `acts[i].requires` resolved like `BInst::needs_l`.
     act_req: Vec<Vec<(u16, bool)>>,
     initial: Vec<Initial>,
+    /// The widest `wakes_on_item` of its behaviours.
+    item_wake: f64,
 }
 const NONE: u16 = u16::MAX;
 impl Plan {
@@ -375,7 +380,8 @@ impl Plan {
             i.needs_l = resolve(i.needs);
         }
         let act_req = def.activities.iter().map(|a| resolve(a.requires)).collect();
-        Ok(Plan { act_req, mems, local, sensors: def.sensors.to_vec(), insts, order, acts: def.activities.to_vec(), pick, initial: def.initial.to_vec() })
+        let item_wake = insts.iter().map(|i| i.b.wakes_on_item).fold(0.0, f64::max);
+        Ok(Plan { item_wake, act_req, mems, local, sensors: def.sensors.to_vec(), insts, order, acts: def.activities.to_vec(), pick, initial: def.initial.to_vec() })
     }
     fn local(&self, k: &MemKey) -> Option<usize> {
         self.local.get(k.id()).copied().filter(|&l| l != NONE).map(usize::from)
@@ -463,8 +469,23 @@ pub struct LastDamage {
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(BrainAwake::default());
 }
+/// A dropped item wakes the brains that want items within their range (the box test of the behaviour's own range).
+fn wake_on_item(ev: Res<Events>, items: Query<&Pos, With<crate::item::Item>>, idx: Res<Index>, mut q: Query<(&mut Brain, &Pos)>, mut awake: ResMut<BrainAwake>) {
+    const MAX: f64 = 32.0;
+    for i in ev.item_dropped.iter() {
+        let Ok(at) = items.get(i) else { continue };
+        idx.for_radius(at.0.x, at.0.z, MAX, |c| {
+            let Ok((mut b, me)) = q.get_mut(c) else { return };
+            let r = b.plan.item_wake;
+            if r > 0.0 && !b.awake && (me.0.x - at.0.x).abs() <= r && (me.0.y - at.0.y).abs() <= r && (me.0.z - at.0.z).abs() <= r {
+                b.awake = true;
+                awake.0.push(c);
+            }
+        });
+    }
+}
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((wake_walks, brain_step).chain().after(arbitrate).before(pathfind));
+    s.add_systems((wake_walks, wake_on_item, brain_step).chain().after(arbitrate).before(pathfind));
 }
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {

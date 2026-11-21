@@ -143,7 +143,10 @@ fn the_golem_strolls_while_the_transport_cooldown_lasts_as_a_mob_does() {
                 targeted[k][0] |= mob_has(&p.r.mobs[i], "walk_target");
                 targeted[k][1] |= present(&p.h.world, e, &WALK_TARGET);
             }
-            let (m, c) = (mob_has(&p.r.mobs[i], "transport_items_cooldown_ticks"), present(&p.h.world, e, &TRANSPORT_ITEMS_COOLDOWN_TICKS));
+            // The ECS cooldown is a deadline: at its end the transport starts in the same step, finds no chest and sets 140 again, so the
+            // memory is never seen absent (the `Mob` counts it down and starts its transport one tick later). The initial value (60 to 99)
+            // being replaced by 140 is the ECS side's "gone".
+            let (m, c) = (mob_has(&p.r.mobs[i], "transport_items_cooldown_ticks"), int(&p.h.world, e, &TRANSPORT_ITEMS_COOLDOWN_TICKS).is_some_and(|v| v < 140));
             for (s, on) in [m, c].into_iter().enumerate() {
                 seen[k][s] |= on;
                 if seen[k][s] && !on && gone[k][s].is_none() {

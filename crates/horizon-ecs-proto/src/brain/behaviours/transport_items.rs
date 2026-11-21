@@ -261,12 +261,24 @@ fn has_valid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec
     false
 }
 
-/// `valid_travelling_path`, without a path search: the eye is where the golem stands; a path memory says there is one.
+/// `valid_travelling_path`: the walk's path (the one followed, else one is searched as `create_path_to(pos, 0)` does), its end
+/// the eye's place; no path and out of reach is invalid, and a reach needs a side seen.
 fn valid_travelling_path(w: &World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: &Target) -> bool {
-    let path = present(w, e, &PATH);
-    let from = centre_of(me, size);
+    use horizon_client_lib::mobs::path::{Evaluator, Finder};
+    let followed = w.get::<crate::cow::Nav>(e).and_then(|n| n.path.clone());
+    let found = followed.or_else(|| {
+        crate::behaviours::nearest_bed::path_mob(w, e).and_then(|(pm, follow)| {
+            let max = follow.max(1.0);
+            Finder::new(mw, &pm, Evaluator::Walk).find(&[t.pos], max, 0, (max * 16.0).floor() as i32)
+        })
+    });
+    let no_path = found.is_none();
+    let from = match found.as_ref().and_then(|p| p.nodes.last()) {
+        Some(n) => centre_of(Vec3::new(f64::from(n.x) + 0.5, f64::from(n.y), f64::from(n.z) + 0.5), size),
+        None => centre_of(me, size),
+    };
     let reach = within(mw, size, range(w, e), t, from);
-    (!path && !reach) || reach && sees_a_side(mw, t.pos, from)
+    (no_path && !reach) || reach && sees_a_side(mw, t.pos, from)
 }
 
 /// `within`: the golem's box at `from`, grown by `distance` sideways and 0.5 up and down, meets the collision shape of the chest.

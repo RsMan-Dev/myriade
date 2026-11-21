@@ -60,15 +60,11 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
     w.entity_mut(e).insert(BedCache(cache.0));
 }
 
-/// The target of the path that reaches one of `targets` within 1 (`Mob.create_path_to_any(targets, 1).reached`), the search `pathfind` makes.
-fn reached_bed(w: &World, e: Entity, targets: &[[i32; 3]], follow_range: f32) -> Option<[i32; 3]> {
+/// The path mob of an entity (the `Mob` fields the path search reads), with its follow range.
+pub(crate) fn path_mob(w: &World, e: Entity) -> Option<(horizon_client_lib::mobs::path::PathMob, f32)> {
     use crate::cow::{Body, Contact, FluidState, NavParams};
-    use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
-    if targets.is_empty() {
-        return None;
-    }
     let (pos, body, c, sp) = (w.get::<Pos>(e)?, w.get::<Body>(e)?, w.get::<Contact>(e)?, w.get::<NavParams>(e)?);
-    let pm = PathMob {
+    let pm = horizon_client_lib::mobs::path::PathMob {
         position: pos.0,
         width: body.width,
         height: body.height,
@@ -83,7 +79,17 @@ fn reached_bed(w: &World, e: Entity, targets: &[[i32; 3]], follow_range: f32) ->
         can_walk_over_fences: sp.can_walk_over_fences,
         stands_on_lava: false,
     };
-    let max = follow_range.max(sp.follow_range);
+    Some((pm, sp.follow_range))
+}
+
+/// The target of the path that reaches one of `targets` within 1 (`Mob.create_path_to_any(targets, 1).reached`), the search `pathfind` makes.
+fn reached_bed(w: &World, e: Entity, targets: &[[i32; 3]], follow_range: f32) -> Option<[i32; 3]> {
+    use horizon_client_lib::mobs::path::{Evaluator, Finder};
+    if targets.is_empty() {
+        return None;
+    }
+    let (pm, own) = path_mob(w, e)?;
+    let max = follow_range.max(own);
     let path = Finder::new(w.resource::<crate::cow::Level>().mw.0, &pm, Evaluator::Walk).find(targets, max, 1, (max * 16.0).floor() as i32)?;
     (path.reached && targets.contains(&path.target)).then_some(path.target)
 }

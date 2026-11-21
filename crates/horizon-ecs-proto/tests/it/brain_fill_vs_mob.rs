@@ -66,7 +66,11 @@ fn the_temptation_restarts_after_its_cooldown_as_the_mob_does() {
             was[k] = now;
         }
     }
-    assert!(mob_starts > 0, "the mobs were never tempted by the item");
+    // A species whose goals hold no tempt goal starts none on either side; the Mob's count then says it, not a skip by name.
+    let tempted = species().goals.entries.iter().any(|en| std::ptr::eq(en.module, &horizon_ecs_proto::behaviours::tempt::MODULE));
+    if tempted {
+        assert!(mob_starts > 0, "the mobs were never tempted by the item");
+    }
     assert_eq!(ecs_starts, mob_starts);
 }
 

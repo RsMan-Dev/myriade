@@ -61,6 +61,10 @@ fn mob_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
 }
 fn ecs_side(days: &[i64]) -> Vec<((f64, f64), bool)> {
     let mut h = Herd::with_slab_awake(60, true, false);
+    // The job site is a block of the world, as on the Mob's side: its validation (`poi_validate`) drops a memory with no block under it.
+    super::villager_misc_vs_mob::insert_trade_data(&mut h);
+    h.set_block(JOB[0], JOB[1], JOB[2], "minecraft:composter");
+    h.tick();
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
     let e = spawn_species(&mut h.world, &sp, SPAWN.0, SPAWN.1, 1);

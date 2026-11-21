@@ -152,6 +152,9 @@ fn ecs_yield_job_site_gives_up_to_a_free_neighbour() {
     for _ in 0..20 {
         h.tick();
     }
+    // The brain took the site for itself during the warm-up: the villager is put back without a profession and without a site.
+    h.world.entity_mut(e).remove::<Profession>();
+    erase(&mut h.world, e, &JOB_SITE);
     set(&mut h.world, e, &POTENTIAL_JOB_SITE, MemValue::Block(SITE), None);
     let c = ctx(&YIELD);
     assert!((poi_yield_site::BEHAVIOUR.can_start)(&mut h.world, e, &c));

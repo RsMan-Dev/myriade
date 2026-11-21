@@ -2,8 +2,8 @@
 //! la chèvre choisit la cible la plus proche vue (16 blocs, pas une chèvre), cherche à 4 à 7 blocs un départ d'où elle la
 //! rejoint, y va à 1,25, baisse la tête (20 ticks), puis charge à 3,0 jusqu'à la toucher ou finir son chemin.
 //! Replis (fiche 99) : le recul est le recul standard (`Cause::Entity`, sans colère : pas de `by`), pas de cornes, pas de
-//! sonde de chemin pour le départ (le plus proche des départs marchables est retenu), pas de joueur pour cible, pas de
-//! tentation ni d'amour (pas d'état lisible).
+//! sonde de chemin pour le départ (le plus proche des départs marchables est retenu), pas de joueur pour cible, pas d'amour
+//! (pas d'état lisible) ; la tentation (un joueur à portée tenant la nourriture) la fait céder.
 use crate::IFloor as _;
 use super::*;
 use crate::cow::*;
@@ -154,7 +154,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     true
 }
 
-/// `PrepareRamNearestTarget.canUse` (`RamCooldown` échu) ; la condition des compagnons (tentation, amour) est absente.
+/// `PrepareRamNearestTarget.canUse` (`RamCooldown` échu) et pas de joueur qui tente (l'amour n'est pas lisible : absent).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let now = now_of(w, e);
     let date = w.get::<RamCooldown>(e).map_or(0, |c| c.0);
@@ -162,7 +162,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         schedule(w, e, date);
         return false;
     }
-    true
+    !super::tempt::tempted(w, e)
 }
 
 fn start(w: &mut World, e: Entity, _: Inst) {
@@ -212,6 +212,7 @@ fn run(w: &mut World, e: Entity) {
         Phase::Done => false,
         Phase::Prepare => {
             r.time <= r.p.prepare_timeout
+                && !super::tempt::tempted(w, e)
                 && r.candidate.is_some_and(|c| targeting::info(w, Who::Entity(c.target)).is_some() && alive(w, c.target))
         }
         Phase::RamStart | Phase::Ram => r.ram_target.is_some() && r.time <= r.p.ram_timeout,

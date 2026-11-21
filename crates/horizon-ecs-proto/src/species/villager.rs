@@ -13,7 +13,8 @@ use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::behaviours::{calm_down, look_and_interact, look_at_entity, villager_interact};
 // lot V4
 use crate::behaviours::bonemeal;
-use crate::brain::behaviours::{make_love, work_breed, work_swim, work_wake_up};
+use crate::behaviours::breed_love;
+use crate::brain::behaviours::{work_swim, work_wake_up};
 // lot V3
 use crate::brain::behaviours::{raid_status, village_brownian_walk, village_go_to_village, village_home_walk, village_stroll};
 use crate::brain::sensors::village_hostile;
@@ -41,17 +42,16 @@ static ACTIVITIES: &[ActivityDef] = &[
     ActivityDef { name: "core", slot: 1, requires: &[] },
     ActivityDef { name: "play", slot: 0, requires: &[(&SCHEDULE_PLAY, Need::Present)] },
     ActivityDef { name: "rest", slot: 2, requires: &[(&SCHEDULE_REST, Need::Present)] },
-    // lot V3 : `hide`, `pre_raid` et `raid` sont posées par leurs comportements (`setActivity`), pas par `PICK`
-    ActivityDef { name: "hide", slot: 3, requires: &[] },
+    // lot V3 : `hide`, `pre_raid` et `raid` tiennent tant que leur mémoire (posée par `ReactToBell` / `SetRaidStatus`, ôtée par `SetHiddenState` / `ResetRaidStatus`) est posée
+    ActivityDef { name: "hide", slot: 3, requires: &[(&hide::HIDE_ON, Need::Present)] },
     ActivityDef { name: "meet", slot: 4, requires: &[(&SCHEDULE_MEET, Need::Present)] },
     ActivityDef { name: "idle", slot: 5, requires: &[(&SCHEDULE_IDLE, Need::Present)] },
-    // lot V3 : `raid` et `pre_raid` tiennent tant que leur mémoire de vague ou d'avant-raid est posée (`SetRaidStatus`)
-    ActivityDef { name: "pre_raid", slot: 6, requires: &[] },
+    ActivityDef { name: "pre_raid", slot: 6, requires: &[(&raid::PRE_RAID_ON, Need::Present)] },
     ActivityDef { name: "work", slot: 7, requires: &[(&SCHEDULE_WORK, Need::Present)] },
     ActivityDef { name: "panic", slot: 8, requires: &[(&HURT_BY, Need::Present)] },
-    ActivityDef { name: "raid", slot: 9, requires: &[] },
+    ActivityDef { name: "raid", slot: 9, requires: &[(&raid::RAID_ON, Need::Present)] },
 ];
-static PICK: &[&str] = &["panic", "rest", "meet", "work", "play", "idle"];
+static PICK: &[&str] = &["panic", "raid", "pre_raid", "hide", "rest", "meet", "work", "play", "idle"];
 
 static ADULT_SLICES: &[schedule::Slice] = &[
     schedule::Slice { key: &SCHEDULE_IDLE, from: 10, to: 2000 },
@@ -180,7 +180,6 @@ fn crop_grow(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 
     crate::blocks::resolve(mw, name, &[("age", AGE_NAMES[next as usize])])
 }
 const BONEMEAL: bonemeal::Params = bonemeal::Params { growable: crop_growable, grow: crop_grow };
-const MAKE_LOVE: make_love::Params = make_love::Params { spawn_min: 275, ready: work_breed::ready, ..make_love::Params::DEFAULT };
 // lot V2 : le cadeau du héros (`villager.rs:480-495`) : bébé, puis le métier (`unemployed` sans métier)
 fn gift_table(w: &World, e: Entity) -> String {
     if w.get::<crate::cow::GrowAt>(e).is_some() {
@@ -276,7 +275,7 @@ pub static DEF: Def = Def {
             // lot V4 : `Swim(60,60)` du cœur (prio 0, `villager_brain.rs:4032`), `MakeLove` ordonné de l'inactivité (prio 3, `:4161`)
             BEntry { behaviour: &work_swim::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &work_wake_up::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &make_love::BEHAVIOUR, activity: "idle", priority: 3, params: &MAKE_LOVE, needs: &[(&VISIBLE_MOBS, Need::Present)], duration: Some((110, 110)), kids: &[] },
+            BEntry { behaviour: &breed_love::BIRTH, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             // lot 6 : regards, interactions et calme (un `SetLookAndInteract` par activité du Mob, à sa priorité)
             BEntry { behaviour: &look_and_interact::BEHAVIOUR, activity: "work", priority: 10, params: &(), needs: &[(&INTERACTION_TARGET, Need::Absent)], duration: None, kids: &[] },
             BEntry { behaviour: &look_and_interact::BEHAVIOUR, activity: "meet", priority: 10, params: &(), needs: &[(&INTERACTION_TARGET, Need::Absent)], duration: None, kids: &[] },

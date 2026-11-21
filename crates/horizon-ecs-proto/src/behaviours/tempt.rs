@@ -115,6 +115,19 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     w.get_mut::<Tempts>(e).unwrap().0[inst.nth as usize].player = id;
     true
 }
+/// `TemptingSensor.forAnimal` as the goat's activities read it: a player within the range of a tempt goal holds one of its items (the calm-down
+/// does not count). Read only by the ram and the long jump, when they are asked or prepare, never per tick of a resting animal.
+pub fn tempted(w: &World, e: Entity) -> bool {
+    let (Some(pos), Some(ts)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Tempts>(e)) else { return false };
+    let mut found = false;
+    for t in &ts.0 {
+        let reach = t.range.max(2.0);
+        w.resource::<Online>().for_near(pos.x, pos.z, reach, |p| {
+            found |= p.holds_any(t.items) && (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2) <= reach * reach;
+        });
+    }
+    found
+}
 fn start(w: &mut World, e: Entity, inst: Inst) {
     w.get_mut::<Tempts>(e).unwrap().0[inst.nth as usize].aim = (i32::MIN, 0);
     w.entity_mut(e).insert(Tempting(inst.nth));

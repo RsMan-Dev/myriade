@@ -16,6 +16,7 @@ fn villager(h: &mut Herd) -> Entity {
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
+    horizon_ecs_proto::behaviours::schedule::Times::set(&mut h.world, 4000);
     e
 }
 
@@ -27,7 +28,13 @@ fn the_villager_celebrates_a_victory_for_600_ticks_awake() {
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = villager(&mut h);
     set(&mut h.world, e, &raid::RAID_STATUS, MemValue::Int(raid::RAID_VICTORY), None);
-    h.tick();
+    // `SetRaidStatus` poses the `raid` activity one tick in twenty; the celebration starts with it.
+    for _ in 0..400 {
+        h.tick();
+        if h.world.get::<Celebration>(e).is_some() {
+            break;
+        }
+    }
     let until = h.world.get::<Celebration>(e).expect("la célébration commence à la victoire").until;
     let now = now_of(&h.world, e);
     // `Celebrate(timed(600, 600))`: 600 ticks from the start (the tick of the start may be one before `now`).

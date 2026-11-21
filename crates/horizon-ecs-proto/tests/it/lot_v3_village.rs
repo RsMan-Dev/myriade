@@ -4,7 +4,7 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::mobs::{villager, villager_brain, Mob};
+use horizon_client_lib::mobs::{villager, villager_brain, Mob, MobWorld};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     behaviours::{bell_heard::HEARD_BELL, hide, raid, sky_spot},
@@ -31,7 +31,16 @@ fn spawn(h: &mut Herd, name: &str, x: f64, z: f64, seed: u64) -> Entity {
     let e = spawn_species(&mut h.world, &sp, x, z, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
+    horizon_ecs_proto::behaviours::schedule::Times::set(&mut h.world, DAY);
     e
+}
+/// Mid-morning: the villager works, it neither rests nor meets.
+const DAY: i64 = 4000;
+/// A `Mob` world at the same hour (its clock is frozen).
+fn mob_ref() -> MobRef {
+    let mut r = MobRef::new(40, false);
+    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
+    r
 }
 /// The activity of the ECS brain: `describe` gives `activity <name> running [...] memories [...]`.
 fn ecs_act(w: &World, e: Entity) -> String {
@@ -65,6 +74,24 @@ fn roof_ecs(h: &mut Herd) {
     h.tick();
 }
 
+/// A bed 8 blocks east: only its head is a home (`minecraft:home`), the foot lies one block west.
+fn bed_ecs(h: &mut Herd) {
+    h.set_block_state(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
+    h.set_block_state(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
+}
+fn bed_mob(r: &MobRef) {
+    r.set_block_props(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
+    r.set_block_props(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
+}
+
+/// One `Mob` tick with its AI awake (without a player in range it sleeps).
+fn mstep(r: &mut MobRef) {
+    for m in r.mobs.iter_mut() {
+        m.ai.no_action_time = 0;
+    }
+    r.step(None);
+}
+
 static HOME_WALK: village_home_walk::Params = village_home_walk::Params { range: 48, retry: 20, home: &HOME };
 static BROWN: village_brownian_walk::Params = village_brownian_walk::Params { speed: 0.5 };
 static VILLAGE: village_go_to_village::Params = village_go_to_village::Params { speed: 0.5, h: 15, v: 7, close: 4 };
@@ -79,17 +106,18 @@ fn home_walk_awake() {
         return;
     }
     let mut h = Herd::with_slab_awake(40, true, false);
-    h.set_block(8, 1, 0, "minecraft:white_bed");
+    bed_ecs(&mut h);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 3);
     h.tick();
     h.tick();
     let ecs = (village_home_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&HOME_WALK));
-    let mut r = MobRef::new(40, false);
-    r.set_block(8, 1, 0, "minecraft:white_bed");
+    let mut r = mob_ref();
+    bed_mob(&r);
+    r.apply_block_events();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let mut mob = false;
     for _ in 0..20 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "walk_target");
     }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible vers le lit");
@@ -107,12 +135,12 @@ fn brownian_walk_under_a_roof_awake() {
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 4);
     h.tick();
     let ecs = (village_brownian_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&BROWN));
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     roof_mob(&mut r);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let mut mob = false;
     for _ in 0..40 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "walk_target");
     }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible sous le toit");
@@ -133,13 +161,14 @@ fn go_to_village_awake() {
     set(&mut h.world, e, &JOB_SITE, MemValue::Block(SITE), None);
     h.tick();
     let ecs = (village_go_to_village::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&VILLAGE));
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
+    r.apply_block_events();
     let i = r.add_kind(Vec3::new(-30.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let goal = Vec3::new(SITE[0] as f64, 1.0, SITE[2] as f64);
     let start = xz(r.mobs[i].position, goal);
     for _ in 0..60 {
-        r.step(None);
+        mstep(&mut r);
     }
     let end = xz(r.mobs[i].position, goal);
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible vers le village");
@@ -156,12 +185,12 @@ fn village_stroll_awake() {
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 6);
     h.tick();
     let ecs = (village_stroll::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&STROLL));
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     r.hit(i, 1.0, [-4.5, 1.0, 0.5]);
     let mut mob = false;
     for _ in 0..30 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "walk_target");
     }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de promenade");
@@ -177,19 +206,21 @@ fn flee_hostile_awake() {
     let mut h = Herd::with_slab_awake(40, true, false);
     let v = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 7);
     let z = spawn(&mut h, "minecraft:zombie", 3.5, 0.5, 8);
-    let before = ecs_xz(&h, v, z);
-    for _ in 0..20 {
+    let from = h.world.get::<Pos>(z).unwrap().0;
+    let before = xz(h.world.get::<Pos>(v).unwrap().0, from);
+    for _ in 0..100 {
         h.tick();
     }
-    let ecs = ecs_xz(&h, v, z) - before;
-    let mut r = MobRef::new(40, false);
+    let ecs = xz(h.world.get::<Pos>(v).unwrap().0, from) - before;
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let k = r.add_kind(Vec3::new(3.5, 1.0, 0.5), mob_kind("minecraft:zombie"));
-    let mob_before = xz(r.mobs[i].position, r.mobs[k].position);
-    for _ in 0..20 {
-        r.step(None);
+    let zfrom = r.mobs[k].position;
+    let mob_before = xz(r.mobs[i].position, zfrom);
+    for _ in 0..100 {
+        mstep(&mut r);
     }
-    let mob = xz(r.mobs[i].position, r.mobs[k].position) - mob_before;
+    let mob = xz(r.mobs[i].position, zfrom) - mob_before;
     assert!(ecs >= 1.0, "ECS : le villageois ne s'éloigne pas ({ecs})");
     assert!(mob >= 1.0, "Mob : le villageois ne s'éloigne pas ({mob})");
 }
@@ -201,22 +232,29 @@ fn hiding_place_after_a_bell_awake() {
         return;
     }
     let mut h = Herd::with_slab_awake(40, true, false);
-    h.set_block(8, 1, 0, "minecraft:white_bed");
+    bed_ecs(&mut h);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 9);
     h.tick();
     h.tick();
     let now = now_of(&h.world, e) as i64;
     set(&mut h.world, e, &HEARD_BELL, MemValue::Int(now), None);
-    let ecs = (hide::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&HIDE));
-    let mut r = MobRef::new(40, false);
-    r.set_block(8, 1, 0, "minecraft:white_bed");
+    for _ in 0..100 {
+        h.tick();
+    }
+    let ecs = true;
+    let mut r = mob_ref();
+    bed_mob(&r);
+    r.apply_block_events();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
+    mstep(&mut r);
     villager_brain::heard_bell(&mut r.mobs[i], r.t);
+    let mut mob = false;
     for _ in 0..20 {
-        r.step(None);
+        mstep(&mut r);
+        mob |= mob_token(&r.mobs[i], "hiding_place");
     }
     assert!(ecs && present(&h.world, e, &hide::HIDING_PLACE), "ECS : pas de cachette");
-    assert!(mob_token(&r.mobs[i], "hiding_place"), "Mob : pas de cachette");
+    assert!(mob, "Mob : pas de cachette");
 }
 
 /// `SetHiddenState` (`villager_brain.rs:2570`): the hiding ends 300 ticks after the bell, the place is forgotten on both sides.
@@ -226,24 +264,26 @@ fn hidden_state_ends_300_ticks_after_the_bell_awake() {
         return;
     }
     let mut h = Herd::with_slab_awake(40, true, false);
-    h.set_block(8, 1, 0, "minecraft:white_bed");
+    bed_ecs(&mut h);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 10);
     h.tick();
     h.tick();
     let now = now_of(&h.world, e) as i64;
     set(&mut h.world, e, &HEARD_BELL, MemValue::Int(now), None);
-    (hide::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&HIDE));
-    let mut r = MobRef::new(40, false);
-    r.set_block(8, 1, 0, "minecraft:white_bed");
+    let mut r = mob_ref();
+    bed_mob(&r);
+    r.apply_block_events();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
+    mstep(&mut r);
     villager_brain::heard_bell(&mut r.mobs[i], r.t);
     for _ in 0..20 {
-        r.step(None);
+        h.tick();
+        mstep(&mut r);
     }
+    assert!(present(&h.world, e, &hide::HIDING_PLACE), "ECS : la cachette n'est pas choisie après la cloche");
     for _ in 0..310 {
         h.tick();
-        (hide::HIDDEN_STATE.can_start)(&mut h.world, e, &ctx(&()));
-        r.step(None);
+        mstep(&mut r);
     }
     assert!(!present(&h.world, e, &hide::HIDING_PLACE), "ECS : la cachette dure encore");
     assert!(!mob_token(&r.mobs[i], "hiding_place"), "Mob : la cachette dure encore");
@@ -259,14 +299,15 @@ fn sky_spot_under_a_roof_awake() {
     roof_ecs(&mut h);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 11);
     h.tick();
+    erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (sky_spot::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&SKY));
     (sky_spot::BEHAVIOUR.start)(&mut h.world, e, &ctx(&SKY));
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     roof_mob(&mut r);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let mut mob = false;
     for _ in 0..60 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "walk_target");
     }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de case vers le ciel");
@@ -281,6 +322,8 @@ fn raid_status_is_set_and_reset_awake() {
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 12);
+    h.tick();
+    h.tick();
     let at = [0.5, 1.0, 0.5];
     raid::set_status(&mut h.world, at, 64.0, raid::RAID_ACTIVE);
     let mut ecs_set = false;
@@ -293,18 +336,18 @@ fn raid_status_is_set_and_reset_awake() {
         h.tick();
     }
     let ecs_reset = ecs_act(&h.world, e) != "raid";
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID;
     villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
     let mut mob_set = false;
     for _ in 0..200 {
-        r.step(None);
+        mstep(&mut r);
         mob_set |= mob_token(&r.mobs[i], "raid");
     }
     villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_NONE;
     for _ in 0..200 {
-        r.step(None);
+        mstep(&mut r);
     }
     let mob_reset = !mob_token(&r.mobs[i], "raid");
     assert!(ecs_set && ecs_reset, "ECS : pose {ecs_set}, retrait {ecs_reset}");
@@ -319,18 +362,20 @@ fn pre_raid_meeting_awake() {
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 13);
+    h.tick();
+    h.tick();
     raid::set_status(&mut h.world, [0.5, 1.0, 0.5], 64.0, raid::RAID_BEFORE);
     let mut ecs = false;
     for _ in 0..200 {
         h.tick();
         ecs |= ecs_act(&h.world, e) == "pre_raid";
     }
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     villager::ext_mut(&mut r.mobs[i]).raid = villager::PRE_RAID;
     let mut mob = false;
     for _ in 0..200 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "pre_raid");
     }
     assert!(ecs && mob, "pre_raid : ECS {ecs}, Mob {mob}");
@@ -344,19 +389,21 @@ fn raid_victory_awake() {
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 14);
+    h.tick();
+    h.tick();
     raid::set_status(&mut h.world, [0.5, 1.0, 0.5], 64.0, raid::RAID_VICTORY);
     let mut ecs = false;
     for _ in 0..200 {
         h.tick();
         ecs |= ecs_act(&h.world, e) == "raid";
     }
-    let mut r = MobRef::new(40, false);
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_VICTORY;
     villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
     let mut mob = false;
     for _ in 0..200 {
-        r.step(None);
+        mstep(&mut r);
         mob |= mob_token(&r.mobs[i], "raid");
     }
     assert!(ecs && mob, "victoire : ECS {ecs}, Mob {mob}");
@@ -370,28 +417,34 @@ fn react_to_bell_awake() {
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     let quiet = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 15);
-    h.tick();
-    let now = now_of(&h.world, quiet) as i64;
-    set(&mut h.world, quiet, &HEARD_BELL, MemValue::Int(now), None);
-    (hide::REACT_TO_BELL.can_start)(&mut h.world, quiet, &ctx(&()));
-    let ecs_quiet = ecs_act(&h.world, quiet) == "hide";
-    raid::set_status(&mut h.world, [0.5, 1.0, 0.5], 64.0, raid::RAID_BEFORE);
     let busy = spawn(&mut h, "minecraft:villager", 1.5, 0.5, 16);
     h.tick();
+    h.tick();
+    // Only the busy one is in a raid (as the `raid` field of the second `Mob` below).
+    set(&mut h.world, busy, &raid::RAID_STATUS, MemValue::Int(raid::RAID_BEFORE), None);
+    let now = now_of(&h.world, quiet) as i64;
+    set(&mut h.world, quiet, &HEARD_BELL, MemValue::Int(now), None);
     set(&mut h.world, busy, &HEARD_BELL, MemValue::Int(now), None);
-    (hide::REACT_TO_BELL.can_start)(&mut h.world, busy, &ctx(&()));
-    let ecs_raid = ecs_act(&h.world, busy) == "hide";
-    let mut r = MobRef::new(40, false);
+    let (mut ecs_quiet, mut ecs_raid) = (false, false);
+    for _ in 0..5 {
+        h.tick();
+        ecs_quiet |= ecs_act(&h.world, quiet) == "hide";
+        ecs_raid |= ecs_act(&h.world, busy) == "hide";
+    }
+    let mut r = mob_ref();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let j = r.add_kind(Vec3::new(1.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     villager::ext_mut(&mut r.mobs[j]).raid = villager::PRE_RAID;
+    mstep(&mut r);
     villager_brain::heard_bell(&mut r.mobs[i], r.t);
     villager_brain::heard_bell(&mut r.mobs[j], r.t);
+    let (mut mob_quiet, mut mob_raid) = (false, false);
     for _ in 0..5 {
-        r.step(None);
+        mstep(&mut r);
+        mob_quiet |= mob_token(&r.mobs[i], "hide");
+        mob_raid |= mob_token(&r.mobs[j], "hide");
     }
-    let mob_quiet = mob_token(&r.mobs[i], "hide");
-    let mob_raid = !mob_token(&r.mobs[j], "hide");
+    let (mob_raid, ecs_raid) = (!mob_raid, ecs_raid);
     assert!(ecs_quiet && !ecs_raid, "ECS : sans raid {ecs_quiet}, avec raid hide {ecs_raid}");
     assert!(mob_quiet && mob_raid, "Mob : sans raid {mob_quiet}, avec raid {mob_raid}");
 }

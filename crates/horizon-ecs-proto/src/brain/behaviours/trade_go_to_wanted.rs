@@ -14,6 +14,7 @@ const PICKS_UP: &str = "minecraft:villager_picks_up";
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_go_to_wanted_item",
     mems: &[&WALK_TARGET, &LOOK_TARGET],
+    wakes_on_item: 4.0,
     can_start,
     start,
     tick,
@@ -46,7 +47,8 @@ fn start(w: &mut World, e: Entity, _: &Ctx) {
 
 /// Walking until the path is done; then the item in reach (2.25 squared) is taken and the behaviour ends.
 fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    if !nav_done(w, e) {
+    // The walk target is the sink's to take: until it has and the path is done, the walk is under way.
+    if walk_target(w, e).is_some() || !nav_done(w, e) {
         return true;
     }
     erase(w, e, &WALK_TARGET);

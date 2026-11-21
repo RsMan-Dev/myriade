@@ -252,8 +252,8 @@ fn avoid_1_player_in_and_out_of_range() {
         return;
     }
     for d in [7.0, 9.0] {
-        let (nm, ne, sm, se) = mean_start(&AvOpt::new(false, d, 8.0), 30);
-        eprintln!("avoid_1 player at {d} (max 8), 30 trials: starts mob {nm} ecs {ne}; mean start tick mob {sm:.2} ecs {se:.2}");
+        let (nm, ne, sm, se) = mean_start(&AvOpt::new(false, d, 8.0), 120);
+        eprintln!("avoid_1 player at {d} (max 8), 120 trials: starts mob {nm} ecs {ne}; mean start tick mob {sm:.2} ecs {se:.2}");
         assert_eq!(nm == 0, d > 8.0);
         assert_eq!(nm, ne, "number of trials that start");
         assert!((sm - se).abs() < 1.5, "start tick law differs");

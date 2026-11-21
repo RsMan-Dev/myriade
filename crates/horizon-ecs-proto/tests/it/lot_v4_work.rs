@@ -72,10 +72,22 @@ fn the_warden_without_target_looks_at_its_disturbance_awake() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = warden(&mut h);
+    // A warden that has just appeared is emerging: its head and legs are not its own until that ends.
+    for _ in 0..200 {
+        h.tick();
+    }
     h.world.get_mut::<RareState>(e).unwrap().disturbance = Some([10, 64, 10]);
     h.world.get_mut::<RareState>(e).unwrap().disturbance_until = u64::MAX;
-    h.tick();
-    let look = h.world.get::<Look>(e).unwrap().target;
+    // What `vibration_listen` does when it keeps a vibration: the goal is asked at the next selector tick.
+    horizon_ecs_proto::goals::arm_module(&mut h.world, e, &horizon_ecs_proto::behaviours::warden_look_target::MODULE, 1);
+    let mut look = [0.0; 3];
+    for _ in 0..10 {
+        h.tick();
+        let t = h.world.get::<Look>(e).unwrap().target;
+        if t != [0.0; 3] {
+            look = t;
+        }
+    }
     assert!((look[0] - 10.5).abs() < 1e-6 && (look[1] - 64.5).abs() < 1e-6 && (look[2] - 10.5).abs() < 1e-6, "regard : {look:?}");
 }
 
@@ -88,7 +100,9 @@ fn the_warden_drops_a_target_that_is_gone_awake() {
     let mut h = Herd::with_slab_awake(60, true, false);
     let e = warden(&mut h);
     set_target(&mut h.world, e, Target::player(9999, 100));
-    h.tick();
+    for _ in 0..10 {
+        h.tick();
+    }
     assert!(h.world.get::<Target>(e).is_none());
     assert!(h.world.get::<ActPhase>(e).unwrap().dig_cooldown_until > now_of(&h.world, e));
 }
