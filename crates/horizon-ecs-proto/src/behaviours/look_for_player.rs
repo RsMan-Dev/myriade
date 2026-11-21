@@ -7,6 +7,7 @@ use super::*;
 use crate::targeting::{self, Eye, FollowRange, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::look_for_player::gaze_hits;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -68,12 +69,7 @@ fn stared(level: &Level, ps: &crate::hostile::PlayerState, p: Player, feet: Vec3
     let me = Vec3::new(feet.x, feet.y + eye, feet.z);
     let at_player = Vec3::new(p.x, p.eye(), p.z);
     let dir = [me.x - at_player.x, me.y - at_player.y, me.z - at_player.z];
-    let dist = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
-    if dist < 1.0e-6 {
-        return false;
-    }
-    let dot = (look[0] * dir[0] + look[1] * dir[1] + look[2] * dir[2]) / dist;
-    dot > 1.0 - 0.025 / dist && level.mw.0.line_of_sight(at_player, me)
+    gaze_hits(look, dir) && level.mw.0.line_of_sight(at_player, me)
 }
 fn eligible(ps: &crate::hostile::PlayerState, id: u32) -> bool {
     ps.alive(id) && !ps.creative(id) && !ps.spectator(id)

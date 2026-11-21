@@ -5,6 +5,7 @@
 use super::*;
 use crate::behaviours::{block_breaker, invulnerable_charge, side_heads};
 use crate::cow::*;
+use crate::rules::phase_shield::{powered_at, refuses_hit};
 
 /// What the damage path tells of the hurt.
 #[derive(Clone, Copy, Debug)]
@@ -17,16 +18,12 @@ pub struct Hurt {
 /// `WitherBoss.isPowered`: health at or below half.
 pub fn powered(w: &World, e: Entity) -> bool {
     let (Some(h), Some(m)) = (w.get::<Health>(e), w.get::<MaxHealth>(e)) else { return false };
-    h.0 <= m.0 / 2.0
+    powered_at(h.0, m.0)
 }
 pub fn accepts(w: &mut World, e: Entity, hurt: Hurt) -> bool {
-    if invulnerable_charge::charging(w, e) && !hurt.bypass_invulnerable {
-        return false;
-    }
-    if powered(w, e) && hurt.direct_arrow {
-        return false;
-    }
-    if hurt.undead_attacker || hurt.attacker == Some(e) {
+    let charging = invulnerable_charge::charging(w, e);
+    let undead_or_self = hurt.undead_attacker || hurt.attacker == Some(e);
+    if refuses_hit(charging, hurt.bypass_invulnerable, powered(w, e), hurt.direct_arrow, undead_or_self) {
         return false;
     }
     block_breaker::hurt(w, e);

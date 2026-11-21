@@ -6,6 +6,7 @@ use crate::brain::behaviours::look_at_entity::species_id;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::d2;
+use crate::rules::villager_interact as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -43,7 +44,7 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     let p = c.get::<Params>();
     let id = species_id(w, p.species);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let found = find_closest(w, e, |w, who| wanted(w, who, p, id) && info(w, who).is_some_and(|i| d2(pos, i.pos) <= 64.0));
+    let found = find_closest(w, e, |w, who| wanted(w, who, p, id) && info(w, who).is_some_and(|i| rules::in_reach(d2(pos, i.pos))));
     let Some(who) = found else { return };
     if p.breed {
         set(w, e, &BREED_TARGET, MemValue::Who(who), None);
@@ -51,5 +52,5 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
         set(w, e, &INTERACTION_TARGET, MemValue::Who(who), None);
     }
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
-    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: 0.5, close: 2 }), None);
+    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: rules::SPEED, close: rules::CLOSE }), None);
 }

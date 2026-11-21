@@ -5,6 +5,7 @@ use super::reach_block::block_centre;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::now_of;
+use crate::rules::sleep_in_bed::bed_close;
 
 pub struct Params {
     pub speed: f64,
@@ -44,10 +45,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     }
     let Some(p) = bed(w, e) else { return false };
     // `SleepInBed.checkExtraStartConditions`: the bed's centre within 2 blocks; short of it, the walk goes on (or starts again).
-    let close = w.get::<crate::cow::Pos>(e).is_some_and(|at| {
-        let c = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
-        (at.0.x - c[0]).powi(2) + (at.0.y - c[1]).powi(2) + (at.0.z - c[2]).powi(2) < 4.0
-    });
+    let close = w.get::<crate::cow::Pos>(e).is_some_and(|at| bed_close(&at.0, p));
     if !close {
         if nav_done(w, e) {
             walk_to(w, e, block_centre(p), c.get::<Params>().speed);

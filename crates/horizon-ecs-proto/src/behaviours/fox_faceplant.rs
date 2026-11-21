@@ -1,6 +1,7 @@
 //! `Fox.FaceplantGoal` (fiche 21): the fox stays with its nose in the snow for 20 selector ticks, that is 40 game ticks.
 //! It starts when `Pounce` sets FACEPLANTED (a wake), ends at its deadline and clears the flag when it stops.
 use super::fox_state::{self as fs, FACEPLANTED};
+use crate::rules::fox_faceplant::game_ticks;
 use super::*;
 use crate::{cow::*, goals::*};
 
@@ -42,7 +43,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
-    let wait = 2 * w.get::<FaceplantTicks>(e).unwrap().0;
+    let wait = game_ticks(w.get::<FaceplantTicks>(e).unwrap().0);
     let end = now_of(w, e) + wait as u64;
     w.entity_mut(e).insert(FaceplantEnd(end));
     crate::goals::arm(w, e, inst.slot, wait);

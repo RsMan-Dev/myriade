@@ -7,6 +7,7 @@ use crate::behaviours::bed::NEAREST_BED;
 use crate::blocks;
 use crate::brain::*;
 use crate::goals::{with_rng, Jump};
+use crate::rules::jump_on_bed::session_jumps;
 use bevy_ecs::prelude::Component;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -54,7 +55,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 
 fn start(w: &mut World, e: Entity, _: &Ctx) {
     let Some(p) = bed(w, e) else { return };
-    let jumps = 3 + with_rng(w, e, |r| r.next_int(4));
+    let jumps = with_rng(w, e, |r| session_jumps(&mut |n| r.next_int(n)));
     w.entity_mut(e).insert(Bounce { bed: p, time_left: 100, jumps, cooldown: 0 });
     walk_to(w, e, p, 0.5, 0);
 }

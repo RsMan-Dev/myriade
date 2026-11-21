@@ -5,6 +5,7 @@
 //! it is woken by EVENT (`PlayerWatch` radius 4, or hurt). Not ported: the head turning of a hanging bat, the wake when the block above
 //! is removed (no block event yet), a player already inside the radius when the bat hangs.
 use super::*;
+use crate::rules::bat_flutter;
 use crate::{cow::*, goals::*};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -79,16 +80,12 @@ fn decide(level: Res<Level>, mut q: Query<(Entity, &Pos, &mut Flutter, &mut Rng)
         if let Some(t) = f.0 && (!mw.facts.is_air(mw.world.block(t[0], t[1], t[2])) || t[1] <= mw.world.bottom_y()) {
             f.0 = None;
         }
-        let near = |t: [i32; 3]| {
-            let d = |a: i32, b: f64| f64::from(a) + 0.5 - b;
-            d(t[0], pos.x).powi(2) + d(t[1], pos.y).powi(2) + d(t[2], pos.z).powi(2) < 4.0
-        };
+        let near = |t: [i32; 3]| bat_flutter::is_near(t, pos.x, pos.y, pos.z);
         if f.0.is_none() || r.next_int(30) == 0 || f.0.is_some_and(near) {
-            let mut o = |b: i32| f64::from(r.next_int(b));
-            let (x, y, z) = (pos.x + o(7) - o(7), pos.y + o(6) - 2.0, pos.z + o(7) - o(7));
-            f.0 = Some([x.floor() as i32, y.floor() as i32, z.floor() as i32]);
+            let o = |b: i32| f64::from(r.next_int(b));
+            f.0 = Some(bat_flutter::spot(pos.x, pos.y, pos.z, o));
         }
-        let above = [pos.x.floor() as i32, pos.y.floor() as i32 + 1, pos.z.floor() as i32];
+        let above = bat_flutter::above(pos.x, pos.y, pos.z);
         if r.next_int(100) == 0 && conductor(&level, above) {
             cmd.entity(e).insert(Perching);
         }
@@ -96,14 +93,12 @@ fn decide(level: Res<Level>, mut q: Query<(Entity, &Pos, &mut Flutter, &mut Rng)
 }
 /// The velocity toward the spot (a tenth of the gap to 0.5 / 0.7 / 0.5 of speed), the yaw along it. (The forward input 0.5 the `Mob` sets is zeroed by its move control, which has no operation: no push.)
 fn steer(mut q: Query<(&Flutter, &mut Vel, &mut Yaw, &Pos), With<Fluttering>>) {
-    let sign = |v: f64| if v == 0.0 || v.is_nan() { v } else { v.signum() };
     for (f, mut v, mut yaw, p) in &mut q {
         let Some(t) = f.0 else { continue };
         let (dx, dy, dz) = (f64::from(t[0]) + 0.5 - p.0.x, f64::from(t[1]) + 0.1 - p.0.y, f64::from(t[2]) + 0.5 - p.0.z);
         // `LivingEntity.aiStep` drops the tiny motions BEFORE the step of the AI.
         crate::locomotion::fly::drop_tiny_motion(&mut v);
-        let (tenth, u) = (f64::from(0.1_f32), v.0);
-        v.0 = Vec3::new(u.x + (sign(dx) * 0.5 - u.x) * tenth, u.y + (sign(dy) * f64::from(0.7_f32) - u.y) * tenth, u.z + (sign(dz) * 0.5 - u.z) * tenth);
+        v.0 = bat_flutter::steer(v.0, dx, dy, dz);
         yaw.0 += crate::cow::wrap(horizon_core::geometry::trig::atan2_degrees(v.0.z, v.0.x) - 90.0 - yaw.0);
     }
 }

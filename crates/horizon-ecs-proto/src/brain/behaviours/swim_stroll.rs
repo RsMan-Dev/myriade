@@ -5,6 +5,7 @@
 use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::{FluidState, Level, Pos};
+use crate::rules::swim_stroll::{self as rules, SCALE};
 use crate::spots::{pick_for, Pick};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::mobs::data::PathComputationType;
@@ -25,7 +26,7 @@ pub struct Params {
     pub scale: &'static [(i32, i32)],
 }
 impl Params {
-    pub const DEFAULT: Params = Params { speed: 0.5, scale: &[(1, 1), (3, 3), (5, 5), (6, 5), (7, 7), (10, 7)] };
+    pub const DEFAULT: Params = Params { speed: 0.5, scale: SCALE };
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -50,12 +51,7 @@ fn swim_point(w: &mut World, e: Entity, scale: &[(i32, i32)]) -> Option<[f64; 3]
     for &(h, v) in scale {
         let point = match fallback {
             None => first_try(w, e, h, v),
-            Some(last) => {
-                let d = [last[0] - me[0], last[1] - me[1], last[2] - me[2]];
-                let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-                let n = if len < 1.0e-5 { [0.0; 3] } else { d.map(|c| c / len) };
-                Some([me[0] + n[0] * f64::from(h), me[1] + n[1] * f64::from(v), me[2] + n[2] * f64::from(h)])
-            }
+            Some(last) => Some(rules::extend(me, last, h, v)),
         };
         let Some(point) = point else { break };
         let q = block(point);

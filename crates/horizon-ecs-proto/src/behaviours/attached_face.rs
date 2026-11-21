@@ -5,9 +5,7 @@ use crate::cow::Pos;
 use super::*;
 use crate::goals::Events;
 use crate::rules::Rule;
-
-/// The lid's rate of easing per tick, the same for every lid.
-pub const LID_SPEED: f32 = 0.05;
+pub use crate::rules::attached_face::{eased_step, physical_peek, LID_SPEED};
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Attached {
@@ -55,18 +53,12 @@ pub fn set_peek(w: &mut World, e: Entity, amount: i32, sounds: &Sounds, covered:
 /// The lid eases toward its raw peek; the sweep pushes what it opens into.
 pub fn ease(mut lids: Query<(Entity, &mut Attached)>, mut commands: Commands) {
     for (e, mut a) in &mut lids {
-        let target = a.raw as f32 * 0.01;
         let old = a.eased;
-        let new = if old > target { (old - LID_SPEED).max(target) } else { (old + LID_SPEED).min(target).max(0.0) };
+        let new = eased_step(old, a.raw);
         if new != old {
             a.eased = new;
             commands.queue(move |w: &mut World| crate::cow::push_lid(w, e, old, new));
         }
     }
-}
-
-/// `getPhysicalPeek`: how far the lid stands from the body's wall.
-pub fn physical_peek(eased: f32) -> f32 {
-    0.5 - ((0.5 + eased) * std::f32::consts::PI).sin() * 0.5
 }
 

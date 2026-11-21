@@ -5,6 +5,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::targeting::{Target, Targets};
+use crate::rules::ghast_look::{look_angle, yaw_degrees};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -57,25 +58,15 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, look_run);
 }
-fn deg() -> f32 {
-    180.0_f32 / std::f32::consts::PI
-}
 /// `GhastLookGoal.tick`: the body (and the yaw) faces the target within range, else the motion.
 fn look_run(
     tg: Targets,
     mut q: Query<(&Pos, &Vel, &mut Yaw, &mut Head, &GhastGaze, Option<&Target>), With<GhastLooking>>,
 ) {
     for (pos, vel, mut yaw, mut head, g, target) in &mut q {
-        let info = target.and_then(|t| tg.info(t.who));
-        let angle = match info {
-            None => Some(horizon_core::geometry::trig::atan2(vel.0.x, vel.0.z)),
-            Some(i) => {
-                let (dx, dy, dz) = (i.pos.x - pos.0.x, i.pos.y - pos.0.y, i.pos.z - pos.0.z);
-                (dx * dx + dy * dy + dz * dz < g.range_sqr).then(|| horizon_core::geometry::trig::atan2(dx, dz))
-            }
-        };
-        if let Some(a) = angle {
-            yaw.0 = -(a as f32) * deg();
+        let offset = target.and_then(|t| tg.info(t.who)).map(|i| (i.pos.x - pos.0.x, i.pos.y - pos.0.y, i.pos.z - pos.0.z));
+        if let Some(a) = look_angle(vel.0.x, vel.0.z, offset, g.range_sqr) {
+            yaw.0 = yaw_degrees(a);
             head.body = yaw.0;
         }
     }

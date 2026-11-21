@@ -3,6 +3,7 @@
 //! then gets up to help). The order ends it (`tame::order_sit`). What wakes it: the order, landing, leaving a fluid.
 use super::*;
 use crate::{cow::*, goals::*, tame};
+use crate::rules::sit_when_ordered::owner_needs_help;
 
 pub static MODULE: Module = Module {
     name: "sit_when_ordered",
@@ -47,7 +48,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
                 }
                 _ => false,
             };
-            !(d < 144.0 && attacked) && sitting
+            !owner_needs_help(d, attacked) && sitting
         }
     }
 }

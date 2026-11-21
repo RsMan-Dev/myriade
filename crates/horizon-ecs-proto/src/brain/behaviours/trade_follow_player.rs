@@ -5,6 +5,7 @@ use crate::behaviours::trade_session::Trading;
 use crate::brain::*;
 use crate::cow::{now_of, FluidState, HurtAt, Pos};
 use crate::goals::d2;
+use crate::rules::trade_follow_player as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -24,13 +25,13 @@ fn trader(w: &World, e: Entity) -> Option<u32> {
     let at = info(w, Who::Player(p))?.pos;
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     let hurt = w.get::<HurtAt>(e).is_some_and(|h| now_of(w, e) < h.at + 10);
-    (!in_water && !hurt && d2(pos, at) <= 16.0).then_some(p)
+    (!in_water && !hurt && rules::in_reach(d2(pos, at))).then_some(p)
 }
 
 fn aim(w: &mut World, e: Entity, p: u32) {
     let who = Who::Player(p);
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
-    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: 0.5, close: 2 }), None);
+    set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: rules::SPEED, close: rules::CLOSE }), None);
 }
 
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {

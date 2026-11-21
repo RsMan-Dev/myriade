@@ -3,6 +3,7 @@
 //! player while the pocket is full; the throw at arrival (a brain step) and the emptying are outside this module.
 //! What wakes it: the owner entering or leaving the radius (`PlayerWatch`), and `pocket_changed` when the pocket is filled.
 use super::*;
+use crate::rules::give_to_owner::{owner_in_range, repath_tick, watch_radius};
 use crate::{goals::*, hostile::PlayerState, pocket::Pocket, tame};
 
 #[derive(Clone, Copy, Debug)]
@@ -45,7 +46,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
         w.entity_mut(e).insert(Pocket::default());
     }
     if w.get::<PlayerWatch>(e).is_none() {
-        w.entity_mut(e).insert(PlayerWatch::new(p.range.min(64.0) as f32));
+        w.entity_mut(e).insert(PlayerWatch::new(watch_radius(p.range)));
     }
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
@@ -99,9 +100,9 @@ fn give_step(world: &mut World, e: Entity) {
     let Some(owner) = tame::owner_player(world, e) else { return };
     let mut st = world.get_mut::<Giving>(e).unwrap();
     st.fresh = false;
-    st.recalc -= 1;
-    if st.recalc <= 0 {
-        st.recalc = 10;
+    let (recalc, due) = repath_tick(st.recalc);
+    st.recalc = recalc;
+    if due {
         go_to_at(world, e, [owner.x, owner.y, owner.z], g.p.speed, 0);
     }
 }
@@ -115,7 +116,7 @@ fn can_use_at(w: &mut World, e: Entity) -> bool {
     if w.resource::<PlayerState>().spectator(owner.id) {
         return false;
     }
-    tame::owner_distance_sqr(w, e).is_some_and(|d| d <= g.range * g.range)
+    tame::owner_distance_sqr(w, e).is_some_and(|d| owner_in_range(d, g.range))
 }
 
 #[cfg(test)]

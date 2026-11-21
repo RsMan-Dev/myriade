@@ -5,6 +5,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::move_towards_target::{beyond_within, within_range};
 use crate::spots::{self, Pick};
 use crate::targeting::{self, Target, TargetWatchers, Who};
 
@@ -73,7 +74,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(who) = w.get::<Target>(e).map(|t| t.who) else { return false };
     let Some(i) = targeting::info(w, who) else { return false };
     let (Some(p), Some(a)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Approach>(e).copied()) else { return false };
-    if d2(p, i.pos) > a.within * a.within {
+    if beyond_within(d2(p, i.pos), a.within) {
         return false;
     }
     let to = [i.pos.x, i.pos.y, i.pos.z];
@@ -100,7 +101,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 /// `canContinueToUse` (la fin du chemin passe par `ends_with_path`) : la cible vit et reste à `within` blocs.
 fn approach_run(tg: targeting::Targets, hp: Query<&Health>, q: Query<(Entity, &Pos, &Approach, Option<&Target>), With<ApproachingTarget>>, mut reqs: ResMut<Requests>) {
     for (e, pos, a, t) in &q {
-        let keep = t.is_some_and(|t| tg.info(t.who).is_some_and(|i| alive(&hp, t.who) && d2(pos.0, i.pos) < a.within * a.within));
+        let keep = t.is_some_and(|t| tg.info(t.who).is_some_and(|i| alive(&hp, t.who) && within_range(d2(pos.0, i.pos), a.within)));
         if !keep {
             reqs.0.push(Req::End(e, a.slot));
         }

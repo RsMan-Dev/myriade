@@ -5,6 +5,7 @@
 use super::*;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::follow_flock_leader::{ask_ticks, asks_left, beyond_leash, can_be_followed, reduced, search_delay};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -67,13 +68,9 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
         area: p.area,
     });
 }
-/// `reduced(n)`: `Goal.reducedTickDelay`.
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
-/// `nextStartTick` drawn on the fish's random: `reduced(200 + nextInt(200) % 20)`.
+/// `nextStartTick` drawn on the fish's random.
 fn next_start_tick(w: &mut World, e: Entity) -> i32 {
-    with_rng(w, e, |r| reduced(200 + r.next_int(200) % 20))
+    with_rng(w, e, |r| search_delay(r.next_int(200)))
 }
 /// The first delay, drawn at creation (the `Mob` draws it in the constructor).
 fn arm(w: &mut World, e: Entity, _: Inst) {
@@ -84,7 +81,7 @@ fn arm(w: &mut World, e: Entity, _: Inst) {
 /// Arms the deadline `asks` asks from now: a selector asks `canUse` every 2 ticks of a goal with no flag.
 fn arm_asks(w: &mut World, e: Entity, asks: i32) {
     let slot = w.get::<School>(e).unwrap().slot;
-    let at = now_of(w, e) + 2 * (asks.max(0) as u64 + 1);
+    let at = now_of(w, e) + ask_ticks(asks);
     w.get_mut::<School>(e).unwrap().armed_at = at;
     arm_at(w, e, at, Due::Goal(slot));
 }
@@ -97,10 +94,6 @@ fn leads_alive(w: &World, leader: Option<Entity>) -> bool {
 }
 fn following(w: &World, e: Entity) -> bool {
     leads_alive(w, w.get::<School>(e).and_then(|s| s.leader))
-}
-/// `canBeFollowed`: it has followers and room for more.
-fn can_be_followed(max: i32, followers: i32) -> bool {
-    followers > 0 && followers + 1 < max
 }
 /// A deadline of this fish came up (or a replayed start for a fish that follows): true = ask `canUse` now. A deadline that
 /// is not the current one (a stale one, or a deadline of a goal that is running) is nothing.
@@ -194,7 +187,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let now = now_of(w, e);
     let mut s = *w.get::<School>(e).unwrap();
     if s.armed_at > now {
-        s.next = (((s.armed_at - now) / 2).saturating_sub(1)) as i32;
+        s.next = asks_left(s.armed_at, now);
     } else if s.frozen {
         s.next = 0;
     }
@@ -241,7 +234,7 @@ fn follow_run(w: &mut World, q: &mut QueryState<Entity, With<Following>>) {
             continue;
         };
         let (a, b) = (w.get::<Pos>(e).unwrap().0, w.get::<Pos>(leader).unwrap().0);
-        if a.distance_squared(b) > 121.0 {
+        if beyond_leash(a.distance_squared(b)) {
             end_goal(w, e, s.slot);
             continue;
         }

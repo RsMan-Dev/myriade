@@ -3,6 +3,7 @@
 //! the climb goes on straight at the target block when the path is over or when there is none: a wish per animal (`ClimbWish`), run by
 //! `arbitrate` (no system of its own: nothing costs while no climber has a wish).
 use crate::cow::*;
+use crate::rules::climb::keep_climbing;
 use bevy_ecs::prelude::*;
 
 /// The walk's `climber` parameter: the path requests of this animal leave a wish (`wish`).
@@ -44,9 +45,7 @@ pub fn tick(w: &mut World) {
             continue;
         }
         let width = f64::from(b);
-        let center = |q: [i32; 3]| (f64::from(q[0]) + 0.5 - p.x).powi(2) + (f64::from(q[1]) + 0.5 - p.y).powi(2) + (f64::from(q[2]) + 0.5 - p.z).powi(2) < width * width;
-        let same_level = [t[0], p.y.floor() as i32, t[2]];
-        if !center(t) && (p.y <= f64::from(t[1]) || !center(same_level)) {
+        if keep_climbing(p, width, t) {
             if let Some(mut m) = w.get_mut::<MoveTo>(e) {
                 *m = MoveTo { active: true, x: f64::from(t[0]), y: f64::from(t[1]), z: f64::from(t[2]), speed_modifier: speed };
             }

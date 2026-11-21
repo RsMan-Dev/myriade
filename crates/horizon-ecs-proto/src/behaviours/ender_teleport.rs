@@ -6,6 +6,7 @@
 //! The callers are the goals that ask for a teleport (`look_for_player`'s near and far counts) and the projectile flight.
 use super::*;
 use crate::cow::*;
+use crate::rules::ender_teleport::{random_offset, spot_box, spread_offset, towards_spot};
 use horizon_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
@@ -79,8 +80,7 @@ pub fn teleport_to(w: &mut World, e: Entity, target: Vec3) -> bool {
     if refused(ground) {
         return false;
     }
-    let half = f64::from(b.width) / 2.0;
-    let bounds = Aabb::new(Vec3::new(target.x - half, ny, target.z - half), Vec3::new(target.x + half, ny + f64::from(b.height), target.z + half));
+    let bounds = spot_box(target.x, ny, target.z, f64::from(b.width), f64::from(b.height));
     if !mw.no_collision(bounds) {
         return false;
     }
@@ -108,17 +108,14 @@ pub fn land(w: &mut World, e: Entity, at: Vec3) {
 /// `Enderman.teleportRandom`: a spot within 32 blocks, 32 up or down.
 pub fn random(w: &mut World, e: Entity) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    let (dx, dy, dz) = crate::goals::with_rng(w, e, |r| ((r.next_f64() - 0.5) * 64.0, r.next_int(64) - 32, (r.next_f64() - 0.5) * 64.0));
+    let (dx, dy, dz) = crate::goals::with_rng(w, e, |r| random_offset(r.next_f64(), r.next_int(64), r.next_f64()));
     teleport_to(w, e, Vec3::new(pos.x + dx, pos.y + f64::from(dy), pos.z + dz))
 }
 /// `Enderman.teleportTowards`: 16 blocks along the line to `at`, with a spread.
 pub fn towards(w: &mut World, e: Entity, at: Vec3, eye_y: f64) -> bool {
     let (Some(pos), Some(h)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Body>(e).map(|b| f64::from(b.height))) else { return false };
-    let mut d = [pos.x - at.x, pos.y + h * 0.5 - eye_y, pos.z - at.z];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1.0e-9);
-    d = d.map(|c| c / len);
-    let (rx, ry, rz) = crate::goals::with_rng(w, e, |r| ((r.next_f64() - 0.5) * 8.0, r.next_int(16) - 8, (r.next_f64() - 0.5) * 8.0));
-    teleport_to(w, e, Vec3::new(pos.x + rx - d[0] * 16.0, pos.y + f64::from(ry) - d[1] * 16.0, pos.z + rz - d[2] * 16.0))
+    let offset = crate::goals::with_rng(w, e, |r| spread_offset(r.next_f64(), r.next_int(16), r.next_f64()));
+    teleport_to(w, e, towards_spot(pos, at, h, eye_y, offset))
 }
 /// `repeatedlyTryToTeleport`: up to `tries` random teleports, until one succeeds.
 pub fn repeatedly(w: &mut World, e: Entity, tries: u32) -> bool {

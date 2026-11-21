@@ -14,8 +14,7 @@ pub struct Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Cfg(pub Params);
 
-/// Squared distance under which the entity has arrived (`closerThan(block, 2)`).
-const CLOSE_SQR: f64 = 4.0;
+use crate::rules::go_to_disturbance::{spot_of, still_away};
 
 pub static MODULE: Module = Module {
     name: "go_to_disturbance",
@@ -40,14 +39,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         return false;
     }
     let at = w.get::<Pos>(e).unwrap().0;
-    let d = [f64::from(p[0]) + 0.5 - at.x, f64::from(p[1]) - at.y, f64::from(p[2]) + 0.5 - at.z];
-    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] >= CLOSE_SQR
+    still_away(p, [at.x, at.y, at.z])
 }
 
 fn start(w: &mut World, e: Entity, _: Inst) {
     let speed = w.get::<Cfg>(e).unwrap().0.speed;
     let Some(p) = w.get::<RareState>(e).unwrap().disturbance else { return };
-    let spot = [f64::from(p[0]) + 0.5, f64::from(p[1]), f64::from(p[2]) + 0.5];
+    let spot = spot_of(p);
     crate::brain::look_at(w, e, spot);
     w.get_mut::<Nav>(e).unwrap().speed = speed;
     let mut s = w.get_mut::<Stroll>(e).unwrap();

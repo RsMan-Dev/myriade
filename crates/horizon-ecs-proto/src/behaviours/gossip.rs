@@ -6,58 +6,10 @@ use bevy_ecs::prelude::*;
 use crate::cow::now_of;
 use std::collections::BTreeMap;
 
-pub const DAY: u64 = 24000;
-/// `Villager.gossip` : entendre à nouveau attend 1200 ticks, pour les deux.
-pub const HEARD_WAIT: u64 = 1200;
-pub const PER_EVENT: i32 = 25;
-pub const PER_TRADE: i32 = 2;
-const DISCARD: i32 = 2;
-const TRANSFERRED: usize = 10;
+pub use crate::rules::gossip::{DAY, HEARD_WAIT, Kind, PER_EVENT, PER_TRADE};
+use crate::rules::gossip::{added_value, day_due, day_ttl, decayed_value, free_to_hear, reputation, transfer_picks, transferred_value};
 
 pub static GOSSIP_DAY: MemKey = MemKey::new("horizon:gossip_day", Shape::Unit);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Kind {
-    MajorNegative,
-    MinorNegative,
-    MinorPositive,
-    MajorPositive,
-    Trading,
-}
-impl Kind {
-    pub const ALL: [Kind; 5] = [Kind::MajorNegative, Kind::MinorNegative, Kind::MinorPositive, Kind::MajorPositive, Kind::Trading];
-    pub fn weight(self) -> i32 {
-        match self {
-            Kind::MajorNegative => -5,
-            Kind::MinorNegative => -1,
-            Kind::MinorPositive | Kind::Trading => 1,
-            Kind::MajorPositive => 5,
-        }
-    }
-    pub fn max(self) -> i32 {
-        match self {
-            Kind::MajorNegative => 100,
-            Kind::MinorNegative => 200,
-            Kind::MinorPositive | Kind::Trading => 25,
-            Kind::MajorPositive => 20,
-        }
-    }
-    pub fn decay_per_day(self) -> i32 {
-        match self {
-            Kind::MajorNegative => 10,
-            Kind::MinorNegative => 20,
-            Kind::MinorPositive => 1,
-            Kind::MajorPositive => 0,
-            Kind::Trading => 2,
-        }
-    }
-    pub fn decay_per_transfer(self) -> i32 {
-        match self {
-            Kind::MinorPositive => 5,
-            _ => 20,
-        }
-    }
-}
 
 /// Par joueur, la valeur de chaque type (0 : aucun), et le temps du dernier décompte (`since`).
 #[derive(Component, Clone, Debug, Default)]
@@ -80,16 +32,13 @@ impl Gossips {
     }
     /// `getReputation` : la somme pondérée de tous les types, pour ce joueur.
     pub fn reputation(&self, player: u32) -> i32 {
-        self.map.get(&player).map_or(0, |e| Kind::ALL.iter().map(|k| e[*k as usize] * k.weight()).sum())
+        self.map.get(&player).map_or(0, reputation)
     }
     /// `add` : additionne jusqu'au maximum du type, oublie sous 2.
     fn add(&mut self, player: u32, kind: Kind, amount: i32) {
         let e = self.map.entry(player).or_insert([0; 5]);
         let old = e[kind as usize];
-        let sum = old + amount;
-        let v = if old == 0 { amount } else if sum > kind.max() { kind.max().max(old) } else { sum };
-        let v = v.min(kind.max());
-        e[kind as usize] = if v < DISCARD { 0 } else { v };
+        e[kind as usize] = added_value(old, amount, kind);
         if e.iter().all(|x| *x == 0) {
             self.map.remove(&player);
         }
@@ -98,11 +47,7 @@ impl Gossips {
     fn decay(&mut self) {
         self.map.retain(|_, e| {
             for k in Kind::ALL {
-                let v = e[k as usize];
-                if v != 0 {
-                    let next = v - k.decay_per_day();
-                    e[k as usize] = if next < DISCARD { 0 } else { next };
-                }
+                e[k as usize] = decayed_value(e[k as usize], k);
             }
             e.iter().any(|x| *x != 0)
         });
@@ -115,24 +60,8 @@ impl Gossips {
             .iter()
             .flat_map(|(p, e)| Kind::ALL.into_iter().filter(|k| e[*k as usize] != 0).map(move |k| (*p, k, e[k as usize])))
             .collect();
-        let mut ends = Vec::with_capacity(entries.len());
-        let mut total = 0;
-        for (_, k, v) in &entries {
-            total += (v * k.weight()).abs();
-            ends.push(total - 1);
-        }
-        let mut picked: Vec<usize> = Vec::new();
-        if total > 0 {
-            for _ in 0..TRANSFERRED {
-                let index = match ends.binary_search(&draw(total)) {
-                    Ok(i) | Err(i) => i,
-                };
-                if !picked.contains(&index) {
-                    picked.push(index);
-                }
-            }
-        }
-        picked.into_iter().map(|i| entries[i]).collect()
+        let values: Vec<(Kind, i32)> = entries.iter().map(|(_, k, v)| (*k, *v)).collect();
+        transfer_picks(&values, draw).into_iter().map(|i| entries[i]).collect()
     }
 }
 
@@ -140,7 +69,7 @@ impl Gossips {
 fn plan_day(w: &mut World, e: Entity, now: u64) {
     let Some(since) = w.get::<Gossips>(e).map(|g| g.since) else { return };
     if !present(w, e, &GOSSIP_DAY) {
-        let ttl = (since + DAY).saturating_sub(now).max(1);
+        let ttl = day_ttl(since, now);
         set(w, e, &GOSSIP_DAY, MemValue::Unit, Some(ttl));
     }
 }
@@ -170,7 +99,7 @@ pub fn add(w: &mut World, e: Entity, player: u32, kind: Kind, amount: i32) {
 /// (l'appelant enchaîne `summon_defender::check`).
 pub fn meet(w: &mut World, a: Entity, b: Entity) -> bool {
     let now = now_of(w, a);
-    let free = |w: &World, e: Entity| w.get::<Heard>(e).is_none_or(|h| now < h.0 || now >= h.0 + HEARD_WAIT);
+    let free = |w: &World, e: Entity| w.get::<Heard>(e).is_none_or(|h| free_to_hear(h.0, now));
     if !free(w, a) || !free(w, b) {
         return false;
     }
@@ -179,8 +108,7 @@ pub fn meet(w: &mut World, a: Entity, b: Entity) -> bool {
         None => Vec::new(),
     };
     for (player, kind, value) in picked {
-        let decayed = value - kind.decay_per_transfer();
-        if decayed >= DISCARD {
+        if let Some(decayed) = transferred_value(value, kind) {
             if w.get::<Gossips>(a).is_none() {
                 w.entity_mut(a).insert(Gossips { map: BTreeMap::new(), since: now });
             }
@@ -205,7 +133,7 @@ fn decay(w: &mut World, e: Entity, _: &Ctx) {
     let now = now_of(w, e);
     let empty = {
         let mut g = w.get_mut::<Gossips>(e).unwrap();
-        if now >= g.since + DAY {
+        if day_due(g.since, now) {
             g.decay();
             g.since = now;
         }

@@ -8,6 +8,7 @@ use crate::cow::*;
 use crate::goals::*;
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::mobs::MobWorld;
+use crate::rules::lay_spawn::manhattan_cells;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -108,26 +109,6 @@ fn land_near_water(mw: &MobWorld, p: [i32; 3]) -> bool {
         is_air(mw, n) && mw.fluid(n[0], n[1] - 1, n[2]) == Fluid::Water
     })
 }
-/// `BlockPos.withinManhattan`: nearest first, then x, y, and +z before -z.
-fn manhattan_box(o: [i32; 3], range: i32) -> Vec<[i32; 3]> {
-    let mut out = Vec::new();
-    for depth in 0..=range * 3 {
-        let max_x = range.min(depth);
-        for x in -max_x..=max_x {
-            let max_y = range.min(depth - x.abs());
-            for y in -max_y..=max_y {
-                let z = depth - x.abs() - y.abs();
-                if z <= range {
-                    out.push([o[0] + x, o[1] + y, o[2] + z]);
-                    if z != 0 {
-                        out.push([o[0] + x, o[1] + y, o[2] - z]);
-                    }
-                }
-            }
-        }
-    }
-    out
-}
 /// One brain turn of the Mob's `step`: forget the target when the walk is over, search (rate-limited), then try to lay.
 fn step(w: &mut World, e: Entity) {
     let Some(mut l) = w.get::<Layer>(e).copied() else { return };
@@ -143,7 +124,7 @@ fn step(w: &mut World, e: Entity) {
     let mw = w.resource::<Level>().mw.0;
     if l.target.is_none() && done && mw.fluid(at[0], at[1], at[2]) != Fluid::Water && now >= l.next_ok {
         l.next_ok = now + l.p.search_every;
-        let found = manhattan_box(at, l.p.range).into_iter().find(|p| (p[0] != at[0] || p[2] != at[2]) && land_near_water(mw, *p));
+        let found = manhattan_cells(at, l.p.range).into_iter().find(|p| (p[0] != at[0] || p[2] != at[2]) && land_near_water(mw, *p));
         if let Some(p) = found {
             l.target = Some(p);
             *w.get_mut::<Layer>(e).unwrap() = l;

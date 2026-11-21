@@ -13,6 +13,7 @@ use bevy_ecs::prelude::Resource;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use std::collections::BTreeSet;
+use crate::rules::food_gift::gift_spot;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_give_gift_to_hero",
@@ -53,6 +54,6 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     let i = with_rng(w, e, |r| r.next_int(gifts.len() as i32)) as usize;
     let (name, n) = gifts[i];
     let Some(p) = w.get::<Pos>(e).map(|q| q.0) else { return };
-    let at = Vec3::new(p.x, p.y + 1.0, p.z);
+    let at = gift_spot(p);
     drop_item(w, ItemStack::new(name, n as u32), at, Vec3::new(0.0, 0.3, 0.0), 40);
 }

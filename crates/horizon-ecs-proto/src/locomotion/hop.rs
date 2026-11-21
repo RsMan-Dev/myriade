@@ -8,6 +8,7 @@ use crate::{
     behaviours::{Cap, Inst, Module},
     cow::*,
 };
+use crate::rules::hop::{bound_power, bound_velocity, hop_speed, path_wait, redirect_ticks, wander_wait};
 use bevy_ecs::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -92,7 +93,7 @@ fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav), W
             commands.entity(e).remove::<Hopping>();
             if let Some(p) = h.p.path {
                 // The wait of the next bound depends on the speed of the path it follows.
-                h.pending = if nav.speed >= p.fast_from { p.fast_delay } else { p.delay };
+                h.pending = path_wait(nav.speed, p.fast_from, p.delay, p.fast_delay);
             }
             h.armed = true;
             wheel.push(clock.at(e, now + h.pending as u64).max(clock.0 + 1), e, Due::Hop);
@@ -100,7 +101,7 @@ fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav), W
             // In the air a body that follows a path keeps what the walk gave it.
             commands.entity(e).insert(Moving);
         } else {
-            let speed = (h.p.speed_modifier * body.speed) as f32;
+            let speed = hop_speed(h.p.speed_modifier, body.speed);
             d.speed = speed;
             d.zza = speed;
             commands.entity(e).insert(Moving);
@@ -119,18 +120,9 @@ pub fn due(w: &mut World, e: Entity) {
             return;
         }
         let (speed_mod, wall) = (w.get::<Nav>(e).map_or(1.0, |n| n.speed), w.get::<Contact>(e).is_some_and(|c| c.horizontal));
-        let power = if wall { p.high } else if speed_mod <= p.low_to { p.low } else { p.mid };
+        let power = bound_power(wall, speed_mod, p.low, p.low_to, p.mid, p.high);
         let yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
-        let mut v = w.get::<Vel>(e).unwrap().0;
-        v.y = v.y.max(power);
-        if v.x * v.x + v.z * v.z < 0.01 {
-            let (s, c) = (f64::from((yaw * horizon_core::geometry::trig::DEG_TO_RAD).sin()), f64::from((yaw * horizon_core::geometry::trig::DEG_TO_RAD).cos()));
-            // moveRelative(push, (0, 1.5, 1)): the input is normalised (0, 0.832, 0.555).
-            let (f, up) = (f64::from(p.push) * 0.554_700_2, f64::from(p.push) * 0.832_050_3);
-            v.x += -f * s;
-            v.z += f * c;
-            v.y += up;
-        }
+        let v = bound_velocity(w.get::<Vel>(e).unwrap().0, power, p.push, yaw);
         w.get_mut::<Vel>(e).unwrap().0 = v;
         w.get_mut::<Hop>(e).unwrap().jumped_at = now;
         w.entity_mut(e).insert((Hopping, Moving));
@@ -141,25 +133,23 @@ pub fn due(w: &mut World, e: Entity) {
     while left > 0 {
         if h.redirect <= left {
             left -= h.redirect;
-            h.redirect = (h.p.redirect_base + crate::goals::with_rng(w, e, |r| r.next_int(h.p.redirect_extra)) + 1) / 2;
+            let draw = crate::goals::with_rng(w, e, |r| r.next_int(h.p.redirect_extra));
+            h.redirect = redirect_ticks(h.p.redirect_base, draw);
             h.dir = crate::goals::with_rng(w, e, |r| r.next_int(360)) as f32;
         } else {
             h.redirect -= left;
             left = 0;
         }
     }
-    let mut pending = (h.p.delay_base + crate::goals::with_rng(w, e, |r| r.next_int(h.p.delay_extra))) * h.p.delay_mul.max(1);
-    if h.aggressive {
-        pending /= h.p.aggressive_div.max(1);
-    }
-    h.pending = pending;
+    let draw = crate::goals::with_rng(w, e, |r| r.next_int(h.p.delay_extra));
+    h.pending = wander_wait(h.p.delay_base, draw, h.p.delay_mul, h.aggressive, h.p.aggressive_div);
     h.jumped_at = now;
     *w.get_mut::<Hop>(e).unwrap() = h;
     // The body has turned to its direction by the jump (`rotlerp` by 90 degrees a tick, over a wait of 10 ticks at least).
     if let Some(mut y) = w.get_mut::<Yaw>(e) {
         y.0 = h.dir;
     }
-    let speed = (h.p.speed_modifier * w.get::<Body>(e).map_or(0.0, |b| b.speed)) as f32;
+    let speed = hop_speed(h.p.speed_modifier, w.get::<Body>(e).map_or(0.0, |b| b.speed));
     if let Some(mut d) = w.get_mut::<Drive>(e) {
         d.jump = true;
         d.speed = speed;

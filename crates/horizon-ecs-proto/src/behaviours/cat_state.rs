@@ -38,18 +38,11 @@ pub fn set(w: &mut World, e: Entity, f: impl FnOnce(&mut CatPose)) {
         f(&mut p);
     }
 }
-/// `MathHelper`-free `reduced(n) = (n + 1) / 2`: the vanilla halving of a delay drawn for the selector's asks.
-pub fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
+pub use crate::rules::cat_state::{empty_above, reduced};
 /// The block the entity stands in.
 pub fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
-/// `Mob`'s `empty_above`: the block above `p` is air.
-pub fn empty_above(mw: &horizon_client_lib::mobs::MobWorld, p: [i32; 3]) -> bool {
-    mw.block_name(p[0], p[1] + 1, p[2]) == "minecraft:air"
 }
 /// The level's world (the blocks, their tags and properties).
 pub fn level(w: &World) -> &horizon_client_lib::mobs::MobWorld {

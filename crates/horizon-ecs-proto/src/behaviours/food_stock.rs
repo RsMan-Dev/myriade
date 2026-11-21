@@ -6,9 +6,8 @@ use bevy_ecs::prelude::*;
 use crate::cow::Level;
 use horizon_client_lib::items::Items;
 
-pub const WANT: i32 = 12;
-pub const EXCESS: i32 = 24;
-const DIGEST: i32 = 12;
+pub use crate::rules::food_stock::{EXCESS, WANT};
+use crate::rules::food_stock as rule;
 
 /// Points de nourriture mangés et non encore digérés.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -20,20 +19,20 @@ pub fn items(w: &World) -> &'static Items {
     w.resource::<Level>().mw.0.items.expect("item data")
 }
 pub fn level(w: &World, e: Entity, items: &Items) -> i32 {
-    w.get::<Food>(e).map_or(0, |f| f.0) + w.get::<Stock>(e).map_or(0, |s| inv::points(items, s))
+    rule::total(w.get::<Food>(e).map_or(0, |f| f.0), w.get::<Stock>(e).map_or(0, |s| inv::points(items, s)))
 }
 pub fn can_breed(w: &World, e: Entity, items: &Items) -> bool {
-    level(w, e, items) >= WANT
+    rule::can_breed(level(w, e, items))
 }
 pub fn wants_more(w: &World, e: Entity, items: &Items) -> bool {
-    level(w, e, items) < WANT
+    rule::wants_more(level(w, e, items))
 }
 pub fn has_excess(w: &World, e: Entity, items: &Items) -> bool {
-    level(w, e, items) >= EXCESS
+    rule::has_excess(level(w, e, items))
 }
 /// `eatAndDigest` : digère une part de la réserve.
 pub fn digest(w: &mut World, e: Entity) {
     if let Some(mut f) = w.get_mut::<Food>(e) {
-        f.0 = (f.0 - DIGEST).max(0);
+        f.0 = rule::digested(f.0);
     }
 }

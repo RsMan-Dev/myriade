@@ -7,9 +7,9 @@ use crate::behaviours::Cap;
 use crate::blocks;
 use crate::brain::*;
 use crate::cow::{Nav, Pos};
+use crate::rules::interact_with_door as rules;
 use bevy_ecs::prelude::Component;
 use horizon_client_lib::mobs::MobWorld;
-use horizon_core::geometry::Vec3;
 use horizon_world::registry::BlockStateId;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -63,16 +63,10 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let Some((_, to)) = step(w, e) else { return false };
     let p = c.get::<Params>();
     let Some(mut s) = w.get_mut::<DoorState>(e) else { return false };
-    if s.last_node == Some(to) {
-        s.cooldown = p.cooldown;
-    } else {
-        s.cooldown -= 1;
-        if s.cooldown > 0 {
-            return false;
-        }
-    }
+    let (cooldown, taken) = rules::step_gate(s.last_node, to, s.cooldown, p.cooldown);
+    s.cooldown = cooldown;
     s.last_node = Some(to);
-    true
+    taken
 }
 
 /// `interact_with_doors`: asks for the doors of the step to open (the one left always, the one ahead only when it is closed),
@@ -99,8 +93,7 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
                 kept.push(door);
                 continue;
             }
-            let centre = Vec3::new(f64::from(door[0]) + 0.5, f64::from(door[1]) + 0.5, f64::from(door[2]) + 0.5);
-            if me.distance_squared(centre) >= p.close_range_sqr || door_open(mw, door) != Some(true) {
+            if !rules::in_close_range(me, door, p.close_range_sqr) || door_open(mw, door) != Some(true) {
                 continue;
             }
             changes.push((door, false));
@@ -112,7 +105,7 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     }
     for (door, open) in changes {
         // The other half takes the `open` of this one (`DoorBlock.updateShape` copies it from the neighbour half).
-        let other = if blocks::property(mw, door, "half").as_deref() == Some("upper") { -1 } else { 1 };
+        let other = rules::other_half_dy(blocks::property(mw, door, "half").as_deref() == Some("upper"));
         for p in [door, [door[0], door[1] + other, door[2]]] {
             if door_open(mw, p).is_none() {
                 continue;
@@ -141,6 +134,7 @@ fn door_with_open(mw: &MobWorld, p: [i32; 3], open: bool) -> Option<BlockStateId
 #[cfg(test)]
 mod tests {
     use super::*;
+    use horizon_core::geometry::Vec3;
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
     use horizon_client_lib::mobs::path::{Path, PathNode, PathType};
 

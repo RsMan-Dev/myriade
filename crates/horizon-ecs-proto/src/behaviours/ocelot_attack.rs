@@ -12,6 +12,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::hostile::PlayerState;
+use crate::rules::ocelot_attack::{cool_down, melee_reach2, pounce_speed, strike_amount};
 use crate::targeting::{self, Target, TargetWatchers, Who};
 
 #[derive(Clone, Copy, Debug)]
@@ -147,8 +148,7 @@ fn tick_one(w: &mut World, e: Entity) -> bool {
     if d > pn.p.within {
         return false;
     }
-    let reach = f64::from(w.get::<Body>(e).map_or(0.0, |b| b.width)) * 2.0;
-    let melee = reach * reach;
+    let melee = melee_reach2(w.get::<Body>(e).map_or(0.0, |b| b.width));
     if let Some(mut l) = w.get_mut::<Look>(e) {
         l.target = [i.pos.x, i.eye, i.pos.z];
         l.cooldown = 2;
@@ -158,15 +158,9 @@ fn tick_one(w: &mut World, e: Entity) -> bool {
     if w.get::<Looking>(e).is_none() {
         w.entity_mut(e).insert(Looking);
     }
-    let speed = if d > melee && d < pn.p.band {
-        pn.p.near
-    } else if d < pn.p.within {
-        pn.p.slow
-    } else {
-        pn.p.far
-    };
+    let speed = pounce_speed(d, melee, pn.p.band, pn.p.within, pn.p.near, pn.p.slow, pn.p.far);
     go_to_at(w, e, [i.pos.x, i.pos.y, i.pos.z], speed, 0);
-    let mut attack_time = (pn.attack_time - 1).max(0);
+    let mut attack_time = cool_down(pn.attack_time);
     if d <= melee && attack_time <= 0 {
         attack_time = pn.p.cooldown;
         strike(w, e, who);
@@ -179,7 +173,7 @@ fn tick_one(w: &mut World, e: Entity) -> bool {
 /// Le coup : dégâts d'attribut (1 si nul), par `hostile::strike`.
 fn strike(w: &mut World, e: Entity, who: Who) {
     let amount = w.get::<AttackDamage>(e).map_or(0.0, |d| d.0);
-    crate::hostile::strike(w, e, who, if amount <= 0.0 { 1.0 } else { amount });
+    crate::hostile::strike(w, e, who, strike_amount(amount));
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 //! effect changing wake it, the end is a deadline. Not done: the item in the hand, the dimension with a fixed time (no model of it).
 use super::*;
 use crate::{cow::*, effects::{self, Kind}, goals::*, hostile::Daylight};
+use crate::rules::drink_item::{drink_now, finish_pitch};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -53,7 +54,7 @@ fn of(w: &World, e: Entity, inst: Inst) -> &'static Params {
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let day = w.resource::<Daylight>().0;
     let invisible = effects::has(w, e, Kind::Invisibility);
-    if of(w, e, inst).dark { !day && !invisible } else { day && invisible }
+    drink_now(of(w, e, inst).dark, day, invisible)
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let p = of(w, e, inst);
@@ -83,7 +84,7 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Drinking>();
     let p = of(w, e, inst);
-    let pitch = with_rng(w, e, |r| r.next_f64() as f32) * 0.2 + 0.9;
+    let pitch = finish_pitch(with_rng(w, e, |r| r.next_f64() as f32));
     super::act_phase::sound(w, e, p.finish_sound, 1.0, pitch);
 }
 fn tick(w: &mut World) {

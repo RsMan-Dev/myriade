@@ -5,6 +5,8 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::block_breaker::{break_box, countdown_due};
+use crate::rules::block_reach::block_of;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -40,7 +42,7 @@ pub fn hurt(w: &mut World, e: Entity) {
     if b.due > now {
         return;
     }
-    let due = now + b.p.delay.max(0) as u64;
+    let due = countdown_due(now, b.p.delay);
     w.get_mut::<Breaker>(e).unwrap().due = due;
     arm_at(w, e, due, Due::Goal(b.slot));
 }
@@ -67,9 +69,8 @@ fn breaks(w: &mut World, e: Entity) {
         w.get::<Bounds>(e).map_or(0.0, |b| b.0.size().x),
         w.get::<Bounds>(e).map_or(0.0, |b| b.0.size().y),
     );
-    let half = (width / 2.0 + 1.0).floor() as i32;
-    let high = height.floor() as i32;
-    let b = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
+    let (half, high) = break_box(width, height);
+    let b = block_of(pos.x, pos.y, pos.z);
     let mut destroyed = false;
     for x in b[0] - half..=b[0] + half {
         for y in b[1]..=b[1] + high {

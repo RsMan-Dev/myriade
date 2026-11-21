@@ -9,6 +9,8 @@ use crate::leash::{held_by, holder_of, Holder};
 use crate::targeting::{self, Eye, FollowRange, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::defend_leash_holder::beyond_range;
+use crate::rules::defend_trusted::{hit_is_fresh, target_memory};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -54,7 +56,7 @@ fn wake(ev: Res<Events>, leashes: Option<Res<crate::leash::Leashes>>, q: Query<&
 fn record(w: &World, e: Entity) -> Option<(Who, u64)> {
     let Some(Holder::Entity(h)) = holder_of(w, e) else { return None };
     let r = w.get::<LastHurtBy>(h)?;
-    (now_of(w, h).saturating_sub(r.at) <= 100).then_some((r.who, r.at))
+    hit_is_fresh(now_of(w, h), r.at).then_some((r.who, r.at))
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(d) = w.get::<Defender>(e).copied() else { return false };
@@ -67,7 +69,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         return false;
     }
     let (Some(pos), Some(range), Some(look)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<FollowRange>(e).map(|r| r.0), w.get::<Eye>(e).map(|y| y.0)) else { return false };
-    if d2(pos, i.pos) > range * range || !w.resource::<Level>().mw.0.line_of_sight_for(Some(pos.y), Vec3::new(pos.x, pos.y + look, pos.z), Vec3::new(i.pos.x, i.eye, i.pos.z)) {
+    if beyond_range(d2(pos, i.pos), range) || !w.resource::<Level>().mw.0.line_of_sight_for(Some(pos.y), Vec3::new(pos.x, pos.y + look, pos.z), Vec3::new(i.pos.x, i.eye, i.pos.z)) {
         return false;
     }
     w.get_mut::<Defender>(e).unwrap().attacker = Some(who);
@@ -79,7 +81,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     if let Some((_, at)) = record(w, e) {
         w.get_mut::<Defender>(e).unwrap().handled = at;
     }
-    let mut t = Target::new(who, ((d.p.unseen_memory + 1) / 2) as u16, inst.slot);
+    let mut t = Target::new(who, target_memory(d.p.unseen_memory), inst.slot);
     t.must_see = false;
     targeting::set_target(w, e, t);
 }

@@ -11,6 +11,7 @@ use crate::goals::*;
 use crate::hostile::PlayerState;
 use crate::targeting::{self, Target, Who};
 use horizon_core::geometry::Vec3;
+use crate::rules::defend_village_target::nearest_player;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -124,7 +125,7 @@ fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {
             players.push((pos.distance_squared(at), pl.id));
         }
     });
-    players.into_iter().min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1))).map(|(_, id)| id)
+    nearest_player(players)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if let Some(mut a) = w.get_resource_mut::<Asks>() {

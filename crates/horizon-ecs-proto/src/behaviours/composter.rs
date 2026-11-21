@@ -7,6 +7,7 @@ use bevy_ecs::prelude::World;
 use super::block_reach::{centre_dist_sq, look_block};
 use super::trade_restock;
 use crate::brain::*;
+use crate::rules::composter::{at_site, check_due};
 use crate::cow::{now_of, Pos};
 use crate::goals::with_rng;
 use crate::species::villager::JOB_SITE;
@@ -45,7 +46,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(p) = site(w, e) else { return false };
     let now = now_of(w, e);
     let last = w.get::<LastCheck>(e).map_or(0, |l| l.0);
-    if (now as i64) - (last as i64) < 300 {
+    if !check_due(now, last) {
         return false;
     }
     if with_rng(w, e, |r| r.next_int(2)) != 0 {
@@ -53,7 +54,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     }
     w.entity_mut(e).insert(LastCheck(now));
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    centre_dist_sq(p, at) < 1.73 * 1.73
+    at_site(centre_dist_sq(p, at))
 }
 
 fn start(w: &mut World, e: Entity, c: &Ctx) {

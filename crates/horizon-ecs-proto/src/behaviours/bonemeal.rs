@@ -9,6 +9,7 @@ use crate::blocks;
 use crate::brain::*;
 use crate::cow::now_of;
 use crate::goals::with_rng;
+use crate::rules::bonemeal::{self as rules, CYCLE_EVERY, MAX_CYCLES};
 use bevy_ecs::prelude::Component;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
@@ -45,11 +46,11 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return false;
     }
     let now = now_of(w, e);
-    if now % 10 != 0 {
+    if now % CYCLE_EVERY != 0 {
         return false;
     }
     let last = w.get::<Session>(e).map_or(0, |s| s.last);
-    if last != 0 && last + 160 > now {
+    if !rules::may_start(last, now) {
         return false;
     }
     if inventory::count(w, e, BONE_MEAL) == 0 {
@@ -74,18 +75,18 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let mw = blocks::world_of(w);
     let now = now_of(w, e);
     let mut s = w.get::<Session>(e).copied().unwrap_or_default();
-    if s.worked >= 80 || !(p.growable)(mw, q) {
+    if rules::session_full(s.worked) || !(p.growable)(mw, q) {
         w.entity_mut(e).insert(Session { last: now, ..s });
         return false;
     }
     let Some(here) = block_at(w, e) else { return false };
-    if now >= s.next_work && (0..3).all(|i| (here[i] - q[i]).abs() <= 1) {
+    if now >= s.next_work && rules::near_crop(here, q) {
         if inventory::take(w, e, BONE_MEAL, 1) {
-            let ages = with_rng(w, e, |r| r.next_int(4)) + 2;
+            let ages = rules::ages(with_rng(w, e, |r| r.next_int(4)));
             if let Some(id) = (p.grow)(mw, q, ages) {
                 blocks::set_state_id(w, q, id);
             }
-            s.next_work = now + 40;
+            s.next_work = rules::next_cycle_at(now);
         }
         s.worked += 1;
         w.entity_mut(e).insert(s);

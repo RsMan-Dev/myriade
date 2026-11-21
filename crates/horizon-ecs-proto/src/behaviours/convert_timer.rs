@@ -3,6 +3,7 @@
 //! (`conversion::convert`, socle absent). The count is dropped when the place turns safe again (`stop`).
 use crate::goals;
 use super::*;
+use crate::rules::convert_timer::{count_over as is_over, until};
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -49,8 +50,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, _: Inst) {
     let after = w.get::<Convert>(e).unwrap().0.after;
     // The first check runs one tick after creation, the `Mob`'s count began with its first tick: one tick is already counted.
-    let until = now_of(w, e) + after - 1;
-    w.entity_mut(e).insert(Converting { until });
+    let due = until(now_of(w, e), after);
+    w.entity_mut(e).insert(Converting { until: due });
     crate::cow::after(w, e, (after - 1) as i32, count_over);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
@@ -58,13 +59,13 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// The deadline of a count: the conversion is asked at the selector's end of this tick, unless `stop` dropped the count.
 fn count_over(w: &mut World, e: Entity) {
-    if w.get::<Converting>(e).is_some_and(|c| now_of(w, e) >= c.until) {
+    if w.get::<Converting>(e).is_some_and(|c| is_over(now_of(w, e), c.until)) {
         w.resource_mut::<Requests>().0.push(Req::Call(e, convert_now));
     }
 }
 fn convert_now(w: &mut World, e: Entity) {
     let (Some(c), Some(cv)) = (w.get::<Converting>(e).copied(), w.get::<Convert>(e).copied()) else { return };
-    if now_of(w, e) >= c.until {
+    if is_over(now_of(w, e), c.until) {
         w.entity_mut(e).remove::<Converting>();
         crate::conversion::convert(w, e, cv.0.into, crate::conversion::ConvertKeep::ALL);
     }

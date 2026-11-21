@@ -7,6 +7,7 @@ use crate::brain::*;
 use crate::cow::{GrowAt, Pos};
 use crate::goals::{d2, set_main_hand, Online};
 use crate::items::item_id;
+use crate::rules::trade_show_offers as rules;
 use crate::targeting::{info, Who};
 use bevy_ecs::prelude::Component;
 
@@ -42,7 +43,7 @@ fn shown_player(w: &World, e: Entity) -> Option<u32> {
         return None;
     }
     let pos = w.get::<Pos>(e)?.0;
-    info(w, Who::Player(*p)).filter(|i| d2(pos, i.pos) <= 17.0).map(|_| *p)
+    info(w, Who::Player(*p)).filter(|i| rules::in_reach(d2(pos, i.pos))).map(|_| *p)
 }
 
 /// The offers the held item pays for, not out of stock (`findItemsToDisplay`).

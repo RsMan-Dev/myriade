@@ -1,6 +1,7 @@
 //! Ambient sounds (`PiglinAi` idle sounds, `mobs/piglin.rs:478-512`): every `min..max` ticks of its own time the animal plays one
 //! of `sounds`, drawn from its random source. The goal runs for an instant: start plays, the next try is armed, nothing polls.
 use super::*;
+use crate::rules::ambient_sound;
 use crate::{cow::*, goals::*};
 
 #[derive(Clone, Copy, Debug)]
@@ -33,7 +34,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;
     let r = w.get_mut::<Rng>(e).unwrap().next_u32();
-    (p.min + r % (p.max - p.min + 1)) as i32
+    ambient_sound::delay(p.min, p.max, r)
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let d = delay(w, e);
@@ -45,7 +46,7 @@ fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Ambient>(e).unwrap().0;
     if !p.sounds.is_empty() {
-        let pick = p.sounds[(w.get_mut::<Rng>(e).unwrap().next_u32() as usize) % p.sounds.len()];
+        let pick = p.sounds[ambient_sound::pick(w.get_mut::<Rng>(e).unwrap().next_u32(), p.sounds.len())];
         let at = w.get::<Pos>(e).unwrap().0;
         w.resource_mut::<Events>().host.sound(pick, [at.x, at.y, at.z], 1.0, 1.0);
     }

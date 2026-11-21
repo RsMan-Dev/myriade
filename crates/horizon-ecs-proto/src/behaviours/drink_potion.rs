@@ -7,6 +7,7 @@ use crate::cow::*;
 use crate::effects::{self, Kind};
 use crate::goals::*;
 use crate::targeting;
+use crate::rules::drink_potion::{beyond_11_blocks, healed, roll_hits, slowed};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Potion {
@@ -98,7 +99,7 @@ fn tick(w: &mut World) {
                 if let Some(potion) = choose(w, e) {
                     let Some(mut b) = w.get_mut::<Body>(e) else { continue };
                     let saved_speed = b.speed;
-                    b.speed = (saved_speed - p.speed_penalty).max(0.0);
+                    b.speed = slowed(saved_speed, p.speed_penalty);
                     w.entity_mut(e).insert(Drinking { potion, left: p.duration, saved_speed });
                 }
             }
@@ -119,7 +120,7 @@ fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
         Potion::Healing => {
             let max = w.get::<SpeciesId>(e).map_or(f32::MAX, |s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
             if let Some(mut h) = w.get_mut::<Health>(e) {
-                h.0 = (h.0 + p.heal).min(max);
+                h.0 = healed(h.0, p.heal, max);
             }
         }
     }
@@ -130,7 +131,7 @@ fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
 }
 /// The draws of `Witch.aiStep`, in its order, each condition after its own draw (so a failed draw spends no later one).
 fn choose(w: &mut World, e: Entity) -> Option<Potion> {
-    let mut roll = |w: &mut World, p: f64| w.get_mut::<Rng>(e).is_some_and(|mut r| r.next_f64() < p);
+    let mut roll = |w: &mut World, p: f64| w.get_mut::<Rng>(e).is_some_and(|mut r| roll_hits(r.next_f64(), p));
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.eye_in_water);
     if roll(w, 0.15) && in_water && !effects::has(w, e, Kind::WaterBreathing) {
         return Some(Potion::WaterBreathing);
@@ -151,7 +152,6 @@ fn choose(w: &mut World, e: Entity) -> Option<Potion> {
 fn far_target(w: &World, e: Entity) -> bool {
     let (Some(t), Some(p)) = (w.get::<targeting::Target>(e), w.get::<Pos>(e)) else { return false };
     targeting::info(w, t.who).is_some_and(|i| {
-        let (dx, dy, dz) = (i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z);
-        dx * dx + dy * dy + dz * dz > 121.0
+        beyond_11_blocks(i.pos.x - p.0.x, i.pos.y - p.0.y, i.pos.z - p.0.z)
     })
 }

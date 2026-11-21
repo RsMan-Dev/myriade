@@ -5,6 +5,7 @@ use crate::targeting::Who;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::{Index, Pos, SpeciesId};
+use crate::rules::hostiles_near::within_limit;
 use std::collections::BTreeMap;
 
 pub struct Params {
@@ -35,8 +36,7 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
     w.resource::<Index>().for_radius(at.x, at.z, reach, |o| {
         let (Some(kind), Some(q)) = (w.get::<SpeciesId>(o), w.get::<Pos>(o)) else { return };
         let Some(limit) = maps.get(p.map, species[kind.0 as usize].name) else { return };
-        let d2 = (q.0.x - at.x).powi(2) + (q.0.y - at.y).powi(2) + (q.0.z - at.z).powi(2);
-        if d2 <= limit * limit {
+        if let Some(d2) = within_limit([at.x, at.y, at.z], [q.0.x, q.0.y, q.0.z], limit) {
             found.push((d2, o));
         }
     });

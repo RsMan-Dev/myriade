@@ -9,6 +9,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::item;
+use crate::rules::move_to_item::reaches_item;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -131,7 +132,7 @@ fn tick(w: &mut World) {
         let near: Vec<Entity> = w
             .query::<(Entity, &Pos, &Fetcher)>()
             .iter(w)
-            .filter(|(_, p, f)| spots.iter().any(|s| (s.x - p.0.x).abs() <= f.p.scan + 1.0 && (s.y - p.0.y).abs() <= f.p.scan + 1.0 && (s.z - p.0.z).abs() <= f.p.scan + 1.0))
+            .filter(|(_, p, f)| spots.iter().any(|&s| reaches_item(s, p.0, f.p.scan)))
             .map(|x| x.0)
             .collect();
         for e in near {

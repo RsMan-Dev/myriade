@@ -3,6 +3,7 @@
 //! monster's `getWalkTargetValue`). The try is drawn when the goal is asked, 10 tries at most.
 use super::*;
 use crate::{cow::*, goals::*, hostile::Daylight, targeting::Target};
+use crate::rules::flee_sun::{bright_enough, centre, hide_offset};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -87,16 +88,16 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     // `hide_pos`: 10 tries, each drawing x, then y, then z.
     let mut found = None;
     for _ in 0..10 {
-        let (dx, dy, dz) = with_rng(w, e, |r| (r.next_int(20) - 10, r.next_int(6) - 3, r.next_int(20) - 10));
+        let (dx, dy, dz) = with_rng(w, e, |r| hide_offset(r.next_int(20), r.next_int(6), r.next_int(20)));
         let (x, y, z) = (bx + dx, by + dy, bz + dz);
-        if !mw.can_see_sky(x, y, z) && f64::from(mw.brightness(x, y, z)) > 0.5 {
+        if !mw.can_see_sky(x, y, z) && bright_enough(f64::from(mw.brightness(x, y, z))) {
             found = Some((x, y, z));
             break;
         }
     }
     match found {
         Some((x, y, z)) => {
-            pick(w, e, (f64::from(x) + 0.5, y, f64::from(z) + 0.5));
+            pick(w, e, (centre(x), y, centre(z)));
             true
         }
         None => {

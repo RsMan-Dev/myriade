@@ -5,6 +5,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::{AttackDamage, Bounds, Clock, DamageQueue, Pos};
 use crate::hostile::PlayerState;
+use crate::rules::melee_attack as rules;
 use crate::targeting::{self, Who};
 use horizon_core::geometry::Vec3;
 
@@ -35,7 +36,7 @@ impl Params {
 /// inside `hostile::melee_run`; it is written here because the frame has no such function (the lot's brief asked for its visibility).
 pub fn within_melee(w: &World, e: Entity, who: Who) -> bool {
     let (Some(b), Some(i)) = (w.get::<Bounds>(e), targeting::info(w, who)) else { return false };
-    let reach = 2.04_f32.sqrt() as f64 - 0.6;
+    let reach = rules::reach();
     b.0.inflate(Vec3::new(reach, 0.0, reach)).intersects(i.bounds)
 }
 

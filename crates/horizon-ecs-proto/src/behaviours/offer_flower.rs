@@ -3,6 +3,7 @@
 //! looking at it. Move + look flags. Not done: the entity events 11 and 34 (the arm raised: no channel to the client yet), the poppy given to a
 //! copper golem at the end (`MobEvent::Gift`); a villager is a candidate only once its species exists in the table (it is listed by name).
 use super::*;
+use crate::rules::offer_flower::{beyond_offer_height, hold_ticks, in_offer_reach, offer_wait, REACH};
 use crate::species::SpeciesSet;
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
@@ -40,7 +41,7 @@ fn next(w: &mut World, e: Entity) {
     if o.mask.is_empty() {
         return;
     }
-    let wait = with_rng(w, e, |r| 2 * geometric(r, o.p.chance));
+    let wait = with_rng(w, e, |r| offer_wait(|k| geometric(r, k), o.p.chance));
     crate::goals::arm(w, e, o.slot, wait);
 }
 fn arm(w: &mut World, e: Entity, _: Inst) {
@@ -63,13 +64,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let from = Vec3::new(pos.x, pos.y + eye, pos.z);
     let mw = w.resource::<Level>().mw.0;
     let mut best: Option<(f64, Entity)> = None;
-    w.resource::<Index>().for_radius(pos.x, pos.z, 6.0, |c| {
+    w.resource::<Index>().for_radius(pos.x, pos.z, REACH, |c| {
         let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-        if c == e || !o.mask.contains(cs.0) || (cp.0.y - pos.y).abs() > 2.0 {
+        if c == e || !o.mask.contains(cs.0) || beyond_offer_height(cp.0.y - pos.y) {
             return;
         }
         let d = d2(pos, cp.0);
-        if d <= 36.0 && best.is_none_or(|b| d < b.0 || (d == b.0 && c < b.1)) && mw.line_of_sight_for(Some(pos.y), from, Vec3::new(cp.0.x, cp.0.y + w.get::<crate::targeting::Eye>(c).map_or(1.0, |l| l.0), cp.0.z)) {
+        if in_offer_reach(d) &&best.is_none_or(|b| d < b.0 || (d == b.0 && c < b.1)) && mw.line_of_sight_for(Some(pos.y), from, Vec3::new(cp.0.x, cp.0.y + w.get::<crate::targeting::Eye>(c).map_or(1.0, |l| l.0), cp.0.z)) {
             best = Some((d, c));
         }
     });
@@ -80,7 +81,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     // The `Mob`'s goal ticks every other game tick: `reducedTickDelay(400)` of them last 400 game ticks. The tick that starts the goal also
     // runs it once (measured: 399 observed with `left: n`), so one more is counted for the hold to last the full `n` ticks.
     let n = w.get::<Offer>(e).unwrap().p.ticks;
-    w.entity_mut(e).insert(Offering { left: n + 1 });
+    w.entity_mut(e).insert(Offering { left: hold_ticks(n) });
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Offering>();

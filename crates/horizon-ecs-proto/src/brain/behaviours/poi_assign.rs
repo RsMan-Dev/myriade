@@ -10,7 +10,7 @@ use crate::brain::behaviours::poi_acquire::happy_particles;
 use crate::brain::*;
 use crate::cow::Pos;
 use bevy_ecs::prelude::*;
-use horizon_core::geometry::Vec3;
+use crate::rules::poi_assign as rules;
 use horizon_world::poi::PoiType;
 
 const NONE: u8 = 0;
@@ -35,8 +35,7 @@ fn keep(_: &mut World, _: Entity) {}
 fn can_assign(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
     let Some(s) = site(w, e, p.potential) else { return false };
-    let centre = Vec3::new(f64::from(s[0]) + 0.5, f64::from(s[1]) + 0.5, f64::from(s[2]) + 0.5);
-    w.get::<Pos>(e).is_some_and(|at| at.0.distance_squared(centre) < 4.0)
+    w.get::<Pos>(e).is_some_and(|at| rules::near(s, at.0))
 }
 
 fn assign(w: &mut World, e: Entity, c: &Ctx) {

@@ -7,6 +7,7 @@ use super::*;
 use crate::targeting::TargetWatchers;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
+use crate::rules::fox_stalk_prey::{beyond_still, close_enough};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -85,7 +86,7 @@ fn ready(w: &World, e: Entity) -> bool {
     }
     let Some((who, info)) = fs::live_target(w, e) else { return false };
     fs::is_type(w, who, plan.types)
-        && d2(fs::feet(w, e), info.pos) > plan.still_sqr
+        && beyond_still(d2(fs::feet(w, e), info.pos), plan.still_sqr)
         && !fs::has(w, e, CROUCHING | INTERESTED)
         && !jumping(w, e)
 }
@@ -146,7 +147,7 @@ fn stalk_run(w: &mut World) {
         let Some((_, info)) = fs::live_target(w, e) else { continue };
         let plan = *w.get::<Plan>(e).unwrap();
         fs::aim_at(w, e, [info.pos.x, info.eye, info.pos.z], None);
-        if d2(fs::feet(w, e), info.pos) <= plan.still_sqr {
+        if close_enough(d2(fs::feet(w, e), info.pos), plan.still_sqr) {
             fs::set(w, e, INTERESTED | CROUCHING, true);
             stop_nav(w, e);
         } else {

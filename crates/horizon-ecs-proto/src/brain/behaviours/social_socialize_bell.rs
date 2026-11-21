@@ -6,8 +6,8 @@ use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::*;
 use crate::cow::{Pos, SpeciesId};
 use crate::goals::{d2, with_rng};
+use crate::rules::social_socialize_bell as rules;
 use crate::targeting::{info, Who};
-use horizon_core::geometry::Vec3;
 
 pub struct Params {
     /// The memory of the meeting point (a block).
@@ -26,8 +26,7 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
 fn at_bell(w: &World, e: Entity, bell: &MemKey) -> bool {
     let Some(MemValue::Block(b)) = get(w, e, bell) else { return false };
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    let c = Vec3::new(f64::from(b[0]) + 0.5, f64::from(b[1]) + 0.5, f64::from(b[2]) + 0.5);
-    c.distance_squared(pos) < 16.0
+    rules::at_bell(*b, pos)
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -44,10 +43,10 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return false;
     }
     let Some(pos) = w.get::<Pos>(e).map(|q| q.0) else { return false };
-    if let Some(who) = find_closest(w, e, |w, who| is_villager(w, who) && info(w, who).is_some_and(|i| d2(pos, i.pos) <= 32.0)) {
+    if let Some(who) = find_closest(w, e, |w, who| is_villager(w, who) && info(w, who).is_some_and(|i| rules::in_reach(d2(pos, i.pos)))) {
         set(w, e, &INTERACTION_TARGET, MemValue::Who(who), None);
         set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
-        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: 0.3, close: 1 }), None);
+        set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Entity(who, false), speed: rules::SPEED, close: rules::CLOSE }), None);
     }
     true
 }

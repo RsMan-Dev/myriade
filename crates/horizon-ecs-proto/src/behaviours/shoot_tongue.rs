@@ -10,6 +10,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::size::Size;
 use horizon_core::geometry::Vec3;
+use crate::rules::shoot_tongue::{catch_done, eat_done, in_detection, in_eating_reach, pull_toward};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -125,7 +126,7 @@ fn scan(w: &World, e: Entity) -> Option<Entity> {
         }
         let Some(i) = view(w, o) else { return };
         let d = d2(pos, i.pos);
-        if d < t.p.detection * t.p.detection
+        if in_detection(d, t.p.detection)
             && best.is_none_or(|b| d < b.0)
             && mw.line_of_sight(Vec3::new(pos.x, pos.y + eye, pos.z), Vec3::new(i.pos.x, i.eye, i.pos.z))
         {
@@ -213,9 +214,9 @@ fn step(w: &mut World, e: Entity) {
     let me = w.get::<Pos>(e).map_or(i.pos, |p| p.0);
     match t.phase {
         Phase::Move => {
-            if d2(i.pos, me) < t.p.eating_distance * t.p.eating_distance {
+            if in_eating_reach(d2(i.pos, me), t.p.eating_distance) {
                 w.entity_mut(e).insert(TongueOut);
-                let pull = Vec3::new(me.x - i.pos.x, me.y - i.pos.y, me.z - i.pos.z).normalize().scale(0.75);
+                let pull = pull_toward(me, i.pos);
                 set_velocity(w, id, pull);
                 t.eat_timer = 0;
                 t.phase = Phase::Catch;
@@ -228,13 +229,13 @@ fn step(w: &mut World, e: Entity) {
         }
         Phase::Catch => {
             t.eat_timer += 1;
-            if t.eat_timer > 6 {
+            if catch_done(t.eat_timer) {
                 t.phase = Phase::Eat;
                 crate::despawn::remove(w, id);
             }
         }
         Phase::Eat => {
-            if t.eat_timer >= 10 {
+            if eat_done(t.eat_timer) {
                 t.phase = Phase::Done;
             } else {
                 t.eat_timer += 1;

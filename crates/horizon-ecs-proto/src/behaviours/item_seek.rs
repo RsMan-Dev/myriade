@@ -8,7 +8,8 @@ use super::*;
 use crate::cow::*;
 use crate::goals::LOOK;
 use crate::locomotion::hop::Hop;
-use horizon_core::geometry::{trig, Vec3};
+use crate::rules::item_seek::{aim_degrees, rotlerp};
+use horizon_core::geometry::Vec3;
 
 /// The point the cube aims at (the item it searches for).
 #[derive(Component, Clone, Copy, Debug)]
@@ -56,19 +57,10 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     let (Some(seek), Some(pos), Some(rate)) = (w.get::<Seek>(e).copied(), w.get::<Pos>(e).map(|p| p.0), w.get::<TurnRate>(e).map(|r| r.0)) else {
         return;
     };
-    let aim = trig::atan2_degrees(seek.point.z - pos.z, seek.point.x - pos.x) - 90.0;
+    let aim = aim_degrees(seek.point, pos);
     if let Some(mut hop) = w.get_mut::<Hop>(e) {
         hop.dir = rotlerp(hop.dir, aim, rate);
     }
     arm(w, e, inst);
 }
 fn stop(_: &mut World, _: Entity, _: Inst) {}
-
-/// `Mth.rotlerp`: turns `from` toward `to` by at most `max` degrees, along the short way.
-fn rotlerp(from: f32, to: f32, max: f32) -> f32 {
-    let mut d = (to - from).rem_euclid(360.0);
-    if d > 180.0 {
-        d -= 360.0;
-    }
-    from + d.clamp(-max, max)
-}

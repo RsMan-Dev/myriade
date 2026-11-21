@@ -5,6 +5,7 @@
 //! What wakes it: a target acquired (the watcher of the service); what ticks it: its marker, while it runs.
 use super::*;
 use crate::projectile::{launch, Damage, Flight};
+use crate::rules::ranged_bow::{bow_power, wrap_degrees};
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -93,11 +94,6 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 fn next_float(r: &mut Rng) -> f32 {
     (r.next_u32() >> 8) as f32 / (1u32 << 24) as f32
-}
-/// `BowItem.getPowerForTime`.
-fn bow_power(ticks: i32) -> f32 {
-    let t = ticks as f32 / 20.0;
-    ((t * t + t * 2.0) / 3.0).min(1.0)
 }
 /// `RangedBowAttackGoal.tick`, every tick of the goal.
 #[allow(clippy::type_complexity)]
@@ -211,16 +207,6 @@ fn bow_run(
             }
         }
     }
-}
-fn wrap_degrees(a: f32) -> f32 {
-    let mut a = a % 360.0;
-    if a >= 180.0 {
-        a -= 360.0;
-    }
-    if a < -180.0 {
-        a += 360.0;
-    }
-    a
 }
 /// `AbstractSkeleton.performRangedAttack`: the arrow starts at the eyes less 0.1, aimed at a third of the target's height
 /// and a fifth of the distance higher, at speed 1.6 with a spread of `14 - 4 * difficulty`; its base damage is

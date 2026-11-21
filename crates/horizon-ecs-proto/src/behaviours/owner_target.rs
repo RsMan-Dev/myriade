@@ -2,6 +2,8 @@
 //! owner hit last. What it never attacks is a parameter (kinds, kinds that are spared when they are tame, and what has the same owner).
 //! What wakes them: the owner's combat record changing (`tame::owner_events`), nothing else.
 use super::*;
+use crate::rules::nearest_target::reduced;
+use crate::rules::owner_target::recent_hurt;
 use crate::targeting::{self, Target, Who};
 use crate::{cow::*, goals::*, hostile::PlayerState, tame};
 
@@ -49,7 +51,7 @@ fn record(w: &World, e: Entity, p: &Params) -> Option<(Who, u64)> {
     let ps = w.resource::<PlayerState>();
     let r = if p.hurt_by { ps.hurt_by.get(id as usize) } else { ps.last_hurt.get(id as usize) }.copied().flatten()?;
     let now = w.resource::<Clock>().0;
-    (!p.hurt_by || now.saturating_sub(r.1) <= 100).then_some(r)
+    (!p.hurt_by || recent_hurt(now, r.1)).then_some(r)
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(st) = state(w, e, inst) else { return false };
@@ -67,7 +69,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     {
         t.handled = at;
     }
-    targeting::set_target(w, e, Target::new(who, ((st.p.unseen_memory + 1) / 2) as u16, inst.slot));
+    targeting::set_target(w, e, Target::new(who, reduced(st.p.unseen_memory) as u16, inst.slot));
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     if w.get::<Target>(e).is_some_and(|t| t.slot == inst.slot) {

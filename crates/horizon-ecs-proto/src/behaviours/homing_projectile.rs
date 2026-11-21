@@ -6,6 +6,7 @@
 use super::*;
 use crate::cow::*;
 use crate::projectile::{Flight, STEPS, launch};
+use crate::rules::homing_projectile::{grow_delta, turn_velocity, unit_delta, xorshift_draw};
 use crate::targeting::{self, Targets, Who};
 use horizon_core::geometry::Vec3;
 
@@ -65,11 +66,9 @@ pub fn spawn(w: &mut World, owner: Entity, target: Who, axis: u8, seed: u64, cfg
 }
 
 fn draw(h: &mut Homing, bound: i32) -> i32 {
-    h.seed ^= h.seed >> 12;
-    h.seed ^= h.seed << 25;
-    h.seed ^= h.seed >> 27;
-    let v = h.seed.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33;
-    (v % bound.max(1) as u64) as i32
+    let (seed, v) = xorshift_draw(h.seed, bound);
+    h.seed = seed;
+    v
 }
 
 fn cell(p: Vec3) -> [i32; 3] {
@@ -130,9 +129,7 @@ fn select_next(w: &mut World, e: Entity, excluded: Option<u8>) {
         selection = Some(pick);
     }
     let d = [goal[0] - pos.x, goal[1] - pos.y, goal[2] - pos.z];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    let speed = h.cfg.speed;
-    h.delta = if len == 0.0 { [0.0; 3] } else { d.map(|v| v / len * speed) };
+    h.delta = unit_delta(d, h.cfg.speed);
     let n = h.cfg.step_count;
     h.steps = h.cfg.base_steps + draw(&mut h, n) * h.cfg.step_len;
     h.dir = selection;
@@ -150,11 +147,8 @@ fn steer(tg: Targets, clock: Res<crate::cow::Clock>, mut q: Query<(&mut Vel, &mu
             continue;
         }
         let (grow, max, turn) = (h.cfg.grow, h.cfg.max_delta, h.cfg.turn);
-        for d in h.delta.iter_mut() {
-            *d = (*d * grow).clamp(-max, max);
-        }
-        let dl = h.delta;
-        v.0 = Vec3::new(v.0.x + (dl[0] - v.0.x) * turn, v.0.y + (dl[1] - v.0.y) * turn, v.0.z + (dl[2] - v.0.z) * turn);
+        h.delta = h.delta.map(|d| grow_delta(d, grow, max));
+        v.0 = turn_velocity(v.0, h.delta, turn);
     }
 }
 

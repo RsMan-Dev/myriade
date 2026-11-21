@@ -8,7 +8,7 @@ use crate::goals::*;
 use crate::item::{self, Item};
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
-use horizon_core::jmath;
+use crate::rules::play_with_items::throw_velocity;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -90,11 +90,8 @@ pub fn throw(w: &mut World, e: Entity) -> bool {
     });
     let (yaw, pitch) = (yaw.to_radians(), pitch.to_radians());
     let at = Vec3::new(pos.x, pos.y + eye - p.hand_lower, pos.z);
-    let v = Vec3::new(
-        p.push * -jmath::sin(yaw) * jmath::cos(pitch) + jmath::cos(dir) * pow2,
-        p.push * jmath::sin(pitch) * p.lift,
-        p.push * jmath::cos(yaw) * jmath::cos(pitch) + jmath::sin(dir) * pow2,
-    );
+    let [vx, vy, vz] = throw_velocity(p.push, p.lift, yaw, pitch, dir, pow2);
+    let v = Vec3::new(vx, vy, vz);
     set_main_hand(w, e, None);
     item::drop_item(w, stack, at, v, p.delay);
     true

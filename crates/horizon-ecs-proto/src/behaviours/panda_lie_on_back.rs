@@ -5,6 +5,7 @@ use super::panda_state::{self as ps, Gene, FLAG_ON_BACK};
 use super::*;
 use crate::cow::{now_of, FluidState};
 use crate::goals::{Req, Requests};
+use crate::rules::panda_lie_on_back::{lie_start_at, rest_ends};
 
 /// `reduced(400)` = 200 starting asks, `reduced(2000)` = 1000 resting asks, `cooldown = age + 200` after the rest.
 #[derive(Clone, Copy, Debug)]
@@ -66,7 +67,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
         let mut m = w.get_mut::<LieOnBack>(e).unwrap();
         m.armed = false;
         m.asks_left -= 1;
-        let done = wet || m.asks_left <= 0;
+        let done = rest_ends(wet, m.asks_left);
         if done {
             drop(m);
             w.resource_mut::<Requests>().0.push(Req::End(e, l.slot));
@@ -128,7 +129,7 @@ fn arm_start(w: &mut World, e: Entity) {
     }
     let now = now_of(w, e);
     let k = ps::asks_until(w, e, l.def.start_asks);
-    let at = (l.until + 1).max(now) + 2 * k as u64;
+    let at = lie_start_at(l.until, now, k);
     ps::arm_to(w, e, l.slot, at);
     let mut m = w.get_mut::<LieOnBack>(e).unwrap();
     m.armed = true;

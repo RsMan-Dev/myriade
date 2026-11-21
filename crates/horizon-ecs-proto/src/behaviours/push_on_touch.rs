@@ -11,6 +11,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::host_out::HostOut;
 use horizon_core::geometry::Vec3;
+use crate::rules::push_on_touch::{knockback_factor, push_speed, push_vector};
 
 /// The shove's constants (species): the reach, the speed factor and cap, the lift on the ground.
 #[derive(Component, Clone, Copy, Debug)]
@@ -78,13 +79,11 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     };
     let Some(pos) = w.get::<Pos>(e).map(|x| x.0) else { return };
     let params = w.get::<Params>(e).copied().unwrap_or(Params::DEFAULT);
-    let (dx, dz) = (pos.x - p.x, pos.z - p.z);
-    let horizontal = (dx * dx + dz * dz).sqrt();
-    let kb = (1.0 - held.knockback_resistance.clamp(-2.0, 1.0)).max(0.0);
-    let len = horizontal.max(1.0e-4);
-    let speed = (player_speed(w, pusher.player) * 2.0 * params.speed_factor).clamp(0.0, params.speed_max);
+    let kb = knockback_factor(held.knockback_resistance);
+    let speed = push_speed(player_speed(w, pusher.player), params.speed_factor, params.speed_max);
     let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
-    let push = Vec3::new(dx / len * kb * speed, if on_ground { kb * params.lift * speed } else { 0.0 }, dz / len * kb * speed);
+    let [px, py, pz] = push_vector(pos.x - p.x, pos.z - p.z, kb, speed, params.lift, on_ground);
+    let push = Vec3::new(px, py, pz);
     let strong = f64::from(push.length()) > f64::from(held.push_threshold);
     let now = now_of(w, e);
     if strong && now >= pusher.sound_after {

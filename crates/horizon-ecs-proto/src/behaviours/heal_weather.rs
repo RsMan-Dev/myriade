@@ -6,6 +6,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::rules::heal_weather::{heal_interval, healed};
 
 /// Standing in clouds or in precipitation (set by the world, `Wet`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -41,7 +42,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let Some(cfg) = w.get::<Params>(e).copied() else { return };
-    let interval = if w.get::<Wet>(e).is_some() { cfg.wet } else { cfg.dry };
+    let interval = heal_interval(w.get::<Wet>(e).is_some(), cfg.dry, cfg.wet);
     crate::goals::arm(w, e, inst.slot, interval);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -54,7 +55,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         && h.0 > 0.0
         && h.0 < cfg.max
     {
-        h.0 = (h.0 + cfg.amount).min(cfg.max);
+        h.0 = healed(h.0, cfg.amount, cfg.max);
     }
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }

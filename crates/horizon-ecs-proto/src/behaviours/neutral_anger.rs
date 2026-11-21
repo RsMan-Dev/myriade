@@ -5,6 +5,7 @@
 use super::*;
 use crate::cow::now_of;
 use crate::goals::{Events, GoalSlot, Req, Requests};
+use crate::rules::neutral_anger::{anger_countdown, ticks_until};
 use crate::targeting::{Target, Who};
 
 #[derive(Clone, Copy, Debug)]
@@ -107,7 +108,7 @@ fn lost(w: &mut World, e: Entity) {
     if !a.holding {
         return;
     }
-    let wait = a.def.base + crate::goals::with_rng(w, e, |r| r.next_int(a.def.spread));
+    let wait = crate::goals::with_rng(w, e, |r| anger_countdown(a.def.base, a.def.spread, |bound| r.next_int(bound)));
     let until = now_of(w, e) + wait as u64;
     {
         let mut m = w.get_mut::<Anger>(e).unwrap();
@@ -134,7 +135,7 @@ pub fn anger_at(w: &World, e: Entity) -> Option<Who> {
 /// Arms the deadline at `at` (the entity's own time), as far as the wheel reaches.
 fn arm_to(w: &mut World, e: Entity, slot: u8, at: u64) {
     let now = now_of(w, e);
-    crate::goals::arm(w, e, slot, at.saturating_sub(now).min(i32::MAX as u64) as i32);
+    crate::goals::arm(w, e, slot, ticks_until(at, now));
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use crate::goals::*;
 use crate::projectile::{launch, Flight};
 use crate::targeting::{self, Who};
 use horizon_core::geometry::Vec3;
+use crate::rules::side_heads::{aim_point, in_box, in_range_sq, shot_velocity, side_point, spread};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -148,7 +149,7 @@ fn pick(w: &mut World, e: Entity, h: &Head) -> Option<Who> {
             return;
         }
         let (Some(cp), Some(cs)) = (w.get::<Pos>(c), w.get::<SpeciesId>(c)) else { return };
-        if h.mask.contains(cs.0) && (cp.0.x - o.x).abs() <= b[0] && (cp.0.y - o.y).abs() <= b[1] && (cp.0.z - o.z).abs() <= b[2] {
+        if h.mask.contains(cs.0) && in_box(cp.0.x - o.x, cp.0.y - o.y, cp.0.z - o.z, b) {
             found.push(c);
         }
     });
@@ -157,7 +158,7 @@ fn pick(w: &mut World, e: Entity, h: &Head) -> Option<Who> {
     let mut players = Vec::new();
     w.resource::<crate::goals::Online>().for_near(o.x, o.z, b[0].max(b[2]), |p| players.push(p));
     for p in players {
-        if (p.x - o.x).abs() <= b[0] && (p.y - o.y).abs() <= b[1] && (p.z - o.z).abs() <= b[2] && targeting::can_target(w, e, Who::Player(p.id)) && targeting::sees(w, e, Who::Player(p.id)) {
+        if in_box(p.x - o.x, p.y - o.y, p.z - o.z, b) && targeting::can_target(w, e, Who::Player(p.id)) && targeting::sees(w, e, Who::Player(p.id)) {
             who.push(Who::Player(p.id));
         }
     }
@@ -172,22 +173,19 @@ fn sight(w: &World, e: Entity, who: Who, range: f64) -> Option<[f64; 3]> {
     let i = targeting::info(w, who)?;
     let o = pos(w, e);
     let d = (i.pos.x - o.x).powi(2) + (i.pos.y - o.y).powi(2) + (i.pos.z - o.z).powi(2);
-    (d <= range * range && targeting::sees(w, e, who)).then(|| [i.pos.x, i.pos.y + (i.eye - i.pos.y) * 0.5, i.pos.z])
+    (in_range_sq(d, range) && targeting::sees(w, e, who)).then(|| aim_point(i.pos, i.eye))
 }
 fn side_pos(w: &World, e: Entity, nth: u8, p: &Params) -> [f64; 3] {
     let o = pos(w, e);
     let yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
-    let a = f64::from((yaw + 180.0 * f32::from(nth)).to_radians());
-    [o.x + a.cos() * p.side, o.y + p.height, o.z + a.sin() * p.side]
+    side_point(o, yaw, nth, p.side, p.height)
 }
 fn shoot(w: &mut World, e: Entity, nth: u8, at: [f64; 3], flight: Flight, p: Params) {
     let h = side_pos(w, e, nth, &p);
     let pitch = 1.0 + (between(w, e, 0.5) - between(w, e, 0.5)) * 0.2;
     let o = pos(w, e);
     w.resource_mut::<Events>().host.sound("entity.wither.shoot", [o.x, o.y, o.z], 2.0, pitch as f32);
-    let d = [at[0] - h[0], at[1] - h[1], at[2] - h[2]];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1.0e-9);
-    let v = Vec3::new(d[0] / len * 0.1, d[1] / len * 0.1, d[2] / len * 0.1);
+    let v = shot_velocity(h, at);
     launch(w, flight, Vec3::new(h[0], h[1], h[2]), v, Some(Who::Entity(e)));
 }
 fn pos(w: &World, e: Entity) -> Vec3 {
@@ -203,5 +201,5 @@ fn roll(w: &mut World, e: Entity, n: i32) -> u64 {
     with_rng(w, e, |r| r.next_int(n)) as u64
 }
 fn between(w: &mut World, e: Entity, half: f64) -> f64 {
-    with_rng(w, e, |r| r.next_f64()) * 2.0 * half - half
+    spread(with_rng(w, e, |r| r.next_f64()), half)
 }

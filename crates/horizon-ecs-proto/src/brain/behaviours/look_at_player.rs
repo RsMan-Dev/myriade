@@ -4,6 +4,7 @@
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::{d2, is_occupied, OCC_MOUNTED};
+use crate::rules::look_at_player as rules;
 use crate::targeting::{info, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:look_at_player", mems: &[&LOOK_TARGET, &VISIBLE_MOBS], one_shot: true, can_start, ..Behaviour::DEFAULT };
@@ -13,7 +14,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if is_occupied(w, e, OCC_MOUNTED) {
         return false;
     }
-    let found = find_closest(w, e, |w, who| matches!(who, Who::Player(_)) && info(w, who).is_some_and(|i| d2(pos, i.pos) <= 36.0));
+    let found = find_closest(w, e, |w, who| matches!(who, Who::Player(_)) && info(w, who).is_some_and(|i| rules::in_reach(d2(pos, i.pos))));
     let Some(who) = found else { return false };
     set(w, e, &LOOK_TARGET, MemValue::Look(Tracker::Entity(who, true)), None);
     true

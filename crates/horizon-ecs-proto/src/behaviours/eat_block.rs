@@ -2,6 +2,7 @@
 //! `eat_at` ticks in (short grass is broken, a grass block becomes dirt), the wool grows back and a baby grows by a minute.
 //! The ask and the two phases of the goal are deadlines of the wheel.
 use super::*;
+use crate::rules::eat_block as rule;
 use crate::{cow::*, goals::*};
 
 /// One chance in `adult_asks` (`baby_asks` for a baby) per ask, an ask every 2 ticks; the head is down for `ticks`, and
@@ -160,7 +161,7 @@ fn ate(w: &mut World, e: Entity) {
     }
     let now = crate::cow::now_of(w, e);
     if let Some(mut g) = w.get_mut::<GrowAt>(e) {
-        g.0 = g.0.saturating_sub(1200).max(now + 1);
+        g.0 = rule::age_up(g.0, now);
         let at = g.0;
         crate::cow::arm_at(w, e, at, Due::Grow);
     }

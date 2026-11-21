@@ -7,6 +7,7 @@ use super::*;
 use crate::locomotion::swim::WantsToSwim;
 use crate::move_to_block::MoveToBlock;
 use crate::hostile::Daylight;
+use crate::rules::drowned_go_to_beach as rule;
 use crate::{cow::*, goals::*};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::mobs::MobWorld;
@@ -74,9 +75,6 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     w.get::<Beaching>(e).is_none()
 }
-fn reduced(n: i32) -> i32 {
-    (n + 1) / 2
-}
 fn feet(w: &World, e: Entity) -> [i32; 3] {
     let p = w.get::<Pos>(e).unwrap().0;
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
@@ -92,7 +90,7 @@ fn beach_valid(mw: &MobWorld, p: [i32; 3]) -> bool {
 /// `canUse`: draw the countdown, search; the goal starts only if the night, the water and the depth hold. Otherwise the next
 /// search is armed after the countdown.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    let countdown = with_rng(w, e, |r| reduced(200 + r.next_int(200)));
+    let countdown = with_rng(w, e, |r| rule::countdown(r.next_int(200)));
     let base = feet(w, e);
     let mut b = w.get::<Beach>(e).unwrap().clone();
     let ok = {
@@ -100,12 +98,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         let found = b.walk.find_nearest(base, mw, beach_valid);
         let p = w.get::<Pos>(e).unwrap().0;
         let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
-        found && !w.resource::<Daylight>().0 && in_water && p.y >= f64::from(mw.sea_level - 3)
+        found && !w.resource::<Daylight>().0 && in_water && rule::sea_close(p.y, mw.sea_level)
     };
     b.countdown = countdown;
     *w.get_mut::<Beach>(e).unwrap() = b;
     if !ok {
-        schedule(w, e, 2 * (countdown + 1));
+        schedule(w, e, rule::next_search(countdown));
     }
     ok
 }
@@ -121,7 +119,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Beaching>();
     let n = w.get::<Beach>(e).map_or(0, |b| b.countdown);
-    schedule(w, e, 2 * (n + 1));
+    schedule(w, e, rule::next_search(n));
 }
 /// The walk, each tick of the goal (`MoveToBlockGoal.canContinue`, then `tick`): it ends when its block is lost; the path is
 /// asked again each time `MoveToBlock.tick` says so. Runs from the selector, not as a system.

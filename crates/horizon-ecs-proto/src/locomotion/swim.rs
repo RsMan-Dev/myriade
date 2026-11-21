@@ -12,6 +12,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
+use crate::rules::swim::{arrived, cycle_back, cycle_turned, ease_speed, flop_velocity, guardian_velocity, is_stuck, moved_sq, node_close, node_reach_xz, node_reach_y, sink_rate, squid_dry, squid_swim, swim_drag, target_next_node, tentacle_speed, turn_factor, turtle_ground_speed, wanted_speed, EPSILON};
 
 /// How the animal is steered (the species chooses it by its `Def.locomotion` entry, not by its name).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,8 +102,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
         // A creature made by `spawn_declared` gets its stream after its locomotion: the entity's own number seeds a stream until then.
         let speed = match w.get_mut::<crate::cow::Rng>(e) {
-            Some(mut r) => 1.0 / (r.next_float() + 1.0) * 0.2,
-            None => 1.0 / (crate::cow::Rng(e.to_bits() | 1).next_float() + 1.0) * 0.2,
+            Some(mut r) => tentacle_speed(r.next_float()),
+            None => tentacle_speed(crate::cow::Rng(e.to_bits() | 1).next_float()),
         };
         w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3] }, Moving));
     }
@@ -211,17 +212,17 @@ fn follow(
         let now = clock.of(e);
         let mw = level.mw.0;
         let mut end = false;
-        let vertical = if swp.amphibious.is_some() { 1.0 } else { 0.5 };
+        let vertical = node_reach_y(swp.amphibious.is_some());
         let liquid = swp.amphibious.is_none() || fs.in_water || fs.in_lava;
         match nav.path.as_mut() {
             None => end = true,
             Some(path) => {
                 let mob = Vec3::new(pos.0.x, pos.0.y + f64::from(body.height) * 0.5, pos.0.z);
                 let width = body.width;
-                let max = f64::from(if width > 0.75 { width / 2.0 } else { 0.75 - width / 2.0 });
+                let max = node_reach_xz(width);
                 let n = path.next_node();
                 let (xd, yd, zd) = ((pos.0.x - (f64::from(n.x) + 0.5)).abs(), (pos.0.y - f64::from(n.y)).abs(), (pos.0.z - (f64::from(n.z) + 0.5)).abs());
-                let close = xd < max && zd < max && yd < vertical;
+                let close = node_close(xd, yd, zd, max, vertical);
                 let direct = |from: Vec3, to: Vec3| liquid && mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), false);
                 if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && target_next_node(path, mob, &direct, width)) {
                     path.advance();
@@ -229,11 +230,7 @@ fn follow(
                 // `doStuckDetection`, as the walk's.
                 let mut stuck = false;
                 if now - nav.last_check > 100 {
-                    let speed = drive.speed;
-                    let effective = if speed >= 1.0 { speed } else { speed * speed };
-                    let threshold = f64::from(effective * 100.0 * 0.25);
-                    let d = (mob.x - nav.last_pos.x).powi(2) + (mob.y - nav.last_pos.y).powi(2) + (mob.z - nav.last_pos.z).powi(2);
-                    stuck = d < threshold * threshold;
+                    stuck = is_stuck(drive.speed, moved_sq(mob, nav.last_pos));
                     nav.last_check = now;
                     nav.last_pos = mob;
                 }
@@ -258,31 +255,6 @@ fn follow(
         }
     }
     par.flush();
-}
-/// `PathNavigation.shouldTargetNextNode` with the water's `canMoveDirectly`.
-#[allow(clippy::neg_cmp_op_on_partial_ord)]
-pub(crate) fn target_next_node(path: &horizon_client_lib::mobs::path::Path, mob: Vec3, direct: &dyn Fn(Vec3, Vec3) -> bool, width: f32) -> bool {
-    if path.next + 1 >= path.nodes.len() {
-        return false;
-    }
-    let n = path.nodes[path.next];
-    let current = Vec3::new(f64::from(n.x) + 0.5, f64::from(n.y), f64::from(n.z) + 0.5);
-    let d = |a: Vec3, b: Vec3| (a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2);
-    if d(mob, current) >= 4.0 {
-        return false;
-    }
-    if direct(mob, path.entity_pos_at(path.next, width)) {
-        return true;
-    }
-    let m = path.nodes[path.next + 1];
-    let next = Vec3::new(f64::from(m.x) + 0.5, f64::from(m.y), f64::from(m.z) + 0.5);
-    let (to_current, to_next) = (Vec3::new(current.x - mob.x, current.y - mob.y, current.z - mob.z), Vec3::new(next.x - mob.x, next.y - mob.y, next.z - mob.z));
-    let (cs, ns) = (to_current.length_squared(), to_next.length_squared());
-    if !(ns < cs) && !(cs < 0.5) {
-        return false;
-    }
-    let (a, b) = (to_current.normalize(), to_next.normalize());
-    a.x * b.x + a.y * b.y + a.z * b.z < 0.0
 }
 
 /// `FishMoveControl.tick`, every tick of a fish in the water: the water lifts it a little, and while a path is followed the speed
@@ -322,8 +294,7 @@ fn move_control(level: Res<Level>, clock: Res<crate::cow::Clock>, mut q: Query<(
         }
         d.xxa = 0.0;
         if m.active && following {
-            let target = (m.speed_modifier * body.speed) as f32;
-            let speed = d.speed + (target - d.speed) * 0.125;
+            let speed = ease_speed(d.speed, wanted_speed(m.speed_modifier, body.speed));
             d.speed = speed;
             d.zza = speed;
             let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
@@ -358,16 +329,11 @@ fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut V
     let len = (dx * dx + dy * dy + dz * dz).sqrt();
     let yd = dy / len;
     yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(dz, dx) - 90.0, 90.0);
-    let target = (m.speed_modifier * body.speed) as f32;
-    let speed = d.speed + (target - d.speed) * 0.125;
+    let speed = ease_speed(d.speed, wanted_speed(m.speed_modifier, body.speed));
     d.speed = speed;
     d.zza = speed;
     let t = (clock.of(e) as i64 + i64::from(e.index().index())) as f64;
-    let push = (t * 0.5).sin() * 0.05;
-    let rad = f64::from(yaw.0 * trig::DEG_TO_RAD);
-    let (cos, sin) = (f64::from(trig::cos(rad)), f64::from(trig::sin(rad)));
-    let y_push = (t * 0.75).sin() * 0.05;
-    vel.0 = Vec3::new(vel.0.x + push * cos, vel.0.y + y_push * (sin + cos) * 0.25 + f64::from(speed) * yd * 0.1, vel.0.z + push * sin);
+    vel.0 = guardian_velocity(vel.0, t, yaw.0, yd, speed);
     m.active = false;
 }
 
@@ -375,19 +341,17 @@ fn guardian_control(clock: &crate::cow::Clock, e: Entity, pos: &Pos, vel: &mut V
 /// inputs follow it; out of the water the speed falls with the turn.
 #[allow(clippy::too_many_arguments)]
 fn smooth_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &mut Drive, fs: &FluidState, body: &Body, following: bool, max_turn_x: f32, max_turn_y: f32, in_water: f32, outside: f32, gravity: bool) {
-    const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
-    const EPSILON: f64 = 1.0e-5_f32 as f64;
     if gravity && fs.in_water {
         vel.0.y += 0.005;
     }
     if m.active && following {
         let (xd, yd, zd) = (m.x - pos.0.x, m.y - pos.0.y, m.z - pos.0.z);
-        if xd * xd + yd * yd + zd * zd < ARRIVED {
+        if arrived(xd, yd, zd) {
             d.zza = 0.0;
         } else {
             let y_rot = trig::atan2_degrees(zd, xd) - 90.0;
             yaw.0 = rotlerp(yaw.0, y_rot, max_turn_y);
-            let speed = (m.speed_modifier * body.speed) as f32;
+            let speed = wanted_speed(m.speed_modifier, body.speed);
             if fs.in_water {
                 d.speed = speed * in_water;
                 let sd = (xd * xd + zd * zd).sqrt();
@@ -402,7 +366,7 @@ fn smooth_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
                 d.yya = -s * speed;
             } else {
                 let left = crate::cow::wrap(yaw.0 - y_rot).abs();
-                let factor = 1.0 - ((left - 10.0) / 50.0).clamp(0.0, 1.0);
+                let factor = turn_factor(left);
                 d.speed = speed * outside * factor;
                 d.zza = d.speed;
             }
@@ -431,8 +395,7 @@ fn drowned_control(level: &Level, pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &m
         let dd = (xd * xd + yd * yd + zd * zd).sqrt();
         let yn = yd / dd;
         yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);
-        let target = (m.speed_modifier * body.speed) as f32;
-        let speed = d.speed + 0.125 * (target - d.speed);
+        let speed = ease_speed(d.speed, wanted_speed(m.speed_modifier, body.speed));
         d.speed = speed;
         d.zza = speed;
         let s = f64::from(speed);
@@ -454,7 +417,7 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
     if fs.in_water {
         vel.0.y += 0.005;
     } else if c.on_ground {
-        let s = (d.speed / 2.0).max(0.06);
+        let s = turtle_ground_speed(d.speed);
         d.speed = s;
         d.zza = s;
     }
@@ -473,8 +436,7 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
         return;
     }
     yaw.0 = rotlerp(yaw.0, trig::atan2_degrees(zd, xd) - 90.0, 90.0);
-    let wanted = (m.speed_modifier * body.speed) as f32;
-    let speed = d.speed + 0.125 * (wanted - d.speed);
+    let speed = ease_speed(d.speed, wanted_speed(m.speed_modifier, body.speed));
     d.speed = speed;
     d.zza = speed;
     vel.0.y += f64::from(speed) * (yd / dist) * 0.1;
@@ -497,7 +459,7 @@ fn dry(
         // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
         if c.on_ground && !swp.squid {
             let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
-            v.0 = Vec3::new(v.0.x + f64::from((a * 2.0 - 1.0) * 0.05), v.0.y + 0.4, v.0.z + f64::from((b * 2.0 - 1.0) * 0.05));
+            v.0 = flop_velocity(v.0, a, b);
             c.on_ground = false;
         }
         if !moving {
@@ -509,24 +471,17 @@ fn dry(
 /// `Squid.aiStep` (server side): the tentacle cycle advances by its speed; in the water the stroke from 3/4 of the first half sets the velocity
 /// to the goals' vector, the second half slows it by 0.9; out of the water it falls straight down (no control).
 fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, gravity: f64) {
-    const PI: f32 = std::f32::consts::PI;
     st.movement += st.speed;
-    if f64::from(st.movement) > std::f64::consts::TAU {
-        st.movement -= PI * 2.0;
+    if cycle_turned(st.movement) {
+        st.movement = cycle_back(st.movement);
         if rng.next_int(10) == 0 {
-            st.speed = 1.0 / (rng.next_float() + 1.0) * 0.2;
+            st.speed = tentacle_speed(rng.next_float());
         }
     }
     if in_water {
-        if st.movement < PI {
-            if st.movement / PI > 0.75 {
-                v.0 = Vec3::new(st.vector[0], st.vector[1], st.vector[2]);
-            }
-        } else {
-            v.0 = Vec3::new(v.0.x * 0.9, v.0.y * 0.9, v.0.z * 0.9);
-        }
+        v.0 = squid_swim(st.movement, st.vector, v.0);
     } else {
-        v.0 = Vec3::new(0.0, (v.0.y - gravity) * f64::from(0.98_f32), 0.0);
+        v.0 = squid_dry(v.0, gravity);
     }
 }
 
@@ -582,8 +537,8 @@ fn travel(
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
             // `Vec3.add(0.0, -0.005, 0.0)`: an animal with no target sinks a little.
-            let sink = if swp.sinks && (swp.control != Control::Guardian || (d.speed == 0.0 && !has_target)) { 0.005 } else { 0.0 };
-            v.0 = Vec3::new(m.x * 0.9, m.y * 0.9 - sink, m.z * 0.9);
+            let sink = sink_rate(swp.sinks, swp.control == Control::Guardian, d.speed == 0.0 && !has_target);
+            v.0 = swim_drag(m, sink);
         } else {
             let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall, false);
             // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.

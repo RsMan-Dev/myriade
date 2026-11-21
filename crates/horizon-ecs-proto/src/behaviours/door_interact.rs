@@ -5,6 +5,7 @@
 use super::*;
 use crate::{blocks, cow::*, goals::*};
 use horizon_world::registry::BlockStateId;
+use crate::rules::door_interact::{near_door_column, other_half};
 
 /// The door of the goal: where it is, and whether one is there (`DoorInteractGoal.doorPos`, `hasDoor`).
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -27,11 +28,7 @@ pub fn mob_door_open(w: &World, p: [i32; 3]) -> Option<bool> {
     let name = mw.block_name(p[0], p[1], p[2]);
     (name.ends_with("_door") && mw.has_tag("minecraft:mob_interactable_doors", name)).then(|| blocks::property(mw, p, "open").as_deref() == Some("true"))
 }
-/// `BlockPos.closerToCenterThan`.
-pub fn closer_to_center(p: [i32; 3], at: horizon_core::geometry::Vec3, distance: f64) -> bool {
-    let (dx, dy, dz) = (f64::from(p[0]) + 0.5 - at.x, f64::from(p[1]) + 0.5 - at.y, f64::from(p[2]) + 0.5 - at.z);
-    dx * dx + dy * dy + dz * dz < distance * distance
-}
+pub use crate::rules::door_interact::closer_to_center;
 /// `DoorInteractGoal.canUse` (less the ground navigation, which is the module's requirement): the creature touched a wall, and a wooden door is
 /// within 1.5 blocks (horizontally) of one of the next two nodes of its path, or at its own head. The door found is kept in `DoorAt`.
 pub fn can_use(w: &mut World, e: Entity) -> bool {
@@ -44,7 +41,7 @@ pub fn can_use(w: &mut World, e: Entity) -> bool {
         for node in path.nodes.iter().take((path.next + 2).min(path.nodes.len())) {
             let door = [node.x, node.y + 1, node.z];
             let (dx, dz) = (p.x - f64::from(node.x), p.z - f64::from(node.z));
-            if dx * dx + dz * dz <= 2.25 && wooden_door(w, door) {
+            if near_door_column(dx, dz) && wooden_door(w, door) {
                 found = Some(door);
                 break;
             }
@@ -81,8 +78,7 @@ pub fn set_open_at(w: &mut World, p: [i32; 3], open: bool) {
         blocks::set_state_id(w, p, id);
     }
     // `DoorBlock.updateShape`: the other half of the door takes the same `open` (the game's `set_door_open` writes both halves).
-    let up = blocks::property(blocks::world_of(w), p, "half").as_deref() == Some("lower");
-    let other = [p[0], p[1] + if up { 1 } else { -1 }, p[2]];
+    let other = other_half(p, blocks::property(blocks::world_of(w), p, "half").as_deref() == Some("lower"));
     if is_door(w, other)
         && let Some(id) = with_open(w, other, open)
     {

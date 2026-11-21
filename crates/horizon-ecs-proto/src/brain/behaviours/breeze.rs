@@ -6,12 +6,14 @@
 //! with no collision test of the arc. The arc arithmetic (`LongJumpUtil`) is the service `jump_arc`, shared with that goal.
 //! Not ported: the sounds, the ground particles, the jump boost and levitation effects, the mount, the target's gaze-free yaw of a player
 //! (taken from his view vector), the pose the slide sink gives while it runs (animation only).
+//! The calculations are in `rules::breeze`.
 use crate::behaviours::Cap;
 use crate::brain::sensors::attackable::NEAREST_ATTACKABLE;
 use crate::brain::*;
 use crate::cow::*;
 use crate::goals::with_rng;
 use crate::projectile::{launch, Flight};
+use crate::rules::breeze::{self as rules};
 use crate::targeting::{self, FollowRange, Who};
 use horizon_core::geometry::Vec3;
 
@@ -56,9 +58,6 @@ fn pos(w: &World, e: Entity) -> Vec3 {
 fn body(w: &World, e: Entity) -> Body {
     *w.get::<Body>(e).expect("a body")
 }
-fn block_of(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-}
 fn in_water(w: &World, e: Entity) -> bool {
     w.get::<FluidState>(e).is_some_and(|f| f.in_water)
 }
@@ -67,11 +66,11 @@ fn on_ground(w: &World, e: Entity) -> bool {
 }
 /// `Breeze.getFiringYPosition`.
 fn firing_y(w: &World, e: Entity) -> f64 {
-    pos(w, e).y + f64::from(body(w, e).height) / 2.0 + f64::from(0.3_f32)
+    rules::firing_y(pos(w, e).y, body(w, e).height)
 }
 /// `BreezeUtil.hasLineOfSight`.
 fn line_of_sight(w: &World, e: Entity, to: Vec3) -> bool {
-    let range = 50.0_f64.max(w.get::<FollowRange>(e).map_or(24.0, |f| f.0));
+    let range = rules::los_range(w.get::<FollowRange>(e).map_or(24.0, |f| f.0));
     let from = pos(w, e);
     to.distance(from) <= range && w.resource::<Level>().mw.0.clear_between(from, to, false)
 }
@@ -85,18 +84,12 @@ fn yaw_of(w: &World, who: Who) -> f64 {
         }
     }
 }
-/// `BreezeUtil.randomPointBehindTarget`.
+/// `BreezeUtil.randomPointBehindTarget`: the draws are taken in their order (two uniforms, then the float).
 fn point_behind(w: &mut World, e: Entity, who: Who) -> Option<Vec3> {
     let i = targeting::info(w, who)?;
     let yaw = yaw_of(w, who);
-    let (gauss, f) = with_rng(w, e, |r| {
-        // A normal draw from two uniform ones (the `Mob` draws `nextGaussian`).
-        let (u, v) = (r.next_f64().max(1.0e-12), r.next_f64());
-        ((-2.0 * u.ln()).sqrt() * (std::f64::consts::TAU * v).cos(), r.next_float())
-    });
-    let view = (yaw + 180.0 + gauss * 90.0 / 2.0).to_radians();
-    let r = f64::from(4.0 + f * (8.0 - 4.0));
-    Some(Vec3::new(i.pos.x - view.sin() * r, i.pos.y, i.pos.z + view.cos() * r))
+    let (u, v, f) = with_rng(w, e, |r| (r.next_f64(), r.next_f64(), r.next_float()));
+    Some(rules::behind_point(i.pos, yaw, u, v, f))
 }
 
 // ---- Shoot ------------------------------------------------------------------------------------------------------------
@@ -111,9 +104,6 @@ pub static SHOOT: Behaviour = Behaviour {
     stop: shoot_stop,
     ..Behaviour::DEFAULT
 };
-/// The wind charge's speed and the spread (`5 - 4 * difficulty`: the difficulty is not in the frame, normal is taken).
-const SHOT_SPEED: f64 = 0.7;
-const SHOT_SPREAD: f64 = 3.0;
 fn shoot_can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if pose(w, e) != Pose::Standing {
         return false;
@@ -144,14 +134,9 @@ fn shoot_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let firing = firing_y(w, e);
     let p = pos(w, e);
     let height = i.bounds.max_position().y - i.bounds.min_position().y;
-    let d = Vec3::new(i.pos.x - p.x, i.pos.y + height * 0.3 - firing, i.pos.z - p.z);
-    let len = d.length().max(1.0e-9);
-    let spread = 0.017_227_5 * SHOT_SPREAD;
-    let v = with_rng(w, e, |r| {
-        let mut tri = |mean: f64| mean + spread * (r.next_f64() - r.next_f64());
-        Vec3::new((d.x / len + tri(0.0)) * SHOT_SPEED, (d.y / len + tri(0.0)) * SHOT_SPEED, (d.z / len + tri(0.0)) * SHOT_SPEED)
-    });
-    launch(w, Flight::BREEZE_WIND_CHARGE, Vec3::new(p.x, firing, p.z), v, Some(Who::Entity(e)));
+    let d = rules::aim(i.pos, height, firing, p);
+    let draws: [f64; 6] = with_rng(w, e, |r| std::array::from_fn(|_| r.next_f64()));
+    launch(w, Flight::BREEZE_WIND_CHARGE, Vec3::new(p.x, firing, p.z), rules::wind_shot(d, draws), Some(Who::Entity(e)));
     true
 }
 fn shoot_stop(w: &mut World, e: Entity, _: &Ctx) {
@@ -193,11 +178,11 @@ fn slide_start(w: &mut World, e: Entity, _: &Ctx) {
     let centre = Vec3::new(p.x.floor() + 0.5, p.y.floor() + 0.5, p.z.floor() + 0.5);
     let (dx, dy, dz) = (i.pos.x - centre.x, i.pos.y - centre.y, i.pos.z - centre.z);
     let mut chosen: Option<Vec3> = None;
-    if dx * dx + dz * dz < 16.0 && dy.abs() < 10.0
+    if rules::near_for_away(dx, dy, dz)
         && let Some(a) = pick(w, e, crate::spots::Pick::DefaultAway { h: 5, v: 5, from: [i.pos.x, i.pos.y, i.pos.z] })
     {
         let away = Vec3::new(a[0], a[1], a[2]);
-        if line_of_sight(w, e, away) && i.pos.distance_squared(away) > i.pos.distance_squared(p) {
+        if line_of_sight(w, e, away) && rules::is_further(i.pos, away, p) {
             chosen = Some(away);
         }
     }
@@ -208,16 +193,12 @@ fn slide_start(w: &mut World, e: Entity, _: &Ctx) {
                 let Some(v) = point_behind(w, e, t) else { return };
                 v
             } else {
-                // randomPointInMiddleCircle
-                let d = Vec3::new(i.pos.x - p.x, i.pos.y - p.y, i.pos.z - p.z);
                 let a = with_rng(w, e, |r| r.next_f64());
-                let distance = d.length() - (8.0 + a * (4.0 - 8.0));
-                let n = d.normalize();
-                Vec3::new(p.x + n.x * distance, p.y + n.y * distance, p.z + n.z * distance)
+                rules::middle_circle(p, i.pos, a)
             }
         }
     };
-    let b = block_of(at);
+    let b = rules::block_of(at);
     set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Block(b), speed: 0.6, close: 1 }), None);
 }
 
@@ -259,31 +240,12 @@ pub static LONG_JUMP: Behaviour = Behaviour {
     stop: jump_stop,
     ..Behaviour::DEFAULT
 };
-const ALLOWED_ANGLES: [i32; 5] = [40, 55, 60, 75, 80];
-/// `LongJump.canJumpFromCurrentPosition`: not on honey, and four blocks of air or water above.
+/// `LongJump.canJumpFromCurrentPosition` at the entity's block.
 fn can_jump_from_here(w: &World, e: Entity) -> bool {
-    let mw = w.resource::<Level>().mw.0;
-    let [x, y, z] = block_of(pos(w, e));
-    if mw.block_name(x, y, z) == "minecraft:honey_block" {
-        return false;
-    }
-    (1..=4).all(|i| mw.facts.is_air(mw.world.block(x, y + i, z)) || mw.fluid(x, y + i, z) == horizon_client_lib::blocks::Fluid::Water)
-}
-/// `LongJump.snapToSurface`: the block above where a clip ten blocks down hits, else ten blocks up.
-fn snap_to_surface(w: &World, p: Vec3) -> Option<[i32; 3]> {
-    let mw = w.resource::<Level>().mw.0;
-    let above = |h: Vec3| [h.x.floor() as i32, h.y.floor() as i32 + 1, h.z.floor() as i32];
-    mw.clip_block(p, Vec3::new(p.x, p.y - 10.0, p.z)).map(above).or_else(|| mw.clip_block(p, Vec3::new(p.x, p.y + 10.0, p.z)).map(above))
-}
-/// `EntityType.isBlockDangerous` for a creature that is not fire immune.
-fn dangerous(name: &str) -> bool {
-    matches!(
-        name,
-        "minecraft:fire" | "minecraft:soul_fire" | "minecraft:lava" | "minecraft:magma_block" | "minecraft:lava_cauldron" | "minecraft:wither_rose" | "minecraft:sweet_berry_bush" | "minecraft:cactus" | "minecraft:powder_snow"
-    )
+    rules::can_jump_from(w.resource::<Level>().mw.0, rules::block_of(pos(w, e)))
 }
 fn floats(w: &World, e: Entity) -> bool {
-    w.get::<FluidState>(e).is_some_and(|f| f.water > 0.4 || f.in_lava)
+    w.get::<FluidState>(e).is_some_and(|f| rules::floats(f.water, f.in_lava))
 }
 /// `LongJump.canRun` (the conditions of memory are the entry's `needs`).
 fn jump_can_run(w: &mut World, e: Entity, _: &Ctx) -> bool {
@@ -300,21 +262,22 @@ fn jump_can_run(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(i) = targeting::info(w, t) else { return false };
     let follow = w.get::<FollowRange>(e).map_or(24.0, |f| f.0);
     let p = pos(w, e);
-    if i.pos.distance_squared(p) >= follow * follow {
+    if rules::out_of_follow(i.pos, p, follow) {
         erase(w, e, &ATTACK_TARGET);
         targeting::clear_target(w, e);
         return false;
     }
-    if i.pos.distance(p) as f32 - 4.0 <= 0.0 {
+    if rules::too_close(i.pos, p) {
         return false;
     }
     if !can_jump_from_here(w, e) {
         return false;
     }
     let Some(behind) = point_behind(w, e, t) else { return false };
-    let Some(spot) = snap_to_surface(w, behind) else { return false };
-    let below = w.resource::<Level>().mw.0.block_name(spot[0], spot[1] - 1, spot[2]).to_string();
-    if dangerous(&below) {
+    let mw = w.resource::<Level>().mw.0;
+    let Some(spot) = rules::snap_to_surface(mw, behind) else { return false };
+    let below = mw.block_name(spot[0], spot[1] - 1, spot[2]);
+    if rules::dangerous(below) {
         return false;
     }
     let centre = Vec3::new(f64::from(spot[0]) + 0.5, f64::from(spot[1]) + 0.5, f64::from(spot[2]) + 0.5);
@@ -336,8 +299,8 @@ fn jump_start(w: &mut World, e: Entity, _: &Ctx) {
 }
 /// `LongJump.calculateOptimalJumpVector`: the angles shuffled, the first that reaches the target (the breeze's call passes no collision test).
 fn optimal_jump_vector(w: &mut World, e: Entity, target: Vec3) -> Option<Vec3> {
-    let angles = crate::jump_arc::shuffle(ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
-    let max = 0.058_333_334_f32 * w.get::<FollowRange>(e).map_or(24.0, |f| f.0) as f32;
+    let angles = crate::jump_arc::shuffle(rules::ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
+    let max = rules::jump_max_velocity(w.get::<FollowRange>(e).map_or(24.0, |f| f.0));
     crate::jump_arc::first_reaching(&angles, pos(w, e), body(w, e).gravity, target, max, None)
 }
 /// `LongJump.tick`, and `canStillUse` (not standing, and the jump's cooldown not started).
@@ -373,7 +336,7 @@ fn jump_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if pose(w, e) == Pose::LongJumping && (on_ground(w, e) || landed_in_water) {
         set_pose(w, e, Pose::Standing);
         let hurt = present(w, e, &HURT_BY);
-        set(w, e, &JUMP_COOLDOWN, MemValue::Unit, Some(if hurt { 2 } else { 10 }));
+        set(w, e, &JUMP_COOLDOWN, MemValue::Unit, Some(rules::landing_cooldown(hurt)));
         set(w, e, &SHOOT_MEM, MemValue::Unit, Some(100));
     }
     true
