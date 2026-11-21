@@ -94,7 +94,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((lazy_wake, glance_run).chain().in_set(slot));
+    s.add_systems((lazy_wake.run_if(lazy_due), glance_run.run_if(|w: &bevy_ecs::world::World| sparse_any::<Glancing>(w))).chain().in_set(slot));
 }
 /// Arms the ask of an animal that has none and that a player can see.
 fn arm(w: &mut World, e: Entity, inst: Inst) {
@@ -194,6 +194,10 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Glancing>();
     rearm(w, e, inst);
+}
+/// Some animal changed cell this tick and the lazy look is on.
+fn lazy_due(moves: Res<CellMoves>, lazy: Res<LazyLook>) -> bool {
+    lazy.enabled && !moves.0.is_empty()
 }
 /// An animal that walks into a watched bin (the lazy look) takes its look timers again.
 fn lazy_wake(moves: Res<CellMoves>, lazy: Res<LazyLook>, q: Query<(&Pos, &Glance, Option<&Glance2>, Option<&Scan>)>, mut reqs: ResMut<Requests>) {

@@ -25,15 +25,17 @@ impl Params {
 /// (x, y, z) of the target and whether it is water.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Panic {
-    pub speed: f64,
-    pub h: i32,
-    pub v: i32,
-    pub window: u64,
-    pub water: Option<i32>,
-    pub environmental: bool,
+    /// The species' parameters, referenced (read through `Deref`): never copied into the entity.
+    p: &'static Params,
     pub until: u64,
     pub slot: u8,
     pick: (f64, i32, f64),
+}
+impl std::ops::Deref for Panic {
+    type Target = Params;
+    fn deref(&self) -> &Params {
+        self.p
+    }
 }
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -61,7 +63,7 @@ fn resources(w: &mut World) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(Panic { speed: p.speed, h: p.h, v: p.v, window: p.window, water: p.water, environmental: p.environmental, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
+    w.entity_mut(e).insert(Panic { p, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(hurt_events.after(apply_damage).in_set(slot));

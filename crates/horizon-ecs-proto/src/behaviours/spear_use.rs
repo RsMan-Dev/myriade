@@ -51,7 +51,15 @@ pub enum Phase {
     Retreat,
 }
 /// The goal's state. `engage` counts down the use (`-1`: not engaged yet), `fleeing` the retreat (`-1`: not fleeing).
+/// What stays on the animal: the species' parameters (referenced) and the goal's rank.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct SpearDef {
+    pub def: &'static Params,
+    pub slot: u8,
+}
+/// The state of a use in progress (sparse: laid by `start`, taken off by `stop`; the animals that never use it carry none).
 #[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
 pub struct Spear {
     pub def: &'static Params,
     pub slot: u8,
@@ -88,30 +96,25 @@ pub static MODULE: Module = Module {
 /// The target service wakes the goal when its creature gets a target: `ableToAttack` is asked then (an event, not a poll).
 fn resources(w: &mut World) {
     w.resource_mut::<crate::targeting::TargetWatchers>().0.push(|w, e| {
-        if let Some(slot) = w.get::<Spear>(e).map(|s| s.slot) {
+        if let Some(slot) = w.get::<SpearDef>(e).map(|s| s.slot) {
             w.resource_mut::<Requests>().0.push(Req::Start(e, slot));
         }
     });
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let def = params::<Params>(p);
-    w.entity_mut(e).insert(Spear { def, slot: inst.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new(), last: Vec3::ZERO, moved: Vec3::ZERO });
+    w.entity_mut(e).insert(SpearDef { def, slot: inst.slot });
 }
 /// `ableToAttack`: a target and a kinetic weapon in the main hand.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Target>(e).is_some() && kinetic(w, e).is_some()
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    if let Some(mut s) = w.get_mut::<Spear>(e) {
-        s.phase = Phase::Approach;
-        s.engage = -1;
-        s.fleeing = -1;
-        s.away = None;
-    }
-    w.entity_mut(e).insert(Spearing);
+    let Some(d) = w.get::<SpearDef>(e).copied() else { return };
+    w.entity_mut(e).insert((Spear { def: d.def, slot: d.slot, phase: Phase::Approach, engage: -1, used: 0, fleeing: -1, away: None, stabbed: Vec::new(), last: Vec3::ZERO, moved: Vec3::ZERO }, Spearing));
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).remove::<Spearing>();
+    w.entity_mut(e).remove::<(Spearing, Spear)>();
 }
 /// The goal runs while its use is not over (`fired` is what the scheduler reads: the goal wants to go on).
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
@@ -203,7 +206,7 @@ fn finish(w: &mut World, e: Entity, mut s: Spear) {
         *w.get_mut::<Spear>(e).unwrap() = s;
         return;
     }
-    w.entity_mut(e).remove::<Spearing>();
+    w.entity_mut(e).remove::<(Spearing, Spear)>();
     w.resource_mut::<Requests>().0.push(Req::End(e, s.slot));
 }
 /// A spot at a distance between `min` and `max` of the target, as `land_random_pos_away_between` (the minimum is at least

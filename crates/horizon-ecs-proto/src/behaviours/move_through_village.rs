@@ -21,8 +21,14 @@ impl Params {
 }
 #[derive(Component, Clone, Debug)]
 pub struct Village {
-    p: Params,
+    p: &'static Params,
     slot: u8,
+}
+/// The point chosen and the last visited (sparse: laid by the first `can_use` that finds a point; the animals that never
+/// come near a village carry none).
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Trip {
     poi: [i32; 3],
     visited: Vec<[i32; 3]>,
 }
@@ -32,7 +38,7 @@ pub struct Crossing;
 
 pub static MODULE: Module = Module { name: "move_through_village", flags: MOVE, equip, arm, fired, can_use, start, stop, tick: Some(tick), requires: &[Cap::Locomotion], ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Village { p: *params::<Params>(p), slot: inst.slot, poi: [0; 3], visited: Vec::new() });
+    w.entity_mut(e).insert(Village { p: params::<Params>(p), slot: inst.slot });
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let wait = with_rng(w, e, |r| arm_wait(|bound| r.next_int(bound)));
@@ -55,14 +61,18 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if !is_close_to_village(reg.sections_to_village(section_of(here))) {
         return false;
     }
-    let visited = v.visited.clone();
+    let visited = w.get::<Trip>(e).map(|t| t.visited.clone()).unwrap_or_default();
     let Some(poi) = reg.occupied_in_range(here, 32).into_iter().find(|p| !visited.contains(p)) else { return false };
-    w.get_mut::<Village>(e).unwrap().poi = poi;
+    match w.get_mut::<Trip>(e) {
+        Some(mut t) => t.poi = poi,
+        None => {
+            w.entity_mut(e).insert(Trip { poi, visited });
+        }
+    }
     true
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    let v = w.get::<Village>(e).unwrap();
-    let (p, speed) = (v.poi, v.p.speed);
+    let (p, speed) = (w.get::<Trip>(e).unwrap().poi, w.get::<Village>(e).unwrap().p.speed);
     go_to_at(w, e, [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])], speed, 0);
     w.entity_mut(e).insert(Crossing);
 }
@@ -71,20 +81,21 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Crossing>();
     let done = !w.entity(e).contains::<Following>();
     let pos = w.get::<Pos>(e).map(|p| p.0);
-    if let (Some(pos), Some(mut v)) = (pos, w.get_mut::<Village>(e)) {
-        let (poi, d) = (v.poi, f64::from(v.p.distance));
+    let Some(d) = w.get::<Village>(e).map(|v| f64::from(v.p.distance)) else { return };
+    if let (Some(pos), Some(mut t)) = (pos, w.get_mut::<Trip>(e)) {
+        let poi = t.poi;
         if done || closer_to_center(poi, pos, d) {
-            remember_visited(&mut v.visited, poi);
+            remember_visited(&mut t.visited, poi);
         }
     }
 }
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, run);
 }
-fn run(q: Query<(Entity, &Village, &Pos, &Bounds, Has<Following>, Has<NeedsPath>), With<Crossing>>, mut reqs: ResMut<Requests>) {
-    for (e, v, pos, b, following, asked) in &q {
+fn run(q: Query<(Entity, &Village, &Trip, &Pos, &Bounds, Has<Following>, Has<NeedsPath>), With<Crossing>>, mut reqs: ResMut<Requests>) {
+    for (e, v, t, pos, b, following, asked) in &q {
         // `canContinue`: the walk goes on and the point is farther than `width + distance`.
-        if !(following || asked) || closer_to_center(v.poi, pos.0, crossing_end_radius(b.0.size().x, v.p.distance)) {
+        if !(following || asked) || closer_to_center(t.poi, pos.0, crossing_end_radius(b.0.size().x, v.p.distance)) {
             reqs.0.push(Req::End(e, v.slot));
         }
     }
