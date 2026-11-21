@@ -162,6 +162,10 @@ mod passive_entities_vs_original;
 mod lot_fin_villager_wiring;
 mod lot_fin_villager_new;
 mod lot_fin_goat;
+mod lot_lectures_goat;
+mod lot_horns_goat;
+mod lot_lectures;
+mod lot_lectures_villager;
 // lot V4
 mod lot_v4_work;
 // lot V3

@@ -1,6 +1,6 @@
 //! `Frog` (`horizon-client/src/mobs/frog.rs:104-140`): the goals in the `Mob`'s order. Float 0, panic (2.0) 1, breed 2 (the birth is a pregnancy:
 //! `carries`), tempt with slime balls 3, shoot the tongue 2, lay spawn 2, the long jump 3, croak 4, stroll 5 (it avoids water), look 6 and 7.
-//! Water: the amphibious smooth swimming control (`reset_pitch`: its look control resets xRot each tick). The temptation stands aside while pregnant.
+//! Water: the amphibious smooth swimming control (`reset_pitch`: its look control resets xRot each tick). The temptation and the long jump stand aside while pregnant.
 //! Left out (`suivi/ecs-ecarts.md`): the poses (croak, tongue, jump) and their animations, the frog variants; no swim activity (the `Mob` has none).
 use super::Def;
 use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, Cap, Entry};
@@ -20,7 +20,8 @@ pub static DEF: Def = Def {
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, items: FOOD, ..tempt::Params::DEFAULT }).when(&NOT_PREGNANT),
         Entry::new(&shoot_tongue::MODULE, 2, &shoot_tongue::Params { prey: ["minecraft:slime", "minecraft:magma_cube"], ..shoot_tongue::Params::DEFAULT }),
         Entry::new(&lay_spawn::MODULE, 2, &lay_spawn::Params::DEFAULT),
-        Entry::new(&long_jump::MODULE, 3, &long_jump::Params::DEFAULT),
+        // `FrogAi.initJumpActivity` comes after the lay spawn activity (IS_PREGNANT): a pregnant frog does not leap.
+        Entry::new(&long_jump::MODULE, 3, &long_jump::Params::DEFAULT).when(&NOT_PREGNANT),
         Entry::new(&croak::MODULE, 4, &croak::Params::DEFAULT),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 1.0, interval: Some(1), ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params::DEFAULT),

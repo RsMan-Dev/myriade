@@ -1,6 +1,7 @@
 //! Golem de fer appelé quand des villageois s'accordent (`villagers.rs:134-148`, `villager.rs:855-974`) : à la rencontre, si
 //! `needed` villageois de la boîte (10 blocs autour de a) ont dormi dans le jour et n'ont pas vu de golem, un golem apparaît
 //! sur une colonne trouvée près de a (10 essais, `summon_golem`), et ces villageois ne veulent plus d'autre golem 599 ticks.
+use crate::behaviours::golem_recent::GOLEM_RECENT;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::*;
@@ -27,10 +28,9 @@ const CALM: u64 = 599;
 #[component(storage = "SparseSet")]
 pub struct LastSlept(pub u64);
 
-pub static DEFENDER_SEEN: MemKey = MemKey::new("horizon:defender_seen", Shape::Unit);
-
-fn wants(w: &World, e: Entity, now: u64) -> bool {
-    w.get::<LastSlept>(e).is_some_and(|s| now.saturating_sub(s.0) < SLEPT) && !present(w, e, &DEFENDER_SEEN)
+/// `Villager.wantsToSpawnGolem`: slept within the day and no golem detected recently (`golem_detected_recently`, the memory the golem sensor sets).
+pub(crate) fn wants(w: &World, e: Entity, now: u64) -> bool {
+    w.get::<LastSlept>(e).is_some_and(|s| now.saturating_sub(s.0) < SLEPT) && !present(w, e, &GOLEM_RECENT)
 }
 
 /// `LEGACY_IRON_GOLEM` : un sol qui n'est ni cactus, ni verre, ni feuilles, etc.
@@ -119,11 +119,11 @@ pub fn check(w: &mut World, a: Entity, p: &Params) -> bool {
         w.resource_mut::<Events>().host.sound(p.sound, at, 1.0, 1.0);
     }
     for j in near {
-        set(w, j, &DEFENDER_SEEN, MemValue::Unit, Some(CALM));
+        set(w, j, &GOLEM_RECENT, MemValue::Unit, Some(CALM));
     }
     true
 }
 
-/// Holds `DEFENDER_SEEN` in the brain's plan (the memory is written by `check`, the call of the golem is made by the host's
+/// Holds `GOLEM_RECENT` in the brain's plan (the memory is written by `check`, the call of the golem is made by the host's
 /// meeting of two villagers): it never runs.
-pub static MEMORY: Behaviour = Behaviour { name: "summon_defender:memory", mems: &[&DEFENDER_SEEN], passive: true, ..Behaviour::DEFAULT };
+pub static MEMORY: Behaviour = Behaviour { name: "summon_defender:memory", mems: &[&GOLEM_RECENT], passive: true, ..Behaviour::DEFAULT };

@@ -145,6 +145,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
         let is_creature = types.types.contains_key(name);
         let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
         let screaming = crate::species::registry().by_name(name).unwrap().screaming;
+        let lost_horn = crate::species::registry().by_name(name).unwrap().lost_horn;
         table.push(Species {
             id: i as u8,
             malus: mob.ai.malus,
@@ -184,6 +185,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             max_air: if is_creature { mob.max_air_supply() } else { 300 },
             persistent: is_creature && mob.persistent,
             screaming,
+            lost_horn,
         });
         if name == chosen {
             chosen_kind = Some(kind);

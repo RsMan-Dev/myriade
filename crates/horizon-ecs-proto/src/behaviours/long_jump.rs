@@ -130,6 +130,26 @@ fn sample(r: &mut Rng, (lo, hi): (i32, i32)) -> i32 {
     lo + r.next_int(hi - lo + 1)
 }
 
+/// The ticks left of `LONG_JUMP_COOLDOWN` (the memory `minecraft:long_jump_cooling_down`), None when it is over.
+pub(crate) fn cooldown_left(w: &World, e: Entity) -> Option<u64> {
+    let st = w.get::<LongJumpState>(e)?;
+    let now = now_of(w, e);
+    (st.ready_at > now).then(|| st.ready_at - now)
+}
+/// Sets the ticks left of the cooldown (`None`: over), as the memory read of a save gives them.
+pub(crate) fn set_cooldown_left(w: &mut World, e: Entity, left: Option<u64>) {
+    match left {
+        Some(t) => {
+            let date = now_of(w, e) + t;
+            schedule(w, e, date);
+        }
+        None => {
+            if let Some(mut st) = w.get_mut::<LongJumpState>(e) {
+                st.ready_at = 0;
+            }
+        }
+    }
+}
 /// Demande le but à la date `date` (temps propre) : une échéance de la roue, une seule par date.
 fn schedule(w: &mut World, e: Entity, date: u64) {
     let now = now_of(w, e);
@@ -203,7 +223,7 @@ pub fn wake_gated(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::life
 
 /// `GoatAi.longJumpActivity` wants no breed target: the goat is in love and an adult of its species in love is within 8 blocks
 /// (`AnimalMakeLove.checkExtraStartConditions`). The date its love ends, when it holds.
-fn breeding_until(w: &World, e: Entity) -> Option<u64> {
+pub(crate) fn breeding_until(w: &World, e: Entity) -> Option<u64> {
     let until = w.get::<super::breed::Love>(e).map(|l| l.0).filter(|&u| u > now_of(w, e))?;
     let p = w.get::<Pos>(e)?.0;
     let kind = w.get::<SpeciesId>(e);
@@ -467,6 +487,10 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     }
 }
 
+/// The walking probe of the ram's start (`create_path_to(p, 0).reached`): the same search, the walking evaluator.
+pub(crate) fn reaches_on_foot(w: &World, e: Entity, target: [i32; 3]) -> bool {
+    walkable(w, e, &Params::DEFAULT, target)
+}
 /// Whether a path of at most 8 blocks reaches the block (`Mob.create_path_raw(&[target], 0, 8.0).reached`): the search `pathfind` makes, without
 /// touching the animal. The frog's is the amphibious one that prefers shallow water (`nav.rs:20`), the goat's the walking one.
 fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {

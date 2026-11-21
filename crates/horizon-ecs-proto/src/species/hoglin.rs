@@ -33,11 +33,16 @@ fn not_pacified(w: &World, e: Entity) -> bool {
     !pacified(w, e)
 }
 
+/// `HoglinAi.maybeRetaliate`: an attacker that is avoiding a repellent (its `Avoid` point, not yet expired) is not answered.
+fn attacker_avoiding(w: &World, e: Entity) -> bool {
+    w.get::<crate::behaviours::walk_away::Avoid>(e).is_some_and(|a| crate::cow::now_of(w, e) < a.until)
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:hoglin",
     reference: None,
     targets: &[
-        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], alert_when: Some(not_pacified), ..hurt_by::Params::DEFAULT }).when(&ADULT),
+        Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:hoglin"], alert_when: Some(not_pacified), ignoring: &["minecraft:hoglin"], attacker_when: Some(attacker_avoiding), ..hurt_by::Params::DEFAULT }).when(&ADULT),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER).when(&TARGETING),
     ],
     goals: &[
@@ -134,4 +139,5 @@ pub static DEF: Def = Def {
     despawn: None,
     saved: true,
     screaming: None,
+    lost_horn: None,
 };

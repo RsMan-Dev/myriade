@@ -1,19 +1,16 @@
 //! `GoToWantedItem` (`villager_brain.rs:1828`, `:4052`, `:4483`): with no walk target, the nearest pickable item within 4 blocks whose kind
 //! is in the item tag `minecraft:villager_picks_up` is walked to (speed 0.5, reach 0) and looked at at its eye height (0.2125). At arrival,
 //! within reach, it is taken into the main hand. The pick-up is `item::pick_up`'s, the tag is `items::has_tag`'s.
+use crate::brain::sensors::nearest_wanted_item::NEAREST_WANTED_ITEM;
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::goals::set_main_hand;
-use crate::item::{self, Item};
-use crate::items::{has_tag, item_id};
-use horizon_core::geometry::{Aabb, Vec3};
-
-/// The item tag a villager takes (`game/mobs/villagers.rs:315`).
-const PICKS_UP: &str = "minecraft:villager_picks_up";
+use crate::item;
+use crate::targeting::Who;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_go_to_wanted_item",
-    mems: &[&WALK_TARGET, &LOOK_TARGET],
+    mems: &[&WALK_TARGET, &LOOK_TARGET, &NEAREST_WANTED_ITEM],
     wakes_on_item: 4.0,
     can_start,
     start,
@@ -21,16 +18,10 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
     ..Behaviour::DEFAULT
 };
 
-/// The nearest pickable item of the tag within 4 blocks.
+/// The wanted item the sensor remembers, while it is still on the ground and pickable.
 fn wanted_near(w: &World, e: Entity) -> Option<Entity> {
-    let at = w.get::<Pos>(e)?.0;
-    let r = 4.0;
-    let area = Aabb::new(Vec3::new(at.x - r, at.y - r, at.z - r), Vec3::new(at.x + r, at.y + r, at.z + r));
-    let dist = |it: Entity| w.get::<Pos>(it).map_or(f64::MAX, |q| q.0.distance_squared(at));
-    item::items_in(w, area)
-        .into_iter()
-        .filter(|&it| item::pickable(w, it) && w.get::<Item>(it).is_some_and(|i| has_tag(PICKS_UP, item_id(&i.stack.item))) && dist(it) < 16.0)
-        .min_by(|&a, &b| dist(a).total_cmp(&dist(b)))
+    let Some(MemValue::Who(Who::Entity(it))) = get(w, e, &NEAREST_WANTED_ITEM) else { return None };
+    (w.get::<Pos>(*it).is_some() && item::pickable(w, *it)).then_some(*it)
 }
 
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {

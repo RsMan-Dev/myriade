@@ -105,25 +105,31 @@ pub struct Hit {
     pub by: Option<crate::targeting::Who>,
     /// The blow is the attacker's own (not a projectile it shot).
     pub direct: bool,
+    /// The knockback's power when the attacker sets it (a goat's ram); `None`: the default 0.4.
+    pub power: Option<f64>,
 }
 
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, from: None, by: None, direct: false });
+        self.0.push(Hit { target, amount, cause, from: None, by: None, direct: false, power: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None });
     }
     /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
     pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(who), direct: false });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: Some(who), direct: false, power: None });
+    }
+    /// A blow of a creature at `from` that pushes its target with `power` (`LivingEntity.knockback`), as a ram does.
+    pub fn add_ram(&mut self, target: Entity, amount: f32, from: (f64, f64), power: f64) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, from: Some(from), by: None, direct: false, power: Some(power) });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, from: Some(from), by: None, direct: false });
+        self.0.push(Hit { target, amount, cause, from: Some(from), by: None, direct: false, power: None });
     }
 }
 
@@ -424,6 +430,12 @@ pub(crate) fn apply_damage(
             if cell.0 != u32::MAX {
                 idx.remove(e, cell.0);
             }
+            events.killed.push(crate::behaviours::celebrate::Kill {
+                victim: e,
+                killer: hit.by,
+                species: sid.map_or(u8::MAX, |s| s.0),
+                at: [pos.0.x, pos.0.y, pos.0.z],
+            });
             // What it leaves on the ground (`LivingEntity.die`), then it goes.
             commands.queue(move |w: &mut World| {
                 crate::loot::on_death(w, e);
@@ -462,7 +474,7 @@ pub(crate) fn apply_damage(
         });
         // `dealDefaultKnockback`: an entity's hit outside the cooldown (the other causes are in `#no_knockback`).
         if hit.cause == Cause::Entity && !cooldown {
-            let power = 0.4_f64 * (1.0 - resist.map_or(0.0, |r| r.0));
+            let power = hit.power.unwrap_or(0.4_f64) * (1.0 - resist.map_or(0.0, |r| r.0));
             if power > 0.0 {
                 let (mut dx, mut dz) = hit.from.map_or((0.0, 0.0), |f| (f.0 - pos.0.x, f.1 - pos.0.z));
                 let mut spare = Rng(clock.0 | 1);

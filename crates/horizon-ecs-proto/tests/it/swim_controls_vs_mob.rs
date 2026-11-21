@@ -279,13 +279,13 @@ fn a_guardian_does_not_return_magic_or_a_projectile() {
     }
     let before = h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len();
     for cause in [Cause::Magic, Cause::Blast, Cause::Fall] {
-        h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: true });
+        h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: true, power: None });
         h.tick();
         for _ in 0..12 {
             h.tick();
         }
     }
-    h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause: Cause::Entity, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: false });
+    h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 3.0, cause: Cause::Entity, from: Some((-6.5, 1.5)), by: Some(horizon_ecs_proto::targeting::Who::Player(1)), direct: false, power: None });
     h.tick();
     assert_eq!(h.world.resource::<horizon_ecs_proto::hostile::PlayerState>().hits.len(), before);
 }

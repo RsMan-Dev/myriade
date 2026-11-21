@@ -28,6 +28,8 @@ pub static DEF: Def = Def {
         Entry::new(&flee_repellent::MODULE, 2, &flee_repellent::Params {
             blocks: &["minecraft:soul_campfire", "minecraft:soul_torch", "minecraft:soul_wall_torch", "minecraft:soul_lantern"],
             species: &[],
+            shape: flee_repellent::Shape::Sphere,
+            lit: &["minecraft:soul_campfire"],
             ..flee_repellent::Params::DEFAULT
         }),
         // `crossbow_goal(1.0, 8.0)` (`illager::crossbow_goal`): the crossbow's goal, charge 25 ticks, the difficulty of the illagers.

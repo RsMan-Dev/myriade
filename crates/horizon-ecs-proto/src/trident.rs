@@ -182,7 +182,7 @@ fn fly(world: &mut World) {
         if let Some((_, at, who)) = hit {
             let stack_pos = (from.x, from.z);
             match who {
-                Hitter::Creature(c) => world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount: BLOW, cause: Cause::Entity, from: Some(stack_pos), by: owner, direct: false }),
+                Hitter::Creature(c) => world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount: BLOW, cause: Cause::Entity, from: Some(stack_pos), by: owner, direct: false, power: None }),
                 Hitter::Player(id) => {
                     let tick = now(world);
                     world.resource_mut::<PlayerState>().hurt(tick, id, BLOW, stack_pos, owner);
