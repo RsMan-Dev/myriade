@@ -30,13 +30,6 @@ impl Game<'_> {
         input: horizon_client::menu::Input,
     ) -> bool {
         if let Some(slot) = slot
-            && slot >= Creative::DISPLAY
-            && self.creative_tab_open()
-        {
-            self.creative_display_click(slot, button, input);
-            return true;
-        }
-        if let Some(slot) = slot
             && input == horizon_client::menu::Input::Throw
             && self.carried.is_some()
             && false
@@ -79,50 +72,6 @@ impl Game<'_> {
         self.remote_creative_throw(ItemStack { count, ..old });
         self.send_creative_slots();
     }
-    /// A click on an item tab's display slot: the screen's own handling
-    /// (`creative::click_display`), never the menu's.
-    pub(super) fn creative_display_click(
-        &mut self,
-        slot: usize,
-        button: i32,
-        input: horizon_client::menu::Input,
-    ) {
-        use horizon_client::creative::{DisplayClick, click_display};
-        if self.creative_screen.tab().search {
-            // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
-            // setHighlightPos(0), so typing replaces the whole query.
-            let search = &mut self.creative_screen.search;
-            search.move_cursor_to_end(false);
-            search.highlight = 0;
-        }
-        let first = self.creative_screen.first_row(&self.pack.names);
-        let shown = self
-            .creative_screen
-            .shown(&self.pack.names, first * 9 + slot - Creative::DISPLAY);
-        let catalog = world_items!(self);
-        // `ItemStack.getMaxStackSize`: the stack's own component before the item's,
-        // so a stack that says 16 is taken 16 at a time.
-        let max = |s: &ItemStack| {
-            horizon_client::creative::creative_stack_limit(
-                s,
-                catalog.get(&s.item).map_or(64, |i| i.max_stack),
-            )
-        };
-        match click_display(&mut self.carried, shown.as_ref(), max, button, input) {
-            DisplayClick::Hotbar(i, stack) if i < self.inventory.len() => {
-                self.inventory[i] = Some(stack);
-            }
-            DisplayClick::Offhand(stack) => self.offhand = Some(stack),
-            // handleCreativeModeItemDrop: on a server the stack goes to it (SetCreativeModeSlot
-            // to slot -1), which drops it; a local drop here would never reach the server.
-            DisplayClick::Drop(stack) if false => self.remote_creative_throw(stack),
-            DisplayClick::Drop(stack) => {
-                self.player_drop(stack);
-            }
-            _ => {}
-        }
-        // handleCreativeModeItemAdd / broadcastChanges: a swapped-in hotbar slot goes out now.
-    }
     /// Bedrock's tick when a stack splits: a right-click with an empty hand on a stack of more
     /// than one, which the menu halves. Returns the clicked slot and the counts that confirm
     /// the click actually did it (the stack before, and the half the hand should hold after).
@@ -162,10 +111,6 @@ impl Game<'_> {
                 self.unselect_bundle(slot);
             }
         }
-        if false && self.screen == Screen::Inventory {
-            // On a server the clicks are the server's: predicted and sent.
-            return self.remote_menu_ops(ops);
-        }
         if let [(Some(slot), button, input)] = ops {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
@@ -197,9 +142,6 @@ impl Game<'_> {
             Some(true)
         });
         // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        if done && false && self.screen == Screen::Creative {
-            self.send_creative_slots();
-        }
         // The pad's own click, and only the pad's: the mouse's split doesn't buzz.
         if done
             && self.input_made_pointer_event()
@@ -785,195 +727,6 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    pub(super) fn click_inventory(&mut self, right: bool) {
-        if self.mod_browser_press(right) || self.mount_click(right) {
-            return;
-        }
-        if self.recipe_book_click(right) {
-            return;
-        }
-        if self.station_click(right) {
-            return;
-        }
-        let Some(size) = self
-            .renderer
-            .as_ref()
-            .map(|r| [r.config.width, r.config.height])
-        else {
-            return;
-        };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
-            return;
-        };
-        let held_shift = self.has_shift_down();
-        if self.crafter_click(slot, held_shift, right) {
-            return;
-        }
-        if held_shift && self.container.is_some() && self.container_quick_move(slot) {
-            if let Some(key) = self.container {
-                self.world.modified.insert((key.0 >> 4, key.2 >> 4));
-            }
-            return;
-        }
-        if let Some(c) = &self.carried
-            && self.refuses(slot, c)
-        {
-            return;
-        }
-        let max = merge_max;
-        let shift = held_shift;
-        if slot >= 300
-            && let Some(key) = self.container
-        {
-            self.world.modified.insert((key.0 >> 4, key.2 >> 4));
-        }
-        let is_furnace = matches!(self.container_kind(), Some(BlockEntity::Furnace(_)));
-        if is_furnace && slot == 302 {
-            // FurnaceResultSlot: take only.
-            let Some(result) = self.slot_mut(302).take() else {
-                return;
-            };
-            match &mut self.carried {
-                None => self.carried = Some(result),
-                Some(c)
-                    if c.item == result.item
-                        && c.count + result.count <= max(world_items!(self), c) =>
-                {
-                    c.count += result.count
-                }
-                _ => *self.slot_mut(302) = Some(result),
-            }
-            return;
-        }
-        // Changing the input restarts cooking (AbstractFurnaceBlockEntity.setItem).
-        let furnace_input = (is_furnace && slot == 300).then(|| self.slot_mut(300).clone());
-        if slot == 200 {
-            // ResultSlot: take the crafted stack and consume one of each ingredient.
-            let mut crafted = 0;
-            while let Some((recipe, result)) = self.craft_recipe() {
-                let made = (result.item.clone(), result.count);
-                let taken = result.clone();
-                let cells = self.craft_size * self.craft_size;
-                let ingredients = self.craft_grid[..cells].to_vec();
-                if shift {
-                    if self.add_stack_to_inventory(result).is_some() {
-                        break;
-                    }
-                } else {
-                    match &mut self.carried {
-                        None => self.carried = Some(result),
-                        Some(c)
-                            if c.item == result.item
-                                && c.count + result.count <= max(world_items!(self), c) =>
-                        {
-                            c.count += result.count
-                        }
-                        _ => return,
-                    }
-                }
-                let remainders = self.craft_grid_remainders(&recipe);
-                for cell in self.craft_grid.iter_mut() {
-                    if let Some(s) = cell {
-                        s.count -= 1;
-                        if s.count == 0 {
-                            *cell = None;
-                        }
-                    }
-                }
-                for (i, rest) in remainders.into_iter().enumerate() {
-                    let Some(rest) = rest else { continue };
-                    match &mut self.craft_grid[i] {
-                        cell @ None => *cell = Some(rest),
-                        Some(c) if c.same_item_same_components(&rest) => c.count += rest.count,
-                        _ => self.give_or_drop(rest),
-                    }
-                }
-                crafted += 1;
-                // `ResultSlot.onTake` (native_item_crafted): recipe, stack taken, grid before.
-                let player = self.native_acting_id();
-                let id = horizon_client::crafting::qualified(&recipe);
-                self.native_item_crafted(player, &id, &taken, &ingredients);
-                self.tutorial_get_item(Some(&taken));
-                self.award_stat("crafted", &made.0, made.1 as i32);
-                self.award_crafted(&[(id, ingredients)]);
-                if !shift || crafted >= 64 {
-                    break;
-                }
-            }
-            return;
-        }
-        if shift
-            && (slot < 36 || (500..504).contains(&slot) || (100..109).contains(&slot))
-            && self.inventory_quick_move(slot)
-        {
-            return;
-        }
-        if (500..504).contains(&slot) {
-            let fits = self
-                .carried
-                .as_ref()
-                .is_none_or(|c| armor_slot_accepts(self.res.items(), c, slot));
-            if !fits {
-                return;
-            }
-            std::mem::swap(&mut self.carried, &mut self.armor[slot - 500]);
-            self.apply_equipment();
-            return;
-        }
-        let carried = self.carried.take();
-        let current = self.slot_mut(slot).take();
-        let items = self.items();
-        let (new_slot, new_carried) = match (carried, current) {
-            (None, Some(mut s)) if right => {
-                let half = s.count.div_ceil(2);
-                s.count -= half;
-                let taken = ItemStack {
-                    count: half,
-                    ..s.clone()
-                };
-                ((s.count > 0).then_some(s), Some(taken))
-            }
-            (None, s) => (None, s),
-            (Some(mut c), None) if right => {
-                let one = ItemStack {
-                    count: 1,
-                    ..c.clone()
-                };
-                c.count -= 1;
-                (Some(one), (c.count > 0).then_some(c))
-            }
-            (Some(c), None) => (Some(c), None),
-            (Some(mut c), Some(mut s)) if c.same_item_same_components(&s) => {
-                let room = max(items, &s).saturating_sub(s.count);
-                let moved = if right {
-                    1.min(room).min(c.count)
-                } else {
-                    room.min(c.count)
-                };
-                s.count += moved;
-                c.count -= moved;
-                (Some(s), (c.count > 0).then_some(c))
-            }
-            (Some(c), Some(s)) => (Some(c), Some(s)),
-        };
-        self.carried = new_carried;
-        *self.slot_mut(slot) = new_slot;
-        if let Some(before) = furnace_input
-            && let Some(BlockEntity::Furnace(f)) = self
-                .container
-                .and_then(|k| self.world.block_entities.get_mut(&k))
-        {
-            f.input_clicked(&self.loop_context, world_recipes!(self), before);
-        }
-    }
-
-    /// A screen closed or lost its pointer: discard the unfinished click gesture.
-    pub(super) fn reset_inventory_clicks(&mut self) {
-        self.inv_clicks.cancel_drag();
-        self.inv_drag = None;
-        self.last_inv_click = None;
-    }
 
     /// A sound a menu click made the player play (a bundle's insert or
     /// remove): `Entity.playSound` at the player.
@@ -986,8 +739,6 @@ impl Game<'_> {
             horizon_client::bundle::sound_volume_pitch(sound, || self.world.random.next_float());
         if self.is_logical_server() {
             self.audio.play(sound, Some(at), volume, pitch);
-        } else {
-            self.play_client_player_sound(sound, volume, pitch);
         }
     }
 }

@@ -138,9 +138,5 @@ fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
         let dragon = game.mob(game.entity(15).unwrap()).unwrap();
         assert_eq!(dragon.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(dragon.wanted_position(game), None);
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        assert_eq!(mob.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
-        assert_eq!(mob.wanted_position(game), None);
-        assert_eq!(mob.speed_modifier(game), None);
     });
 }

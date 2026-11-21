@@ -2,7 +2,6 @@
 //! `Llama.handleEating` (wheat and hay), chests, carpets, shearing a carpet
 //! off and riding.
 use super::Game;
-use horizon_client::actions::Action;
 use horizon_client::mobs::{equine, llama};
 use horizon_core::random::RandomSource;
 
@@ -35,24 +34,13 @@ impl Game<'_> {
             m.heal(&self.loop_context, heal);
             used = true;
         }
-        let mut happy = false;
         if m.is_baby() && !m.extra.age_locked {
             m.extra.age = (m.extra.age + age_up * 20).min(0);
             used = true;
-            happy = true;
         }
         if (used || !m.extra.tame) && equine::temper(m) < llama::MAX_TEMPER {
             equine::modify_temper(m, temper);
             used = true;
-        }
-        if happy {
-            // AbstractHorse.handleEating: one at rest about the body.
-            let id = m.id;
-            self.particles_around_mob(
-                id,
-                "happy_villager",
-                horizon_client::particles::Burst::HORSE_EATING,
-            );
         }
         if !used {
             return false;
@@ -76,7 +64,7 @@ impl Game<'_> {
         if !m.alive() || Some(m.id) == self.riding {
             return false;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         let (baby, tamed, vehicle) = (m.is_baby(), m.extra.tame, m.rider.is_some());
         let open_inventory = !baby && tamed && sneaking;
         if !vehicle && !open_inventory && !item.is_empty() {

@@ -57,20 +57,4 @@ impl Game<'_> {
         self.native_enchant_power_bonus(state, pos, table, &mut power);
         if power.is_finite() { power } else { own }
     }
-
-    /// Snapshot at world entry/parts reload, or after received tags and tag-update listeners
-    /// are published. Particle workers receive state answers, never a host or mod callback.
-    pub(in crate::game) fn resolve_enchant_particles(&self) {
-        if self.is_logical_server() {
-            return;
-        }
-        self.ambience.enchant_power.rebuild(
-            self.pack.assets.registry.len(),
-            |state| {
-                let origin = BlockPos::new(0, 0, 0);
-                self.enchant_power(state, origin, origin)
-            },
-            |state| self.enchant_transmits(state),
-        );
-    }
 }

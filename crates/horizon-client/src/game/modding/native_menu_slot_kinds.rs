@@ -1,25 +1,7 @@
 //! Client layout roles; never inspect stacks or server container identities.
-use super::{Game, Screen};
-use horizon_client::containers::{ModMenuType, mod_menu_type};
-use mod_api::{MenuRef, MenuSlotKind};
-
-impl Game<'_> {
-    pub(super) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
-            return None;
-        }
-        self.remote.as_ref().filter(|remote| remote.has_level())?;
-        let name = self.native_client_menu_name(menu)?;
-        let content = mod_menu_type(name);
-        let count = match content {
-            Some(content) => content.slots + 36,
-            None => self.menu_slot_count(menu)?,
-        };
-        Some(layout_kinds(name, count, content, |slot| {
-            Self::inventory_screen_slot(name, slot as i32)
-        }))
-    }
-}
+use super::Game;
+use horizon_client::containers::ModMenuType;
+use mod_api::MenuSlotKind;
 
 fn layout_kinds(
     name: &str,
@@ -260,62 +242,4 @@ mod tests {
         );
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn live_menu_validation_and_creative() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            let (client, _server) = horizon_protocol::connection::Pipe::pair();
-            game.connect_local(client, "SlotKindsTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            let player = game.local_player().unwrap();
-            let menu = game.player_container_menu(player).unwrap();
-            assert_eq!(game.menu_slot_kinds(menu), None);
-            game.screen = Screen::Inventory;
-            let inventory = game.menu_slot_kinds(menu).unwrap();
-            assert_eq!(inventory.len(), game.menu_slot_count(menu).unwrap());
-            game.screen = Screen::Creative;
-            assert_eq!(game.menu_slot_kinds(menu), Some(inventory));
-            let fields = menu.fields();
-            let stale =
-                mod_api::__private::game::menu_ref(player, fields.window, fields.generation + 1);
-            assert_eq!(game.menu_slot_kinds(stale), None);
-            let other =
-                mod_api::__private::game::menu_ref(player, fields.window + 1, fields.generation);
-            assert_eq!(game.menu_slot_kinds(other), None);
-            for (name, count) in [
-                ("minecraft:crafting", 46),
-                ("minecraft:furnace", 39),
-                ("minecraft:generic_9x3", 63),
-                ("horizon:mount1", 41),
-                ("minecraft:anvil", 39),
-            ] {
-                game.remote
-                    .as_mut()
-                    .unwrap()
-                    .menu
-                    .set(Some((3, name.into())));
-                let menu = game.player_container_menu(player).unwrap();
-                let kinds = game.menu_slot_kinds(menu).unwrap();
-                assert_eq!(kinds.len(), count, "{name}");
-                assert_eq!(Some(kinds.len()), game.menu_slot_count(menu));
-                if name == "minecraft:anvil" {
-                    assert_eq!(kinds, vec![Other; 39]);
-                }
-            }
-            game.remote
-                .as_mut()
-                .unwrap()
-                .menu
-                .set(Some((4, "test:missing".into())));
-            let remote = game.remote.as_ref().unwrap();
-            let missing = mod_api::__private::game::menu_ref(player, 4, remote.menu.generation);
-            assert_eq!(game.menu_slot_kinds(missing), None);
-            assert_eq!(game.menu_slot_count(missing), None);
-            game.remote = None;
-            assert_eq!(game.menu_slot_kinds(menu), None);
-        });
-    }
 }

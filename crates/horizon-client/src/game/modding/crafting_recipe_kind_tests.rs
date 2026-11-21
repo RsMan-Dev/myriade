@@ -182,7 +182,6 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                 )
                 .unwrap(),
             );
-            game.screen = Screen::Inventory;
             game.craft_size = 2;
             game.creative = false;
             game.carried = None;

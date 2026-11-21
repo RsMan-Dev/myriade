@@ -13,10 +13,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use crate::game::native_entity_refs::tests::with_game;
-    use horizon_protocol::packets::{
-        configuration::{RegistryTags, TagEntry, UpdateTags},
-        play::{self, Clientbound as C},
-    };
     use mod_api::{
         DataLoadContext, DefaultComponentsBoundEvent, Hooks, Host, HostSide, Identifier, ModEntry,
         ModifyDefaultComponentsEvent, TagsUpdateCause, TagsUpdatedEvent,
@@ -155,130 +151,10 @@ mod tests {
                 let prepared = game.prepare_early_game_rules(loader).unwrap();
                 game.finish_open_world(prepared).unwrap();
             });
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.announce_data_bound(TagsUpdateCause::ClientPacketReceived {
-                    integrated_server: true,
-                });
-            });
         });
         let seen = seen.lock().unwrap();
         let server = TagsUpdateCause::ServerDataLoad { reload: false };
-        let integrated = TagsUpdateCause::ClientPacketReceived {
-            integrated_server: true,
-        };
-        assert_eq!(
-            *seen,
-            [
-                (server, Some(mod_api::Tag::Int(99))),
-                (integrated, Some(mod_api::Tag::Int(99)))
-            ]
-        );
+        assert_eq!(*seen, [(server, Some(mod_api::Tag::Int(99)))]);
         assert!(server.should_update_static_data());
-        assert!(!integrated.should_update_static_data());
-    }
-
-    /// A remote login: the applied tags announce the defaults bound once,
-    /// with the client cause, before the tags notice; a listener's read
-    /// inside returns the published defaults. An update in play refires.
-    #[test]
-    #[ignore = "daily"]
-    fn a_remote_login_announces_the_client_cause_before_the_tags() {
-        install_default_component_loads();
-        struct Both(Arc<Mutex<Vec<&'static str>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Both {
-            fn modify_default_components(
-                &self,
-                _: &dyn DataLoadContext,
-                event: &mut ModifyDefaultComponentsEvent<'_>,
-            ) {
-                if event.item == "minecraft:dirt" {
-                    event
-                        .components
-                        .insert("minecraft:max_stack_size".into(), serde_json::json!(99));
-                }
-            }
-            fn default_components_bound(
-                &self,
-                host: HostSide<'_>,
-                event: &mut DefaultComponentsBoundEvent,
-            ) {
-                assert!(matches!(&host, HostSide::Client(_)));
-                let stack = match host {
-                    HostSide::Server(host) => dirt_stack_size(host),
-                    HostSide::Client(host) => dirt_stack_size(host),
-                };
-                assert_eq!(
-                    stack,
-                    Some(mod_api::Tag::Int(99)),
-                    "the defaults are published"
-                );
-                assert_eq!(
-                    event.cause,
-                    TagsUpdateCause::ClientPacketReceived {
-                        integrated_server: false
-                    }
-                );
-                assert!(event.cause.should_update_static_data());
-                self.0.lock().unwrap().push("bound");
-            }
-            fn tags_updated(&self, _: HostSide<'_>, _: &mut TagsUpdatedEvent) {
-                self.0.lock().unwrap().push("tags");
-            }
-        }
-
-        let heard = Arc::new(Mutex::new(Vec::new()));
-        let mods = vec![ModEntry::new("login_probe", Box::new(Both(heard.clone())))].into();
-        mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
-                // A client's view of a server's tags: the login applies them.
-                let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-                game.connect_local(pipe, "BoundLogin").unwrap();
-                let builtin = game.remote.as_ref().unwrap().builtin.clone();
-                let id = |name: &str| builtin.get("minecraft:item").unwrap().id(name).unwrap();
-                let registries = UpdateTags {
-                    registries: vec![RegistryTags {
-                        registry: "minecraft:item".into(),
-                        tags: vec![TagEntry {
-                            name: "test:items".into(),
-                            ids: vec![id("minecraft:stick")],
-                        }],
-                    }],
-                };
-                heard.lock().unwrap().clear();
-                game.handle_packet(login_packet()).unwrap();
-                game.handle_packet(C::UpdateTags(registries)).unwrap();
-            });
-        });
-        assert_eq!(*heard.lock().unwrap(), ["bound", "tags"]);
-    }
-
-    /// The login packet the remote-tags tests use.
-    fn login_packet() -> C {
-        C::Login(play::Login {
-            player_id: 7,
-            hardcore: false,
-            levels: vec!["minecraft:overworld".into()],
-            max_players: 20,
-            chunk_radius: 8,
-            simulation_distance: 8,
-            reduced_debug_info: false,
-            show_death_screen: true,
-            limited_crafting: false,
-            spawn: play::SpawnInfo {
-                dimension_type: 0,
-                dimension: "minecraft:overworld".into(),
-                seed: 1,
-                game_type: 0,
-                previous_game_type: None,
-                debug: false,
-                flat: false,
-                last_death: None,
-                portal_cooldown: 0,
-                sea_level: 63,
-            },
-            online_mode: false,
-            enforces_secure_chat: false,
-        })
     }
 }

@@ -527,35 +527,4 @@ mod tests {
             }
         });
     }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_clients_dragon_parts_resolve_through_its_own_copy() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_protocol::connection::Pipe;
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "PartReadTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player =
-                Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:ender_dragon", [0.0; 3], [0.0; 3]);
-            place_parts(game);
-            // The server tells this client of the dragon alone; the parts are its copies of it.
-            let dragon = game.entity(15).unwrap();
-            assert_parts_are_the_dragons_own(game, dragon);
-            let parts = game.entity_parts(dragon).unwrap();
-            // The window's own player is not one, and a stale handle is none.
-            assert_eq!(game.entity(7).map(|e| e.id()), Some(7));
-            let stale = EntityRef::new(WorldEpoch::new(dragon.epoch().get() + 1), parts[3].id());
-            assert_eq!(game.entity_position(stale), None);
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(game.entity_position(parts[3]), None);
-        });
-    }
 }

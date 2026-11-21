@@ -12,10 +12,7 @@ impl Game<'_> {
                 FireworkEvent::Launched { at } => {
                     self.audio.play("minecraft:entity.firework_rocket.launch", Some(at), 3.0, 1.0);
                 }
-                FireworkEvent::Burst { at, velocity, sound, stars } => {
-                    let camera = self.eye_position().unwrap_or(at);
-                    self.particles.fireworks(at, velocity, stars, camera, sound);
-                }
+                FireworkEvent::Burst { .. } => {}
                 // Gap: `ecs_hurt` takes no damage type (`kind`): the damage is generic.
                 FireworkEvent::Hurt { victim, damage, cause, .. } => {
                     let id = self.ecs_id_of(victim);

@@ -7,11 +7,10 @@
 //! A cushion is a `BlockAttachedEntity`, not a block: it has no block state,
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
-use super::{Game, Hit, InteractTarget, Keys, entity_culling::default_range, ray_box};
+use super::{Game, Hit, InteractTarget, Keys, ray_box};
 use horizon_client::actions::Action;
 use horizon_client::entities::{Cushion, dye_index};
 use horizon_client::items::ItemStack;
-use horizon_client::mobs::anim::Poses;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `Direction.fromYRot(yaw).toYRot()`: the nearest 90 degree step.
@@ -474,21 +473,9 @@ impl Game<'_> {
         // Entity.getY(2/3) is relative to the cushion's quarter-block height.
         let particle_at = [p.x, p.y + 0.25 * (2.0 / 3.0), p.z];
         // Guest actions temporarily take self.lan; flush once the hub is back.
-        // Queue before resolving a sprite: a dedicated server has no renderer.
         if self.audio.capture.is_some() {
             self.lan_cushion_breaks.push((state, particle_at));
         }
-        let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
-        let Some((sprite, tint)) = self.particle_sprite(state, at) else {
-            return;
-        };
-        let options = horizon_client::particles::ParticleOptions::block(
-            horizon_client::particles::ParticleType::Block,
-            sprite,
-            tint,
-        );
-        self.particles
-            .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
@@ -699,64 +686,6 @@ impl Game<'_> {
         true
     }
 
-    /// `CushionRenderer`: the coloured model, rotated to the nearest
-    /// direction, with its bottom on the cushion's position.
-    pub(super) fn cushion_geometry(
-        &self,
-        camera: glam::DVec3,
-        out: &mut Vec<horizon_client_render::render_geometry::Vertex>,
-    ) {
-        let Some(model) = self.cushion_model.as_ref() else {
-            return;
-        };
-        let sprites = &self.gui.atlas.sprites;
-        for c in &self.cushions {
-            let a = aabb(c.bounds());
-            let (lo, hi) = (a.min_position(), a.max_position());
-            let (lo, hi) = (
-                glam::DVec3::new(lo.x, lo.y, lo.z),
-                glam::DVec3::new(hi.x, hi.y, hi.z),
-            );
-            let range = default_range(hi - lo, self.view_scale());
-            let Some(sight) = self.entity_sight(camera, (lo + hi) / 2.0, range, lo, hi) else {
-                continue;
-            };
-            let Some(uv) = sprites
-                .get(&format!("entity/cushion/{}_cushion", c.color_name()))
-                .map(|r| [r.u0, r.v0, r.u1, r.v1])
-            else {
-                continue;
-            };
-            let culling = self.sighted_decision(sight, || self.entity_cull_decision(c, 1.0));
-            if culling.hides_entity() {
-                continue;
-            }
-            let entity_start = out.len();
-            let p = glam::DVec3::new(c.position.x, c.position.y, c.position.z) - camera;
-            let base = glam::Mat4::from_translation(p.as_vec3())
-                * glam::Mat4::from_rotation_y((180.0 - snap_yaw(c.yaw)).to_radians())
-                * glam::Mat4::from_rotation_x(std::f32::consts::PI)
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.25, 0.0));
-            // `EntityRenderer.getPackedLightCoords` probes at the eye height.
-            let l = self.world.light(
-                c.position.x.floor() as i32,
-                (c.position.y + 0.2125).floor() as i32,
-                c.position.z.floor() as i32,
-            );
-            let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            horizon_client::mobs::render::draw(
-                model,
-                base,
-                &Poses::new(model),
-                uv,
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-            self.finish_lit_entity(culling, c, out, entity_start);
-        }
-    }
 }
 
 #[cfg(test)]

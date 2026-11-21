@@ -25,39 +25,6 @@ mod background {
         }
     }
 }
-#[test]
-#[ignore = "daily"]
-fn cancelled_background_keeps_custom_geometry_and_one_blur_request() {
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("background", background::hooks())].into(),
-        || {
-            with_client_game(|game| {
-                let mut batch = horizon_client::hud::HudBatch::scratch([800, 600]);
-                game.render_transparent_background("inventory", &mut batch);
-                assert_eq!(
-                    batch.vertices.len(),
-                    6,
-                    "custom quad only, no vanilla gradient"
-                );
-                assert!(game.screen_blur_requested.get());
-                batch.vertices.clear();
-                game.render_transparent_background("chest", &mut batch);
-                assert_eq!(
-                    batch.vertices.len(),
-                    6,
-                    "uncancelled screen keeps its gradient"
-                );
-                game.screen_blur_requested.set(false);
-                game.render_transparent_background("inventory", &mut batch);
-                assert_eq!(
-                    batch.vertices.len(),
-                    12,
-                    "the next frame may request blur again"
-                );
-            })
-        },
-    );
-}
 
 mod claims {
     use super::*;

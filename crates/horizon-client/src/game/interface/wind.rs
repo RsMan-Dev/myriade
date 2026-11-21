@@ -10,7 +10,6 @@ use horizon_client::{
     Result,
     items::ItemStack,
     mobs::{Damage, DamageKind, Species, Who},
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
 use horizon_core::{
@@ -761,14 +760,6 @@ impl Game<'_> {
                 * 0.7;
             self.audio.play(src.sound, Some(center), 4.0, pitch);
         }
-        // Explosion.isSmall: below a radius of 2.
-        let ty = if radius < 2.0 {
-            ParticleType::GustEmitterSmall
-        } else {
-            ParticleType::GustEmitterLarge
-        };
-        self.particles
-            .add(&ParticleOptions::simple(ty), center, [1.0, 0.0, 0.0]);
         self.lan_wind_burst(center, radius, src.sound, block_count, &pushed);
         Ok(())
     }
@@ -890,54 +881,6 @@ impl Game<'_> {
         });
         self.process_level_events()?;
         Ok(())
-    }
-    /// `WindChargeRenderer`: the spinning charge and its wind.
-    pub(super) fn wind_charge_geometry(
-        &self,
-        p: &Projectile,
-        at: glam::Vec3,
-        light: u32,
-        partial: f32,
-        out: &mut Vec<horizon_client_render::render_geometry::Vertex>,
-    ) {
-        let Some(model) = self.entity_models.wind_charge.as_ref() else {
-            return;
-        };
-        let Some(r) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/projectiles/wind_charge")
-            .copied()
-        else {
-            return;
-        };
-        // `EntityRenderState.ageInTicks`: the tick count plus the partial tick.
-        let age = p.age as f32 + partial;
-        let mut poses = horizon_client::mobs::anim::Poses::new(model);
-        poses.yrot("wind_charge", -age * 16.0_f32.to_radians());
-        poses.yrot("wind", age * 16.0_f32.to_radians());
-        let base = glam::Mat4::from_translation(at)
-            * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-        let start = out.len();
-        horizon_client::mobs::render::draw_scrolled(
-            model,
-            base,
-            &poses,
-            [r.u0, r.v0, r.u1, r.v1],
-            horizon_client::mobs::render::scroll_offset(
-                age,
-                horizon_client::mobs::render::WIND_CHARGE_SCROLL,
-            ),
-            0xFFFF_FFFF,
-            light,
-            0,
-            out,
-        );
-        // `RenderTypes.breezeWind` has an `OitPipelineSet`.
-        for vertex in &mut out[start..] {
-            vertex.layer |= horizon_client::gfx::OIT_ENTITY;
-        }
     }
 }
 #[cfg(test)]

@@ -171,19 +171,6 @@ impl Game<'_> {
         r.position = p.position.add_vector(Vec3::new(hand[0], hand[1], hand[2]));
         r.velocity = p.velocity;
     }
-    /// The trail (`FireworkRocketEntity.tick` on a client): a spark each tick
-    /// at the rocket, drifting against its motion.
-    pub(super) fn rocket_spark(&mut self, r: &Rocket) {
-        let g = |g: &mut horizon_core::random::LegacyRandom| g.next_gaussian() * 0.05;
-        let v = [
-            g(&mut self.world.random),
-            -r.velocity.y * 0.5,
-            g(&mut self.world.random),
-        ];
-        let at = [r.position.x, r.position.y, r.position.z];
-        self.particles
-            .add(&ParticleOptions::simple(ParticleType::Firework), at, v);
-    }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
     /// rocket attached to the player.
     pub(super) fn boost_firework(&mut self, stack: &ItemStack) -> bool {
@@ -302,10 +289,6 @@ fn use_on_passes(fall_flying: bool) -> bool {
 }
 
 #[cfg(test)]
-#[path = "tests/own_rocket_spark_tests.rs"]
-mod own_spark_tests;
-
-#[cfg(test)]
 mod tests {
     /// `Projectile.shoot` turns a shot rocket to its motion at once.
     #[test]
@@ -319,7 +302,6 @@ mod tests {
         assert!((rocket.rotation[0] - 45.0).abs() < 1e-4);
         assert!(rocket.rotation[1].abs() < 1e-4);
     }
-
 
     /// A flying rocket's vertices carry its own id for frame generation's and a temporal
     /// upscaler's motion vectors (`Frame::entity_motion`), so the motion matched between

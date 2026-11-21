@@ -201,13 +201,9 @@ impl Game<'_> {
         let m = self.player_model.as_ref()?;
         Some((m, self.own_profile_name()))
     }
-    /// The local player's profile name as others see it: the session's on a
-    /// server (single player's server thread included), else the local player's.
+    /// The local player's profile name as others see it.
     pub(super) fn own_profile_name(&self) -> String {
-        match self.remote.as_ref() {
-            Some(r) if !r.profile_name.is_empty() => r.profile_name.clone(),
-            _ => self.acting_player_name().to_owned(),
-        }
+        self.acting_player_name().to_owned()
     }
     /// The names the name tags show this frame (the control socket's status).
     pub(in crate::game) fn shown_name_tags(&self, camera: glam::DVec3) -> Vec<String> {
@@ -586,82 +582,6 @@ impl Game<'_> {
             }
         }
         tags
-    }
-    /// `SubmitNodeCollection.submitNameTag`: a discrete name is drawn once,
-    /// faded, on its background; any other in full over the world, its faded
-    /// copy and background in `see_through`, over everything.
-    pub(super) fn name_tag_geometry(
-        &mut self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-        see_through: &mut Vec<Vertex>,
-    ) {
-        // The text alpha that goes with getBackgroundOpacity(0.25):
-        // max((0.25 + 0.75) / 2, 0.5), as ARGB.color (the floor of 255 times it).
-        const FADED: u32 = 0x7F;
-        let mut patches = Vec::new();
-        let mut layouts = std::mem::take(&mut self.name_tag_layouts);
-        layouts.begin_frame(&self.gui.atlas);
-        for tag in self.collect_name_tags(
-            camera,
-            alpha,
-            !mod_api::__private::mods().is_empty(),
-            self.view_frustum.as_ref(),
-        ) {
-            let o = tag.at - camera;
-            // `gbuffers_entities` draws name tag text (2.3); a sneaking player's faded tag, on its
-            // background, blends.
-            if tag.discrete {
-                self.mark_translucent_entity(out.len(), "minecraft:name_tag");
-                let light = vertex_light(tag.light);
-                patches.extend(self.styled_name_tag_quads(
-                    o,
-                    &tag.lines,
-                    FADED,
-                    true,
-                    0,
-                    light,
-                    NAME_TAG_UNIT,
-                    out,
-                    tag.marks,
-                    Some(&mut layouts),
-                ));
-                continue;
-            }
-            // LightCoordsUtil.lightCoordsWithEmission(lightCoords, 2).
-            let lit = (tag.light >> 4).max(2) << 4 | (tag.light & 15).max(2);
-            self.mark_entity(out.len(), "minecraft:name_tag");
-            let light = vertex_light(lit);
-            patches.extend(self.styled_name_tag_quads(
-                o,
-                &tag.lines,
-                0xFF,
-                false,
-                0,
-                light,
-                NAME_TAG_UNIT,
-                out,
-                tag.marks,
-                Some(&mut layouts),
-            ));
-            // RenderPipelines.TEXT_SEE_THROUGH: no depth test, no lightmap.
-            patches.extend(self.styled_name_tag_quads(
-                o,
-                &tag.lines,
-                FADED,
-                true,
-                2,
-                0,
-                NAME_TAG_UNIT,
-                see_through,
-                tag.marks,
-                Some(&mut layouts),
-            ));
-        }
-        layouts.end_frame();
-        self.name_tag_layouts = layouts;
-        self.map_patches.extend(patches);
     }
     /// The lines of one name tag, `o` from the camera: the text at
     /// `text_alpha` in its layer, on the translucent black background

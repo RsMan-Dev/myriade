@@ -201,7 +201,6 @@ fn a_saved_song_comes_back_without_its_sound() {
                 clock,
                 (j.playing, j.ticks, j.song_clock_present),
                 signal(game),
-                game.titles.overlay.is_some(),
                 events,
             ));
         }
@@ -214,24 +213,21 @@ fn a_saved_song_comes_back_without_its_sound() {
     // twenty-tick chatter of a song that is running.
     assert_eq!(at(Some(41)).1, (true, 42, true), "the clock goes on");
     assert_eq!(at(Some(41)).2, 15);
-    assert!(!at(Some(41)).3, "nothing says \"Now Playing\" on a load");
-    assert!(at(Some(41)).4.is_empty(), "{:?}", at(Some(41)).4);
+    assert!(at(Some(41)).3.is_empty(), "{:?}", at(Some(41)).3);
     assert_eq!(at(Some(0)).1, (true, 1, true));
-    assert!(!at(Some(0)).3, "a clock saved at its start stays quiet");
     assert_eq!(
-        at(Some(0)).4,
+        at(Some(0)).3,
         vec![("minecraft:jukebox_play", AT, None)],
         "the first tick's game event is vanilla's"
     );
     // Past the end: gone, and silent about going.
     assert_eq!(at(Some(10_000)).1, (false, 0, false));
     assert_eq!(at(Some(10_000)).2, 0, "a dropped song powers nothing");
-    assert!(at(Some(10_000)).4.is_empty(), "{:?}", at(Some(10_000)).4);
+    assert!(at(Some(10_000)).3.is_empty(), "{:?}", at(Some(10_000)).3);
     // A record saved without a clock: no song, no signal, no event.
     assert_eq!(at(None).1, (false, 0, false));
     assert_eq!(at(None).2, 0);
-    assert!(!at(None).3, "a record alone starts no song");
-    assert!(at(None).4.is_empty(), "{:?}", at(None).4);
+    assert!(at(None).3.is_empty(), "{:?}", at(None).3);
 }
 
 /// The same three cases on the load path itself, which needs no resources: only

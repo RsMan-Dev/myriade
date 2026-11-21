@@ -3,7 +3,6 @@
 //! hatches.
 use super::Game;
 use super::level_sounds::LevelSound;
-use horizon_client::actions::Action;
 use horizon_client::mobs::{MobEvent, happy_ghast};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::registry::BlockStateId;
@@ -68,7 +67,7 @@ impl Game<'_> {
             return false;
         }
         let at = m.center();
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         let harnessed = m.extra.body_id().is_some();
         // Equippable.equipOnInteract: a harness goes on a bare adult.
         if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {

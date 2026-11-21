@@ -1,46 +1,7 @@
-//! Block particles: the sprite and tint of a block's faces and particle material, honey slides,
-//! and the burst a destroyed block leaves (`ClientLevel.addDestroyBlockEffect`).
+//! The sprite and tint of a block's faces and particle material.
 use super::*;
 
 impl Game<'_> {
-    /// `TerrainParticle` at `pos`: the model's particle sprite and tint source
-    /// 0's `colorAsTerrainParticle` (white when the block has none).
-    /// `HoneyBlock.showSlideParticles` (entity event 53): five honey block
-    /// particles at the entity.
-    pub(super) fn honey_slide_particles(&mut self, at: [f64; 3]) {
-        self.honey_entity_particles(at, 53);
-    }
-
-    /// `HoneyBlock.showParticles`: the crumb count of entity event 53 or 54.
-    pub(super) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
-        use horizon_client::particles::{ParticleOptions, ParticleType};
-        let Some(count) = horizon_client::landing::honey_particle_count(event) else {
-            return;
-        };
-        let Some(honey) = self
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:honey_block")
-        else {
-            return;
-        };
-        let block = [
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        ];
-        if let Some((sprite, tint)) = self.particle_sprite(honey, block) {
-            for _ in 0..count {
-                self.particles.add(
-                    &ParticleOptions::block(ParticleType::Block, sprite.clone(), tint),
-                    at,
-                    [0.0; 3],
-                );
-            }
-        }
-    }
-
     /// `BlockStateModelSet.getParticleMaterial`: the sprite of the model's
     /// `particle` texture, else its first face (entity-rendered blocks may
     /// have a particle texture without faces, and faces without one).
@@ -78,43 +39,11 @@ impl Game<'_> {
             .map(|b| std::array::from_fn(|i| b[i] + offset[i % 3]))
             .collect()
     }
-
-    /// ClientLevel.addDestroyBlockEffect: a burst per outline box.
-    pub(super) fn destroy_particles(&mut self, pos: [i32; 3], state: BlockStateId) {
-        if self.settings.extras.hide_block_particles {
-            return;
-        }
-        let Some((sprite, tint)) = self.particle_sprite(state, pos) else {
-            return;
-        };
-        let boxes = self.particle_shape(pos, state);
-        horizon_client::particles::destroy_positions(pos, &boxes, |p, v| {
-            let particle = Particle::terrain(self.particles.random(), p, v, sprite.clone(), tint);
-            self.particles.push(particle);
-        });
-    }
 }
 
 impl Game<'_> {
-    /// ClientLevel.addBreakingParticles: one crumb on the face being mined.
-    pub(super) fn crack_particle(&mut self, pos: [i32; 3], face: [i32; 3], state: BlockStateId) {
-        if self.settings.extras.hide_block_particles {
-            return;
-        }
-        let Some((sprite, tint)) = self.particle_sprite(state, pos) else {
-            return;
-        };
-        let boxes = self.particle_shape(pos, state);
-        // Keep client effects separate from the authoritative world RNG.
-        let r = self.particles.random();
-        let Some(p) = horizon_client::particles::breaking_position(r, pos, face, &boxes) else {
-            return;
-        };
-        let mut particle = Particle::terrain(r, p, [0.0; 3], sprite, tint);
-        particle.set_power(0.2);
-        particle.scale(0.6);
-        self.particles.push(particle);
-    }
+    /// `TerrainParticle` at `pos`: the model's particle sprite and tint source
+    /// 0's `colorAsTerrainParticle` (white when the block has none).
     pub(super) fn particle_sprite(
         &self,
         state: BlockStateId,

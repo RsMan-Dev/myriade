@@ -434,13 +434,6 @@ impl Game<'_> {
             let indicator = horizon_client::particles::ParticleOptions::simple(
                 horizon_client::particles::ParticleType::DamageIndicator,
             );
-            self.particles.send_particles(
-                &indicator,
-                [feet[0], feet[1] + height * 0.5, feet[2]],
-                [0.1, 0.0, 0.1],
-                0.2,
-                (actual * 0.5) as u32,
-            );
             // The players a server serves are sent them too (the window of the server thread).
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
@@ -512,9 +505,9 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear
-    /// moves back, `kinetic_hit_ticks`) and sounds, at most once every ten
+    /// moves back, `kinetic_hit_ticks`), at most once every ten
     /// ticks.
-    pub(super) fn kinetic_hit_feedback(&mut self, entity: i32, kinetic: &Kinetic, at: [f64; 3]) {
+    pub(super) fn kinetic_hit_feedback(&mut self, entity: i32, _kinetic: &Kinetic, _at: [f64; 3]) {
         let now = self.world.game_time;
         if self
             .kinetic_feedback
@@ -522,8 +515,6 @@ impl Game<'_> {
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
             self.kinetic_feedback.insert(entity, now);
-            self.audio
-                .play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
     }
 
@@ -537,33 +528,20 @@ impl Game<'_> {
     /// `LivingEntity.handleEntityEvent(2)` on a server's client: the
     /// player `id` (this one, or another) was hit by the spear it uses.
     pub(super) fn remote_kinetic_hit(&mut self, id: i32) {
-        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
-        let (item, at) = if own {
-            let item = self
-                .using
-                .and_then(|(slot, _)| self.stack_in(slot))
-                .map(|s| s.item.clone());
-            let at = self.player.as_ref().map(|p| p.position);
-            (item, at)
-        } else {
-            let mob = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id as u32 && m.extra.using_item > 0);
-            let item = mob.and_then(|m| {
-                if m.extra.using_off_hand {
-                    horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::OFFHAND)
-                } else {
-                    horizon_client::mobs::finalize::item(
-                        m,
-                        horizon_client::mobs::finalize::MAINHAND,
-                    )
-                }
-            });
-            (item, mob.map(|m| m.position))
-        };
+        let mob = self
+            .remote_entities
+            .iter()
+            .find(|m| m.id == id as u32 && m.extra.using_item > 0);
+        let item = mob.and_then(|m| {
+            if m.extra.using_off_hand {
+                horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::OFFHAND)
+            } else {
+                horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::MAINHAND)
+            }
+        });
+        let at = mob.map(|m| m.position);
         if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at) {
-            self.kinetic_hit_feedback(if own { OWN } else { id }, &kinetic, [at.x, at.y, at.z]);
+            self.kinetic_hit_feedback(id, &kinetic, [at.x, at.y, at.z]);
         }
     }
 

@@ -130,7 +130,6 @@ impl LifecycleFixture {
     /// A singleton tests selected and unselected chunks in separate passes.
     /// Remote singleton behavior is checked by its storage-specific fixture.
     pub fn run_singleton(self) {
-        assert!(self.remote.is_none());
         self.walk(true, |_| {});
     }
 

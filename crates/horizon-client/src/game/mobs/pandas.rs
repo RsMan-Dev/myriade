@@ -1,15 +1,10 @@
 //! Pandas on the game side: the food they find on the ground and pick up
 //! (`Mob.aiStep`, `Panda.pickUpItem`), the bamboo a player gives them
-//! (`Panda.mobInteract`) and the start a sneeze gives the grown pandas about run on the
-//! game's `PandaLevel` (`horizon_gameplay::pandas`, implemented below: the food tag is
-//! the private `Game::panda_eats_from_ground`, which a mod can listen to); the crumbs and the sneeze a window
-//! draws stay here.
+//! (`Panda.mobInteract`) and the start a sneeze gives the grown pandas about
+//! run on the game's `PandaLevel` (`horizon_gameplay::pandas`, implemented
+//! below: the food tag is the private `Game::panda_eats_from_ground`, which a
+//! mod can listen to).
 use super::Game;
-use horizon_client::{
-    items::ItemStack,
-    mobs::{Species, panda},
-    particles::{ParticleOptions, ParticleType},
-};
 use horizon_gameplay::panda_level::PandaLevel;
 
 impl Game<'_> {
@@ -33,36 +28,6 @@ impl Game<'_> {
     /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
     pub(super) fn panda_sneezed(&mut self, id: u32) {
         horizon_gameplay::pandas::panda_sneezed(self, id);
-    }
-    /// What a window draws of its pandas: the crumbs of a bite
-    /// (`addEatingParticles`) and the sneeze's particle.
-    pub(super) fn panda_effects(&mut self) {
-        let mut bites = Vec::new();
-        let mut sneezes = Vec::new();
-        for m in self
-            .remote_entities
-            .iter_mut()
-            .filter(|m| m.species() == Species::Panda)
-        {
-            let (crumbs, sneeze) = panda::effects(m);
-            if let (Some(crumbs), Some(item)) = (
-                crumbs,
-                horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::MAINHAND),
-            ) {
-                bites.push((item, crumbs));
-            }
-            sneezes.extend(sneeze);
-        }
-        for (item, crumbs) in bites {
-            let options = self.item_particle(&ItemStack::new(&item, 1));
-            for (at, velocity) in crumbs {
-                self.particles.add(&options, at, velocity);
-            }
-        }
-        let options = ParticleOptions::simple(ParticleType::Sneeze);
-        for (at, velocity) in sneezes {
-            self.particles.add(&options, at, velocity);
-        }
     }
 }
 

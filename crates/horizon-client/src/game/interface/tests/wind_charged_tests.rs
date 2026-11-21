@@ -104,7 +104,7 @@ fn a_wind_charged_zombie_dies(game: &mut Game<'_>, silent: bool) {
 /// `SoundEvents.BREEZE_WIND_CHARGE_BURST`, so the burst is heard as the
 /// breeze's, not as the wind charge's; `ServerLevel.explode` sends
 /// `playSound = source == null || !source.isSilent()`, so a `Silent` mob's
-/// burst is mute. The particle and the knockback stay either way.
+/// burst is mute. The knockback stays either way.
 #[test]
 #[ignore = "daily"]
 fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
@@ -113,18 +113,11 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
         for silent in [false, true] {
             let boat = boat(game);
             let (breeze, charge) = (heard(game, BREEZE_BURST), heard(game, WIND_CHARGE_BURST));
-            game.particles.requested = Some(Vec::new());
             a_wind_charged_zombie_dies(game, silent);
-            let gust = game.particles.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, BREEZE_BURST) - breeze,
                 heard(game, WIND_CHARGE_BURST) - charge,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == horizon_client::particles::ParticleType::GustEmitterLarge
-                    })
-                    .count(),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();
@@ -136,17 +129,17 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
     assert_eq!(
         outcome,
         vec![
-            // Heard once, as the breeze's, with the gust and the boat thrown.
-            (false, 1, 0, 1, true),
-            // A silent mob's burst is mute, and still pushes and draws.
-            (true, 0, 0, 1, true),
+            // Heard once, as the breeze's, with the boat thrown.
+            (false, 1, 0, true),
+            // A silent mob's burst is mute, and still pushes.
+            (true, 0, 0, true),
         ]
     );
 }
 
 /// `AbstractWindCharge.explode` hands `ServerLevel.explode` the charge itself
 /// as the source, so `playSound` is `!charge.isSilent()`: a `Silent` wind
-/// charge's burst is mute, its gust and its push stay. The sound is the wind
+/// charge's burst is mute, its push stays. The sound is the wind
 /// charge's own, as `WindCharge.explode` passes it.
 #[test]
 #[ignore = "daily"]
@@ -156,7 +149,6 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
         for silent in [false, true] {
             let boat = boat(game);
             let (charge, breeze) = (heard(game, WIND_CHARGE_BURST), heard(game, BREEZE_BURST));
-            game.particles.requested = Some(Vec::new());
             let nbt = if silent {
                 "{Silent:1b,Motion:[0.0,-1.0,0.0]}"
             } else {
@@ -168,16 +160,10 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
             for _ in 0..40 {
                 game.tick_creatures().unwrap();
             }
-            let gust = game.particles.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, WIND_CHARGE_BURST) - charge,
                 heard(game, BREEZE_BURST) - breeze,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == horizon_client::particles::ParticleType::GustEmitterSmall
-                    })
-                    .count(),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();
@@ -189,10 +175,10 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
     assert_eq!(
         outcome,
         vec![
-            // Heard once, as the wind charge's, with the gust and the boat thrown.
-            (false, 1, 0, 1, true),
-            // A silent charge's burst is mute, and still pushes and draws.
-            (true, 0, 0, 1, true),
+            // Heard once, as the wind charge's, with the boat thrown.
+            (false, 1, 0, true),
+            // A silent charge's burst is mute, and still pushes.
+            (true, 0, 0, true),
         ]
     );
 }

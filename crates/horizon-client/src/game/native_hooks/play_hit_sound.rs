@@ -1,5 +1,4 @@
 use super::*;
-use crate::game::Audio;
 use horizon_core::{geometry::Direction, position::BlockPos};
 
 impl Game<'_> {
@@ -22,20 +21,16 @@ impl Game<'_> {
                 cancel: &mut cancel,
             });
         }
-        if cancel {
+        if cancel || unshared {
             return;
         }
         let sounds = self.res.facts().get(state).sounds.clone();
         let at = Some(pos.map(|v| f64::from(v) + 0.5));
         let volume = (sounds.volume + 1.0) / 8.0;
         let pitch = sounds.pitch * 0.5;
-        let play: fn(&mut Audio, &str, Option<[f64; 3]>, f32, f32) = if unshared {
-            Audio::play_unshared
-        } else {
-            Audio::play
-        };
-        play(&mut self.audio, &sounds.hit, at, volume, pitch);
+        self.audio.play(&sounds.hit, at, volume, pitch);
     }
+
 
     pub(in crate::game) fn native_play_hit_sound(
         &mut self,

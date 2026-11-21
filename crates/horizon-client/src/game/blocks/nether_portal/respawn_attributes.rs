@@ -80,6 +80,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "respawn_attributes/tests.rs"]
-mod tests;

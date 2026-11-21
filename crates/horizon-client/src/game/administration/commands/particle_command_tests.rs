@@ -129,28 +129,6 @@ fn particle_options_carry_their_codec_data() {
     );
 }
 
-/// The crumbs the command names are drawn: `TerrainParticle.CrumblingProvider`
-/// keeps no particle for options that carry no block.
-#[test]
-#[ignore = "daily"]
-fn block_crumble_draws_the_block_it_names() {
-    let mut game = game();
-    game.particles.created_requests = None;
-    game.particles.clear();
-    assert!(game.run_command(
-        "particle minecraft:block_crumble{block_state:\"minecraft:stone\"} 0.5 100.5 0.5 0 0 0 0 1"
-    ));
-    let level = ParticleLevel {
-        world: &game.world,
-        facts: game.res.facts(),
-        collision: game.collision,
-        player: None,
-        cached_chunk: std::cell::Cell::new(None),
-    };
-    game.particles.tick(&level);
-    assert_eq!(game.particles.len(), 1, "the crumble is drawn");
-}
-
 /// The owner standing at the origin of a server game with the commands allowed.
 fn with_owner_game(test: impl FnOnce(&mut Game<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {

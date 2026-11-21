@@ -227,141 +227,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// `TntRenderer`: the block centred on the entity, swelling over the last
-    /// 10 ticks and flashing white every 5 ticks.
-    pub(super) fn tnt_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
-        if self.tnts.is_empty() {
-            return;
-        }
-        let Some(state) = self.pack.assets.registry.default_state("minecraft:tnt") else {
-            return;
-        };
-        // Face sprites from the block model: up, down, north, south, west, east.
-        let Ok(models) = self
-            .pack
-            .render
-            .model_catalog
-            .collect(state, BlockPos::new(0, 0, 0))
-        else {
-            return;
-        };
-        let mut sprites = [None; 6];
-        for face in models.iter().flat_map(|(_, m)| m.faces.iter()) {
-            use horizon_assets::model::Direction as D;
-            let index = match face.quad.facing {
-                D::Up => 0,
-                D::Down => 1,
-                D::North => 2,
-                D::South => 3,
-                D::West => 4,
-                D::East => 5,
-            };
-            if sprites[index].is_none() {
-                sprites[index] = self
-                    .pack
-                    .layer_names
-                    .get(&face.layer)
-                    .and_then(|name| self.gui.atlas.sprites.get(name).copied());
-            }
-        }
-        let range = super::entity_culling::default_range(
-            glam::DVec3::splat(PrimedTnt::SIZE),
-            self.view_scale(),
-        );
-        for t in &self.tnts {
-            // LevelExtractor: the camera entity is not drawn from its own eyes.
-            if self.hides_as_camera(t.id) {
-                continue;
-            }
-            // EntityRenderer.shouldRender.
-            let Some(sight) = self.standing_entity_sight(
-                camera,
-                super::entity_culling::at(t.previous),
-                super::entity_culling::at(t.position),
-                alpha,
-                PrimedTnt::SIZE,
-                PrimedTnt::SIZE,
-                range,
-                0.0,
-            ) else {
-                continue;
-            };
-            let start = out.len();
-            self.mark_motion(start, Self::MOTION_OBJECT | u64::from(t.id));
-            let fuse = t.fuse as f32 - alpha as f32 + 1.0;
-            let scale = if fuse < 10.0 {
-                let g = (1.0 - fuse / 10.0).clamp(0.0, 1.0);
-                1.0 + g * g * g * g * 0.3
-            } else {
-                1.0
-            };
-            let lit = fuse >= 0.0 && (fuse / 5.0) as i32 % 2 == 0;
-            let base = glam::DVec3::new(
-                t.previous.x + (t.position.x - t.previous.x) * alpha,
-                t.previous.y + (t.position.y - t.previous.y) * alpha + 0.5,
-                t.previous.z + (t.position.z - t.previous.z) * alpha,
-            ) - camera;
-            let o = base.as_vec3();
-            let light = self.world.light(
-                t.position.x.floor() as i32,
-                (t.position.y + 0.5).floor() as i32,
-                t.position.z.floor() as i32,
-            );
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let v = |x: f32, y: f32, z: f32| o + glam::Vec3::new(x - 0.5, y - 0.5, z - 0.5) * scale;
-            let faces = [
-                (
-                    [v(0., 1., 1.), v(1., 1., 1.), v(1., 1., 0.), v(0., 1., 0.)],
-                    1.0,
-                ),
-                (
-                    [v(0., 0., 0.), v(1., 0., 0.), v(1., 0., 1.), v(0., 0., 1.)],
-                    0.5,
-                ),
-                (
-                    [v(1., 0., 0.), v(0., 0., 0.), v(0., 1., 0.), v(1., 1., 0.)],
-                    0.8,
-                ),
-                (
-                    [v(0., 0., 1.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 1.)],
-                    0.8,
-                ),
-                (
-                    [v(0., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(0., 1., 0.)],
-                    0.6,
-                ),
-                (
-                    [v(1., 0., 1.), v(1., 0., 0.), v(1., 1., 0.), v(1., 1., 1.)],
-                    0.6,
-                ),
-            ];
-            for ((corners, shade), sprite) in faces.into_iter().zip(sprites) {
-                let Some(r) = sprite else { continue };
-                let c = (255.0 * shade) as u32;
-                let color = 0xFF00_0000 | c << 16 | c << 8 | c;
-                for (p, uv) in
-                    corners
-                        .iter()
-                        .zip([[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]])
-                {
-                    // Overlay 5: OverlayTexture white flash.
-                    out.push(Vertex {
-                        normal: [0; 4],
-                        pos: p.to_array(),
-                        uv,
-                        layer: if lit { 5 } else { 0 },
-                        color,
-                        light: packed,
-
-                        glint_uv: [0.0, 0.0],
-                    });
-                }
-            }
-            if !sight.camera {
-                self.ray_only(out, start);
-            }
-        }
-    }
 }
 
 /// `PrimedTnt.getOwner` as the blast's causing entity: the player, or a mob
@@ -1243,7 +1108,7 @@ mod tests {
     fn silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         on_big_stack(|| {
             let mut resources = None;
-            let Some(mut game) = source_silence_game(&mut resources) else {
+            let Some(mut game) = server_game(&mut resources) else {
                 return;
             };
             for silent in [false, true, false] {
@@ -1264,9 +1129,7 @@ mod tests {
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
                 game.audio.heard.clear();
-                let particles = particle_count(&game);
                 game.handle_mob_events(events).unwrap();
-                assert!(particle_count(&game) > particles);
                 assert_eq!(
                     sound_count(&game, "minecraft:entity.generic.explode"),
                     u32::from(!silent)
@@ -1290,19 +1153,6 @@ mod tests {
         if let Err(panic) = thread.join() {
             std::panic::resume_unwind(panic);
         }
-    }
-
-    fn source_silence_game(
-        resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<Game<'_>>> {
-        let mut game = server_game(resources)?;
-        // Observe the server's real emission requests without a camera or render tick.
-        game.particles.requested = Some(Vec::new());
-        Some(game)
-    }
-
-    fn particle_count(game: &Game<'_>) -> usize {
-        game.particles.requested.as_ref().unwrap().len()
     }
 
 }

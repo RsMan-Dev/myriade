@@ -94,22 +94,14 @@ impl LevelAccess for RainView<'_> {
 impl Game<'_> {
     /// `Level.getSkyDarken`: the same dimension, time and weather calculation used by gameplay.
     pub(super) fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
-        // A client of a server has the environment its server's type made for a mod's level.
-        let environment = match self
-            .remote
-            .as_ref()
-            .and_then(|r| r.level_environment.as_ref())
-        {
-            Some(own) => own,
-            None => match dimension {
-                Dim::Overworld => self.res.environment(),
-                Dim::Extra(_) => horizon_client::environment::Environment::for_level(
-                    dimension.id(),
-                    self.res.environment(),
-                ),
-                Dim::Nether => self.res.nether_environment(),
-                Dim::End => self.res.end_environment(),
-            },
+        let environment = match dimension {
+            Dim::Overworld => self.res.environment(),
+            Dim::Extra(_) => horizon_client::environment::Environment::for_level(
+                dimension.id(),
+                self.res.environment(),
+            ),
+            Dim::Nether => self.res.nether_environment(),
+            Dim::End => self.res.end_environment(),
         };
         let (rain, thunder) = weather_for_level(
             world.shape,
@@ -132,9 +124,7 @@ impl Game<'_> {
     /// The enabled feature flags as this side knows them: a client's are the server's, sent at
     /// join; a server's are its world's `enabled_features`.
     pub(super) fn enabled_feature_ids(&self) -> &Arc<[String]> {
-        self.remote
-            .as_ref()
-            .map_or(&self.level.enabled_features, |remote| &remote.features)
+        &self.level.enabled_features
     }
     /// Dimension shape of a loaded server level, including parked levels.
     pub(super) fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
@@ -811,7 +801,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn rule_reads_distinguish_unknown_stale_and_unavailable_and_snapshot_values() {
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{LevelReadError, WorldEpoch};
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
@@ -859,20 +848,12 @@ mod tests {
                 );
                 assert_eq!(level.game_rules(game), Err(LevelReadError::Unavailable));
             }
-            game.options.execution_role = ExecutionRole::Client;
-            assert_eq!(
-                level.game_rule(game, "keep_inventory"),
-                Err(LevelReadError::Unavailable)
-            );
-            assert_eq!(level.game_rules(game), Err(LevelReadError::Unavailable));
-            assert!(game.native_level_world(level).is_none());
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn weather_read_resolves_levels_and_refuses_stale_or_unavailable_handles() {
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{LevelRef, WorldEpoch};
 
         with_game(|game| {
@@ -890,25 +871,6 @@ mod tests {
             // The current world's dimension type, not its id alone, gates weather.
             game.world.shape.has_ceiling = true;
             assert_eq!(level.weather(game), Some((0.0, 0.0)));
-            game.options.execution_role = ExecutionRole::Client;
-            assert_eq!(level.weather(game), None, "no logged-in remote level");
-            let (client, _server) = horizon_protocol::connection::Pipe::pair();
-            game.connect_local(client, "WeatherTest").unwrap();
-            assert_eq!(level.weather(game), None, "login has not completed");
-            game.remote.as_mut().unwrap().logged_in = true;
-            game.world.weather.rain_level = (0.0, 0.5);
-            game.world.weather.thunder_level = (0.0, 0.75);
-            assert_eq!(level.weather(game), Some((0.5, 0.375)));
-            let other = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
-            assert_eq!(
-                other.weather(game),
-                None,
-                "client shows only its current level"
-            );
-            assert_eq!(stale.weather(game), None);
-            // Only the weather pair is a both-side read; the server queries keep their guard.
-            assert_eq!(game.level_is_raining(level), None);
-            assert_eq!(game.level_is_thundering(level), None);
         });
     }
 

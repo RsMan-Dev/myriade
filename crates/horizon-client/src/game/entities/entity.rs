@@ -1344,8 +1344,7 @@ impl Game<'_> {
     }
     /// The type ids the boat kind loads.
     fn loads_as_boat(&self, kind: &str) -> bool {
-        super::boats::any_boat_wood(kind)
-            .is_some_and(|(wood, chest)| self.boat_models.has(wood, chest))
+        super::boats::any_boat_wood(kind).is_some()
     }
     /// Loads a saved entity as the first kind in `entity_lists!` that claims
     /// its type id: `Err` hands the compound back when none does.

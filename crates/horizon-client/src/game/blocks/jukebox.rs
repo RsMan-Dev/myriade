@@ -1,15 +1,12 @@
 //! Jukeboxes (`JukeboxBlock`, `JukeboxBlockEntity`, `JukeboxSongPlayer`):
 //! inserting a `jukebox_playable` disc, ejecting it, the song with its
-//! "Now Playing" overlay, note particles every second, the redstone
-//! signal while playing, the comparator output, and saving.
+//! the redstone signal while playing, the comparator output, and saving.
 use super::Game;
 use horizon_client::{
     block_entity_item,
     containers::{BlockEntity, Jukebox},
     items::ItemStack,
     mobs::{Species, Who},
-    particles::{ParticleOptions, ParticleType},
-    text::Text,
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -283,49 +280,22 @@ impl Game<'_> {
         self.jukebox_has_record(pos)
             || held.is_some_and(|stack| jukebox_playable(stack, self.res.items()).is_some())
     }
-    /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
+    /// Level event 1010: the song from the jukebox.
     fn start_song(&mut self, pos: [i32; 3], song: &str) {
-        self.stop_sound(pos);
-        let Some(s) = self.items().songs.get(song).cloned() else {
+        if self.items().songs.get(song).is_none() {
             return;
-        };
-        // LevelRenderer.playJukeboxSong: SimpleSoundInstance.forJukeboxSong.
-        let id = self.audio.play_jukebox_song(&s.sound, pos);
-        self.jukebox_sounds.insert((pos[0], pos[1], pos[2]), id);
-        let description =
-            horizon_client::component::to_text(&s.description, &mut |k| Text::literal(k));
-        // Hud.setNowPlaying: the overlay, said at once.
-        let message = Text::translate("record.nowPlaying", &[description]);
-        self.say_system_now(&message);
-        self.titles.set_overlay(message, true);
-        self.update_song_volumes();
+        }
         self.notify_record_playing(pos, true);
         if self.audio.capture.is_some() {
             self.lan_songs.push((pos, Some(song.to_owned())));
         }
     }
-    /// `LevelEventHandler` 1010 on a client of a server: `playJukeboxSong`
-    /// for the song the event's data names in the server's `jukebox_song`
-    /// registry (`Registry.get(int).ifPresent`: an unknown id does nothing).
-    /// The server's jukebox plays it; this client only hears it.
-    pub(super) fn jukebox_song_event(&mut self, pos: [i32; 3], data: i32) {
-        if let Some(song) = jukebox_song_name(self.remote.as_ref().map(|r| &*r.registries), data) {
-            self.start_song(pos, &song);
-        }
-    }
     /// `LevelEventHandler` 1011: `stopJukeboxSongAndNotifyNearby`.
     pub(super) fn jukebox_stop_event(&mut self, pos: [i32; 3]) {
-        self.stop_sound(pos);
         self.notify_record_playing(pos, false);
-    }
-    fn stop_sound(&mut self, pos: [i32; 3]) {
-        if let Some(id) = self.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
-            self.audio.stop_and_release(id);
-        }
     }
     /// Level event 1011: the song ends, here and for the guests.
     fn stop_song(&mut self, pos: [i32; 3]) {
-        self.stop_sound(pos);
         self.notify_record_playing(pos, false);
         if self.audio.capture.is_some() {
             self.lan_songs.push((pos, None));
@@ -439,7 +409,7 @@ impl Game<'_> {
             if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
                 j.loaded_clock = false;
             }
-        } else if !self.jukebox_sounds.contains_key(&key) && ticks == 0 {
+        } else if ticks == 0 {
             self.start_song(pos, &song);
         }
         if ticks % 20 == 0 {
@@ -448,60 +418,14 @@ impl Game<'_> {
             // the sculk listeners and the allays around it.
             let state = self.world.block(pos[0], pos[1], pos[2]);
             self.post_block_game_event("minecraft:jukebox_play", pos, None, Some(state));
-            let color = f64::from(self.world.random.next_int_bound(4).unwrap_or(0)) / 24.0;
-            let at = [
-                f64::from(pos[0]) + 0.5,
-                f64::from(pos[1]) + f64::from(1.2_f32), // add(0.0, 1.2F, 0.0)
-                f64::from(pos[2]) + 0.5,
-            ];
-            self.particles.add(
-                &ParticleOptions::simple(ParticleType::Note),
-                at,
-                [color, 0.0, 0.0],
-            );
+            // The note's colour: drawn from the level random like vanilla.
+            // sendParticles vanilla : envoi aux joueurs à rebrancher
+            let _color = f64::from(self.world.random.next_int_bound(4).unwrap_or(0)) / 24.0;
         }
         if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
             j.ticks += 1;
         }
     }
-    /// Let go of songs that ended or whose jukebox stopped.
-    pub(super) fn update_song_volumes(&mut self) {
-        let sounds: Vec<_> = self
-            .jukebox_sounds
-            .iter()
-            .map(|(k, id)| (*k, *id))
-            .collect();
-        for (k, id) in sounds {
-            // A server's client has no playing jukebox of its own: its songs
-            // stop with level event 1011, or when they end.
-            let playing = matches!(self.world.block_entities.get(&k), Some(BlockEntity::Jukebox(j)) if j.playing);
-            if !keeps_song(
-                self.audio.engine.is_active(id),
-                false,
-                playing,
-            ) {
-                self.audio.stop_and_release(id);
-                self.jukebox_sounds.remove(&k);
-            }
-        }
-    }
-}
-/// The song a level event 1010's data names: its id in the `jukebox_song`
-/// registry the server sent (`Registry.get(int)`). Only a server's client
-/// has one; a level that plays its own jukeboxes starts their songs itself.
-fn jukebox_song_name(
-    registries: Option<&horizon_protocol::registry::Dynamic>,
-    id: i32,
-) -> Option<String> {
-    registries?
-        .name("minecraft:jukebox_song", id)
-        .map(str::to_owned)
-}
-/// Whether a jukebox song keeps playing: until it ends, and, in a level that
-/// plays its own jukeboxes, while that jukebox plays. A server's client
-/// stops it at level event 1011 (`LevelEventHandler.playingJukeboxSongs`).
-fn keeps_song(active: bool, server_client: bool, jukebox_playing: bool) -> bool {
-    active && (server_client || jukebox_playing)
 }
 /// The jukebox's redstone signal (15 while a song plays) and comparator output.
 pub(super) fn jukebox_signals(
@@ -526,39 +450,6 @@ pub(super) fn jukebox_signals(
             Some((if j.playing && !stale { 15 } else { 0 }, comparator))
         }
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{jukebox_song_name, keeps_song};
-    use horizon_protocol::registry::Dynamic;
-
-    /// On a server's client the song comes from level event 1010, whose data
-    /// is the song's id in the server's `jukebox_song` registry (#3173), and
-    /// it plays on although this client's jukebox isn't playing.
-    #[test]
-    fn a_server_clients_jukebox_song_comes_from_level_event_1010() {
-        let mut registries = Dynamic::default();
-        registries.registries.insert(
-            "minecraft:jukebox_song".into(),
-            ["minecraft:11", "minecraft:13", "minecraft:cat"]
-                .map(|n| (n.to_owned(), None))
-                .to_vec(),
-        );
-        assert_eq!(
-            jukebox_song_name(Some(&registries), 2).as_deref(),
-            Some("minecraft:cat")
-        );
-        assert_eq!(jukebox_song_name(Some(&registries), 3), None);
-        assert_eq!(jukebox_song_name(Some(&registries), -1), None);
-        assert_eq!(jukebox_song_name(None, 2), None);
-        // A server's client: on until the song ends (or level event 1011).
-        assert!(keeps_song(true, true, false));
-        assert!(!keeps_song(false, true, false));
-        // A level that plays its own jukebox: also until the jukebox stops.
-        assert!(keeps_song(true, false, true));
-        assert!(!keeps_song(true, false, false));
     }
 }
 

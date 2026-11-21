@@ -66,12 +66,8 @@ impl Game<'_> {
         }
         if broke && let Some(d) = self.dragon.as_ref() {
             let p = d.parts[0].0;
-            // Level event 2008: an explosion puff where a block broke.
-            self.particles.add(
-                &ParticleOptions::simple(ParticleType::Explosion),
-                [p.x, p.y, p.z],
-                [0.0; 3],
-            );
+            // Level event 2008 (`ServerLevel.levelEvent`): an explosion puff where a block broke.
+            self.level_event_at(2008, [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], 0);
         }
         if let Some(d) = self.dragon.as_mut() {
             d.in_wall = in_wall;

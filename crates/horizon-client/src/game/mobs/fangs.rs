@@ -1,11 +1,8 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use super::Game;
-use horizon_client::mobs::{Part, anim::Poses};
-use horizon_client::particles::{ParticleOptions, ParticleType};
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{EntityRandom, RandomSource};
-use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub(super) struct Fangs {
@@ -47,7 +44,6 @@ pub(super) fn fang_crit(random: &mut impl RandomSource, pos: [f64; 3]) -> ([f64;
 #[derive(Default)]
 pub(super) struct FangState {
     pub list: horizon_client::join_seq::ResidentList<Fangs>,
-    model: Option<Arc<Part>>,
 }
 impl FangState {
     pub(in crate::game) fn perf_count(&self) -> usize {
@@ -57,9 +53,6 @@ impl FangState {
 impl Game<'_> {
 
     pub(super) fn insert_fangs(&mut self, id: u32, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
-        if self.fangs.model.is_none() {
-            self.fangs.model = self.entity_models.evoker_fangs.clone();
-        }
         self.fangs.list.push(Fangs {
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -84,10 +77,11 @@ impl Game<'_> {
         }));
         self.next_entity = next;
     }
-    /// The bite's attack sound at `at` (`EvokerFangs.attack`), its pitch from the host's random.
+    /// The bite's attack sound at `at` (`EvokerFangs.attack`: entity event 4, which each player's client
+    /// answers with the sound), its pitch from the host's random. Broadcast to the players.
     pub(in crate::game) fn play_fang_bite(&mut self, at: [f64; 3]) {
         let pitch = fang_attack_pitch(&mut self.world.random);
-        self.audio.play_unshared("minecraft:entity.evoker_fangs.attack", Some(at), 1.0, pitch);
+        self.audio.play("minecraft:entity.evoker_fangs.attack", Some(at), 1.0, pitch);
     }
     pub(super) fn fangs_to_nbt(&self, f: &Fangs, uuid: [i32; 4]) -> horizon_core::nbt::Tag {
         horizon_client::entity_nbt::evoker_fangs_to_nbt(
@@ -108,81 +102,6 @@ impl Game<'_> {
         .and_then(|u| self.mob_by_uuid(u))
         .unwrap_or(0)
     }
-
-
-    /// `EvokerFangsRenderer`: the jaws snapping up and closing.
-    pub(super) fn fangs_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<horizon_client_render::render_geometry::Vertex>,
-    ) {
-        let Some(model) = self.fangs.model.as_ref() else {
-            return;
-        };
-        let Some(r) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/illager/evoker_fangs")
-            .copied()
-        else {
-            return;
-        };
-        let partial = alpha as f32;
-        for f in &self.fangs.list {
-            if !f.started {
-                continue;
-            }
-            // getAnimationProgress.
-            let i = f.life - 2;
-            let bite = if i <= 0 {
-                1.0
-            } else {
-                1.0 - (i as f32 - partial) / 20.0
-            };
-            if bite == 0.0 {
-                continue;
-            }
-            let mut poses = Poses::new(model);
-            let amount = (bite * 2.0).min(1.0);
-            let amount = 1.0 - amount * amount * amount;
-            let pi = std::f32::consts::PI;
-            p_zrot(&mut poses, "upper_jaw", pi - amount * 0.35 * pi);
-            p_zrot(&mut poses, "lower_jaw", pi + amount * 0.35 * pi);
-            poses.get("base")[1] -= (bite + (bite * 2.7).sin()) * 7.2;
-            let pre = if bite > 0.9 { (1.0 - bite) / 0.1 } else { 1.0 };
-            let root = poses.get("root");
-            root[1] = 24.0 - 20.0 * pre;
-            root[6] = pre;
-            root[7] = pre;
-            root[8] = pre;
-            let light = self.world.light(
-                f.pos[0].floor() as i32,
-                f.pos[1].floor() as i32,
-                f.pos[2].floor() as i32,
-            );
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let base =
-                glam::Mat4::from_translation((glam::DVec3::from_array(f.pos) - camera).as_vec3())
-                    * glam::Mat4::from_rotation_y((90.0 - f.yaw).to_radians())
-                    * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
-                    * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
-            horizon_client::mobs::render::draw(
-                model,
-                base,
-                &poses,
-                [r.u0, r.v0, r.u1, r.v1],
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-        }
-    }
-}
-fn p_zrot(p: &mut Poses, part: &str, v: f32) {
-    p.zrot(part, v);
 }
 #[cfg(test)]
 mod tests {

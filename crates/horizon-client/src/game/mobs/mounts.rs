@@ -1,12 +1,9 @@
 //! Riding horses, donkeys and mules: feeding (`handleEating`), saddles,
-//! armour and chests, mounting, the rider's control and jump bar
-//! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
-//! mount's health and jump bar on the HUD.
+//! armour and chests, mounting, the rider's control and jump charge
+//! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting.
 use super::Game;
-use horizon_client::actions::Action;
 use horizon_client::{
     blocks::Fluid,
-    hud::HudBatch,
     items::ItemStack,
     mobs::{Mob, MobEvent, Species, Who, equine},
     motion::{MotionWorld, PlayerMotion},
@@ -167,7 +164,7 @@ impl Game<'_> {
             // second rider and a horse or nautilus opens its inventory.
             return matches!(m.species(), Species::Pig | Species::Strider).then_some(false);
         }
-        if self.keys.held(Action::Sneak) {
+        if self.player.as_ref().is_some_and(|p| p.shift_key_down) {
             return None;
         }
         // attemptToShearEquipment takes the body slot before the saddle: horse
@@ -231,7 +228,7 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || self.keys.held(Action::Sneak) {
+        if !m.extra.saddled() || food || self.player.as_ref().is_some_and(|p| p.shift_key_down) {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -292,7 +289,7 @@ impl Game<'_> {
         if self.ridden_by_guest(id) {
             return false;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         let Some(player) = self.acting_player_uuid_id() else {
             return false;
         };
@@ -344,8 +341,7 @@ impl Game<'_> {
         if species == Species::SkeletonHorse && !m.extra.tame {
             return false;
         }
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
         // hand makes an untamed one mad instead of seating the player.
         let dandelion = [self.held(), self.offhand.as_ref()]
@@ -610,7 +606,7 @@ impl Game<'_> {
         let forward = f32::from(u8::from(keys.forward)) - f32::from(u8::from(keys.backward));
         // A server's player charges the bar on its own client; its power comes with START_RIDING_JUMP (`start_riding_jump_ecs`).
         let jump = if self.lan_acting.is_some() { 0.0 } else { self.charge_mount_jump_ecs(id, keys) };
-        self.ecs.ride_input(e, [strafe, forward], jump, keys.jump, keys.sprint || self.keys.held(Action::Sprint), keys.shift, self.yaw, self.pitch);
+        self.ecs.ride_input(e, [strafe, forward], jump, keys.jump, keys.sprint, keys.shift, self.yaw, self.pitch);
         true
     }
     /// `LocalPlayer.aiStep`'s jump charge on the ECS mount `id`: P charges and rears it (`EcsLevel::charge_jump`, missing).
@@ -684,7 +680,7 @@ impl Game<'_> {
             pitch: self.pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: keys.sprint || self.keys.held(Action::Sprint),
+            sprint: keys.sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives
@@ -744,11 +740,7 @@ impl Game<'_> {
         };
         if m.species() == Species::HappyGhast {
             // The attachment of the player's seat on the harnessed back.
-            let seat = self.remote.as_ref().map_or(0, |r| r.passenger_index);
-            at = seat_of(
-                m,
-                horizon_client::mobs::riders::happy_ghast_attachment(seat),
-            );
+            at = seat_of(m, horizon_client::mobs::riders::happy_ghast_attachment(0));
         }
         // AbstractHorse.getPassengerAttachmentPoint: the rider slides back and
         // up while the horse rears.
@@ -1100,49 +1092,6 @@ impl Game<'_> {
     /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
     /// layer, only while riding a mount). Returns the mount's heart count
     /// (`getVehicleMaxHearts`).
-    /// The mount's (max health, health) for the HUD: the bridge's view of the ECS mount, else the host's.
-    fn mount_health(&self) -> Option<(f32, f32)> {
-        if self.ecs.is_active() {
-            let e = self.riding.and_then(|id| self.ecs.entity_of(id))?;
-            return self.ecs.vehicle_health(e);
-        }
-        let m = &self.remote_entities[self.mount_index()?];
-        Some((m.attrs.max_health, m.health))
-    }
-    pub(super) fn draw_mount_hud(&mut self, batch: &mut HudBatch, w: i32, h: i32) -> i32 {
-        let Some((max_health, health)) = self.mount_health() else {
-            return 0;
-        };
-        let hearts = horizon_client::hud_layout::vehicle_max_hearts(max_health);
-        let draws = horizon_client::hud_layout::vehicle_health(w, h, hearts, health);
-        self.keep_status_rows(&draws, w, h);
-        self.gui_layer("minecraft:vehicle_health", batch, |g, batch| {
-            horizon_client::hud_layout::paint(batch, &g.gui.atlas, &draws);
-        });
-        hearts
-    }
-    /// The jump bar when it is the contextual bar.
-    pub(super) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
-        // JumpableVehicleBar: `getJumpCooldown`, which only the camel's and
-        // the nautilus' dash have; a horse always shows the progress.
-        let has_cooldown = if self.ecs.is_active() {
-            let Some(e) = self.riding.and_then(|id| self.ecs.entity_of(id)) else {
-                return;
-            };
-            // P's dash test for the ECS mount (`EcsLevel::has_jump_cooldown`, missing).
-            self.ecs.has_jump_cooldown(e)
-        } else {
-            let Some(i) = self.mount_index() else {
-                return;
-            };
-            let m = &self.remote_entities[i];
-            matches!(m.species(), Species::Camel | Species::CamelHusk)
-                || horizon_client::mobs::nautilus::is_nautilus(m.species())
-        };
-        let cooldown = i32::from(self.mount.jump_ticks < 0 && has_cooldown);
-        let draws = horizon_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
-        horizon_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
-    }
 }
 
 /// The mount a rider gets off: its kind, where it stands, its box,

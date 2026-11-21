@@ -4,10 +4,8 @@
 //! the verified engine, `horizon_client::menu`, through `Game::menu_session`.
 use super::{Game, stations::Kind};
 use horizon_client::{
-    banner::{self, BannerLayer},
-    hud::{HudBatch, Rect, rgba},
+    banner,
     items::ItemStack,
-    screen_layout::{self, LoomView, ScreenDraw},
 };
 use std::sync::Arc;
 
@@ -163,31 +161,6 @@ impl Game<'_> {
             l.scroll = (l.scroll - d / offscreen as f32).clamp(0.0, 1.0);
             l.start_row = l.row_for(l.scroll);
         }
-    }
-    /// `GuiGraphicsExtractor.bannerPattern`: the banner flag model with its
-    /// layers in a 20x40 picture in picture at `(x, y)`.
-    fn draw_banner_result(
-        &self,
-        batch: &mut HudBatch,
-        x: f32,
-        y: f32,
-        base: &str,
-        layers: &[BannerLayer],
-    ) {
-        let banners = &self.stations().banners;
-        let layers: Vec<(String, String)> = layers
-            .iter()
-            .map(|l| (banners.layer_texture(l), l.color.to_string()))
-            .collect();
-        horizon_client::item_render::gui::draw_banner_result(
-            &self.pack.item_renderer,
-            &self.gui.atlas.sprites,
-            batch,
-            x,
-            y,
-            base,
-            &layers,
-        );
     }
 }
 

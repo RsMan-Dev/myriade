@@ -832,7 +832,6 @@ mod item_resource_property_tests {
             );
             game.creative = false;
             game.right = true;
-            game.screen = crate::game::Screen::Playing;
             game.inventory[game.selected] = Some(stack);
             assert!(game.start_eating(&info));
             assert!(game.using.is_some());

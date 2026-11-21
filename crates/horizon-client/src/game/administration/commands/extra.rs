@@ -4,7 +4,6 @@
 //! `/fetchprofile`, `/publish`, `/unpublish`, `/debug`, `/jfr` and
 //! `/version`, with vanilla's feedback and failures.
 use super::{Arg, Context, Game, R, Target, err};
-use horizon_client::actions::Action;
 use horizon_client::{
     command::CommandError,
     lan::waypoints::Icon,
@@ -256,7 +255,8 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.keys.held(Action::Sneak) && self.screen == super::Screen::Playing;
+        // `ServerPlayer.tick`: `wantsToStopRiding` (`isShiftKeyDown`) hands the view back.
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);

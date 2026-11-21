@@ -17,7 +17,6 @@ use horizon_client::{
         spawner::{SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
         trial_spawner::{TrialSpawnerExt, TrialState},
     },
-    particles::{ParticleOptions, ParticleType},
 };
 use horizon_core::nbt::Tag;
 use horizon_core::{
@@ -51,8 +50,7 @@ pub(super) struct SpawnerState {
 }
 
 impl Game<'_> {
-    /// The server tick of the spawner at `key`. Its client tick comes after
-    /// every block entity's (`client_tick_spawners`).
+    /// The server tick of the spawner at `key`.
     ///
     /// The caller only reaches this for a `BlockEntity::Spawner`, and changing
     /// the block removes or replaces that entity, so the block is not read
@@ -67,20 +65,6 @@ impl Game<'_> {
             .block_entities
             .put(lease, BlockEntity::Spawner(spawner));
         result
-    }
-    /// The client ticks of these spawners, then the shown mobs of spawners
-    /// that are gone go.
-    pub(super) fn client_tick_spawners(&mut self, keys: &[Pos]) {
-        for &key in keys {
-            self.client_tick_spawner(key);
-        }
-        let entities = &self.world.block_entities;
-        self.spawners.displays.retain(|k, _| {
-            matches!(
-                entities.get(k),
-                Some(BlockEntity::Spawner(_) | BlockEntity::TrialSpawner(_))
-            )
-        });
     }
     fn server_tick_spawner(&mut self, key: Pos, spawner: &mut Spawner) -> Result<()> {
         self.server_tick_spawner_of(key, spawner, None)
@@ -346,76 +330,6 @@ impl Game<'_> {
             return;
         };
         self.lan_entity_event(id as i32, 20, at);
-        self.poof_particles(id);
-    }
-    /// `Mob.handleEntityEvent` 20 (`spawnAnim` on a client): the poof about
-    /// mob `id`.
-    pub(super) fn poof_particles(&mut self, id: u32) {
-        let (Some(at), Some(kind)) = (self.ecs.position(id), self.ecs.kind(id)) else {
-            return;
-        };
-        let Some(t) = self.res.mob_types().get(kind) else {
-            return;
-        };
-        let (w, h) = (t.width, t.height);
-        let options = ParticleOptions::simple(ParticleType::Poof);
-        for _ in 0..20 {
-            let r = self.particles.level_random();
-            let xa = r.next_gaussian() * 0.02;
-            let ya = r.next_gaussian() * 0.02;
-            let za = r.next_gaussian() * 0.02;
-            let x = at[0] + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
-            let y = at[1] + h * r.next_double() - ya * 10.0;
-            let z = at[2] + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
-        }
-    }
-    /// `LevelEventHandler` 2004: twenty smoke and flame pairs around the spawner.
-    pub(super) fn spawner_burst(&mut self, pos: [i32; 3]) {
-        let (smoke, flame) = (
-            ParticleOptions::simple(ParticleType::Smoke),
-            ParticleOptions::simple(ParticleType::Flame),
-        );
-        for _ in 0..20 {
-            let r = self.particles.level_random();
-            let x = f64::from(pos[0]) + 0.5 + (r.next_double() - 0.5) * 2.0;
-            let y = f64::from(pos[1]) + 0.5 + (r.next_double() - 0.5) * 2.0;
-            let z = f64::from(pos[2]) + 0.5 + (r.next_double() - 0.5) * 2.0;
-            self.particles.add(&smoke, [x, y, z], [0.0; 3]);
-            self.particles.add(&flame, [x, y, z], [0.0; 3]);
-        }
-    }
-    /// The client copy's tick: particles and the spin while a player is near.
-    fn client_tick_spawner(&mut self, key: Pos) {
-        let near = {
-            let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get(&key) else {
-                return;
-            };
-            let range = f64::from(s.required_player_range);
-            let center = [
-                f64::from(key.0) + 0.5,
-                f64::from(key.1) + 0.5,
-                f64::from(key.2) + 0.5,
-            ];
-            self.player.as_ref().is_some_and(|p| {
-                let d = (p.position.x - center[0]).powi(2)
-                    + (p.position.y - center[1]).powi(2)
-                    + (p.position.z - center[2]).powi(2);
-                !p.health.dead_or_dying() && !self.spectator() && (range < 0.0 || d < range * range)
-            })
-        };
-        let display = self.update_spawner_display(key);
-        let pos = [key.0, key.1, key.2];
-        let random = self.particles.level_random();
-        let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) else {
-            return;
-        };
-        if let Some(p) = s.client_tick(near, display, random, pos) {
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Smoke), p, [0.0; 3]);
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Flame), p, [0.0; 3]);
-        }
     }
     /// `getOrCreateDisplayEntity`: the mob shown in the spawner, made again
     /// when its type changes. False when there is none.
@@ -547,80 +461,6 @@ impl Game<'_> {
             horizon_client::block_entity_item::stack_configured_entity_by(stack, kind, &own, op);
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
-    }
-    /// `SpawnerRenderer` and `TrialSpawnerRenderer`: the next mob of every
-    /// spawner near the camera, small and turning.
-    pub(super) fn spawner_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<horizon_client_render::render_geometry::Vertex>,
-    ) {
-        let atlas = &self.gui.atlas;
-        let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
-        // A shader pack's shadow pass draws a block entity only in the sections it draws
-        // (`Renderer::shadow_pass_block_entities`, #8464): a spawner's mob out of the view and
-        // out of those sections isn't drawn, where it would have gone to the shadow pass alone.
-        let shadow_sections = self
-            .renderer
-            .as_ref()
-            .filter(|_| self.pack_ids.is_some() && self.occlusion.shadow_casters.0);
-        for (key, (_, mob)) in &self.spawners.displays {
-            let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
-                continue;
-            }
-            if let Some(r) = shadow_sections
-                && !r.shadow_pass_drew([key.0, key.1, key.2])
-                && self.view_frustum.is_some_and(|v| {
-                    let o = (at - camera).as_vec3();
-                    !v.intersects(o - glam::Vec3::ONE, o + glam::Vec3::splat(2.0))
-                })
-            {
-                continue;
-            }
-            let (spin, scale) = match self.world.block_entities.get(key) {
-                Some(BlockEntity::Spawner(s)) => {
-                    s.display_pose(alpha as f32, mob.width(), mob.height())
-                }
-                Some(BlockEntity::TrialSpawner(s)) => horizon_client::mobs::spawner::display_pose(
-                    s.o_spin,
-                    s.spin,
-                    alpha as f32,
-                    mob.width(),
-                    mob.height(),
-                ),
-                _ => continue,
-            };
-            let origin = glam::Mat4::from_translation(
-                (at - camera).as_vec3() + glam::Vec3::new(0.5, 0.4, 0.5),
-            ) * glam::Mat4::from_rotation_y(spin.to_radians())
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.2, 0.0))
-                * glam::Mat4::from_rotation_x((-30.0_f32).to_radians())
-                * glam::Mat4::from_scale(glam::Vec3::splat(scale));
-            let light = self.world.light(key.0, key.1, key.2);
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let start = out.len();
-            if mob.species() == horizon_client::mobs::Species::SulfurCube {
-                self.sulfur_cube_body_geometry(
-                    mob,
-                    alpha as f32,
-                    horizon_client::mobs::render::base_transform_at(mob, alpha as f32, origin),
-                    packed,
-                    out,
-                );
-            }
-            horizon_client::mobs::render::render_posed(
-                mob,
-                alpha as f32,
-                origin,
-                &lookup,
-                packed,
-                self.res.mob_data(),
-                out,
-            );
-            self.lit_entity(start..out.len());
-        }
     }
 }
 

@@ -396,49 +396,6 @@ impl Game<'_> {
         self.res.environment_of(&self.dimension_type().id)
     }
 
-    /// SkyRenderer.renderEndFlash, drawn after the renderer's resident sky mesh.
-    pub(super) fn end_flash_geometry(&self) -> Vec<Vertex> {
-        let mut out = Vec::new();
-        // The old combined sky/flash draw also skipped the flash without a sky sprite.
-        if !self.gui.atlas.sprites.contains_key("environment/end_sky") {
-            return out;
-        }
-        // SkyRenderer.renderEndFlash: the end_flash sprite at height 100, scale 60.
-        let intensity = self.end.flash.intensity(self.clock.fraction() as f32);
-        if intensity > 1e-5
-            && let Some(r) = self
-                .gui
-                .atlas
-                .sprites
-                .get("environment/celestial/end_flash")
-                .copied()
-        {
-            let pose = self.end.flash.pose();
-            let level = (intensity.clamp(0.0, 1.0) * 255.0) as u32;
-            let color = level << 24 | level << 16 | level << 8 | level;
-            let corners = [
-                (-1.0, -1.0, [r.u0, r.v0]),
-                (1.0, -1.0, [r.u1, r.v0]),
-                (1.0, 1.0, [r.u1, r.v1]),
-                (-1.0, 1.0, [r.u0, r.v1]),
-            ];
-            for (x, z, uv) in corners {
-                let p = pose.transform_point3(glam::Vec3::new(x * 60.0, 100.0, z * 60.0));
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: p.to_array(),
-                    uv,
-                    layer: 2,
-                    color,
-                    light: 0,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
-        out
-    }
-
     /// Iris's `endFlashIntensity` and the flash's direction (camera-relative, length 100: the
     /// sprite's centre), for shader packs; no flash outside the End.
     pub(super) fn end_flash_for_pack(&self, partial: f32) -> (f32, glam::Vec3) {
@@ -454,22 +411,6 @@ impl Game<'_> {
         )
     }
 
-    /// LightmapRenderStateExtractor: End flashes add to the sky light factor
-    /// unless Hide Lightning Flashes is on (the sky sprite is not gated), a
-    /// third of it under a boss bar's world fog.
-    pub(super) fn end_flash_sky(&self, sky: &mut horizon_client::environment::Sky, partial: f64) {
-        if self.dimension_type().skybox == horizon_world::dimension_type::Skybox::End
-            && !self.settings.file.bool("hideLightningFlashes")
-        {
-            let intensity = self.end.flash.intensity(partial as f32);
-            sky.sky_light_factor += if self.boss_overlay.should_create_world_fog() {
-                intensity / 3.0
-            } else {
-                intensity
-            };
-        }
-    }
-
     pub(super) fn block_name(&self, p: [i32; 3]) -> std::sync::Arc<str> {
         self.res
             .facts()
@@ -477,7 +418,6 @@ impl Game<'_> {
             .name
             .clone()
     }
-
 
     /// EnderEyeItem.useOn: fill an empty End portal frame, then light the
     /// portal when the ring of twelve filled frames is complete.
@@ -1257,78 +1197,6 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// End crystals (on the spikes, or placed in any dimension) and thrown
-    /// eyes of ender, as camera-relative entity geometry (End portals and
-    /// gateways are block entities).
-    pub(super) fn end_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        self.end_crystal_geometry(camera, out);
-        self.eye_geometry(camera, out);
-    }
-
-    /// EndCrystalRenderer and EndCrystalModel for the end crystals, and the
-    /// beam to a crystal's target (the spikes being summoned back).
-    fn end_crystal_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        let (Some(model), Some(r)) = (
-            self.crystal_model.as_ref(),
-            self.gui
-                .atlas
-                .sprites
-                .get("entity/end_crystal/end_crystal")
-                .copied(),
-        ) else {
-            return;
-        };
-        let uv = [r.u0, r.v0, r.u1, r.v1];
-        let partial = self.clock.fraction() as f32;
-        for crystal in &self.crystals {
-            let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
-            let rel = feet - camera;
-            if rel.length_squared() > 256.0 * 256.0 {
-                continue;
-            }
-            let age = crystal.time as f32 + partial;
-            let light = self.world.light(
-                feet.x.floor() as i32,
-                feet.y.floor() as i32,
-                feet.z.floor() as i32,
-            );
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let poses = horizon_client::end_crystal::poses(model, age, crystal.show_bottom);
-            // poseStack.scale(2) then translate(0, -0.5, 0), not flipped.
-            let base = glam::Mat4::from_translation(rel.as_vec3())
-                * glam::Mat4::from_scale(glam::Vec3::splat(2.0))
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.5, 0.0));
-            let start = out.len();
-            horizon_client::mobs::render::draw(
-                model,
-                base,
-                &poses,
-                uv,
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-            // HDR output: the crystal shines; its tier's window leaves the dark base alone
-            // (entity.wgsl hdr_entity_mark).
-            for v in &mut out[start..] {
-                v.layer |= u32::from(horizon_client::mesher::BRIGHT) << 16;
-            }
-            self.lit_entity(start..out.len());
-            if let Some(target) = crystal.beam {
-                // The beam from the target's centre up to the bobbing crystal.
-                let from = glam::DVec3::new(
-                    f64::from(target[0]) + 0.5,
-                    f64::from(target[1]) + 0.5,
-                    f64::from(target[2]) + 0.5,
-                );
-                let delta = feet - from
-                    + glam::DVec3::new(0.0, f64::from(horizon_client::end_crystal::y(age)), 0.0);
-                self.crystal_beam(from, delta, age, camera, out);
-            }
-        }
-    }
-
     /// EnderEyeItem.use: findNearestMapStructure over the stronghold rings,
     /// then an EyeOfEnder signalled towards it. Without a stronghold (other
     /// dimensions) nothing is thrown.
@@ -1479,25 +1347,6 @@ impl Game<'_> {
             self.particles.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
             self.particles.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
             angle += std::f64::consts::PI / 20.0;
-        }
-    }
-
-    /// ThrownItemRenderer: the ender eye item facing the camera.
-    fn eye_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        let Some(r) = self.gui.atlas.sprites.get("item/ender_eye").copied() else {
-            return;
-        };
-        let alpha = self.clock.fraction();
-        let (yaw, pitch) = (self.yaw.to_radians(), self.pitch.to_radians());
-        let right = glam::Vec3::new(-yaw.cos(), 0.0, -yaw.sin()) * 0.25;
-        let up = glam::Vec3::new(
-            -yaw.sin() * pitch.sin(),
-            pitch.cos(),
-            yaw.cos() * pitch.sin(),
-        ) * 0.25;
-        for eye in &self.end.eyes {
-            let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
-            out.extend(eye_quad(p.as_vec3(), right, up, r));
         }
     }
 

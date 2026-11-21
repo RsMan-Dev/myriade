@@ -28,45 +28,33 @@ pub(in crate::game) mod section_steps;
 #[cfg(test)]
 #[path = "../../creatures/spawn_egg_mob_tests.rs"]
 mod spawn_egg_mob_tests;
-#[cfg(test)]
-#[path = "../../creatures/spectator_view_tests.rs"]
-mod spectator_view_tests;
 mod world_view;
 use super::api_values::TryIntoApi;
 use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
-use super::{
-    Dim, Game, InteractTarget, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender,
-    native_projectiles::Impact, view_vector,
-};
-use horizon_assets::item_model::DisplayContext;
-use horizon_client::actions::Action;
+use super::{Dim, Game, InteractTarget, native_mob_draw::PlayerRender, view_vector};
 use horizon_client::{
     Result,
     blocks::Fluid,
-    collisions::SceneCollisions,
     crafting::Recipes,
-    graphics::EntityCullingMode,
-    health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
+    health::{HealthEvent, HurtSource, Hurting, Knock},
     items::{ItemStack, Items},
-    mesher::Vertex,
     mobs::{
-        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
+        Damage, DamageKind, Mob, MobEvent, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         finalize::Group,
         spawning::{self, BiomeFacts},
     },
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
+    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld},
 };
-use horizon_client_render::render_geometry::EntitySpan;
 use horizon_core::{
-    geometry::{Aabb, Direction, Vec3, traverse_blocks, trig::Mth},
+    geometry::{Aabb, Direction, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
 };
-use mod_api::{EquipmentSlot, LootDrops, SoundSource};
+use mod_api::{EquipmentSlot, SoundSource};
 use std::sync::Arc;
 
 pub(super) type SpawnReason = horizon_client::mobs::spawn_rules::Reason;
@@ -283,63 +271,6 @@ fn pickable_projectile_hitboxes(
     out
 }
 
-/// `FlameFeatureRenderer`: fire quads stacked up a burning entity's box,
-/// turned to the camera around Y, at full block light. `at` is the entity's
-/// feet relative to the camera.
-fn flame_geometry(
-    atlas: &horizon_client::hud::HudAtlas,
-    at: glam::Vec3,
-    width: f32,
-    height: f32,
-    camera_yaw: f32,
-    light: u8,
-    out: &mut Vec<Vertex>,
-) {
-    let (Some(fire0), Some(fire1)) = (
-        atlas.sprites.get("block/fire_0").copied(),
-        atlas.sprites.get("block/fire_1").copied(),
-    ) else {
-        return;
-    };
-    let s = width * 1.4;
-    let mut h = height / s;
-    // Mth.rotationAroundAxis(Y, camera.orientation): the camera's turn about Y.
-    let turn = glam::Mat3::from_rotation_y(std::f32::consts::PI - camera_yaw.to_radians());
-    let lift = 0.3 - (h as i32) as f32 * 0.02;
-    let packed = (u32::from(light >> 4) * 16) | ((15 * 16) << 8);
-    let (mut r, mut yo, mut zo, mut ss) = (0.5f32, 0.0f32, 0.0f32, 0);
-    while h > 0.0 {
-        let tex = if ss % 2 == 0 { fire0 } else { fire1 };
-        let (mut u0, v0, mut u1, v1) = (tex.u0, tex.v0, tex.u1, tex.v1);
-        if ss / 2 % 2 == 0 {
-            std::mem::swap(&mut u0, &mut u1);
-        }
-        for (x, y, uv) in [
-            (-r, -yo, [u1, v1]),
-            (r, -yo, [u0, v1]),
-            (r, 1.4 - yo, [u0, v0]),
-            (-r, 1.4 - yo, [u1, v0]),
-        ] {
-            let p = at + turn * glam::Vec3::new(x, y, zo + lift) * s;
-            out.push(Vertex {
-                normal: [0; 4],
-                pos: p.to_array(),
-                uv,
-                // HDR output: the flames shine like fire (entity.wgsl hdr_entity_mark).
-                layer: u32::from(horizon_client::mesher::INCANDESCENT) << 16,
-                color: 0xFFFF_FFFF,
-                light: packed,
-
-                glint_uv: [0.0, 0.0],
-            });
-        }
-        h -= 0.45;
-        yo -= 0.45;
-        r *= 0.9;
-        zo -= 0.03;
-        ss += 1;
-    }
-}
 pub(super) fn seen(m: &Mob, player: Option<[i32; 4]>, items: &Items) -> Seen {
     m.seen(player, items)
 }
@@ -357,8 +288,8 @@ pub(super) fn named_mob_pickable(
     alive && Some(id) != riding && Some(id) != camera
 }
 
-/// What an entity drew on the GPU path: the skin frame's mark before its draws, and their
-/// camera-relative bounds (`cull_skinned`).
+/// What an entity's skin frame drew: the frame's mark before its draws, and their
+/// camera-relative bounds.
 pub(super) type Skinned = Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)>;
 
 /// What a block's `onProjectileHit` reads of the projectile that struck it:
@@ -447,7 +378,7 @@ impl Game<'_> {
                 || p.health.invulnerable_time > 0,
             // EntitySelector.NO_CREATIVE_OR_SPECTATOR.
             creative: self.creative || self.spectator(),
-            sneaking: self.keys.held(Action::Sneak),
+            sneaking: p.shift_key_down,
             swimming: p.swimming,
             look: view_vector(self.yaw, self.pitch),
             main_hand: self.held().map(|s| s.item.clone()),
@@ -1417,17 +1348,15 @@ impl Game<'_> {
         // ... and entity event 60 goes out as it is: the poof.
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
-        for (id, at, width, height, split) in gone {
+        for (id, at, _, _, split) in gone {
             let at = [at.x, at.y, at.z];
             self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
             if let Some(m) = split {
                 self.split_dead_cube(m);
             }
         }
         laps.lap("creature_retain");
         self.sync_riders();
-        self.guardian_bubbles();
         self.villager_reputation_tick();
         self.villager_item_sense();
         self.villager_pickups();
@@ -1504,7 +1433,6 @@ impl Game<'_> {
         self.tick_foxes();
         self.tick_dolphins();
         self.tick_mob_looting();
-        self.tick_breeze_effects();
         self.tick_sniffer_effects();
         self.piglin_pickups();
         self.sulfur_cube_pickups();
@@ -1522,22 +1450,6 @@ impl Game<'_> {
         // And for the sizes the ticks changed (a pose, a baby grown, a scale).
         self.native_mob_sizes();
         Ok(())
-    }
-    /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
-    pub(in crate::game) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
-        let options = horizon_client::particles::ParticleOptions::simple(
-            horizon_client::particles::ParticleType::Poof,
-        );
-        for _ in 0..20 {
-            let r = self.particles.level_random();
-            let xa = r.next_gaussian() * 0.02;
-            let ya = r.next_gaussian() * 0.02;
-            let za = r.next_gaussian() * 0.02;
-            let x = at[0] + width * (2.0 * r.next_double() - 1.0) - xa * 10.0;
-            let y = at[1] + height * r.next_double() - ya * 10.0;
-            let z = at[2] + width * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
-        }
     }
     /// LivingEntity.die / dropAllDeathLoot.
     pub(super) fn mob_died(&mut self, m: &Mob) {
@@ -2120,18 +2032,16 @@ impl Game<'_> {
         id
     }
     /// `MushroomCow.shear`'s `sendParticles(EXPLOSION, x, getY(0.5), z, 1, 0, 0, 0, 0)`:
-    /// one puff over a sheared mooshroom, half its `height` up, shown here and to
-    /// the players within range.
+    /// one puff over a sheared mooshroom, half its `height` up, sent to the
+    /// players within range.
     pub(super) fn mooshroom_shear_puff(&mut self, at: [f64; 3], height: f64) {
         let at = [at[0], at[1] + 0.5 * height, at[2]];
         let options = ParticleOptions::simple(ParticleType::Explosion);
-        self.particles
-            .send_particles(&options, at, [0.0; 3], 0.0, 1);
         self.lan_level_particles(&options, at, [0.0; 3], 0.0, 1, None);
     }
     /// `Entity.sendBubbleColumnParticles` at the top of the column block `pos`: two
-    /// splashes and two bubbles over it, which the level random places, shown here
-    /// and to the players within range.
+    /// splashes and two bubbles over it, which the level random places, sent to the
+    /// players within range.
     pub(super) fn bubble_column_particles(&mut self, pos: BlockPos) {
         for _ in 0..2 {
             let r = &mut self.world.random;
@@ -2146,12 +2056,8 @@ impl Game<'_> {
                 f64::from(pos.z) + r.next_double(),
             ];
             let splash_options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles
-                .send_particles(&splash_options, splash, [0.0; 3], 1.0, 1);
             self.lan_level_particles(&splash_options, splash, [0.0; 3], 1.0, 1, None);
             let bubble_options = ParticleOptions::simple(ParticleType::Bubble);
-            self.particles
-                .send_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1);
             self.lan_level_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
         }
     }
@@ -2159,12 +2065,6 @@ impl Game<'_> {
     fn launch_mob_projectile(&mut self, mut p: Projectile) {
         self.next_entity += 1;
         p.id = self.next_entity;
-        let at = [p.position.x, p.position.y, p.position.z];
-        // LlamaSpit.recreateFromPacket: the spit's burst on the client.
-        if p.kind == ProjectileKind::LlamaSpit {
-            let v = p.velocity;
-            self.particles.llama_spit_burst(at, [v.x, v.y, v.z]);
-        }
         self.spawn_mob_projectile(p);
     }
     /// `Entity.igniteForSeconds`: `seconds * 20` ticks of fire, scaled by the
@@ -2297,33 +2197,27 @@ impl Game<'_> {
                 } => {
                     if let Some(ty) = horizon_client::particles::ParticleType::from_name(kind) {
                         let options = horizon_client::particles::ParticleOptions::simple(ty);
-                        self.particles
-                            .send_particles(&options, at, spread, speed, count);
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
                 }
-                // The LAN packet has no item for a particle yet: the host's window only.
-                MobEvent::ItemParticles {
-                    item,
-                    at,
-                    spread,
-                    speed,
-                    count,
-                } => {
-                    let options =
-                        self.item_particle(&horizon_client::items::ItemStack::new(item, 1));
-                    self.particles
-                        .send_particles(&options, at, spread, speed, count);
-                }
+                // The window's own particles and its local sound are not sent.
+                MobEvent::ItemParticles { .. } | MobEvent::LocalSound(..) => {}
                 MobEvent::Sound(name, at, volume, pitch) => {
                     self.audio.play(&full_id(name), Some(at), volume, pitch)
                 }
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
                     self.audio.play(&name, Some(at), volume, pitch)
                 }
-                MobEvent::LocalSound(name, at, volume, pitch) => {
-                    self.audio
-                        .play_unshared(&full_id(name), Some(at), volume, pitch)
+                MobEvent::SoundId(name, at, volume, pitch) => {
+                    self.audio.play(&name, Some(at), volume, pitch)
+                }
+                MobEvent::Hiss { mob } => {
+                    if let Some(m) = self.remote_entities.iter().find(|m| m.id == mob) {
+                        let at = m.center();
+                        let sound = horizon_client::mobs::finalize::variant_sound(m, "hiss")
+                            .unwrap_or("entity.cat.hiss");
+                        self.audio.play(&full_id(sound), Some(at), 1.0, 1.0);
+                    }
                 }
                 MobEvent::BoundSound {
                     mob,
@@ -2356,9 +2250,6 @@ impl Game<'_> {
                         let pitch = (r.next_float() - r.next_float()) * spread + 1.0;
                         self.audio.play(&full_id(sound), Some(at), volume, pitch)
                     }
-                }
-                MobEvent::SoundId(name, at, volume, pitch) => {
-                    self.audio.play(&name, Some(at), volume, pitch)
                 }
                 MobEvent::GameEvent {
                     event, at, source, ..
@@ -2767,14 +2658,6 @@ impl Game<'_> {
                     }
                 }
                 MobEvent::FinishAdmiring { mob } => self.finish_admiring(mob),
-                MobEvent::Hiss { mob } => {
-                    if let Some(m) = self.remote_entities.iter().find(|m| m.id == mob) {
-                        let at = m.center();
-                        let sound = horizon_client::mobs::finalize::variant_sound(m, "hiss")
-                            .unwrap_or("entity.cat.hiss");
-                        self.audio.play(&full_id(sound), Some(at), 1.0, 1.0);
-                    }
-                }
                 MobEvent::Tamed { .. }
                 | MobEvent::Buck { .. }
                 | MobEvent::StabDismount { .. }
@@ -3261,61 +3144,25 @@ impl Game<'_> {
                 MobEvent::Particles { kind, at, count } => {
                     // Mob particle bursts (hearts, smoke, splashes) around a point.
                     if let Some(ty) = horizon_client::particles::ParticleType::from_name(kind) {
-                        if kind.starts_with("item_") {
-                            self.ensure_item_particle_sprites();
-                        }
                         let options = horizon_client::particles::ParticleOptions::simple(ty);
                         if ty == horizon_client::particles::ParticleType::SonicBoom {
                             self.lan_sonic_boom(&options, at);
                         }
-                        // Count 0: one particle exactly there, at rest.
-                        if count == 0 {
-                            self.particles.add(&options, at, [0.0; 3]);
-                        }
                         for _ in 0..count {
+                            // The local burst's draws stay on the level random, in their order.
                             let r = &mut self.world.random;
-                            let p = [
-                                at[0] + (f64::from(r.next_float()) - 0.5),
-                                at[1] + (f64::from(r.next_float()) - 0.5) * 0.5,
-                                at[2] + (f64::from(r.next_float()) - 0.5),
-                            ];
-                            let v = [
-                                r.next_gaussian() * 0.02,
-                                r.next_gaussian() * 0.02,
-                                r.next_gaussian() * 0.02,
-                            ];
-                            self.particles.add(&options, p, v);
+                            let _ = [r.next_float(), r.next_float(), r.next_float()];
+                            let _ = [r.next_float(), r.next_float(), r.next_float()];
+                            let _ = [r.next_gaussian(), r.next_gaussian(), r.next_gaussian()];
                         }
                     }
                 }
                 MobEvent::AroundSelf {
-                    mob,
-                    event,
-                    kind,
-                    feet,
-                    width,
-                    height,
-                    burst,
+                    mob, event, feet, ..
                 } => {
                     self.lan_entity_event(mob as i32, event, feet);
-                    self.particles_around(kind, feet, [width, height], burst)
                 }
-                MobEvent::ParticleAt { kind, at, velocity } => {
-                    if let Some(ty) = horizon_client::particles::ParticleType::from_name(kind) {
-                        let options = horizon_client::particles::ParticleOptions::simple(ty);
-                        self.particles.add(&options, at, velocity);
-                    }
-                }
-                MobEvent::ParticleColored {
-                    at,
-                    color: [r, g, b],
-                } => {
-                    let options = horizon_client::particles::ParticleOptions::colored(
-                        horizon_client::particles::ParticleType::EntityEffect,
-                        [r, g, b, 1.0],
-                    );
-                    self.particles.add(&options, at, [0.0; 3]);
-                }
+                MobEvent::ParticleAt { .. } | MobEvent::ParticleColored { .. } => {}
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
                 MobEvent::AxolotlSupportPlayer { mob } => {
                     let previous = self
@@ -4077,14 +3924,12 @@ impl Game<'_> {
         }
         let at = [p.position.x, p.position.y, p.position.z];
         self.give_player_effect("minecraft:mining_fatigue", 6000, 2);
-        if self.lan_acting.is_none() {
-            // ClientPacketListener.handleGameEvent: the apparition always, the
-            // curse sound unless the elder is silent.
-            if crate::mobs::guardian::elder_curse_param(silent) == 1.0 {
-                self.audio
-                    .play("minecraft:entity.elder_guardian.curse", Some(at), 1.0, 1.0);
-            }
-            self.particles.elder_guardian();
+        if self.lan_acting.is_none()
+            // ClientPacketListener.handleGameEvent: the curse sound unless the elder is silent.
+            && crate::mobs::guardian::elder_curse_param(silent) == 1.0
+        {
+            self.audio
+                .play("minecraft:entity.elder_guardian.curse", Some(at), 1.0, 1.0);
         }
         true
     }
@@ -4371,34 +4216,21 @@ impl Game<'_> {
             });
         let _ = self.process_level_events();
     }
-    /// What an arrow's tick asked for: its particles and sounds.
+    /// What an arrow's tick asked for: its block and entity reactions.
     pub(in crate::game) fn arrow_event(
         &mut self,
         at: Vec3,
         event: horizon_client::arrows::ArrowEvent,
     ) {
-        use horizon_client::arrows::{ArrowEvent, ArrowParticle, ArrowSound, BlockReaction};
-        use horizon_client::particles::{ParticleOptions, ParticleType};
-        let kind = |k| match k {
-            ArrowParticle::Bubble => ParticleType::Bubble,
-            ArrowParticle::Crit => ParticleType::Crit,
-            ArrowParticle::Splash => ParticleType::Splash,
-        };
+        use horizon_client::arrows::{ArrowEvent, ArrowSound, BlockReaction};
         match event {
-            ArrowEvent::Particle {
-                kind: k,
-                position,
-                velocity,
-            } => self.particles.add(
-                &ParticleOptions::simple(kind(k)),
-                [position.x, position.y, position.z],
-                [velocity.x, velocity.y, velocity.z],
-            ),
             // Arrow.tick: `broadcastEntityEvent(this, 0)`. The window and the
             // guests burst the particles themselves (`remote_arrow_puff`).
             ArrowEvent::PotionPuff { id, .. } => {
                 self.lan_entity_event(id as i32, 0, [at.x, at.y, at.z]);
             }
+            // The local particle is the client's own: it is not sent.
+            ArrowEvent::Particle { .. } => {}
             ArrowEvent::Sound {
                 sound,
                 volume,
@@ -4472,26 +4304,6 @@ impl Game<'_> {
                 .grief_hooked()
                 .then_some(self as &dyn horizon_client::mobs::MobHooks),
             owners: self,
-        }
-    }
-    /// `Snowball`/`ThrownEgg.handleEntityEvent(3)`: eight crumbs of the
-    /// thrown item where it broke, at rest for a snowball, scattered by the
-    /// client entity's random (the particle engine's here) for an egg.
-    pub(super) fn item_burst(&mut self, at: [f64; 3], item: &str) {
-        let options = self.item_particle(&horizon_client::items::ItemStack::new(item, 1));
-        let egg = item == "minecraft:egg";
-        for _ in 0..8 {
-            let v = if egg {
-                let r = self.particles.random();
-                [
-                    (f64::from(r.next_float()) - 0.5) * 0.08,
-                    (f64::from(r.next_float()) - 0.5) * 0.08,
-                    (f64::from(r.next_float()) - 0.5) * 0.08,
-                ]
-            } else {
-                [0.0; 3]
-            };
-            self.particles.add(&options, at, v);
         }
     }
     /// `AgeableMob.mobInteract`: whether a click with `item` on `m` gets to
@@ -4828,8 +4640,7 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let acting = self.acting_player_uuid();
         let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
         let m = &mut self.remote_entities[index];
@@ -5268,12 +5079,6 @@ impl Game<'_> {
                 consume = true;
                 let left = 24_000 - m.extra.age;
                 m.extra.age += ((left / 20) as f32 * 0.1) as i32 * 20;
-                // One happy villager particle at rest about the body.
-                self.particles_around_mob(
-                    self.remote_entities[index].id,
-                    "happy_villager",
-                    horizon_client::particles::Burst::HORSE_EATING,
-                );
             }
             // Bee.mobInteract: a wither rose or an open eyeblossom is eaten for
             // its `getBeeInteractionEffect` instead of breeding the bee.
@@ -5380,8 +5185,6 @@ impl Game<'_> {
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.particles
-                .send_particles(&options, at, spread, 0.2, count);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,
@@ -5942,842 +5745,6 @@ impl Game<'_> {
             }
         }
     }
-    /// `Guardian.aiStep` on a client: two bubbles a tick trailing a guardian
-    /// that swims along, and bubbles up the beam to its target. The server
-    /// never draws them, so the mob's own random stays untouched.
-    pub(super) fn guardian_bubbles(&mut self) {
-        use horizon_client::mobs::guardian;
-        use horizon_client::particles::{ParticleOptions, ParticleType};
-        let mut swimming = Vec::new();
-        let mut beams = Vec::new();
-        for m in &self.remote_entities {
-            if !m.alive() || !matches!(m.species(), Species::Guardian | Species::ElderGuardian) {
-                continue;
-            }
-            let at = [m.position.x, m.position.y, m.position.z];
-            if m.extra.flag2 && m.fluids.in_water {
-                let (width, height, _) = m.dims();
-                swimming.push((at, width, height, m.view_vector()));
-            }
-            if let Some((_, scale)) = guardian::beam(m, 0.0)
-                && let Some(t) = self.beam_target(m.ai.target, 1.0)
-            {
-                beams.push(([at[0], m.eye_y(), at[2]], [t.x, t.y, t.z], f64::from(scale)));
-            }
-        }
-        let bubble = ParticleOptions::simple(ParticleType::Bubble);
-        for (at, width, height, view) in swimming {
-            for _ in 0..2 {
-                let (x, y, z) = {
-                    let r = self.particles.random();
-                    (r.next_double(), r.next_double(), r.next_double())
-                };
-                let p = [
-                    at[0] + width * (2.0 * x - 1.0) * 0.5 - view[0] * 1.5,
-                    at[1] + height * y - view[1] * 1.5,
-                    at[2] + width * (2.0 * z - 1.0) * 0.5 - view[2] * 1.5,
-                ];
-                self.particles.add(&bubble, p, [0.0; 3]);
-            }
-        }
-        for (eye, target, scale) in beams {
-            let d = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
-            let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-            if length <= 0.0 {
-                continue;
-            }
-            let mut dist = self.particles.random().next_double();
-            while dist < length {
-                let r = self.particles.random();
-                dist += 1.8 - scale + r.next_double() * (1.7 - scale);
-                let f = dist / length;
-                let p = [eye[0] + d[0] * f, eye[1] + d[1] * f, eye[2] + d[2] * f];
-                self.particles.add(&bubble, p, [0.0; 3]);
-            }
-        }
-    }
-    /// Mob models and projectiles for the entity pass.
-    /// The renderer's models for the GPU path (`mobs::skin`) this frame, if it
-    /// poses entities: a new frame of draws, the store restarted when the
-    /// renderer's no longer matches. Once per frame, before any entity draws.
-    pub(super) fn begin_skinning(&self) {
-        let renderer = self.renderer.as_ref().filter(|r| r.skins_entities());
-        match renderer.and_then(|r| r.skinned_models()) {
-            Some(stored) => {
-                let mut models = self.skin_models.borrow_mut();
-                // Reuse helps CPU-bound crowds, but regressed TAA frame tails in
-                // windowed measurements. Keep the original arithmetic with TAA on.
-                models.set_rotation_cache_enabled(!self.settings.horizon.taa);
-                models.begin(&mut self.skin_frame.borrow_mut(), stored);
-                models.tagged = renderer.is_some_and(|r| r.skins_tagged());
-            }
-            None => self.skin_frame.borrow_mut().clear_draws(),
-        }
-    }
-
-    /// Whether this frame's models can be posed on the GPU (`begin_skinning`).
-    pub(super) fn skinning(&self) -> bool {
-        self.renderer
-            .as_ref()
-            .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
-    }
-
-    /// Culls one entity's vertices from `entity_start`, counting what it drew
-    /// on the GPU path by the corners of `skinned`'s bounds; a culled entity's
-    /// posed draws since `skinned`'s mark are taken back.
-    pub(super) fn cull_skinned(
-        &self,
-        out: &mut Vec<Vertex>,
-        entity_start: usize,
-        skinned: Skinned,
-    ) {
-        let corners = skinned.and_then(|(_, bounds)| bounds);
-        if out.len() == entity_start {
-            if let Some((lo, hi)) = corners
-                && self.cull_entity_camera_bounds(lo, hi)
-                && let Some((mark, _)) = skinned
-            {
-                if self.occlusion.shadow_casters.0 {
-                    let mut frame = self.skin_frame.borrow_mut();
-                    let end = frame.vertices as usize;
-                    horizon_client::gfx::pack_draw::EntitySpan::hide(
-                        &mut frame.spans,
-                        mark.2 as usize,
-                        end,
-                    );
-                } else {
-                    self.skin_frame.borrow_mut().truncate(mark);
-                }
-            }
-            return;
-        }
-        if let Some((lo, hi)) = corners {
-            out.extend([lo, hi].map(|pos| Vertex {
-                pos: pos.to_array(),
-                ..bytemuck::Zeroable::zeroed()
-            }));
-        }
-        let len = out.len();
-        let hidden = self.cull_entity_vertices(out, entity_start);
-        if out.len() < len {
-            if let Some((mark, _)) = skinned {
-                self.skin_frame.borrow_mut().truncate(mark);
-            }
-        } else if corners.is_some() {
-            if let Some((mark, _)) = skinned {
-                // Previous GPU-only entities can leave zero-length CPU spans at
-                // this same offset. Use this query's result, not their metadata.
-                if hidden {
-                    let mut skin = self.skin_frame.borrow_mut();
-                    let end = skin.vertices as usize;
-                    EntitySpan::hide(&mut skin.spans, mark.2 as usize, end);
-                }
-            }
-            out.truncate(len - 2);
-            // The temporary bounds are not real geometry. Keep the culling end marker
-            // at the true CPU end before the next entity appends a span there.
-            for span in self.entity_spans.borrow_mut().iter_mut().rev() {
-                if span.start as usize <= out.len() {
-                    break;
-                }
-                span.start = out.len() as u32;
-            }
-        }
-    }
-
-    pub(in crate::game) fn mob_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        // The coarse mob bounds pay off only in dense async scenes; otherwise,
-        // keep the existing exact mesh-culling path.
-        if self.settings.horizon.entity_culling == EntityCullingMode::Asynchronous
-            && self
-                .occlusion
-                .asynchronous()
-                .is_some_and(|culler| culler.camera_is_stationary())
-            && self.settings.horizon.entity_culling_precheck != 0
-            && self.remote_entities.len() >= self.settings.horizon.entity_culling_precheck as usize
-            && !self.occlusion.shadow_casters.0
-            && mod_api::__private::mods().is_empty()
-        {
-            self.mob_geometry_inner::<true>(camera, alpha, out);
-        } else {
-            self.mob_geometry_inner::<false>(camera, alpha, out);
-        }
-    }
-
-    fn mob_geometry_inner<const PRECHECK: bool>(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let atlas = &self.gui.atlas;
-        let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
-        let scale = self.view_scale();
-        // Who watches (`Entity.isInvisibleTo`): the local player's team.
-        let viewer = self.player_team();
-        self.rendered_mobs.set(0);
-        let (skinning, listened) = (self.skinning(), self.mob_render_listened());
-        // What custom entity model animations read of the frame.
-        horizon_client::mobs::cem_anim::set_frame(horizon_client::mobs::cem_anim::Frame {
-            time: self.world.game_time as f64 + alpha,
-            day_time: self.world.day_time as f64 + alpha,
-            dimension: match self.dim {
-                Dim::Overworld | Dim::Extra(_) => 0.0,
-                Dim::Nether => -1.0,
-                Dim::End => 1.0,
-            },
-            player: self.player.as_ref().map_or(camera.to_array(), |p| {
-                [p.position.x, p.position.y, p.position.z]
-            }),
-            player_rot: [self.pitch, self.yaw],
-            paused: self.pause,
-            first_person: self.camera_type.is_first_person(),
-            third_person_reversed: self.camera_type
-                == horizon_client::camera::CameraType::ThirdPersonFront,
-            ..Default::default()
-        });
-        for mob in &self.remote_entities {
-            // LevelRenderer: the entity the view looks out of is not drawn
-            // in first person.
-            if self.hides_as_camera(mob.id) {
-                continue;
-            }
-            let is_player = &*mob.kind.id == "minecraft:player";
-            let d = glam::DVec3::new(mob.position.x, mob.position.y, mob.position.z) - camera;
-            // Entity.shouldRenderAtSqrDistance: 64 times the bounding box's
-            // mean edge, scaled by the view scale. RemotePlayer's box counts
-            // ten times.
-            let (w, h, _) = mob.dims();
-            let edge = (w + h + w) / 3.0 * if is_player { 10.0 } else { 1.0 };
-            let range = edge * 64.0 * scale;
-            if d.length_squared() >= range * range {
-                continue;
-            }
-            let beam = horizon_client::mobs::guardian::beam(mob, alpha as f32);
-            // EntityRenderer.shouldRender: the renderer's interpolated culling box,
-            // grown by 0.5 (GuardianRenderer also draws while its beam is out). One only the
-            // ray scene's entity layer reaches is its alone (`ray_only`), with no outline.
-            let mut sight = super::entity_culling::Sight {
-                camera: true,
-                rays: false,
-            };
-            if beam.is_none() {
-                let (lo, hi) = super::entity_culling::cull_box(mob, alpha);
-                let (lo, hi) = (
-                    (lo - camera - glam::DVec3::splat(0.5)).as_vec3(),
-                    (hi - camera + glam::DVec3::splat(0.5)).as_vec3(),
-                );
-                match self.sight(lo, hi) {
-                    Some(seen) => sight = seen,
-                    None => continue,
-                }
-            }
-            let outline = self.mob_outline(mob).filter(|_| sight.camera);
-            // Entity.DATA_SHARED_FLAGS_ID invisible (the flag the invisibility
-            // effect sets): only the name tag draws (and the outline of a
-            // glowing mob, LivingEntityRenderer.getRenderType). A player keeps
-            // its armour, elytra and held items (`LivingEntityRenderer.submit`
-            // skips only the body).
-            let invisible = mob.is_invisible();
-            // Entity.isInvisibleTo(viewer): a spectator sees it anyway, the
-            // body forced translucent (`LivingEntityRenderer.submit`).
-            let seen_invisible = invisible
-                && !horizon_client::scoreboard::invisible_to(
-                    self.mob_team_of(mob),
-                    viewer,
-                    self.spectator(),
-                    true,
-                );
-            let layers_only = invisible && outline.is_none() && is_player && !seen_invisible;
-            if invisible && outline.is_none() && !layers_only && !seen_invisible {
-                continue;
-            }
-            let culling = if PRECHECK
-                && sight.camera
-                && outline.is_none()
-                && !is_player
-                && mob.kind.id.starts_with("minecraft:")
-                && (0..6).all(|slot| mob.extra.slot_stack(slot).is_none())
-                && beam.is_none()
-            {
-                self.entity_cull_decision(mob, alpha)
-            } else {
-                EntityCullDecision::CheckVertices
-            };
-            let culling = self.sighted_decision(sight, || culling);
-            if culling.hides_entity() {
-                continue;
-            }
-            let (entity_start, posed_start) = (out.len(), self.posed_vertices());
-            self.mark_motion(entity_start, (1 << 32) | u64::from(mob.id));
-            self.mark_entity(entity_start, &mob.kind.id);
-            if !culling.rays_only() {
-                self.rendered_mobs.set(self.rendered_mobs.get() + 1);
-            }
-            let packed = self.mob_packed_light(mob, alpha);
-            // The mods' pre hooks (a player's `render_player_pre`, then `render_living_pre`),
-            // before any of the vanilla model's parts (a sulfur cube's swallowed block) are
-            // drawn. A cancel skips the rest of the entity's drawing and its post hooks; the
-            // frame's later passes (flames, name tag, shadow, leash) leave it out too.
-            let who = is_player
-                .then(|| self.remote_player_name(mob.id))
-                .flatten()
-                .map(|name| PlayerRender { name, local: false });
-            let pre = self.mod_render_pre(mob, who, listened, alpha as f32, camera, packed, out);
-            let Some(hidden) = pre else {
-                // What the mods drew in its place is culled as the entity's own would be.
-                if culling.rays_only() {
-                    self.ray_only(out, entity_start);
-                } else {
-                    self.culled_for_rays(|| self.cull_entity_vertices(out, entity_start));
-                }
-                self.lit_posed_entity(entity_start..out.len(), posed_start);
-                continue;
-            };
-            // A mod's renderer for the type (`register_entity_renderers`) draws in place of its
-            // model and vanilla layers; the mods' layers and post hooks still follow.
-            let modded = self.mod_living_renderer_geometry(mob, alpha as f32, camera, packed, out);
-            if mob.species() == Species::SulfurCube && !mob.is_invisible() && !modded {
-                self.sulfur_cube_body_geometry(
-                    mob,
-                    alpha as f32,
-                    horizon_client::mobs::render::base_transform(mob, alpha as f32, camera),
-                    packed,
-                    out,
-                );
-            }
-            // Other players on a server: PlayerRenderer's HumanoidArmorLayer.
-            let armor = if is_player {
-                self.worn_armor_layers(mob)
-            } else {
-                Vec::new()
-            };
-            let body = out.len();
-            // The GPU path: an ordinary mob, no layers the CPU path changes after drawing them
-            // (a player's, the HDR tiers below, the sulfur cube's shell). A glowing mob's
-            // silhouette is posed too (`SkinFrame::outline_since`), unless it is invisible:
-            // then only the outline draws.
-            let silhouette_on_gpu = outline.is_none() || !invisible;
-            let posable = skinning
-                && !(is_player || modded)
-                && !layers_only
-                && !seen_invisible
-                && silhouette_on_gpu
-                && armor.is_empty()
-                && !matches!(
-                    mob.species(),
-                    Species::Blaze | Species::MagmaCube | Species::GlowSquid | Species::SulfurCube
-                );
-            let (mut skinned, mut parts, added) = (None, None, self.mod_layers(mob));
-            if posable {
-                let mut models = self.skin_models.borrow_mut();
-                let mut frame = self.skin_frame.borrow_mut();
-                let mark = frame.mark();
-                let mut skin = horizon_client::mobs::skin::Skin::new(&mut models, &mut frame);
-                horizon_client::mobs::render::render_skinned(
-                    mob,
-                    alpha as f32,
-                    camera,
-                    &lookup,
-                    packed,
-                    self.res.mob_data(),
-                    hidden,
-                    (listened || added.is_some()).then_some(&mut parts),
-                    out,
-                    &mut skin,
-                );
-                skinned = Some((mark, skin.bounds));
-            } else if !modded {
-                if seen_invisible {
-                    horizon_client::mobs::render::render_seen_invisible(
-                        mob,
-                        alpha as f32,
-                        camera,
-                        &lookup,
-                        packed,
-                        self.res.mob_data(),
-                        &armor,
-                        hidden,
-                        (listened || added.is_some()).then_some(&mut parts),
-                        out,
-                    );
-                } else if layers_only {
-                    horizon_client::mobs::render::render_layers(
-                        mob,
-                        alpha as f32,
-                        camera,
-                        &lookup,
-                        packed,
-                        self.res.mob_data(),
-                        &armor,
-                        (listened || added.is_some()).then_some(&mut parts),
-                        out,
-                    );
-                } else {
-                    horizon_client::mobs::render::render_with_hidden(
-                        mob,
-                        alpha as f32,
-                        camera,
-                        &lookup,
-                        packed,
-                        self.res.mob_data(),
-                        &armor,
-                        hidden,
-                        (listened || added.is_some()).then_some(&mut parts),
-                        out,
-                    );
-                }
-            }
-            // HDR output: mobs that are light shine by their kind, as blocks do (entity.wgsl
-            // hdr_entity_mark); a tier's window lifts only their bright texels.
-            if let Some(tier) = match mob.species() {
-                Species::Blaze => Some(horizon_client::mesher::BRIGHT),
-                Species::MagmaCube | Species::GlowSquid => Some(horizon_client::mesher::LOW),
-                _ => None,
-            } {
-                for v in &mut out[body..] {
-                    v.layer |= u32::from(tier) << 16;
-                }
-            }
-            // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
-            let layers = horizon_client::mobs::render::layers_shown(mob);
-            if is_player && layers {
-                // PlayerRenderer's CapeLayer, WingsLayer, ParrotOnShoulderLayer
-                // and SpinAttackEffectLayer. Only the cape hides with the body;
-                // the others have no `isInvisible` check.
-                let chest = mob.extra.slot_id(horizon_items::equipment::CHEST);
-                // `CapeLayer` and `Deadmau5EarsLayer`: `!state.isInvisible`, whoever sees the body.
-                if !invisible {
-                    self.player_cape_geometry(mob, chest, camera, alpha as f32, packed, out);
-                }
-                if !invisible
-                    && let Some((_, name)) = self
-                        .remote_player_names()
-                        .into_iter()
-                        .find(|(id, _)| *id == mob.id)
-                {
-                    self.player_ears_geometry(mob, &name, camera, alpha as f32, packed, out);
-                }
-                self.player_elytra_geometry(mob, chest, camera, alpha as f32, packed, out);
-                self.shoulder_parrots_geometry(mob, camera, alpha as f32, packed, out);
-                self.spin_attack_geometry(mob, camera, alpha as f32, packed, out);
-                self.stuck_in_body_geometry(mob, mob.id as i32, camera, alpha as f32, packed, out);
-            }
-            // Cosmetics (game/cosmetics.rs), posed on the GPU with the mob's own jobs: culled
-            // with it.
-            if !(layers_only || modded)
-                && horizon_hooks::engine::any()
-                && (is_player || &*mob.kind.id == "minecraft:mannequin")
-            {
-                let mark = self.skin_frame.borrow().mark();
-                let base = horizon_client::mobs::render::base_transform(mob, alpha as f32, camera);
-                let gpu = skinning;
-                if let Some((lo, hi)) =
-                    self.player_layers_geometry(mob, base, camera, alpha as f32, packed, gpu, out)
-                {
-                    skinned = Some(match skinned {
-                        Some((first, Some((l, h)))) => (first, Some((l.min(lo), h.max(hi)))),
-                        Some((first, None)) => (first, Some((lo, hi))),
-                        None => (mark, Some((lo, hi))),
-                    });
-                }
-            }
-            // CustomHeadLayer (a pumpkin, skull or head item) included.
-            if layers {
-                if !modded {
-                    // Held items join the GPU path's draws, their silhouette too.
-                    let skin = (skinning && silhouette_on_gpu).then_some(&mut skinned);
-                    self.mob_block_geometry(mob, camera, alpha, packed, skin, out);
-                }
-                self.mod_layer_geometry(mob, who, parts, added, alpha as f32, camera, packed, out);
-            }
-            self.mod_render_post(mob, who, parts, alpha as f32, camera, packed, out);
-            if let Some(rgb) = outline {
-                self.mark_outline(&out[entity_start..], rgb);
-                if let Some(((first, _, _), _)) = skinned {
-                    let color = horizon_client::mobs::render::abgr(rgb);
-                    self.skin_frame.borrow_mut().outline_since(first, color);
-                }
-                if invisible && !seen_invisible {
-                    out.truncate(entity_start);
-                    continue;
-                }
-            }
-            // Glowing outlines and a guardian's beam remain visible independently
-            // of whether the body is hidden behind terrain.
-            if culling.rays_only() {
-                self.ray_only(out, entity_start);
-                continue;
-            }
-            if outline.is_none() && culling.checks_vertices() && beam.is_none() {
-                // What the GPU draws of the mob counts by its bounds' corners.
-                self.culled_for_rays(|| self.cull_skinned(out, entity_start, skinned));
-            }
-            // The mob with what it holds and wears, once nothing more can drop it. Its beam,
-            // next, is no surface of it: Horizon's to draw.
-            self.lit_posed_entity(entity_start..out.len(), posed_start);
-            // GuardianRenderer: the laser to the locked target.
-            if let Some((time, scale)) = beam
-                && !modded
-                && let Some(target) = self.beam_target(mob.ai.target, alpha)
-                && let Some(uv) = lookup("entity/guardian/guardian_beam")
-            {
-                let a = alpha;
-                let eye = glam::DVec3::new(
-                    mob.previous.x + (mob.position.x - mob.previous.x) * a,
-                    mob.previous.y + (mob.position.y - mob.previous.y) * a + mob.eye_height(),
-                    mob.previous.z + (mob.position.z - mob.previous.z) * a,
-                ) - camera;
-                horizon_client::mobs::guardian::beam_geometry(
-                    eye.as_vec3(),
-                    (target - camera).as_vec3(),
-                    time,
-                    scale,
-                    uv,
-                    out,
-                );
-            }
-        }
-        // What follows isn't a tracked mob: close the last one's span.
-        self.mark_motion(out.len(), 0);
-        self.elder_apparition_geometry(alpha, out);
-        self.spawner_geometry(camera, alpha, out);
-        let live = self.creatures.projectiles.iter().map(|a| {
-            let at = [
-                a.previous.x + (a.position.x - a.previous.x) * alpha,
-                a.previous.y + (a.position.y - a.previous.y) * alpha,
-                a.previous.z + (a.position.z - a.previous.z) * alpha,
-            ];
-            (a, at)
-        });
-        self.projectile_geometry(camera, alpha, live, out);
-    }
-
-    pub(super) fn pickup_arrow_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        // ItemPickupParticle: a picked-up arrow flying to its collector.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
-            _ => None,
-        });
-        self.projectile_geometry(camera, alpha, taken, out);
-    }
-
-    fn projectile_geometry<'a>(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        projectiles: impl Iterator<Item = (&'a Projectile, [f64; 3])>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let atlas = &self.gui.atlas;
-        let (right, up) = thrown_item_axes(self.camera_type, self.yaw, self.pitch);
-        // A glowing projectile's outline: what it drew up to the next one.
-        let mut glowing = None;
-        for (a, at) in projectiles {
-            if let Some((start, rgb)) = glowing.take() {
-                self.mark_outline(&out[start..], rgb);
-            }
-            if a.id != 0
-                && let Some(rgb) = self.thing_outline(a.id, a.kind.id())
-            {
-                glowing = Some((out.len(), rgb));
-            }
-            let p = glam::DVec3::from_array(at) - camera;
-            let c = p.as_vec3();
-            // A projectile with a model is the `[entity]` stage's (`lit_entity`); one drawn as
-            // an item, and the fire on any, is Horizon's.
-            let start = out.len();
-            // EntityRenderer.getPackedLightCoords: the block its light probe
-            // (the eye) is in, at the position this frame draws rather than
-            // this tick's, and not the one under its feet.
-            let light = self.world.light(
-                at[0].floor() as i32,
-                a.light_probe_y(alpha).floor() as i32,
-                at[2].floor() as i32,
-            );
-            let mut packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            // EntityRenderer.getBlockLightLevel: a shulker bullet and anything
-            // on fire are drawn at 15 block light (the fireball renderers'
-            // own override); the sky light stays the level's.
-            if let Some(block) = a.block_light_override() {
-                packed = (packed & 0xFF) | (u32::from(block) * 16) << 8;
-            }
-            if a.is_arrow() {
-                let Some(model) = self.arrow_model.as_ref() else {
-                    continue;
-                };
-                // SpectralArrowRenderer, and TippableArrowRenderer's `getColor() > 0`.
-                let texture = if a.is_spectral_arrow() {
-                    "entity/projectiles/arrow_spectral"
-                } else if a.arrow.as_ref().is_some_and(|s| s.effect_color > 0) {
-                    "entity/projectiles/arrow_tipped"
-                } else {
-                    "entity/projectiles/arrow"
-                };
-                let Some(r) = atlas.sprites.get(texture).copied() else {
-                    continue;
-                };
-                // ArrowRenderer: `Mth.lerp(partialTick, state.yRotO, state.yRot)`
-                // and the same for the pitch, so a turning arrow is drawn
-                // between the two ticks it turned over.
-                let alpha32 = alpha as f32;
-                let yaw = a.previous_yaw + alpha32 * (a.yaw - a.previous_yaw);
-                let pitch = a.previous_pitch + alpha32 * (a.pitch - a.previous_pitch);
-                let m = glam::Mat4::from_translation(c)
-                    * glam::Mat4::from_rotation_y((yaw - 90.0).to_radians())
-                    * glam::Mat4::from_rotation_z(pitch.to_radians());
-                // ArrowRenderer: `state.shake = shakeTime - partialTicks`; ArrowModel.setupAnim
-                // rolls the root while the shake timer runs.
-                let shake = a
-                    .arrow
-                    .as_ref()
-                    .map_or(0.0, |s| s.shake as f32 - alpha as f32);
-                let roll = if shake > 0.0 {
-                    -(shake * 3.0).msin() * shake * (std::f32::consts::PI / 180.0)
-                } else {
-                    0.0
-                };
-                let pose_for = |part: &horizon_client::mobs::Part| {
-                    let mut pose = part.pose;
-                    if std::ptr::eq(part, model) {
-                        pose[5] += roll;
-                    }
-                    pose
-                };
-                horizon_client::mobs::render_model(
-                    model,
-                    m,
-                    &pose_for,
-                    [r.u0, r.v0, r.u1, r.v1],
-                    packed,
-                    0,
-                    out,
-                );
-                self.lit_entity(start..out.len());
-                if a.arrow.as_ref().is_some_and(|s| s.on_fire()) {
-                    flame_geometry(atlas, c, 0.5, 0.5, self.yaw, light, out);
-                }
-                continue;
-            }
-            // ThrownTridentRenderer.
-            if matches!(a.kind, ProjectileKind::Trident) {
-                let Some(model) = self.trident_model.as_ref() else {
-                    continue;
-                };
-                let Some(r) = atlas.sprites.get("entity/trident/trident").copied() else {
-                    continue;
-                };
-                let m = glam::Mat4::from_translation(c)
-                    * glam::Mat4::from_rotation_y((a.yaw - 90.0).to_radians())
-                    * glam::Mat4::from_rotation_z((a.pitch + 90.0).to_radians());
-                let poses = horizon_client::mobs::anim::Poses::new(model);
-                horizon_client::mobs::render::draw(
-                    model,
-                    m,
-                    &poses,
-                    [r.u0, r.v0, r.u1, r.v1],
-                    0xFFFF_FFFF,
-                    packed,
-                    0,
-                    out,
-                );
-                self.lit_entity(start..out.len());
-                continue;
-            }
-            // WindChargeRenderer.
-            if matches!(
-                a.kind,
-                ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
-            ) {
-                self.wind_charge_geometry(a, c, packed, alpha as f32, out);
-                self.lit_entity(start..out.len());
-                continue;
-            }
-            // ShulkerBulletRenderer: the tumbling bullet model, then a larger
-            // translucent copy of it (colour 0x26FFFFFF); always 15 block light.
-            if matches!(a.kind, ProjectileKind::ShulkerBullet { .. }) {
-                let model = &self.entity_models.shulker_bullet;
-                if let (Some(model), Some(r)) =
-                    (model, atlas.sprites.get("entity/shulker/spark").copied())
-                {
-                    use horizon_core::geometry::trig;
-                    let tc = a.age as f32 + alpha as f32;
-                    let mut poses = horizon_client::mobs::anim::Poses::new(model);
-                    poses.yrot("main", a.yaw.to_radians());
-                    poses.xrot("main", a.pitch.to_radians());
-                    let light = (packed & 0xFF) | ((15 * 16) << 8);
-                    let base = glam::Mat4::from_translation(c)
-                        * glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.15, 0.0))
-                        * glam::Mat4::from_rotation_y(
-                            (trig::sin(f64::from(tc * 0.1)) * 180.0).to_radians(),
-                        )
-                        * glam::Mat4::from_rotation_x(
-                            (trig::cos(f64::from(tc * 0.1)) * 180.0).to_radians(),
-                        )
-                        * glam::Mat4::from_rotation_z(
-                            (trig::sin(f64::from(tc * 0.15)) * 360.0).to_radians(),
-                        )
-                        * glam::Mat4::from_scale(glam::Vec3::new(-0.5, -0.5, 0.5));
-                    let uv = [r.u0, r.v0, r.u1, r.v1];
-                    horizon_client::mobs::render::draw(
-                        model,
-                        base,
-                        &poses,
-                        uv,
-                        0xFFFF_FFFF,
-                        light,
-                        0,
-                        out,
-                    );
-                    // The translucent shell blends over the opaque core
-                    // (`RenderTypes.entityTranslucent`).
-                    let shell = out.len();
-                    horizon_client::mobs::render::draw(
-                        model,
-                        base * glam::Mat4::from_scale(glam::Vec3::splat(1.5)),
-                        &poses,
-                        uv,
-                        0x26FF_FFFF,
-                        light,
-                        0,
-                        out,
-                    );
-                    horizon_client::gfx::mark_oit(&mut out[shell..]);
-                }
-                self.lit_entity(start..out.len());
-                continue;
-            }
-            // WitherSkullRenderer: the skull model facing its flight.
-            if let Some(dangerous) = super::wither::skull_kind(a) {
-                let model = &self.entity_models.wither_skull;
-                let tex = if dangerous {
-                    "entity/wither/wither_invulnerable"
-                } else {
-                    "entity/wither/wither"
-                };
-                if let (Some(model), Some(r)) = (model, atlas.sprites.get(tex).copied()) {
-                    let mut poses = horizon_client::mobs::anim::Poses::new(model);
-                    poses.yrot("head", a.yaw.to_radians());
-                    poses.xrot("head", a.pitch.to_radians());
-                    let base = glam::Mat4::from_translation(c)
-                        * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-                    horizon_client::mobs::render::draw(
-                        model,
-                        base,
-                        &poses,
-                        [r.u0, r.v0, r.u1, r.v1],
-                        0xFFFF_FFFF,
-                        packed,
-                        0,
-                        out,
-                    );
-                }
-                self.lit_entity(start..out.len());
-                continue;
-            }
-            if self.thrown_item_geometry(a, alpha, at, c, packed, out) {
-                continue;
-            }
-            // `Entity.displayFireAnimation`: a thrown item that flew through a
-            // fire block burns (`ThrowableProjectile.tick`'s
-            // `applyEffectsFromBlocks`), and ThrownItemRenderer draws the flame
-            // over its box as any other entity renderer does.
-            if a.on_fire() {
-                let size = a.kind.size() as f32;
-                flame_geometry(atlas, c, size, size, self.yaw, light, out);
-            }
-            // `ThrownItemRenderer` for a fireball: the item `Fireball.getItem`
-            // returns (a fire charge until `setItem` gave it another), its model
-            // at the renderer's scale for the kind. `packed` is already 15, the
-            // renderer's full bright.
-            // (A thrown item's own stack is only saved so far; it is drawn
-            // as its kind's sprite below.)
-            if let Some(stack) = a.item.as_ref().filter(|_| a.kind.is_item_fireball()) {
-                let owner = super::item_draw::owner_at(at, 0.0, a.kind.id());
-                let state = self.resolve_item(stack, DisplayContext::Ground, Some(&owner), 0);
-                let pose = glam::Mat4::from_translation(c)
-                    * glam::Mat4::from_quat(self.camera_orientation())
-                    * glam::Mat4::from_scale(glam::Vec3::splat(a.sprite_scale()));
-                self.submit_item_world(&state, pose, packed, out);
-                continue;
-            }
-            let Some(name) = a.item_sprite() else {
-                continue;
-            };
-            let Some(r) = atlas.sprites.get(name).copied() else {
-                continue;
-            };
-            let lift = is_item_billboard(&a.kind);
-            let quad = thrown_item_quad(c, right, up, a.sprite_scale(), lift);
-            for (v, uv) in quad
-                .iter()
-                .zip([[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]])
-            {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: v.to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light: packed,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
-        if let Some((start, rgb)) = glowing {
-            self.mark_outline(&out[start..], rgb);
-        }
-    }
-}
-/// `ThrownItemRenderer.submit` turns the item by `CameraRenderState.orientation`
-/// (`Camera.setRotation`): the billboard's right and up axes are the camera's.
-/// They stay continuous at pitch ±90, and in third-person front view they are
-/// the turned-round camera's, not the player's.
-fn thrown_item_axes(
-    camera_type: horizon_client::camera::CameraType,
-    yaw: f32,
-    pitch: f32,
-) -> (glam::Vec3, glam::Vec3) {
-    let orientation = super::camera_rotation(camera_type, yaw, pitch);
-    (orientation * glam::Vec3::X, orientation * glam::Vec3::Y)
-}
-/// The four corners of the item billboard, in the order its UVs are laid out.
-/// `ThrownItemRenderer` only scales and billboards it; the lift is
-/// `item/generated`'s ground display transform, `translation [0, 2, 0]` of 16
-/// units = 0.125 blocks, which is `0.125 * scale` == `0.5 * s`.
-fn thrown_item_quad(
-    at: glam::Vec3,
-    right: glam::Vec3,
-    up: glam::Vec3,
-    scale: f32,
-    lift: bool,
-) -> [glam::Vec3; 4] {
-    let s = 0.25 * scale;
-    let rise = if lift { 0.5 * s } else { 0.0 };
-    let centre = at + up * rise;
-    [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
-        .map(|k| centre + right * k.0 * s + up * k.1 * s)
-}
-/// Whether vanilla draws the kind as `ThrownItemRenderer`'s item billboard, the
-/// only ones that take that lift. Llama spit shares this quad but
-/// `LlamaSpitRenderer` is a model, with its own offset, and a fireball's item
-/// is drawn as the item model that carries the lift itself.
-fn is_item_billboard(kind: &ProjectileKind) -> bool {
-    matches!(
-        kind,
-        ProjectileKind::Snowball | ProjectileKind::Egg | ProjectileKind::EnderPearl
-    )
 }
 /// `Bucketable.getBucketItemStack` and `getPickupSound` of a mob that a water
 /// bucket picks up.
@@ -7060,95 +6027,8 @@ mod enderman_anger_tests {
 }
 
 #[cfg(test)]
-mod local_sound_event_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    use horizon_client::mobs::MobEvent;
-
-    #[test]
-    #[ignore = "daily"]
-    fn local_mob_events_play_without_entering_the_shared_capture() {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.game_dir =
-            Some(std::env::temp_dir().join(format!("horizon-h069-unit-{}", std::process::id())));
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.audio.capture = Some(Vec::new());
-        game.handle_mob_events(vec![
-            MobEvent::Sound("entity.cow.hurt", [1.0, 100.0, 2.0], 0.5, 1.0),
-            MobEvent::LocalSound("entity.breeze.whirl", [3.0, 100.0, 4.0], 0.8, 0.7),
-            MobEvent::Sound("entity.zombie.hurt", [5.0, 100.0, 6.0], 1.0, 0.9),
-        ])
-        .unwrap();
-        // A positive LocalSound must still take the playback path. An absent
-        // producer cannot satisfy this actual Game adapter regression.
-        assert_eq!(
-            game.audio.heard.get("minecraft:entity.breeze.whirl"),
-            Some(&1)
-        );
-        assert_eq!(game.audio.heard.get("minecraft:entity.cow.hurt"), Some(&1));
-        assert_eq!(
-            game.audio.heard.get("minecraft:entity.zombie.hurt"),
-            Some(&1)
-        );
-        let shared = game.audio.capture.as_ref().unwrap();
-        assert_eq!(shared.len(), 2, "LocalSound must not become a shared sound");
-        assert_eq!(shared[0].event, "minecraft:entity.cow.hurt");
-        assert_eq!(shared[1].event, "minecraft:entity.zombie.hurt");
-        assert_eq!(
-            (
-                shared[0].position,
-                shared[0].volume,
-                shared[0].pitch,
-                shared[0].source
-            ),
-            ([1.0, 100.0, 2.0], 0.5, 1.0, 6)
-        );
-        assert_eq!(
-            (
-                shared[1].position,
-                shared[1].volume,
-                shared[1].pitch,
-                shared[1].source
-            ),
-            ([5.0, 100.0, 6.0], 1.0, 0.9, 5)
-        );
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::mob_effect_instance;
-    use super::thrown_item_axes;
-    use super::thrown_item_quad;
-    use super::{ProjectileKind, is_item_billboard};
-    use horizon_client::camera::CameraType;
 
     #[test]
     #[ignore = "daily"]
@@ -7311,14 +6191,6 @@ mod tests {
         }
     }
 
-    /// The component-wise lowest and highest corner of the quad.
-    fn bounds(corners: &[glam::Vec3; 4]) -> (glam::Vec3, glam::Vec3) {
-        (
-            corners.iter().copied().reduce(glam::Vec3::min).unwrap(),
-            corners.iter().copied().reduce(glam::Vec3::max).unwrap(),
-        )
-    }
-
     #[test]
     fn nautilus_breath_lands_in_creative_as_ambient() {
         // AbstractNautilus.applyEffects: MobEffectInstance(BREATH_OF_THE_NAUTILUS,
@@ -7343,67 +6215,6 @@ mod tests {
         assert!(!e.ambient);
     }
 
-    #[test]
-    fn thrown_item_billboard_lifts_by_the_generated_ground_transform() {
-        // The kinds vanilla draws with `ThrownItemRenderer` as a billboard: the
-        // only lifted ones. A fireball hands `getItem` to the item renderer
-        // instead, which carries the ground transform itself.
-        assert!(is_item_billboard(&ProjectileKind::Snowball));
-        assert!(is_item_billboard(&ProjectileKind::Egg));
-        assert!(is_item_billboard(&ProjectileKind::EnderPearl));
-        assert!(!is_item_billboard(&ProjectileKind::SmallFireball));
-        let large = ProjectileKind::LargeFireball { power: 1 };
-        assert!(!is_item_billboard(&large));
-        // A projectile at y = 100 with right = +X, up = +Y: the sprite sits
-        // 0.125 blocks above the entity (2 of `item/generated`'s 16 units) and
-        // stays 0.5 blocks wide, so the quad's y runs 99.875 .. 100.375.
-        let at = glam::Vec3::Y * 100.0;
-        let (right, up) = (glam::Vec3::X, glam::Vec3::Y);
-        let lifted = is_item_billboard(&ProjectileKind::Snowball);
-        let (lo, hi) = bounds(&thrown_item_quad(at, right, up, 1.0, lifted));
-        assert_eq!((lo.y, hi.y), (99.875, 100.375));
-        assert_eq!((lo.x, hi.x), (-0.25, 0.25));
-        // Llama spit shares the quad here but is a model in vanilla
-        // (`LlamaSpitRenderer`): no lift at all.
-        let lifted = is_item_billboard(&ProjectileKind::LlamaSpit);
-        assert!(!lifted);
-        let (lo, hi) = bounds(&thrown_item_quad(at, right, up, 1.0, lifted));
-        assert_eq!((lo.y, hi.y), (99.75, 100.25));
-        // The rise follows the billboard's own up axis, not world up.
-        let (right, up) = (glam::Vec3::Z, glam::Vec3::X);
-        let lifted = is_item_billboard(&ProjectileKind::Egg);
-        let (lo, hi) = bounds(&thrown_item_quad(at, right, up, 1.0, lifted));
-        assert_eq!((lo.x, hi.x), (-0.125, 0.375));
-        assert_eq!((lo.y, hi.y), (100.0, 100.0));
-    }
-
-    #[test]
-    fn thrown_item_billboard_does_not_flip_at_straight_up_or_down() {
-        for yaw in [0.0f32, 37.5, 90.0, 180.0, -135.0] {
-            for (edge, near) in [(-90.0f32, -89.9f32), (90.0, 89.9)] {
-                let (right_edge, up_edge) = thrown_item_axes(CameraType::FirstPerson, yaw, edge);
-                let (right_near, up_near) = thrown_item_axes(CameraType::FirstPerson, yaw, near);
-                assert!(
-                    right_edge.dot(right_near) > 0.99 && up_edge.dot(up_near) > 0.99,
-                    "yaw {yaw}, pitch {edge}: {right_edge}/{up_edge} vs {right_near}/{up_near} at {near}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn thrown_item_billboard_faces_the_front_camera() {
-        // Camera.setup turns the front camera round (yaw + 180, -pitch): its
-        // right is the player's left.
-        let (right, up) = thrown_item_axes(CameraType::FirstPerson, 0.0, 0.0);
-        assert!(right.abs_diff_eq(glam::Vec3::NEG_X, 1e-5), "{right}");
-        assert!(up.abs_diff_eq(glam::Vec3::Y, 1e-5), "{up}");
-        let (right, up) = thrown_item_axes(CameraType::ThirdPersonFront, 0.0, 0.0);
-        assert!(right.abs_diff_eq(glam::Vec3::X, 1e-5), "{right}");
-        assert!(up.abs_diff_eq(glam::Vec3::Y, 1e-5), "{up}");
-        let (right, _) = thrown_item_axes(CameraType::ThirdPersonBack, 0.0, 0.0);
-        assert!(right.abs_diff_eq(glam::Vec3::NEG_X, 1e-5), "{right}");
-    }
 }
 
 /// Whether the killing blow's causing entity (`DamageSource.getEntity`) was a

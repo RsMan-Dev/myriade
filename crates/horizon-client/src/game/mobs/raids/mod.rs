@@ -689,25 +689,6 @@ impl Game<'_> {
         // The raid tracks one participant (`bar.player`): the first player in
         // the level. Everyone else is heard by distance alone.
         let local_first = self.player.is_some();
-        if let Some(p) = self.player.as_ref()
-            && let Some(at) = raid::horn_at(
-                [p.position.x, p.position.y, p.position.z],
-                rx,
-                rz,
-                in_raid && local_first,
-            )
-        {
-            // This window only. A positioned `play` would be broadcast to
-            // every guest on top of the packet each of them is sent.
-            let capture = self.audio.capture.take();
-            let neutral = horizon_client::settings::SOUND_SOURCES
-                .iter()
-                .position(|s| *s == "neutral")
-                .unwrap_or(0);
-            self.audio
-                .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
-            self.audio.capture = capture;
-        }
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -916,20 +897,18 @@ impl Game<'_> {
         // Villager.customServerAiStep: a 1 in 100 chance each tick, in an
         // ongoing raid, of entity event 42 (`handleEntityEvent` splashes).
         for id in ongoing {
-            if self.particles.random().next_int_bound(100) == Ok(0) {
+            if self.world.random.next_int_bound(100) == Ok(0) {
                 self.mob_raid_splash(id);
             }
         }
     }
-    /// Entity event 42 for villager `id`: the guests get the byte, and this
-    /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.
+    /// Entity event 42 for villager `id`: the guests get the byte.
     fn mob_raid_splash(&mut self, id: u32) {
         let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
             return;
         };
         let at = [m.position.x, m.position.y, m.position.z];
         self.lan_entity_event(id as i32, 42, at);
-        self.particles_around_mob(id, "splash", horizon_client::particles::Burst::VILLAGER);
     }
 
     /// The raid bars a player `uuid` is in (`Raid.getPlayers`): red, notched

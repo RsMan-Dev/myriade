@@ -602,33 +602,6 @@ impl Game<'_> {
             f64::from(centre.z) + 0.5,
         )
     }
-    /// `LocalPlayer.handlePortalTransitionEffect`: whether the confusion
-    /// effect grows this tick. Entering a portal closes the screen only when
-    /// it does not allow it (`Screen.isAllowedInPortal`), and plays
-    /// `block.portal.trigger` when the effect starts from nothing.
-    pub(super) fn client_portal_effect(&mut self) -> bool {
-        let inside = std::mem::take(&mut self.portals.client_inside);
-        self.portals.client_was_inside = inside;
-        if !inside {
-            return false;
-        }
-        // No screen at all (`screen() == null`) is nothing to close.
-        if self.screen != Screen::Playing && !self.screen.allowed_in_portal() {
-            if matches!(self.screen, Screen::Creative | Screen::Inventory) {
-                self.close_container();
-                self.carried = None;
-            }
-            self.set_screen(Screen::Playing);
-            self.capture(true);
-        }
-        if self.screen_fx.portal == 0.0 {
-            let pitch = self.world.random.next_float() * 0.4 + 0.8;
-            self.audio
-                .play("minecraft:block.portal.trigger", None, 0.25, pitch);
-        }
-        true
-    }
-
     // ---- other entities ----
 
     /// Positions before the entities move this tick, and `Entity.handlePortal`

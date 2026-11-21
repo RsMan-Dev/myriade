@@ -1256,10 +1256,6 @@ mod crafting_remainder_tests {
                     crate::game::execution_role::ExecutionRole::DedicatedServer;
                 let remainder = game.crafting_remainder(grid[0].as_ref().unwrap()).unwrap();
                 assert_eq!((remainder.damage, remainder.count), (3, 1));
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-                let calls = CALLS.load(std::sync::atomic::Ordering::Relaxed);
-                assert!(game.crafting_remainder(grid[0].as_ref().unwrap()).is_none());
-                assert_eq!(CALLS.load(std::sync::atomic::Ordering::Relaxed), calls);
                 game.options.execution_role = role;
             })
         });

@@ -256,8 +256,6 @@ impl Game<'_> {
             error: None,
         });
         self.clicks.destroying = destroying;
-        self.attack_clicks.clear();
-        self.use_clicks.clear();
         self.request_remote_mining_stop();
         self.mining = None;
     }
@@ -268,13 +266,6 @@ impl Game<'_> {
     }
     /// Returns false when the interaction policy or item vetoes the swing and its packet.
     pub(super) fn try_swing_hand(&mut self, hand: Hand, animation: SwingAnimation) -> bool {
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| !r.interaction_swing[usize::from(hand == Hand::Off)])
-        {
-            return false;
-        }
         if self.native_entity_swing_event(hand) {
             return false;
         }
@@ -286,19 +277,6 @@ impl Game<'_> {
         let duration = swing_duration(animation, dig_speed, fatigue);
         if self.swing.start_if_able(hand, animation, duration) {
             self.swings_started += 1;
-            if let Some(r) = self.remote.as_ref()
-                && r.session.is_recording()
-            {
-                let pkt = horizon_protocol::packets::play::Clientbound::SwingAnimation(
-                    horizon_protocol::packets::play::SwingAnimation {
-                        id: r.entity_id,
-                        hand: if hand == Hand::Off { 1 } else { 0 },
-                        kind: animation.kind as i32,
-                        duration,
-                    },
-                );
-                r.session.record_clientbound(&pkt);
-            }
         }
         true
     }
@@ -332,13 +310,6 @@ impl Game<'_> {
             None => None,
         };
         self.tick_mob = Some(mob.unwrap_or_else(|| self.mob_hit()));
-        self.select_queued_hotbar();
-    }
-    /// `handleKeybinds`' number keys (`keyHotbarSlots[i].consumeClick`).
-    pub(super) fn select_queued_hotbar(&mut self) {
-        for slot in self.hotbar_presses.take_tick() {
-            self.selected = slot;
-        }
     }
     /// The tick's clicks are done: later picks follow the crosshair again.
     pub(super) fn release_tick_targets(&mut self) {
@@ -450,85 +421,6 @@ impl Game<'_> {
         clip(eye, to)
             .is_some_and(|block| eye.distance_squared(block) <= self.block_reach.powi(2))
             .then_some(None)
-    }
-    /// The attack and use part of `Minecraft.tick` for the local player:
-    /// attack clicks since the last tick and the held attack button.
-    pub(super) fn tick_local_hand(&mut self) -> Result<()> {
-        if self.screen == Screen::Playing && self.title.is_none() && self.sleeping.is_none() {
-            // Up to each queue's bound; the rest act on the next ticks.
-            let attack_clicks = self.attack_clicks.take_tick();
-            let use_clicks = self.use_clicks.take_tick();
-            let mut clicks = std::mem::take(&mut self.clicks);
-            // keyAttack.isDown(); playing implies the grabbed mouse here
-            // (scripts under --control hold buttons without grabbing it).
-            let down = self.left;
-            let ticks = self.clicks.destroying.ticks;
-            // Minecraft.hitResult is picked once per tick, before the number
-            // keys: a creative break does not move the use that follows it
-            // past the broken block.
-            self.pick_tick_targets();
-            let mut world = GameHands {
-                game: self,
-                error: None,
-            };
-            clicks.tick(&mut world, attack_clicks, 0, down, false);
-            let error = world.error.take();
-            self.clicks = clicks;
-            if let Some(e) = error {
-                self.release_tick_targets();
-                return Err(e);
-            }
-            // Use clicks follow the attack clicks within the tick, against
-            // the block the attack may just have broken.
-            let mut used = Ok(());
-            for _ in 0..use_clicks {
-                if self.using.is_some() {
-                    break;
-                }
-                used = self.use_with_hand();
-                self.use_delay = 4;
-                if used.is_err() {
-                    break;
-                }
-            }
-            self.release_tick_targets();
-            used?;
-            // A tick of breaking: the hit sound every fourth tick and the
-            // cracking particles.
-            let d = &self.clicks.destroying;
-            if d.active && d.ticks > ticks {
-                let (pos, first) = (d.pos, (d.ticks as u32 - 1).is_multiple_of(4));
-                let state = self.world.block(pos[0], pos[1], pos[2]);
-                if first {
-                    let face = horizon_core::geometry::Direction::ALL[d.face as usize].normal();
-                    self.play_mining_hit_sound(state, pos, face, false);
-                }
-                if let Some(hit) = self.pick() {
-                    self.crack_particle(pos, hit.face, state);
-                }
-            }
-        } else {
-            // Minecraft.tick: a screen keeps the attack from starting, and
-            // opening it released the keys (`KeyMapping.releaseAll`).
-            self.clicks.miss_time = 10000;
-            self.attack_clicks.clear();
-            self.use_clicks.clear();
-            self.hotbar_presses.clear();
-        }
-        let d = &self.clicks.destroying;
-        self.mining = d.active.then_some(Mining {
-            pos: d.pos,
-            progress: d.progress,
-            per_tick: 0.0,
-            ticks: d.ticks as u32,
-        });
-        if let Some(mining) = &self.mining {
-            let pos = mining.pos;
-            let progress = mining.progress;
-            let state = self.world.block(pos[0], pos[1], pos[2]);
-            self.tutorial_destroy(state, progress);
-        }
-        Ok(())
     }
     /// Whether the player's tool harvests the block `state` at `pos`, once vanilla's rule
     /// answered `harvest`: the block's parts (`can_harvest_block`, NeoForge's
@@ -682,43 +574,9 @@ impl Game<'_> {
             .iter()
             .any(|k| self.movement_key_held(*k))
     }
-    /// `MultiPlayerGameMode.startUseItem`'s bookkeeping around the game's
-    /// use: nothing starts while a block is being broken or the hands are
-    /// busy, and `LocalPlayer.itemUsed` drops the hand after a use that
-    /// swung and spent (or, with infinite materials, kept) the item, or that
-    /// started using it.
-    pub(super) fn use_with_hand(&mut self) -> Result<()> {
-        if self.clicks.destroying.active || self.hands_busy() {
-            return Ok(());
-        }
-        let before = [self.stack_in(self.selected).cloned(), self.offhand.clone()];
-        let swings = self.swings_started;
-        let using = self.using.is_some();
-        let Some(hand) = self.use_item()? else {
-            return Ok(());
-        };
-        let (before, after) = match hand {
-            Hand::Main => (&before[0], self.stack_in(self.selected).cloned()),
-            Hand::Off => (&before[1], self.offhand.clone()),
-        };
-        let swung = self.swings_started != swings;
-        let spent = match (before, &after) {
-            (Some(a), Some(b)) => a.count != b.count || a.item != b.item || self.creative,
-            _ => false,
-        };
-        if (swung && spent) || (!using && self.using.is_some() && after.is_some()) {
-            self.heights.item_used(hand);
-        }
-        Ok(())
-    }
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
-    /// strength and item swap tickers (`Player.tick`), then
-    /// `FirstPersonHandsAndItems.tick`.
+    /// strength and item swap tickers (`Player.tick`).
     pub(super) fn tick_hand(&mut self) {
-        // LocalPlayer.applyInput (the camera is the player's own).
-        if self.player.is_some() {
-            self.sway.tick_wrapped(self.pitch, self.yaw);
-        }
         self.swing.tick();
         let main = self.inventory[self.selected].clone();
         // Player.tick: a different item resets the attack strength; any change
@@ -737,79 +595,6 @@ impl Game<'_> {
             self.apply_equipment();
         }
         self.attack_item = main.as_ref().map(|s| s.item.clone());
-        let next = [(self.selected, main), (OFFHAND, self.offhand.clone())];
-        let mut changed = [false; 2];
-        for h in 0..2 {
-            let replaced = self.hands_replaced[h];
-            let mut same = shows_held_stack(&self.visible_hands[h], &next[h], replaced);
-            self.reequip_part(h, &next[h], &mut same);
-            if same {
-                self.visible_hands[h] = next[h].clone();
-                self.hands_replaced[h] = false;
-            }
-            changed[h] = !same;
-        }
-        let speed = self.main_hand_attack_speed();
-        let replace = self.heights.tick_with(
-            self.hands_busy(),
-            self.hand_strength.swap_scale(1.0, speed),
-            changed,
-            self.pvp_legacy_look(),
-        );
-        for h in 0..2 {
-            if replace[h] {
-                self.visible_hands[h] = next[h].clone();
-                self.hands_replaced[h] = false;
-            }
-        }
-    }
-
-    /// `IItemExtension.shouldCauseReequipAnimation` for hand `h` (0 main, 1
-    /// off), asked while the stack it shows differs from `held` by slot or
-    /// by value and `held` isn't empty: `same` (shown at once) is vanilla's
-    /// answer, and the parts of the held item may turn it either way.
-    fn reequip_part(&self, h: usize, held: &(usize, Option<ItemStack>), same: &mut bool) {
-        let Some(stack) = &held.1 else {
-            return;
-        };
-        let visible = &self.visible_hands[h];
-        if visible.0 == held.0 && visible.1.as_ref() == Some(stack) {
-            return;
-        }
-        if !mod_api::__private::item_listens(
-            mod_api::HookId::ShouldCauseReequipAnimation,
-            &stack.item,
-        ) {
-            return;
-        }
-        let hand = if h == 0 { Hand::Main } else { Hand::Off };
-        let slot_changed = h == 0 && visible.0 != held.0;
-        let mut reequip = !*same;
-        self.native_should_cause_reequip_animation(
-            stack,
-            visible.1.as_ref(),
-            hand,
-            slot_changed,
-            &mut reequip,
-        );
-        *same = !reequip;
-    }
-
-    /// A replay owns its held-item and equip animation state. Reset it when a
-    /// standalone replay closes so a later world cannot inherit lowered hands
-    /// or the replay player's visible stacks.
-    pub(super) fn reset_studio_hand_state(&mut self) {
-        let main = self.inventory.get(self.selected).cloned().flatten();
-        self.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
-        self.hands_replaced = [false; 2];
-        self.heights = horizon_client::first_person::HandHeights {
-            main: 1.0,
-            old_main: 1.0,
-            off: 1.0,
-            old_off: 1.0,
-        };
-        self.swing = Default::default();
-        self.sway = Default::default();
     }
 
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether

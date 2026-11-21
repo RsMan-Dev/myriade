@@ -128,7 +128,7 @@ impl Game<'_> {
     pub(in crate::game) fn add_pickup(&mut self, taken: Taken, collector: Collector) {
         // The clients add the particle from ClientboundTakeItemEntityPacket;
         // the server's own is never drawn, so a mob's take has to be sent (#12493).
-        if let (Collector::Mob(id), Some(host), None) = (collector, &self.lan, &self.remote) {
+        if let (Collector::Mob(id), Some(host)) = (collector, &self.lan) {
             host.hub.take_item(
                 taken.entity_id() as i32,
                 id as i32,

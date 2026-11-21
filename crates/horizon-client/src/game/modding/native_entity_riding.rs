@@ -550,7 +550,8 @@ impl Game<'_> {
         }
         if !force {
             match rider {
-                Target::Player if self.keys.held(horizon_client::actions::Action::Sneak) => {
+                // `Entity.canRide`: a shifting player is not boarded.
+                Target::Player if self.player.as_ref().is_some_and(|p| p.shift_key_down) => {
                     return None;
                 }
                 Target::Mob(id)

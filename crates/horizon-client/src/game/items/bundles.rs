@@ -2,7 +2,7 @@
 //! one of the items it shows, which a click that takes one out of it then takes
 //! (`BundleContents.Mutable.removeOne`). Moving off the bundle clears the
 //! selection. On a server the selection is sent to it (`ServerboundSelectBundleItemPacket`).
-use super::{Game, Screen};
+use super::Game;
 use horizon_client::{
     bundle::{Contents, toggle_selected},
     mouse::ScrollWheelHandler,
@@ -14,15 +14,6 @@ pub(super) struct BundleMouse {
     wheel: ScrollWheelHandler,
     /// The slot under the cursor at the last tick (`AbstractContainerScreen.hoveredSlot`).
     hovered: Option<usize>,
-}
-
-/// Whether `screen` is an `AbstractContainerScreen`, whose `mouseScrolled` first offers
-/// the wheel to the hovered slot's `ItemSlotMouseAction`s (the bundle's), and whose
-/// `onStopHovering` clears the selection: the inventory and container menus, and
-/// `CreativeModeInventoryScreen`, which scrolls its items only when no bundle took
-/// the wheel.
-pub(super) fn takes_bundle_wheel(screen: Screen) -> bool {
-    matches!(screen, Screen::Inventory | Screen::Creative)
 }
 
 impl Game<'_> {
@@ -57,42 +48,6 @@ impl Game<'_> {
             .is_some_and(|d| d.bundle_selected.0 >= 0);
         if selected {
             self.select_bundle(slot, -1);
-        }
-    }
-
-    /// `AbstractContainerScreen.onStopHovering` (and `onClose`): leaving a slot, or the
-    /// screen, clears the bundle's selection.
-    pub(super) fn tick_bundle_hover(&mut self) {
-        let now = if takes_bundle_wheel(self.screen) {
-            self.inventory_target().0
-        } else {
-            None
-        };
-        if let Some(left) = std::mem::replace(&mut self.bundle_mouse.hovered, now)
-            && Some(left) != now
-        {
-            self.unselect_bundle(left);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// `CreativeModeInventoryScreen.mouseScrolled` calls `AbstractContainerScreen`'s
-    /// first: a bundle under the cursor takes the wheel there too (#3211).
-    #[test]
-    fn container_screens_offer_the_wheel_to_bundles() {
-        assert!(takes_bundle_wheel(Screen::Inventory));
-        assert!(takes_bundle_wheel(Screen::Creative));
-        for screen in [
-            Screen::Playing,
-            Screen::Chat,
-            Screen::Paused,
-            Screen::Options,
-        ] {
-            assert!(!takes_bundle_wheel(screen));
         }
     }
 }

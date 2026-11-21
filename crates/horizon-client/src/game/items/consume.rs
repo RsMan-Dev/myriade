@@ -425,42 +425,6 @@ impl Game<'_> {
             .get(tag)
             .is_some_and(|s| s.contains(&**name))
     }
-    /// `LivingEntity.handleEntityEvent(46)` for this client: 128 portal
-    /// particles from the old position to the new one. The local player's
-    /// random is the particle engine's.
-    fn portal_particles(&mut self) {
-        let (from, to, width, height) = {
-            let Some(p) = self.player.as_ref() else {
-                return;
-            };
-            (
-                [
-                    self.previous_position.x,
-                    self.previous_position.y,
-                    self.previous_position.z,
-                ],
-                [p.position.x, p.position.y, p.position.z],
-                f64::from(p.dimensions.width),
-                f64::from(p.dimensions.height),
-            )
-        };
-        self.emit_living_teleport(from, to, width, height);
-    }
-    fn emit_living_teleport(&mut self, from: [f64; 3], to: [f64; 3], width: f64, height: f64) {
-        let mut spawned = Vec::with_capacity(128);
-        horizon_client::particles::living_teleport_particles(
-            self.particles.random(),
-            from,
-            to,
-            width,
-            height,
-            |p, v| spawned.push((p, v)),
-        );
-        let options = ParticleOptions::simple(ParticleType::Portal);
-        for (p, v) in spawned {
-            self.particles.add(&options, p, v);
-        }
-    }
     /// `LivingEntity.stopRiding`.
     pub(super) fn stop_riding(&mut self) {
         let Some(id) = self.riding else {
@@ -541,7 +505,6 @@ impl EmissionWorld for Emitter<'_, '_> {
         if !self.0.is_logical_server() {
             self.0.play_client_player_sound(&sound, volume, pitch);
         } else if self.0.lan_acting.is_some() {
-            self.0.audio.play_unshared(&sound, at, volume, pitch);
             if let Some(at) = at {
                 self.0.guest_player_sounds.push((sound, at, volume, pitch));
             }

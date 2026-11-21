@@ -748,16 +748,6 @@ impl Game<'_> {
     /// outer players whose records are displaced return None.
     pub(super) fn player(&self, uuid: u128) -> Option<PlayerRef> {
         let epoch = self.native_lifecycle.epoch()?;
-        if let Some(remote) = self
-            .remote
-            .as_ref()
-            .filter(|r| r.logged_in && r.profile == uuid)
-        {
-            return Some(mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(epoch, u32::try_from(remote.entity_id).ok()?),
-                uuid,
-            ));
-        }
         let (_, id) = self.player_lookup(uuid)?;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(epoch, id),
@@ -881,46 +871,12 @@ impl Game<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<(String, [i32; 3])> {
-        if !self.is_logical_server() {
-            // A client's copy: what the login and respawn packets carried.
-            return (self.local_player()? == player)
-                .then(|| self.level.last_death.clone())
-                .flatten();
-        }
         self.player_handle_read(player)?.last_death().cloned()
     }
 
-    /// `player_handle_read` for the reads that work on both sides. On a
-    /// client the local player (`Minecraft.player`) reads its own copy of
-    /// what the server sent (`LocalPlayer`): the game mode, food, abilities,
-    /// hotbar slot and experience. Any other player reads None there: the
-    /// client is not sent their state.
+    /// `player_handle_read` for the reads that work on both sides.
     pub(super) fn player_read_both(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
-        if self.is_logical_server() {
-            return self.player_handle_read(player);
-        }
-        (self.local_player()? == player).then(|| PlayerRead::Acting {
-            mode: self.mode_id(),
-            body: self.player.as_ref(),
-            abilities: Some(self.client_abilities()),
-            last_death: self.level.last_death.as_ref(),
-        })
-    }
-    /// The local player's `Abilities` on a client: what its game mode gives
-    /// (`GameType.updatePlayerAbilities`, `mayBuild` among them), then the
-    /// flags and speeds `ClientPacketListener.handlePlayerAbilities` took.
-    fn client_abilities(&self) -> PlayerAbilities {
-        let mut a = PlayerAbilities::default();
-        a.update_for_mode(self.mode_id());
-        if let Some(p) = self.remote_abilities() {
-            a.invulnerable = p.flags & 1 != 0;
-            a.flying = p.flags & 2 != 0;
-            a.may_fly = p.flags & 4 != 0;
-            a.instabuild = p.flags & 8 != 0;
-            a.flying_speed = p.flying_speed;
-            a.walking_speed = p.walking_speed;
-        }
-        a
+        self.player_handle_read(player)
     }
 
     pub(super) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
@@ -1188,9 +1144,6 @@ impl Game<'_> {
         let epoch = self.native_lifecycle.epoch()?;
         if epoch != player.fields().entity.epoch() {
             return None;
-        }
-        if !self.is_logical_server() {
-            return (self.local_player()? == player).then(|| self.native_level_key());
         }
         if self.native_acting_player() == Some(player) {
             let dim = match self.lan_acting {
@@ -2497,7 +2450,6 @@ mod tests {
         for (role, posted) in [
             (ExecutionRole::DedicatedServer, true),
             (ExecutionRole::IntegratedServer, false),
-            (ExecutionRole::Client, false),
         ] {
             game.options.execution_role = role;
             assert_eq!(

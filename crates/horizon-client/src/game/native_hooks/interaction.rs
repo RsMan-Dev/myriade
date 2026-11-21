@@ -53,11 +53,6 @@ impl Game<'_> {
             InteractionKey::PickBlock => false,
             _ => swing,
         };
-        if key != InteractionKey::PickBlock
-            && let Some(remote) = self.remote.as_mut()
-        {
-            remote.interaction_swing[usize::from(hand == Hand::Off)] = swing;
-        }
         InteractionDecision { canceled, swing }
     }
 }

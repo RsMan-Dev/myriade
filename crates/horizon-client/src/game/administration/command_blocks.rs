@@ -2,23 +2,18 @@
 //! tick (`execute`, `executeChain`), `BaseCommandBlock.performCommand`
 //! through the command system with the block's output, and
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
-use super::{Game, Screen, commands::execute::Source};
+use super::{Game, commands::execute::Source};
 use horizon_client::{
     chat::{ChatScreen, Commands},
     command_block::{self, CommandBlock, Mode},
     containers::BlockEntity,
-    hud::{HudBatch, rgba},
     screen_draw::Measure,
     text::Text,
     ui::{self, EditBox},
     world::World,
 };
 use horizon_core::position::BlockPos;
-use horizon_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-use winit::{
-    event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, PhysicalKey},
-};
+use horizon_protocol::packets::play::{self, Clientbound as C};
 use {
     horizon_core::nbt::Tag,
     horizon_world::{
@@ -294,18 +289,6 @@ impl Game<'_> {
     pub(super) fn can_use_game_master_blocks(&self) -> bool {
         self.creative && self.ui.registries.permission >= 2
     }
-    /// `CommandBlock.useWithoutItem` on a server's client, which opens the
-    /// screen itself (`Player.openCommandBlock`) while the server only
-    /// answers the click: the block at `pos`, when it is a command block the
-    /// player may edit.
-    pub(super) fn open_command_block_if_editable(&mut self, pos: Pos) {
-        let is_command_block = self
-            .block_state_at(pos)
-            .is_some_and(|state| Mode::of_block(&state.name).is_some());
-        if is_command_block && self.can_use_game_master_blocks() {
-            self.open_command_block(pos);
-        }
-    }
     fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::CommandBlock(c) => Some(c),
@@ -356,45 +339,6 @@ impl Game<'_> {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
-    /// `ClientPacketListener.handleBlockEntityData` then
-    /// `CommandBlockEditScreen.updateGui`: new data for the command block the
-    /// edit screen shows refreshes its fields. The mode and conditional live in
-    /// the block state here (vanilla's `CommandBlockEntity.Mode`).
-    pub(super) fn command_block_data_arrived(&mut self, pos: Pos) {
-        if self
-            .command_block_screen
-            .as_ref()
-            .is_none_or(|s| s.cart.is_some() || s.pos != pos)
-        {
-            return;
-        }
-        let state = self.block_state_at(pos).map(|s| {
-            (
-                Mode::of_block(&s.name).unwrap_or(Mode::Redstone),
-                conditional(s),
-            )
-        });
-        let block = self.command_block(pos).cloned();
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        let Some(screen) = self.command_block_screen.as_mut() else {
-            return;
-        };
-        if let Some((mode, conditional)) = state {
-            screen.mode = mode;
-            screen.conditional = conditional;
-        }
-        if let Some(block) = block {
-            screen.command.suggest_command(&m, &c, &block.command);
-            screen.track_output = block.track_output;
-            screen.auto = block.auto;
-            screen.show_previous(&block);
-        }
-    }
-
     /// `CommandBlock.setPlacedBy`: unless the item carried block entity data
     /// (`defaults` false), output tracking follows `send_command_feedback` and
     /// the block's own automatic flag; then the block takes the signal around it.
@@ -626,230 +570,6 @@ impl Game<'_> {
         }
     }
 
-    /// `LocalPlayer.openCommandBlock`.
-    pub(super) fn open_command_block(&mut self, pos: Pos) {
-        let Some(block) = self.command_block(pos).cloned() else {
-            return;
-        };
-        let Some(state) = self.block_state_at(pos) else {
-            return;
-        };
-        let mode = Mode::of_block(&state.name).unwrap_or(Mode::Redstone);
-        self.open_edit_screen(pos, None, block, mode, conditional(state));
-    }
-    /// The screen over `block`: a command block's at `pos`, or a minecart's.
-    pub(super) fn open_edit_screen(
-        &mut self,
-        pos: Pos,
-        cart: Option<u32>,
-        block: CommandBlock,
-        mode: Mode,
-        conditional: bool,
-    ) {
-        let (w, h) = self.gui_size();
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        let mut command = ChatScreen::command_block(&m, &c, &block.command, w as i32, h as i32);
-        command.auto_suggestions = self.settings.auto_suggestions;
-        command.input.message = super::screen_info::tr("advMode.command", &[]);
-        let x = (w / 2.0).floor() - 150.0;
-        let mut previous = EditBox::new(x, previous_y(cart.is_some()), 276.0, 20.0);
-        previous.message = super::screen_info::tr("advMode.previousOutput", &[]);
-        previous.max_length = 32500;
-        previous.text_color = UNEDITABLE;
-        previous.focused = false;
-        let mut screen = CommandBlockScreen {
-            pos,
-            cart,
-            command,
-            opened: std::time::Instant::now(),
-            previous,
-            track_output: block.track_output,
-            mode,
-            conditional,
-            auto: block.auto,
-        };
-        screen.show_previous(&block);
-        self.command_block_screen = Some(screen);
-        self.set_screen(Screen::CommandBlock);
-        self.capture(false);
-    }
-    pub(super) fn close_command_block(&mut self) {
-        self.command_block_screen = None;
-        self.set_screen(Screen::Playing);
-        self.capture(true);
-    }
-    pub(super) fn draw_command_block(&mut self, batch: &mut HudBatch) {
-        let Some(s) = self.command_block_screen.as_ref() else {
-            self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-            self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
-            return;
-        };
-        // AbstractCommandBlockEditScreen.tick: the block (or the cart) is gone.
-        if self.edit_base(s).is_none() {
-            self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-            self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
-            self.close_command_block();
-            return;
-        }
-        // AbstractCommandBlockEditScreen: `GameNarrator.NO_TITLE`; its usage
-        // is the suggestions' while they show (`getUsageNarration`).
-        let usage = s.command.suggestions_usage();
-        horizon_client::widgets::begin_screen(|| {
-            let info = horizon_client::widgets::ScreenInfo::new("command_block", "");
-            match usage {
-                Some(key) => info.usage(super::screen_info::tr(key, &[])),
-                None => info,
-            }
-        });
-        let atlas = &self.gui.atlas;
-        let (w, h) = (batch.width, batch.height);
-        let mid = (w / 2.0).floor();
-        // Screen.extractBackground of an isInGameUi screen: the dimmed world,
-        // with no blur and no menu background.
-        batch.fill_gradient(
-            atlas,
-            (0.0, 0.0, w, h),
-            rgba(0x10, 0x10, 0x10, 0xC0),
-            rgba(0x10, 0x10, 0x10, 0xD0),
-        );
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
-        let title = Text::translate("advMode.setCommand", &[]);
-        let tw = atlas.font.width_text(&title);
-        batch.text_styled(
-            atlas,
-            &title,
-            (mid - tw / 2.0).floor(),
-            20.0,
-            u32::MAX,
-            true,
-        );
-        let grey = rgba(160, 160, 160, 255);
-        let label = Text::translate("advMode.command", &[]);
-        batch.text_styled(atlas, &label, mid - 149.0, 40.0, grey, true);
-        let s = self.command_block_screen.as_mut().unwrap();
-        let cart = s.cart.is_some();
-        if !s.previous.value.is_empty() {
-            let label = Text::translate("advMode.previousOutput", &[]);
-            // 75 + 5 * 9 + 1 + getPreviousY() - 135, then the label's 4.
-            let y = 125.0 + previous_y(s.cart.is_some()) - 135.0;
-            batch.text_styled(atlas, &label, mid - 149.0, y, grey, true);
-            s.previous.draw(batch, atlas, None);
-        }
-        let s = self.command_block_screen.as_ref().unwrap();
-        let fallback;
-        let buttons = match self.built_command_block(w, h) {
-            Some(layout) => &layout.buttons,
-            None => {
-                fallback = CommandBlockScreen::buttons(w, h, cart);
-                &fallback
-            }
-        };
-        for &(b, x, y, bw) in buttons {
-            let hover = ui::hovered(self.cursor, x, y, bw, 20.0);
-            let action = match b {
-                Button::Done => Some(horizon_client::widgets::Action::Done),
-                Button::Cancel => Some(horizon_client::widgets::Action::Cancel),
-                _ => None,
-            };
-            if let Some(action) = action {
-                horizon_client::widgets::declare_action(action, [x, y, bw, 20.0], true);
-            }
-            ui::button_as(
-                batch,
-                atlas,
-                x,
-                y,
-                bw,
-                20.0,
-                &s.label(b),
-                true,
-                hover,
-                |rect| s.narration(b, rect, &super::screen_info::tr),
-            );
-        }
-        // The command box, then its suggestions over the widgets: the build
-        // made it at this size.
-        let m = Measure(&atlas.font);
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
-        let blink = s.opened.elapsed().as_millis() as u64;
-        // The command box is added first.
-        let mark = horizon_client::widgets::narratables_mark();
-        let s = self.command_block_screen.as_mut().unwrap();
-        let draws = s.command.draw(&m, mouse, blink, 0);
-        horizon_client::widgets::move_narratables(mark, 0);
-        let tooltip = horizon_client::screen_draw::paint(batch, atlas, &draws);
-        self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
-        horizon_client::screen_draw::paint_tooltip(batch, atlas, &draws, tooltip);
-    }
-    /// The command box's completion request for an `ask_server` node.
-    pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
-        self.command_block_screen.as_mut()?.command.take_request()
-    }
-    /// The server's completions for the command box's `ask_server` request.
-    pub(super) fn command_block_server_suggestions(
-        &mut self,
-        id: i32,
-        range: (usize, usize),
-        list: Vec<(String, Option<String>)>,
-    ) {
-        let Some(mut s) = self.command_block_screen.take() else {
-            return;
-        };
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        s.command.server_suggestions(&m, &c, id, range, list);
-        self.command_block_screen = Some(s);
-    }
-    /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
-    pub(super) fn command_block_type(&mut self, typed: &str) {
-        let allowed: String = typed
-            .chars()
-            .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
-            .collect();
-        if allowed.is_empty() {
-            return;
-        }
-        let Some(mut s) = self.command_block_screen.take() else {
-            return;
-        };
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: super::chat::chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        s.command.type_text(&m, &c, &allowed);
-        self.command_block_screen = Some(s);
-    }
-    /// The edit screen's Done: a server's client sends the packet, the
-    /// window's own world applies it (`handleSetCommandBlock`).
-    fn set_command_block(&mut self, s: &CommandBlockScreen) {
-        if !self.can_use_game_master_blocks() {
-            self.system_message(Text::translate("advMode.notAllowed", &[]));
-            return;
-        }
-        if let Some(id) = s.cart {
-            self.set_command_minecart(id, s);
-            return;
-        }
-        let edit = CommandBlockEdit {
-            pos: s.pos,
-            command: s.command.value().to_owned(),
-            track_output: s.track_output,
-            mode: s.mode,
-            conditional: s.conditional,
-            auto: s.auto,
-        };
-        {
-            self.apply_command_block(&edit);
-        }
-    }
     /// `ServerGamePacketListenerImpl.handleSetCommandBlock` for a guest: the
     /// block is edited only by a creative player with game master commands.
     pub(super) fn lan_set_command_block(&mut self, conn: u32, p: play::SetCommandBlock) {
@@ -1016,74 +736,6 @@ impl CommandBlockTransition {
 mod tests {
     use super::*;
 
-    /// The edit screen's boxes are re-made at the build's size and its
-    /// buttons laid out once per build: a GUI scale change moves them with no
-    /// draw, and a minecart's screen opening over a block's at the same size
-    /// gets its own buttons. The rectangles are
-    /// `AbstractCommandBlockEditScreen.init` and `addExtraControls` worked by
-    /// hand for the test's 1280x720 window.
-    #[test]
-    #[ignore = "daily"]
-    fn the_edit_screen_is_laid_out_by_the_build() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.title = None;
-            // 1280x720 at GUI scale 3 is 427x240.
-            game.settings.gui_scale = 3;
-            let block = CommandBlock::default;
-            game.open_edit_screen((0, 0, 0), None, block(), Mode::Redstone, false);
-            assert_eq!(game.screen, Screen::CommandBlock);
-            game.build_screen();
-            let boxes = |game: &Game<'_>| {
-                let s = game.command_block_screen.as_ref().unwrap();
-                let (i, p) = (&s.command.input, &s.previous);
-                ([i.x, i.y, i.width, i.height], [p.x, p.y, p.width, p.height])
-            };
-            let buttons = |game: &Game<'_>, w, h| {
-                game.built_command_block(w, h)
-                    .map(|layout| layout.buttons.clone())
-            };
-            assert_eq!(boxes(game), ([63, 50, 300, 20], [63.0, 135.0, 276.0, 20.0]));
-            assert_eq!(
-                buttons(game, 427.0, 240.0),
-                Some(vec![
-                    (Button::Output, 343.0, 135.0, 20.0),
-                    (Button::Mode, 59.0, 165.0, 100.0),
-                    (Button::Conditional, 163.0, 165.0, 100.0),
-                    (Button::Auto, 267.0, 165.0, 100.0),
-                    (Button::Done, 59.0, 192.0, 150.0),
-                    (Button::Cancel, 217.0, 192.0, 150.0),
-                ])
-            );
-            // A minecart's screen at the same size: no mode switches, and the
-            // output toggle lower.
-            game.open_edit_screen((0, 0, 0), Some(7), block(), Mode::Redstone, false);
-            game.build_screen();
-            assert_eq!(
-                buttons(game, 427.0, 240.0),
-                Some(vec![
-                    (Button::Output, 343.0, 150.0, 20.0),
-                    (Button::Done, 59.0, 192.0, 150.0),
-                    (Button::Cancel, 217.0, 192.0, 150.0),
-                ])
-            );
-            // GUI scale 1 (1280x720): the build moves both boxes and the buttons.
-            game.settings.gui_scale = 1;
-            game.build_screen();
-            assert_eq!(
-                boxes(game),
-                ([490, 50, 300, 20], [490.0, 150.0, 276.0, 20.0])
-            );
-            assert_eq!(
-                buttons(game, 1280.0, 720.0),
-                Some(vec![
-                    (Button::Output, 770.0, 150.0, 20.0),
-                    (Button::Done, 486.0, 312.0, 150.0),
-                    (Button::Cancel, 644.0, 312.0, 150.0),
-                ])
-            );
-        });
-    }
-
     #[test]
     #[ignore = "daily"]
     fn mode_switch_preserves_command_entity_output_and_state() {
@@ -1135,76 +787,5 @@ mod tests {
                 );
             }
         });
-    }
-
-    #[test]
-    fn a_minecart_screen_has_no_mode_buttons_and_a_lower_output_row() {
-        let cart = CommandBlockScreen::buttons(400.0, 240.0, true);
-        let kinds: Vec<_> = cart.iter().map(|b| b.0).collect();
-        assert!(kinds == [Button::Output, Button::Done, Button::Cancel]);
-        // MinecartCommandBlockEditScreen.getPreviousY.
-        assert_eq!(cart[0].2, 150.0);
-        let block = CommandBlockScreen::buttons(400.0, 240.0, false);
-        assert_eq!(block.len(), 6);
-        assert_eq!(block[0].2, 135.0);
-        // Done and Cancel sit at the same height on both.
-        assert_eq!(cart[1].2, block[4].2);
-    }
-}
-
-#[cfg(test)]
-mod narration_tests {
-    use super::*;
-    use horizon_client::widgets::What;
-
-    fn keys(key: &str, args: &[&str]) -> String {
-        if args.is_empty() {
-            key.to_owned()
-        } else {
-            format!("{key}({})", args.join(", "))
-        }
-    }
-
-    #[test]
-    fn the_switches_narrate_as_cycle_buttons_showing_their_value() {
-        let state = (true, Mode::Redstone, false, true);
-        let cycle = |b| button_narration(b, state, [0.0; 4], &keys).what;
-        let expect = |message: &str, next: &str| What::Cycle {
-            message: message.into(),
-            next: next.into(),
-            active: true,
-        };
-        assert_eq!(
-            cycle(Button::Output),
-            expect("options.generic_value(advMode.trackOutput, O)", "X")
-        );
-        assert_eq!(
-            cycle(Button::Mode),
-            expect(
-                "options.generic_value(advMode.mode, advMode.mode.redstone)",
-                "advMode.mode.sequence"
-            )
-        );
-        assert_eq!(
-            cycle(Button::Conditional),
-            expect(
-                "options.generic_value(advMode.type, advMode.mode.unconditional)",
-                "advMode.mode.conditional"
-            )
-        );
-        assert_eq!(
-            cycle(Button::Auto),
-            expect(
-                "options.generic_value(advMode.triggering, advMode.mode.autoexec.bat)",
-                "advMode.mode.redstoneTriggered"
-            )
-        );
-        assert_eq!(
-            cycle(Button::Done),
-            What::Button {
-                message: "gui.done".into(),
-                active: true
-            }
-        );
     }
 }

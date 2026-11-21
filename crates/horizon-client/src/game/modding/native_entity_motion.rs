@@ -47,12 +47,6 @@ impl Game<'_> {
         self.entity_handles()
             .find(|h| with_entity!(self, *h, e => e.id() == id))
     }
-    /// This window's own player, when a client's target names it.
-    fn native_client_player(&self, t: Target) -> Option<&horizon_client::motion::PlayerMotion> {
-        self.remote.as_ref()?;
-        (t == Target::Player).then_some(())?;
-        self.player.as_ref()
-    }
     /// The server's copy of the player a target names.
     pub(super) fn native_target_guest(
         &self,
@@ -215,9 +209,6 @@ impl Game<'_> {
     /// 379.
     pub(super) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         let t = self.native_entity_target(entity)?;
-        if let Some(p) = self.native_client_player(t) {
-            return Some(p.ground.on_ground);
-        }
         if let Some(g) = self.native_target_guest(t) {
             return Some(g.on_ground);
         }
@@ -234,9 +225,6 @@ impl Game<'_> {
     /// markers, End crystals, the dragon); a dragon part's is its own. API 379.
     pub(super) fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
         let t = self.native_entity_read_target(entity)?;
-        if let Some(p) = self.native_client_player(t) {
-            return Some(corners(p.bounds()));
-        }
         if let Some(g) = self.native_target_guest(t) {
             return Some(corners(g.bounds()));
         }

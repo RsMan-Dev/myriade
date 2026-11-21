@@ -4209,26 +4209,6 @@ impl Game<'_> {
             .filter(|f| f.emission > 0)
             .and_then(|f| mod_api::__private::block_key(&f.name))
     }
-    /// A small local vanilla particle; caller should rate-limit emission.
-    pub(in crate::game) fn flame_particle(&mut self, at: [f64; 3], soul: bool) {
-        use horizon_client::particles::{ParticleOptions, ParticleType};
-        if !self.native_window() || at.iter().any(|v| !v.is_finite()) {
-            return;
-        }
-        let Some(p) = self.native_player() else {
-            return;
-        };
-        if (at[0] - p.x).powi(2) + (at[1] - p.y).powi(2) + (at[2] - p.z).powi(2) > 1024.0 {
-            return;
-        }
-        let kind = if soul {
-            ParticleType::SoulFireFlame
-        } else {
-            ParticleType::Flame
-        };
-        self.particles
-            .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
-    }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the
     /// launcher's next build leaves it out.
@@ -4308,110 +4288,9 @@ impl Game<'_> {
             log.push((pos[0], pos[1], pos[2]));
         }
     }
-    /// Plays `sound` for this player only (`SoundPlay`'s event: `minecraft:ui.button.click`,
-    /// or a mod's own from its `assets/<id>/sounds.json`): nothing is sent to the server, and
-    /// other players don't hear it. It takes `&self`, so a screen, key or mouse hook can play
-    /// one: the sound is queued and starts at the next audio update (once a client tick),
-    /// `after` ticks counted from then (0 to 1200, a minute; `SoundEngine.playDelayed`). `SoundPlay::ui` plays it at the listener as an interface sound
-    /// (`SimpleSoundInstance.forUI`); `SoundPlay::at` at a position in the client's level,
-    /// fading with distance (`volume` past 1 carries farther, 16 blocks times the volume), as
-    /// thunder heard after the flash or a blast heard when its shock wave arrives. Its
-    /// `SoundRef` follows and controls this play: `state`, `stop` and `fade`. None, with nothing
-    /// played, on a server or for a value out of range; an event the resources don't have plays
-    /// nothing, as vanilla's, and its handle reads `Stopped` once the update has tried it.
-    pub(in crate::game) fn play_local_sound(
-        &self,
-        sound: &SoundPlay,
-        after: u32,
-    ) -> Option<SoundRef> {
-        if !self.native_window() || !local_sound_ok(sound, after) {
-            return None;
-        }
-        Some(self.mod_sounds.queue(sound, after))
-    }
-    /// The particles alive in the client's level (`ParticleEngine.countParticles`): 0 once
-    /// a clear is asked, and on a server.
-    pub(in crate::game) fn particle_count(&self) -> u32 {
-        if !self.native_window() || self.mod_clear_particles.get() {
-            return 0;
-        }
-        u32::try_from(self.client_particle_count()).unwrap_or(u32::MAX)
-    }
-    /// `ParticleEngine.clearParticles`: every particle and emitter goes before the next
-    /// frame is drawn or the next particle tick runs, whichever comes first. It takes
-    /// `&self`, so a screen or render hook can ask, as with `play_local_sound`.
-    /// False on a server.
-    pub(in crate::game) fn clear_particles(&self) -> bool {
-        if !self.native_window() {
-            return false;
-        }
-        self.mod_clear_particles.set(true);
-        true
-    }
     /// The GUI's size in GUI pixels, width then height.
     pub(in crate::game) fn native_size(&self, draw: &HudBatch) -> [f32; 2] {
         [draw.width, draw.height]
-    }
-    /// A rectangle in GUI pixels, `argb` (0x78000000 is the extras' box).
-    pub(in crate::game) fn native_fill(&self, batch: &mut HudBatch, rect: [f32; 4], argb: u32) {
-        let [x, y, w, h] = rect;
-        let [a, r, g, b] = argb.to_be_bytes();
-        batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
-    }
-    /// A mod's own RGBA image, uploaded into the HUD atlas slot
-    /// `MOD_IMAGE_SPRITE` and drawn with
-    /// `native_sprite`: its own source rectangle crops and stretches it. `rgba`
-    /// is `width * height` pixels of four bytes, each side at most
-    /// `MOD_IMAGE_SIZE`; false when it is not that
-    /// size. The upload costs a texture patch of the image, so send one when the
-    /// image changed, not every frame.
-    pub(in crate::game) fn mod_image(&mut self, width: u32, height: u32, rgba: &[u8]) -> bool {
-        let Some(rect) = self
-            .gui
-            .atlas
-            .sprites
-            .get(crate::hud::MOD_IMAGE_SPRITE)
-            .copied()
-        else {
-            return false;
-        };
-        if !mod_image_fits(width, height, rgba.len(), rect.w, rect.h) {
-            return false;
-        }
-        let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-        self.map_patches.push(horizon_client::font::Patch {
-            x: (rect.u0 * w).round() as u32,
-            y: (rect.v0 * h).round() as u32,
-            width,
-            height,
-            rgba: rgba.to_vec(),
-        });
-        true
-    }
-    /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
-    /// `name` (vanilla's `gui/...`, or a content mod's GUI texture
-    /// `mymod:gui/...`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
-    /// pixels), every texel multiplied by `tint` (`0xAARRGGBB`, a fluid's colour)
-    /// when there is one. False when there is no such sprite.
-    pub(in crate::game) fn native_sprite(
-        &self,
-        batch: &mut HudBatch,
-        name: &str,
-        src: [f32; 4],
-        dst: [f32; 4],
-        tint: Option<u32>,
-    ) -> bool {
-        let Some(mut r) = self.gui.atlas.sprites.get(name).copied() else {
-            return false;
-        };
-        let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
-        r.u0 += src[0] * du;
-        r.v0 += src[1] * dv;
-        r.u1 = r.u0 + src[2] * du;
-        r.v1 = r.v0 + src[3] * dv;
-        let [a, red, green, blue] = tint.unwrap_or(u32::MAX).to_be_bytes();
-        batch.rect_uv(dst[0], dst[1], dst[2], dst[3], r, rgba(red, green, blue, a));
-        true
     }
     /// Item `item`'s icon (`mymod:machine`) with its top left at `at`,
     /// `size` GUI pixels square (16 in a slot); false for an unknown item.
@@ -4480,91 +4359,10 @@ impl Game<'_> {
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
-    /// A quad of corners `points` (in order round it) in GUI pixels, `argb`:
-    /// a wedge, a slanted bar, what `native_fill`'s rectangles can't draw.
-    pub(in crate::game) fn native_quad(
-        &self,
-        batch: &mut HudBatch,
-        points: [[f32; 2]; 4],
-        argb: u32,
-    ) {
-        let [a, r, g, b] = argb.to_be_bytes();
-        batch.fill_quad(&self.gui.atlas, points, rgba(r, g, b, a));
-    }
-    /// Opens a screen of mod `mod_id`'s own over the world: the screen hooks
-    /// fire over it as over any other, so the mod draws it in
-    /// `native_screen_render_post` and takes its clicks, scroll, keys and
-    /// typing there; the mouse is freed, and Escape closes it. Every mod's own
-    /// screen has the `ScreenView.id` `mod`, so a mod's screen hooks
-    /// check `mod_screen()` is its own before drawing. It doesn't pause
-    /// a single-player game (as the inventory doesn't). True when it is open:
-    /// false while another screen is (or another mod's), over the title
-    /// screen, a book, a sign editor, a dialog or a prompt, while the world
-    /// loads, and anywhere but the window's own client (the server thread, a
-    /// dedicated server). A gamepad can close it (B, Start) but not click on
-    /// it: its clicks don't reach the mouse hooks.
-    pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
-        // What `screen_hooks_open` would refuse over the world: the mod's
-        // screen would be up with no hook to draw or click it.
-        let blocked = self.renderer.is_none() || self.mod_screen_blocked();
-        let owner = self.mod_screen();
-        if let Some(open) = mod_screen_opens(self.screen, blocked, owner, mod_id) {
-            return open;
-        }
-        self.native_mod_screen = Some(mod_id.to_owned());
-        self.set_screen(Screen::Mod);
-        if self.screen != Screen::Mod {
-            // `screen_opening` kept the world.
-            self.native_mod_screen = None;
-            return false;
-        }
-        self.mod_screen() == Some(mod_id)
-    }
-    /// Closes mod `mod_id`'s own screen, if it is open.
-    pub(in crate::game) fn mod_screen_close(&mut self, mod_id: &str) {
-        if self.mod_screen().is_some_and(|id| id == mod_id) {
-            self.close_mod_screen();
-        }
-    }
-    /// The mod whose own screen is open, if one is (Escape, or another screen
-    /// replacing it, closes it).
-    pub(in crate::game) fn mod_screen(&self) -> Option<&str> {
-        self.native_mod_screen
-            .as_deref()
-            .filter(|_| self.screen == Screen::Mod)
-    }
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text.
     pub(in crate::game) fn screen_title(&self) -> Option<String> {
         self.remote_menu_title().map(|t| t.plain())
-    }
-    /// Where the mouse is, in GUI pixels.
-    pub(in crate::game) fn cursor(&self) -> [f32; 2] {
-        [self.cursor.0, self.cursor.1]
-    }
-    /// A line of text at `(x, y)` in GUI pixels, in `argb` as vanilla's `GuiGraphics` takes it
-    /// (`0xFFFFFFFF` is opaque white). Fully transparent text draws nothing, as vanilla's.
-    pub(in crate::game) fn native_text(
-        &self,
-        batch: &mut HudBatch,
-        text: &str,
-        at: [f32; 2],
-        argb: u32,
-        shadow: bool,
-    ) {
-        let [a, r, g, b] = argb.to_be_bytes();
-        if a == 0 {
-            return;
-        }
-        let [x, y] = at;
-        batch.text_styled(
-            &self.gui.atlas,
-            &Text::literal(text),
-            x,
-            y,
-            rgba(r, g, b, a),
-            shadow,
-        );
     }
     /// The clock of the world this window shows, for client mods: its game
     /// time and time of day as the server last sent them
@@ -4628,14 +4426,6 @@ impl Game<'_> {
     /// A mod's hook or part is running, and `mod_id` is another mod's.
     fn another_mods(mod_id: &str) -> bool {
         mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id)
-    }
-    /// Shows the panel beside container screens with these items (at most
-    /// 8192), as the game's own slots in pages, with a search box; the
-    /// player's clicks, searches and keys over items come back as
-    /// `native_panel_event`. The panel is the last mod's to show one; empty
-    /// items and no recipe page take yours away.
-    pub(in crate::game) fn panel_items(&mut self, mod_id: &str, items: Vec<mod_api::Stack>) {
-        self.panel.show_items(mod_id, items);
     }
     /// The recipes of type `kind` (`minecraft:smelting`, `mymod:crusher`), vanilla's
     /// types and mods' own alike, from `data/<namespace>/recipe/*.json` of vanilla,
@@ -4755,43 +4545,6 @@ impl Game<'_> {
     ) -> Result<(), String> {
         let item = mod_api::__private::item_key_id(item).ok_or("unknown item key")?;
         self.recipe_give(item, count)
-    }
-}
-
-#[cfg(test)]
-#[path = "base_tests/screen_open_tests.rs"]
-mod screen_open_tests;
-
-#[cfg(test)]
-mod text_tests {
-    use super::*;
-
-    /// `DrawContext::text` takes ARGB as vanilla's `GuiGraphics` does: the alpha reaches the
-    /// vertices, and fully transparent text draws nothing.
-    #[test]
-    #[ignore = "daily"]
-    fn text_takes_argb_and_skips_transparent_text() {
-        use mod_api::DrawContext;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let drawn = |argb: u32| {
-                let mut batch = HudBatch::scratch([640, 480]);
-                crate::game::host::draw::GameDrawContext::new(game, &mut batch).text(
-                    "Hi",
-                    [4.0, 4.0],
-                    argb,
-                    false,
-                );
-                batch.vertices
-            };
-            let opaque = drawn(0xFFFF_FFFF);
-            let half = drawn(0x80FF_FFFF);
-            assert!(!opaque.is_empty());
-            assert_eq!(opaque.len(), half.len());
-            assert!(opaque.iter().all(|v| v.color >> 24 == 0xFF));
-            assert!(half.iter().all(|v| v.color >> 24 == 0x80));
-            // RGB alone, as the API took before, is fully transparent now.
-            assert!(drawn(0x00FF_FFFF).is_empty());
-        });
     }
 }
 

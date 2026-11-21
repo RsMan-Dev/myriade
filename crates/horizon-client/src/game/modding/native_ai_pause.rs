@@ -421,7 +421,6 @@ mod tests {
     #[ignore = "daily"]
     fn each_refusal_is_named_and_changes_nothing() {
         use super::super::dragon::Dragon;
-        use super::super::execution_role::ExecutionRole;
         with_game(|game| {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
@@ -456,13 +455,6 @@ mod tests {
 
             let player = MobRef::new(game.entity(20).unwrap());
             refused(game, player, MobAiPauseRefusal::NotAMob);
-
-            game.options.execution_role = ExecutionRole::Client;
-            assert_eq!(
-                pig.set_ai_paused(game, true),
-                Err(MobAiPauseRefusal::Client)
-            );
-            game.options.execution_role = ExecutionRole::IntegratedServer;
 
             assert_eq!(pig.ai_paused(game), Some(false), "no refusal paused it");
             assert!(!mob(game, pig).no_ai);

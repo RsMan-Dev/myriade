@@ -1,5 +1,5 @@
 //! The entity overload of level sounds, shared by mob and player call sites.
-use super::{Game, level_sounds::LevelSound};
+use super::Game;
 use horizon_client::sound_engine::{SoundEntity, SoundEntityState};
 use horizon_core::nbt::Tag;
 
@@ -36,9 +36,7 @@ impl Game<'_> {
     }
 
     fn sound_player_id(&self) -> u32 {
-        self.remote
-            .as_ref()
-            .map_or_else(|| self.native_acting_entity(), |r| r.entity_id as u32)
+        self.native_acting_entity()
     }
 
     /// The player in place can be a guest while `as_guest` runs. Its entity
@@ -52,14 +50,6 @@ impl Game<'_> {
         except_actor: bool,
     ) {
         let id = self.sound_player_id();
-        if !self.is_logical_server() {
-            let mut sound = LevelSound::new(event, [0.0; 3], volume, pitch)
-                .in_source(mod_api::SoundSource::ALL[source]);
-            sound.emitter = Some(id);
-            let seed = self.audio.next_sound_seed();
-            self.play_client_level_sound(sound, seed);
-            return;
-        }
         let Some(state) = self.sound_entity_state(id) else {
             return;
         };

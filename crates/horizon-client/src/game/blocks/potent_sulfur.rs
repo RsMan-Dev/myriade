@@ -12,7 +12,7 @@ use horizon_client::{
     effects::EffectInstance,
     join_seq::{JoinList, ListStamp},
     mobs::{Mob, seen_grid::SeenGrid},
-    particles::{ParticleLevel, ParticleOptions, ParticleType as T},
+    particles::ParticleLevel,
     potent_sulfur::{
         can_be_reached_by_noxious_gas, find_noxious_gas_source_block, unobstructed_block_count,
     },
@@ -441,33 +441,6 @@ impl Game<'_> {
             }
         });
     }
-
-
-    /// `PotentSulfurBlockEntity.spawnGeyserParticle`: the eruption particle at
-    /// the bottom of the source block, as high as the water column is deep.
-    fn spawn_geyser_particle(&mut self, sulfur: Pos, source: [i32; 3]) {
-        let water_blocks = source[1] - sulfur.1 - 1;
-        self.particles.add(
-            &ParticleOptions::geyser(T::Geyser, water_blocks),
-            [
-                f64::from(source[0]) + 0.5,
-                f64::from(source[1]),
-                f64::from(source[2]) + 0.5,
-            ],
-            [0.0; 3],
-        );
-    }
-
-    /// `PotentSulfurBlockEntity.spawnNoxiousGasCloudParticle` at the centre of
-    /// the source block.
-    fn spawn_noxious_gas_cloud_particle(&mut self, source: [i32; 3]) {
-        self.particles.add(
-            &ParticleOptions::simple(T::NoxiousGasCloud),
-            source.map(|c| f64::from(c) + 0.5),
-            [0.0; 3],
-        );
-    }
-
 
 
     /// `PotentSulfurBlock.triggerEvent`: the eruption block event stamps the

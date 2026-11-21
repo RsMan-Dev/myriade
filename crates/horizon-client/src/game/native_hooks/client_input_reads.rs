@@ -5,13 +5,6 @@ use crate::game::api_values::TryIntoApi;
 // Native mods use these; nothing in Horizon does.
 #[allow(dead_code)]
 impl Game<'_> {
-    /// Playing, with nothing over the world: keys and zoom apply.
-    pub(in crate::game) fn playing(&self) -> bool {
-        self.screen == Screen::Playing
-            && self.title.is_none()
-            && self.sign_edit.is_none()
-            && self.book.is_none()
-    }
     /// Milliseconds on the game's own clock (`Util.getMillis`), counting from the game's start:
     /// the clock the HUD's scrolling labels and the screens' text fields read too.
     pub(in crate::game) fn millis(&self) -> u64 {

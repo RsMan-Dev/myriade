@@ -47,8 +47,8 @@ impl Game<'_> {
             save.quit |= quit;
             return Ok(());
         }
-        if self.title.is_some() || self.saved_for_exit {
-            // A quit from the title still needs the event loop to finish.
+        if self.saved_for_exit {
+            // A save already made still needs the event loop to finish.
             self.pending_save = Some(ClosingSave {
                 quit,
                 close: true,
@@ -107,8 +107,6 @@ impl Game<'_> {
                 .modified
                 .extend(self.world.chunks.keys().copied());
         }
-        self.keys.clear();
-        self.physical_keys.clear();
         self.left = false;
         self.right = false;
         self.pending_save = Some(ClosingSave {
@@ -237,7 +235,7 @@ impl Game<'_> {
                     self.saved_for_exit = true;
                     Ok(true)
                 } else {
-                    if save.close && self.title.is_none() {
+                    if save.close {
                         self.finish_perf();
                         self.finish_close_world()?;
                     }
@@ -259,63 +257,6 @@ impl Game<'_> {
                 other
             }
         }
-    }
-
-
-    /// `GameRenderer.tryTakeScreenshotIfNeeded`: while a local world without a
-    /// saved icon is on the screen, grab the rendered frame once a second until
-    /// the save has one. The Select World list shows it as the world's preview.
-    pub(super) fn tick_world_icon(&mut self) {
-        // Its grab would take a sequence's frame.
-        if self.screenshot_sequence.is_some() {
-            return;
-        }
-        let Some(icon) = self.world_icon.as_ref() else {
-            return;
-        };
-        if icon
-            .last_attempt
-            .is_some_and(|at| at.elapsed() < Duration::from_secs(1))
-        {
-            return;
-        }
-        if icon.path.is_file() {
-            // tryTakeScreenshotIfNeeded's hasWorldScreenshot: it has one, stop asking.
-            self.world_icon = None;
-            return;
-        }
-        // takeAutoScreenshot only saves with every loaded section rendered, or
-        // the icon would picture the holes the streamer has not filled yet.
-        if self.streaming.pending() != 0
-            || !self.pending_uploads.is_empty()
-            || self.remote_backlog() != 0
-        {
-            return;
-        }
-        let Some(renderer) = self.renderer.as_mut() else {
-            return;
-        };
-        // countRenderedSections() > 10: a client that joined its server
-        // thread has nothing pending before the first chunks arrive, and the
-        // icon would be only sky.
-        if renderer.drawn_sections <= 10 {
-            return;
-        }
-        if renderer.screenshot.is_some() {
-            // F2's or an agent's screenshot owns the frame this time; ours
-            // comes around again with the next attempt.
-            return;
-        }
-        let path = icon.path.clone();
-        if let Some(icon) = self.world_icon.as_mut() {
-            icon.last_attempt = Some(Instant::now());
-        }
-        renderer.screenshot = Some(horizon_client::gfx::ScreenshotRequest {
-            path,
-            size: Some([64, 64]),
-            scaled: false,
-            background: true,
-        });
     }
 }
 

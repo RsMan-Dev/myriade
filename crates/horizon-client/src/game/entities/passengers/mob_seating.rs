@@ -17,7 +17,7 @@ impl Game<'_> {
             // A mob on a text display: NPC plugins seat their sitting
             // NPCs on one. The server's position for a passenger
             // gives way to its seat, as `rideTick` places it.
-            let me = self.remote.as_ref().map(|r| r.entity_id as u32);
+            let me: Option<u32> = None;
             let own_seat = self.player.as_ref().map(|p| {
                 p.position
                     .add_vector(Vec3::new(0.0, f64::from(p.dimensions.height), 0.0))

@@ -11,7 +11,7 @@ use horizon_client::{
     effects::{EffectInstance, PlayerEffects},
     fast_hash::{FxHashMap, FxHashSet},
     mobs::{Mob, Species, Who, allay, warden},
-    particles::{ParticleOptions, ParticleType},
+    particles::ParticleOptions,
     sculk::{self, Context, Info, SculkEntity, SculkKind, WardenSpawnTracker},
     text::Text,
 };
@@ -1827,17 +1827,6 @@ impl Game<'_> {
         self.native_sculk_bloom(self.dim.id(), [key.0, key.1, key.2]);
         let _ = self.process_level_events();
         let c = center(key);
-        let options = ParticleOptions::simple(ParticleType::SculkSoul);
-        for _ in 0..2 {
-            // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.random();
-            let p = [
-                c[0] + r.next_gaussian() * 0.2,
-                c[1] + 0.65,
-                c[2] + r.next_gaussian() * 0.2,
-            ];
-            self.particles.add(&options, p, [0.0; 3]);
-        }
         let pitch = 0.6 + self.world.random.next_float() * 0.4;
         self.audio
             .play("minecraft:block.sculk_catalyst.bloom", Some(c), 2.0, pitch);
@@ -1858,125 +1847,11 @@ impl Game<'_> {
                 self.audio
                     .play("minecraft:block.sculk.charge", Some(c), volume, pitch);
             }
-            let face_data = data & 63;
-            let faces: Vec<(Direction, f32, f64)> = if face_data == 0 {
-                Direction::ALL
-                    .into_iter()
-                    .map(|d| {
-                        let roll = if d == Direction::Down {
-                            std::f32::consts::PI
-                        } else {
-                            0.0
-                        };
-                        let factor = if matches!(d, Direction::Up | Direction::Down) {
-                            0.65
-                        } else {
-                            0.57
-                        };
-                        (d, roll, factor)
-                    })
-                    .collect()
-            } else {
-                horizon_world::level::sculk::unpack_faces(face_data)
-                    .into_iter()
-                    .map(|d| {
-                        let roll = if d == Direction::Up {
-                            std::f32::consts::PI
-                        } else {
-                            0.0
-                        };
-                        (d, roll, 0.35)
-                    })
-                    .collect()
-            };
-            for (direction, roll, factor) in faces {
-                let repetitions = self
-                    .particles
-                    .random()
-                    .next_int_bound(count + 1)
-                    .unwrap_or(0);
-                for _ in 0..repetitions {
-                    self.spawn_particle_on_face(pos, direction, roll, factor);
-                }
-            }
         } else {
             self.audio
                 .play("minecraft:block.sculk.charge", Some(c), 1.0, 1.0);
-            let solid = self
-                .res
-                .facts()
-                .get(self.world.block(pos.x, pos.y, pos.z))
-                .full_collision;
-            let (particles, spread) = if solid { (40, 0.45f32) } else { (20, 0.25f32) };
-            let options = ParticleOptions::simple(ParticleType::SculkChargePop);
-            for _ in 0..particles {
-                // Client-side (LevelEventHandler / particles): the client random.
-                let r = self.particles.random();
-                let v = [
-                    2.0 * r.next_float() - 1.0,
-                    2.0 * r.next_float() - 1.0,
-                    2.0 * r.next_float() - 1.0,
-                ];
-                let at = [
-                    c[0] + f64::from(v[0] * spread),
-                    c[1] + f64::from(v[1] * spread),
-                    c[2] + f64::from(v[2] * spread),
-                ];
-                let speed = [
-                    f64::from(v[0] * 0.07),
-                    f64::from(v[1] * 0.07),
-                    f64::from(v[2] * 0.07),
-                ];
-                self.particles.add(&options, at, speed);
-            }
         }
     }
-    /// `ParticleUtils.spawnParticleOnFace` for a sculk charge.
-    fn spawn_particle_on_face(&mut self, pos: BlockPos, face: Direction, roll: f32, factor: f64) {
-        let c = center((pos.x, pos.y, pos.z));
-        let step = face.normal();
-        // Client-side (LevelEventHandler / particles): the client random.
-        let r = self.particles.random();
-        let mut jitter = || r.next_double() - 0.5;
-        let mut at = [0.0; 3];
-        for i in 0..3 {
-            at[i] = c[i]
-                + if step[i] == 0 {
-                    jitter()
-                } else {
-                    f64::from(step[i]) * factor
-                };
-        }
-        let mut speed = [0.0; 3];
-        for i in 0..3 {
-            let s = (r.next_double() * 2.0 - 1.0) * f64::from(0.005f32);
-            speed[i] = if step[i] == 0 { s } else { 0.0 };
-        }
-        self.particles
-            .add(&ParticleOptions::sculk_charge(roll), at, speed);
-    }
-    /// `LevelEventHandler.levelEvent` 3007: ten shrieks and a local sound.
-    pub(super) fn shriek_event(&mut self, pos: BlockPos) {
-        let top = f64::from(pos.y) + 0.5;
-        for i in 0..10 {
-            self.particles.add(
-                &ParticleOptions::shriek(i * 5),
-                [f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5],
-                [0.0; 3],
-            );
-        }
-        let state = self.world.block(pos.x, pos.y, pos.z);
-        if self.state_property(state, "waterlogged") != Some("true") {
-            let pitch = 0.6 + self.particles.random().next_float() * 0.4;
-            self.audio.play_unshared(
-                "minecraft:block.sculk_shrieker.shriek",
-                Some([f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5]),
-                2.0,
-                pitch,
-            );
-        }
-    }
-
     /// `ServerLevel.sendParticles(new VibrationParticleOption(...), origin,
     /// 1, 0, 0, 0, 0)` from `VibrationSystem.Ticker.trySelectAndScheduleVibration`:
     /// the window draws it when it is a client, and every player within 32
@@ -2011,32 +1886,6 @@ impl Game<'_> {
         let source = super::lan_particles::particle_position_source(&source);
         self.vibration_particle(source, from, to, ticks);
     }
-    /// `Warden.clientDiggingParticles`: thirty crumbs of the block underfoot.
-    pub(super) fn warden_dig_particles(&mut self, at: [f64; 3]) {
-        let below = (
-            at[0].floor() as i32,
-            (at[1] - 0.2).floor() as i32,
-            at[2].floor() as i32,
-        );
-        let state = self.world.block(below.0, below.1, below.2);
-        let Some((sprite, tint)) = self.particle_sprite(state, [below.0, below.1, below.2]) else {
-            return;
-        };
-        for _ in 0..30 {
-            // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.random();
-            let off = |v: f32| f64::from(v * 1.4 - 0.7);
-            let p = [
-                at[0] + off(r.next_float()),
-                at[1],
-                at[2] + off(r.next_float()),
-            ];
-            let particle =
-                horizon_client::particles::Particle::terrain(r, p, [0.0; 3], sprite.clone(), tint);
-            self.particles.push(particle);
-        }
-    }
-
     // ---- entity events ----
 
     /// `Projectile.shoot` / `onHit`: a projectile of `owner` at a position.
@@ -2239,57 +2088,9 @@ impl Game<'_> {
         }
     }
 
-    /// `RedStoneOreBlock.spawnParticles`: a red dust puff for each face of the
-    /// ore that is not against a solid block. Non-axis coordinates draw from
-    /// the client level random, x then y then z. It is `level.addParticle`, so
-    /// only the local player's own click or step draws it, not a guest's turn.
-    pub(super) fn redstone_ore_particles(&mut self, pos: [i32; 3]) {
-        if self.lan_acting.is_some()
-            || !matches!(
-                &*self.block_name(pos),
-                "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore"
-            )
-        {
-            return;
-        }
-        // Direction.values(): down, up, north, south, west, east.
-        const FACES: [[i32; 3]; 6] = [
-            [0, -1, 0],
-            [0, 1, 0],
-            [0, 0, -1],
-            [0, 0, 1],
-            [-1, 0, 0],
-            [1, 0, 0],
-        ];
-        for step in FACES {
-            let next = [pos[0] + step[0], pos[1] + step[1], pos[2] + step[2]];
-            let state = self.world.block(next[0], next[1], next[2]);
-            if self.res.facts().get(state).solid_render {
-                continue;
-            }
-            let mut at = [0.0f64; 3];
-            for axis in 0..3 {
-                at[axis] = if step[axis] != 0 {
-                    0.5 + 0.5625 * f64::from(step[axis])
-                } else {
-                    f64::from(self.particles.level_random().next_float())
-                };
-            }
-            self.particles.add(
-                &horizon_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
-                [
-                    f64::from(pos[0]) + at[0],
-                    f64::from(pos[1]) + at[1],
-                    f64::from(pos[2]) + at[2],
-                ],
-                [0.0; 3],
-            );
-        }
-    }
-
     /// `RedStoneOreBlock.stepOn`: standing on the ore lights it, unless the
     /// entity is stepping carefully (`attack_block` only lights an unlit ore).
-    fn step_on_redstone_ore(&mut self, at: [f64; 3], carefully: bool, burst: bool) {
+    fn step_on_redstone_ore(&mut self, at: [f64; 3], carefully: bool, _burst: bool) {
         if carefully {
             return;
         }
@@ -2302,10 +2103,6 @@ impl Game<'_> {
         self.sculk_prepare();
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if self.state_is(&self.sculk.tables.redstone_ore, state) {
-            // The dust is the local player's client effect, not a mob's or an item's.
-            if burst {
-                self.redstone_ore_particles(pos);
-            }
             let _ = self.attack_block(pos);
         }
     }
@@ -2325,7 +2122,6 @@ impl Game<'_> {
         ) {
             return Ok(None);
         }
-        self.redstone_ore_particles(pos);
         self.attack_block(pos)?;
         let block_item = held.is_some_and(|s| {
             self.res
@@ -3214,156 +3010,6 @@ mod command_damage_listener_tests {
                 selected(&game, destination).is_none(),
                 "end-of-tick scan must not post the old hit again at the moved victim"
             );
-        }
-    }
-}
-
-#[cfg(test)]
-mod shriek_capture_tests {
-    use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use horizon_client::chunk::Chunk;
-    use horizon_core::{position::ChunkPos, random::LegacyRandom};
-    use horizon_world::level::LevelEvent;
-    use std::sync::Arc;
-
-    #[test]
-    #[ignore = "daily"]
-    fn level_event_shriek_keeps_local_play_and_random_but_not_shared_capture() {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("HORIZON_TEST_RESOURCES").expect("prepared resources required"),
-        );
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.build_registries();
-        game.set_allow_commands(true);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.block_ticks
-            .add_empty_chunk(ChunkPos::new(0, 0))
-            .unwrap();
-        assert!(game.run_command("forceload add 0 0"));
-        assert!(game.run_command("setblock 4 200 4 sculk_shrieker[waterlogged=false] strict"));
-        assert!(game.run_command("setblock 7 200 4 sculk_shrieker[waterlogged=true] strict"));
-        assert_eq!(
-            game.state_property(game.world.block(4, 200, 4), "waterlogged"),
-            Some("false")
-        );
-        assert_eq!(
-            game.state_property(game.world.block(7, 200, 4), "waterlogged"),
-            Some("true")
-        );
-        game.particles.requested = Some(Vec::new());
-        game.particles.seed_randoms(6500, 6501, 6502);
-        let mut random = LegacyRandom::new(6500);
-        let clock = game.world.game_time;
-        let mut world_random = game.world.random.clone();
-        let effect = "minecraft:block.sculk_shrieker.shriek";
-        let before = "minecraft:block.note_block.pling";
-        let after = "minecraft:block.amethyst_block.chime";
-        game.audio.capture = Some(Vec::new());
-        game.audio
-            .play_on(4, before, Some([1.5, 200.0, 4.5]), 1.0, 1.0);
-        game.level_events.push(LevelEvent::LevelEvent {
-            source: None,
-            id: 3007,
-            pos: BlockPos::new(4, 200, 4),
-            data: 0,
-        });
-        game.process_level_events().unwrap();
-        assert_eq!(
-            game.audio.heard.get(effect),
-            Some(&1),
-            "dry effect must still play locally"
-        );
-        random.next_float(); // Same single pitch draw after the particle requests.
-        assert_eq!(
-            game.particles.random().next_long(),
-            random.next_long(),
-            "dry random continuation"
-        );
-        game.level_events.push(LevelEvent::LevelEvent {
-            source: None,
-            id: 3007,
-            pos: BlockPos::new(7, 200, 4),
-            data: 0,
-        });
-        game.process_level_events().unwrap();
-        assert_eq!(
-            game.audio.heard.get(effect),
-            Some(&1),
-            "waterlogged effect stays silent"
-        );
-        assert_eq!(
-            game.particles.random().next_long(),
-            random.next_long(),
-            "wet branch consumes no pitch draw"
-        );
-        let requests = game.particles.requested.as_ref().unwrap();
-        assert_eq!(requests.len(), 20);
-        for (i, (options, position, velocity)) in requests.iter().enumerate() {
-            assert_eq!(options.ty, ParticleType::Shriek);
-            assert_eq!(options.scale, ((i % 10) * 5) as f32);
-            assert_eq!(*position, [if i < 10 { 4.5 } else { 7.5 }, 200.5, 4.5]);
-            assert_eq!(*velocity, [0.0; 3]);
-        }
-        game.audio
-            .play_on(4, after, Some([2.5, 200.0, 4.5]), 0.5, 1.25);
-        assert_eq!(game.audio.heard.get(before), Some(&1));
-        assert_eq!(game.audio.heard.get(after), Some(&1));
-        assert_eq!(game.world.game_time, clock);
-        assert_eq!(
-            game.world.random.next_long(),
-            world_random.next_long(),
-            "level random continuation"
-        );
-        let shared = game
-            .audio
-            .capture
-            .as_ref()
-            .expect("shared capture restored");
-        assert_eq!(
-            shared.iter().map(|s| s.event.as_str()).collect::<Vec<_>>(),
-            vec![before, after],
-            "client-level shriek entered shared capture"
-        );
-        for (sound, (position, volume, pitch)) in shared.iter().zip([
-            ([1.5, 200.0, 4.5], 1.0, 1.0),
-            ([2.5, 200.0, 4.5], 0.5, 1.25),
-        ]) {
-            assert_eq!(
-                (sound.position, sound.volume, sound.pitch, sound.source),
-                (position, volume, pitch, 4)
-            );
-            assert_eq!((sound.entity, sound.except_entity), (None, None));
         }
     }
 }

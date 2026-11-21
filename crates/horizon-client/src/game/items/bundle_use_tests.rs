@@ -36,7 +36,6 @@ fn bundle_completes_on_tick_200() {
                 ItemStack::new("minecraft:dirt", 1),
                 ItemStack::new("minecraft:stick", 1),
             ];
-            game.screen = Screen::Playing;
             game.right = true;
             game.lan_acting = Some(1);
             EVENTS.with(|events| events.borrow_mut().clear());

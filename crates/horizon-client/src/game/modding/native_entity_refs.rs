@@ -82,15 +82,6 @@ fn entity_ray_hits(
 }
 
 impl Game<'_> {
-    /// An entity tracked by the remote client but absent from local entity lists.
-    fn native_client_tracked(&self, entity: EntityRef) -> Option<(&str, [f64; 3])> {
-        let remote = self.remote.as_ref()?;
-        if !remote.logged_in || self.native_lifecycle.epoch() != Some(entity.epoch()) {
-            return None;
-        }
-        remote.tracked_entity(i32::try_from(entity.id()).ok()?)
-    }
-
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
         if self.block_entity_tick_items.is_some() {
@@ -98,35 +89,9 @@ impl Game<'_> {
         }
         self.unscoped_native_entity_target(entity)
     }
-    /// What a handle names on a client: the local player, or an entity the
-    /// server told this client of (`ClientLevel.getEntity`, whose entities are
-    /// the ones the server tracks to it). None for a stale handle, with no
-    /// login, or for an entity the client doesn't have.
-    pub(super) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        let id = i32::try_from(entity.id()).ok()?;
-        if id == remote.entity_id {
-            return self.player.as_ref().map(|_| Target::Player);
-        }
-        // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Some(part);
-        }
-        remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.remote_entities.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
-        }
-    }
-    /// What a handle names for a read that works on both sides: the server's
-    /// entity (`native_entity_target`) or, on a client, its own copy of it.
+    /// What a handle names for a read: the server's entity (`native_entity_target`).
     pub(super) fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
-        if self.is_logical_server() {
-            self.native_entity_target(entity)
-        } else {
-            self.native_client_entity_target(entity)
-        }
+        self.native_entity_target(entity)
     }
     /// The entity `id` (the id events carry) as a handle for the `entity_*`
     /// methods: None with no world open, or for no such entity in the level
@@ -135,9 +100,9 @@ impl Game<'_> {
     /// this window's own player included. API 373.
     pub(super) fn entity(&self, id: u32) -> Option<EntityRef> {
         let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        (self.native_entity_read_target(entity).is_some()
-            || self.native_client_tracked(entity).is_some())
-        .then_some(entity)
+        self.native_entity_read_target(entity)
+            .is_some()
+            .then_some(entity)
     }
     pub(super) fn entity_by_uuid(&self, uuid: mod_api::EntityUuid) -> Option<EntityRef> {
         if !self.is_logical_server() {
@@ -183,37 +148,22 @@ impl Game<'_> {
             .map(|offset| self.entity(id.checked_add(offset)?))
             .collect()
     }
-    /// The level `dimension` (`minecraft:the_nether`) as a handle: on a client,
-    /// the level it shows, whatever the server calls it, or one the server opened
-    /// for viewing (`client_level_key`). None with no world open, or for a
-    /// dimension the server hasn't loaded. API 373.
+    /// The level `dimension` (`minecraft:the_nether`) as a handle. None with no world
+    /// open, or for a dimension the server hasn't loaded. API 373.
     pub(super) fn level(&self, dimension: &str) -> Option<LevelRef> {
         let epoch = self.native_lifecycle.epoch()?;
-        if !self.is_logical_server() {
-            return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
-        }
         let dim = std::iter::once(self.dim)
             .chain(self.levels.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))
     }
-    /// The client level in place as a handle: the level this window shows and
-    /// ticks. None before login, while reconfiguring, or with no world open.
-    pub(super) fn native_client_level(&self) -> Option<LevelRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let remote = self.remote.as_ref().filter(|r| r.has_level())?;
-        Some(LevelRef::new(epoch, remote.level_key))
-    }
     /// The name of a dimension's key.
     pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<String> {
         mod_api::__private::dimension_id(key).map(str::to_owned)
     }
-    /// The key of the level in place: on a client the level it shows, which
-    /// `Dim` may have no name for.
+    /// The key of the level in place.
     pub(super) fn native_level_key(&self) -> DimensionKey {
-        self.remote
-            .as_ref()
-            .map_or_else(|| self.dim.key(), |r| r.level_key)
+        self.dim.key()
     }
     /// Loaded server levels, in vanilla dimension order. Empty without a server world.
     pub(super) fn native_list_levels(&self) -> Vec<LevelRef> {
@@ -238,8 +188,7 @@ impl Game<'_> {
     /// Returns None for a stale handle or a parked level: its entity handles
     /// cannot resolve until the level is in place, and for a bound that is not
     /// finite (NaN or infinite). A minimum above its maximum is the same box
-    /// with the two swapped, as vanilla's `AABB`. On a client, see
-    /// `client_entities_in`. The walk
+    /// with the two swapped, as vanilla's `AABB`. The walk
     /// is in entity-list order followed by players; each overlap requires a
     /// handle lookup, so cost grows with the box's contents. Tridents cannot
     /// yet resolve; frames, paintings and other special entities
@@ -260,9 +209,6 @@ impl Game<'_> {
             Vec3::new(min[0], min[1], min[2]),
             Vec3::new(max[0], max[1], max[2]),
         );
-        if !self.is_logical_server() {
-            return self.client_entities_in(level, bounds);
-        }
         if level.dimension() != self.dim.key() {
             return None;
         }
@@ -317,33 +263,6 @@ impl Game<'_> {
             }
         });
         ids
-    }
-    /// `ClientLevel.getEntities` for `level_entities_in`: the entities the server
-    /// tracks to this client in entity-list order, other players among them (a
-    /// tracked player has a client copy, so its handle resolves), the dragon and
-    /// then the window's own player unless it spectates, then the dragon's parts.
-    /// None before login or for a level the client does not show.
-    fn client_entities_in(&self, level: LevelRef, bounds: Aabb) -> Option<Vec<EntityRef>> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        if level.dimension() != self.native_level_key() {
-            return None;
-        }
-        let mut ids = self.listed_entities_in(bounds);
-        self.append_dragon_query_ids(bounds, false, &mut ids);
-        if self.mode_id() != 3
-            && let Some(player) = &self.player
-            && bounds.intersects(player.bounds())
-            && let Ok(id) = u32::try_from(remote.entity_id)
-        {
-            ids.push(id);
-        }
-        self.append_dragon_query_ids(bounds, true, &mut ids);
-        Some(
-            ids.into_iter()
-                .map(|id| EntityRef::new(level.epoch(), id))
-                .filter(|handle| self.native_entity_read_target(*handle).is_some())
-                .collect(),
-        )
     }
     /// Every entity the segment `from`..`to` passes through, nearest first, each box grown by
     /// `margin` (`ProjectileUtil.getEntityHitResult`'s test, without its filter: the caller
@@ -801,12 +720,8 @@ impl Game<'_> {
         {
             return Some(position);
         }
-        match self.native_entity_read_target(entity) {
-            Some(target) => self.target_position(target),
-            None => self
-                .native_client_tracked(entity)
-                .map(|(_, position)| position),
-        }
+        self.native_entity_read_target(entity)
+            .and_then(|target| self.target_position(target))
     }
     /// The block the entity's position is in (`Entity.blockPosition`). API
     /// 373.
@@ -822,12 +737,8 @@ impl Game<'_> {
     /// The entity's type (`Entity.getType`): `minecraft:zombie`. API
     /// 373.
     pub(super) fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
-        match self.native_entity_read_target(entity) {
-            Some(target) => self.native_entity_kind_key(target),
-            None => {
-                mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
-            }
-        }
+        self.native_entity_read_target(entity)
+            .and_then(|target| self.native_entity_kind_key(target))
     }
     /// The entity's UUID (`Entity.getUUID`), the one it is saved with; an
     /// entity that has none yet gets it now, as a new vanilla entity does.
@@ -846,16 +757,11 @@ impl Game<'_> {
         };
         Some(uuid_from_words(words))
     }
-    /// The level the entity is in (`Entity.level`): on a client, the
-    /// client's level. API 373.
+    /// The level the entity is in (`Entity.level`). API 373.
     pub(super) fn entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
-        let key = match self.native_entity_read_target(entity) {
-            Some(t) if self.is_logical_server() => self.target_level(t).key(),
-            Some(_) => self.native_level_key(),
-            None => self
-                .native_client_tracked(entity)
-                .map(|_| self.native_level_key())?,
-        };
+        let key = self
+            .target_level(self.native_entity_read_target(entity)?)
+            .key();
         Some(self.level_ref(entity.epoch(), key))
     }
 }
@@ -2107,7 +2013,7 @@ pub(super) mod tests {
                 state("minecraft:slime_block"),
             );
             let pos = BlockPos::new(3, 64, 5);
-            let mut read = |block, own, client_side| {
+            let mut read = |block, own| {
                 game.world.set(pos.x, pos.y, pos.z, block).unwrap();
                 let contact = Contact {
                     entity: 7,
@@ -2122,18 +2028,16 @@ pub(super) mod tests {
                     Some(&game.pack.block_registries),
                     &game.damage_hooks,
                 );
-                bounce_restitution(&mut level.on_client(client_side), contact, own)
+                bounce_restitution(&mut level.on_client(false), contact, own)
             };
-            // Glass's part answers whatever the block's own value: 0.5 on a server, 0.25 on a
-            // client predicting its own bounce.
-            assert_eq!(read(glass, 0.0, false), 0.5);
-            assert_eq!(read(glass, 1.0, true), 0.25);
+            // Glass's part answers whatever the block's own value: 0.5 on a server.
+            assert_eq!(read(glass, 0.0), 0.5);
             // A block with no part keeps its own: slime bounces fully.
-            assert_eq!(read(slime, 1.0, false), 1.0);
+            assert_eq!(read(slime, 1.0), 1.0);
             // Stone's part answers not a number, which is ignored.
-            assert_eq!(read(stone, 0.0, false), 0.0);
+            assert_eq!(read(stone, 0.0), 0.0);
             let pig = |client| (client, 7, "minecraft:pig".to_owned(), pos, true);
-            assert_eq!(*heard.lock().unwrap(), [pig(false), pig(true)]);
+            assert_eq!(*heard.lock().unwrap(), [pig(false)]);
         });
     }
 
@@ -2221,7 +2125,7 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn side_guards_agree_across_integrated_dedicated_and_client() {
+    fn side_guards_agree_across_integrated_and_dedicated() {
         use super::super::execution_role::ExecutionRole;
         use horizon_client::chunk::Chunk;
         use std::sync::Arc;
@@ -2231,10 +2135,7 @@ pub(super) mod tests {
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             let level = game.level(game.dim.id()).unwrap();
             // The integrated server thread (game/world/integrated.rs sets the role and
-            // `dedicated` on the serving Game) and a dedicated server simulate;
-            // a client never does. A remote client runs with the `Client` role
-            // (connecting changes `remote`, not the role), and the guards read
-            // only the role, so it answers like the title-screen game here.
+            // `dedicated` on the serving Game) and a dedicated server simulate.
             for (role, dedicated) in [
                 (ExecutionRole::IntegratedServer, true),
                 (ExecutionRole::DedicatedServer, true),
@@ -2246,12 +2147,6 @@ pub(super) mod tests {
                 assert!(game.level_in_place(level));
                 assert!(game.native_level_write_allowed(level, [-32, 64, 48]));
             }
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            assert!(!game.native_simulates());
-            assert!(game.level(game.dim.id()).is_none());
-            assert!(!game.level_in_place(level));
-            assert!(!game.native_level_write_allowed(level, [-32, 64, 48]));
         });
     }
 
@@ -2984,10 +2879,6 @@ pub(super) mod tests {
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
-            let role = game.options.execution_role;
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            assert!(game.fake_player(level, 1234, "machine").is_none());
-            game.options.execution_role = role;
             let made = game.fake_player(level, 1234, "machine").unwrap();
             assert_eq!(game.fake_player(level, 1234, "machine"), Some(made));
             assert!(game.fake_player(level, 1234, "other").is_none());
@@ -4456,188 +4347,6 @@ pub(super) mod tests {
             game.level_destroy_block(level, [0, 64, 0], true, None, false)
                 .is_none()
         );
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_finds_the_entities_it_tracks_and_its_own_player_in_a_box() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::connection::Pipe;
-        use mod_api::{Host, LevelRef, WorldEpoch};
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player =
-                Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
-            game.spawn_entity(16, "minecraft:pig", [40.0, 0.0, 0.0], [0.0; 3]);
-            let level = game.level("minecraft:overworld").unwrap();
-            let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
-                    .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
-            };
-            // The tracked pig, then the window's own player; the other pig is far away.
-            assert_eq!(
-                ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 7])
-            );
-            assert_eq!(
-                ids(game, level, [39.0, -1.0, -1.0], [41.0, 2.0, 1.0]),
-                Some(vec![16])
-            );
-            // The pig's box ends at x 2.45.
-            assert_eq!(
-                ids(game, level, [2.5, 0.0, -1.0], [4.0, 1.0, 1.0]),
-                Some(vec![])
-            );
-            game.set_mode_id(3);
-            assert_eq!(
-                ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15])
-            );
-            let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
-            assert_eq!(ids(game, nether, [-1.0; 3], [3.0; 3]), None);
-            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            assert_eq!(ids(game, stale, [-1.0; 3], [3.0; 3]), None);
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(ids(game, level, [-1.0; 3], [3.0; 3]), None);
-        });
-    }
-
-    /// A client's `entities_in` lists another player standing in the box (added through the
-    /// real `AddEntity` packet), after the entities the server tracks and before the window's
-    /// own player; a player outside the box, and one the server removed, are not listed.
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_lists_another_player_in_the_box_after_the_tracked_entities() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::{
-            connection::Pipe,
-            packets::play::{AddEntity, Clientbound as C, RemoveEntities},
-        };
-        use mod_api::{Host, LevelRef};
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            let player = remote
-                .builtin
-                .get("minecraft:entity_type")
-                .unwrap()
-                .id("minecraft:player")
-                .unwrap();
-            game.player =
-                Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
-            let add_player = |game: &mut crate::game::Game<'_>, id, uuid, x| {
-                game.handle_packet(C::AddEntity(AddEntity {
-                    id,
-                    uuid,
-                    kind: player,
-                    position: [x, 0.0, 0.0],
-                    velocity: [0.0; 3],
-                    pitch: 0,
-                    yaw: 0,
-                    head_yaw: 0,
-                    data: 0,
-                }))
-                .unwrap();
-            };
-            // 18 stands in the box, 19 far outside it, 20 in it until the server removes it.
-            add_player(game, 18, 9, 1.0);
-            add_player(game, 19, 10, 40.0);
-            add_player(game, 20, 11, 0.5);
-            assert!(
-                [18, 19, 20]
-                    .iter()
-                    .all(|id| game.remote_entities.iter().any(|m| m.id == *id))
-            );
-            let level = game.level("minecraft:overworld").unwrap();
-            let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
-                    .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
-            };
-            // Entity-list order: the pig, then the other players, then the window's own.
-            assert_eq!(
-                ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 18, 20, 7])
-            );
-            // A box around only the far player finds it, and the near box did not.
-            assert_eq!(
-                ids(game, level, [39.0, -1.0, -1.0], [41.0, 2.0, 1.0]),
-                Some(vec![19])
-            );
-            game.handle_packet(C::RemoveEntities(RemoveEntities { ids: vec![20] }))
-                .unwrap();
-            assert_eq!(
-                ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 18, 7])
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_refuses_a_box_with_a_bound_that_is_not_finite_and_swaps_an_inverted_one() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::connection::Pipe;
-        use mod_api::{Host, LevelRef};
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "EntitiesInTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player =
-                Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
-            let level = game.level("minecraft:overworld").unwrap();
-            let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
-                    .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
-            };
-            // Mod code chooses the bounds: one that is not finite is refused, never panics,
-            // and nothing is walked by the box's size.
-            for (min, max) in [
-                ([f64::NAN, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                ([-1.0, -1.0, -1.0], [3.0, f64::NAN, 1.0]),
-                ([f64::NEG_INFINITY, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                ([-1.0, -1.0, -1.0], [3.0, 2.0, f64::INFINITY]),
-                ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]),
-            ] {
-                assert_eq!(ids(game, level, min, max), None, "{min:?} {max:?}");
-            }
-            // A minimum above its maximum on one axis is the same box swapped (vanilla's
-            // AABB): the tracked pig, then the window's own player.
-            assert_eq!(
-                ids(game, level, [3.0, -1.0, -1.0], [-1.0, 2.0, 1.0]),
-                Some(vec![15, 7])
-            );
-            assert_eq!(
-                ids(game, level, [3.0, 2.0, 1.0], [-1.0, -1.0, -1.0]),
-                Some(vec![15, 7])
-            );
-        });
     }
 }
 

@@ -107,23 +107,8 @@ impl Game<'_> {
             },
             player.entity_id as u32,
             Source::LocalPlayer,
-            self.remote
-                .as_ref()
-                .filter(|remote| remote.logged_in)
-                .map(|remote| horizon_client::lan::playerdata::uuid_ints(remote.profile()))
-                .or(self.level.player_uuid),
+                self.level.player_uuid,
         );
-        if let Some(remote) = self.remote.as_ref().filter(|remote| remote.logged_in)
-            && let Some(epoch) = self.native_lifecycle.epoch()
-        {
-            remote
-                .session
-                .payload_transport()
-                .bind_player(mod_api::__private::game::player_ref(
-                    mod_api::EntityRef::new(epoch, remote.entity_id as u32),
-                    remote.profile(),
-                ));
-        }
     }
 
     pub(super) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {

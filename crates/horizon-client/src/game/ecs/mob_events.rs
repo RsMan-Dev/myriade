@@ -23,14 +23,10 @@ impl Game<'_> {
                 }
                 MobEvent::Sound(name, at, volume, pitch) => self.audio.play(&full_id(name), Some(at), volume, pitch),
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => self.audio.play(&name, Some(at), volume, pitch),
-                MobEvent::LocalSound(name, at, volume, pitch) => {
-                    self.audio.play_unshared(&full_id(name), Some(at), volume, pitch)
-                }
                 MobEvent::SoundId(name, at, volume, pitch) => self.audio.play(&name, Some(at), volume, pitch),
                 MobEvent::LevelParticles { kind, at, spread, speed, count } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
-                        self.particles.send_particles(&options, at, spread, speed, count);
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
                 }
@@ -71,6 +67,7 @@ impl Game<'_> {
                 | MobEvent::Drown{ .. }
                 | MobEvent::SunProtectionWear{ .. }
                 | MobEvent::ItemParticles{ .. }
+                | MobEvent::LocalSound(..)
                 | MobEvent::BoundSound{ .. }
                 | MobEvent::BubbleColumnParticles{ .. }
                 | MobEvent::Bonemeal{ .. }

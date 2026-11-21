@@ -85,11 +85,6 @@ pub(crate) struct Options {
 }
 
 impl Options {
-    /// Whether this `Game` is the process's client start: not a dedicated server, and not
-    /// a splitscreen guest, whose `run` is another local player joining the same process.
-    pub(super) fn is_client_start(&self) -> bool {
-        self.execution_role.is_client() && !self.split_guest
-    }
     /// The name to join servers with: the one given, else the offline name kept
     /// next to options.txt (created on first use).
     pub(super) fn player_name(&self) -> String {

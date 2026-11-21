@@ -1,8 +1,6 @@
-//! Armor stands in a nether portal and the pause screen in one:
-//! `Entity.handlePortal` carries a stand through like any other living entity
-//! (`ArmorStand.getDefaultDimensions`; a marker's 0 by 0 box and a `NoGravity`
-//! stand's `noPhysics` enter nothing), and `LocalPlayer.handlePortalTransitionEffect`
-//! closes only the screens whose `Screen.isAllowedInPortal` is false.
+//! Armor stands in a nether portal: `Entity.handlePortal` carries a stand
+//! through like any other living entity (`ArmorStand.getDefaultDimensions`; a
+//! marker's 0 by 0 box and a `NoGravity` stand's `noPhysics` enter nothing).
 
 use super::*;
 use crate::game::game_tests::tests::server_game;
@@ -71,31 +69,4 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
         horizon_client::save::number(arrival.tag.get("PortalCooldown")),
         Some(i64::from(ENTITY_DELAY))
     );
-}
-
-#[test]
-#[ignore = "daily"]
-fn the_portal_effect_keeps_the_screens_that_allow_it() {
-    let mut resources = None;
-    let mut game = server_game(&mut resources);
-    // `Screen.isAllowedInPortal` is `isPauseScreen` for these: the pause menu,
-    // the options over it and the chat stay open while the effect grows.
-    for screen in [Screen::Paused, Screen::Options, Screen::Chat] {
-        game.screen = screen;
-        game.portals.client_inside = true;
-        assert!(game.client_portal_effect(), "the effect grows");
-        assert!(game.screen == screen, "{} stayed open", screen.id());
-    }
-    // A container screen does not: `Gui.setScreen(null)` closes it.
-    game.screen = Screen::Inventory;
-    game.portals.client_inside = true;
-    assert!(game.client_portal_effect(), "the effect grows");
-    assert!(
-        game.screen == Screen::Playing,
-        "the inventory closed in the portal"
-    );
-    // And no screen at all is nothing to close.
-    game.portals.client_inside = true;
-    assert!(game.client_portal_effect(), "the effect grows");
-    assert!(game.screen == Screen::Playing, "playing stays playing");
 }

@@ -154,11 +154,5 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
         let index = hub.guests.connection_index(13).unwrap();
         hub.guests.remove(index);
         assert_eq!(b.respawn(game), Err(RespawnRefusal::Stale));
-
-        // A client.
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let (client, _server) = horizon_protocol::connection::Pipe::pair();
-        game.connect_local(client, "RespawnRefusalTest").unwrap();
-        assert_eq!(a.respawn(game), Err(RespawnRefusal::Client));
     });
 }

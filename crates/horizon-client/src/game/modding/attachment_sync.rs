@@ -240,50 +240,6 @@ fn refused(error: &PayloadSendError) -> bool {
     )
 }
 
-impl Game<'_> {
-
-    /// Publish a synced copy once its scoped client holder can be named.
-    pub(super) fn bind_remote_attachment(&mut self, holder: Holder) {
-        use mod_api::{AttachmentHolder as H, ChunkRef, EntityRef};
-        let Some(remote) = &self.remote else { return };
-        let Some(level) = self.level(&remote.level) else {
-            return;
-        };
-        let scoped = match holder {
-            Holder::Entity(id) => H::Entity(EntityRef::new(level.epoch(), id)),
-            Holder::Player(uuid) => {
-                let id = if uuid == remote.profile() {
-                    u32::try_from(remote.entity_id).ok()
-                } else {
-                    remote.player_entity(uuid)
-                };
-                let Some(id) = id else { return };
-                H::Player(mod_api::__private::game::player_ref(
-                    EntityRef::new(level.epoch(), id),
-                    uuid,
-                ))
-            }
-            Holder::Chunk(pos) => H::Chunk(ChunkRef::new(level, pos)),
-            Holder::BlockEntity(pos) => {
-                let Some(entity) = self.block_entity(level, pos) else {
-                    return;
-                };
-                H::BlockEntity(entity)
-            }
-            Holder::Level => H::Level(level),
-            _ => return,
-        };
-        if let Some(map) = self
-            .remote
-            .as_mut()
-            .and_then(|r| r.attachments.get_mut(&holder))
-            && !map.has_index_binding()
-        {
-            map.bind_index(self.attachment_indexes.entry(self.dim).or_default(), scoped);
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "attachment_sync/route_cases_tests.rs"]
 mod route_cases_tests;

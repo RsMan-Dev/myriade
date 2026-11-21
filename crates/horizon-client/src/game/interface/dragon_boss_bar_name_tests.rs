@@ -70,16 +70,10 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         game.tick_fight();
     }
     let id = game.dragon.as_ref().expect("the fight's dragon").id;
-    game.boss_overlay.reset();
     game.publish_boss_bars();
-    let default = game
-        .boss_overlay
-        .bars(horizon_client::boss_overlay::now_millis())
-        .pop()
-        .expect("the dragon's bar");
-    assert_eq!(
-        default.name.translation_key(),
-        Some("entity.minecraft.ender_dragon")
+    assert!(
+        game.bosses.dragon_name.is_none(),
+        "the type's name until it has a custom one"
     );
     // The name a summoned dragon carries: `remember_tags` keeps its
     // `CustomName` for `/data get`, and `updateDragon` reads it.
@@ -88,12 +82,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         Tag::compound([("CustomName", Tag::String("Bob".into()))]),
     );
     game.publish_boss_bars();
-    let named = game
-        .boss_overlay
-        .bars(horizon_client::boss_overlay::now_millis())
-        .pop()
-        .expect("the dragon's bar");
-    assert_eq!(named.name.plain(), "Bob");
+    assert!(format!("{:?}", game.bosses.dragon_name).contains("Bob"));
     // A living NoAI dragon's `aiStep` does not call `updateDragon`, so the
     // bar keeps the name it had.
     game.dragon.as_mut().expect("the fight's dragon").no_ai = true;
@@ -102,10 +91,5 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         Tag::compound([("CustomName", Tag::String("Not Yet".into()))]),
     );
     game.publish_boss_bars();
-    let still = game
-        .boss_overlay
-        .bars(horizon_client::boss_overlay::now_millis())
-        .pop()
-        .expect("the dragon's bar");
-    assert_eq!(still.name.plain(), "Bob");
+    assert!(format!("{:?}", game.bosses.dragon_name).contains("Bob"));
 }

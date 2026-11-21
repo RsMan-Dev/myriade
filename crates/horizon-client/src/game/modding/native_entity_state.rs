@@ -80,16 +80,9 @@ impl Game<'_> {
             t => Body::Other(t),
         })
     }
-    /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
-    /// physical key binding or last tick's crouching pose); the server's shift-key flag.
-    /// False for non-player entities, None for a stale or unreachable handle.
+    /// `isSecondaryUseActive`: the server's shift-key flag. False for non-player
+    /// entities, None for a stale or unreachable handle.
     pub(super) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
-        if !self.is_logical_server() {
-            return Some(match self.native_client_entity_target(entity)? {
-                Target::Player => self.keys.held(horizon_client::actions::Action::Sneak),
-                _ => false,
-            });
-        }
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => p.shift_key_down,
             _ => false,
@@ -1133,37 +1126,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn portal_cooldown_write_is_refused_on_a_client() {
-        use super::super::execution_role::ExecutionRole;
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::connection::Pipe;
-
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "PortalWriteTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
-            // A handle this client really shows, so the refusal is the client
-            // side's and not a fabricated id that never resolved.
-            let entity = game.entity(15).unwrap();
-            assert!(
-                entity.position(game).is_some(),
-                "the handle is live on this client"
-            );
-            assert!(!entity.set_portal_cooldown(game, 5));
-            assert!(!entity.set_portal_cooldown(game, 0));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_item() {
         use super::super::native_entity_refs::tests::with_game;
         use horizon_client::items::ItemStack;
@@ -1257,140 +1219,14 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn secondary_use_reads_reachable_client_handles_and_keeps_server_flags() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::connection::Pipe;
-
-        use winit::keyboard::KeyCode;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "SneakReadTest").unwrap();
-            // The joined client's state; the local-player and entity constructors must both
-            // resolve it, not just a hand-built entity id accepted by an unreachable stub.
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let local = game.local_player().unwrap();
-            let entity = game.entity(7).unwrap();
-            assert_eq!(local.entity(), entity);
-            game.keys.insert(KeyCode::ShiftLeft);
-            assert!(!game.player.as_ref().unwrap().shift_key_down);
-            assert_eq!(entity.is_shift_key_down(game), Some(true));
-            game.keys.clear();
-            game.player.as_mut().unwrap().shift_key_down = true;
-            assert_eq!(
-                entity.is_shift_key_down(game),
-                Some(false),
-                "live secondary use, not last tick's body flag"
-            );
-            let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 7);
-            assert_eq!(stale.is_shift_key_down(game), None);
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert!(game.local_player().is_none());
-            assert_eq!(entity.is_shift_key_down(game), None);
-        });
+    fn secondary_use_keeps_server_flags() {
         with_player(|game, player| {
-            game.keys.clear();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 player.is_shift_key_down(game),
                 Some(true),
                 "server keeps its semantic entity flag"
             );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn client_fluid_reads_use_cached_local_and_tracked_bodies() {
-        use super::super::{
-            native_client_session::tests::logged_client,
-            native_entity_refs::tests::with_client_game,
-        };
-        use horizon_core::geometry::Vec3;
-        use horizon_protocol::packets::play;
-
-        with_client_game(|game| {
-            let _server = logged_client(game);
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let local = game.entity(7).unwrap();
-            let host = &*game as &dyn mod_api::ClientHost;
-            assert_eq!(local.fluid_heights(host), Some(Vec::new()));
-            assert_eq!(local.eye_fluid(host), Some(None));
-
-            game.spawn_entity(15, "minecraft:zombie", [2.0, 0.0, 0.0], [0.0; 3]);
-            let zombie = game.entity(15).unwrap();
-            // No water or lava in the world: these answers must come from the last
-            // client fluid update, without a fresh world query or a server body.
-            for (water, lava, eye_water, eye_lava, expected, eye) in [
-                (
-                    0.75,
-                    0.0,
-                    true,
-                    false,
-                    vec![("minecraft:water".to_owned(), 0.75)],
-                    Some("minecraft:water"),
-                ),
-                (
-                    0.0,
-                    0.5,
-                    false,
-                    false,
-                    vec![("minecraft:lava".to_owned(), 0.5)],
-                    None,
-                ),
-                (
-                    0.25,
-                    1.5,
-                    false,
-                    true,
-                    vec![
-                        ("minecraft:lava".to_owned(), 1.5),
-                        ("minecraft:water".to_owned(), 0.25),
-                    ],
-                    Some("minecraft:lava"),
-                ),
-                (0.0, 0.0, false, false, Vec::new(), None),
-            ] {
-                let fluids = &mut game.remote_entities.iter_mut().find(|m| m.id == 15).unwrap().fluids;
-                fluids.water = water;
-                fluids.lava = lava;
-                fluids.in_water = water > 0.0;
-                fluids.in_lava = lava > 0.0;
-                fluids.eye_in_water = eye_water;
-                fluids.eye_in_lava = eye_lava;
-                let host = &*game as &dyn mod_api::ClientHost;
-                assert_eq!(zombie.fluid_heights(host), Some(expected));
-                assert_eq!(zombie.eye_fluid(host), Some(eye.map(str::to_owned)));
-            }
-            game.spawn_entity(16, "minecraft:armor_stand", [2.0, 0.0, 0.0], [0.0; 3]);
-            let stand = game.entity(16).unwrap();
-            let host = &*game as &dyn mod_api::ClientHost;
-            assert_eq!(stand.fluid_heights(host), None);
-            assert_eq!(stand.eye_fluid(host), None);
-            let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 15);
-            assert_eq!(stale.fluid_heights(host), None);
-            assert_eq!(stale.eye_fluid(host), None);
-            game.handle_packet(play::Clientbound::RemoveEntities(play::RemoveEntities {
-                ids: vec![15],
-            }))
-            .unwrap();
-            assert_eq!(
-                zombie.fluid_heights(&*game as &dyn mod_api::ClientHost),
-                None
-            );
-            assert_eq!(zombie.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(
-                local.fluid_heights(&*game as &dyn mod_api::ClientHost),
-                None
-            );
-            assert_eq!(local.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
         });
     }
 

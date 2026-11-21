@@ -81,32 +81,6 @@ impl Game<'_> {
         self.agent_last = Some(std::time::Instant::now());
     }
 
-    /// The AI Agent page's lines: the state, then where agents connect.
-    pub(super) fn agent_status_lines(&self) -> Vec<String> {
-        let server = self
-            .control
-            .as_ref()
-            .filter(|c| !c.path().as_os_str().is_empty())
-            .map(|s| Socket {
-                clients: s.clients(),
-                name: s
-                    .path()
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-            });
-        let mut lines = status_lines(
-            server,
-            self.agent_last.map(|t| t.elapsed().as_secs()),
-            self.options.control.is_some() && !self.agent_control_on,
-        );
-        if let Some(line) = self.repro.agent_line(self.input_trace.events()) {
-            lines.push(line);
-        }
-        lines
-    }
-
     /// What Copy Connection Details puts on the clipboard: the socket, a horizon-ctl line to try,
     /// and an MCP client's config for this game.
     pub(super) fn agent_details(&self) -> String {

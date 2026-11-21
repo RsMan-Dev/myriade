@@ -54,7 +54,6 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         .unwrap();
     assert!(game.run_command("fill 0 63 0 15 63 15 stone"));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     let kind = game.res.mob_types().get("minecraft:wolf").unwrap().clone();

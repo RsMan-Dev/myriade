@@ -28,7 +28,6 @@ impl Game<'_> {
                 HostEvent::Particles { kind, at, spread, speed, count } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
-                        self.particles.send_particles(&options, at, spread, speed, count);
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
                 }

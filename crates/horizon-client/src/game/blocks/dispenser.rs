@@ -11,7 +11,6 @@ use horizon_client::{
     containers::BlockEntity,
     items::{ItemStack, Items},
     mobs::{Mob, Species, equip::equippable, sulfur_cube},
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
 };
 use mod_api::SoundSource;
@@ -408,51 +407,6 @@ impl Game<'_> {
             1050 => self
                 .audio
                 .play("minecraft:block.crafter.fail", Some(c), 1.0, 1.0),
-            // LevelEventHandler.shootParticles: smoke for dispensers, white
-            // smoke out of a crafter's front.
-            2000 | 2010 => {
-                let particle = if id == 2010 {
-                    ParticleType::WhiteSmoke
-                } else {
-                    ParticleType::Smoke
-                };
-                let s = match data {
-                    0 => [0, -1, 0],
-                    1 => [0, 1, 0],
-                    2 => [0, 0, -1],
-                    3 => [0, 0, 1],
-                    4 => [-1, 0, 0],
-                    _ => [1, 0, 0],
-                };
-                for _ in 0..10 {
-                    let r = self.particles.random();
-                    let pow = r.next_double() * 0.2 + 0.01;
-                    let (sx, sy, sz) = (f64::from(s[0]), f64::from(s[1]), f64::from(s[2]));
-                    let p = [
-                        f64::from(pos.0)
-                            + sx * 0.6
-                            + 0.5
-                            + sx * 0.01
-                            + (r.next_double() - 0.5) * sz * 0.5,
-                        f64::from(pos.1)
-                            + sy * 0.6
-                            + 0.5
-                            + sy * 0.01
-                            + (r.next_double() - 0.5) * sy * 0.5,
-                        f64::from(pos.2)
-                            + sz * 0.6
-                            + 0.5
-                            + sz * 0.01
-                            + (r.next_double() - 0.5) * sx * 0.5,
-                    ];
-                    let v = [
-                        sx * pow + r.next_gaussian() * 0.01,
-                        sy * pow + r.next_gaussian() * 0.01,
-                        sz * pow + r.next_gaussian() * 0.01,
-                    ];
-                    self.particles.add(&ParticleOptions::simple(particle), p, v);
-                }
-            }
             _ => {}
         }
     }
@@ -1566,9 +1520,6 @@ impl Game<'_> {
         } else {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         };
-        if !self.boat_models.has(&wood, chest) {
-            return (self.dispense_default_in_level(pos, facing, stack), CLICK);
-        }
         let at = [x, y + y_offset, z];
         let mut template = super::boats::Boat::new(0, wood.as_str().into(), Vec3::new(at[0], at[1], at[2]), 0.0);
         if chest {
@@ -2675,15 +2626,14 @@ impl Game<'_> {
             return Ok((self.dispense_default_in_level(pos, facing, stack), CLICK));
         }
         // The server picks the splash positions with the level random.
+        // sendParticles vanilla : envoi aux joueurs à rebrancher
         for _ in 0..5 {
             let r = &mut self.world.random;
-            let p = [
+            let _splash = [
                 f64::from(pos.0) + r.next_double(),
                 f64::from(pos.1 + 1),
                 f64::from(pos.2) + r.next_double(),
             ];
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Splash), p, [0.0; 3]);
         }
         self.audio.play(
             "minecraft:item.bottle.empty",

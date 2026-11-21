@@ -136,63 +136,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn block_entity_on_load_client_instance_reads_received_fields() {
-        use crate::game::native_entity_refs::tests::with_client_game;
-        use horizon_client::level_loading::Reason;
-        use horizon_protocol::packets::play::SpawnInfo;
-        let log = Log::default();
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new("test", Box::new(User(log.clone())))].into(),
-            || {
-                with_client_game(|game| {
-                    mod_api::__private::resolve_block_entity_types(["test:holder"], |_| Some(()))
-                        .unwrap();
-                    game.native_lifecycle =
-                        crate::game::native_lifecycle::NativeLifecycle::default();
-                    let (client, _server) = horizon_protocol::connection::Pipe::pair();
-                    game.connect_local(client, "OnLoadTest").unwrap();
-                    let spawn = SpawnInfo {
-                        dimension_type: 0,
-                        dimension: "minecraft:overworld".into(),
-                        seed: 0,
-                        game_type: 1,
-                        previous_game_type: None,
-                        debug: false,
-                        flat: true,
-                        last_death: None,
-                        portal_cooldown: 0,
-                        sea_level: 63,
-                    };
-                    game.enter_remote_dimension(&spawn, false, Reason::Other);
-                    game.remote.as_mut().unwrap().logged_in = true;
-                    game.world
-                        .chunks
-                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    game.world.block_entities.insert((1, 64, 1), holder(0));
-                    let Some(BlockEntity::Mod(entity)) =
-                        game.world.block_entities.get_mut(&(1, 64, 1))
-                    else {
-                        panic!()
-                    };
-                    entity.merge_update_tag(&horizon_core::nbt::Compound::from([(
-                        "count".into(),
-                        horizon_core::nbt::Tag::Int(7),
-                    )]));
-                    game.tick_remote_level_with(|game| {
-                        game.fire_pending_block_entity_loads();
-                        Ok(())
-                    })
-                    .unwrap();
-                    assert_eq!(*log.lock().unwrap(), [(1, 7)]);
-                    game.fire_pending_block_entity_loads();
-                    assert_eq!(*log.lock().unwrap(), [(1, 7)]);
-                });
-            },
-        );
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn block_entity_on_load_without_listener_preserves_data_and_never_queues() {
         mod_platform::testing::with_mods(vec![].into(), || {
             with_game(|game| {

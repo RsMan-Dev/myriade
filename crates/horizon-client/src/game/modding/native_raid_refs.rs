@@ -208,7 +208,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use horizon_client::mobs::{Mob, raider};
     use horizon_core::geometry::Vec3;
@@ -513,12 +513,6 @@ mod tests {
             assert_eq!(game.raid_status(RaidRef::new(parked, raid.id())), None);
             assert_eq!(game.level_raid(level, raid.id() + 7), None);
             assert_eq!(game.raid_status(raid), Some(RaidStatus::Ongoing));
-
-            game.options.execution_role = ExecutionRole::Client;
-            assert_eq!(game.raid_center(raid), None);
-            assert_eq!(game.level_raid_at(level, [10, 70, 10]), None);
-            assert_eq!(game.level_raids(level), None);
-            assert!(!game.raid_stop(raid));
         });
     }
 }

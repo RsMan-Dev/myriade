@@ -14,8 +14,6 @@ use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
 use crate::ecs_bridge::cart_variants::CartAttacker;
 use horizon_ecs_proto::cart_variants::HitResult;
 use horizon_client::actions::Action;
-use horizon_client::entity_rules::EntityRules;
-use horizon_client::mobs::seen_grid::SeenGrid;
 use horizon_client::{
     blocks::Fluid,
     containers::BlockEntity,
@@ -24,13 +22,10 @@ use horizon_client::{
     mobs::{Species, Who, anim::Poses, riders},
     particles::{ParticleOptions, ParticleType},
     random_source,
-    scoreboard::pushable_by,
     sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3, trig},
-    position::BlockPos,
-    random::RandomSource,
 };
 use horizon_world::registry::BlockStateId;
 #[cfg(test)]
@@ -797,52 +792,6 @@ impl Game<'_> {
         let tint = |index: i32| tables.default_tint(state, index, grass);
         self.tinted_block_model_vertices(state, seed, m, |_| light, diffuse, tint, out);
     }
-    /// `block_model_vertices` with each face multiplied by `tint` of its
-    /// tint index (RGB, `None` for untinted faces) and lit by `light` of
-    /// each quad.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn tinted_block_model_vertices(
-        &self,
-        state: BlockStateId,
-        seed: i64,
-        m: glam::Mat4,
-        light: impl Fn(&horizon_assets::bake::ModelQuad) -> u32,
-        diffuse: bool,
-        tint: impl Fn(i32) -> Option<u32>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Ok(models) = self.pack.render.model_catalog.collect_seeded(state, seed) else {
-            return;
-        };
-        let models = models.into_iter().map(|(_, model)| model);
-        self.baked_model_vertices(models, m, light, diffuse, tint, out);
-    }
-    /// `tinted_block_model_vertices` for baked models given as they are (a
-    /// state's, or a standalone model).
-    pub(super) fn baked_model_vertices<'m>(
-        &self,
-        models: impl IntoIterator<Item = &'m horizon_client::models::catalog::BakedModel>,
-        m: glam::Mat4,
-        light: impl Fn(&horizon_assets::bake::ModelQuad) -> u32,
-        diffuse: bool,
-        tint: impl Fn(i32) -> Option<u32>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let faces = models.into_iter().flat_map(|model| {
-            model.faces.iter().filter_map(|face| {
-                let sprite = self
-                    .pack
-                    .layer_names
-                    .get(&face.layer)
-                    .and_then(|name| self.gui.atlas.sprites.get(name))?;
-                Some((
-                    PreparedModelFace::new(&face.quad, *sprite),
-                    light(&face.quad),
-                ))
-            })
-        });
-        emit_model_faces(faces, m, diffuse, tint, out);
-    }
 
     /// The block the cart shows: `None` for air (`AbstractMinecartRenderer`
     /// draws and stretches its culling box only for a non-air state).
@@ -884,222 +833,6 @@ impl Game<'_> {
             // MinecartSpawner.getDefaultDisplayBlockState.
             CartKind::Spawner => registry.default_state("minecraft:spawner"),
         }
-    }
-    /// `AbstractMinecartRenderer` (old render): on the rail between the
-    /// front and back points, pitched on slopes, with the display block.
-    pub(in crate::game) fn cart_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let a = alpha as f32;
-        let Some(uv) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/minecart/minecart")
-            .map(|r| [r.u0, r.v0, r.u1, r.v1])
-        else {
-            return;
-        };
-        // Entity.shouldRenderAtSqrDistance: 64 times the bounding box's mean
-        // edge, scaled by the view scale.
-        let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
-        for c in &self.carts {
-            let Some(model) = self.cart_models.models.get(&c.kind) else {
-                continue;
-            };
-            let lerp = self.remote_minecart_lerp(c.id, a);
-            let new_render = self.minecart_improvements() || lerp.is_some();
-            let (x, y, z) = if let Some((p, _, _)) = lerp {
-                (p[0], p[1], p[2])
-            } else {
-                (
-                    c.previous.x + (c.position.x - c.previous.x) * alpha,
-                    c.previous.y + (c.position.y - c.previous.y) * alpha,
-                    c.previous.z + (c.position.z - c.previous.z) * alpha,
-                )
-            };
-            // LevelExtractor.isEntityVisible: the cart the player rides always draws.
-            let mut shown = None;
-            let mut sight = super::entity_culling::Sight {
-                camera: true,
-                rays: false,
-            };
-            if self.riding != Some(c.id) {
-                let d = glam::DVec3::new(c.position.x, c.position.y, c.position.z) - camera;
-                if d.length_squared() >= range * range {
-                    continue;
-                }
-                // Looked up once, past the distance cut: the cull and the draw both use it.
-                shown = Some(self.display_state(c));
-                // EntityRenderer.shouldRender: the interpolated box grown by 0.5;
-                // AbstractMinecartRenderer.getBoundingBoxForCulling stretches it
-                // up by the display block's offset.
-                let top = HEIGHT
-                    + if shown.flatten().is_none() {
-                        0.0
-                    } else {
-                        display_offset(c) * 0.75 / 16.0
-                    };
-                let p = glam::DVec3::new(x, y, z) - camera;
-                let lo = p - glam::DVec3::new(WIDTH / 2.0 + 0.5, 0.5, WIDTH / 2.0 + 0.5);
-                let hi = p + glam::DVec3::new(WIDTH / 2.0 + 0.5, top + 0.5, WIDTH / 2.0 + 0.5);
-                match self.sight(lo.as_vec3(), hi.as_vec3()) {
-                    Some(seen) => sight = seen,
-                    None => continue,
-                }
-            }
-            let mut yaw =
-                c.previous_yaw + ((c.yaw - c.previous_yaw + 180.0).rem_euclid(360.0) - 180.0) * a;
-            let mut pitch = 0.0f32;
-            let mut offset = glam::DVec3::ZERO;
-            if new_render {
-                (yaw, pitch) = lerp.map_or((c.yaw, c.pitch), |(_, yaw, pitch)| (yaw, pitch));
-            } else if let Some(on) = self.rail_pos(Some(c.id), x, y, z) {
-                // getPosOffs(..., 0.3F): the float widened.
-                let half = f64::from(0.3_f32);
-                let front = self.rail_pos_offs(Some(c.id), x, y, z, half).unwrap_or(on);
-                let back = self.rail_pos_offs(Some(c.id), x, y, z, -half).unwrap_or(on);
-                offset = glam::DVec3::new(on[0] - x, (front[1] + back[1]) / 2.0 - y, on[2] - z);
-                let d =
-                    glam::DVec3::new(back[0] - front[0], back[1] - front[1], back[2] - front[2]);
-                if d.length() != 0.0 {
-                    let d = d.normalize();
-                    yaw = d.z.atan2(d.x).to_degrees() as f32;
-                    pitch = (d.y.atan() * 73.0) as f32;
-                }
-            }
-            let render_position = Vec3::new(x + offset.x, y + offset.y, z + offset.z);
-            let has_display = shown.as_ref().is_some_and(Option::is_some)
-                || (shown.is_none() && self.display_state(c).is_some());
-            let culling = self.sighted_decision(sight, || {
-                self.entity_cull_decision_in_bounds(
-                    c,
-                    cart_render_bounds(render_position, display_offset(c), has_display),
-                )
-            });
-            if culling.hides_entity() {
-                continue;
-            }
-            let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(c.id));
-            // The per-entity jitter (offsetSeed) that keeps stacked carts from z-fighting.
-            let seed = i64::from(c.id).wrapping_mul(493_286_711);
-            let seed = seed
-                .wrapping_mul(seed)
-                .wrapping_mul(4_392_167_121)
-                .wrapping_add(seed.wrapping_mul(98_761));
-            let jitter = |shift: i64| (((seed >> shift & 7) as f32 + 0.5) / 8.0 - 0.5) * 0.004;
-            let p = glam::DVec3::new(x, y, z) + offset - camera;
-            let jittered = p.as_vec3() + glam::Vec3::new(jitter(16), jitter(20), jitter(24));
-            let mut base = if new_render {
-                // AbstractMinecartRenderer.newRender translates the model
-                // after rotating, so the seat follows the pitched cart.
-                glam::Mat4::from_translation(jittered)
-                    * glam::Mat4::from_rotation_y(yaw.to_radians())
-                    * glam::Mat4::from_rotation_z((-pitch).to_radians())
-                    * glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.375, 0.0))
-            } else {
-                glam::Mat4::from_translation(jittered + glam::Vec3::new(0.0, 0.375, 0.0))
-                    * glam::Mat4::from_rotation_y((180.0 - yaw).to_radians())
-                    * glam::Mat4::from_rotation_z((-pitch).to_radians())
-            };
-            let hurt = c.hurt_time as f32 - a;
-            if hurt > 0.0 {
-                let damage = (c.damage - a).max(0.0);
-                base *= glam::Mat4::from_rotation_x(
-                    (hurt.sin() * hurt * damage / 10.0 * c.hurt_dir as f32).to_radians(),
-                );
-            }
-            let l = self.world.light(
-                c.position.x.floor() as i32,
-                (c.position.y + 0.35).floor() as i32,
-                c.position.z.floor() as i32,
-            );
-            let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            if let Some(state) = shown.unwrap_or_else(|| self.display_state(c)) {
-                let display = base
-                    * glam::Mat4::from_scale(glam::Vec3::splat(0.75))
-                    * glam::Mat4::from_translation(glam::Vec3::new(
-                        -0.5,
-                        (display_offset(c) as f32 - 8.0) / 16.0,
-                        0.5,
-                    ))
-                    * glam::Mat4::from_rotation_y(90f32.to_radians());
-                if c.kind == CartKind::Chest {
-                    self.special_block_model(state, display, l, out);
-                } else {
-                    // TNT minecarts flash white as the fuse runs out (TntMinecartRenderer).
-                    let swell = if c.kind == CartKind::Tnt && c.fuse > -1 {
-                        let fuse = c.fuse as f32 - a + 1.0;
-                        if fuse < 10.0 {
-                            let g = (1.0 - fuse / 10.0).clamp(0.0, 1.0);
-                            1.0 + g * g * g * g * 0.3
-                        } else {
-                            1.0
-                        }
-                    } else {
-                        1.0
-                    };
-                    let m = display
-                        * glam::Mat4::from_translation(glam::Vec3::splat(0.5))
-                        * glam::Mat4::from_scale(glam::Vec3::splat(swell))
-                        * glam::Mat4::from_translation(glam::Vec3::splat(-0.5));
-                    let flash = c.kind == CartKind::Tnt && c.fuse > -1 && (c.fuse / 5) % 2 == 0;
-                    let start = out.len();
-                    self.block_model_vertices(state, 0, m, packed, false, out);
-                    if flash {
-                        // submitWhiteSolidBlock: OverlayTexture.u(1.0) on the cart's own light.
-                        for v in &mut out[start..] {
-                            v.layer = 5;
-                        }
-                    }
-                }
-            }
-            let m = base * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-            let poses = Poses::new(model);
-            horizon_client::mobs::render::draw(model, m, &poses, uv, 0xFFFF_FFFF, packed, 0, out);
-            self.finish_lit_entity(culling, c, out, entity_start);
-        }
-    }
-    /// The model of a block drawn by its block-entity renderer, as a chest
-    /// minecart shows its chest and a block display its special block.
-    pub(super) fn special_block_model(
-        &self,
-        state: BlockStateId,
-        m: glam::Mat4,
-        light: u8,
-        out: &mut Vec<Vertex>,
-    ) {
-        let scene = horizon_client::block_entity_render::Scene {
-            camera: glam::DVec3::ZERO,
-            spyglass_outline: self.camera_type.is_first_person() && self.scoping(),
-            orientation: glam::Quat::IDENTITY,
-            anim: &|_| horizon_client::block_entity_render::BlockAnim::default(),
-            texts: None,
-            partial: 0.0,
-            game_time: self.world.game_time,
-            max_y: self.world.shape.max_y() - 1,
-            world: &self.world,
-            sprites: &self.gui.atlas.sprites,
-            emissive: &self.gui.atlas.emissive,
-            translucent_sprites: &self.gui.atlas.translucent,
-            atlas_revision: self.gui.atlas.revision,
-            nether: self.nether_lighting(),
-            lid: &|_: [i32; 3]| 0.0,
-            sign: &|_| None,
-            banner: &|_| Vec::new(),
-            skull: &|_| None,
-            glyph: &|c| self.gui.atlas.glyph_cell(c),
-            glyphs: self.gui.atlas.font.epoch(),
-            font: Some(&self.gui.atlas.font),
-            dynamic_visible: None,
-        };
-        self.res
-            .block_entity_render()
-            .render_state(&scene, state.0, m, light, out);
     }
 }
 

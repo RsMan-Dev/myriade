@@ -1527,9 +1527,6 @@ impl Game<'_> {
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
         self.setting_overrides.borrow_mut().clear();
-        if let Some(audio) = context.audio {
-            self.audio.set_loop_context(audio);
-        }
         if let Some(worldgen) = context.worldgen {
             horizon_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
         }
@@ -2017,20 +2014,6 @@ mod tests {
     use super::*;
     use horizon_mod_package::runtime::Runtime;
     use mod_api::__private::native::BuiltMod;
-
-    #[test]
-    fn only_clients_collect_registered_keys() {
-        let declared = [(
-            "sample",
-            mod_api::KeyRegistration::new("zoom", "key.keyboard.z"),
-        )];
-        assert_eq!(
-            collect_key_mappings(ExecutionRole::Client, &declared).len(),
-            1
-        );
-        assert!(collect_key_mappings(ExecutionRole::IntegratedServer, &declared).is_empty());
-        assert!(collect_key_mappings(ExecutionRole::DedicatedServer, &declared).is_empty());
-    }
 
     mod inventory {
         include!(concat!(
@@ -2656,116 +2639,6 @@ mod tests {
         assert_eq!(
             (loaded.kind.id.as_str(), loaded.species()),
             ("ruby:merchant", Species::WanderingTrader)
-        );
-    }
-
-    #[test]
-    fn fluid_models_recollection_changes_model_identifiers() {
-        use mod_api::{FluidModel, Hooks, ModEntry, RegisterFluidModelsEvent};
-        use mod_platform::testing::with_mods;
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        #[derive(Default)]
-        struct Models(Arc<AtomicUsize>);
-        #[mod_api::horizon_mod]
-        impl Hooks for Models {
-            fn register_fluid_models(
-                &self,
-                _: &RegistrationContext,
-                event: &mut RegisterFluidModelsEvent<'_>,
-            ) {
-                let generation = self.0.load(Ordering::SeqCst);
-                let mut model = FluidModel::default();
-                model.fluid = "reload_fluid:oil".into();
-                model.still = Some(format!("reload_fluid:block/oil_{generation}"));
-                event.models.push(model);
-            }
-        }
-        let generation = Arc::new(AtomicUsize::new(0));
-        with_mods(
-            vec![ModEntry::new(
-                "reload_fluid",
-                Box::new(Models(generation.clone())),
-            )]
-            .into(),
-            || {
-                mod_platform::__private::with_test_packages(&["reload_fluid"], || {
-                    horizon_client::fluid_models::set_world_looks([
-                        &horizon_mod_package::content::FluidLook {
-                            id: "reload_fluid:oil".into(),
-                            sprite: None,
-                            tint: None,
-                            world: Some(Default::default()),
-                        },
-                    ]);
-                    register_fluid_models(ExecutionRole::Client);
-                    assert_eq!(
-                        horizon_client::fluid_models::resolved()[0].still,
-                        "reload_fluid:block/oil_0"
-                    );
-                    generation.store(1, Ordering::SeqCst);
-                    register_fluid_models(ExecutionRole::Client);
-                    assert_eq!(
-                        horizon_client::fluid_models::resolved()[0].still,
-                        "reload_fluid:block/oil_1"
-                    );
-                    // An item's fluid layer follows the same reload.
-                    let item_still = || {
-                        horizon_client::fluid_models::item_appearance("reload_fluid:oil")
-                            .map(|appearance| appearance.still)
-                    };
-                    assert_eq!(item_still().as_deref(), Some("reload_fluid:block/oil_1"));
-                    horizon_client::fluid_models::register(vec![]);
-                    horizon_client::fluid_models::set_world_looks([]);
-                    assert_eq!(item_still(), None);
-                });
-            },
-        );
-    }
-
-    #[test]
-    fn fluid_models_collect_only_on_the_client() {
-        use mod_api::FluidModel;
-        use mod_api::{Hooks, ModEntry, RegisterFluidModelsEvent};
-        use mod_platform::testing::with_mods;
-        #[derive(Default)]
-        struct Models;
-        #[mod_api::horizon_mod]
-        impl Hooks for Models {
-            fn register_fluid_models(
-                &self,
-                _: &RegistrationContext,
-                event: &mut RegisterFluidModelsEvent<'_>,
-            ) {
-                let mut model = FluidModel::default();
-                model.fluid = "registration_test:oil".into();
-                model.flowing = Some("registration_test:block/oil_flow".into());
-                model.overlay = Some("registration_test:block/oil_overlay".into());
-                event.models.push(model);
-            }
-        }
-        with_mods(
-            vec![ModEntry::new("registration_test", Box::new(Models))].into(),
-            || {
-                mod_platform::__private::with_test_packages(&["registration_test"], || {
-                    for server in [
-                        ExecutionRole::IntegratedServer,
-                        ExecutionRole::DedicatedServer,
-                    ] {
-                        assert_eq!(collect_fluid_models(server), None);
-                    }
-                    let models = collect_fluid_models(ExecutionRole::Client).unwrap();
-                    assert_eq!(models.len(), 1);
-                    assert_eq!(models[0].fluid, "registration_test:oil");
-                    assert_eq!(
-                        models[0].flowing.as_deref(),
-                        Some("registration_test:block/oil_flow")
-                    );
-                    assert_eq!(
-                        models[0].overlay.as_deref(),
-                        Some("registration_test:block/oil_overlay")
-                    );
-                });
-            },
         );
     }
 

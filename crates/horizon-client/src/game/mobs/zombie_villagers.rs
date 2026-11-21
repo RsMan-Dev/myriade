@@ -35,17 +35,6 @@ fn infects(difficulty: Difficulty, coin: impl FnOnce() -> bool) -> bool {
 }
 
 impl Game<'_> {
-    /// `ZombieVillager.handleEntityEvent(16)`: only the client plays the cure sound.
-    pub(super) fn zombie_villager_cure_sound(&mut self, id: u32) {
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
-            && let Some(horizon_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
-                zombie_villager::cure_sound(m)
-        {
-            self.audio
-                .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
-        }
-    }
-
     /// `Zombie.killedEntity`: a villager killed by a zombie may rise as a
     /// zombie villager keeping its profession, trades and gossip.
     pub(super) fn zombie_killed(&mut self, killer: u32, victim: u32) {

@@ -35,13 +35,6 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn container_layout(
-        &self,
-        batch: &horizon_client::hud::HudBatch,
-    ) -> ContainerLayout {
-        self.build_container_layout(batch, self.container_layout_inputs(batch))
-    }
-
     pub(super) fn build_container_layout(
         &self,
         batch: &horizon_client::hud::HudBatch,
@@ -73,84 +66,4 @@ impl Game<'_> {
         inputs
     }
 
-    /// The open container screen's layout from the game's state: the panel it
-    /// draws, the book and effect panels beside it, the creative tab rows and
-    /// every slot's hover box. The build calls it when it makes the layout;
-    /// nothing else does.
-    pub(super) fn container_layout_inputs(
-        &self,
-        batch: &horizon_client::hud::HudBatch,
-    ) -> ContainerLayout {
-        let image = self.container_image_parts(batch);
-        let origin = self.inventory_origin_unbuilt(batch);
-        // A title over the inventory draws no book or effects of its own.
-        let covered = self.screen == Screen::Inventory && self.title.is_some();
-        let book = (!covered).then(|| self.recipe_book_rect(batch)).flatten();
-        let shows_effects = !covered
-            && match self.screen {
-                Screen::Creative => true,
-                Screen::Inventory => {
-                    self.container.is_none() && self.craft_size == 2 && !self.mount_active()
-                }
-                _ => false,
-            };
-        let space = Self::effects_space(batch, [origin.0, origin.1], image[2]);
-        let effects_layout = if shows_effects {
-            self.inventory_effects_layout(&space, image)
-        } else {
-            EffectsLayout::vanilla(space.available())
-        };
-        let tabs = (self.screen == Screen::Creative).then(|| {
-            [
-                [
-                    image[0],
-                    image[1] - Creative::TAB_ROW_DEPTH,
-                    image[2],
-                    Creative::TAB_ROW_DEPTH,
-                ],
-                [
-                    image[0],
-                    image[1] + image[3],
-                    image[2],
-                    Creative::TAB_ROW_DEPTH,
-                ],
-            ]
-        });
-        ContainerLayout {
-            slot_inputs: SlotInputs {
-                count: self.slot_count(),
-                craft_size: self.craft_size,
-                creative_inventory: self.creative_inventory_open(),
-                creative_tab: self.creative_tab_open(),
-                station: self
-                    .station
-                    .as_ref()
-                    .map(|s| (std::mem::discriminant(&s.kind), s.inputs.len())),
-                container: self.container_kind().map(std::mem::discriminant),
-                machine: self.machine_layout_selector(),
-                crafter: self.crafter_open(),
-                mount: self.mount_layout_inputs(),
-                rows: self.chest_rows(),
-                native: self.native_slot_inputs(),
-            },
-            image,
-            origin,
-            book,
-            effects: None,
-            shows_effects,
-            effects_revision: {
-                use std::hash::{Hash, Hasher};
-                let mut hash = std::collections::hash_map::DefaultHasher::new();
-                for effect in &self.potions.effects.list {
-                    effect.id.hash(&mut hash);
-                    effect.duration.hash(&mut hash);
-                    effect.amplifier.hash(&mut hash);
-                }
-                hash.finish()
-            },
-            effects_layout,
-            tabs,
-            slots: Vec::new(),
-        }
-    }
 }

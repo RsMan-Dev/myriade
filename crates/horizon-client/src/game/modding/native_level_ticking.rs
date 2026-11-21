@@ -100,8 +100,6 @@ mod tests {
             prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             game.tickets.update(None);
             assert_reads(game, level, [0, 64, 0], Some(true));
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_reads(game, level, [0, 64, 0], None);
         });
     }
 }

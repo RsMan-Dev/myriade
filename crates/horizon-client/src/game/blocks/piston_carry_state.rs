@@ -101,9 +101,6 @@ impl Game<'_> {
                     for at in [from, to] {
                         let p = [at.0, at.1, at.2];
                         self.be_anims.remove_position(p);
-                        if let Some(renderer) = self.renderer.as_mut() {
-                            renderer.invalidate_block_entity_position(p);
-                        }
                         self.be_anims.present_revision = None;
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
@@ -112,16 +109,15 @@ impl Game<'_> {
                         self.test_highlights.remove(&at);
                     }
                     self.mod_container_viewers.retain(|(_, at), _| *at != from);
-                    if self.jukebox_sounds.contains_key(&from)
-                        || self
-                            .world
-                            .block_entities
-                            .carried(&to)
-                            .map(|c| &c.entity)
-                            .or_else(|| self.world.block_entities.get(&to))
-                            .is_some_and(|e| {
-                                matches!(e, horizon_client::containers::BlockEntity::Jukebox(_))
-                            })
+                    if self
+                        .world
+                        .block_entities
+                        .carried(&to)
+                        .map(|c| &c.entity)
+                        .or_else(|| self.world.block_entities.get(&to))
+                        .is_some_and(|e| {
+                            matches!(e, horizon_client::containers::BlockEntity::Jukebox(_))
+                        })
                     {
                         self.jukebox_removed([from.0, from.1, from.2]);
                     }

@@ -1647,14 +1647,6 @@ impl Game<'_> {
         // `ServerExplosion.isSmall` also covers an explosion that keeps blocks.
         let block_count = targets.len();
         let small = radius < 2.0 || interaction == BlockInteraction::Keep;
-        let emitter = effects.emitter(small);
-        self.particles.explosion(
-            center,
-            emitter,
-            block_count,
-            radius,
-            &effects.block_particles,
-        );
         self.lan_explode(center, small, radius, block_count, pushed, effects);
         Ok(())
     }

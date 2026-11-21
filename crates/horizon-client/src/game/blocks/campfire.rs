@@ -5,7 +5,7 @@
 use super::Game;
 use horizon_assets::item_model::DisplayContext;
 use horizon_client::{
-    Result, actions::Action, block_entities::Pos, block_entity_render::vertex_light,
+    Result, block_entities::Pos, block_entity_render::vertex_light,
     containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
 };
 use horizon_core::position::BlockPos;
@@ -32,7 +32,7 @@ impl Game<'_> {
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
         // runs instead.
-        if self.keys.held(Action::Sneak) {
+        if self.sneaking {
             return Ok(None);
         }
         let state = self.world.block(pos[0], pos[1], pos[2]);

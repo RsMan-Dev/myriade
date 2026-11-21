@@ -5,10 +5,7 @@ use super::*;
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
     pub(super) fn item_enchantments(&self) -> &Arc<horizon_client::enchant::Enchantments> {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
-            None => &self.stations().enchantments,
-        }
+        &self.stations().enchantments
     }
 
     pub(super) fn defer_world_entry(&mut self, entry: PendingWorldEntry) -> Result<bool> {
@@ -30,19 +27,6 @@ impl Game<'_> {
             return Ok(Some(entry));
         }
         self.perf.world_opening();
-        if self.title.is_none() {
-            let saves = match std::env::current_dir() {
-                Ok(dir) => dir.join("saves"),
-                Err(error) => {
-                    self.drop_world_entry(entry);
-                    return Err(error.into());
-                }
-            };
-            let title = self
-                .new_title(saves)
-                .with_user(|| self.options.player_name());
-            self.show_title(title);
-        }
         self.displace_pending_replay(mod_api::ReplayError::WorldBusy);
         self.pending_entry = Some(entry);
         log::info!("Horizon: world entry waiting for world resources");
@@ -59,26 +43,16 @@ impl Game<'_> {
             self.displace_pending_replay(mod_api::ReplayError::Unavailable);
             return Err(error);
         }
-        self.poll_world_creation();
         if self.rest_loader.is_some() {
             return Ok(());
         }
-        let on_world_screens = self.title.as_ref().is_some_and(|title| {
-            !matches!(
-                title.mode,
-                horizon_client::title::Mode::Main | horizon_client::title::Mode::Multiplayer(_)
-            )
-        });
         world_loading::preload_world_data(
-            on_world_screens,
+            false,
             &self.options.resources,
             &self.pack.data_changes,
             self.pack.assets.registry,
             &self.res.core.item_data,
         );
-        if std::mem::take(&mut self.pending_pack_reload) {
-            self.reload_packs();
-        }
         match self.pending_entry.take() {
             Some(PendingWorldEntry::Local {
                 folder,
@@ -118,95 +92,6 @@ impl Game<'_> {
             None => {}
         }
         Ok(())
-    }
-
-    /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
-    /// data the create screen describes, on a worker, then open the screen
-    /// (`title.preparing`).
-    pub(super) fn poll_world_creation(&mut self) {
-        let Some(title) = self.title.as_ref() else {
-            return;
-        };
-        if !title.preparing() {
-            return;
-        }
-        if self.creation_job.is_none() {
-            let dir = self.options.resources.join("worldgen");
-            let registry = self.pack.assets.registry;
-            // The chosen packs' worldgen over the game's own:
-            // `applyNewPackConfig` reloads with the new pack config.
-            let overrides = title
-                .creation_packs()
-                .map(|(dir, packs)| {
-                    world_loading::creation_worldgen_overrides(
-                        dir.as_deref(),
-                        &self.options.resources,
-                        &packs,
-                        self.res.biomes(),
-                        &self.pack.additional_data,
-                    )
-                })
-                .unwrap_or_default();
-            let data_source = self.pack.data_changes.clone();
-            let job = horizon_guest_stack::builder()
-                .name("world-creation".into())
-                .spawn(move || {
-                    horizon_client::vanillagen::shared_data_from(
-                        &dir,
-                        &overrides,
-                        registry,
-                        &data_source,
-                    )
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-                });
-            match job {
-                Ok(job) => self.creation_job = Some(job),
-                Err(error) => {
-                    log::warn!("Horizon: world creation worker could not start: {error}");
-                    if let Some(title) = self.title.as_mut() {
-                        title.finish_preparing();
-                        title.failed(format!(
-                            "{}: {error}",
-                            horizon_client::lang::get("createWorld.preparing")
-                        ));
-                    }
-                }
-            }
-            return;
-        }
-        if !self
-            .creation_job
-            .as_ref()
-            .is_none_or(std::thread::JoinHandle::is_finished)
-        {
-            return;
-        }
-        let outcome = self.creation_job.take().and_then(|job| job.join().ok());
-        if let Some(title) = self.title.as_mut() {
-            match outcome {
-                Some(Ok(())) => title.finish_preparing(),
-                // `applyNewPackConfig`'s failure: back out of the read with
-                // the message, the Create screen's options intact.
-                outcome => {
-                    let e = outcome
-                        .and_then(|r| r.err())
-                        .unwrap_or_else(|| "the read never ran".to_owned());
-                    log::warn!("Horizon: preparing world creation failed: {e}");
-                    // Clear the flag first: `failed` sets the error screen
-                    // with Create as its back target, which
-                    // `finish_preparing` would replace with a fresh world.
-                    title.finish_preparing();
-                    title.failed(format!(
-                        "{}: {e}",
-                        horizon_client::lang::get_or(
-                            "createWorld.preparing",
-                            "Preparing for world creation..."
-                        )
-                    ));
-                }
-            }
-        }
     }
 
     pub(super) fn poll_world_rest(&mut self) -> Result<()> {
@@ -670,10 +555,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(super) fn active_enchantment_definitions(&self) -> &horizon_client::enchant::Enchantments {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
-            None => &self.stations().enchantments,
-        }
+        &self.stations().enchantments
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(super) fn load_server_loot(&mut self) {

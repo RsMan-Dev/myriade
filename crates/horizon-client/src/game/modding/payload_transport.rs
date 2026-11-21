@@ -38,19 +38,6 @@ impl Game<'_> {
             .clone();
         self.queue_current_payload(Endpoint::server(sender), id, bytes)
     }
-    pub(super) fn send_payload_to_server(
-        &mut self,
-        id: &PayloadId,
-        bytes: PayloadBytes,
-    ) -> Result<PayloadAccepted, PayloadSendError> {
-        let endpoint = self
-            .remote
-            .as_ref()
-            .ok_or(PayloadSendError::Disconnected)?
-            .session
-            .payload_endpoint();
-        self.queue_current_payload(endpoint, id, bytes)
-    }
     pub(super) fn queue_current_payload(
         &mut self,
         endpoint: Endpoint,

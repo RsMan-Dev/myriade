@@ -15,13 +15,10 @@ pub(super) use horizon_gameplay::boats::*;
 
 use super::{Game, InteractTarget, entity::Entity, entity_culling::at, view_vector};
 use horizon_client::actions::Action;
-use horizon_client::entity_rules::EntityRules;
 use horizon_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions},
     items::ItemStack,
-    mesher::Vertex,
-    mobs::anim::Poses,
     motion::{BubbleColumn, RiddenBoat, bubble_column_at},
 };
 use horizon_core::{
@@ -609,26 +606,6 @@ impl Game<'_> {
     pub(super) fn boat_splash_roll(&mut self, i: usize) -> bool {
         !self.boats[i].under_water() && self.world.random.next_int_bound(100).unwrap_or(1) == 0
     }
-    /// `AbstractBoat.onAboveBubbleColumn`: the client's half after the roll,
-    /// the splash sound and particle at the boat.
-    pub(super) fn boat_bubble_splash(&mut self, i: usize) {
-        use horizon_client::particles::{ParticleOptions, ParticleType};
-        let p = self.boats[i].position;
-        let pitch = 0.8 + 0.4 * self.world.random.next_float();
-        self.audio.play(
-            "minecraft:entity.generic.splash",
-            Some([p.x, p.y, p.z]),
-            1.0,
-            pitch,
-        );
-        let x = p.x + f64::from(self.world.random.next_float());
-        let z = p.z + f64::from(self.world.random.next_float());
-        self.particles.add(
-            &ParticleOptions::simple(ParticleType::Splash),
-            [x, p.y + 0.7, z],
-            [0.0; 3],
-        );
-    }
     /// `AbstractBoat.onAboveBubbleColumn`: on the server (this window
     /// simulates the boat) the column is remembered, the countdown starts and
     /// the splash's game event goes to the listeners (its sound and particle
@@ -644,8 +621,12 @@ impl Game<'_> {
         if !self.boat_splash_roll(i) {
             return;
         }
-        // A window that is its own client hears and sees the splash too.
         let (id, p) = (self.boats[i].id, self.boats[i].position);
+        // `playLocalSound` pitch, then the particle's x and z: the three
+        // `nextFloat()` of `onAboveBubbleColumn` are drawn on the server too.
+        for _ in 0..3 {
+            self.world.random.next_float();
+        }
         // Entity.gameEvent(SPLASH, getControllingPassenger()): the window's
         // own player when it drives the boat.
         let ctx = if self.riding == Some(id) && self.player.is_some() {
@@ -762,9 +743,6 @@ impl Game<'_> {
     /// None when it aims at nothing (PASS) or the spot is taken (FAIL).
     pub(super) fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
         let (wood, chest) = any_boat_wood(&stack.item)?;
-        if !self.boat_models.has(wood, chest) {
-            return None;
-        }
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
             self.next_entity + 1,
@@ -1049,135 +1027,6 @@ impl Game<'_> {
         self.unpack_loot(super::container_loot::LootTarget::Boat(id), player);
     }
 
-    /// AbstractBoatRenderer.
-    pub(super) fn boat_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
-        let a = alpha as f32;
-        let range = super::entity_culling::default_range(
-            glam::DVec3::new(WIDTH, HEIGHT, WIDTH),
-            self.view_scale(),
-        );
-        for b in &self.boats {
-            // LevelExtractor: the camera entity is not drawn from its own eyes.
-            if self.hides_as_camera(b.id) {
-                continue;
-            }
-            // EntityRenderer.shouldRender.
-            let (previous, position) = (at(b.previous), at(b.position));
-            let Some(sight) = self.standing_entity_sight(
-                camera, previous, position, alpha, WIDTH, HEIGHT, range, 0.0,
-            ) else {
-                continue;
-            };
-            let culling = self.sighted_decision(sight, || self.entity_cull_decision(b, alpha));
-            if culling.hides_entity() {
-                continue;
-            }
-            let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(b.id));
-            let models = if b.chest {
-                &self.boat_models.chest_models
-            } else {
-                &self.boat_models.models
-            };
-            let Some(model) = models.get(&*b.wood) else {
-                continue;
-            };
-            let folder = if b.chest { "chest_boat" } else { "boat" };
-            let Some(uv) = self
-                .gui
-                .atlas
-                .sprites
-                .get(&format!("entity/{folder}/{}", b.wood))
-                .map(|r| [r.u0, r.v0, r.u1, r.v1])
-            else {
-                continue;
-            };
-            let p = glam::DVec3::new(
-                b.previous.x + (b.position.x - b.previous.x) * alpha,
-                b.previous.y + (b.position.y - b.previous.y) * alpha,
-                b.previous.z + (b.position.z - b.previous.z) * alpha,
-            ) - camera;
-            let yaw = b.previous_yaw + (b.yaw - b.previous_yaw) * a;
-            let hurt = b.hurt_time as f32 - a;
-            let damage = (b.damage - a).max(0.0);
-            let mut base =
-                glam::Mat4::from_translation(p.as_vec3() + glam::Vec3::new(0.0, 0.375, 0.0))
-                    * glam::Mat4::from_rotation_y((180.0 - yaw).to_radians());
-            if hurt > 0.0 {
-                base *= glam::Mat4::from_rotation_x(
-                    (hurt.sin() * hurt * damage / 10.0 * b.hurt_dir as f32).to_radians(),
-                );
-            }
-            // AbstractBoatRenderer.extractRenderState: bubbleAngle.
-            let wobble = b.bubble_angle(a);
-            // AbstractBoatRenderer.submit: a boat above water wobbles in a
-            // bubble column, about the axis (1, 0, 1).
-            if !b.under_water() && wobble.abs() >= 1.0e-5 {
-                base *= glam::Mat4::from_axis_angle(
-                    glam::Vec3::new(1.0, 0.0, 1.0).normalize(),
-                    wobble * (std::f64::consts::PI / 180.0) as f32,
-                );
-            }
-            base *= glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
-                * glam::Mat4::from_rotation_y(90f32.to_radians());
-            let mut poses = Poses::new(model);
-            // AbstractBoatModel.animatePaddle
-            for (side, name) in [(0usize, "left_paddle"), (1, "right_paddle")] {
-                if !poses.has(name) {
-                    continue;
-                }
-                let t = b.rowing_time(side, a);
-                let lerp = |f: f32, lo: f32, hi: f32| lo + f.clamp(0.0, 1.0) * (hi - lo);
-                let pose = poses.get(name);
-                pose[3] = lerp(((-t).sin() + 1.0) / 2.0, -PI / 3.0, -PI / 12.0);
-                pose[4] = lerp(((-t + 1.0).sin() + 1.0) / 2.0, -PI / 4.0, PI / 4.0);
-                if side == 1 {
-                    pose[4] = PI - pose[4];
-                }
-            }
-            let l = self.world.light(
-                b.position.x.floor() as i32,
-                (b.position.y + 0.3).floor() as i32,
-                b.position.z.floor() as i32,
-            );
-            let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            horizon_client::mobs::render::draw(
-                model,
-                base,
-                &poses,
-                uv,
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-            // BoatRenderer.submitTypeAdditions: the water patch hides the water
-            // inside the hull unless the boat is under water (RaftRenderer has none).
-            if let Some(patch) = self.boat_models.water_patch.as_ref()
-                && &*b.wood != "bamboo"
-                && !matches!(b.status, Status::UnderWater | Status::UnderFlowingWater)
-            {
-                // Depth only, so its texture is never seen; one texel of the white sprite, the
-                // same at every corner (no derivatives, so the base level at any distance), keeps
-                // a shader pack's alpha test from throwing the patch away.
-                let white = (self.gui.atlas.sprites.get("horizon/white")).map_or(uv, |r| {
-                    let (u, v) = ((r.u0 + r.u1) / 2.0, (r.v0 + r.v1) / 2.0);
-                    [u, v, u, v]
-                });
-                horizon_client::mobs::render::draw(
-                    patch,
-                    base,
-                    &Poses::new(patch),
-                    white,
-                    0xFFFF_FFFF,
-                    packed,
-                    horizon_client::gfx::WATER_MASK_OVERLAY,
-                    out,
-                );
-            }
-            self.finish_lit_entity(culling, b, out, entity_start);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1206,13 +1055,6 @@ mod tests {
         }
     }
 
-
-
-
-
-
-
-
 }
 #[cfg(test)]
 mod cobweb_tests {
@@ -1221,6 +1063,5 @@ mod cobweb_tests {
     use horizon_client::chunk::Chunk;
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
-
 
 }

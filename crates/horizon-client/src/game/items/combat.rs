@@ -274,32 +274,18 @@ impl Game<'_> {
         self.combat.attack.clone()
     }
 
-    /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
-    /// (vanilla's eight), moving with it.
-    pub(super) fn drown_particles(&mut self, at: [f64; 3], velocity: [f64; 3], count: i32) {
-        let bubble = ParticleOptions::simple(ParticleType::Bubble);
-        for _ in 0..count {
-            let mut triangle = || {
-                let r = self.particles.random();
-                r.next_double() - r.next_double()
-            };
-            let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
-            self.particles.add(&bubble, p, velocity);
-        }
-    }
     /// `LivingDrownEvent`'s `bubbles` for an entity drowning at `at`: true for
     /// vanilla's eight, which the caller sends as entity event 67 and draws.
     /// Another positive count goes to the players around as that many bubble
     /// particles and is drawn here, since a vanilla client's event 67 always
     /// draws eight; none sends nothing.
-    pub(super) fn drown_bubbles(&mut self, at: [f64; 3], velocity: [f64; 3], bubbles: i32) -> bool {
+    pub(super) fn drown_bubbles(&mut self, at: [f64; 3], _velocity: [f64; 3], bubbles: i32) -> bool {
         if bubbles == 8 {
             return true;
         }
         if bubbles > 0 {
             let bubble = ParticleOptions::simple(ParticleType::Bubble);
             self.lan_level_particles(&bubble, at, [0.5; 3], 0.0, bubbles as u32, None);
-            self.drown_particles(at, velocity, bubbles);
         }
         false
     }

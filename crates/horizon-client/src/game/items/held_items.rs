@@ -108,17 +108,11 @@ impl Game<'_> {
 
     /// Inventory.add: returns the stack that did not fit.
     pub(super) fn add_stack_to_inventory(&mut self, mut stack: ItemStack) -> Option<ItemStack> {
-        let tutorial_item = matches!(
-            self.tutorial.step,
-            tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks
-        )
-        .then(|| stack.clone());
         let max = self
             .res
             .items()
             .get(&stack.item)
             .map_or(64, |i| i.max_stack);
-        let before = stack.count;
         let left = inventory_add(
             &mut self.inventory,
             &mut self.offhand,
@@ -126,9 +120,6 @@ impl Game<'_> {
             max,
             &mut stack,
         );
-        if stack.count < before {
-            self.tutorial_get_item(tutorial_item.as_ref());
-        }
         left.then_some(stack)
     }
 }

@@ -725,14 +725,6 @@ mod tests {
                 before,
                 "nothing was changed"
             );
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            let (client, _server) = horizon_protocol::connection::Pipe::pair();
-            game.connect_local(client, "MenuItemsRefusalTest").unwrap();
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(
-                host.menu_set_items(123, window, one),
-                Err(MenuItemsRefusal::Client)
-            );
         });
     }
 

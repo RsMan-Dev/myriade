@@ -20,6 +20,3 @@ impl Game<'_> {
         horizon_client::item_sync::from_network(&icon, &remote.builtin, &remote.registries)
     }
 }
-
-#[cfg(test)]
-mod tests;

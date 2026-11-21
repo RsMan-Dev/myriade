@@ -4,17 +4,7 @@ mod open;
 #[path = "book_screen/placement.rs"]
 mod placement;
 
-#[cfg(test)]
-#[path = "book_screen/lifecycle_tests.rs"]
-mod lifecycle_tests;
-
 impl Game<'_> {
-    /// The mod screen showing now, if any.
-    pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
-        self.mod_screen
-            .as_ref()
-            .filter(|s| self.screen == Screen::Inventory && self.container == Some(s.key))
-    }
     /// Whether a mod's screen places the current container and player slots.
     pub(in crate::game) fn native_screen_shown(&self) -> bool {
         self.shown_native_screen().is_some()

@@ -138,10 +138,6 @@ pub struct UiResources {
 }
 
 impl Game<'_> {
-    /// A title screen over the current resources and their splash pool.
-    pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
-        Title::new(saves, &self.options.resources, &self.gui.splashes)
-    }
 }
 
 /// Whether the HUD atlas packs the mod image slot (`horizon/modimage`): whenever a client mod is

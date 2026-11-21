@@ -10,58 +10,18 @@ use horizon_client::{
         guest::Guest,
         menu::{SlotBacking, Slots, VEHICLE_KEY_Y},
     },
-    menu::{Input, Kind, Menu},
+    menu::{Kind, Menu},
 };
 use mod_api::__private::game::*;
-use mod_api::{
-    DragKind, EntityRef, MenuClick, MenuRef, MenuSlotBacking, MouseButton, PlayerRef, SwapWith,
-};
+use mod_api::{EntityRef, MenuRef, MenuSlotBacking, PlayerRef};
 
 impl Game<'_> {
-    /// Submit clicks on the local player's live menu through normal prediction
-    /// and `ContainerClick`. Slots use the same menu order as `slot`; `None`
-    /// is outside (-999). All clicks are validated before any prediction or send.
-    /// A drag expands to one complete quick-craft gesture.
-    /// Refuses stale menus, invalid slots/hotbar indices, spectators, non-client hosts,
-    /// the creative inventory screen and empty batches without changing items.
-    /// True means submitted, not accepted by the server: its corrections win.
-    pub(super) fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool {
-        if self.is_logical_server() || self.screen == super::Screen::Creative || self.spectator() {
-            return false;
-        }
-        let Some(name) = self.native_client_menu_name(menu) else {
-            return false;
-        };
-        let Some(ops) = client_click_ops(name, clicks, self.instabuild()) else {
-            return false;
-        };
-        self.remote_menu_ops(&ops)
-    }
-
-    /// Close the local player's open container screen as Escape does
-    /// (`AbstractContainerScreen.onClose`, `LocalPlayer.closeContainer`): the
-    /// server is told (`ContainerClose`) and the screen goes. Refuses stale
-    /// menus, non-client hosts and a menu whose screen is not open, such as
-    /// the inventory menu while playing.
-    pub(super) fn menu_close(&mut self, menu: MenuRef) -> bool {
-        if self.is_logical_server()
-            || self.screen != super::Screen::Inventory
-            || self.native_client_menu_name(menu).is_none()
-        {
-            return false;
-        }
-        self.close_container();
-        self.set_screen(super::Screen::Playing);
-        self.capture(true);
-        true
-    }
-
     /// `ServerPlayer.closeContainer` of a guest's menu: every menu they have open closes through
     /// the path a disconnect and a `stillValid` failure use, then their client is told. Refuses
     /// clients, stale menus, a player swapped in for a turn, and the inventory menu (window 0),
     /// which is never closed.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
-        if !self.is_logical_server() || menu.fields().window == 0 {
+        if menu.fields().window == 0 {
             return false;
         }
         let Some(conn) = self.native_menu_guest(menu).map(|guest| guest.conn) else {
@@ -69,81 +29,6 @@ impl Game<'_> {
         };
         self.guest_close_menus_and_tell(conn);
         true
-    }
-
-    /// Press button `button` of the local player's open menu as a click on
-    /// one of its buttons does (`MultiPlayerGameMode.handleInventoryButtonClick`,
-    /// `ContainerButtonClick`): the server's menu decides what it does
-    /// (`clickMenuButton`, and `menu_button` for a mod's menu). For a client
-    /// mod's own input on a menu's screen where `screen_click` doesn't come,
-    /// such as a key or the wheel; no sound, that is the screen's. Refuses
-    /// stale menus, non-client hosts and the inventory menu, which no server
-    /// opened. True means sent, not that the menu took it.
-    pub(super) fn menu_click_button(&mut self, menu: MenuRef, button: i32) -> bool {
-        !self.is_logical_server()
-            && self.native_client_menu_name(menu).is_some()
-            && self.remote_button_click(button)
-    }
-
-    pub(super) fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>> {
-        if self.screen != super::Screen::Inventory || !self.screen_hooks_open() {
-            return None;
-        }
-        let name = self.native_client_menu_name(menu)?;
-        let renderer = self.renderer.as_ref()?;
-        let batch = super::HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
-        );
-        self.inventory_menu_slot_boxes(name, &batch)
-    }
-
-    fn inventory_menu_slot_boxes(
-        &self,
-        name: &str,
-        batch: &super::HudBatch,
-    ) -> Option<Vec<Option<[f32; 4]>>> {
-        Self::inventory_screen_slot(name, 0)?;
-        if self.book_covers_menu(batch.width) {
-            return None;
-        }
-        let visible = self.slots();
-        let (ox, oy) = self.inventory_origin(batch);
-        Some(
-            (0..)
-                .map_while(|slot| Self::inventory_screen_slot(name, slot))
-                .map(|slot| {
-                    visible.contains(&slot).then(|| {
-                        let (x, y) = self.slot_position(slot);
-                        [ox + x, oy + y, 16.0, 16.0]
-                    })
-                })
-                .collect(),
-        )
-    }
-
-    pub(super) fn native_client_menu_name(&self, menu: MenuRef) -> Option<&str> {
-        let remote = self.remote.as_ref().filter(|remote| remote.logged_in)?;
-        let epoch = self.native_lifecycle.epoch()?;
-        (menu.fields().player.fields().entity.epoch() == epoch
-            && menu.fields().player.fields().entity.id()
-                == u32::try_from(remote.entity_id).ok()?
-            && menu.fields().player.fields().uuid == remote.profile
-            && menu.fields().generation == remote.menu.generation
-            && menu.fields().window == remote.menu.as_ref().map_or(0, |entry| entry.0))
-        .then_some(())?;
-        Some(
-            remote
-                .menu
-                .as_ref()
-                .map_or("inventory", |entry| entry.1.as_str()),
-        )
-    }
-
-    /// The local player in a logged-in client world.
-    pub(super) fn local_player(&self) -> Option<PlayerRef> {
-        let remote = self.remote.as_ref().filter(|remote| remote.logged_in)?;
-        self.player(remote.profile)
     }
 
     fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
@@ -392,68 +277,6 @@ impl Game<'_> {
         Some(self.native_menu_guest(menu)?.carried.clone())
     }
 }
-fn client_click_ops(
-    menu: &str,
-    clicks: &[MenuClick],
-    creative: bool,
-) -> Option<Vec<(Option<usize>, i32, Input)>> {
-    if clicks.is_empty() {
-        return None;
-    }
-    let mapped_slot =
-        |slot| Game::inventory_screen_slot(menu, i32::from(i16::try_from(slot).ok()?));
-    let mut ops = Vec::new();
-    for click in clicks {
-        let op = match click {
-            MenuClick::Pickup { slot, button } => (
-                match slot {
-                    Some(slot) => Some(mapped_slot(*slot)?),
-                    None => None,
-                },
-                match button {
-                    MouseButton::Left => 0,
-                    MouseButton::Right => 1,
-                },
-                Input::Pickup,
-            ),
-            MenuClick::QuickMove { slot } => (Some(mapped_slot(*slot)?), 0, Input::QuickMove),
-            MenuClick::Swap { slot, with } => (
-                Some(mapped_slot(*slot)?),
-                match with {
-                    SwapWith::Hotbar(index) if *index <= 8 => i32::from(*index),
-                    SwapWith::Offhand => 40,
-                    _ => return None,
-                },
-                Input::Swap,
-            ),
-            MenuClick::Clone { slot } if creative => (Some(mapped_slot(*slot)?), 2, Input::Clone),
-            MenuClick::Throw { slot, whole_stack } => (
-                Some(mapped_slot(*slot)?),
-                i32::from(*whole_stack),
-                Input::Throw,
-            ),
-            MenuClick::Drag { kind, slots } => {
-                let mode = match kind {
-                    DragKind::Split => 0,
-                    DragKind::One => 4,
-                    DragKind::Clone if creative => 8,
-                    _ => return None,
-                };
-                ops.push((None, mode, Input::QuickCraft));
-                for slot in slots {
-                    ops.push((Some(mapped_slot(*slot)?), mode + 1, Input::QuickCraft));
-                }
-                ops.push((None, mode + 2, Input::QuickCraft));
-                continue;
-            }
-            MenuClick::PickupAll { slot } => (Some(mapped_slot(*slot)?), 0, Input::PickupAll),
-            _ => return None,
-        };
-        ops.push(op);
-    }
-    Some(ops)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
@@ -465,139 +288,6 @@ mod tests {
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-
-    #[test]
-    #[ignore = "daily"]
-    fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.screen = super::super::Screen::Inventory;
-            let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
-            let boxes = game.inventory_menu_slot_boxes("inventory", &batch).unwrap();
-            assert_eq!(boxes.len(), 46);
-            for (index, expected_slot) in [(0, 200), (9, 9), (36, 0), (45, 504)] {
-                let [x, y, w, h] = boxes[index].unwrap();
-                assert_eq!(
-                    game.slot_at(&batch, x + w / 2.0, y + h / 2.0),
-                    Some(expected_slot)
-                );
-            }
-            assert!(
-                game.inventory_menu_slot_boxes("unsupported", &batch)
-                    .is_none()
-            );
-        });
-    }
-
-    #[test]
-    fn client_click_actions_encode_vanilla_ops() {
-        let actions = [
-            MenuClick::Pickup {
-                slot: Some(36),
-                button: MouseButton::Left,
-            },
-            MenuClick::Pickup {
-                slot: None,
-                button: MouseButton::Right,
-            },
-            MenuClick::QuickMove { slot: 9 },
-            MenuClick::Swap {
-                slot: 9,
-                with: SwapWith::Hotbar(8),
-            },
-            MenuClick::Swap {
-                slot: 9,
-                with: SwapWith::Offhand,
-            },
-            MenuClick::Clone { slot: 9 },
-            MenuClick::Throw {
-                slot: 9,
-                whole_stack: false,
-            },
-            MenuClick::Throw {
-                slot: 9,
-                whole_stack: true,
-            },
-            MenuClick::PickupAll { slot: 9 },
-        ];
-        assert_eq!(
-            client_click_ops("inventory", &actions, true),
-            Some(vec![
-                (Some(0), 0, Input::Pickup),
-                (None, 1, Input::Pickup),
-                (Some(9), 0, Input::QuickMove),
-                (Some(9), 8, Input::Swap),
-                (Some(9), 40, Input::Swap),
-                (Some(9), 2, Input::Clone),
-                (Some(9), 0, Input::Throw),
-                (Some(9), 1, Input::Throw),
-                (Some(9), 0, Input::PickupAll),
-            ])
-        );
-        for (kind, mode, creative) in [
-            (DragKind::Split, 0, false),
-            (DragKind::One, 4, false),
-            (DragKind::Clone, 8, true),
-        ] {
-            assert_eq!(
-                client_click_ops(
-                    "inventory",
-                    &[
-                        MenuClick::Drag {
-                            kind,
-                            slots: vec![36, 9]
-                        },
-                        MenuClick::QuickMove { slot: 9 },
-                    ],
-                    creative
-                ),
-                Some(vec![
-                    (None, mode, Input::QuickCraft),
-                    (Some(0), mode + 1, Input::QuickCraft),
-                    (Some(9), mode + 1, Input::QuickCraft),
-                    (None, mode + 2, Input::QuickCraft),
-                    (Some(9), 0, Input::QuickMove),
-                ])
-            );
-        }
-    }
-
-    #[test]
-    fn client_click_actions_refuse_invalid_batches_before_prediction() {
-        assert!(client_click_ops("inventory", &[], false).is_none());
-        for invalid in [
-            MenuClick::QuickMove { slot: 46 },
-            MenuClick::QuickMove { slot: usize::MAX },
-            MenuClick::Swap {
-                slot: 9,
-                with: SwapWith::Hotbar(9),
-            },
-            MenuClick::Swap {
-                slot: 9,
-                with: SwapWith::Hotbar(u8::MAX),
-            },
-            MenuClick::Clone { slot: 9 },
-            MenuClick::Drag {
-                kind: DragKind::Clone,
-                slots: vec![9],
-            },
-            MenuClick::Drag {
-                kind: DragKind::Split,
-                slots: vec![9, usize::MAX],
-            },
-        ] {
-            assert!(
-                client_click_ops(
-                    "inventory",
-                    &[MenuClick::QuickMove { slot: 9 }, invalid,],
-                    false
-                )
-                .is_none()
-            );
-        }
-        assert!(
-            client_click_ops("unsupported", &[MenuClick::QuickMove { slot: 0 }], true).is_none()
-        );
-    }
 
     fn guest() -> Guest {
         let (tx, _) = std::sync::mpsc::channel();

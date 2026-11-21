@@ -1093,7 +1093,6 @@ impl Game<'_> {
         else {
             return;
         };
-        self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
         self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
     }
 

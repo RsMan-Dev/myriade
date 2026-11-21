@@ -80,10 +80,8 @@ fn setup(game: &mut Game<'_>, probe: &Probe, kind: &str, id: u32) {
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(0.5, 64.0, 2.5), 0.0));
     game.station = None;
-    game.screen = Screen::Playing;
     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 2));
     game.offhand = Some(ItemStack::new("minecraft:paper", 3));
-    game.swing = Default::default();
     game.swings_started = 0;
     game.tick_hit.set(None);
     game.tick_mob = None;

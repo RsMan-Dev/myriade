@@ -1,24 +1,13 @@
 //! `OminousItemSpawner`: the item an ominous trial spawner drops on its
-//! fight. It floats, growing and turning (`OminousItemSpawnerRenderer`), for
-//! 60 to 120 ticks, then falls as an item or is fired straight down as a
-//! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
+//! fight. It floats for 60 to 120 ticks, then falls as an item or is fired
+//! straight down as a projectile (`spawnItem`). Saved with its chunk's
+//! entities (persist.rs).
 use super::Game;
-use horizon_assets::item_model::DisplayContext;
-use horizon_client::{
-    block_entity_render::vertex_light,
-    item_render,
-    items::ItemStack,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
-use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_client::items::ItemStack;
+use horizon_core::geometry::Vec3;
 
 /// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
 const ABOUT_TO_SPAWN: i64 = 36;
-/// `OminousItemSpawnerRenderer`: grows over its first 50 ticks, turning 40
-/// degrees a tick.
-const TICKS_SCALING: f32 = 50.0;
-const ROTATION_SPEED: f32 = 40.0;
 
 pub(super) struct OminousItemSpawner {
     /// Entity-owned registration metadata; content clones are detached.
@@ -163,9 +152,6 @@ impl Game<'_> {
                 self.spawn_ominous_item(s);
                 return self.forget_finished_spawner(s.id);
             }
-            if self.world.game_time % 5 == 0 {
-                self.ominous_spawner_particles(s.position);
-            }
             true
         });
         self.ominous_spawners.restore(
@@ -187,17 +173,6 @@ impl Game<'_> {
             uuid: [0; 4],
             raw: None,
         });
-    }
-    /// `OminousItemSpawner.tick` on a client: `tickCount` and `tickClient`,
-    /// the particles every 5 game ticks; only the server spawns the item.
-    pub(super) fn tick_remote_ominous_item_spawners(&mut self) {
-        let at: Vec<[f64; 3]> = self.ominous_spawners.iter().map(|s| s.position).collect();
-        self.ominous_spawners.for_each_mut(|s| s.tick_count += 1);
-        if self.world.game_time % 5 == 0 {
-            for position in at {
-                self.ominous_spawner_particles(position);
-            }
-        }
     }
     /// `spawnItem`: a projectile shot down, or an item entity; level event
     /// 3021 and the entity_place game event.
@@ -222,61 +197,6 @@ impl Game<'_> {
         }
         self.level_event_at(3021, at, 1);
         self.post_block_game_event("minecraft:entity_place", at, None, None);
-    }
-    /// `OminousItemSpawner.addParticles`: one to three ominous spawning
-    /// particles from the spawner out to points around it.
-    fn ominous_spawner_particles(&mut self, at: [f64; 3]) {
-        let options = ParticleOptions::simple(ParticleType::OminousSpawning);
-        let r = self.particles.random();
-        let count = r.next_int_between_inclusive(1, 3).unwrap_or(1);
-        let mut flights = Vec::new();
-        for _ in 0..count {
-            let mut spread = || 0.4 * (r.next_gaussian() - r.next_gaussian());
-            let from = [at[0] + spread(), at[1] + spread(), at[2] + spread()];
-            flights.push([from[0] - at[0], from[1] - at[1], from[2] - at[2]]);
-        }
-        for v in flights {
-            self.particles.add(&options, at, v);
-        }
-    }
-    /// `OminousItemSpawnerRenderer`: the item, full bright, growing over its
-    /// first 50 ticks and turning.
-    pub(super) fn ominous_item_spawner_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        for s in &self.ominous_spawners {
-            let at = glam::DVec3::from_array(s.position);
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
-                continue;
-            }
-            let state = self.resolve_item(&s.item, DisplayContext::Ground, None, 0);
-            if state.is_empty() {
-                continue;
-            }
-            let age = s.tick_count as f32 + alpha as f32;
-            let scale = if age <= TICKS_SCALING {
-                age.min(TICKS_SCALING) / TICKS_SCALING
-            } else {
-                1.0
-            };
-            let spin = (age * ROTATION_SPEED).rem_euclid(360.0);
-            let pose = glam::Mat4::from_translation((at - camera).as_vec3())
-                * glam::Mat4::from_scale(glam::Vec3::splat(scale))
-                * glam::Mat4::from_rotation_y(spin.to_radians());
-            let seed =
-                i64::from(self.pack.item_renderer.item_id(&s.item.item)) + i64::from(s.item.damage);
-            for copy in item_render::cluster_poses(
-                &state,
-                pose,
-                item_render::rendered_amount(s.item.count),
-                seed,
-            ) {
-                self.submit_item_world(&state, copy, vertex_light(0xFF), out);
-            }
-        }
     }
 }
 

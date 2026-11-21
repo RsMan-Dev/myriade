@@ -25,11 +25,8 @@ use super::{
 };
 use horizon_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Reduction},
-    hud::HudBatch,
-    hud_layout, hud_overlays,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Who},
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     random_source,
     text::Text,
@@ -43,7 +40,6 @@ use horizon_core::{
 };
 use horizon_protocol::entity_data::Value;
 use mod_api::DragonPhase;
-use rays::dragon_rays;
 
 /// `HealOrHarmMobEffect.applyInstantaneousEffect` at an `AreaEffectCloud`'s
 /// 0.5 scale: `(int) (scale * (6 << amplifier) + 0.5)`.
@@ -2549,7 +2545,6 @@ impl Game<'_> {
                 }
             }
             Phase::Attacking { ticks } => {
-                // The growl is `doClientTick`'s (`remote_dragon_phase_tick`).
                 *ticks += 1;
                 if *ticks > 40 {
                     next = Some(Phase::Flaming { ticks: 0 });
@@ -3229,21 +3224,9 @@ impl Game<'_> {
                 c.radius += (7.0 - 3.0) / c.duration as f32;
             }
             let r = c.radius;
+            // The breath's particles are drawn by the client: only their random draws stay.
             for _ in 0..((std::f32::consts::PI * r * r) as i32).min(40) {
-                let a = self.world.random.next_float() * std::f32::consts::TAU;
-                let d = self.world.random.next_float().sqrt() * r;
-                let at = [
-                    c.at[0] + f64::from(a.cos() * d),
-                    c.at[1],
-                    c.at[2] + f64::from(a.sin() * d),
-                ];
-                self.particles.add_with(
-                    &ParticleOptions::simple(ParticleType::DragonBreath),
-                    at,
-                    [0.0, 0.0, 0.0],
-                    false,
-                    true,
-                );
+                let _ = [self.world.random.next_float(), self.world.random.next_float()];
             }
             // AreaEffectCloud: after its wait, each entity every 20 ticks.
             // Instant damage I from the flame cloud, II from a fireball's,
@@ -3382,38 +3365,6 @@ impl Game<'_> {
             self.note_direct_entity(damage_type, name);
         }
     }
-    /// `BossHealthOverlay.extractRenderState`: whatever `publish_boss_bars`
-    /// (or a server's packets) put on this client's overlay.
-    pub(super) fn draw_boss_bars(&self, batch: &mut HudBatch) {
-        let draws = self.boss_bar_draws(batch.width as i32, batch.height as i32);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
-    }
-    /// The boss bars' draws on a `w` x `h` GUI.
-    pub(super) fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
-        let now = horizon_client::boss_overlay::now_millis();
-        let bars = self.boss_overlay.bars(now);
-        // NeoForge's `CustomizeGuiOverlayEvent.BossEventProgress`, asked per
-        // bar only while a mod listens.
-        let customized = mod_api::__private::listened(mod_api::HookId::CustomizeBossEventProgress);
-        hud_overlays::boss_overlay(w, h, &bars, &self.gui.atlas.font, |index, at| {
-            let Some(bar) = customized
-                .then(|| self.boss_overlay.mod_bar(index, now))
-                .flatten()
-            else {
-                return true;
-            };
-            let bar = bar.try_into_api().unwrap();
-            let mut cancel = false;
-            self.native_customize_boss_event_progress(
-                &bar,
-                &mut at.x,
-                &mut at.y,
-                &mut at.increment,
-                &mut cancel,
-            );
-            !cancel
-        })
-    }
     /// The dragon fight's bar for a player at `at`
     /// (`EnderDragonFight.dragonEvent`, visible while the fight is not won
     /// and the player is alive within 192 blocks of (0, 128, 0)).
@@ -3435,71 +3386,7 @@ impl Game<'_> {
                 .map_or(1.0, |d| (d.health / MAX_HEALTH).clamp(0.0, 1.0)),
         )
     }
-    /// `BossHealthOverlay.shouldPlayMusic`.
-    pub(super) fn boss_music(&self) -> bool {
-        self.boss_overlay.should_play_music()
-    }
-}
-/// `DragonLandingPhase.doClientTick` and `DragonSittingFlamingPhase.doClientTick`:
-/// the dragon-breath particles one tick of `doClientTick` spawns at the head, as
-/// (position, velocity) pairs. `look` is `EnderDragon.getHeadLookVector(1)`
-/// normalised, `head` the head part's centre (`getY(0.5)`), `motion` the
-/// dragon's `getDeltaMovement`, and `random` the stream the jitter comes from.
-/// Both phases rotate `look` by a quarter turn and throw the result away, so
-/// every puff of a fan leaves along the same line; a flaming dragon walks down
-/// that line in six steps.
-fn breath_puffs(
-    phase: &Phase,
-    look: [f64; 3],
-    head: [f64; 3],
-    motion: [f64; 3],
-    random: &mut LegacyRandom,
-) -> Vec<([f64; 3], [f64; 3])> {
-    // A puff's start: the head's centre jittered by `nextGaussian() / 2`.
-    let jitter = |random: &mut LegacyRandom| {
-        [
-            head[0] + random.next_gaussian() / 2.0,
-            head[1] + random.next_gaussian() / 2.0,
-            head[2] + random.next_gaussian() / 2.0,
-        ]
-    };
-    match phase {
-        // Eight a tick, along `-look * 0.08F` (0.3 for the vertical part) plus
-        // the dragon's own motion.
-        Phase::Landing { .. } => (0..8)
-            .map(|_| {
-                (
-                    jitter(random),
-                    [
-                        -look[0] * f64::from(0.08_f32) + motion[0],
-                        -look[1] * f64::from(0.3_f32) + motion[1],
-                        -look[2] * f64::from(0.08_f32) + motion[2],
-                    ],
-                )
-            })
-            .collect(),
-        // Every second tick of the first ten: eight starts, each a fan of six
-        // puffs down the look line, the vertical part of the speed once.
-        Phase::Flaming { ticks } if ticks % 2 == 0 && *ticks < 10 => {
-            let mut puffs = Vec::with_capacity(48);
-            for _ in 0..8 {
-                let at = jitter(random);
-                for j in 0..6 {
-                    let j = f64::from(j);
-                    puffs.push((
-                        at,
-                        [
-                            -look[0] * f64::from(0.08_f32) * j,
-                            -look[1] * f64::from(0.6_f32),
-                            -look[2] * f64::from(0.08_f32) * j,
-                        ],
-                    ));
-                }
-            }
-            puffs
-        }
-        _ => Vec::new(),
-    }
+
 }
 pub(super) struct Breath {
     /// Entity-owned registration metadata; content clones are detached.
@@ -3530,215 +3417,6 @@ impl Breath {
     }
 }
 impl Game<'_> {
-    /// `EnderDragonRenderer` and `EnderDragonModel.setupAnim`.
-    pub(super) fn dragon_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-        additive: &mut Vec<Vertex>,
-    ) {
-        let (Some(d), Some(model)) = (self.dragon.as_ref(), self.dragon_model.as_ref()) else {
-            return;
-        };
-        let a = alpha as f32;
-        let sprite = |n: &str| {
-            self.gui
-                .atlas
-                .sprites
-                .get(n)
-                .map(|r| [r.u0, r.v0, r.u1, r.v1])
-        };
-        let (Some(skin), Some(eyes)) = (
-            sprite("entity/enderdragon/dragon"),
-            sprite("entity/enderdragon/dragon_eyes"),
-        ) else {
-            return;
-        };
-        let p = d.previous.lerp(d.position, alpha);
-        let pos = glam::DVec3::new(p.x, p.y, p.z);
-        let h = |delay: usize| d.sample_lerp(delay, a);
-        let yr = h(7).1;
-        let rot2 = (h(5).0 - h(10).0) as f32;
-        let mut base = glam::Mat4::from_translation((pos - camera).as_vec3())
-            * glam::Mat4::from_rotation_y((-yr).to_radians())
-            * glam::Mat4::from_rotation_x((rot2 * 10.0).to_radians())
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.0, 1.0))
-            * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
-        let rays_base = base * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.0, -2.0));
-        // setupAnim.
-        let flap = (d.old_flap + (d.flap - d.old_flap) * a) * std::f32::consts::TAU;
-        let mut bounce = (flap - 1.0).sin() + 1.0;
-        bounce = (bounce * bounce + bounce * 2.0) * 0.05;
-        base *=
-            glam::Mat4::from_translation(glam::Vec3::new(0.0, (bounce - 2.0) * 16.0, -48.0) / 16.0)
-                * glam::Mat4::from_rotation_x((bounce * 2.0).to_radians());
-        let mut poses = horizon_client::mobs::anim::Poses::new(model);
-        poses.get("jaw")[3] = (flap.sin() + 1.0) * 0.2;
-        let sitting = d.phase.sitting();
-        let landing = matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
-        let egg_dist = {
-            let p = self.podium_top();
-            ((p.x - d.position.x).powi(2)
-                + (p.y - d.position.y).powi(2)
-                + (p.z - d.position.z).powi(2))
-            .sqrt()
-        };
-        let head_offset = |part: usize, start: (f64, f32), point: (f64, f32)| -> f32 {
-            if landing {
-                part as f32 / (egg_dist / 4.0).max(1.0) as f32
-            } else if sitting {
-                part as f32
-            } else if part == 6 {
-                0.0
-            } else {
-                (point.0 - start.0) as f32
-            }
-        };
-        let start = h(6);
-        let rot2y = wrap(h(5).1 - h(10).1);
-        let rot = wrap(h(5).1 + rot2y / 2.0);
-        let deg = std::f32::consts::PI / 180.0;
-        let (mut xx, mut yy, mut zz) = (0.0f32, 20.0f32, -12.0f32);
-        for i in 0..5 {
-            let point = h(5 - i);
-            let pose = poses.get(&format!("neck{i}"));
-            let neck_x = (i as f32 * 0.45 + flap).cos() * 0.15;
-            pose[4] = wrap(point.1 - start.1) * deg * 1.5;
-            pose[3] = neck_x + head_offset(i, start, point) * deg * 1.5 * 5.0;
-            pose[5] = -wrap(point.1 - rot) * deg * 1.5;
-            pose[0] = xx;
-            pose[1] = yy;
-            pose[2] = zz;
-            let (xr, yrr) = (pose[3], pose[4]);
-            xx -= yrr.sin() * xr.cos() * 10.0;
-            yy += xr.sin() * 10.0;
-            zz -= yrr.cos() * xr.cos() * 10.0;
-        }
-        let current = h(0);
-        let head = poses.get("head");
-        head[0] = xx;
-        head[1] = yy;
-        head[2] = zz;
-        head[4] = wrap(current.1 - start.1) * deg;
-        head[3] = wrap(head_offset(6, start, current)) * deg * 1.5 * 5.0;
-        head[5] = -wrap(current.1 - rot) * deg;
-        poses.get("body")[5] = -rot2y * 1.5 * deg;
-        let lw = [0.125 - flap.cos() * 0.2, -0.25, -(flap.sin() + 0.125) * 0.8];
-        let lt = ((flap + 2.0).sin() + 0.5) * 0.75;
-        {
-            let p = poses.get("left_wing");
-            (p[3], p[4], p[5]) = (lw[0], lw[1], lw[2]);
-        }
-        poses.get("left_wing_tip")[5] = lt;
-        {
-            let p = poses.get("right_wing");
-            (p[3], p[4], p[5]) = (lw[0], -lw[1], -lw[2]);
-        }
-        poses.get("right_wing_tip")[5] = -lt;
-        for side in ["left", "right"] {
-            poses.get(&format!("{side}_hind_leg"))[3] = 1.0 + bounce * 0.1;
-            poses.get(&format!("{side}_hind_leg_tip"))[3] = 0.5 + bounce * 0.1;
-            poses.get(&format!("{side}_hind_foot"))[3] = 0.75 + bounce * 0.1;
-            poses.get(&format!("{side}_front_leg"))[3] = 1.3 + bounce * 0.1;
-            poses.get(&format!("{side}_front_leg_tip"))[3] = -0.5 - bounce * 0.1;
-            poses.get(&format!("{side}_front_foot"))[3] = 0.75 + bounce * 0.1;
-        }
-        let mut tail_x = 0.0f32;
-        let (mut xx, mut yy, mut zz) = (0.0f32, 10.0f32, 60.0f32);
-        let start = h(11);
-        for i in 0..12 {
-            let point = h(12 + i);
-            tail_x += (i as f32 * 0.45 + flap).sin() * 0.05;
-            let p = poses.get(&format!("tail{i}"));
-            p[4] = (wrap(point.1 - start.1) * 1.5 + 180.0) * deg;
-            p[3] = tail_x + (point.0 - start.0) as f32 * deg * 1.5 * 5.0;
-            p[5] = wrap(point.1 - rot) * deg * 1.5;
-            p[0] = xx;
-            p[1] = yy;
-            p[2] = zz;
-            let (xr, yrr) = (p[3], p[4]);
-            yy += xr.sin() * 10.0;
-            zz -= yrr.cos() * xr.cos() * 10.0;
-            xx -= yrr.sin() * xr.cos() * 10.0;
-        }
-        let l = self.world.light(
-            d.position.x.floor() as i32,
-            d.position.y.floor() as i32,
-            d.position.z.floor() as i32,
-        );
-        let light = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-        let death = if d.death_time > 0 {
-            d.death_time as f32 + a
-        } else {
-            0.0
-        };
-        // Dying: DYING_RENDER_TYPE, `entityCutoutDissolve` of the skin with dragon_exploding as
-        // the mask, white at `ARGB.white(1 - deathTime / 200)` and no overlay.
-        let mask = sprite("entity/enderdragon/dragon_exploding").filter(|_| death > 0.0);
-        let (color, overlay) = if mask.is_some() {
-            (dissolve_color(death), horizon_client::gfx::DISSOLVE_OVERLAY)
-        } else {
-            (0xFFFF_FFFF, u32::from(d.hurt_time > 0))
-        };
-        let first = out.len();
-        horizon_client::mobs::render::draw(model, base, &poses, skin, color, light, overlay, out);
-        if let Some(mask) = mask {
-            dissolve_mask(&mut out[first..], skin, mask);
-        }
-        // The skin's OptiFine emissive overlay, full bright.
-        let glow = self
-            .res
-            .mob_data()
-            .emissive
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .overlay("entity/enderdragon/dragon")
-            .and_then(sprite);
-        if let Some(glow) = glow.filter(|_| mask.is_none()) {
-            let full = horizon_client::mobs::render::FULL_BRIGHT;
-            horizon_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
-        }
-        // RenderTypes.eyes: the glowing eyes, added on top.
-        let mut eye_quads = Vec::new();
-        horizon_client::mobs::render::draw(
-            model,
-            base,
-            &poses,
-            eyes,
-            0xFFFF_FFFF,
-            240 | 240 << 8,
-            0,
-            &mut eye_quads,
-        );
-        // `RenderTypes.eyes` has an `OitPipelineSet`: improved transparency
-        // moves the tagged quads into its stages (the HDR tier is the eyes'
-        // shine, `mobs::render::EYES_TIER`).
-        for v in &mut eye_quads {
-            v.layer = 2
-                | horizon_client::gfx::OIT_ENTITY
-                | u32::from(horizon_client::mesher::BRIGHT) << 16;
-        }
-        additive.extend(eye_quads);
-        if death > 0.0 {
-            let rays = additive.len();
-            self.dragon_rays(rays_base, death / 200.0, additive);
-            for v in &mut additive[rays..] {
-                v.layer |= u32::from(horizon_client::mesher::VERY_BRIGHT) << 16;
-            }
-        }
-        // The healing beam to the nearest crystal.
-        if let Some(c) = d.nearest_crystal.and_then(|i| self.crystals.get(i)) {
-            let bob = f64::from(horizon_client::end_crystal::y(c.time as f32 + a));
-            let to = glam::DVec3::new(c.position.x, c.position.y + bob, c.position.z);
-            self.crystal_beam(pos, to - pos, self.visual_ticks() as f32 + a, camera, out);
-        }
-    }
-    /// `EnderDragonRenderer.submitRays`: untextured, additive death rays.
-    fn dragon_rays(&self, base: glam::Mat4, t: f32, out: &mut Vec<Vertex>) {
-        dragon_rays(base, t, self.gui.atlas.font.white(), out);
-    }
     /// `submitCrystalBeams`: an eight-sided tube from `from` (+2 up) along
     /// `delta`, the beam texture scrolling along it.
     pub(super) fn crystal_beam(
@@ -4756,200 +4434,6 @@ impl Game<'_> {
             }
         }
     }
-    /// One client tick of the dragon. `lerp`: the step toward its last
-    /// sent position and yaw (LivingEntity's interpolation), and the
-    /// steps left including this one.
-    pub(super) fn tick_remote_dragon(&mut self, lerp: Option<([f64; 3], Option<f32>, u32)>) {
-        let Some(d) = self.dragon.as_mut() else {
-            return;
-        };
-        d.previous = d.position;
-        d.previous_yaw = d.yaw;
-        d.old_flap = d.flap;
-        d.ticks += 1;
-        d.hurt_time = (d.hurt_time - 1).max(0);
-        for part in &mut d.parts {
-            part.1 = part.0;
-        }
-        if let Some((target, yaw, steps)) = lerp {
-            let n = f64::from(steps.max(1));
-            d.position = Vec3::new(
-                d.position.x + (target[0] - d.position.x) / n,
-                d.position.y + (target[1] - d.position.y) / n,
-                d.position.z + (target[2] - d.position.z) / n,
-            );
-            if let Some(yaw) = yaw {
-                d.yaw += wrap(yaw - d.yaw) / steps.max(1) as f32;
-            }
-        }
-        if !d.alive() {
-            // EnderDragon.tickDeath on a client: it rises, and bursts
-            // from tick 180 to 200; the server removes it.
-            d.death_time += 1;
-            let (t, p) = (d.death_time, d.position);
-            // `EnderDragon.aiStep` still growls when the phase is not sitting.
-            let sitting = d.phase.sitting();
-            if (180..=200).contains(&t) {
-                let r = &mut d.random;
-                let o = [
-                    f64::from((r.next_float() - 0.5) * 8.0),
-                    f64::from((r.next_float() - 0.5) * 4.0),
-                    f64::from((r.next_float() - 0.5) * 8.0),
-                ];
-                self.particles.add(
-                    &ParticleOptions::simple(ParticleType::ExplosionEmitter),
-                    [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
-                    [0.0; 3],
-                );
-            }
-            if let Some(d) = self.dragon.as_mut() {
-                // deathMove is new Vec3(0.0, 0.1F, 0.0): the float widened.
-                let rise = f64::from(0.1_f32);
-                d.position.y += rise;
-                for part in &mut d.parts {
-                    part.0.y += rise;
-                }
-            }
-            // `EnderDragon.aiStep` after `tickDeath`: the client growl is
-            // before the `isDeadOrDying` branch, then a dead dragon adds
-            // `ParticleTypes.EXPLOSION` every tick. Both use the risen spot.
-            let mut growl = None;
-            if let Some(d) = self.dragon.as_mut()
-                && !sitting
-            {
-                d.growl -= 1;
-                if d.growl < 0 {
-                    // `this.random`: pitch, then `nextInt(200)`, before the puff.
-                    let pitch = 0.8 + d.random.next_float() * 0.3;
-                    d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
-                    growl = Some(([d.position.x, d.position.y, d.position.z], pitch));
-                }
-            }
-            if let Some((at, pitch)) = growl {
-                self.audio
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
-            }
-            let Some(d) = self.dragon.as_mut() else {
-                return;
-            };
-            let p = d.position;
-            let r = &mut d.random;
-            let o = [
-                f64::from((r.next_float() - 0.5) * 8.0),
-                f64::from((r.next_float() - 0.5) * 4.0),
-                f64::from((r.next_float() - 0.5) * 8.0),
-            ];
-            self.particles.add(
-                &ParticleOptions::simple(ParticleType::Explosion),
-                [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
-                [0.0; 3],
-            );
-            return;
-        }
-        // processFlappingMovement and onFlap: its wing beats, and their sound.
-        // Mth.cos(flapTime * 6.2831855F); flapSpeed's `(float) Math.pow(2.0, movement.y)`.
-        let flap_was = trig::cos(f64::from(d.old_flap * std::f32::consts::TAU));
-        let v = d.velocity;
-        let mut flap_speed = 0.2 / (((v.x * v.x + v.z * v.z).sqrt() as f32) * 10.0 + 1.0);
-        flap_speed *= 2f64.powf(v.y) as f32;
-        d.flap += if d.phase.sitting() { 0.1 } else { flap_speed };
-        let flap_now = trig::cos(f64::from(d.flap * std::f32::consts::TAU));
-        let at = [d.position.x, d.position.y, d.position.z];
-        if flap_was <= -0.3 && flap_now >= -0.3 {
-            let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.audio
-                .play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
-        }
-        let d = self.dragon.as_mut().expect("dragon");
-        if !d.phase.sitting() {
-            d.growl -= 1;
-            if d.growl < 0 {
-                d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
-                let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.audio
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
-            }
-        }
-        // checkCrystals' search runs on a client too (the healing beam).
-        let d = self.dragon.as_mut().expect("dragon");
-        if d.random.next_int_bound(10).unwrap_or(1) == 0 {
-            let p = d.position;
-            let nearest = self.nearest_crystal_to(p);
-            self.dragon.as_mut().expect("dragon").nearest_crystal = nearest;
-        }
-        let d = self.dragon.as_mut().expect("dragon");
-        d.yaw = wrap(d.yaw);
-        // EnderDragon.aiStep on a client with isNoAi, as on the server.
-        if d.no_ai {
-            d.flap = 0.5;
-            return;
-        }
-        d.record();
-        self.remote_dragon_phase_tick();
-        self.place_dragon_parts();
-    }
-    /// `DragonLandingPhase.doClientTick`, `DragonSittingFlamingPhase.doClientTick`,
-    /// `DragonDeathPhase.doClientTick` and `DragonSittingAttackingPhase.doClientTick`,
-    /// which `EnderDragon.aiStep` runs on a client. The first two breathe
-    /// dragon breath from the head (their `look.yRot(...)` results are thrown
-    /// away in vanilla, so every puff leaves along the same line), the third
-    /// puffs an explosion every 10 ticks and the last growls on every tick.
-    fn remote_dragon_phase_tick(&mut self) {
-        let look = self.dragon_look_normalised();
-        let Some(d) = self.dragon.as_mut() else {
-            return;
-        };
-        let head = d.parts[0].0;
-        let head_y = head.y + PART_SIZES[0].1 * 0.5;
-        let motion = d.velocity;
-        let at = [d.position.x, d.position.y, d.position.z];
-        // `flameTicks`: the client copy's own counter, advanced before it is read.
-        if let Phase::Flaming { ticks } = &mut d.phase {
-            *ticks += 1;
-        }
-        let puffs = breath_puffs(
-            &d.phase,
-            look,
-            [head.x, head_y, head.z],
-            [motion.x, motion.y, motion.z],
-            &mut d.random,
-        );
-        let mut emitter = None;
-        let mut growl = None;
-        match &mut d.phase {
-            Phase::Dying { time, .. } => {
-                if *time % 10 == 0 {
-                    let r = &mut d.random;
-                    let o = [
-                        f64::from((r.next_float() - 0.5) * 8.0),
-                        f64::from((r.next_float() - 0.5) * 4.0),
-                        f64::from((r.next_float() - 0.5) * 8.0),
-                    ];
-                    emitter = Some([at[0] + o[0], at[1] + 2.0 + o[1], at[2] + o[2]]);
-                }
-                *time += 1;
-            }
-            Phase::Attacking { .. } => {
-                growl = Some(0.8 + d.random.next_float() * 0.3);
-            }
-            _ => {}
-        }
-        let breath = ParticleOptions::simple(ParticleType::DragonBreath);
-        for (p, v) in puffs {
-            self.particles.add(&breath, p, v);
-        }
-        if let Some(p) = emitter {
-            self.particles.add(
-                &ParticleOptions::simple(ParticleType::ExplosionEmitter),
-                p,
-                [0.0; 3],
-            );
-        }
-        if let Some(pitch) = growl {
-            self.audio
-                .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
-        }
-    }
     /// The dragon's parts as a server's client attacks them: the server's
     /// ids for `EnderDragonPart`s follow the dragon's.
     pub(super) fn remote_dragon_part_hit(
@@ -4974,7 +4458,6 @@ impl Game<'_> {
 mod crystal;
 #[path = "dragon/death_render.rs"]
 mod death_render;
-use death_render::{dissolve_color, dissolve_mask};
 
 #[cfg(test)]
 mod tests {
@@ -5484,92 +4967,6 @@ mod tests {
         }
     }
 
-    /// Driven by `tools/test_dragon_render_parity.py`; compares the actual
-    /// ray vertices with EnderDragonRenderer's captured VertexConsumer output.
-    #[test]
-    #[ignore]
-    fn dragon_render_parity_fixture() {
-        let path = std::env::var("HORIZON_DRAGON_RENDER_OUTPUT").expect("harness output path");
-        let mut cases = Vec::new();
-        for t in [0.0, 0.05, 0.25, 0.5, 0.8, 0.9, 0.95, 1.0] {
-            let mut vertices = Vec::new();
-            dragon_rays(
-                glam::Mat4::IDENTITY,
-                t,
-                horizon_client::hud::Rect {
-                    u0: 0.0,
-                    v0: 0.0,
-                    u1: 1.0,
-                    v1: 1.0,
-                    w: 1,
-                    h: 1,
-                },
-                &mut vertices,
-            );
-            // The fourth quad vertex only pads a triangle for our index buffer.
-            let triangles: Vec<_> = vertices
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .flat_map(|q| &q[..3])
-                .map(|v| serde_json::json!([v.pos[0], v.pos[1], v.pos[2], v.color]))
-                .collect();
-            cases.push(triangles);
-        }
-        std::fs::write(path, serde_json::to_vec(&cases).unwrap()).unwrap();
-    }
-
-    #[test]
-    fn the_dying_model_reads_the_mask_where_it_reads_the_skin() {
-        // The skin in the atlas's top-left quarter, the mask in its bottom-right one.
-        let mut quad = [Vertex {
-            pos: [0.0; 3],
-            uv: [0.25, 0.125],
-            layer: 0,
-            color: 0,
-            light: 0,
-            normal: [0; 4],
-            glint_uv: [0.0; 2],
-        }];
-        dissolve_mask(&mut quad, [0.0, 0.0, 0.5, 0.5], [0.5, 0.5, 1.0, 1.0]);
-        assert_eq!(quad[0].glint_uv, [0.75, 0.625]);
-        // ARGB.white(1 - deathTime / 200): floor(127.5), and past 200 the int shift wraps.
-        assert_eq!(dissolve_color(100.0), 0x7FFF_FFFF);
-        assert_eq!(dissolve_color(200.5), 0xFFFF_FFFF);
-    }
-
-    #[test]
-    fn death_rays_sample_inside_the_white_sprite() {
-        // A four-texel white sprite surrounded by transparent atlas pixels.
-        // A border UV can round outside it during perspective interpolation.
-        let size = 1024.0;
-        let white = horizon_client::hud::Rect {
-            u0: 20.0 / size,
-            v0: 60.0 / size,
-            u1: 24.0 / size,
-            v1: 64.0 / size,
-            w: 4,
-            h: 4,
-        };
-        for t in [0.25, 0.8, 0.95, 1.0] {
-            let mut vertices = Vec::new();
-            dragon_rays(glam::Mat4::IDENTITY, t, white, &mut vertices);
-            assert!(!vertices.is_empty());
-            for v in &vertices {
-                assert!(
-                    v.uv[0] > white.u0 + 0.5 / size && v.uv[0] < white.u1 - 0.5 / size,
-                    "death-ray U touches the atlas border: {}",
-                    v.uv[0]
-                );
-                assert!(
-                    v.uv[1] > white.v0 + 0.5 / size && v.uv[1] < white.v1 - 0.5 / size,
-                    "death-ray V touches the atlas border: {}",
-                    v.uv[1]
-                );
-            }
-        }
-    }
-
     /// The damage type of the hits below, which count.
     const HIT: Option<HurtSource> = Some(HurtSource {
         damage_type: "minecraft:player_attack",
@@ -5606,107 +5003,6 @@ mod tests {
             path: None,
             target: None,
             clockwise: false,
-        }
-    }
-
-    /// `DragonLandingPhase.doClientTick`: eight puffs a tick from the head,
-    /// along `getHeadLookVector(1)` (a quarter turn of it is thrown away in
-    /// vanilla) plus the dragon's own motion.
-    #[test]
-    fn a_landing_dragon_breathes_eight_puffs_from_its_head() {
-        let look = [0.0, -0.6, 0.8];
-        let head = [10.0, 70.5, -3.0];
-        let motion = [0.25, -0.05, 0.5];
-        let mut random = LegacyRandom::new(7);
-        let puffs = breath_puffs(
-            &Phase::Landing { target: None },
-            look,
-            head,
-            motion,
-            &mut random,
-        );
-        assert_eq!(puffs.len(), 8);
-        let speed = [
-            -look[0] * f64::from(0.08_f32) + motion[0],
-            -look[1] * f64::from(0.3_f32) + motion[1],
-            -look[2] * f64::from(0.08_f32) + motion[2],
-        ];
-        for (at, v) in puffs {
-            assert_eq!(v, speed);
-            // The head's centre, jittered by `nextGaussian() / 2`.
-            for a in 0..3 {
-                assert!(
-                    (at[a] - head[a]).abs() < 2.0,
-                    "puff {} off the head: {at:?}",
-                    a
-                );
-            }
-        }
-    }
-
-    /// `DragonSittingFlamingPhase.doClientTick`: on the even ticks of the first
-    /// ten, eight starts each breathe a fan of six puffs down the look line.
-    #[test]
-    fn a_flaming_dragon_breathes_a_fan_on_every_second_tick() {
-        let look = [0.6, -0.0, 0.8];
-        let head = [0.0, 65.5, 4.0];
-        for (tick, want) in [(1, 0), (2, 48), (3, 0), (4, 48), (8, 48), (9, 0), (10, 0)] {
-            let mut random = LegacyRandom::new(11);
-            let puffs = breath_puffs(
-                &Phase::Flaming { ticks: tick },
-                look,
-                head,
-                [0.0; 3],
-                &mut random,
-            );
-            assert_eq!(puffs.len(), want, "flame tick {tick}");
-        }
-        let mut random = LegacyRandom::new(11);
-        let puffs = breath_puffs(
-            &Phase::Flaming { ticks: 2 },
-            look,
-            head,
-            [0.0; 3],
-            &mut random,
-        );
-        for (i, (at, v)) in puffs.iter().enumerate() {
-            let j = (i % 6) as f64;
-            // Six puffs leave from each of the eight starts.
-            assert_eq!(at, &puffs[i - i % 6].0);
-            assert_eq!(
-                *v,
-                [
-                    -look[0] * f64::from(0.08_f32) * j,
-                    -look[1] * f64::from(0.6_f32),
-                    -look[2] * f64::from(0.08_f32) * j,
-                ]
-            );
-        }
-    }
-
-    /// No other phase has a `doClientTick` that breathes.
-    #[test]
-    fn only_the_landing_and_flaming_phases_breathe() {
-        let mut random = LegacyRandom::new(3);
-        for phase in [
-            flying(),
-            Phase::Scanning { time: 5 },
-            Phase::Hover { target: None },
-            Phase::Takeoff {
-                first: false,
-                path: None,
-                target: None,
-            },
-            Phase::Attacking { ticks: 3 },
-            Phase::Dying {
-                target: None,
-                time: 0,
-            },
-        ] {
-            assert!(
-                breath_puffs(&phase, [0.0, -1.0, 0.0], [0.0; 3], [0.0; 3], &mut random).is_empty(),
-                "{phase:?}"
-            );
         }
     }
 

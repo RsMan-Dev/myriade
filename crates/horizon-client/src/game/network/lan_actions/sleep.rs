@@ -270,9 +270,6 @@ impl Game<'_> {
             host.hub
                 .overlay_message(horizon_client::lan::data::component_nbt(&text.component()));
         }
-        if self.options.dedicated.is_none() {
-            self.titles.set_overlay(text, false);
-        }
     }
 
     /// `ServerLevel.wakeUpAllPlayers` for the guests.

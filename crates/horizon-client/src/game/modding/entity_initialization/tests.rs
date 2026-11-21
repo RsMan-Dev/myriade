@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{
     Dim,
-    native_entity_refs::tests::{with_client_game, with_game},
+    native_entity_refs::tests::with_game,
 };
 use horizon_core::nbt::Tag;
 use mod_api::{AttachmentType, EntityConstructingEvent, Hooks, HostSide};
@@ -273,118 +273,6 @@ fn spawn_info() -> horizon_protocol::packets::play::SpawnInfo {
         portal_cooldown: 0,
         sea_level: 63,
     }
-}
-
-#[test]
-#[ignore = "daily"]
-fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
-    use horizon_protocol::packets::play::{self, Clientbound as C};
-    observe(|calls| {
-        with_client_game(|game| {
-            let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-            game.connect_local(pipe, "Steve").unwrap();
-            game.handle_packet(C::Login(play::Login {
-                player_id: 7,
-                hardcore: false,
-                levels: vec!["minecraft:overworld".into()],
-                max_players: 20,
-                chunk_radius: 8,
-                simulation_distance: 8,
-                reduced_debug_info: false,
-                show_death_screen: true,
-                limited_crafting: false,
-                spawn: spawn_info(),
-                online_mode: false,
-                enforces_secure_chat: false,
-            }))
-            .unwrap();
-            let profile = game.remote.as_ref().unwrap().profile;
-            assert_eq!(VALUE.get(game, Holder::Player(profile)), Ok(41));
-            let registry = game
-                .remote
-                .as_ref()
-                .unwrap()
-                .builtin
-                .get("minecraft:entity_type")
-                .unwrap()
-                .clone();
-            for (id, kind) in [
-                (20, "minecraft:pig"),
-                (21, "minecraft:arrow"),
-                (22, "minecraft:player"),
-            ] {
-                let packet = || {
-                    C::AddEntity(play::AddEntity {
-                        id,
-                        uuid: id as u128,
-                        kind: registry.id(kind).unwrap(),
-                        position: [1.0, 70.0, 3.0],
-                        velocity: [0.0; 3],
-                        pitch: 0,
-                        yaw: 0,
-                        head_yaw: 0,
-                        data: 0,
-                    })
-                };
-                game.handle_packet(packet()).unwrap();
-                let holder = if kind == "minecraft:player" {
-                    Holder::Player(id as u128)
-                } else {
-                    Holder::Entity(id as u32)
-                };
-                assert_eq!(VALUE.get(game, holder), Ok(41));
-                game.handle_packet(packet()).unwrap();
-                assert_eq!(
-                    calls
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .filter(|(_, h)| *h == holder)
-                        .count(),
-                    1
-                );
-            }
-            // Removing and retracking creates a new object even for the same ID/UUID.
-            game.handle_packet(C::RemoveEntities(play::RemoveEntities {
-                ids: vec![20, 21, 22],
-            }))
-            .unwrap();
-            for (id, kind) in [
-                (20, "minecraft:pig"),
-                (21, "minecraft:arrow"),
-                (22, "minecraft:player"),
-            ] {
-                game.handle_packet(C::AddEntity(play::AddEntity {
-                    id,
-                    uuid: id as u128,
-                    kind: registry.id(kind).unwrap(),
-                    position: [1.0, 70.0, 3.0],
-                    velocity: [0.0; 3],
-                    pitch: 0,
-                    yaw: 0,
-                    head_yaw: 0,
-                    data: 0,
-                }))
-                .unwrap();
-                let holder = if kind == "minecraft:player" {
-                    Holder::Player(id as u128)
-                } else {
-                    Holder::Entity(id as u32)
-                };
-                assert_eq!(
-                    calls
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .filter(|(_, h)| *h == holder)
-                        .count(),
-                    2
-                );
-            }
-            assert!(calls.lock().unwrap().iter().all(|(client, _)| *client));
-            assert_eq!(calls.lock().unwrap().len(), 7);
-        })
-    });
 }
 
 #[test]

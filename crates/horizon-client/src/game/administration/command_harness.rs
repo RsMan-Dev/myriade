@@ -46,32 +46,11 @@ pub(super) fn spans(text: &Text) -> Value {
 }
 
 impl Game<'_> {
-    /// Pump the real client's connection, without predicting movement: the
-    /// oracle's player stays where commands put it. Errors cross the server
+    /// Wait until the integrated server stops. Errors cross the server
     /// boundary through Integrated::stop, including script and save failures.
     pub(super) fn wait_command_harness(&mut self) -> Result<()> {
         let server = self.integrated.take().ok_or("command harness: no server")?;
-        let client_config = std::env::var_os("HORIZON_HARNESS_CLIENT_CONFIG");
-        let mut wrote_config = false;
         while !server.stopped() {
-            self.poll_stationary_client()?;
-            if !wrote_config
-                && let Some(path) = &client_config
-                && let Some(remote) = self.remote.as_ref().filter(|r| r.logged_in && r.joined)
-            {
-                std::fs::write(
-                    path,
-                    json!({
-                        "view_distance": remote.view_distance,
-                        "simulation_distance": remote.simulation_distance,
-                        "render_setting": self.settings.render_distance,
-                        "simulation_setting": self.settings.simulation_distance,
-                        "logged_in": remote.logged_in, "joined": remote.joined,
-                    })
-                    .to_string(),
-                )?;
-                wrote_config = true;
-            }
             std::thread::sleep(Duration::from_millis(2));
         }
         server.stop()

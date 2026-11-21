@@ -139,22 +139,15 @@ fn place_back(menu: &mut Menu, env: &Env, stacks: Vec<ItemStack>) {
 impl Game<'_> {
     /// `LocalPlayer.doLimitedCrafting`: whether limited crafting is active.
     pub fn limited_crafting(&self) -> bool {
-        self.remote.as_ref().map_or_else(
-            || {
-                self.ui
-                    .rules
-                    .bool_at(horizon_client::gamerules::vanilla::LIMITED_CRAFTING)
-            },
-            |r| r.do_limited_crafting,
-        )
+        self.ui
+            .rules
+            .bool_at(horizon_client::gamerules::vanilla::LIMITED_CRAFTING)
     }
 
     pub(super) fn menu_env(&self) -> Env<'_> {
         Env {
             crafting_remainder: Some(self),
-            player: self
-                .lan_acting_uuid
-                .or_else(|| self.remote.as_ref().map(|r| r.profile())),
+            player: self.lan_acting_uuid,
             player_entity_id: Some(self.own_entity_id()),
             loop_context: &self.loop_context,
             items: self.items(),

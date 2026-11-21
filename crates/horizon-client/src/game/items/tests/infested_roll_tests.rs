@@ -23,7 +23,7 @@ fn floored_game(root: &std::path::Path) -> Game<'static> {
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::Client,
+        crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )

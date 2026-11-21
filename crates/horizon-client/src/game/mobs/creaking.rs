@@ -165,15 +165,14 @@ impl Game<'_> {
                     self.audio
                         .play(&format!("minecraft:{name}"), Some(at), volume, pitch)
                 }
-                HeartEvent::Trail {
-                    at,
-                    target,
-                    color,
-                    duration,
-                } => self.particles.add(
+                // `ServerLevel.sendParticles`: one trail particle to the players.
+                HeartEvent::Trail { at, target, color, duration } => self.lan_level_particles(
                     &ParticleOptions::trail(target, color, duration),
                     at,
                     [0.0; 3],
+                    0.0,
+                    1,
+                    None,
                 ),
                 HeartEvent::OutputChanged(at) => self.container_changed((at[0], at[1], at[2])),
                 HeartEvent::BlockGameEvent(event, at, state) => {
@@ -232,10 +231,10 @@ impl Game<'_> {
         self.ecs = ecs;
     }
 
-    /// `Creaking.tearDown`: the crumble particles.
+    /// `Creaking.tearDown`: `ServerLevel.sendParticles` of the crumble particles to the players.
     pub(in crate::game) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
         let registry = self.pack.assets.registry;
-        let crumble = |this: &mut Self, name: &str, props: &[(&str, &str)], count: i32| {
+        let crumble = |this: &mut Self, name: &str, props: &[(&str, &str)], count: u32| {
             let Some(mut state) = registry
                 .default_state(name)
                 .and_then(|s| registry.state(s).cloned())
@@ -248,23 +247,14 @@ impl Game<'_> {
             let Ok(id) = registry.resolve(&state) else {
                 return;
             };
-            let Some((sprite, tint)) = this.particle_sprite(id, center.map(|c| c.floor() as i32))
-            else {
-                return;
-            };
-            for _ in 0..count {
-                let r = &mut this.world.random;
-                let p = [
-                    center[0] + r.next_gaussian() * spread[0],
-                    center[1] + r.next_gaussian() * spread[1],
-                    center[2] + r.next_gaussian() * spread[2],
-                ];
-                this.particles.add(
-                    &ParticleOptions::block(ParticleType::BlockCrumble, sprite.clone(), tint),
-                    p,
-                    [0.0; 3],
-                );
-            }
+            this.lan_level_particles(
+                &ParticleOptions::simple(ParticleType::BlockCrumble),
+                center,
+                spread,
+                0.0,
+                count,
+                Some(id),
+            );
         };
         crumble(self, "minecraft:pale_oak_wood", &[], 100);
         crumble(

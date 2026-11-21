@@ -6,7 +6,6 @@ use horizon_client::{
     items::ItemStack,
     mesher::Vertex,
     mobs::{Mob, Species, render},
-    particles::ELDER_GUARDIAN_LIFETIME,
 };
 
 // `FishingRodCast`: the main hand takes precedence when both hold rods.
@@ -78,110 +77,6 @@ fn antenna_block_matrix(head: glam::Mat4, flowerbed_shift: bool) -> glam::Mat4 {
 }
 
 impl Game<'_> {
-    /// `ElderGuardianParticleGroup`: the ghostly elder guardian that swings
-    /// up in front of the camera while the curse is laid, fading in and out.
-    pub(super) fn elder_apparition_geometry(&self, alpha: f64, out: &mut Vec<Vertex>) {
-        for &left in self.particles.elder_guardians() {
-            self.elder_guardian_geometry(left, alpha, out);
-        }
-    }
-
-    fn elder_guardian_geometry(&self, left: i32, alpha: f64, out: &mut Vec<Vertex>) {
-        let Some(kind) = self.res.mob_types().get("minecraft:elder_guardian") else {
-            return;
-        };
-        let Some(r) = self.gui.atlas.sprites.get("entity/guardian_elder").copied() else {
-            return;
-        };
-        let age = (ELDER_GUARDIAN_LIFETIME - left) as f32 + alpha as f32;
-        let t = age / ELDER_GUARDIAN_LIFETIME as f32;
-        let fade = 0.05 + 0.5 * (t * std::f32::consts::PI).sin();
-        let color = (((fade * 255.0) as u32) << 24) | 0x00FF_FFFF;
-        let (yaw, pitch) = (self.yaw.to_radians(), self.pitch.to_radians());
-        let forward = glam::Vec3::new(
-            -yaw.sin() * pitch.cos(),
-            -pitch.sin(),
-            yaw.cos() * pitch.cos(),
-        );
-        let right = forward.cross(glam::Vec3::Y).normalize_or_zero();
-        let up = right.cross(forward).normalize_or_zero();
-        // The camera's rotation: local +x right, +y up, +z behind.
-        let camera = glam::Mat4::from_cols(
-            right.extend(0.0),
-            up.extend(0.0),
-            (-forward).extend(0.0),
-            glam::Vec4::W,
-        );
-        let k = 0.425_531_92;
-        let m = camera
-            * glam::Mat4::from_rotation_x((60.0 - 150.0 * t).to_radians())
-            * glam::Mat4::from_scale(glam::Vec3::new(k, -k, -k))
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.56, 3.5));
-        let poses = horizon_client::mobs::anim::Poses::new(&kind.model);
-        render::draw(
-            &kind.model,
-            m,
-            &poses,
-            [r.u0, r.v0, r.u1, r.v1],
-            color,
-            240 | 240 << 8,
-            0,
-            out,
-        );
-    }
-    /// The ominous banner a raid captain wears on its head: the banner model
-    /// with its eight pattern layers (`CustomHeadLayer`).
-    fn captain_banner_geometry(
-        &self,
-        mob: &Mob,
-        camera: glam::DVec3,
-        alpha: f64,
-        light: u32,
-        out: &mut Vec<Vertex>,
-    ) {
-        use horizon_client::mobs::anim::Poses;
-        if !horizon_client::mobs::raider::is_captain(mob) {
-            return;
-        }
-        let Some((pole, flag)) = &self.entity_models.banner else {
-            return;
-        };
-        let Some(head) =
-            render::part_transform(mob, alpha as f32, camera, self.res.mob_data(), "head")
-        else {
-            return;
-        };
-        let m = banner_matrix(head);
-        let atlas = &self.gui.atlas;
-        let uv = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
-        // BannerRenderer: the flag sways with a per-banner phase.
-        let phase =
-            (((u64::from(mob.id) * 7 + u64::from(mob.age)) % 100) as f32 + alpha as f32) / 100.0;
-        let mut flag_poses = Poses::new(flag);
-        flag_poses.xrot(
-            "flag",
-            (-0.0125 + 0.01 * (2.0 * std::f32::consts::PI * phase).cos()) * std::f32::consts::PI,
-        );
-        let still = Poses::new(pole);
-        let white = 0xFFFF_FFFF;
-        if let Some(r) = uv("entity/banner/banner_base") {
-            render::draw(pole, m, &still, r, white, light, 0, out);
-            render::draw(flag, m, &flag_poses, r, white, light, 0, out);
-        }
-        let layers =
-            std::iter::once(("base", "white")).chain(horizon_client::item_data::OMINOUS_LAYERS);
-        for (pattern, dye) in layers {
-            let Some(r) = uv(&format!("entity/banner/{pattern}")) else {
-                continue;
-            };
-            let index = render::DYE_NAMES
-                .iter()
-                .position(|n| *n == dye)
-                .unwrap_or(0);
-            let color = render::abgr(render::dye(index));
-            render::draw(flag, m, &flag_poses, r, color, light, 0, out);
-        }
-    }
     /// `BlockModelRenderState.submit` of a block state's baked model, as every block layer of
     /// a mob draws it (`CarriedBlockLayer`, `MushroomCowMushroomLayer`, `SnowGolemHeadLayer`,
     /// `IronGolemFlowerLayer`, `BlockDecorationLayer`): lit, through
@@ -211,10 +106,8 @@ impl Game<'_> {
         skin: Option<&mut super::creatures::Skinned>,
         out: &mut Vec<Vertex>,
     ) {
-        self.captain_banner_geometry(mob, camera, alpha, light, out);
         self.held_item_geometry(mob, camera, alpha, light, true, skin, out);
         self.worn_block_geometry(mob, camera, alpha, light, out);
-        self.head_item_geometry(mob, camera, alpha, light, true, out);
         self.golem_flower_geometry(mob, camera, alpha, light, out);
         self.antenna_block_geometry(mob, camera, alpha, light, out);
         if mob.species() == Species::Enderman
@@ -517,165 +410,6 @@ impl Game<'_> {
             } else {
                 self.submit_item_unlit(&state, t, light, out);
             }
-        }
-    }
-    /// `CustomHeadLayer`: non-armour items worn in the head slot (carved
-    /// pumpkins, mob skulls and player heads, or custom blocks) on players
-    /// and mobs.
-    pub(super) fn head_item_geometry(
-        &self,
-        mob: &Mob,
-        camera: glam::DVec3,
-        alpha: f64,
-        light: u32,
-        lit: bool,
-        out: &mut Vec<Vertex>,
-    ) {
-        // The layer also draws on an invisible mob.
-        let species = mob.species();
-        if species == Species::SnowGolem
-            || horizon_client::mobs::species::body_slot(species)
-            || horizon_client::mobs::equine::is_equine(species)
-            || horizon_client::mobs::raider::is_captain(mob)
-        {
-            return;
-        }
-        let local_player = self
-            .player_model
-            .as_ref()
-            .is_some_and(|p| p.id == mob.id && p.kind.id == mob.kind.id);
-        let mut stack = if local_player {
-            let Some(stack) = &self.armor[0] else { return };
-            stack.clone()
-        } else if let Some(stack) = mob.extra.slot_stack(horizon_items::equipment::HEAD) {
-            stack.clone()
-        } else {
-            return;
-        };
-        // Helmets are drawn by HumanoidArmorLayer, not CustomHeadLayer
-        // (LivingEntityRenderer.extractRenderState: HumanoidArmorLayer.shouldRender).
-        if horizon_client::item_sync::equippable(&stack, self.res.items())
-            .is_some_and(|e| e.asset_id.is_some() && e.slot == "head")
-        {
-            return;
-        }
-        if !local_player
-            && horizon_client::mobs::gear::enchanted(mob, horizon_client::mobs::gear::HEAD)
-        {
-            stack.enchant("minecraft:unbreaking", 1);
-        }
-        let Some(head) =
-            render::part_transform(mob, alpha as f32, camera, self.res.mob_data(), "head")
-        else {
-            return;
-        };
-        if let Some(kind) = super::armor_stands::skull_kind(&stack.item) {
-            // Only the renderers that add a `CustomHeadLayer` draw a skull:
-            // the humanoid mobs, the illagers, the villagers, the copper golem
-            // and the avatars.
-            if !(&*mob.kind.id == "minecraft:player"
-                || matches!(
-                    species,
-                    Species::Zombie
-                        | Species::Husk
-                        | Species::Drowned
-                        | Species::ZombieVillager
-                        | Species::Skeleton
-                        | Species::Stray
-                        | Species::Bogged
-                        | Species::Parched
-                        | Species::WitherSkeleton
-                        | Species::Piglin
-                        | Species::PiglinBrute
-                        | Species::ZombifiedPiglin
-                        | Species::Pillager
-                        | Species::Vindicator
-                        | Species::Evoker
-                        | Species::Illusioner
-                        | Species::Villager
-                        | Species::WanderingTrader
-                        | Species::CopperGolem
-                        | Species::Mannequin
-                ))
-            {
-                return;
-            }
-            // translateToHead, the renderer's `skullYOffset` (the villager's
-            // `CUSTOM_HEAD_TRANSFORMS`), then the skull's SKULL_SCALE.
-            let y_offset = if species == Species::Villager {
-                -0.074_218_75
-            } else {
-                0.0
-            };
-            let pose = head
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, y_offset, 0.0))
-                * glam::Mat4::from_scale(glam::Vec3::splat(1.1875));
-            let special = horizon_assets::item_model::SpecialModel {
-                kind: if kind == "player" {
-                    horizon_assets::item_model::SpecialKind::PlayerHead
-                } else {
-                    horizon_assets::item_model::SpecialKind::Head {
-                        kind: kind.to_owned(),
-                        texture: None,
-                        animation: worn_head_animation(
-                            mob,
-                            // The local player's synthetic mob carries no `mount`.
-                            mob.extra
-                                .mount
-                                .or(if local_player { self.riding } else { None }),
-                            &self.remote_entities,
-                            alpha as f32,
-                        ),
-                    }
-                },
-            };
-            let mut sink = horizon_client::item_render::WorldSink {
-                out,
-                light,
-                lights: if lit {
-                    Some(horizon_client::block_entity_render::diffuse_lights(
-                        self.nether_lighting(),
-                    ))
-                } else {
-                    None
-                },
-                glint: self.glint(),
-                tier: 0,
-            };
-            let profile = stack
-                .extra
-                .as_deref()
-                .and_then(|d| d.other.iter().find(|(k, _)| k == "minecraft:profile"))
-                .map(|(_, t)| horizon_client::scoreboard::tag_to_json(t))
-                .unwrap_or(serde_json::Value::Null);
-            let has_foil = stack.data().is_some_and(|d| !d.enchantments.is_empty());
-            self.pack.item_renderer.submit_special(
-                &special,
-                &profile,
-                has_foil,
-                pose,
-                &self.gui.atlas.sprites,
-                &self.item_host(),
-                &mut sink,
-            );
-            return;
-        }
-        use horizon_assets::item_model::DisplayContext;
-        let pose = head
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.25, 0.0))
-            * glam::Mat4::from_rotation_y(std::f32::consts::PI)
-            * glam::Mat4::from_scale(glam::Vec3::new(0.625, -0.625, -0.625));
-        let owner = super::item_draw::owner_at(
-            [mob.position.x, mob.position.y, mob.position.z],
-            mob.body_yaw,
-            &mob.kind.id,
-        );
-        let seed = mob.id as i32 + 5;
-        let state = self.resolve_item(&stack, DisplayContext::Head, Some(&owner), seed);
-        if lit {
-            self.submit_item_world(&state, pose, light, out);
-        } else {
-            self.submit_item_unlit(&state, pose, light, out);
         }
     }
 }

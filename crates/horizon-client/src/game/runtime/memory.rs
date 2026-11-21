@@ -241,22 +241,6 @@ struct FarTiles {
 }
 
 #[derive(Serialize)]
-struct Gpu {
-    allocated_mb: f64,
-    reserved_mb: f64,
-    by_label_mb: Vec<(String, f64)>,
-    /// Blocks of device memory, largest first: size, bytes used, largest allocations.
-    blocks: Vec<(f64, f64, Vec<String>)>,
-}
-
-#[derive(Serialize)]
-struct Renderer {
-    section_arenas_mb: f64,
-    section_vertices_mb: f64,
-    cpu: BTreeMap<String, f64>,
-    gpu: Option<Gpu>,
-}
-
 /// A serving game's own parts: the columns it holds, its generation, entities, players, chunk send caches and queues.
 struct ServerSide {
     columns: Columns,
@@ -305,7 +289,6 @@ pub(super) struct MemoryReport {
     light_queue: Option<Queue>,
     generation_queue: Option<Queue>,
     far_tiles: Option<FarTiles>,
-    renderer: Option<Renderer>,
     /// A build with the `alloc-census` feature: the live heap by the
     /// startup step, span or pool job that allocated it, else its thread.
     heap_by_tag_mb: Option<Vec<(String, f64)>>,
@@ -588,39 +571,6 @@ impl Game<'_> {
                 bytes,
             }
         });
-        let renderer = self.renderer.as_ref().map(|r| {
-            let [arenas, vertices] = r.section_vertex_bytes();
-            let cpu = r.cpu_census();
-            let cpu_bytes: usize = cpu.iter().map(|(_, v)| *v).sum();
-            let gpu = r.gpu_memory_by_label().map(|m| {
-                let mut blocks: Vec<_> = m.blocks.iter().collect();
-                blocks.sort_by_key(|b| std::cmp::Reverse(b.size));
-                Gpu {
-                    allocated_mb: mb(m.allocated),
-                    reserved_mb: mb(m.reserved),
-                    by_label_mb: m
-                        .labels
-                        .iter()
-                        .take(40)
-                        .map(|(label, bytes)| (label.to_string(), mb(*bytes)))
-                        .collect(),
-                    blocks: blocks
-                        .iter()
-                        .map(|b| (mb(b.size), mb(b.used), b.names.clone()))
-                        .collect(),
-                }
-            });
-            let renderer = Renderer {
-                section_arenas_mb: mb(arenas),
-                section_vertices_mb: mb(vertices),
-                cpu: cpu
-                    .into_iter()
-                    .map(|(k, v)| (format!("{k}_mb"), mb(v)))
-                    .collect(),
-                gpu,
-            };
-            (renderer, cpu_bytes)
-        });
         let far = self.lod.as_ref().map(|lod| {
             let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
             let tiles = FarTiles {
@@ -633,7 +583,6 @@ impl Game<'_> {
         });
         let named = window.as_ref().map_or(0, ColumnCensus::total_bytes)
             + server.as_ref().map_or(0, ServerSide::bytes)
-            + renderer.as_ref().map_or(0, |r| r.1)
             + far.as_ref().map_or(0, |f| f.1);
         let named = named.saturating_sub(shared.as_ref().map_or(0, |s| s.bytes));
         let mut report = MemoryReport {
@@ -660,7 +609,6 @@ impl Game<'_> {
             light_queue: None,
             generation_queue: None,
             far_tiles: far.map(|f| f.0),
-            renderer: renderer.map(|r| r.0),
             heap_by_tag_mb: horizon_threads::HEAP_CENSUS.then(|| {
                 horizon_threads::heap_census::census()
                     .into_iter()
@@ -769,34 +717,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_report_flattens_to_paths_named_list_entries_and_gpu_blocks() {
-        let report = json!({
-            "process": { "resident_mb": 12.5, "note": "skipped" },
-            "render_distance": 16,
-            "missing": null,
-            "by_label_mb": [["chunks", 3.0], ["bare"]],
-            "caches": [["blocks", 7, 1.5]],
-            "renderer": { "gpu": { "blocks": [[16.0, 12.5, ["textures"]], [16.0, 3.0, []]] } },
-        });
-        let mut rows = flatten_report(&report);
-        rows.sort_by(|a, b| a.0.cmp(&b.0));
-        let expected = [
-            ("by_label_mb[chunks]", 3.0),
-            ("caches[blocks]", 7.0),
-            ("caches_mb[blocks]", 1.5),
-            ("process.resident_mb", 12.5),
-            ("render_distance", 16.0),
-            ("renderer.gpu.blocks[0].size_mb", 16.0),
-            ("renderer.gpu.blocks[0].used_mb", 12.5),
-            ("renderer.gpu.blocks[1].size_mb", 16.0),
-            ("renderer.gpu.blocks[1].used_mb", 3.0),
-        ];
-        assert_eq!(
-            rows.iter()
-                .map(|(p, v)| (p.as_str(), *v))
-                .collect::<Vec<_>>(),
-            expected
-        );
-    }
 }

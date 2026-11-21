@@ -250,9 +250,6 @@ impl Game<'_> {
         count: u32,
     ) {
         let options = ParticleOptions::simple(kind);
-        self.particles
-            .send_particles(&options, at, spread, speed, count);
-        // The players a server serves are sent them too.
         self.lan_send_particles(super::lan_particles::QueuedParticle {
             dimension: self.dim.id(),
             options,
@@ -681,29 +678,6 @@ impl Hook {
 }
 
 impl Game<'_> {
-    /// `handleAddEntity` for a fishing bobber: this player's own becomes its
-    /// hook (`Player.fishing`), another player's is drawn on its line to them.
-    pub(super) fn spawn_remote_hook(
-        &mut self,
-        id: u32,
-        uuid: [i32; 4],
-        at: Vec3,
-        velocity: Vec3,
-        owner: i32,
-    ) {
-        let own = self.remote.as_ref().map(|r| r.entity_id);
-        if own == Some(owner) {
-            let mut hook = Hook::remote(id, at, uuid);
-            hook.velocity = velocity;
-            self.install_fishing_hook(hook);
-        } else {
-            push_remote_hook(&mut self.remote_hooks, id, owner as u32, at, velocity, uuid);
-        }
-    }
-
-
-
-
     /// The fishing medium a mod says the hook at `position` floats in
     /// (`native_fishing_medium`), when it is in it. API 578.
     fn hook_medium(

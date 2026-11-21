@@ -1339,9 +1339,6 @@ impl Game<'_> {
     pub(super) fn tick_soul_speed(&mut self) -> Option<([f64; 3], [f64; 3])> {
         const ID: &str = "minecraft:soul_speed";
         let player = self.player.as_mut()?;
-        if player.client_side {
-            return None;
-        }
         let level = self.armor[3]
             .as_ref()
             .map_or(0, |s| s.enchantment_level(ID));

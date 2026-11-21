@@ -95,8 +95,7 @@ impl Game<'_> {
     }
 
     /// Access a holder's attachment map, to lend to a mod: a server's, whose
-    /// synced changes are sent at the pass's end, or a client's copy of what
-    /// its server synced.
+    /// synced changes are sent at the pass's end.
     pub(super) fn attachment_map(
         &mut self,
         holder: mod_api::Holder,
@@ -105,20 +104,11 @@ impl Game<'_> {
         if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
             return self.attachment_slot(holder, access);
         }
-        if self.client_attachment_entity_exists(holder) {
-            self.initialize_entity_on_access(holder);
-        }
         if self.native_authoritative() {
             self.world.attachment_syncs.insert(holder);
             return self.attachment_map_quiet(holder, access);
         }
-        let Some(remote) = self.remote.as_mut() else {
-            return Err(mod_api::AttachmentError::MissingHolder);
-        };
-        remote.attachments.entry(holder).or_default();
-        self.bind_remote_attachment(holder);
-        let remote = self.remote.as_mut().unwrap();
-        Ok(remote.attachments.get_mut(&holder).unwrap())
+        Err(mod_api::AttachmentError::MissingHolder)
     }
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the
@@ -330,29 +320,15 @@ impl Game<'_> {
     }
 }
 
-/// A level a both-side level hook reads, which knows the side it is on.
-pub(super) trait SidedLevel: mod_api::LevelHost {
-    fn client_side(&self) -> bool;
-}
+/// A level a both-side level hook reads.
+pub(super) trait SidedLevel: mod_api::LevelHost {}
 
-impl SidedLevel for super::GameLevel<'_> {
-    fn client_side(&self) -> bool {
-        horizon_world::level::LevelAccess::is_client_side(self)
-    }
-}
+impl SidedLevel for super::GameLevel<'_> {}
 
-impl SidedLevel for super::native_hooks::HitLevel<'_> {
-    fn client_side(&self) -> bool {
-        self.0.client_side()
-    }
-}
+impl SidedLevel for super::native_hooks::HitLevel<'_> {}
 
 pub(super) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide<'_> {
-    if level.client_side() {
-        mod_api::LevelSide::Client(level)
-    } else {
-        mod_api::LevelSide::Server(level)
-    }
+    mod_api::LevelSide::Server(level)
 }
 
 impl mod_api::LevelHost for super::GameLevel<'_> {

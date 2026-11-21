@@ -1,90 +1,9 @@
-//! Opening and closing a local world from the client: the title screen's actions, entering a
-//! world on the server thread, and saving and leaving it on exit.
+//! Opening and closing a local world: entering it on the server thread, and saving and leaving
+//! it on exit.
 use super::*;
 use horizon_client::save::level_mods;
 
 impl Game<'_> {
-    /// `onAbort`: the confirm screen's Back or Escape reopens the Data
-    /// Packs screen with the selection it had.
-    pub(super) fn reopen_data_packs(&mut self, event_loop: &dyn EventLoopCtl) -> Result<()> {
-        let action = self
-            .title
-            .as_mut()
-            .and_then(|t| t.reopen_data_packs_action());
-        if let Some(action) = action {
-            self.title_action(event_loop, action)?;
-        }
-        Ok(())
-    }
-
-    /// What the title screen asked for, from a click or Enter.
-    pub(super) fn title_action(
-        &mut self,
-        event_loop: &dyn EventLoopCtl,
-        action: Action,
-    ) -> Result<()> {
-        match action {
-            // A splitscreen player's title never ends the process (P1's does).
-            Action::Quit if self.options.split_guest => {}
-            Action::Quit => {
-                self.begin_closing_save(true)?;
-                event_loop.set_control_flow(ControlFlow::Poll);
-            }
-            Action::Options => self.open_options(true),
-            Action::Accessibility => {
-                self.open_options_at(true, horizon_client::options_ui::Page::Accessibility)
-            }
-            Action::Language => {
-                self.open_options_at(true, horizon_client::options_ui::Page::Language)
-            }
-            Action::Sounds => self.open_options_at(true, horizon_client::options_ui::Page::Sound),
-            Action::Credits => {
-                self.open_options_at(true, horizon_client::options_ui::Page::Credits)
-            }
-            Action::Mods => self.open_options_at(true, horizon_client::options_ui::Page::Mods),
-            Action::OpenUri(uri) => packs::open_uri(&uri),
-            Action::CopyText(text) => {
-                use horizon_client::clipboard::Clipboard;
-                self.clipboard.set(&text);
-            }
-            Action::Play { folder } => self.open_existing_world(&folder)?,
-            Action::Create {
-                folder,
-                name,
-                seed,
-                creative,
-                options,
-            } => self.open_world(&folder, Some(&name), seed, creative, Some(&options))?,
-            Action::Connect {
-                address,
-                lan,
-                realm,
-            } => self.connect_server_with_options(
-                &address,
-                &self.options.player_name(),
-                None,
-                lan,
-                realm,
-            )?,
-            Action::DataPacks { dir, selected } => {
-                self.keys.clear();
-                self.set_screen(Screen::Options);
-                self.options_from_title = true;
-                let resources = self.vanilla_root();
-                let additional = self
-                    .discover_mod_packs(mod_api::PackType::ServerData)
-                    .into_iter()
-                    .filter_map(|pack| pack.selection)
-                    .collect();
-                self.ui
-                    .options
-                    .open_data_packs(dir, selected, resources, additional);
-            }
-            Action::None => {}
-        }
-        Ok(())
-    }
-
     /// Enter a local world from the client: it runs on the client's server thread.
     pub(super) fn open_world(
         &mut self,
@@ -120,14 +39,6 @@ impl Game<'_> {
             log::warn!("Horizon: \"{folder}\" is no longer a save; nothing opened");
             return Ok(());
         }
-        // openWorldLoadLevelData: an existing world whose level data does not read opens
-        // RecoverWorldDataScreen instead.
-        if create.is_none()
-            && let Some(title) = self.title.as_mut()
-            && title.open_recover(folder)
-        {
-            return Ok(());
-        }
         world_loading::world_data_used();
         if self.defer_world_entry(PendingWorldEntry::Local {
             folder: folder.to_owned(),
@@ -146,10 +57,6 @@ impl Game<'_> {
             if !level_mods::is_confirmed(&dir) {
                 let missing = self.ask_missing_mods(&dir);
                 if !missing.is_empty() {
-                    if let Some(title) = self.title.as_mut() {
-                        title.ask_missing_mods(folder, missing);
-                        return Ok(());
-                    }
                     for m in &missing {
                         log::warn!("Horizon: {}", level_mods::describe(m));
                     }
@@ -241,10 +148,6 @@ impl Game<'_> {
             fullscreen: s.fullscreen,
             graphics: s.graphics_preset.clone(),
         };
-        // Again now: on Wayland the window is on a screen only once it has been shown.
-        if let Some(window) = &self.window {
-            horizon_client::telemetry::note_display(window);
-        }
         self.perf
             .finish(&horizon_client::logging::game_home(), settings);
     }
@@ -261,7 +164,7 @@ impl Game<'_> {
         // A repro recording is finished and bundled before the process may go away.
         self.repro_on_exit();
         self.finish_perf();
-        if self.title.is_some() || self.saved_for_exit {
+        if self.saved_for_exit {
             return Ok(());
         }
         // exitWorldAndClose disconnects the client from its world.
@@ -272,12 +175,6 @@ impl Game<'_> {
         if let Some(server) = self.integrated.take() {
             // The server thread saves the world.
             server.stop()?;
-            self.saved_for_exit = true;
-            return Ok(());
-        }
-        if let Some(mut remote) = self.remote.take() {
-            // Minecraft.disconnect closes the connection, so the host sees a clean leave.
-            remote.session.disconnect();
             self.saved_for_exit = true;
             return Ok(());
         }

@@ -4,7 +4,6 @@ use super::{
     commands::{R, Target, err},
 };
 use horizon_client::{
-    boss_overlay,
     bossbar::{self, BossBars},
     command::{Arg, Context},
     mobs::Species,
@@ -26,7 +25,7 @@ pub(super) struct BossState {
     /// What each viewer was last sent, so a change becomes one packet.
     sent: HashMap<u128, HashMap<u128, Offer>>,
     /// The last custom name of the fight dragon.
-    dragon_name: Option<Tag>,
+    pub(super) dragon_name: Option<Tag>,
 }
 
 impl BossState {
@@ -502,7 +501,6 @@ impl Game<'_> {
     pub(super) fn publish_boss_bars(&mut self) {
         self.load_bossbars();
         self.update_dragon_bar_name();
-        let now = boss_overlay::now_millis();
         let viewers = self.boss_viewers();
         let live: HashSet<u128> = viewers.iter().map(|v| v.uuid).collect();
         self.bosses.sent.retain(|id, _| live.contains(id));
@@ -510,9 +508,7 @@ impl Game<'_> {
         for viewer in &viewers {
             let desired = self.boss_events_for(viewer);
             for event in self.diff_boss_events(viewer, desired) {
-                if viewer.local {
-                    self.boss_overlay.apply(&event, now);
-                } else if let Some(conn) = viewer.conn {
+                if let Some(conn) = viewer.conn {
                     packets.push((conn, C::BossEvent(event)));
                 }
             }
@@ -740,10 +736,6 @@ impl Game<'_> {
             sent.insert(id, offer);
         }
         out
-    }
-    /// `ClientPacketListener.handleBossUpdate`.
-    pub(super) fn apply_boss_event(&mut self, packet: &play::BossEvent) {
-        self.boss_overlay.apply(packet, boss_overlay::now_millis());
     }
 }
 

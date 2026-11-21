@@ -31,7 +31,7 @@ mod test_runs;
 mod text_commands;
 mod world_cmds;
 
-use super::{Dim, Game, Screen, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
 use horizon_client::{
     command::{
         Arg, CommandError, Context, Reader,
@@ -3973,17 +3973,8 @@ impl Game<'_> {
             return Ok(1);
         }
         if let Some(capture) = self.chat_capture.as_mut() {
-            capture.push(line.clone());
+            capture.push(line);
         }
-        let focused = self.screen == Screen::Chat;
-        self.ui.chat.add(
-            &self.gui.atlas,
-            line,
-            None,
-            horizon_client::chat::ChatSource::Player,
-            self.visual_ticks(),
-            focused,
-        );
         Ok(1)
     }
     /// MessageArgument: `@p`-style selectors in a message become names.

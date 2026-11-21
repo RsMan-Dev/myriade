@@ -2364,10 +2364,9 @@ impl Game<'_> {
     }
     /// `ToastManager.SLOT_COUNT`.
     pub(super) const TOAST_SLOTS: usize = 5;
-    /// `ToastManager.update` and `extractRenderState` for the `AdvancementToast`s and
-    /// `RecipeToast`s: up to five stack in 32-pixel slots, the rest queue. `hidden` (F1)
-    /// keeps them timing out without drawing them.
-    pub(super) fn draw_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
+    /// `ToastManager.update` for the `AdvancementToast`s and `RecipeToast`s: their
+    /// slots, the queue, and the toast sounds.
+    pub(super) fn draw_toasts(&mut self) {
         let multiplier = f64::from(self.settings.notification_display_time);
         let mut sound_played = false;
         let mut i = 0;
@@ -2415,38 +2414,7 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }
-        if hidden {
-            return;
-        }
-        for i in 0..self.adv.toasts.len() {
-            if let Some(slot) = self.adv.toasts[i].slot {
-                self.draw_toast(batch, i, 32.0 * slot as f32, multiplier);
-            }
-        }
     }
-    /// The slots held by shown advancement, recipe, pack and narrator toasts,
-    /// as bits.
-    pub(super) fn toast_slots_used(&self) -> u32 {
-        let packs = self.server_packs.toast_slots();
-        self.adv
-            .toasts
-            .iter()
-            .filter_map(|t| t.slot)
-            .chain(packs)
-            .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
-            .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
-    }
-    pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
-        let kind = if toast.is_recipe() {
-            mod_api::ToastKind::Recipe
-        } else {
-            mod_api::ToastKind::Advancement
-        };
-        if self.add_toast(kind, &mut toast.title, &mut toast.description) {
-            self.adv.toasts.push_back(toast);
-        }
-    }
-
     /// The `AdvancementToast` or `RecipeToast` at `index` in its slot at `y`.
     fn draw_toast(&self, batch: &mut HudBatch, index: usize, y: f32, multiplier: f64) {
         let t = &self.adv.toasts[index];
@@ -2509,6 +2477,29 @@ impl Game<'_> {
         }
         self.draw_item(batch, icon, x + 8.0, y + 8.0);
     }
+
+    /// The slots held by shown advancement, recipe, pack and narrator toasts,
+    /// as bits.
+    pub(super) fn toast_slots_used(&self) -> u32 {
+        let packs = self.server_packs.toast_slots();
+        self.adv
+            .toasts
+            .iter()
+            .filter_map(|t| t.slot)
+            .chain(packs)
+            .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
+    }
+    pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
+        let kind = if toast.is_recipe() {
+            mod_api::ToastKind::Recipe
+        } else {
+            mod_api::ToastKind::Advancement
+        };
+        if self.add_toast(kind, &mut toast.title, &mut toast.description) {
+            self.adv.toasts.push_back(toast);
+        }
+    }
+
 }
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
@@ -2771,95 +2762,6 @@ mod tests {
             assert!(game.adv.progress.has(ID, "worn"));
         });
         std::fs::remove_dir_all(scratch).unwrap();
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
-        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                match event.description.as_ref().map(|text| &text.content) {
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "cancel" => {
-                        Flow::Cancel
-                    }
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
-                        *event.title = mod_api::Text::literal("replacement");
-                        event.title.style.color = Some("#123456".into());
-                        *event.description = Some(mod_api::Text::literal("changed"));
-                        Flow::Continue
-                    }
-                    _ => Flow::Continue,
-                }
-            }
-        }
-        let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-                game.adv.toasts.clear();
-                let advancement = |name: &str| Toast {
-                    icon: ItemStack::new("minecraft:stone", 1),
-                    frame: Frame::Challenge,
-                    title: Text::translate("advancements.toast.challenge", &[]),
-                    description: Some(Text::literal(name)),
-                    slide: Slide::default(),
-                    slot: None,
-                    recipes: vec![],
-                    changed: false,
-                    last_changed: 0,
-                };
-                game.add_advancement_toast(advancement("cancel"));
-                assert!(game.adv.toasts.is_empty());
-                game.add_advancement_toast(advancement("untouched"));
-                let original = &game.adv.toasts[0];
-                assert_eq!(
-                    original.title.component(),
-                    serde_json::json!({"translate": "advancements.toast.challenge"})
-                );
-                assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
-                assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
-                assert!(original.slot.is_none());
-                assert!(
-                    original.slide.origin.is_none(),
-                    "not animated before admission"
-                );
-                game.add_advancement_toast(advancement("edit"));
-                let edited = &game.adv.toasts[1];
-                assert_eq!(edited.title.plain(), "replacement");
-                assert_eq!(edited.title.component()["color"], "#123456");
-                assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
-                assert_eq!(edited.frame, Frame::Challenge);
-                for kind in [
-                    ToastKind::Recipe,
-                    ToastKind::Tutorial,
-                    ToastKind::System,
-                    ToastKind::Other,
-                ] {
-                    let mut title = Text::literal("title");
-                    let mut description = Some(Text::literal("cancel"));
-                    assert!(!game.add_toast(kind, &mut title, &mut description));
-                }
-                let mut system = horizon_client::toasts::SystemToast::new("system".into(), None);
-                system.message = Some(Text::literal("edit"));
-                let system = game.add_system_toast(system).unwrap();
-                assert_eq!(system.title.plain(), "replacement");
-                assert_eq!(system.message.unwrap().plain(), "changed");
-                for role in [
-                    super::super::execution_role::ExecutionRole::IntegratedServer,
-                    super::super::execution_role::ExecutionRole::DedicatedServer,
-                ] {
-                    game.options.execution_role = role;
-                    let mut title = Text::literal("server");
-                    let mut description = Some(Text::literal("edit"));
-                    assert!(!game.add_toast(ToastKind::Advancement, &mut title, &mut description));
-                    assert_eq!(title.plain(), "server", "server must not invoke listener");
-                    assert_eq!(description.unwrap().plain(), "edit");
-                }
-            });
-        });
     }
 
     #[test]

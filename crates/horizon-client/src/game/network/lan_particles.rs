@@ -289,23 +289,6 @@ impl Game<'_> {
     /// sent to each player within 32 blocks.
     pub(super) fn landing_dust(&mut self, state: BlockStateId, at: Vec3, count: i32, speed: f64) {
         let at = [at.x, at.y, at.z];
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            let block = [
-                at[0].floor() as i32,
-                (at[1] - 0.2).floor() as i32,
-                at[2].floor() as i32,
-            ];
-            if let Some((sprite, tint)) = self.particle_sprite(state, block) {
-                self.particles.send_particles(
-                    &ParticleOptions::block(ParticleType::Block, sprite, tint)
-                        .with_source(&self.res.facts().get(state).name),
-                    at,
-                    [0.0; 3],
-                    speed,
-                    count as u32,
-                );
-            }
-        }
         let Some(hub) = self.lan.as_ref().map(|h| &h.hub) else {
             return;
         };
@@ -395,94 +378,6 @@ impl Game<'_> {
         state: Option<BlockStateId>,
     ) -> Option<Particle> {
         self.lan.as_ref()?.hub.particle(options, state)
-    }
-
-    /// This window plays on an older release's server through the adapter.
-    fn older_server(&self) -> bool {
-        self.remote.as_ref().is_some_and(|r| {
-            r.session.server_version() != horizon_protocol::adapter::ServerVersion::Current
-        })
-    }
-
-    /// The options a server's particle stands for (None for a type or data
-    /// this client doesn't draw).
-    pub(super) fn received_particle(
-        &mut self,
-        p: &Particle,
-        at: [f64; 3],
-    ) -> Option<ParticleOptions> {
-        // The adapter's markers mean something only on an older server's connection: a
-        // 26.3 server's ids and durations are read as they are.
-        if let Some(options) = legacy_effect_options(p).filter(|_| self.older_server()) {
-            return Some(options);
-        }
-        if p.id == MOD_PARTICLE_ID
-            && let Some(ParticleData::Mod(name)) = &p.data
-        {
-            return Some(ParticleOptions::named(name.clone()));
-        }
-        let name = self
-            .remote
-            .as_ref()?
-            .builtin
-            .get("minecraft:particle_type")?
-            .name(p.id)?
-            .to_owned();
-        let ty = ParticleType::from_name(&name)?;
-        Some(match &p.data {
-            None => ParticleOptions::simple(ty),
-            Some(ParticleData::Item(stack)) => {
-                let remote = self.remote.as_ref()?;
-                let stack = horizon_client::item_sync::from_network(
-                    stack,
-                    &remote.builtin,
-                    &remote.registries,
-                );
-                self.item_particle_options(&stack)?
-            }
-            Some(ParticleData::State(s)) => {
-                let pos = at.map(|v| v.floor() as i32);
-                let state = BlockStateId(*s as u32);
-                let (sprite, tint) = self
-                    .particle_sprite(state, pos)
-                    .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                ParticleOptions::block(ty, sprite, tint)
-                    .with_source(&self.res.facts().get(state).name)
-            }
-            Some(ParticleData::ColorScale(c, scale)) => {
-                ParticleOptions::dust(rgb(rgba(*c)), *scale)
-            }
-            Some(ParticleData::ColorScale2(from, to, scale)) => {
-                ParticleOptions::dust_transition(rgb(rgba(*from)), rgb(rgba(*to)), *scale)
-            }
-            Some(ParticleData::ColorPower(c, power)) => ParticleOptions {
-                scale: *power,
-                ..ParticleOptions::colored(ty, [rgba(*c)[0], rgba(*c)[1], rgba(*c)[2], 1.0])
-            },
-            Some(ParticleData::Color(c)) => ParticleOptions::colored(ty, rgba(*c)),
-            Some(ParticleData::Scalar(v)) if ty == ParticleType::SculkCharge => {
-                ParticleOptions::sculk_charge(*v)
-            }
-            Some(ParticleData::Scalar(v)) => ParticleOptions {
-                scale: *v,
-                ..ParticleOptions::simple(ty)
-            },
-            Some(ParticleData::Delay(d)) => ParticleOptions::shriek(*d),
-            Some(ParticleData::Geyser(water_blocks)) => ParticleOptions::geyser(ty, *water_blocks),
-            Some(ParticleData::GeyserBase(water_blocks, burst_impulse_base)) => {
-                ParticleOptions::geyser_base(ty, *water_blocks, *burst_impulse_base)
-            }
-            Some(ParticleData::Trail(target, color, duration)) => ParticleOptions {
-                legacy_trail_lifetime: *duration == -1 && self.older_server(),
-                ..ParticleOptions::trail(*target, *color as u32 & 0xFF_FFFF, *duration)
-            },
-            Some(ParticleData::Vibration { source, ticks }) => ParticleOptions::vibration(
-                particle_position_source(source),
-                self.vibration_destination(source)?,
-                *ticks,
-            ),
-            Some(_) => return None,
-        })
     }
 
     /// `PositionSource.getPosition`: a block's centre, or an entity's feet
@@ -641,15 +536,6 @@ impl Game<'_> {
     pub(super) fn evaporation_smoke(&mut self, pos: [i32; 3]) {
         let options = ParticleOptions::simple(ParticleType::LargeSmoke);
         let at = pos.map(f64::from);
-        for _ in 0..8 {
-            let r = self.particles.random();
-            let p = [
-                at[0] + r.next_double(),
-                at[1] + r.next_double(),
-                at[2] + r.next_double(),
-            ];
-            self.particles.add(&options, p, [0.0; 3]);
-        }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),
             options,

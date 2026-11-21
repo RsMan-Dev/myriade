@@ -1132,9 +1132,6 @@ impl Game<'_> {
         }
         match words.get(1).copied() {
             Some("open") => {
-                if self.title.is_some() {
-                    return Err("open a world first".into());
-                }
                 let port = words.get(2).map_or(Ok(0), |p| p.parse::<u16>())?;
                 self.lan_open(LanSettings {
                     port: if port == 0 {
@@ -3278,32 +3275,11 @@ impl Game<'_> {
         &mut self,
         attacker: Option<u32>,
         id: i32,
-        feet: [f64; 3],
-        width: f64,
-        height: f64,
+        _feet: [f64; 3],
+        _width: f64,
+        _height: f64,
         magic: bool,
     ) {
-        use horizon_client::particles::{
-            ParticleOptions, ParticleType, TrackingBody, TrackingTarget,
-        };
-        let particle = if magic {
-            ParticleType::EnchantedHit
-        } else {
-            ParticleType::Crit
-        };
-        let body = self.remote_index.get(&self.remote_entities, id as u32).map_or(
-            TrackingBody {
-                feet,
-                width,
-                height,
-            },
-            super::render_tick::mob_tracking_body,
-        );
-        self.particles.tracking_emitter(
-            ParticleOptions::simple(particle),
-            TrackingTarget::Entity(id),
-            body,
-        );
         if self.audio.capture.is_some() {
             self.lan_critical_hits.push((attacker, id, magic));
         }

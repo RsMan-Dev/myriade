@@ -357,8 +357,8 @@ impl Game<'_> {
                 let effects = Effects {
                     player,
                     pos,
-                    event,
                     sound: plan.sound.as_ref().map(ToString::to_string),
+                    event,
                     statistics: plan.statistics.iter().map(ToString::to_string).collect(),
                     item: held.item.to_string(),
                 };

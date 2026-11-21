@@ -6,7 +6,7 @@ use super::Game;
 #[path = "passengers/mob_seating.rs"]
 mod mob_seating;
 use horizon_client::mobs::{Species, riders};
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
 /// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
@@ -289,7 +289,7 @@ impl Game<'_> {
         // which is 0 for both (Display and Interaction are 0 by 0). On the
         // local player, the top of its box in its pose and scale
         // (`Avatar.POSES`).
-        let me = self.remote.as_ref().map(|r| r.entity_id as u32);
+        let me: Option<u32> = None;
         let own_seat = self.player.as_ref().map(|p| {
             p.position
                 .add_vector(Vec3::new(0.0, f64::from(p.dimensions.height), 0.0))
@@ -328,8 +328,7 @@ impl Game<'_> {
         // is the default 0, so its feet sit on the seat. The seat at the
         // start of the tick too (`commonTick` runs before `rideTick`), so the
         // stand is drawn between the two even while the level is frozen and
-        // its vehicle is not. Those riding the local player are seated after
-        // its move (`seat_own_stands`).
+        // its vehicle is not.
         for i in 0..self.armor_stands.len() {
             let Some(vehicle) = self.armor_stands[i].vehicle else {
                 continue;
@@ -383,33 +382,6 @@ impl Game<'_> {
                 }
                 self.position_mob_rider(i, index);
             }
-        }
-    }
-
-    /// Armor stands riding the local player, on the top of its box. Vanilla
-    /// ticks the player (`tickNonPassenger`) before its passengers
-    /// (`tickPassenger` -> `positionRider`), so a rider's `xo` and `x` are the
-    /// seats before and after the same move: call this after the player's.
-    pub(super) fn seat_own_stands(&mut self) {
-        let (Some(me), Some(p)) = (
-            self.remote.as_ref().map(|r| r.entity_id as u32),
-            self.player.as_ref(),
-        ) else {
-            return;
-        };
-        let up = Vec3::new(0.0, f64::from(p.dimensions.height), 0.0);
-        let (at, before) = (
-            p.position.add_vector(up),
-            self.previous_position.add_vector(up),
-        );
-        for stand in self
-            .armor_stands
-            .iter_mut()
-            .filter(|a| a.vehicle == Some(me))
-        {
-            stand.position = at;
-            stand.previous = before;
-            stand.velocity = Vec3::ZERO;
         }
     }
 

@@ -344,17 +344,9 @@ impl Game<'_> {
             .parked_world_of(level.dimension_id())
             .ok_or(mod_api::LevelReadError::Stale)
     }
-    /// The world a handle names for a read that works on both sides: the
-    /// server's level, or on a client the one it shows (`Minecraft.level`, its
-    /// copy of the server's). None for a stale handle or another dimension.
+    /// The server's level a handle names. None for a stale handle or another dimension.
     pub(super) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
-        if self.is_logical_server() {
-            return self.native_level_world(level);
-        }
-        (self.remote.as_ref().is_some_and(|r| r.logged_in)
-            && self.level_handle_current(level)
-            && level.dimension() == self.native_level_key())
-        .then_some(&self.world)
+        self.native_level_world(level)
     }
     /// Find a loaded chunk in an open server level.
     pub(super) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
@@ -585,9 +577,10 @@ impl Game<'_> {
             return None;
         }
         let (offhand, sneaking) = match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } if self.dim.key() == level.dimension() => {
-                (self.offhand.as_ref(), self.keys.held(super::Mapping::Sneak))
-            }
+            PlayerRead::Acting { .. } if self.dim.key() == level.dimension() => (
+                self.offhand.as_ref(),
+                self.player.as_ref().is_some_and(|p| p.shift_key_down),
+            ),
             PlayerRead::Guest(guest) if guest.dimension == level.dimension_id() => {
                 (guest.offhand.as_ref(), guest.sneaking)
             }
@@ -991,16 +984,10 @@ impl Game<'_> {
         Some(self.world.game_time)
     }
     /// The time of day in ticks (`Level.getOverworldClockTime`), shared by
-    /// every level; it keeps counting past 24000. On a client, the synchronized
-    /// Overworld clock, advanced at its server-supplied rate, even when the
-    /// displayed dimension has a different default clock. API 381.
+    /// every level; it keeps counting past 24000. API 381.
     pub(super) fn level_day_time(&self, level: LevelRef) -> Option<i64> {
         self.native_level_read_world(level)?;
-        if self.is_logical_server() {
-            Some(self.command_clock_time("minecraft:overworld"))
-        } else {
-            self.remote.as_ref().map(|r| r.overworld_clock_time())
-        }
+        Some(self.command_clock_time("minecraft:overworld"))
     }
     /// The time of the level's own clock (its dimension type's `default_clock`) in ticks: what the
     /// level's sky, spawning and beds go by, and what `/time` sets there. None for a level without
@@ -1469,10 +1456,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn height_reads_server_levels_and_the_joined_client_level() {
-        use super::super::execution_role::ExecutionRole;
-        use horizon_client::chunk::LevelShape;
-        use horizon_protocol::connection::Pipe;
+    fn height_reads_server_levels() {
         use mod_api::Host;
 
         with_game(|game| {
@@ -1484,28 +1468,6 @@ mod tests {
             assert_eq!(nether.height(game), Some((0, 256)));
             assert_eq!(overworld.height(game), Some((-64, 384)), "parked level");
             game.enter_level(Dim::Overworld).unwrap();
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "HeightReadTest").unwrap();
-            assert!(game.level("minecraft:overworld").is_none());
-            assert_eq!(overworld.height(game), None, "not logged in");
-            game.remote.as_mut().unwrap().logged_in = true;
-            game.world.shape = LevelShape::new(-128, 512, 512, true, false).unwrap();
-            let level = game.level("minecraft:overworld").unwrap();
-            let host: &dyn Host = game;
-            assert_eq!(level.height(host), Some((-128, 512)), "client's own shape");
-            assert_eq!(
-                nether.height(host),
-                None,
-                "parked server level is not visible"
-            );
-            assert!(host.level("minecraft:the_nether").is_none());
-            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            assert_eq!(stale.height(host), None);
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(level.height(game), None, "logged out");
         });
     }
 
@@ -2186,17 +2148,6 @@ mod tests {
             let guard = in_mod("other");
             assert!(!overlap.remove(game));
             drop(guard);
-            // The client cannot query or mutate the server's in-memory marks.
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            let guard = in_mod("machines");
-            assert!(!nether.has_water_ticket(game, [0, 64, 0]));
-            assert!(
-                nether
-                    .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
-                    .is_none()
-            );
-            assert!(!b.remove(game));
-            drop(guard);
         });
     }
 
@@ -2812,10 +2763,7 @@ mod environment_read_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading() {
-        use crate::game::execution_role::ExecutionRole;
-        use horizon_protocol::connection::Pipe;
-
+    fn biome_reads_follow_live_cells_and_parked_levels() {
         with_game(|game| {
             let overworld = game.level("minecraft:overworld").unwrap();
             paint_biome(game, "minecraft:plains");
@@ -2843,34 +2791,6 @@ mod environment_read_tests {
                 overworld.dimension(),
             );
             assert_eq!(stale.biome_at(game, [8, 64, 8]), None);
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "BiomeReadTest").unwrap();
-            assert_eq!(
-                overworld.client_biome(game, [8, 64, 8]),
-                None,
-                "not logged in"
-            );
-            game.remote.as_mut().unwrap().logged_in = true;
-            paint_biome(game, "minecraft:snowy_plains");
-            let client_level = game.level("minecraft:overworld").unwrap();
-            let before = (game.world.chunks.len(), game.streaming.pending());
-            assert_eq!(
-                client_level.client_biome(game, [8, 64, 8]).as_deref(),
-                Some("minecraft:snowy_plains")
-            );
-            assert_eq!(client_level.client_biome(game, [31, 64, 31]), None);
-            let foreign = LevelRef::new(client_level.epoch(), mod_api::DimensionKey::NETHER);
-            assert_eq!(foreign.client_biome(game, [8, 64, 8]), None);
-            assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
-            game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(
-                client_level.client_biome(game, [8, 64, 8]),
-                None,
-                "logged out"
-            );
         });
     }
 
@@ -2919,11 +2839,7 @@ mod environment_read_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn sky_and_logical_height_read_the_named_dimension_and_client_state() {
-        use crate::game::execution_role::ExecutionRole;
-        use horizon_client::chunk::LevelShape;
-        use horizon_protocol::connection::Pipe;
-
+    fn sky_and_logical_height_read_the_named_dimension() {
         with_game(|game| {
             let overworld = game.level("minecraft:overworld").unwrap();
             assert_eq!(overworld.logical_height(game), Some(384));
@@ -2981,26 +2897,6 @@ mod environment_read_tests {
             );
             assert_eq!(stale.logical_height(game), None);
             assert_eq!(stale.get_sky_darken(game), None);
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "SkyReadTest").unwrap();
-            assert_eq!(overworld.logical_height(game), None, "not logged in");
-            game.remote.as_mut().unwrap().logged_in = true;
-            game.world.shape = LevelShape::new(-128, 512, 256, true, false).unwrap();
-            let level = game.level("minecraft:overworld").unwrap();
-            assert_eq!(
-                level.logical_height(game),
-                Some(256),
-                "client's own dimension shape"
-            );
-            assert_eq!(level.get_sky_darken(game), Some(game.sky_darken()));
-            assert_eq!(
-                nether.logical_height(game),
-                None,
-                "another dimension isn't visible to a client"
-            );
         });
     }
 

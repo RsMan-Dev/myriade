@@ -26,24 +26,6 @@ impl Game<'_> {
     pub(in crate::game) fn gui_options(&self) -> ClientGuiOptions {
         gui_options_snapshot(&self.settings)
     }
-    /// The GUI scale in effect (`Window.getGuiScale`): the scale the window
-    /// applies from the GUI Scale option and its size, at least 1; none on a
-    /// server or when no window exists. `gui_options().gui_scale` is only the
-    /// option, where 0 means automatic.
-    pub(in crate::game) fn gui_scale(&self) -> Option<u32> {
-        // The size the renderer applies, as the drawing code reads it: it keeps its previous
-        // configuration when the window reports a size it cannot draw at.
-        let framebuffer = self
-            .window
-            .as_ref()
-            .and(self.renderer.as_ref())
-            .map(|r| [r.config.width, r.config.height]);
-        resolved_gui_scale(
-            framebuffer,
-            self.settings.gui_scale,
-            self.settings.force_unicode,
-        )
-    }
     /// A snapshot of the current chat preferences.
     pub(in crate::game) fn chat_options(&self) -> ClientChatOptions {
         let s = &self.settings;
