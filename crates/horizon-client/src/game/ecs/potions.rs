@@ -101,7 +101,7 @@ impl Game<'_> {
                 }
                 _ => {
                     if self.can_be_affected(Some(mob as i32), kind, id)
-                        && let Some(name) = super::super::items::potions::mob_effect_id(id)
+                        && let Some(name) = super::super::potions::mob_effect_id(id)
                     {
                         let new = !self.ecs_mob_has_effect(mob, name);
                         self.ecs_mob_add_effect(mob, name, duration, amp, !hidden.contains(&id), ambient.contains(&id));
@@ -192,7 +192,7 @@ impl Game<'_> {
         let mut hits = Vec::new();
         for e in self.ecs.select(&q) {
             let Some(b) = self.ecs.bounds(e) else { continue };
-            if let Some(d2) = super::super::items::potions::splash_distance_sqr(at, age, b) {
+            if let Some(d2) = super::super::potions::splash_distance_sqr(at, age, b) {
                 hits.push((e, 1.0 - d2.sqrt() / 4.0));
             }
         }
@@ -211,7 +211,7 @@ impl Game<'_> {
                     }
                     _ => {
                         let d = (intensity * f64::from(duration) * f64::from(duration_scale) + 0.5) as i32;
-                        if let Some(n) = super::super::items::potions::mob_effect_id(name)
+                        if let Some(n) = super::super::potions::mob_effect_id(name)
                             && d > 20
                         {
                             self.ecs_mob_add_effect(id, n, d, amp, true, false);

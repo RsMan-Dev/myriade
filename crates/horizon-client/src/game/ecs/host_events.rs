@@ -1,6 +1,6 @@
 //! The outputs the ECS hands back to the host (`HostEvent`), applied by the host's own functions: one arm per variant, none left to `_`.
 use super::super::{Game, Result};
-use super::super::mobs::creatures::section_steps::teleport_player;
+use super::super::creatures::section_steps::teleport_player;
 use bevy_ecs::entity::Entity;
 use horizon_client::particles::{ParticleOptions, ParticleType};
 use horizon_core::geometry::{Aabb, Vec3};

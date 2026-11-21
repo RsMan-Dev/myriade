@@ -24,7 +24,7 @@ const COLUMNS: usize = 5;
 
 /// `AbstractHorse.getInventoryColumns`: five for a donkey's or mule's chest,
 /// a llama's strength for its chest, else none.
-pub(super) fn mount_columns(m: &Mob) -> usize {
+pub(in crate::game) fn mount_columns(m: &Mob) -> usize {
     let species = m.species();
     if llama::is_llama(species) {
         llama::inventory_columns(m).clamp(0, 5) as usize

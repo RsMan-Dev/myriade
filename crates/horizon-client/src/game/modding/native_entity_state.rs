@@ -208,12 +208,8 @@ impl Game<'_> {
                 ) {
                     return Some(self.pearl_portal_cooldown(id));
                 }
-                if !super::nether_portal::is_arrow(p)
-                    && !super::nether_portal::is_portal_projectile(p)
-                {
-                    return None;
-                }
-                id
+                // A client-side projectile has no portal state: the server's go through the ECS.
+                return None;
             }
             Target::Mob(id)
             | Target::Item(id)
@@ -245,22 +241,8 @@ impl Game<'_> {
             return false;
         }
         match self.native_entity_target(entity) {
-            Some(Target::Projectile(id)) => {
-                let Some(projectile) = self.creatures.projectiles.iter().find(|p| p.id == id)
-                else {
-                    return false;
-                };
-                if matches!(
-                    projectile.kind,
-                    horizon_client::projectiles::ProjectileKind::EnderPearl
-                ) || (!super::nether_portal::is_arrow(projectile)
-                    && !super::nether_portal::is_portal_projectile(projectile))
-                {
-                    return false;
-                }
-                self.portals.entities.entry(id).or_default().cooldown = ticks;
-                true
-            }
+            // A client-side projectile has no portal state: the server's go through the ECS.
+            Some(Target::Projectile(_)) => false,
             Some(Target::Mob(id))
             | Some(Target::Item(id))
             | Some(Target::Orb(id))

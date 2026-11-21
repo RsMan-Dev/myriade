@@ -8,13 +8,24 @@ pub(super) mod biome_facts;
 mod mob_conversion;
 #[cfg(test)]
 mod mob_dispatch_panic_tests;
+mod borrowed_tick;
+mod breeding;
+mod combat_adaptations;
+mod conversion_identity;
+mod death_tail;
+mod hoglin_target;
+mod projectile_targets;
+mod pufferfish_player;
+mod death_weapon;
+mod destroy_rules;
+mod knockback;
 mod player_loot_entity;
 mod projectile_world;
 pub(super) use projectile_world::ProjWorld;
 mod residency;
 #[cfg(test)]
 mod retained_limits_tests;
-mod section_steps;
+pub(in crate::game) mod section_steps;
 #[cfg(test)]
 #[path = "../../creatures/spawn_egg_mob_tests.rs"]
 mod spawn_egg_mob_tests;

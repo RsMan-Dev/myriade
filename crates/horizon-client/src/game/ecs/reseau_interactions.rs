@@ -2,6 +2,10 @@
 //! par id. Ce qui est dans `Game.ecs` passe par `EcsLevel` ; le reste (`remote_entities`, rôle Client) garde le code d'origine.
 //! Imports à ajouter au fichier d'accueil : `horizon_core::geometry::{Aabb, Vec3}`, `horizon_client::items::ItemStack`, `horizon_client::mobs::equine`, `horizon_ecs_proto::bridge::host::HurtSource`, `horizon_protocol::packets::play::{self, Clientbound as C}`.
 use super::super::Game;
+use horizon_client::{items::ItemStack, mobs::equine};
+use horizon_core::geometry::{Aabb, Vec3};
+use horizon_ecs_proto::bridge::host::HurtSource;
+use horizon_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_> {
     /// The box of followed entity `id` (`EcsLevel::bounds`), or the client's `remote_entities` box.
@@ -44,7 +48,7 @@ impl Game<'_> {
             return self.ecs.mount_columns(id);
         }
         let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(crate::game::network::mount_menu::mount_columns(m))
+        Some(crate::game::mount_menu::mount_columns(m))
     }
 
     /// The kind id of the mount `id`, as its menu names it (`minecraft:` ids as the mob has them).

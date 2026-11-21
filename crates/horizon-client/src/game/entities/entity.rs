@@ -2347,17 +2347,6 @@ impl Entity for Projectile {
         Ok(())
     }
     stored_motion!();
-    /// Arrows and the thrown items and fireballs a chunk saves.
-    fn portal_size(&self) -> Option<(f32, f32)> {
-        (super::nether_portal::is_arrow(self) || super::nether_portal::is_portal_projectile(self))
-            .then(|| super::nether_portal::projectile_box(self))
-    }
-    fn portal_from(&self) -> Option<Vec3> {
-        Some(self.previous)
-    }
-    fn portal_sweeps(&self) -> bool {
-        !super::nether_portal::is_arrow(self) || !self.stuck || self.previous != self.position
-    }
     fn selector_target(&self) -> Option<Target> {
         use horizon_client::projectiles::ProjectileKind as K;
         // The kinds /data can write (entity_nbt).
