@@ -15,7 +15,7 @@ fn main() {
     let spacing = 4.0;
     let side = (n as f64).sqrt().ceil() as i32;
     let half = ((f64::from(side) * spacing / 2.0) as i32 + 8).max(16);
-    let mut herd = Herd::with_slab_awake(half, true, false);
+    let mut herd = Herd::with_slab(half, true, false);
     let table = species_table().0;
     let mut seed = 0x9e37_79b9_u64;
     let mut ids = Vec::with_capacity(n);
@@ -26,6 +26,7 @@ fn main() {
         seed ^= seed << 17;
         ids.push(spawn_species(&mut herd.world, &table[i % table.len()], x, z, seed));
     }
+    herd.admit_spawned(&ids);
     herd.set_players(vec![]);
     herd.tick();
     herd.tick();
@@ -49,6 +50,13 @@ fn main() {
     }
     let st = herd.world.resource::<horizon_ecs_proto::cow::Index>().zone.stats;
     let asleep = ids.iter().filter(|&&e| herd.world.get_entity(e).is_ok_and(|m| m.contains::<horizon_ecs_proto::zone::Dormant>())).count();
+    if n <= 200 {
+        for (i, &e) in ids.iter().enumerate() {
+            if herd.world.get_entity(e).is_ok_and(|m| !m.contains::<horizon_ecs_proto::zone::Dormant>()) {
+                println!("awake: {}", table[i % table.len()].name);
+            }
+        }
+    }
     let gone = ids.iter().filter(|&&e| herd.world.get_entity(e).is_err()).count();
     println!(
         "n={n} species={} ticks={ticks} instr/tick first500={} last500={} wakes={} sleeps_after_enable={} asleep_at_end={asleep} despawned={gone} awake={}",

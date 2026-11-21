@@ -178,6 +178,12 @@ impl Herd {
         self.world.run_system_cached(reindex).unwrap();
         out
     }
+    /// Lists in the index and arms creatures spawned by hand (`spawn_species`), then lets the zone put to sleep those whose chunk does not tick.
+    pub fn admit_spawned(&mut self, es: &[Entity]) {
+        crate::goals::arm_all(&mut self.world);
+        self.world.run_system_cached(reindex).unwrap();
+        crate::zone::admit(&mut self.world, es);
+    }
     /// Micro-bench of the path search, 1: every animal gets a target 1.5 blocks away and `NeedsPath`.
     pub fn bench_pathfind_prepare(&mut self) {
         let ids: Vec<Entity> = self.world.query_filtered::<Entity, With<Stroll>>().iter(&self.world).collect();
