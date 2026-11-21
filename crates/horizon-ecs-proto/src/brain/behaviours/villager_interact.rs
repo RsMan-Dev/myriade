@@ -1,7 +1,6 @@
 //! `InteractWith` (`villager_brain.rs:1963-2005`): with no walk target and a visible mob of the kind the entry names, one such mob is
 //! wanted; the nearest within 8 blocks becomes the interaction target (the breeding target when `breed`), is looked at and walked to
 //! (speed 0.5, close 2). The kind is the entry's `Params`: a species by name, and in love for a breeding pair.
-use crate::behaviours::breed::Love;
 use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::behaviours::look_at_entity::species_id;
 use crate::brain::*;
@@ -28,7 +27,7 @@ pub struct Params {
 
 fn wanted(w: &World, who: Who, p: &Params, id: Option<u8>) -> bool {
     let Who::Entity(k) = who else { return false };
-    info(w, who).is_some_and(|i| Some(i.species) == id) && (!p.in_love || w.get::<Love>(k).is_some())
+    info(w, who).is_some_and(|i| Some(i.species) == id) && (!p.in_love || crate::brain::behaviours::work_breed::ready(w, k))
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {

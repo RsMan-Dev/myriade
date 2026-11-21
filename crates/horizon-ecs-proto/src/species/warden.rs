@@ -1,8 +1,8 @@
 //! `minecraft:warden`: the values of the Mob's constants (`mobs/warden.rs`, `mobs/warden_brain.rs`), given to the modules. The
 //! modules hold the mechanics only; their parameters have no default. Priorities: the lower number runs first (the brain's order).
-use super::{templates::monster, Def};
+use super::{templates::monster, Change, Def};
 use crate::behaviours::{
-    darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
+    look_at_player, nearest_target, random_look, darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
     vibration_listen, warden_drop_invalid_target, warden_look_target, Cap, Entry,
 };
 
@@ -57,9 +57,11 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 11, &stroll::Params { speed: 0.5, ..stroll::Params::DEFAULT }),
         Entry::new(&float::MODULE, 9, &float::Params::DEFAULT),
         // lot V4 : `SetWardenLookTarget` (core 1), `StopAttackingIfTargetInvalid` (Fight 11, `set_dig_cooldown` 1200)
-        Entry::new(&warden_look_target::MODULE, 1, &()),
+        Entry::new(&warden_look_target::MODULE, 9, &()),
         Entry::new(&warden_drop_invalid_target::MODULE, 11, &warden_drop_invalid_target::Params { dig_cooldown: 1200 }),
     ],
+    // The Mob's warden has no idle look (its brain looks only at its look target): the monster base's two look goals left, they cut the pause.
+    changes: &[Change::Remove { module: &look_at_player::MODULE, nth: 0 }, Change::Remove { module: &random_look::MODULE, nth: 0 }, Change::Remove { module: &nearest_target::MODULE, nth: 0 }],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     ..Def::EMPTY
 };

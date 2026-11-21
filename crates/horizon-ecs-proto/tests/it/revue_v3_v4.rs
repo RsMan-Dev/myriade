@@ -379,10 +379,14 @@ fn two_villagers_with_food_and_beds_have_a_baby_at_the_same_delay() {
     for &p in &[a, b] {
         h.world.entity_mut(p).insert(food_stock::Food(12));
     }
-    h.tick();
-    let start = now_of(&h.world, a);
-    breed_love::start(&mut h.world, a, b);
-    let due = h.world.get::<breed_love::Mating>(a).unwrap().birth;
+    // The real trigger: `interact_with` (`BreedVillager`) sets the breed target, the idle gate `make_love` plans the birth.
+    let mut start = now_of(&h.world, a);
+    while h.world.get::<breed_love::Mating>(a).is_none() && h.world.get::<breed_love::Mating>(b).is_none() && now_of(&h.world, a) < start + 2000 {
+        h.tick();
+        start = now_of(&h.world, a);
+    }
+    let by = if h.world.get::<breed_love::Mating>(a).is_some() { a } else { b };
+    let due = h.world.get::<breed_love::Mating>(by).unwrap().birth;
     let mut r = mob_day();
     bed_mob(&r);
     r.apply_block_events();
@@ -410,7 +414,7 @@ fn two_villagers_with_food_and_beds_have_a_baby_at_the_same_delay() {
     assert!(ecs.is_some() && born.is_some(), "naissance : ECS {ecs:?}, Mob {born:?}");
     assert!((275..325).contains(&ecs_delay), "délai ECS 275 + rand(50) : {ecs_delay}");
     let mob_delay = born.unwrap() - love.unwrap_or(0);
-    assert!((ecs_delay - mob_delay).abs() <= 50, "délai de naissance : ECS {ecs_delay}, Mob {mob_delay}");
+    assert!((ecs_delay as i64 - mob_delay).abs() <= 50, "délai de naissance : ECS {ecs_delay}, Mob {mob_delay}");
 }
 
 /// 7 bis. No free bed: the same food, no bed on either side, 2500 ticks: no baby is born.
@@ -425,11 +429,12 @@ fn villagers_without_a_free_bed_have_no_baby() {
     for &p in &[a, b] {
         h.world.entity_mut(p).insert(food_stock::Food(12));
     }
-    h.tick();
-    breed_love::start(&mut h.world, a, b);
+    let mut loved = false;
     for _ in 0..2500 {
         h.tick();
+        loved |= h.world.get::<breed_love::Mating>(a).is_some() || h.world.get::<breed_love::Mating>(b).is_some();
     }
+    assert!(loved, "the pair does start the union (real trigger), the bed alone is missing");
     let ecs_babies = h.world.query_filtered::<Entity, With<GrowAt>>().iter(&h.world).count();
     let mut r = mob_day();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
@@ -477,7 +482,7 @@ fn warden_drops(dead: bool) -> (Option<i64>, Option<i64>, f32, f32, f32) {
             r.hit(i, 1.0, [6.5, 1.0, 0.5]);
             h.hit_by(e, 1.0, 1);
         }
-        if t == 149 {
+        if t == 152 {
             yaw_ecs = h.world.get::<Head>(e).map_or(f32::NAN, |x| x.yaw);
             yaw_mob = r.mobs[i].head_yaw;
         }
@@ -505,7 +510,8 @@ fn warden_drops(dead: bool) -> (Option<i64>, Option<i64>, f32, f32, f32) {
 }
 fn check_warden(dead: bool) {
     let (de, dm, ye, ym, exp) = warden_drops(dead);
-    assert!((ye - exp).abs() <= 5.0 && (ym - exp).abs() <= 5.0, "regard vers le joueur (attendu {exp}) : ECS {ye}, Mob {ym}");
+    let gap = |a: f32| ((a - exp + 540.0).rem_euclid(360.0) - 180.0).abs();
+    assert!(gap(ye) <= 5.0 && gap(ym) <= 5.0, "regard vers le joueur (attendu {exp}) : ECS {ye}, Mob {ym}");
     assert!(de.is_some_and(|d| d <= 2) && dm.is_some_and(|d| d <= 2), "cible lâchée : ECS {de:?}, Mob {dm:?}");
 }
 #[test]

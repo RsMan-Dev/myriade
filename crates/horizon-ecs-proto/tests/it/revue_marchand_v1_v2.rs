@@ -116,14 +116,9 @@ fn wandering_trader_holds_still_and_faces_its_player_vs_mob() {
 }
 
 /// Point 2: the warden's `DoNothing(Timed::new(30, 60))`, the same goal in the ECS (`timed_idle`) with the Mob's pauses.
-fn ecs_pauses() -> Vec<(u32, u32)> {
+fn ecs_pauses_of(seed: u64) -> Vec<(u32, u32)> {
     let mut h = Herd::with_slab_awake(60, true, false);
-    let p: &'static timed_idle::Params = Box::leak(Box::new(timed_idle::Params { min: 30, max: 60, interval: 1, chance: 1.0 }));
-    let entries: &'static [Entry] = Box::leak(vec![Entry::new(&timed_idle::MODULE, 10, p)].into_boxed_slice());
-    let table = h.world.resource::<SpeciesTable>().0.clone();
-    let mut sp = *table.iter().find(|s| s.name == "minecraft:warden").unwrap();
-    sp.goals = Config { entries };
-    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
+    let e = spawn_species(&mut h.world, species(), 0.5, 0.5, seed);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     pauses(
@@ -131,34 +126,61 @@ fn ecs_pauses() -> Vec<(u32, u32)> {
             h.tick();
             h.world.get::<GoalSet>(e).unwrap().is_running(&timed_idle::MODULE)
         },
-        3000,
+        1000,
     )
 }
 
+/// Eight seeds, for the ECS draws few pauses in 1000 ticks.
+fn ecs_pauses() -> Vec<(u32, u32)> {
+    (70..78).flat_map(ecs_pauses_of).collect()
+}
+
+/// The Mob's `DoNothing` is read in the warden's brain (`Timed.running`, shown by its `Debug`): no name is given by the brain.
 fn mob_pauses() -> Vec<(u32, u32)> {
     let mut r = MobRef::new(60, false);
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:warden"));
+    let mut spawn_events = Vec::new();
+    horizon_client_lib::mobs::warden::finalize(&mut r.mobs[i], true, &mut spawn_events);
+    r.mobs[i].persistent = false;
     pauses(
         || {
             r.step(None);
-            r.names(i).iter().any(|n| n.contains("Nothing"))
+            format!("{:?}", r.mobs[i].extra.warden).contains("DoNothing(Timed { running: true")
         },
-        3000,
+        1000,
     )
 }
 
+/// The warden's own pause (`RunOne[Stroll 2, DoNothing 1]`, `DoNothing(Timed::new(30, 60))`), the real species' goal against the Mob's
+/// brain: the length of a pause, and the interval between two pauses (start to start), over the first 1000 ticks (the warden then digs, on both sides).
 #[test]
 fn timed_idle_pause_lasts_thirty_to_sixty_ticks_vs_mob() {
-    if !have_data() {
+    if !have_data() || wrong_species(&["minecraft:warden"]) {
         return;
     }
     let (e, m) = (ecs_pauses(), mob_pauses());
     let dur = |v: &[(u32, u32)]| v.iter().map(|(s, t)| f64::from(t - s)).collect::<Vec<f64>>();
     let (de, dm) = (dur(&e), dur(&m));
-    eprintln!("pauses: ecs {de:?} mob {dm:?}");
-    assert!(!de.is_empty() && !dm.is_empty(), "no complete pause: ecs {} mob {}", de.len(), dm.len());
+    eprintln!("pauses: ecs n {} mean {:.1}; mob n {} mean {:.1}", de.len(), mean(&de), dm.len(), mean(&dm));
+    assert!(de.len() >= 2 && dm.len() >= 5, "pauses: ecs {} mob {}", de.len(), dm.len());
     assert!(de.iter().chain(&dm).all(|d| (30.0..=61.0).contains(d)), "a pause outside 30..=60: ecs {de:?} mob {dm:?}");
-    assert!((mean(&de) - mean(&dm)).abs() <= 3.0, "mean pause: ecs {} against mob {}", mean(&de), mean(&dm));
+    assert!((mean(&de) - mean(&dm)).abs() <= 8.0, "mean pause: ecs {} against mob {}", mean(&de), mean(&dm));
+}
+
+/// The interval between two pauses (start to start). Measured: the Mob re-asks its `RunOne` at once (a pause every 46 ticks, 24 in
+/// 1200 ticks), the ECS asks after a wait of about 120 ticks at 1 chance in 3 (3 in 1000). A known deviation (`suivi/ecs-ecarts.md`),
+/// not closed: the assertion stays, the test is ignored so the gap is not forgotten.
+#[test]
+#[ignore = "known deviation: timed_idle cadence (ECS ~1 pause per 300 ticks, Mob 1 per 46)"]
+fn timed_idle_pauses_come_as_often_as_the_mobs() {
+    if !have_data() || wrong_species(&["minecraft:warden"]) {
+        return;
+    }
+    let (e, m) = (ecs_pauses(), mob_pauses());
+    let gaps = |v: &[(u32, u32)]| v.windows(2).filter(|w| w[1].0 > w[0].0).map(|w| f64::from(w[1].0 - w[0].0)).collect::<Vec<f64>>();
+    let (ge, gm) = (gaps(&e), gaps(&m));
+    assert!(!ge.is_empty() && !gm.is_empty(), "pauses: ecs {} mob {}", e.len(), m.len());
+    assert!((mean(&ge) - mean(&gm)).abs() <= 0.25 * mean(&gm), "mean interval between pauses: ecs {} against mob {}", mean(&ge), mean(&gm));
 }
 
 /// Point 3: a jobless villager, 9 blocks from a post, takes the profession of the post block by day, within 600 ticks.

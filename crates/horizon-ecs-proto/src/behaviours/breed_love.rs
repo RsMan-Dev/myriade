@@ -8,6 +8,8 @@ use bevy_ecs::prelude::*;
 use crate::cow::*;
 use crate::goals::{self, Events};
 use crate::behaviours::breed::Resting;
+use crate::behaviours::Cap;
+use crate::targeting::Who;
 use horizon_client_lib::items::Items;
 
 /// Le couple : partenaire et temps de naissance.
@@ -34,17 +36,16 @@ pub fn start(w: &mut World, e: Entity, partner: Entity) {
 }
 
 /// Le lit de l'enfant : le lit le plus proche du parent, à 48 blocs au plus (XZ), s'il n'est pas occupé.
-fn bed_for_child(w: &mut World, parent: Entity, baby: Entity) {
-    let bed = match get(w, parent, &NEAREST_BED) {
-        Some(MemValue::Block(p)) => *p,
-        _ => return,
-    };
-    let at = w.get::<Pos>(parent).unwrap().0;
+fn child_bed(w: &mut World, parent: Entity, baby: Entity) -> Option<[i32; 3]> {
+    let Some(MemValue::Block(bed)) = get(w, parent, &NEAREST_BED).cloned() else { return None };
+    let at = w.get::<Pos>(parent)?.0;
     let (dx, dz) = (f64::from(bed[0]) + 0.5 - at.x, f64::from(bed[2]) + 0.5 - at.z);
-    if dx * dx + dz * dz > BED_RANGE * BED_RANGE || bed_taken(w, baby, bed) {
-        return;
+    (dx * dx + dz * dz <= BED_RANGE * BED_RANGE && !bed_taken(w, baby, bed)).then_some(bed)
+}
+fn bed_for_child(w: &mut World, parent: Entity, baby: Entity) {
+    if let Some(bed) = child_bed(w, parent, baby) {
+        set(w, baby, &NEAREST_BED, MemValue::Block(bed), None);
     }
-    set(w, baby, &NEAREST_BED, MemValue::Block(bed), None);
 }
 
 /// `villagers.villager_birth` : l'enfant apparaît près du partenaire, grandit dans 24000 ticks, les parents se reposent.
@@ -75,7 +76,8 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
 }
 
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    w.get::<Mating>(e).is_some_and(|m| now_of(w, e) >= m.birth)
+    // With a `breed_target` the birth is `MAKE_LOVE`'s, at less than 5 blocks; this one is the forced union's.
+    !present(w, e, &BREED_TARGET) && w.get::<Mating>(e).is_some_and(|m| now_of(w, e) >= m.birth)
 }
 fn start_birth(w: &mut World, e: Entity, _: &Ctx) {
     birth(w, e, food_stock::items(w));
@@ -87,5 +89,74 @@ pub static BIRTH: Behaviour = Behaviour {
     one_shot: true,
     can_start,
     start: start_birth,
+    ..Behaviour::DEFAULT
+};
+
+fn partner_of(w: &World, e: Entity) -> Option<Entity> {
+    match get(w, e, &BREED_TARGET) {
+        Some(MemValue::Who(Who::Entity(p))) => Some(*p),
+        _ => None,
+    }
+}
+fn lock_gaze(w: &mut World, a: Entity, b: Entity) {
+    for (x, y) in [(a, b), (b, a)] {
+        let t = Tracker::Entity(Who::Entity(y), true);
+        set(w, x, &LOOK_TARGET, MemValue::Look(t), None);
+        set(w, x, &WALK_TARGET, MemValue::Walk(WalkTarget { target: t, speed: 0.5, close: 2 }), None);
+    }
+}
+/// `VillagerMakeLove` (`villager_brain.rs:1636`, ordered gate of the idle activity on `breed_target`, 350 ticks): the birth is planned
+/// at the start; each tick it stops when the date is passed or the two can no longer breed, else both look at each other and walk
+/// together, and at less than 5 blocks (squared) from the date on the baby is born.
+fn can_make(w: &mut World, e: Entity, _: &Ctx) -> bool {
+    partner_of(w, e).is_some()
+}
+fn make_start(w: &mut World, e: Entity, _: &Ctx) {
+    if let Some(p) = partner_of(w, e) {
+        start(w, e, p);
+    }
+}
+fn make_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
+    let (Some(p), Some(m)) = (partner_of(w, e), w.get::<Mating>(e).copied()) else { return false };
+    let now = now_of(w, e);
+    if now > m.birth || !(crate::brain::behaviours::work_breed::ready(w, e) && crate::brain::behaviours::work_breed::ready(w, p)) {
+        return false;
+    }
+    let (Some(a), Some(b)) = (w.get::<Pos>(e).map(|q| q.0), w.get::<Pos>(p).map(|q| q.0)) else { return false };
+    if crate::goals::d2(a, b) > 5.0 {
+        return true;
+    }
+    lock_gaze(w, e, p);
+    if now >= m.birth {
+        // `takeVacantBed` found none: the birth carries no child (`VillagerBirth { child: None }`).
+        if child_bed(w, e, e).is_none() {
+            return false;
+        }
+        let items = food_stock::items(w);
+        birth(w, e, items);
+        return false;
+    }
+    if goals::with_rng(w, e, |r| r.next_int(35)) == 0 {
+        let ev = &mut w.resource_mut::<Events>().host;
+        for at in [a, b] {
+            ev.particles("minecraft:heart", [at.x, at.y + 1.0, at.z], [0.5, 0.5, 0.5], 0.02, 7);
+        }
+    }
+    true
+}
+fn make_stop(w: &mut World, e: Entity, _: &Ctx) {
+    w.entity_mut(e).remove::<Mating>();
+    erase(w, e, &BREED_TARGET);
+    erase(w, e, &WALK_TARGET);
+    erase(w, e, &LOOK_TARGET);
+}
+pub static MAKE_LOVE: Behaviour = Behaviour {
+    name: "minecraft:villager_make_love",
+    mems: &[&BREED_TARGET, &WALK_TARGET, &LOOK_TARGET, &BIRTH_DUE],
+    requires: &[Cap::Brain, Cap::Locomotion],
+    can_start: can_make,
+    start: make_start,
+    tick: make_tick,
+    stop: make_stop,
     ..Behaviour::DEFAULT
 };

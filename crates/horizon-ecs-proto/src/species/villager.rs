@@ -276,6 +276,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &work_swim::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &work_wake_up::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &breed_love::BIRTH, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &breed_love::MAKE_LOVE, activity: "idle", priority: 3, params: &(), needs: &[(&BREED_TARGET, Need::Present)], duration: Some((350, 350)), kids: &[] },
             // lot 6 : regards, interactions et calme (un `SetLookAndInteract` par activité du Mob, à sa priorité)
             BEntry { behaviour: &look_and_interact::BEHAVIOUR, activity: "work", priority: 10, params: &(), needs: &[(&INTERACTION_TARGET, Need::Absent)], duration: None, kids: &[] },
             BEntry { behaviour: &look_and_interact::BEHAVIOUR, activity: "meet", priority: 10, params: &(), needs: &[(&INTERACTION_TARGET, Need::Absent)], duration: None, kids: &[] },
