@@ -215,6 +215,32 @@ pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
     }
     e
 }
+/// A creature of the water lives in a pool (out of it, it flops in its own tick): a block of water around the cell where it stands.
+pub fn pool_if_aquatic(h: &mut Herd, x: i32, z: i32) {
+    if species().breathes_water {
+        for dx in -2..=2 {
+            for dz in -3..=3 {
+                for y in 1..=2 {
+                    h.set_block(x + dx, y, z + dz, "minecraft:water");
+                }
+            }
+        }
+    }
+}
+/// Where a creature stands at rest: put back after each tick, so one that flops, hops or hovers (fish out of water, slimes, flyers) is where
+/// the test aimed, as the cow is.
+pub struct Pin(Vec3, Aabb, Vec3);
+pub fn pin(h: &Herd, e: Entity) -> Pin {
+    Pin(h.world.get::<Pos>(e).unwrap().0, h.world.get::<Bounds>(e).unwrap().0, h.world.get::<Vel>(e).unwrap().0)
+}
+pub fn tick_pinned(h: &mut Herd, e: Entity, at: &Pin) {
+    h.tick();
+    if h.world.get_entity(e).is_ok() {
+        h.world.get_mut::<Pos>(e).unwrap().0 = at.0;
+        h.world.get_mut::<Bounds>(e).unwrap().0 = at.1;
+        h.world.get_mut::<Vel>(e).unwrap().0 = at.2;
+    }
+}
 pub fn health(h: &Herd, e: Entity) -> f32 {
     h.world.get::<Health>(e).map_or(0.0, |x| x.0)
 }

@@ -257,13 +257,15 @@ fn reel_pulls_a_hooked_creature_towards_the_owner() {
     }
     let owner = Vec3::new(0.5, 1.5, 0.5);
     let mut h = Herd::with_slab(16, true, false);
-    let cow = ecs_cow(&mut h, 3.5, 1.0, 0.5, 7);
+    let cow = ecs_cow(&mut h, 3.5_f64.max(1.5 + f64::from(horizon_ecs_proto::cow::species().width)), 1.0, 0.5, 7);
+    h.tick();
+    let at_rest = pin(&h, cow);
     stand(&mut h, owner);
     let hook = cast(&mut h.world, 1, owner, Vec3::new(1.0, 0.0, 0.0), 0, 0, SEED);
     let mut hooked = false;
     for _ in 1..=20 {
         stand(&mut h, owner);
-        h.tick();
+        tick_pinned(&mut h, cow, &at_rest);
         if h.world.get::<Hook>(hook).map(|x| x.phase) == Some(Phase::Hooked(Target::Entity(cow))) {
             hooked = true;
             break;
@@ -271,7 +273,7 @@ fn reel_pulls_a_hooked_creature_towards_the_owner() {
     }
     assert!(hooked, "the hook hit the cow within 20 ticks");
     stand(&mut h, owner);
-    h.tick();
+    tick_pinned(&mut h, cow, &at_rest);
     let at = h.world.get::<Pos>(hook).unwrap().0;
     drain(&mut h);
     reel(&mut h.world, 1);

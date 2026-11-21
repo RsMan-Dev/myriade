@@ -36,20 +36,32 @@ fn a_bullet_that_hits_a_creature_plays_its_hurt_and_is_gone() {
         return;
     }
     let (_, mut h) = flat_pair();
-    let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
+    let z = 2.5_f64.max(1.0 + f64::from(species().width));
+    pool_if_aquatic(&mut h, 0, z as i32);
+    let cow = ecs_cow(&mut h, 0.5, 1.0, z, 5);
+    // A creature that survives the blows whatever its health (the blast alone kills a small one): the test is about the hit, not the kill.
+    h.world.entity_mut(cow).insert(horizon_ecs_proto::cow::Health(1000.0));
     h.tick();
+    let at = pin(&h, cow);
     let before = health(&h, cow);
-    let flight = Flight { bullet: true, damage: Damage::Fixed(4.0), ..Flight::SNOWBALL };
+    // A shulker bullet has no gravity: it would drop below a small creature.
+    let flight = Flight { bullet: true, damage: Damage::Fixed(4.0), gravity: 0.0, ..Flight::SNOWBALL };
     let e = launch(&mut h.world, flight, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.4), None);
     let mut out = Vec::new();
     for _ in 0..40 {
-        h.tick();
+        tick_pinned(&mut h, cow, &at);
         out.extend(h.drain_host_out());
         if h.world.get_entity(e).is_err() {
             break;
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the bullet is gone at the creature");
+    if h.world.get::<horizon_ecs_proto::behaviours::ender_teleport::Dodges>(cow).is_some() {
+        // `Enderman.hurtServer`: a projectile does it no harm.
+        h.tick();
+        assert_eq!(before, health(&h, cow), "a creature that dodges projectiles is not hurt");
+        return;
+    }
     // The blow queued at the hit is applied at the start of the next tick.
     h.tick();
     out.extend(h.drain_host_out());

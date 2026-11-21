@@ -229,6 +229,9 @@ pub fn entity_hit(level: &Level, b: Aabb, from: Vec3, to: Vec3, margin: f64) -> 
     let towards = clip_block_hit(mw.world, mw.facts, mw.collision, outside, Vec3::new(centre.x - outside.x, centre.y - outside.y, centre.z - outside.z)).map_or(centre, |h| h.0);
     b.clip(outside, towards).map(|_| outside)
 }
+/// A projectile fired during a tick (`homing_projectile`): an entity added in a tick is first ticked in the next one, with the world's clock at its birth.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct BornAt(pub u64);
 /// One tick of every projectile in flight.
 #[allow(clippy::type_complexity)]
 pub fn fly(
@@ -246,7 +249,7 @@ pub fn fly(
     hurts: Query<&crate::cow::HurtAt>,
     potion: Query<&crate::effects::PotionId>,
     healths: Query<&Health>,
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight), With<Flying>>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>), With<Flying>>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
@@ -254,7 +257,10 @@ pub fn fly(
     for e in std::mem::take(&mut stuck.falling) {
         commands.entity(e).remove::<Stuck>().insert(Flying);
     }
-    for (e, mut pos, mut vel, mut p, f) in &mut q {
+    for (e, mut pos, mut vel, mut p, f, born) in &mut q {
+        if born.is_some_and(|b| b.0 == clock.0) {
+            continue;
+        }
         p.age += 1;
         if f.order == Order::DragThenMove {
             // `ThrowableProjectile`: gravity, then inertia, before the move.

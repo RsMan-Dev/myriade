@@ -46,8 +46,16 @@ pub fn spawn(w: &mut World, owner: Entity, target: Who, axis: u8, seed: u64, cfg
     let (Some(p), Some(h)) = (w.get::<Pos>(owner).map(|p| p.0), w.get::<Body>(owner).map(|b| f64::from(b.height))) else {
         return;
     };
-    let at = Vec3::new(p.x, p.y + h * 0.5, p.z);
+    let mut at = Vec3::new(p.x, p.y + h * 0.5, p.z);
+    // `ShulkerBullet(level, owner, ..)` starts at the centre of the owner's box, which the open lid lengthens on its side.
+    if let Some(a) = w.get::<crate::behaviours::attached_face::Attached>(owner) {
+        let lift = f64::from(crate::behaviours::attached_face::physical_peek(a.eased)) * f64::from(crate::cow::model_scale(w, owner)) * 0.5;
+        let s = STEPS[(a.face.min(5) ^ 1) as usize];
+        at = Vec3::new(at.x + f64::from(s[0]) * lift, at.y + f64::from(s[1]) * lift, at.z + f64::from(s[2]) * lift);
+    }
     let e = launch(w, cfg.flight, at, Vec3::ZERO, Some(Who::Entity(owner)));
+    let born = w.resource::<crate::cow::Clock>().0;
+    w.entity_mut(e).insert(crate::projectile::BornAt(born));
     w.entity_mut(e).insert(Homing { target, dir: Some(1), steps: 0, delta: [0.0; 3], seed: seed | 1, cfg });
     select_next(w, e, Some(axis));
 }
@@ -128,8 +136,11 @@ fn select_next(w: &mut World, e: Entity, excluded: Option<u8>) {
 }
 
 /// Before the move: the velocity turns toward the delta; with no target the projectile falls.
-fn steer(tg: Targets, mut q: Query<(&mut Vel, &mut Homing)>) {
-    for (mut v, mut h) in &mut q {
+fn steer(tg: Targets, clock: Res<crate::cow::Clock>, mut q: Query<(&mut Vel, &mut Homing, &crate::projectile::BornAt)>) {
+    for (mut v, mut h, born) in &mut q {
+        if born.0 == clock.0 {
+            continue;
+        }
         if tg.info(h.target).is_none() {
             v.0.y -= h.cfg.gravity;
             continue;
@@ -144,8 +155,11 @@ fn steer(tg: Targets, mut q: Query<(&mut Vel, &mut Homing)>) {
 }
 
 /// After the move: the step count, the next direction when it runs out, and a block centre reached with a stand spot ahead.
-fn follow(tg: Targets, mut cmd: Commands, q: Query<(Entity, &Homing)>) {
-    for (e, h) in &q {
+fn follow(tg: Targets, clock: Res<crate::cow::Clock>, mut cmd: Commands, q: Query<(Entity, &Homing, &crate::projectile::BornAt)>) {
+    for (e, h, born) in &q {
+        if born.0 == clock.0 {
+            continue;
+        }
         if tg.info(h.target).is_none() {
             continue;
         }

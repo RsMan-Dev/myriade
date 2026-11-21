@@ -67,17 +67,28 @@ fn a_wither_skull_without_owner_hurts_by_5_and_withers_the_creature() {
         return;
     }
     let (_, mut h) = flat_pair();
-    let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
+    let z = 2.5_f64.max(1.0 + f64::from(species().width));
+    pool_if_aquatic(&mut h, 0, z as i32);
+    let cow = ecs_cow(&mut h, 0.5, 1.0, z, 5);
+    // A creature that survives the blows whatever its health (the blast alone kills a small one): the test is about the hit, not the kill.
+    h.world.entity_mut(cow).insert(horizon_ecs_proto::cow::Health(1000.0));
     h.tick();
+    let at = pin(&h, cow);
     let before = health(&h, cow);
     let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
     for _ in 0..40 {
-        h.tick();
+        tick_pinned(&mut h, cow, &at);
         if h.world.get_entity(e).is_err() {
             break;
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the skull is gone at the creature");
+    if h.world.get::<horizon_ecs_proto::behaviours::ender_teleport::Dodges>(cow).is_some() {
+        // `Enderman.hurtServer`: a projectile does it no harm.
+        h.tick();
+        assert_eq!(before, health(&h, cow), "a creature that dodges projectiles is not hurt");
+        return;
+    }
     // The blows are queued at the hit and applied at the start of the next tick: the skull's own is the magic 5 (the blast's, larger, comes
     // with it and the hurt window keeps the greater of the two).
     let magic: Vec<f32> = h.world.resource::<DamageQueue>().0.iter().filter(|x| x.target == cow && matches!(x.cause, Cause::Magic)).map(|x| x.amount).collect();
@@ -191,24 +202,37 @@ fn a_skull_that_does_not_hurt_does_not_wither() {
         return;
     }
     let (_, mut h) = flat_pair();
-    let cow = ecs_cow(&mut h, 0.5, 1.0, 2.5, 5);
+    let z = 2.5_f64.max(1.0 + f64::from(species().width));
+    pool_if_aquatic(&mut h, 0, z as i32);
+    let cow = ecs_cow(&mut h, 0.5, 1.0, z, 5);
+    // A creature that survives the blows whatever its health (the blast alone kills a small one): the test is about the hit, not the kill.
+    h.world.entity_mut(cow).insert(horizon_ecs_proto::cow::Health(1000.0));
     h.tick();
-    let shoot = |h: &mut Herd| {
+    // The blast pushes the creature and its damage depends on where it stands: the second skull finds it where the first did.
+    let at = pin(&h, cow);
+    // What the blast of a skull deals depends on how the creature stands in its own tick; the window lets through only what a blow adds to the last.
+    let shoot = |h: &mut Herd| -> f32 {
         let e = launch(&mut h.world, Flight::WITHER_SKULL, Vec3::new(0.5, 1.0 + f64::from(species().height) / 2.0, 0.5), Vec3::new(0.0, 0.0, 0.6), None);
         for _ in 0..40 {
-            h.tick();
+            tick_pinned(h, cow, &at);
             if h.world.get_entity(e).is_err() {
                 break;
             }
         }
+        let blast = h.world.resource::<DamageQueue>().0.iter().filter(|x| x.target == cow && matches!(x.cause, Cause::Blast)).map(|x| x.amount).fold(0.0, f32::max);
         // The blow queued at the hit is applied at the start of the next tick.
-        h.tick();
+        tick_pinned(h, cow, &at);
+        blast
     };
-    shoot(&mut h);
+    let first = shoot(&mut h);
+    if h.world.get::<horizon_ecs_proto::behaviours::ender_teleport::Dodges>(cow).is_some() {
+        return; // `Enderman.hurtServer`: a projectile does it no harm, there is no window to test.
+    }
     assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_some_and(|f| !f.list.is_empty()), "the first skull withers the creature");
     h.world.entity_mut(cow).remove::<horizon_ecs_proto::effects::Effects>();
     let before = health(&h, cow);
-    shoot(&mut h);
-    assert_eq!(before - health(&h, cow), 0.0, "the second skull does not hurt in the window");
+    let second = shoot(&mut h);
+    let lost = before - health(&h, cow);
+    assert!(lost <= (second - first).max(0.0) + 1.0e-4, "the second skull adds only what its blast has over the first's: lost {lost}, blasts {first} then {second}");
     assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_none(), "no wither on a blow that does not hurt");
 }
