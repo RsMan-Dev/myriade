@@ -447,17 +447,17 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
             continue;
         }
         let centre = Vec3::new(f64::from(target[0]) + 0.5, f64::from(target[1]) + 0.5, f64::from(target[2]) + 0.5);
-        let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else {
-            crate::pathsearch::probe!(cnt(5, 1));
-            continue;
-        };
-        leap.look = [centre.x, centre.y, centre.z];
-        // `create_path_raw(&[target], 0, 8.0).reached` (`frog.rs:860-866`) : une case qu'un chemin de 8 blocs atteint se marche, pas de bond.
+        // A block a short walk reaches takes no leap: the cheap path search goes first, the arc (ballistic test along its length) only for the rest.
         crate::pathsearch::probe!(_hist.searches += 1);
         if walkable(w, e, &p, target) {
             crate::pathsearch::probe!(cnt(7, 1));
             continue;
         }
+        let Some(v) = optimal_jump_vector(w, e, &p, mw, centre) else {
+            crate::pathsearch::probe!(cnt(5, 1));
+            continue;
+        };
+        leap.look = [centre.x, centre.y, centre.z];
         crate::pathsearch::probe!(cnt(8, 1));
         crate::pathsearch::probe!(_hist.chosen = true);
         crate::pathsearch::probe!(cnt(9, (((f64::from(target[0]) + 0.5 - pos.x).powi(2) + (f64::from(target[2]) + 0.5 - pos.z).powi(2)).sqrt() * 100.0) as u64));
