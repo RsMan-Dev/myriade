@@ -38,5 +38,6 @@ pub static DEF: Def = Def {
     // A llama is a tamable, rideable horse (`AbstractChestedHorse`): the caps of the horse, for the wild run around like crazy.
     rules: &[RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&LEASH, &LeashParams::LLAMA)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
+    llama_strength: true,
     ..Def::EMPTY
 };

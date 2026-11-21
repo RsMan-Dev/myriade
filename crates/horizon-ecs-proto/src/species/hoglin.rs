@@ -134,4 +134,5 @@ pub static DEF: Def = Def {
     despawn: None,
     saved: true,
     screaming: None,
+    llama_strength: false,
 };

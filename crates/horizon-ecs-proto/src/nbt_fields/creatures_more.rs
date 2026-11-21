@@ -2,7 +2,6 @@
 //! cheval (`Temper`), le dauphin qui a mangé un poisson (`GotFish`) et la patrouille et la vague d'un pillard (`Raider`, `Patrol`).
 //! Chaque clé n'est déclarée que pour le composant qui la porte ; sans lui, elle reste libre.
 use crate::behaviours::fox_sleep::Sleeping;
-use crate::behaviours::fox_state::Crouch;
 use crate::behaviours::limited_life::Lifespan;
 use crate::behaviours::swim_to_treasure::GotFish;
 use crate::cow::now_of;
@@ -26,7 +25,6 @@ fn is_int_array(t: &Tag) -> bool {
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sheared"), write: write_sheared, read: read_sheared, accepts: is_byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Temper"), write: write_temper, read: read_temper, accepts: accept::int, owner: Some(owner::<Mount>) },
-    Field { key: Cow::Borrowed("Crouching"), write: write_crouching, read: read_crouching, accepts: is_byte, owner: Some(owner::<Crouch>) },
 ];
 
 /// The keys whose presence poses their component (`nbt::register_creators`).
@@ -81,21 +79,6 @@ fn read_life(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     let at = now_of(w, e) + u64::try_from(*v).unwrap_or(0);
     w.entity_mut(e).insert(Lifespan(at));
-    true
-}
-
-/// `Crouching`: a byte, 1 while the fox crouches, from `Crouch` (the time it was set); the read sets the time to now.
-fn write_crouching(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(Crouch(Some(_))) = w.get::<Crouch>(e) {
-        c.insert("Crouching".into(), Tag::Byte(1));
-    }
-}
-
-fn read_crouching(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Byte(v) = t else { return false };
-    let now = now_of(w, e);
-    let Some(mut c) = w.get_mut::<Crouch>(e) else { return false };
-    c.0 = (*v != 0).then_some(now);
     true
 }
 

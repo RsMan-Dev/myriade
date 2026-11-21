@@ -3,7 +3,7 @@
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_ecs_proto::{
-    behaviours::{bee::Bee, fox_state::FoxFlags, swallow_hold::SearchAfter},
+    behaviours::{bee::Bee, follow_caravan::{Caravan, Params}, forget_target::LlamaStrength, fox_state::FoxFlags, swallow_hold::SearchAfter, swallow_item::Swallowable},
     cow::Clock,
     farm::{Egg, EggDef, Wool},
     nbt::{self, Saved},
@@ -70,11 +70,32 @@ fn a_sheep_colour_and_a_fox_sitting_round_trip() {
 }
 
 #[test]
+fn a_llama_strength_round_trips_as_the_stored_value() {
+    let caravan = || Caravan { p: &Params::DEFAULT, slot: 0, pick: None };
+    let mut w = world();
+    let llama = w.spawn((Saved, caravan(), LlamaStrength(4))).id();
+    let c = nbt::save(&w, llama).unwrap();
+    assert_eq!(c.get(&JavaString::from("Strength")), Some(&Tag::Int(4)));
+    let mut w2 = world();
+    let new = w2.spawn((Saved, caravan(), LlamaStrength(1))).id();
+    assert_eq!(nbt::load(&mut w2, new, &c), Some(0));
+    assert_eq!(w2.get::<LlamaStrength>(new).map(|s| s.0), Some(4));
+}
+
+#[test]
+fn a_cube_without_timer_saves_a_zero_pickup_timer() {
+    let mut w = world();
+    let cube = w.spawn((Saved, Swallowable(&[]))).id();
+    let c = nbt::save(&w, cube).unwrap();
+    assert_eq!(c.get(&JavaString::from("pickup_timer")), Some(&Tag::Int(0)));
+}
+
+#[test]
 fn a_bee_pollination_and_a_cube_pickup_timer_round_trip_as_ticks() {
     let mut w = world();
     w.resource_mut::<Clock>().0 = 1000;
     let b = w.spawn((Saved, bee(900))).id();
-    let s = w.spawn((Saved, SearchAfter(1500))).id();
+    let s = w.spawn((Saved, SearchAfter(1500), Swallowable(&[]))).id();
     let bc = nbt::save(&w, b).unwrap();
     let sc = nbt::save(&w, s).unwrap();
     assert_eq!(bc.get(&JavaString::from("TicksSincePollination")), Some(&Tag::Int(100)));
@@ -82,7 +103,7 @@ fn a_bee_pollination_and_a_cube_pickup_timer_round_trip_as_ticks() {
     let mut w2 = world();
     w2.resource_mut::<Clock>().0 = 2000;
     let b2 = w2.spawn((Saved, bee(0))).id();
-    let s2 = w2.spawn((Saved, SearchAfter(0))).id();
+    let s2 = w2.spawn((Saved, SearchAfter(0), Swallowable(&[]))).id();
     assert_eq!(nbt::load(&mut w2, b2, &bc), Some(0));
     assert_eq!(nbt::load(&mut w2, s2, &sc), Some(0));
     assert_eq!(w2.get::<Bee>(b2).map(|x| x.no_nectar_since), Some(1900));

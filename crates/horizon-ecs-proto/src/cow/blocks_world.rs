@@ -184,6 +184,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             max_air: if is_creature { mob.max_air_supply() } else { 300 },
             persistent: is_creature && mob.persistent,
             screaming,
+            llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
         });
         if name == chosen {
             chosen_kind = Some(kind);

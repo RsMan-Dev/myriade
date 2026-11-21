@@ -15,5 +15,6 @@ pub static DEF: Def = Def {
             Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { types: &["minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:zombie_villager", "minecraft:zombified_piglin"], must_see: true, ..nearest_target::Params::DEFAULT }),
         ),
     ],
+    llama_strength: true,
     ..Def::EMPTY
 };

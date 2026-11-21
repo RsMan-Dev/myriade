@@ -12,13 +12,18 @@ use crate::behaviours::forget_target::LlamaStrength;
 use crate::cow::{arm_at, now_of, Due, GrowAt};
 use crate::explosion::{Charged, Fuse};
 use crate::farm::{Egg, Wool};
-use crate::behaviours::bat_flutter::Hanging;
+use crate::behaviours::bat_flutter::{Flutter, Hanging};
+use crate::behaviours::follow_caravan::Caravan;
+use crate::behaviours::invulnerable_charge::Charge;
+use crate::behaviours::ram::Rammer;
+use crate::behaviours::swallow_item::Swallowable;
+use crate::behaviours::swim_to_treasure::Trip;
 use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING, SLEEPING as FOX_SLEEPING};
 use crate::behaviours::swim_to_treasure::GotFish;
 use crate::behaviours::lay_egg::Carrying;
 use crate::behaviours::peek::Peek;
 use crate::behaviours::turtle_state::Turtle;
-use crate::behaviours::still_under_riders::StillUntil;
+use crate::behaviours::still_under_riders::{Slot, StillUntil};
 use crate::behaviours::swallow_hold::SearchAfter;
 use crate::nbt::{accept, owner, Field};
 use crate::size::Size;
@@ -36,10 +41,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
     Field { key: Cow::Borrowed("Fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
-    Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Charged>) },
-    Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Invulnerable>) },
-    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Screaming>) },
-    Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<LlamaStrength>) },
+    Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Charge>) },
+    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Rammer>) },
+    Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<Caravan>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Peek>) },
     Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Peek>) },
@@ -61,11 +66,11 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
     Field { key: Cow::Borrowed("Crouching"), write: write_fox_crouching, read: read_fox_crouching, accepts: byte, owner: Some(owner::<FoxFlags>) },
     Field { key: Cow::Borrowed("Sleeping"), write: write_fox_sleeping, read: read_fox_sleeping, accepts: byte, owner: Some(owner::<FoxFlags>) },
-    Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: byte, owner: Some(owner::<GotFish>) },
+    Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: byte, owner: Some(owner::<Trip>) },
     Field { key: Cow::Borrowed("TicksSincePollination"), write: write_pollination, read: read_pollination, accepts: accept::int, owner: Some(owner::<Bee>) },
-    Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Hanging>) },
-    Field { key: Cow::Borrowed("still_timeout"), write: write_still, read: read_still, accepts: accept::int, owner: Some(owner::<StillUntil>) },
-    Field { key: Cow::Borrowed("pickup_timer"), write: write_pickup, read: read_pickup, accepts: accept::int, owner: Some(owner::<SearchAfter>) },
+    Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Flutter>) },
+    Field { key: Cow::Borrowed("still_timeout"), write: write_still, read: read_still, accepts: accept::int, owner: Some(owner::<Slot>) },
+    Field { key: Cow::Borrowed("pickup_timer"), write: write_pickup, read: read_pickup, accepts: accept::int, owner: Some(owner::<Swallowable>) },
 ];
 
 fn int_array(t: &Tag) -> bool {
@@ -113,11 +118,9 @@ fn read_radius(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `powered` is the `Charged` marker: a byte of one when it is there.
+/// `powered` is the `Charged` marker: a byte of one when it is there, zero otherwise (the creeper always writes it).
 fn write_powered(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<Charged>(e).is_some() {
-        c.insert("powered".into(), Tag::Byte(1));
-    }
+    c.insert("powered".into(), Tag::Byte(i8::from(w.get::<Charged>(e).is_some())));
 }
 
 fn read_powered(w: &mut World, e: Entity, t: &Tag) -> bool {
@@ -132,9 +135,7 @@ fn read_powered(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// The wither's invulnerable countdown, an int.
 fn write_invul(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(i) = w.get::<Invulnerable>(e) {
-        c.insert("Invul".into(), Tag::Int(i.0));
-    }
+    c.insert("Invul".into(), Tag::Int(w.get::<Invulnerable>(e).map_or(0, |i| i.0)));
 }
 
 fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
@@ -144,10 +145,9 @@ fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `Goat.addAdditionalSaveData`: `IsScreamingGoat` is written as a byte only when the marker is there (`false` is the default).
+/// `IsScreamingGoat`: a byte, 1 for the screaming goat (its marker), 0 otherwise (the goat always writes it).
 fn write_screaming(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<Screaming>(e).is_some() {
-        c.insert("IsScreamingGoat".into(), Tag::Byte(1));
-    }
+    c.insert("IsScreamingGoat".into(), Tag::Byte(i8::from(w.get::<Screaming>(e).is_some())));
 }
 
 fn read_screaming(w: &mut World, e: Entity, t: &Tag) -> bool {
@@ -160,7 +160,8 @@ fn read_screaming(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// The llama's strength, an int.
+/// The llama's strength, an int: `LlamaStrength`, drawn at the pose for a llama and a trader's llama (`cow::spawn::spawn_declared`).
+/// Written only while the component is there: no default is invented.
 fn write_strength(w: &World, e: Entity, c: &mut Compound) {
     if let Some(s) = w.get::<LlamaStrength>(e) {
         c.insert("Strength".into(), Tag::Int(s.0));
@@ -517,10 +518,9 @@ fn read_fox_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `GotFish` of a dolphin: a byte of one while the marker is there.
+/// `GotFish`: a byte, 1 while the dolphin has eaten its fish (the marker), 0 otherwise (`Trip` is its always-present component).
 fn write_got_fish(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<GotFish>(e).is_some() {
-        c.insert("GotFish".into(), Tag::Byte(1));
-    }
+    c.insert("GotFish".into(), Tag::Byte(i8::from(w.get::<GotFish>(e).is_some())));
 }
 
 fn read_got_fish(w: &mut World, e: Entity, t: &Tag) -> bool {
@@ -549,18 +549,18 @@ fn read_pollination(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `BatFlags`: bit 0 while the bat hangs (its `Hanging` marker). The perch is the bat's own state: a load keeps it.
-fn write_bat_flags(_: &World, _: Entity, c: &mut Compound) {
-    c.insert("BatFlags".into(), Tag::Byte(1));
+fn write_bat_flags(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("BatFlags".into(), Tag::Byte(i8::from(w.get::<Hanging>(e).is_some())));
 }
 
 fn read_bat_flags(_: &mut World, _: Entity, t: &Tag) -> bool {
     matches!(t, Tag::Byte(_))
 }
 
-/// `still_timeout`: the ticks left of the stillness (an int), from `StillUntil` (its own time); 0 takes the marker away.
+/// `still_timeout`: the ticks left of the stillness (an int), from `StillUntil` (its own time); 0 without it. `Slot` (the goal's
+/// always-present component on the happy ghast) holds the key.
 fn write_still(w: &World, e: Entity, c: &mut Compound) {
-    let Some(s) = w.get::<StillUntil>(e) else { return };
-    let left = s.0.saturating_sub(now_of(w, e));
+    let left = w.get::<StillUntil>(e).map_or(0, |s| s.0.saturating_sub(now_of(w, e)));
     c.insert("still_timeout".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
 }
 
@@ -576,10 +576,10 @@ fn read_still(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `pickup_timer`: the ticks left before the cube searches again (an int), from `SearchAfter` (its own time); 0 takes the marker away.
+/// `pickup_timer`: the ticks left before the cube searches again (an int), from `SearchAfter` (its own time); 0 without the timer, and
+/// `Swallowable` (the cube's always-present component) holds the key.
 fn write_pickup(w: &World, e: Entity, c: &mut Compound) {
-    let Some(s) = w.get::<SearchAfter>(e) else { return };
-    let left = s.0.saturating_sub(now_of(w, e));
+    let left = w.get::<SearchAfter>(e).map_or(0, |s| s.0.saturating_sub(now_of(w, e)));
     c.insert("pickup_timer".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
 }
 

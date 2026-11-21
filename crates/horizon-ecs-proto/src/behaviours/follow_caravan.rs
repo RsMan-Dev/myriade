@@ -33,8 +33,8 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Caravan {
     pub p: &'static Params,
-    slot: u8,
-    pick: Option<Entity>,
+    pub slot: u8,
+    pub pick: Option<Entity>,
 }
 /// The creature walks in a line behind `head`.
 #[derive(Component, Clone, Copy, Debug)]

@@ -32,7 +32,7 @@ pub struct Leaving;
 
 /// The goal slot of the module on the animal.
 #[derive(Component, Clone, Copy, Debug)]
-struct Slot(u8);
+pub(crate) struct Slot(u8);
 
 pub static MODULE: Module = Module {
     name: "still_under_riders",

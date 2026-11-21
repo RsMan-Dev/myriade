@@ -251,12 +251,14 @@ pub struct Def {
     pub saved: bool,
     /// `Goat`'s screaming chance at birth (`species::goat::SCREAMING_CHANCE`): `None` for a species that has none.
     pub screaming: Option<f64>,
+    /// `Llama.finalizeSpawn`: the strength drawn at the pose (`LlamaStrength`, the `Strength` key), for a llama and a trader's llama.
+    pub llama_strength: bool,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, llama_strength: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -319,6 +321,8 @@ pub struct Resolved {
     pub saved: bool,
     /// `Def::screaming`.
     pub screaming: Option<f64>,
+    /// `Def::llama_strength`.
+    pub llama_strength: bool,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -430,7 +434,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, llama_strength: d.llama_strength });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
