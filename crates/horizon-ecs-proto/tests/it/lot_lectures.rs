@@ -224,7 +224,7 @@ fn celebrate_walks_to_the_kill_spot_as_a_mob_does() {
     h.world.get_mut::<ActiveUntil>(hoglin_e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(hoglin_e);
     r.mobs[p].ai.target = Some(horizon_client_lib::mobs::Who::Mob(r.mobs[hoglin].id));
-    h.world.entity_mut(p_e).insert(Target { who: Who::Entity(hoglin_e), ..Default::default() });
+    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, u8::MAX));
     r.hit(hoglin, 1000.0, [6.5, 1.0, 0.5]);
     h.hit(hoglin_e, 1000.0, (6.5, 0.5));
     for _ in 1..=60i64 {
@@ -257,7 +257,7 @@ fn a_kill_event_starts_the_party_of_the_targeter_once() {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.world.resource_mut::<Entered>().0.push(e);
     }
-    h.world.entity_mut(p_e).insert(Target { who: Who::Entity(hoglin_e), ..Default::default() });
+    h.world.entity_mut(p_e).insert(Target::new(Who::Entity(hoglin_e), 0, u8::MAX));
     h.hit(hoglin_e, 1000.0, (6.5, 0.5));
     h.tick();
     assert!(h.world.get::<Celebrating>(p_e).is_some(), "the targeter of the victim celebrates at the death");
@@ -274,7 +274,7 @@ fn admire_starts_on_the_gold_in_the_off_hand_as_a_mob_does() {
     let mut r = MobRef::new(60, false);
     let mut h = Herd::with_slab_awake(60, true, false);
     let (p, p_e) = piglin_pair(&mut r, &mut h, Vec3::new(0.5, 1.0, 0.5), 11);
-    r.mobs[p].extra.set_off_hand(Some("minecraft:gold_ingot".into()));
+    r.mobs[p].extra.set_slot_id(horizon_items::equipment::OFFHAND, Some("minecraft:gold_ingot".into()));
     r.mobs[p].extra.using_item = 1;
     let mut mob_at = None;
     let mut ecs_at = None;
@@ -303,7 +303,7 @@ fn a_baby_hoglin_loses_the_baby_when_it_grows_as_a_mob_does() {
     let mut r = MobRef::new(60, false);
     let mut h = Herd::with_slab_awake(60, true, false);
     let hog = r.add_kind_id(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:hoglin"), 13);
-    r.mobs[hog].age = -GROW;
+    r.mobs[hog].extra.age = -GROW;
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let hoglin = *table.iter().find(|s| s.name == "minecraft:hoglin").unwrap();
     let e = spawn_species(&mut h.world, &hoglin, 0.5, 0.5, 13);
@@ -331,7 +331,7 @@ fn look_at_loved_measures_to_the_feet_as_a_mob_does() {
         let mut h = Herd::with_slab_awake(60, true, false);
         let (p, p_e) = piglin_pair(&mut r, &mut h, Vec3::new(0.5, 1.0, 0.5), 11);
         let player = player_view(Vec3::new(0.5 + dx, 1.0, 0.5), Some(gold));
-        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: gold_ingot_id(), off: 0, ..Default::default() });
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5 + dx, y: 1.0, z: 0.5, main: horizon_ecs_proto::items::item_id("minecraft:gold_ingot"), off: 0, ..Default::default() });
         for _ in 1..=5i64 {
             r.step(Some(&player));
             h.tick();

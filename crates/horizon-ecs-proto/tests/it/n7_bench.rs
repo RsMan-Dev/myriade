@@ -66,7 +66,7 @@ fn n7_bench() {
     let n: usize = std::env::var("N7_N").ok().and_then(|v| v.parse().ok()).unwrap_or(1000);
     match std::env::var("HORIZON_SPECIES").as_deref() {
         Ok("minecraft:piglin") => {
-            run(n, |h, e| horizon_ecs_proto::behaviours::celebrate::start_party(&mut h.world, e), |h, e| h.world.get::<horizon_ecs_proto::behaviours::celebrate::Celebrating>(e).is_some(), "celebrate");
+            run(n, |h, e| horizon_ecs_proto::behaviours::celebrate::start_party(&mut h.world, e, horizon_ecs_proto::behaviours::celebrate::Kill { victim: e, killer: None, species: 0, at: [0.0; 3] }), |h, e| h.world.get::<horizon_ecs_proto::behaviours::celebrate::Celebrating>(e).is_some(), "celebrate");
             run(
                 n,
                 |h, e| {

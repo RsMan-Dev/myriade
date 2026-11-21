@@ -116,7 +116,7 @@ fn a_dead_neighbour_is_not_a_living_entity() {
     h.tick();
     brain_with(&mut h, e, &SENSORS);
     scan(&mut h, e, &living::SENSOR);
-    assert_eq!(get(&h.world, e, &MOBS), Some(&MemValue::Whos(vec![Who::Entity(other)])), "the living neighbour is listed");
+    assert_eq!(format!("{:?}", get(&h.world, e, &MOBS)), format!("{:?}", Some(&MemValue::Whos(vec![Who::Entity(other)]))), "the living neighbour is listed");
     h.world.get_mut::<Health>(other).unwrap().0 = 0.0;
     scan(&mut h, e, &living::SENSOR);
     assert!(get(&h.world, e, &MOBS).is_none(), "the dead neighbour leaves `mobs`: the list is empty and erased");
@@ -190,8 +190,8 @@ fn enclose_bed(h: &mut Herd, x: i32) {
     h.set_block_state(x, 1, 0, "minecraft:red_bed", &[("part", "head")]);
 }
 
-fn scan_with(h: &mut Herd, e: Entity, s: &'static Sensor, params: &'static dyn std::any::Any) {
-    (s.scan)(&mut h.world, e, &Ctx { id: 0, nth: 0, params });
+fn scan_with(h: &mut Herd, e: Entity, s: &'static Sensor, params: &'static (dyn std::any::Any + Sync)) {
+    (s.scan)(&mut h.world, e, &Ctx { id: 0, nth: 0, params: params as &'static (dyn std::any::Any + Sync) });
 }
 
 /// `Villager.wantsToSpawnGolem`: a villager that slept wants a golem until one is detected recently (599 ticks), as the Mob's `wants_golem`.
@@ -229,7 +229,7 @@ fn an_invisible_baby_is_seen_only_within_two_blocks() {
     h.tick();
     brain_with(&mut h, e, &SENSORS);
     scan(&mut h, e, &villager_babies::SENSOR);
-    assert_eq!(get(&h.world, e, &NEARBY_BABIES), Some(&MemValue::Whos(vec![Who::Entity(seen)])), "only the visible baby is seen");
+    assert_eq!(format!("{:?}", get(&h.world, e, &NEARBY_BABIES)), format!("{:?}", Some(&MemValue::Whos(vec![Who::Entity(seen)]))), "only the visible baby is seen");
 }
 
 /// `NearestItemSensor`: the nearest pickable item of the tag within 4 blocks is remembered; a nearer item outside the tag is not.
@@ -247,5 +247,5 @@ fn the_nearest_wanted_item_of_the_tag_is_remembered() {
     h.tick();
     brain_with(&mut h, e, &SENSORS);
     scan_with(&mut h, e, &nearest_wanted_item::SENSOR, &PARAMS);
-    assert_eq!(get(&h.world, e, &NEAREST_WANTED_ITEM), Some(&MemValue::Who(Who::Entity(wanted))), "the bread is the wanted item: the stone is not in the tag");
+    assert_eq!(format!("{:?}", get(&h.world, e, &NEAREST_WANTED_ITEM)), format!("{:?}", Some(&MemValue::Who(Who::Entity(wanted)))), "the bread is the wanted item: the stone is not in the tag");
 }

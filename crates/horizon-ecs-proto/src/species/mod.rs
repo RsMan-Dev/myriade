@@ -260,8 +260,7 @@ pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Livin
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None };
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, llama_strength: false };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);

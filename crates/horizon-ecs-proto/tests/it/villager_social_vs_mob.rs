@@ -63,7 +63,7 @@ fn five_villagers_who_slept_call_an_iron_golem_on_a_column() {
     let g = golems[0];
     assert!((g[0] - 0.5).abs() <= 9.0 && (g[2] - 0.5).abs() <= 9.0, "the column is near the villagers: {g:?}");
     assert_eq!(g[1], g[1].round(), "the golem stands on a whole block: {g:?}");
-    assert!(ids.iter().all(|&e| present(&h.world, e, &summon_defender::DEFENDER_SEEN)), "each villager has seen the golem");
+    assert!(ids.iter().all(|&e| present(&h.world, e, &horizon_ecs_proto::behaviours::golem_recent::GOLEM_RECENT)), "each villager has seen the golem");
 }
 
 /// Two villagers with food for breeding (12 points each) start to make love: the baby comes at the planned tick

@@ -29,7 +29,7 @@ const CALM: u64 = 599;
 pub struct LastSlept(pub u64);
 
 /// `Villager.wantsToSpawnGolem`: slept within the day and no golem detected recently (`golem_detected_recently`, the memory the golem sensor sets).
-pub(crate) fn wants(w: &World, e: Entity, now: u64) -> bool {
+pub fn wants(w: &World, e: Entity, now: u64) -> bool {
     w.get::<LastSlept>(e).is_some_and(|s| now.saturating_sub(s.0) < SLEPT) && !present(w, e, &GOLEM_RECENT)
 }
 

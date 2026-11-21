@@ -18,7 +18,6 @@ use crate::farm::{Egg, Wool};
 use crate::behaviours::bat_flutter::{Flutter, Hanging};
 use crate::behaviours::follow_caravan::Caravan;
 use crate::behaviours::invulnerable_charge::Charge;
-use crate::behaviours::ram::Rammer;
 use crate::behaviours::swallow_item::Swallowable;
 use crate::behaviours::swim_to_treasure::Trip;
 use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING, SLEEPING as FOX_SLEEPING};
