@@ -123,7 +123,7 @@ if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") 
     // The pond is 2 blocks deep: only an animal whose eyes sit lower than 1.4 blocks goes under (a zombie's are at 1.74).
     // (A hen's glide cuts her sinking speed in water too; whether she drowns as a `Mob` hen does was not compared.)
     // (An amphibian or an aquatic animal does not drown, as in the `Mob`: `breathes_water`, the frog, the axolotl, the fish.)
-    if species().eye_height <= 1.4 && !species().breathes_water && !species().rules.iter().any(|r| r.rule.name == "wing_flap") {
+    if species().eye_height <= 1.4 && !crate::type_tags::named(&herd.world, "can_breathe_under_water", pond) &&!species().rules.iter().any(|r| r.rule.name == "wing_flap") {
         assert!(health(&herd, pond).is_none_or(|h| h < species().max_health), "the cow in the pond did not drown");
     }
     assert!(health(&herd, wall).is_none(), "the cow in the wall lives");

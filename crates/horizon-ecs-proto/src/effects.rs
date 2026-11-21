@@ -299,10 +299,14 @@ pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, 1200)]);
 pub struct IgnoresPoisonAndRegen;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct InvertedHealingAndHarm;
-/// The typed tags of the effects, for the world's builder (`type_tags::register`).
+/// The entity type tag `can_breathe_under_water`, read by the breath (`fluids::breathing`): a creature with it does not drown.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct CanBreatheUnderWater;
+/// The typed tags of the effects and the breath, for the world's builder (`type_tags::register`).
 pub static TYPED_TAGS: &[type_tags::Typed] = &[
     type_tags::typed::<IgnoresPoisonAndRegen>("ignores_poison_and_regen"),
     type_tags::typed::<InvertedHealingAndHarm>("inverted_healing_and_harm"),
+    type_tags::typed::<CanBreatheUnderWater>("can_breathe_under_water"),
 ];
 /// The effects of the players (they are not entities): a list per player, read at the tick it is asked (an effect has its end; nothing ticks).
 /// The periodic damage and the speed of a player are the player's own system's; here the reading (a witch's choice, the sight a creature has

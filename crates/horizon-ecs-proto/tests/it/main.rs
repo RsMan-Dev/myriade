@@ -18,6 +18,7 @@ mod creation_cost;
 mod dormancy_of_entities;
 mod nbt_conformance;
 mod nbt_roundtrip_objects;
+mod tags_composants;
 mod nbt_sleeping_roundtrip;
 mod bow_vs_mob;
 mod brain_vs_mob;

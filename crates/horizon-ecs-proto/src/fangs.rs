@@ -42,20 +42,36 @@ fn fang_box(at: Vec3) -> Aabb {
     Aabb::new(Vec3::new(at.x - h, at.y, at.z - h), Vec3::new(at.x + h, at.y + 0.8, at.z + h))
 }
 
-use crate::species::lists::{is_illager, is_vex};
+use crate::species::lists::is_vex;
 
-/// `EvokerFangs.dealDamageTo` for a creature: no owner present hurts everyone; with one, an illager owner spares the illagers and
-/// the vexes whose owner is an illager (`isAlliedTo`, no teams in the ECS). Players are never allied here (no teams).
+/// `EvokerFangs.dealDamageTo` for a creature: no owner present hurts everyone; with one, `owner.isAlliedTo(target)` (`Entity.isAlliedTo`:
+/// the same, or either one considers the other an ally). Players are never allied here (no teams in the ECS).
 fn allied(w: &World, owner: Option<Entity>, target: Entity) -> bool {
     let Some(owner) = owner else { return false };
-    if !is_illager(species_name(w, owner)) {
+    owner == target || considers(w, owner, target) || considers(w, target, owner)
+}
+
+/// `AbstractIllager.considersEntityAsAlly` (an illager's allies are the illagers, `#illager`, no teams), and `Evoker`'s: the vex whose
+/// root owner is the evoker or an illager. Only evokers own fangs, so the vex branch is read for any illager here.
+fn considers(w: &World, a: Entity, b: Entity) -> bool {
+    let illager = |e: Entity| crate::type_tags::named(w, "illager", e);
+    if !illager(a) {
         return false;
     }
-    let name = species_name(w, target);
-    if is_illager(name) {
-        return true;
+    illager(b) || is_vex(species_name(w, b)) && root_owner(w, b).is_some_and(|r| r == a || illager(r))
+}
+
+/// `Vex.getRootOwner`: the owner of a vex, followed up through the vexes that own vexes.
+fn root_owner(w: &World, mut e: Entity) -> Option<Entity> {
+    let mut found = None;
+    while let Some(Who::Entity(r)) = w.get::<Owner>(e).and_then(|o| o.0) {
+        found = Some(r);
+        if !is_vex(species_name(w, r)) {
+            break;
+        }
+        e = r;
     }
-    is_vex(name) && w.get::<Owner>(target).and_then(|o| o.0).is_some_and(|who| matches!(who, Who::Entity(r) if is_illager(species_name(w, r))))
+    found
 }
 
 /// The bite (`warmup == -8`): 6 of indirect magic (the owner still there) or of magic (no owner) to each living creature and
