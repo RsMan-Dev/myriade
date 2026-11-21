@@ -7,7 +7,6 @@
 //! service once a run, `OwnerCheck`): anyone else sees a vanilla game and the game asks nothing
 //! about other players, until the player chooses otherwise in the settings.
 
-pub(super) mod emote_wheel;
 pub(super) mod emotes;
 mod fx;
 mod settings;

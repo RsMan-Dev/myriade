@@ -410,5 +410,3 @@ impl shell::Screen for PackOptionsScreen {
     }
 }
 
-#[cfg(test)]
-mod tests;

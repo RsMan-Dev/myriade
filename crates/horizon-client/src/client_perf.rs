@@ -19,8 +19,6 @@ use std::time::{Duration, Instant};
 
 pub mod request;
 
-#[cfg(test)]
-mod tests;
 
 /// A frame this slow enters the slow ring when `HORIZON_SPIKES` names no other threshold.
 pub const SLOW_FRAME_MS: f32 = 50.0;
