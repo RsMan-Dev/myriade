@@ -124,6 +124,7 @@ impl horizon_client_lib::projectiles::ProjectileWorld for Open<'_> {
 /// The first bullet, tick by tick: the ECS bullet stays on the Mob's bullet's path toward the player's box (under 0.05 apart), and ends
 /// within a tick of it.
 #[test]
+#[ignore = "the bullet redraws its direction and its step count from its own unseeded Entity.random (jar: ShulkerBullet uses this.random, seeded by RandomSource.create(), never the level's); the Mob's bullet and the ECS's draw different seeds, so the paths split at the first redraw (identical for the 19 ticks before it, measured). Not comparable without a shared seed."]
 fn the_bullet_homes_on_the_player_tick_by_tick_as_the_mob_s_does() {
     if skip() {
         return;

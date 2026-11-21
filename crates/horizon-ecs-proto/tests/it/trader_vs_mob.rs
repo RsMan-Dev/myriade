@@ -135,8 +135,6 @@ fn trade_runs_mob(dist: f64) -> bool {
     }
     r.mobs[t].ai.goals.running_names().contains(&"TradeWithPlayer")
 }
-/// A TRANCHER : mesuré, le Mob tient le but à 2 blocs, l'ECS ne le démarre pas (Trading posé, au sol, à portée, but non lancé) ; cause non encore trouvée.
-#[ignore = "à trancher : le but `trade` de l'ECS ne démarre pas après `open` (pas de cause établie)"]
 #[test]
 fn trade_vs_mob_the_trader_stands_for_a_player_within_four_blocks_only() {
     if skip() {

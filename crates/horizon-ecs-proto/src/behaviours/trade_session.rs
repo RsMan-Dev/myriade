@@ -62,7 +62,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(player) = w.get::<Trading>(e).map(|t| t.player) else { return false };
     let Some(p) = w.resource::<Online>().get(player) else { return false };
     let now = now_of(w, e);
-    let hurt = w.get::<HurtAt>(e).is_some_and(|h| h.at + HURT_INVULNERABLE_TICKS > now);
+    let hurt = w.get::<HurtAt>(e).is_some_and(|h| (h.at != 0 || h.last != 0.0) && h.at + HURT_INVULNERABLE_TICKS > now);
     let alive = w.get::<Health>(e).is_some_and(|h| h.0 > 0.0);
     let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
