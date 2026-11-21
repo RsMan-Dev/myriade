@@ -61,7 +61,12 @@ pub struct LongJumpState {
 /// Le choix de la phase de préparation (`LongJumpToRandomPos` et `LongJumpToPreferredBlock`).
 #[derive(Component, Clone, Debug, Default)]
 pub struct Leap {
+    /// The drawn ones keep their place with a weight of 0 (they are never drawn again: the draw order is the list's, shifting the rest would copy it).
     candidates: Vec<([i32; 3], i32)>,
+    /// The candidates not drawn yet.
+    live: usize,
+    /// The weights as a Fenwick tree: the first candidate whose running sum passes the draw is found in log n, not by walking the list.
+    tree: Vec<i32>,
     /// The sum of the candidates' weights, kept as they are drawn.
     total: i32,
     not_preferred: Vec<([i32; 3], i32)>,
@@ -269,6 +274,8 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let cands = candidates(block_of(pos), st.p.width, st.p.height);
     let mut leap = Leap {
         total: cands.iter().map(|c| c.1).sum(),
+        live: cands.len(),
+        tree: fenwick(&cands),
         candidates: cands,
         tries: FIND_JUMP_TRIES,
         initial: Some(pos),
@@ -322,9 +329,9 @@ fn run_preparing(w: &mut World, e: Entity) {
     let Some(leap) = w.get::<Leap>(e) else { return };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
-    let valid = leap.initial == Some(pos) && leap.tries > 0 && !in_water && !(leap.chosen.is_none() && leap.candidates.is_empty());
+    let valid = leap.initial == Some(pos) && leap.tries > 0 && !in_water && !(leap.chosen.is_none() && leap.live == 0);
     // Only a search over all the candidates proves that there is nothing (with a wish for a preferred block the first draw empties the list).
-    let found_nothing = leap.initial == Some(pos) && leap.chosen.is_none() && leap.candidates.is_empty() && !leap.wanting_preferred;
+    let found_nothing = leap.initial == Some(pos) && leap.chosen.is_none() && leap.live == 0 && !leap.wanting_preferred;
     if !valid {
         if found_nothing {
             crate::pathsearch::probe!(cnt(10, 1));
@@ -382,7 +389,7 @@ fn pick(w: &mut World, e: Entity, leap: &mut Leap) {
     let mut _hist = Hist { #[cfg(feature = "probes")] drawn: 0, #[cfg(feature = "probes")] searches: 0, #[cfg(feature = "probes")] chosen: false };
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let mut tags = Tags::default();
-    while !leap.candidates.is_empty() {
+    while leap.live != 0 {
         let Some((target, _)) = next_candidate(w, e, leap, &p, mw, &mut tags) else { continue };
         crate::pathsearch::probe!(cnt(2, 1));
         crate::pathsearch::probe!(_hist.drawn += 1);
@@ -480,7 +487,7 @@ fn next_candidate(w: &mut World, e: Entity, leap: &mut Leap, p: &Params, mw: &Mo
     if !leap.wanting_preferred {
         return draw(w, e, leap);
     }
-    while !leap.candidates.is_empty() {
+    while leap.live != 0 {
         if let Some(c) = draw(w, e, leap) {
             let [x, y, z] = c.0;
             if preferred_at(p, mw, tags, x, y - 1, z) {
@@ -498,12 +505,29 @@ fn draw(w: &mut World, e: Entity, leap: &mut Leap) -> Option<([i32; 3], i32)> {
     if total == 0 {
         return None;
     }
-    let mut pick = with_rng(w, e, |r| r.next_int(total));
-    let i = leap.candidates.iter().position(|c| {
-        pick -= c.1;
-        pick < 0
-    })?;
-    let c = leap.candidates.remove(i);
+    let pick = with_rng(w, e, |r| r.next_int(total));
+    // The first index whose running sum of weights passes the draw (`WeightedRandom.getRandomItem`).
+    let n = leap.tree.len() - 1;
+    let (mut at, mut rest) = (0, pick);
+    let mut step = n.next_power_of_two();
+    while step > 0 {
+        if at + step <= n && leap.tree[at + step] <= rest {
+            at += step;
+            rest -= leap.tree[at];
+        }
+        step >>= 1;
+    }
+    if at >= n {
+        return None;
+    }
+    let i = at;
+    let c = leap.candidates[i];
+    let mut k = i + 1;
+    while k <= n {
+        leap.tree[k] -= c.1;
+        k += k & k.wrapping_neg();
+    }
+    leap.live -= 1;
     leap.total -= c.1;
     Some(c)
 }
@@ -533,6 +557,19 @@ fn default_landing(w: &World, e: Entity, mw: &MobWorld, [x, y, z]: [i32; 3]) -> 
 }
 
 /// `LongJumpToRandomPos.start` : les cases de la boîte sauf celle de l'animal, pondérées par le carré de la distance.
+/// The Fenwick tree of the candidates' weights (index 0 unused).
+fn fenwick(c: &[([i32; 3], i32)]) -> Vec<i32> {
+    let mut t = vec![0; c.len() + 1];
+    for (i, x) in c.iter().enumerate() {
+        t[i + 1] += x.1;
+        let j = i + 1 + ((i + 1) & (i + 1).wrapping_neg());
+        if j < t.len() {
+            let v = t[i + 1];
+            t[j] += v;
+        }
+    }
+    t
+}
 fn candidates([x, y, z]: [i32; 3], width: i32, height: i32) -> Vec<([i32; 3], i32)> {
     let mut out = Vec::new();
     for dz in -width..=width {
