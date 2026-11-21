@@ -178,6 +178,8 @@ pub struct Species {
     pub screaming: Option<f64>,
     /// The chance of a horn lost at a natural spawn (`Def::lost_horn`).
     pub lost_horn: Option<f64>,
+    /// `Def::llama_strength`: the strength is drawn at the pose (`spawn_declared`).
+    pub llama_strength: bool,
 }
 
 /// The class bits of a type, as data of its row (no per-entity byte): the groups of species whose class saves a state at its default.

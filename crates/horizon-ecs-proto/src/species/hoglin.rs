@@ -140,4 +140,5 @@ pub static DEF: Def = Def {
     saved: true,
     screaming: None,
     lost_horn: None,
+    llama_strength: false,
 };

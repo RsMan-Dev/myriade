@@ -186,6 +186,7 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
             persistent: is_creature && mob.persistent,
             screaming,
             lost_horn,
+            llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
         });
         if name == chosen {
             chosen_kind = Some(kind);

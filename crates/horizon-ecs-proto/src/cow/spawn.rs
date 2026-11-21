@@ -121,6 +121,11 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     let yaw = (rng.next_u32() % 360) as f32;
     // `Goat.finalizeSpawn`: the screaming draw follows the yaw, only for a species that has a chance (the Mob draws it at the spawn too).
     let screams = natural && sp.screaming.is_some_and(|c| rng.next_f64() < c);
+    // `Llama.finalizeSpawn` (`mobs/llama.rs` `finalize`): 1 to 3, or 1 to 5 in 4 percent of the draws; `Caravan` is the llama's component.
+    let strength = sp.llama_strength.then(|| {
+        let max: u32 = if rng.next_f64() < 0.04 { 5 } else { 3 };
+        1 + (rng.next_u32() % max) as i32
+    });
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
@@ -130,6 +135,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     let mut e = world.entity_mut(id);
     if screams {
         e.insert(crate::species::goat::Screaming);
+    }
+    if let Some(s) = strength {
+        e.insert(crate::behaviours::forget_target::LlamaStrength(s));
     }
     e.insert(transform_bundle(sp, x, z, uid));
     if saved {
