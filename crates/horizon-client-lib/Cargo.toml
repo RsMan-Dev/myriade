@@ -48,9 +48,6 @@ horizon-java-properties = { path = "../horizon-java-properties" }
 getrandom = "0.3"
 # The dedicated server's anticheat, off unless server.toml's [anticheat] turns it on (docs/anticheat.md).
 horizon-anticheat = { path = "../horizon-anticheat" }
-# Shader packs: reading them and turning their GLSL into naga modules.
-# Horizon's own shader packs: the format, the stages and the check (docs/shaders.md).
-horizon-shader-api = { path = "../horizon-shader-api" }
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
 # Horizon mods: sandboxed WebAssembly components, off unless installed and turned on (docs/modding/src/how-to/content-mods.md).
 # Their runtime is the `mods` feature.

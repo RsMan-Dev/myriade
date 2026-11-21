@@ -56,7 +56,6 @@ members = [
     "crates/horizon-mod-wasm/wire-loopback",
     "crates/cargo-horizon-mod",
     "crates/horizon-port-pack",
-    "crates/horizon-shader-api",
     "crates/horizon-release-sign",
     "crates/horizon-mod-deps",
     "xtask",

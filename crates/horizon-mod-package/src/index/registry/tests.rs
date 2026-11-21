@@ -497,7 +497,6 @@ fn page_fields_and_screenshots_reach_the_index() {
 #[test]
 fn only_open_kinds_are_taken() {
     assert!(open(&Kind::Mod).is_ok() && open(&Kind::ResourcePack).is_ok());
-    assert!(open(&Kind::Shader).is_ok() && open(&Kind::ShaderPack).is_ok());
     assert!(open(&Kind::DataPack).is_ok());
     assert!(open(&Kind::Other("world".into())).is_err());
     let mut submit: Entry = toml::from_str(COZY).unwrap();

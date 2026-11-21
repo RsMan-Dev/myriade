@@ -328,7 +328,6 @@ impl Game<'_> {
     /// `menu_transfer` parts on a mod menu answer first, then its grid transfer. Only a server
     /// that takes viewer transfers is asked: elsewhere it shows as not into this menu.
     pub(super) fn transfer_viewer_recipe_id(&mut self, recipe: &str, max: bool) {
-        self.panel.transfer_warning = None;
         let open = !self.spectator() && (self.mod_menu_open() || self.mod_recipe_screen());
         if !open {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
@@ -377,7 +376,6 @@ impl Game<'_> {
     }
     /// A viewer's transfer of one set of ingredients.
     pub(super) fn transfer_viewer_recipe(&mut self, display_id: i32) {
-        self.panel.transfer_warning = None;
         if !self.mod_recipe_screen()
             || (self.creative && self.craft_size != 3 && !self.mod_crafting_open())
         {
@@ -390,12 +388,7 @@ impl Game<'_> {
             .is_some_and(|r| !r.recipe_viewer.transfer)
         {
             // Older Horizon and vanilla servers still accept book clicks.
-            if self.recipe_place(display_id, false).is_err() {
-                self.panel.transfer_warning = Some((
-                    "horizon.recipe_transfer.unsupported",
-                    "Server requires a known recipe",
-                ));
-            }
+            let _ = self.recipe_place(display_id, false);
             return;
         }
         self.ensure_book();
@@ -441,19 +434,6 @@ impl Game<'_> {
         if result == RecipeTransferResult::Moves {
             self.close_transferred_recipe();
         }
-        self.panel.transfer_warning = match result {
-            RecipeTransferResult::Moves => None,
-            RecipeTransferResult::Missing => {
-                Some(("horizon.recipe_transfer.missing", "Missing Items"))
-            }
-            RecipeTransferResult::NoRoom => {
-                Some(("horizon.recipe_transfer.no_room", "Inventory full"))
-            }
-            RecipeTransferResult::NotIntoMenu => Some((
-                "horizon.recipe_transfer.unavailable",
-                "Recipe does not fit this menu",
-            )),
-        };
     }
 
     /// `RecipesClientHost::transfer_recipe_check`: the server's latest check of a viewer

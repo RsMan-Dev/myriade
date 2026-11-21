@@ -447,7 +447,7 @@ impl Game<'_> {
             return marks;
         }
         let model = match (own, kind(m)) {
-            (true, _) => model(m, Kind::Own, self.remote.as_ref().map(|r| r.profile())),
+            (true, _) => model(m, Kind::Own, None),
             (false, Some(kind)) => model(m, kind, self.remote_player_uuid(m.id)),
             (false, None) => return marks,
         };

@@ -289,7 +289,6 @@ impl Game<'_> {
         // A reload already under its overlay finishes first (vanilla's
         // `pendingReload`, which `runTick` starts once the overlay is gone).
         if reload_waits(self.rest_loader.is_some(), self.pack_reload.is_some()) {
-            self.pending_pack_reload = true;
             return;
         }
         if let Err(e) = self.spawn_pack_reload(ReloadKind::Selection) {
@@ -453,7 +452,6 @@ impl Game<'_> {
             textures,
             cem,
             block_entity_shapes,
-            waypoint_styles,
             armor_stand_assets,
             frame_models,
             sounds,
@@ -464,8 +462,6 @@ impl Game<'_> {
         // Refresh modifiers from the newly staged packs, including removals.
         let tab_modifiers = horizon_client::polytone_creative_tabs::TabModifier::read_all(&root);
         self.creative_screen.set_pack_modifiers(tab_modifiers);
-        let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.renderer {
             renderer.release_surface();
@@ -517,7 +513,6 @@ impl Game<'_> {
             self.map_frame_model,
             self.glow_map_frame_model,
         ] = frame_models;
-        self.waypoint_styles = waypoint_styles;
         self.armor_stand_assets.apply_resources(armor_stand_assets);
         self.random_tick_sections.clear();
         self.portals.sections.clear();
@@ -533,7 +528,6 @@ impl Game<'_> {
             .extras
             .skip_modded_splashes_if_vanilla_modified;
         self.gui = gui.with_splashes(&self.pack.source, &self.vanilla_root(), skip);
-        self.standalone_geometry = standalone_geometry;
         self.instance_groups.borrow_mut().clear();
         // The new atlas's skin and map slots are blank: players and maps
         // upload into it again instead of naming sprites it does not have.
@@ -542,11 +536,7 @@ impl Game<'_> {
             .borrow_mut()
             .set_resource_root(self.pack.source.clone());
         self.maps.slots.forget();
-        self.map_patches.clear();
-        self.text_patches.get_mut().clear();
-        // Kept mod block entities name the old atlas's sprites, and their view distances the old
-        // registry's states.
-        self.kept_block_entities.get_mut().clear();
+        // Mod block entities' view distances name the old registry's states.
         self.live_scenes.get_mut().clear();
         self.mod_view_distances.take();
         // The atlas's sprites moved: the particle engine re-reads every rect

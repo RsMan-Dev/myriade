@@ -79,27 +79,6 @@ const RESOURCE_PACKS: &[&str] = &[
     "utility",
     "vanilla-like",
 ];
-const SHADERS: &[&str] = &[
-    "cartoon",
-    "fantasy",
-    "realistic",
-    "semi-realistic",
-    "vanilla-like",
-    "atmosphere",
-    "bloom",
-    "colored-lighting",
-    "foliage",
-    "path-tracing",
-    "pbr",
-    "reflections",
-    "shadows",
-    "potato",
-    "low",
-    "medium",
-    "high",
-    "screenshot",
-];
-
 /// Words a tag may not hold: no listing is about gambling (Mojang's Usage
 /// Guidelines name it for every use).
 const REFUSED_TAG_WORDS: &[&str] = &[
@@ -120,7 +99,6 @@ pub fn categories(kind: &Kind) -> &'static [&'static str] {
         Kind::Mod | Kind::NativeMod | Kind::DataPack => MODS,
         Kind::Modpack => MODPACKS,
         Kind::ResourcePack => RESOURCE_PACKS,
-        Kind::Shader | Kind::ShaderPack => SHADERS,
         Kind::Other(_) => &[],
     }
 }
@@ -335,11 +313,11 @@ mod tests {
     fn categories_are_the_kinds_own() {
         let ok = check(&Kind::Mod, "", &strings(&["magic", "mobs"]), &[]);
         assert!(ok.is_empty(), "{ok:?}");
-        // A shader category on a mod, a repeat, and one too many.
+        // A category of no mod, a repeat, and one too many.
         let wrong = check(&Kind::Mod, "", &strings(&["bloom"]), &[]);
         assert!(wrong[0].contains("not a category of a mod"), "{wrong:?}");
-        let twice = check(&Kind::Shader, "", &strings(&["pbr", "pbr"]), &[]);
-        assert_eq!(twice, ["category \"pbr\" is listed twice"]);
+        let twice = check(&Kind::Mod, "", &strings(&["mobs", "mobs"]), &[]);
+        assert_eq!(twice, ["category \"mobs\" is listed twice"]);
         let many = check(
             &Kind::Mod,
             "",

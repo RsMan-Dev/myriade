@@ -925,7 +925,6 @@ struct Game<'a> {
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
     pending_entry: Option<PendingWorldEntry>,
-    pending_pack_reload: bool,
     /// When `resourcepacks/` was last looked at for the open pack screen, and what it held
     /// (`watch_pack_folder`).
     pack_folder: Option<(
@@ -939,9 +938,6 @@ struct Game<'a> {
     server_packs: server_packs::ServerPackState,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
     link_prompt: Option<String>,
-    /// A command the player didn't type, waiting for their answer
-    /// (game/network/remote_chat.rs).
-    command_prompt: Option<remote_chat::CommandPrompt>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
     code_of_conduct: Option<code_of_conduct::Prompt>,
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
@@ -959,7 +955,6 @@ struct Game<'a> {
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
     instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
-    standalone_geometry: native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     fog: horizon_client::fog::FogState,
     /// `LocalPlayer.itemActivation`: the totem flying up to the screen.
@@ -1073,8 +1068,6 @@ struct Game<'a> {
     agent_pointer: bool,
     /// A world screen with the pointer captured was open last frame.
     was_playing: bool,
-    /// Minecraft.pause: a single-player screen that pauses the game is open.
-    pause: bool,
     debug: bool,
     /// `horizon-ctl gpu-passes`: time Horizon's own passes on the GPU with F3 shut.
     gpu_passes: bool,
@@ -1115,12 +1108,8 @@ struct Game<'a> {
     /// Controllers (Horizon's own).
     pad: pad::Pads,
     frames: u64,
-    /// Mod block entities' kept geometry (game/modding/native_block_entity_draw.rs).
-    kept_block_entities: std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
     live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
-    /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
-    text_patches: std::cell::RefCell<Vec<horizon_client::font::Patch>>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// `item_level` for one frame, game time, day time and dimension.
@@ -1358,8 +1347,6 @@ struct Game<'a> {
     respawn_config: Option<respawn_anchor::RespawnConfig>,
     /// The next enter_dimension call comes from an End portal.
     end_portal_travel: bool,
-    /// The open WinScreen (game/interface/win.rs).
-    win: Option<win::Win>,
     end: end::EndState,
     block_ticks: Ticks,
     tick_scratch: TickScratch,
@@ -1388,10 +1375,6 @@ struct Game<'a> {
     /// Entities of types Horizon does not simulate.
     others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     armor_stand_assets: armor_stands::ArmorStandAssets,
-    /// `WaypointStyleManager`.
-    waypoint_styles: horizon_client::locator_bar::WaypointStyles,
-    /// `ClientWaypointManager`: the locator bar's waypoints.
-    waypoints: horizon_client::locator_bar::ClientWaypoints,
     /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
     /// none when it drew from vanilla's.
     posed_rotation: Option<(f32, f32)>,
@@ -1430,8 +1413,6 @@ struct Game<'a> {
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
     dragon_model: Option<horizon_client::mobs::Part>,
-    /// Map textures waiting for the next HUD batch to upload them.
-    map_patches: Vec<horizon_client::font::Patch>,
     name_tag_layouts: names::NameTagLayouts,
     text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
@@ -1544,8 +1525,6 @@ struct Game<'a> {
     mod_jobs: mod_browser::Jobs,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
     recipe_tables: native_recipes::RecipeTables,
-    /// The item panel beside container screens (`game/modding/native_panel.rs`).
-    panel: native_panel::Panel,
     /// Horizon's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     native_shaders: native_shaders::NativeShaders,
     /// Native client mods' claimed items, unpolled events and key mappings (game/modding/native_claimed_items.rs).
@@ -2534,10 +2513,7 @@ impl Game<'_> {
             environment,
             raining: rain > 0.2,
             thundering: thunder > 0.9,
-            enabled_features: self
-                .remote
-                .as_ref()
-                .map_or(&self.level.enabled_features, |remote| &remote.features),
+            enabled_features: &self.level.enabled_features,
             player_box,
             guest_boxes,
             building_player_boxes,
@@ -6109,7 +6085,6 @@ impl<'a> Game<'a> {
         let mod_phase = mod_api::__private::PhaseOwner::new(phase);
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
-        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         let loop_side = options.execution_role.loop_side();
         let root = options.resources.clone();
         let mod_sources = options.mods.clone();
@@ -6164,12 +6139,10 @@ impl<'a> Game<'a> {
             res: res.clone(),
             rest_loader: None,
             pending_entry: None,
-            pending_pack_reload: false,
             pack_folder: None,
             pack_reload: None,
             server_packs: Default::default(),
             link_prompt: None,
-            command_prompt: None,
             code_of_conduct: None,
             integrated_starting: None,
             collision: res.collision(),
@@ -6180,7 +6153,6 @@ impl<'a> Game<'a> {
             pack,
             gui,
             instance_groups: Default::default(),
-            standalone_geometry,
             fog: Default::default(),
             item_activation: Default::default(),
             weather_parameters: Default::default(),
@@ -6247,7 +6219,6 @@ impl<'a> Game<'a> {
             mouse: MouseLook::default(),
             agent_pointer: false,
             was_playing: false,
-            pause: false,
             debug: false,
             gpu_passes: false,
             gpu_pass_detail: false,
@@ -6271,9 +6242,7 @@ impl<'a> Game<'a> {
             last_input: now,
             pad: Default::default(),
             frames: 0,
-            kept_block_entities: Default::default(),
             live_scenes: Default::default(),
-            text_patches: Default::default(),
             mod_view_distances: Default::default(),
             item_level_cache: Default::default(),
             world_frames: 0,
@@ -6399,7 +6368,6 @@ impl<'a> Game<'a> {
             portals: Default::default(),
             respawn_config: None,
             end_portal_travel: false,
-            win: None,
             end: Default::default(),
             block_ticks: Ticks::new(0),
             tick_scratch: TickScratch::default(),
@@ -6422,8 +6390,6 @@ impl<'a> Game<'a> {
             cushions: Default::default(),
             others: Default::default(),
             armor_stand_assets: prepared.armor_stand_assets,
-            waypoint_styles: prepared.waypoint_styles,
-            waypoints: Default::default(),
             posed_rotation: None,
             posed_roll: 0.0,
             post_effects: Vec::new(),
@@ -6446,7 +6412,6 @@ impl<'a> Game<'a> {
             crystals: Default::default(),
             breath_clouds: Default::default(),
             dragon_model: prepared.dragon_model,
-            map_patches: Vec::new(),
             name_tag_layouts: Default::default(),
             text_displays: Default::default(),
             interactions: Default::default(),
@@ -6523,7 +6488,6 @@ impl<'a> Game<'a> {
             mods: mod_sources,
             mod_jobs: Default::default(),
             recipe_tables: Default::default(),
-            panel: Default::default(),
             native_shaders: Default::default(),
             native_input: Default::default(),
             native_lifecycle: Default::default(),

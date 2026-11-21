@@ -54,13 +54,6 @@ pub fn check_form(form: &Form, kind: &Kind) -> Result<(), String> {
     if form.icon.is_some() {
         errors.push("upload the icon (a square PNG) instead of giving its address".into());
     }
-    if *kind == Kind::ShaderPack && !form.own_work {
-        errors.push(
-            "a shaders/-folder pack is listed only by its author, under a licence that lets the registry hand it out: \
-             confirm both"
-                .into(),
-        );
-    }
     if errors.is_empty() {
         Ok(())
     } else {

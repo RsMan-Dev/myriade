@@ -21,8 +21,6 @@ use std::{io::Read, path::Path};
 pub const SCHEMA: u32 = 1;
 /// The biggest file the registry takes (a `.hmod` with content, a `.hpack`).
 pub const MAX_FILE: u64 = 64 << 20;
-/// The shader API line this build serves; the registry reports it from `/healthz`.
-pub const SHADER_API: &str = horizon_shader_api::API;
 /// The biggest native binary build ID, in bytes.
 pub const MAX_NATIVE_BUILD: usize = 128;
 /// Where files may be downloaded from: the registry's release assets.
@@ -84,12 +82,6 @@ pub enum Kind {
     Modpack,
     /// A resource pack (`.zip` with `pack.mcmeta`) made or tested for Horizon.
     ResourcePack,
-    /// A Horizon shader pack (`.hshader`, the native WGSL format of
-    /// docs/shaders.md).
-    Shader,
-    /// A `shaders/`-folder shader pack (`.zip`, the format `horizon-shaders` loads), listed by
-    /// its author under a licence that allows it.
-    ShaderPack,
     /// A data pack (`.zip` with `pack.mcmeta` and `data/`), installed into a world.
     DataPack,
     Other(String),
@@ -102,8 +94,6 @@ impl Kind {
             Kind::NativeMod => "native-mod",
             Kind::Modpack => "modpack",
             Kind::ResourcePack => "resourcepack",
-            Kind::Shader => "shader",
-            Kind::ShaderPack => "shaderpack",
             Kind::DataPack => "datapack",
             Kind::Other(name) => name,
         }
@@ -116,8 +106,7 @@ impl Kind {
             Kind::NativeMod => Some("hmod"),
             Kind::Modpack => Some("hpack"),
             Kind::ResourcePack => Some("zip"),
-            Kind::Shader => Some(horizon_shader_api::EXTENSION),
-            Kind::ShaderPack | Kind::DataPack => Some("zip"),
+            Kind::DataPack => Some("zip"),
             Kind::Other(_) => None,
         }
     }
@@ -130,8 +119,6 @@ impl From<String> for Kind {
             "native-mod" => Kind::NativeMod,
             "modpack" => Kind::Modpack,
             "resourcepack" => Kind::ResourcePack,
-            "shader" => Kind::Shader,
-            "shaderpack" => Kind::ShaderPack,
             "datapack" => Kind::DataPack,
             _ => Kind::Other(name),
         }
@@ -513,23 +500,11 @@ impl Index {
     }
 
     /// A project's newest version for Minecraft `game` that wasn't taken down and asks for no
-    /// capability this build doesn't know; a shader pack's, for this build's shader API.
+    /// capability this build doesn't know.
     pub fn installable<'a>(&self, project: &'a Project, game: &str) -> Option<&'a Version> {
-        self.installable_for(project, game, &[horizon_shader_api::API])
-    }
-
-    /// [`Index::installable`] for a game that serves the shader API lines `served`
-    /// ([`needs_other_shader_api`]): what a launcher asks for the game it installed.
-    pub fn installable_for<'a>(
-        &self,
-        project: &'a Project,
-        game: &str,
-        served: &[impl AsRef<str>],
-    ) -> Option<&'a Version> {
         project.versions.iter().find(|v| {
             v.game == game
                 && v.capabilities.unknown().is_empty()
-                && !needs_other_shader_api(project, v, served)
                 && self.revoked(&project.id, &v.file.sha256).is_none()
         })
     }
@@ -756,21 +731,6 @@ pub fn check_file(
     version: &Version,
     path: &Path,
 ) -> Result<Trust, String> {
-    check_file_for(index, project, version, path, &[horizon_shader_api::API])
-}
-
-/// [`check_file`] for a game that serves the shader API lines `served`. A shader pack made for
-/// one of them that this build doesn't serve can't go through this build's check
-/// (`horizon_shader_api::check` reads its own line only): it keeps every check of the file and
-/// of what its manifest declares, and the game that serves the line checks the rest when it
-/// loads the pack.
-pub fn check_file_for(
-    index: &Index,
-    project: &Project,
-    version: &Version,
-    path: &Path,
-    served: &[impl AsRef<str>],
-) -> Result<Trust, String> {
     let size = std::fs::metadata(path)
         .map_err(|e| format!("{}: {e}", path.display()))?
         .len();
@@ -801,28 +761,8 @@ pub fn check_file_for(
             project.kind.name()
         ));
     }
-    let another_builds = project.kind == Kind::Shader
-        && version.api != horizon_shader_api::API
-        && served.iter().any(|line| line.as_ref() == version.api);
-    let facts = if another_builds {
-        let declared = horizon_shader_api::Pack::declared(path)?;
-        Facts {
-            id: Some(declared.id),
-            version: Some(declared.version),
-            api: declared.api,
-            ..Facts::default()
-        }
-    } else {
-        inspect(&project.kind, path)?
-    };
-    facts.matches(project, version)?;
+    inspect(&project.kind, path)?.matches(project, version)?;
     Ok(trust)
-}
-
-/// Whether version `v` of `project` is a Horizon shader pack made for a shader API line that
-/// is none of `served`, the lines a game serves: that game refuses its manifest.
-pub fn needs_other_shader_api(project: &Project, v: &Version, served: &[impl AsRef<str>]) -> bool {
-    project.kind == Kind::Shader && !served.iter().any(|line| line.as_ref() == v.api)
 }
 
 /// What a file says about itself, read by its kind's own check
@@ -873,13 +813,6 @@ impl Facts {
                 names(&self.capabilities)
             ),
             Kind::Modpack => format!("its {} isn't what the index lists", modpack::MANIFEST),
-            Kind::Shader => format!(
-                "its {} ({} {}, shader API {}) isn't what the index lists",
-                horizon_shader_api::MANIFEST,
-                self.id.as_deref().unwrap_or("?"),
-                self.version.as_deref().unwrap_or("?"),
-                self.api
-            ),
             _ => format!("its pack format {} isn't what the index lists", self.api),
         })
     }
@@ -887,7 +820,7 @@ impl Facts {
 
 /// Reads and checks a file as its kind: a mod's manifest and content, a
 /// modpack's manifest and overrides, a resource pack's `pack.mcmeta` and
-/// paths, a shader pack's `horizon_shader_api::check` (the game's own). Kinds
+/// paths. Kinds
 /// this build doesn't know are refused: their checks come with their formats.
 pub fn inspect(kind: &Kind, path: &Path) -> Result<Facts, String> {
     match kind {
@@ -925,27 +858,6 @@ pub fn inspect(kind: &Kind, path: &Path) -> Result<Facts, String> {
         }
         Kind::ResourcePack => Ok(Facts {
             api: check_resource_pack(path)?,
-            ..Facts::default()
-        }),
-        Kind::Shader => {
-            let pack = horizon_shader_api::Pack::read(path)?;
-            if let Err(problems) = horizon_shader_api::check(&pack) {
-                let lines: Vec<String> = problems.iter().map(ToString::to_string).collect();
-                return Err(format!(
-                    "the shader pack fails its check:\n{}",
-                    lines.join("\n")
-                ));
-            }
-            let m = pack.manifest;
-            Ok(Facts {
-                id: Some(m.id),
-                version: Some(m.version),
-                api: horizon_shader_api::API.to_owned(),
-                ..Facts::default()
-            })
-        }
-        Kind::ShaderPack => Ok(Facts {
-            api: check_shader_folder_pack(path)?,
             ..Facts::default()
         }),
         Kind::DataPack => Ok(Facts {
@@ -994,26 +906,14 @@ fn check_data_pack(path: &Path) -> Result<String, String> {
     pack_format(&mut zip)
 }
 
-/// A `shaders/`-folder shader pack: plain paths and a `shaders/` folder at the root. Its format
-/// has no version of its own: the facts' `api` is empty.
-fn check_shader_folder_pack(path: &Path) -> Result<String, String> {
-    let (_, names) = plain_zip(path)?;
-    if !names.iter().any(|n| n.starts_with("shaders/")) {
-        return Err("no shaders/ folder at the zip's root: not a shader pack".into());
-    }
-    Ok(String::new())
-}
-
-/// What a zip's file is, by its content: a `shaders/` folder makes a shader pack, a `data/` folder
-/// without `assets/` a data pack, anything else a resource pack (checked as one).
+/// What a zip's file is, by its content: a `data/` folder without `assets/` makes a data pack,
+/// anything else a resource pack (checked as one).
 pub fn zip_kind(path: &Path) -> Kind {
     let Ok((_, names)) = plain_zip(path) else {
         return Kind::ResourcePack;
     };
     let root = |dir: &str| names.iter().any(|n| n.starts_with(dir));
-    if root("shaders/") {
-        Kind::ShaderPack
-    } else if root("data/") && !root("assets/") {
+    if root("data/") && !root("assets/") {
         Kind::DataPack
     } else {
         Kind::ResourcePack
@@ -1058,8 +958,6 @@ pub fn open(kind: &Kind) -> Result<(), String> {
         | Kind::NativeMod
         | Kind::Modpack
         | Kind::ResourcePack
-        | Kind::Shader
-        | Kind::ShaderPack
         | Kind::DataPack => Ok(()),
         Kind::Other(name) => Err(format!("the registry doesn't take {name} yet")),
     }

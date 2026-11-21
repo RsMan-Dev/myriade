@@ -47,9 +47,6 @@ horizon-anticheat = { path = "../horizon-anticheat" }
 # The dedicated server's chat filter: [chat_filter], the slur list, mutes (docs/chat-filter.md);
 # `entry` installs it into the engine's hook (`horizon_server_files::chat_guard`).
 horizon-chat-filter = { path = "../horizon-chat-filter" }
-# Shader packs: reading them and turning their GLSL into naga modules.
-# Horizon's own shader packs: the format, the stages and the check (docs/shaders.md).
-horizon-shader-api = { path = "../horizon-shader-api" }
 # Play with Friends: invite codes and their tunnel; the `friends` feature.
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
 # Horizon mods: sandboxed WebAssembly components, off unless installed and turned on (docs/modding/src/how-to/content-mods.md).

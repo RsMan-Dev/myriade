@@ -263,12 +263,11 @@ impl Game<'_> {
             .map(|(m, name)| (m, name, true));
         // Who is riding whom: asked once per tag below, and rescanning every entity
         // for each tag made this quadratic in the number of loaded entities.
-        let local_entity_id = self.remote.as_ref().map(|r| r.entity_id as u32);
         let ridden = collect_vehicle_ids(
             &self.remote_entities,
             self.remote_vehicle_ids(),
             self.riding,
-            local_entity_id,
+            None,
         );
         for (m, name, player) in named.chain(players) {
             if !m.alive() {

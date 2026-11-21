@@ -27,7 +27,6 @@ horizon-mod-package = { path = "../horizon-mod-package" }
 # (connected.rs) and custom item texture rules (cit.rs).
 horizon-perf-format = { path = "../horizon-perf-format" }
 horizon-protocol = { path = "../horizon-protocol" }
-horizon-shader-api = { path = "../horizon-shader-api" }
 horizon-system = { path = "../horizon-system" }
 horizon-threads = { path = "../horizon-threads" }
 horizon-world = { path = "../horizon-world" }

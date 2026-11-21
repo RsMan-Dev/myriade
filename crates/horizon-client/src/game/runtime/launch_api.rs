@@ -143,8 +143,6 @@ fn content() -> serde_json::Value {
         // 0.1 was the WebAssembly code line: no build runs it any more.
         "mod": { "api": [manifest::API] },
         "native_mod": { "exact_build": true, "rebuild": true },
-        // The line it draws: a pack for another is refused.
-        "shader": { "schema": horizon_shader_api::SCHEMA, "api": [horizon_shader_api::API] },
         "resourcepack": { "format": horizon_core::version::RESOURCE_PACK_FORMAT },
         "datapack": { "format": horizon_core::version::DATA_PACK_FORMAT },
         "modpack": { "format": horizon_mod_package::modpack::FORMAT },
@@ -426,7 +424,7 @@ mod tests {
     }
 
     /// The content a build says it loads is what its checks take: content mods of api 0.2,
-    /// never the removed 0.1, and the shader line it draws.
+    /// never the removed 0.1.
     #[test]
     fn launch_api_content_is_what_the_build_loads() {
         let reply: serde_json::Value = serde_json::from_str(&reply("x")).unwrap();
@@ -435,10 +433,6 @@ mod tests {
         assert!(
             mods.contains(&"0.2".into()) && !mods.contains(&"0.1".into()),
             "{mods:?}"
-        );
-        assert_eq!(
-            content["shader"]["api"],
-            serde_json::json!([horizon_shader_api::API])
         );
         assert_eq!(content["native_mod"]["rebuild"], true);
         assert_eq!(

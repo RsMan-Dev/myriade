@@ -543,7 +543,7 @@ impl Game<'_> {
         // getDefaultClockTime: the End's own clock (the client keeps the
         // dimension's default clock in day_time), not the game time.
         self.end.flash.tick(self.world.day_time);
-        if self.end.flash.started_this_tick() && self.win.is_none() {
+        if self.end.flash.started_this_tick() {
             let flash = &self.end.flash;
             let instance = horizon_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
