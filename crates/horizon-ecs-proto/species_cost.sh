@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Cost control of every species in configuration: the whole Schedule::run per creature and tick of a resting herd of 2 000 of the
+# Cost control of every species in configuration, AWAKE (the zone of simulation is off and no player is there: every creature is
+# ticked as if a player stood within range; this is NOT the cost at rest. The sleeping cost is `species_dormant.sh`): the whole Schedule::run per creature and tick of a resting herd of 2 000 of the
 # species, spaced 6 blocks (a body wider than the spacing pushes forever: the scene would measure the crowd, not the species), compared
 # with the cow. FAILS for a species above 2.5 x the cow that is not in species_cost.allow ("name ## cause").
 # HORIZON_TEST_RESOURCES and D (the directory of the benches) set; the species are those of the registry table (species/mod.rs).
