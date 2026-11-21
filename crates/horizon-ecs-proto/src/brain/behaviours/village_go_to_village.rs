@@ -30,9 +30,20 @@ fn poi_block(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
 }
 
 /// The POI of a villager's memories that is still a POI, in the sections, and the same for the villagers it sees.
-fn village_sections(w: &mut World, e: Entity) -> Vec<[i32; 3]> {
+/// With `near`, the villagers it sees are not read when its own POIs already put `at` within one section of a village (they could only
+/// add villages, never lengthen the distance): the result is then its own sections, enough for the caller's `<= 1` test.
+fn village_sections(w: &mut World, e: Entity, near: Option<[i32; 3]>) -> Vec<[i32; 3]> {
     let keys = [&JOB_SITE, &POTENTIAL_JOB_SITE, &HOME, &MEETING_POINT];
     let mut pois: Vec<[i32; 3]> = keys.into_iter().filter_map(|k| poi_block(w, e, k)).collect();
+    if let Some(s) = near {
+        let reg = w.resource::<PoiRegistry>();
+        let mut own: Vec<[i32; 3]> = pois.iter().filter(|&&p| reg.get(p).is_some()).map(|p| [p[0] >> 4, p[1] >> 4, p[2] >> 4]).collect();
+        own.sort_unstable();
+        own.dedup();
+        if to_village(&own, s) <= 1 {
+            return own;
+        }
+    }
     let own = w.get::<SpeciesId>(e).map(|s| s.0);
     for who in find_all(w, e, |w, who| matches!(who, Who::Entity(t) if own.is_some() && w.get::<SpeciesId>(t).map(|s| s.0) == own)) {
         if let Who::Entity(t) = who {
@@ -56,7 +67,7 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return false;
     }
     let Some(at) = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]) else { return false };
-    let villages = village_sections(w, e);
+    let villages = village_sections(w, e, Some(section(at)));
     let here = to_village(&villages, section(at));
     if here <= 1 {
         return false;
