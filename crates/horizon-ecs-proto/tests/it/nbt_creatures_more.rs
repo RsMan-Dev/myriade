@@ -6,7 +6,7 @@ use horizon_core::{
     nbt::{Compound, JavaString, Tag},
 };
 use horizon_ecs_proto::{
-    behaviours::{fox_sleep::Sleeping, fox_state::Crouch, limited_life::Lifespan, swim_to_treasure::GotFish},
+    behaviours::{fox_state::{Crouch, FoxFlags, CROUCHING, SLEEPING}, limited_life::Lifespan, swim_to_treasure::GotFish},
     mount::Mount,
     raids::{Patrol, Raider},
     cow::{now_of, Herd, Pos, TypeName},
@@ -114,15 +114,15 @@ fn a_dolphin_that_ate_its_fish_saves_a_byte_and_a_zero_takes_no_marker() {
 fn a_fox_saves_its_crouch_and_its_sleep_as_bytes_and_refuses_a_short() {
     let mut h = Herd::new(0, 1.0, true, false, 1);
     let now = 500;
-    let f = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:fox"), Saved, Crouch(Some(now)), Sleeping)).id();
+    let f = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:fox"), Saved, Crouch(Some(now)), FoxFlags(CROUCHING | SLEEPING))).id();
     assert_eq!(nbt::get(&h.world, f, "Crouching"), Some(Tag::Byte(1)));
     assert_eq!(nbt::get(&h.world, f, "Sleeping"), Some(Tag::Byte(1)));
 
     let c = nbt::save(&h.world, f).expect("saved");
-    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:fox"), Saved, Crouch(None))).id();
+    let twin = h.world.spawn((Pos(Vec3::new(1.0, 2.0, 3.0)), TypeName("minecraft:fox"), Saved, Crouch(None), FoxFlags(0))).id();
     assert_eq!(nbt::load(&mut h.world, twin, &c), Some(0));
     assert!(h.world.get::<Crouch>(twin).is_some_and(|x| x.0.is_some()));
-    assert!(h.world.get::<Sleeping>(twin).is_some());
+    assert!(h.world.get::<FoxFlags>(twin).is_some_and(|f| f.0 & SLEEPING != 0));
     assert_eq!(nbt::save(&h.world, twin), Some(c));
 
     assert!(!nbt::merge(&mut h.world, twin, &patch("Crouching", Tag::Int(1))));

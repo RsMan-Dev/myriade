@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::collections::HashMap;
 use horizon_ecs_proto::{
-    behaviours::{attached_face::Attached, bee::Bee, do_nothing::Invulnerable, forget_target::LlamaStrength, trade_offers::Merchant},
+    behaviours::{attached_face::{Attached, Sounds}, follow_caravan::{self, Caravan}, invulnerable_charge::Charge, peek::{self, Peek}, bee::Bee, do_nothing::Invulnerable, forget_target::LlamaStrength, trade_offers::Merchant},
     cow::{Clock, GrowAt},
     explosion::{Charged, Fuse},
     nbt::{self, Saved},
@@ -38,15 +38,15 @@ fn a_creeper_keeps_its_fuse_radius_and_charge_in_vanilla_types() {
 #[test]
 fn a_wither_invul_and_a_llama_strength_round_trip() {
     let mut w = world();
-    let wither = w.spawn((Saved, Invulnerable(120))).id();
-    let llama = w.spawn((Saved, LlamaStrength(3))).id();
+    let wither = w.spawn((Saved, Invulnerable(120), Charge::idle())).id();
+    let llama = w.spawn((Saved, LlamaStrength(3), caravan())).id();
     let wc = nbt::save(&w, wither).unwrap();
     let lc = nbt::save(&w, llama).unwrap();
     assert_eq!(wc.get(&JavaString::from("Invul")), Some(&Tag::Int(120)));
     assert_eq!(lc.get(&JavaString::from("Strength")), Some(&Tag::Int(3)));
     let mut w2 = world();
-    let w_new = w2.spawn((Saved, Invulnerable(0))).id();
-    let l_new = w2.spawn((Saved, LlamaStrength(0))).id();
+    let w_new = w2.spawn((Saved, Invulnerable(0), Charge::idle())).id();
+    let l_new = w2.spawn((Saved, LlamaStrength(0), caravan())).id();
     assert_eq!(nbt::load(&mut w2, w_new, &wc), Some(0));
     assert_eq!(nbt::load(&mut w2, l_new, &lc), Some(0));
     assert_eq!(w2.get::<Invulnerable>(w_new).map(|i| i.0), Some(120));
@@ -55,6 +55,16 @@ fn a_wither_invul_and_a_llama_strength_round_trip() {
     bad.insert("Strength".into(), Tag::Long(3));
     assert_eq!(nbt::load(&mut w2, l_new, &bad), Some(1));
     assert_eq!(w2.get::<LlamaStrength>(l_new).map(|s| s.0), Some(3));
+}
+
+/// The owners the fields wait for (a bare entity stands for the species that has the goal).
+fn caravan() -> Caravan {
+    Caravan { p: &follow_caravan::Params::DEFAULT, slot: 0, pick: None }
+}
+
+fn lid() -> Peek {
+    static P: peek::Params = peek::Params { one_in: 40, open: 30, ticks: 20, spread: 3, sounds: Sounds { open: "", close: "" }, covered: true };
+    Peek { slot: 0, time: 0, cfg: &P }
 }
 
 fn world() -> World {
@@ -123,12 +133,12 @@ fn a_baby_age_is_the_ticks_left_and_grows_at_the_absolute_tick() {
 #[test]
 fn a_shulker_lid_face_and_colour_are_bytes() {
     let mut w = world();
-    let s = w.spawn((Saved, Attached { face: 2, color: 5, raw: 0, eased: 0.0 })).id();
+    let s = w.spawn((Saved, Attached { face: 2, color: 5, raw: 0, eased: 0.0 }, lid())).id();
     let c = nbt::save(&w, s).unwrap();
     assert_eq!(c.get(&JavaString::from("AttachFace")), Some(&Tag::Byte(2)));
     assert_eq!(c.get(&JavaString::from("Color")), Some(&Tag::Byte(5)));
     let mut w2 = world();
-    let t = w2.spawn((Saved, Attached { face: 0, color: 0, raw: 0, eased: 0.0 })).id();
+    let t = w2.spawn((Saved, Attached { face: 0, color: 0, raw: 0, eased: 0.0 }, lid())).id();
     assert_eq!(nbt::load(&mut w2, t, &c), Some(0));
     assert_eq!(w2.get::<Attached>(t).map(|a| (a.face, a.color)), Some((2, 5)));
     let mut bad = Compound::new();

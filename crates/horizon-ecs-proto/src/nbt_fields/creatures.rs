@@ -47,14 +47,14 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
     Field { key: Cow::Borrowed("Fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
-    Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Charged>) },
-    Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Invulnerable>) },
-    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Screaming>) },
+    Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Charge>) },
+    Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("Brain"), write: write_brain, read: read_brain, accepts: compound, owner: Some(owner::<LongJumpState>) },
     Field { key: Cow::Borrowed("HasLeftHorn"), write: write_left_horn, read: read_left_horn, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("HasRightHorn"), write: write_right_horn, read: read_right_horn, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("CannotHunt"), write: write_cannot_hunt, read: read_cannot_hunt, accepts: byte_or_int, owner: Some(owner::<Hunt>) },
-    Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<LlamaStrength>) },
+    Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<Caravan>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Peek>) },
     Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Peek>) },
@@ -500,8 +500,11 @@ fn write_sitting(w: &World, e: Entity, c: &mut Compound) {
 
 fn read_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
-    let Some(mut o) = w.get_mut::<Occupied>(e) else { return false };
-    if *v != 0 { o.0 |= OCC_SITTING } else { o.0 &= !OCC_SITTING }
+    let now = w.get::<Occupied>(e).map_or(0, |o| o.0);
+    let next = if *v != 0 { now | OCC_SITTING } else { now & !OCC_SITTING };
+    if next != now || w.get::<Occupied>(e).is_some() {
+        w.entity_mut(e).insert(Occupied(next));
+    }
     true
 }
 

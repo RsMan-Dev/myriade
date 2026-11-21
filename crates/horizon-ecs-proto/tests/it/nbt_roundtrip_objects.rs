@@ -96,6 +96,7 @@ fn objects_come_back_as_they_were_loaded() {
         return;
     }
     let mut h = Herd::new(0, 1.0, true, false, 1);
+    h.set_players(vec![(0.5, 0.5)]);
     for _ in 0..20 {
         h.tick();
     }

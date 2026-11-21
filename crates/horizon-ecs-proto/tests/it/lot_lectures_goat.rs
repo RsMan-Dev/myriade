@@ -83,14 +83,15 @@ fn a_screaming_goat_cools_down_for_100_to_300_ticks_after_its_charge() {
         if screaming {
             h.world.entity_mut(g).insert(Screaming);
         }
+        let mut now = 0;
         for _ in 0..400 {
+            now = now_of(&h.world, g);
             h.tick();
             if h.world.get::<Health>(p).unwrap().0 < 10.0 {
                 break;
             }
         }
         assert!(h.world.get::<Health>(p).unwrap().0 < 10.0, "the charge hits the prey");
-        let now = now_of(&h.world, g);
         let date = h.world.get::<ram::RamCooldown>(g).unwrap().0;
         date - now
     };
@@ -120,10 +121,10 @@ fn about_one_goat_in_ten_is_born_with_a_single_horn() {
     assert!((share - 0.1).abs() < 0.03, "{share}");
 }
 
-/// A goat's ram that hits drops a horn on the ground (an `Item` more than before the impact, as `drop_horn` does with `DropGoatHorn`), and
-/// its save flags the snapped side false (`HasLeftHorn` or `HasRightHorn` at 0), as the Mob's `write_nbt` does for `lost_horns`.
+/// `RamTarget.tick` (jar): a hit on a creature knocks it back and ends the ram; `Goat.dropHorn` is reached only through `hasRammedHornBreakingBlock`.
+/// So a ram on prey drops no horn and snaps no side.
 #[test]
-fn a_ram_that_hits_drops_a_horn_on_the_ground_and_saves_it_lost() {
+fn a_ram_that_hits_a_creature_drops_no_horn() {
     if !have_data() {
         return;
     }
@@ -140,12 +141,6 @@ fn a_ram_that_hits_drops_a_horn_on_the_ground_and_saves_it_lost() {
         }
     }
     assert!(h.world.get::<Health>(p).unwrap().0 < 10.0, "the charge hits the prey");
-    assert!(items(&mut h) > before, "the impact drops a horn on the ground");
-    assert_ne!(h.world.get::<ram::Shed>(g).map_or(0, |s| s.0), 0, "one side is snapped");
-    let save = horizon_ecs_proto::nbt::save(&h.world, g).expect("a goat is saved");
-    let flag = |key: &str| match save.get(&horizon_core::nbt::JavaString::from(key)) {
-        Some(horizon_core::nbt::Tag::Byte(v)) => Some(*v),
-        _ => None,
-    };
-    assert!([flag("HasLeftHorn"), flag("HasRightHorn")].contains(&Some(0)), "the snapped horn is saved as lost");
+    assert_eq!(items(&mut h), before, "no horn drops on a creature hit");
+    assert_eq!(h.world.get::<ram::Shed>(g).map_or(0, |s| s.0), 0, "no side is snapped");
 }

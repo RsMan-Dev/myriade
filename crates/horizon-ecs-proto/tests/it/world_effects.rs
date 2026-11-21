@@ -29,6 +29,18 @@ fn piston(direction: Direction, extending: bool) -> MovingPistonState {
     MovingPistonState { moved_state: BlockStateId(0), direction, extending, source: true, progress: 0.0, previous_progress: 0.0 }
 }
 
+/// A cow in the spatial index from its creation, as a spawned one is (the pushes look it up there).
+fn indexed_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
+    let e = ecs_cow(h, x, y, z, seed);
+    horizon_ecs_proto::cow::enter_index(&mut h.world, e);
+    e
+}
+
+/// A retracting piston that is not the source: the one that drags nothing out of its own base.
+fn retracting() -> MovingPistonState {
+    MovingPistonState { source: false, ..piston(Direction::East, false) }
+}
+
 fn cube() -> [Aabb; 1] {
     [Aabb::new(Vec3::ZERO, Vec3::new(1.0, 1.0, 1.0))]
 }
@@ -50,7 +62,7 @@ fn kernel_move(h: &Herd, e: Entity, piston: MovingPistonState, movement: Directi
 #[test]
 fn a_piston_pushes_a_cow_by_the_kernel_amount() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
-    let e = ecs_cow(&mut h, 1.1, 1.0, 0.5, 1);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 1);
     let want = kernel_move(&h, e, piston(Direction::East, true), Direction::East);
     let x0 = h.world.get::<Pos>(e).unwrap().0.x;
     push(&mut h, piston(Direction::East, true), Direction::East, false);
@@ -62,7 +74,7 @@ fn a_piston_pushes_a_cow_by_the_kernel_amount() {
 #[test]
 fn a_piston_wakes_a_sleeping_cow_it_reaches_and_moves_it() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
-    let e = ecs_cow(&mut h, 1.1, 1.0, 0.5, 2);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 2);
     let want = kernel_move(&h, e, piston(Direction::East, true), Direction::East);
     let x0 = h.world.get::<Pos>(e).unwrap().0.x;
     let now = h.world.resource::<Clock>().0;
@@ -81,7 +93,7 @@ fn a_wall_stops_a_cow_the_piston_pushes() {
     h.set_block(2, 1, 0, "minecraft:stone");
     h.set_block(2, 2, 0, "minecraft:stone");
     h.tick();
-    let e = ecs_cow(&mut h, 1.1, 1.0, 0.5, 4);
+    let e = indexed_cow(&mut h, 1.1, 1.0, 0.5, 4);
     for _ in 0..4 {
         push(&mut h, piston(Direction::East, true), Direction::East, false);
     }
@@ -92,7 +104,7 @@ fn a_wall_stops_a_cow_the_piston_pushes() {
 #[test]
 fn a_slime_block_bounces_a_cow_it_pushes_along_the_move() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
-    let e = ecs_cow(&mut h, 1.1, 1.0, 0.5, 5);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 5);
     let before = h.world.get::<Vel>(e).unwrap().0;
     push(&mut h, piston(Direction::East, true), Direction::East, true);
     let after = h.world.get::<Vel>(e).unwrap().0;
@@ -103,11 +115,11 @@ fn a_slime_block_bounces_a_cow_it_pushes_along_the_move() {
 #[test]
 fn a_retracting_piston_pulls_a_cow_by_the_kernel_amount() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
-    // The cow is west of the block: a retraction moves the block west, into it.
-    let e = ecs_cow(&mut h, -0.3, 1.0, 0.5, 6);
-    let want = kernel_move(&h, e, piston(Direction::East, false), Direction::West);
+    // The retracting block sits at 0..1 and moves west: a cow over its west half is pulled along.
+    let e = indexed_cow(&mut h, 1.0, 1.0, 0.5, 6);
+    let want = kernel_move(&h, e, retracting(), Direction::West);
     let x0 = h.world.get::<Pos>(e).unwrap().0.x;
-    push(&mut h, piston(Direction::East, false), Direction::West, false);
+    push(&mut h, retracting(), Direction::West, false);
     let x1 = h.world.get::<Pos>(e).unwrap().0.x;
     assert!(want.x < 0.0, "the kernel does not retract the cow: {}", want.x);
     assert!((x1 - x0 - want.x).abs() < 1e-9, "the cow moved {} where the kernel gives {}", x1 - x0, want.x);
@@ -117,7 +129,7 @@ fn a_retracting_piston_pulls_a_cow_by_the_kernel_amount() {
 fn a_cactus_hurts_a_cow_standing_in_it_each_tick() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     h.set_block(0, 1, 0, "minecraft:cactus");
-    let e = ecs_cow(&mut h, 0.5, 1.0, 0.5, 3);
+    let e = indexed_cow(&mut h, 0.5, 1.0, 0.5, 3);
     let at = pin(&h, e);
     let before = health(&h, e);
     for _ in 0..20 {
@@ -132,7 +144,7 @@ fn a_column_of_bubbles_lifts_a_cow_standing_in_it() {
     // Water under a bubble column: an upward column (`drag=false`, the bubbles rise from a water source).
     h.set_block(0, 1, 0, "minecraft:water");
     h.set_block_state(0, 2, 0, "minecraft:bubble_column", &[("drag", "false")]);
-    let e = ecs_cow(&mut h, 0.5, 2.0, 0.5, 6);
+    let e = indexed_cow(&mut h, 0.5, 2.0, 0.5, 6);
     for _ in 0..10 {
         h.tick();
     }
@@ -156,7 +168,7 @@ fn a_downward_column_of_bubbles_sinks_a_cow_faster_than_no_column() {
     assert!(yc < yf - 1e-6, "the downward column did not sink the cow: {yc} against {yf} without it");
 }
 
-/// The honey block at the piston's place, its moved box the honey shape: the top at 0.9375, the sticky top the same.
+/// The honey block at the piston's place (the moving block at progress 0 is one cell west of it: the cow stands on the part over HERE), its moved box the honey shape: the top at 0.9375, the sticky top the same.
 fn honey_push(h: &mut Herd, movement: Direction) {
     let boxes = [Aabb::new(Vec3::ZERO, Vec3::new(1.0, 0.9375, 1.0))];
     let block = PushBlock { boxes: &boxes, slime: false, honey: true, sticky_top: 0.9375 };
@@ -169,7 +181,8 @@ fn honey_pulls_a_cow_standing_on_it_by_the_kernel_amount() {
     h.set_block(0, 1, 0, "minecraft:honey_block");
     h.tick();
     // On the honey's top (1 + 0.9375), over the block: supported by the piston's place.
-    let e = ecs_cow(&mut h, 0.5, 1.9375, 0.5, 7);
+    let e = indexed_cow(&mut h, -0.1, 1.9375, 0.5, 7);
+    h.world.get_mut::<Vel>(e).unwrap().0.y = -0.08 * f64::from(0.98_f32);
     let at = pin(&h, e);
     tick_pinned(&mut h, e, &at);
     let (on_ground, bounds, pos) = (h.world.get::<Contact>(e).unwrap().on_ground, h.world.get::<Bounds>(e).unwrap().0, h.world.get::<Pos>(e).unwrap().0);
@@ -188,7 +201,7 @@ fn honey_leaves_a_cow_standing_beside_it() {
     h.set_block(0, 1, 0, "minecraft:honey_block");
     h.tick();
     // On the ground, three blocks away: not supported by the piston, and outside the sticky area.
-    let e = ecs_cow(&mut h, 3.0, 1.0, 0.5, 8);
+    let e = indexed_cow(&mut h, 3.0, 1.0, 0.5, 8);
     let at = pin(&h, e);
     tick_pinned(&mut h, e, &at);
     let (on_ground, bounds, pos) = (h.world.get::<Contact>(e).unwrap().on_ground, h.world.get::<Bounds>(e).unwrap().0, h.world.get::<Pos>(e).unwrap().0);

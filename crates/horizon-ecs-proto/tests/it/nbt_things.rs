@@ -168,11 +168,15 @@ fn a_projectile_saves_left_owner_only_when_set_and_restores_it() {
 fn a_large_fireball_keeps_its_explosion_power_as_a_byte_through_a_save_and_a_restore() {
     use horizon_ecs_proto::projectile::{launch, Flight, OnHit};
     let mut h = Herd::with_slab(2, false, false);
+    h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let e = launch(&mut h.world, Flight::large_fireball(4), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, None);
     let c = saved(&h.world, e);
     assert_eq!(at(&c, "ExplosionPower"), Some(Tag::Byte(4)), "`LargeFireball.addAdditionalSaveData` puts a byte");
 
     let mut b = Herd::with_slab(2, false, false);
+    b.set_players(vec![(0.5, 0.5)]);
+    b.tick();
     let r = nbt::restore(&mut b.world, &c).expect("a declared, saved type");
     let flight = *b.world.get::<Flight>(r).expect("a flight");
     assert!(matches!(flight.hit, OnHit::Explode { power: 4, fire: true }), "the power comes back, not 1: {:?}", flight.hit);
@@ -190,12 +194,16 @@ fn a_large_fireball_keeps_its_explosion_power_as_a_byte_through_a_save_and_a_res
 fn a_wither_skull_keeps_dangerous_and_a_hurting_projectile_its_acceleration() {
     use horizon_ecs_proto::projectile::{launch, Flight};
     let mut h = Herd::with_slab(2, false, false);
+    h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let at_pos = Vec3::new(0.5, 1.0, 0.5);
     let blue = launch(&mut h.world, Flight::wither_skull(true), at_pos, Vec3::ZERO, None);
     let c = saved(&h.world, blue);
     assert_eq!(at(&c, "dangerous"), Some(Tag::Byte(1)));
     assert_eq!(at(&c, "acceleration_power"), Some(Tag::Double(0.1f64.to_bits())));
     let mut b = Herd::with_slab(2, false, false);
+    b.set_players(vec![(0.5, 0.5)]);
+    b.tick();
     let r = nbt::restore(&mut b.world, &c).expect("restored");
     let f = *b.world.get::<Flight>(r).unwrap();
     assert!(f.blue, "a blue skull stays blue");

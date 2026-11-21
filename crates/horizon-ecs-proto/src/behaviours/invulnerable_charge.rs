@@ -24,6 +24,12 @@ pub struct Charge {
     p: &'static Params,
     done: bool,
 }
+impl Charge {
+    /// A charge that is not running: the marker of the species that has the goal (its NBT owner), for a bare entity.
+    pub fn idle() -> Self {
+        Self { until: 0, slot: 0, p: &Params::DEFAULT, done: true }
+    }
+}
 pub static MODULE: Module = Module {
     name: "invulnerable_charge",
     flags: MOVE | JUMP | LOOK,

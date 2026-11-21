@@ -40,7 +40,7 @@ pub static DEF: Def = Def {
         Entry::new(&spear_use::MODULE, 3, &spear_use::PIGLIN),
         Entry::new(&melee::MODULE, 3, &melee::Params { interval: 20, ..melee::Params::DEFAULT }).when(&NO_CROSSBOW),
         Entry::new(&go_to_wanted::MODULE, 4, &go_to_wanted::Params { items: &["minecraft:gold_ingot"], ..go_to_wanted::Params::DEFAULT }),
-        Entry::new(&celebrate::MODULE, 4, &celebrate::Params::DEFAULT),
+        Entry::new(&celebrate::MODULE, 4, &celebrate::Params { dance_of: "minecraft:hoglin", ..celebrate::Params::DEFAULT }),
         Entry::new(&look_at_held::MODULE, 5, &look_at_held::Params { items: &["minecraft:gold_ingot"], ..look_at_held::Params::DEFAULT }),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),

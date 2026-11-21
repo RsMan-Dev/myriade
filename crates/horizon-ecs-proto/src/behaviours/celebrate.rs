@@ -23,7 +23,7 @@ impl Params {
     pub const DEFAULT: Self = Self {
         sound: "minecraft:entity.piglin.celebrate",
         duration: 300,
-        dance_of: "minecraft:hoglin",
+        dance_of: "",
         dance_chance: 0.1,
         close: 2,
         speed: 1.0,

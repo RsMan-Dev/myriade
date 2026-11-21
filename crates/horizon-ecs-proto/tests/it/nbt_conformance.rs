@@ -13,11 +13,14 @@ use horizon_ecs_proto::{
 use std::{collections::BTreeMap, fmt::Write as _};
 
 /// The keys the two sides draw at random or place by position: only their type and length are compared.
-const RANDOM: &[&str] = &["UUID", "Pos", "Motion", "Rotation"];
+const RANDOM: &[&str] = &["UUID", "Pos", "Motion", "Rotation", "Strength", "EggLayTime"];
 
 /// Known gaps: (identifier or `*`, key, category, reason). A gap is `missing` (the ecs lacks a key Horizon writes), `extra` (the ecs
 /// writes one Horizon does not), `type` or `value`.
 const KNOWN: &[(&str, &str, &str, &str)] = &[
+    ("*", "Sitting", "missing", "the tamable writes the key only once it holds an occupation (`Occupied`, set when it is ordered to sit); the origin writes it at creation"),
+    ("*", "Trusting", "missing", "the ocelot writes the marker only when it holds it (set when a player feeds it); the origin writes it at creation"),
+    ("*", "ExplosionPower", "missing", "the ghast keeps its fireball power in its goal parameters, not in a component that would own the key"),
     ("*", "LastRestock", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
     ("*", "RestocksToday", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
     ("*", "Xp", "extra", "the ecs gives the trader the villager trade state; the origin writes none for it"),
@@ -171,6 +174,9 @@ fn the_ecs_saves_exactly_what_horizon_saves() {
         return;
     }
     let mut h = Herd::new(0, 1.0, true, false, 1);
+    // A player in the chunk: a hurting projectile made in a chunk nobody simulates is discarded at once.
+    h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let ids: Vec<(String, bool)> = nbt::recipes(&h.world).into_iter().map(|(id, r)| (id, r.saved)).collect();
     let mut report = String::new();
     let (mut compared, mut skipped) = (0, 0);

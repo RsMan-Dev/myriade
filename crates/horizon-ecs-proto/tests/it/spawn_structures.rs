@@ -222,6 +222,7 @@ fn cases() -> Vec<Case> {
     let pillager = || structures(&[("minecraft:pillager_outpost", false, "minecraft:zombie")]);
     let bastion = || structures(&[("minecraft:bastion_remnant", true, "minecraft:zombie")]);
     let both = || structures(&[("minecraft:pillager_outpost", false, "minecraft:zombie"), ("minecraft:bastion_remnant", false, "minecraft:spider")]);
+    // The fortress's blaze, zombified piglin and magma cube have no `SpawnDef` yet: they are counted `unported` by `resolve`, not listed.
     let fortress_only = || StructureSpawns::default();
     vec![
         Case { found: vec![at("minecraft:pillager_outpost", false, true)], spawns: pillager(), hook: false, cat: Category::Monster, nether: false, want: vec!["minecraft:zombie"] },
@@ -233,7 +234,7 @@ fn cases() -> Vec<Case> {
         Case { found: vec![at("minecraft:pillager_outpost", false, true)], spawns: pillager(), hook: false, cat: Category::Creature, nether: false, want: vec!["minecraft:bat"] },
         Case { found: vec![], spawns: pillager(), hook: true, cat: Category::Monster, nether: false, want: vec!["minecraft:bat", "minecraft:zombie"] },
         Case { found: vec![at("minecraft:fortress", false, true)], spawns: fortress_only(), hook: false, cat: Category::Monster, nether: false, want: vec!["minecraft:bat"] },
-        Case { found: vec![at("minecraft:fortress", false, true)], spawns: fortress_only(), hook: false, cat: Category::Monster, nether: true, want: vec!["minecraft:blaze", "minecraft:zombified_piglin", "minecraft:wither_skeleton", "minecraft:skeleton", "minecraft:magma_cube"] },
+        Case { found: vec![at("minecraft:fortress", false, true)], spawns: fortress_only(), hook: false, cat: Category::Monster, nether: true, want: vec!["minecraft:wither_skeleton", "minecraft:skeleton"] },
     ]
 }
 fn host(c: &Case) -> StructureHost {

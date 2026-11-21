@@ -107,7 +107,7 @@ pub fn set_profession(w: &mut World, e: Entity, profession: u8) {
 
 /// Identifiant `minecraft:` du métier pour le registre de commerce ; vide si l'index n'est pas un métier actif.
 pub fn profession_name(w: &World, profession: u8) -> String {
-    let d = w.resource::<TradeData>();
+    let Some(d) = w.get_resource::<TradeData>() else { return String::new() };
     d.trades.professions.state(usize::from(profession)).map(|s| s.id()).unwrap_or_default()
 }
 

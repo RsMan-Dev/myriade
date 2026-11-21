@@ -21,6 +21,7 @@ fn a_skull_is_gone_on_the_tick_it_enters_an_unloaded_chunk() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let e = launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::new(2.0, 0.0, 0.0), None);
     let mut gone = false;
     for _ in 0..2000 {
@@ -45,6 +46,7 @@ fn a_skull_in_loaded_chunks_has_no_age_limit() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let e = launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::ZERO, None);
     for _ in 0..1300 {
         h.tick();
@@ -60,6 +62,7 @@ fn a_wither_salvo_does_not_pile_up_skulls() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     for _ in 0..1200 {
         launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::new(1.0, 0.0, 0.0), None);
         h.tick();
@@ -86,6 +89,7 @@ fn a_skull_in_flight_is_discarded_when_its_chunks_stop_ticking() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let e = launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::new(0.0, 0.0, 0.0), None);
     h.tick();
     h.set_players(vec![]);
@@ -100,6 +104,7 @@ fn the_skulls_in_flight_go_when_the_wither_that_shot_them_dies() {
     }
     let mut h = Herd::with_slab(40, true, false);
     h.set_players(vec![(0.5, 0.5)]);
+    h.tick();
     let wither = h.world.spawn_empty().id();
     let shot = launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::ZERO, Some(Who::Entity(wither)));
     let other = launch(&mut h.world, Flight::WITHER_SKULL, AT, Vec3::ZERO, None);
