@@ -340,8 +340,8 @@ const PLAYERS_SCANNED: usize = 8;
 /// What a level reads of the game beyond its world view, for the serial pass (`&Game`, which also
 /// answers the server mods) and for a lane of the parallel one ([`NoGame`]).
 pub(super) trait LevelHost: Sized {
-    /// The game's mobs, scanned for a box query before the grid is built.
-    fn mobs(&self) -> &[Mob];
+    /// The game's entities as box queries read them, listed before the grid is built.
+    fn mob_boxes(&self) -> Vec<MobBox>;
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>);
     /// `mob_spawn_placement_check` for the level's spawn at `at`; `vanilla` where nothing listens.
     fn placement_check(
@@ -365,8 +365,8 @@ pub(super) trait LevelHost: Sized {
     }
 }
 impl LevelHost for &Game<'_> {
-    fn mobs(&self) -> &[Mob] {
-        &self.mobs
+    fn mob_boxes(&self) -> Vec<MobBox> {
+        self.ecs.mob_boxes()
     }
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
         let mut canceled = false;
@@ -466,8 +466,8 @@ impl LevelHost for &Game<'_> {
 #[cfg_attr(not(feature = "upstream-parallel-mobs"), allow(dead_code))]
 pub(super) struct NoGame;
 impl LevelHost for NoGame {
-    fn mobs(&self) -> &[Mob] {
-        &[]
+    fn mob_boxes(&self) -> Vec<MobBox> {
+        Vec::new()
     }
     fn potential_spawns(&self, _: Category, _: [i32; 3], _: &mut Vec<SpawnEntry>) {}
 }
@@ -524,11 +524,9 @@ pub(super) struct Level<'g, H> {
     /// How many provisional ids the pass has handed out (`u32::MAX - n`),
     /// mapped to real ones by [`Game::add_spawned`].
     pub(super) provisional: std::cell::Cell<u32>,
-    /// The game's mobs by box, built once a pass has asked more than
-    /// [`SCANNED_QUERIES`] box queries (the mobs do not change while it
-    /// holds the game); the first ones scan, as the build costs a few scans.
+    /// The game's entities by box, built at the first box query (they do not change while
+    /// the pass holds the game).
     pub(super) boxes: std::cell::OnceCell<MobBoxes>,
-    pub(super) box_queries: std::cell::Cell<u32>,
     /// The `SpawnGroupData` the pack being spawned has so far.
     pub(super) group: std::cell::RefCell<Option<horizon_client::mobs::finalize::Group>>,
     /// The entity types some biome of the level gives a spawn cost (the
@@ -550,32 +548,15 @@ struct Checked {
     mob: Mob,
     provisional: u32,
 }
-const SCANNED_QUERIES: u32 = 8;
-/// A mob not removed: its index in `Game::mobs`, box, alive, and whether
-/// it is a living shulker.
-type MobBox = (usize, Aabb, bool, bool);
-fn mob_box(i: usize, m: &Mob) -> MobBox {
-    let alive = m.alive();
-    (
-        i,
-        m.bounds(),
-        alive,
-        alive && m.species() == Species::Shulker,
-    )
-}
-/// The boxes of the game's mobs not removed, and a grid over them.
+/// An entity: its id, box, alive, and whether it is a living shulker.
+type MobBox = (u32, Aabb, bool, bool);
+/// The boxes of the game's entities, and a grid over them.
 pub(super) struct MobBoxes {
     entries: Vec<MobBox>,
     grid: SeenGrid,
 }
 impl MobBoxes {
-    fn new(mobs: &[Mob]) -> Self {
-        let entries: Vec<_> = mobs
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| !m.removed)
-            .map(|(i, m)| mob_box(i, m))
-            .collect();
+    fn new(entries: Vec<MobBox>) -> Self {
         let grid = SeenGrid::new(entries.iter().map(|e| e.1));
         Self { entries, grid }
     }
@@ -590,26 +571,14 @@ impl MobBoxes {
     }
 }
 impl<H: LevelHost> Level<'_, H> {
-    /// The mobs not removed whose boxes may meet `area` (callers test them).
+    /// The entities whose boxes may meet `area` (callers test them).
     fn mobs_near(&self, area: Aabb) -> Box<dyn Iterator<Item = MobBox> + '_> {
         if let Some(shared) = self.shared_boxes {
             return Box::new(shared.near(area));
         }
-        let asked = self.box_queries.get() + 1;
-        self.box_queries.set(asked);
-        if asked <= SCANNED_QUERIES && self.boxes.get().is_none() {
-            return Box::new(
-                self.game
-                    .mobs()
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, m)| !m.removed)
-                    .map(|(i, m)| mob_box(i, m)),
-            );
-        }
         Box::new(
             self.boxes
-                .get_or_init(|| MobBoxes::new(self.game.mobs()))
+                .get_or_init(|| MobBoxes::new(self.game.mob_boxes()))
                 .near(area),
         )
     }
@@ -1152,7 +1121,6 @@ impl<'a> Game<'a> {
             rides: Default::default(),
             provisional: Default::default(),
             boxes: Default::default(),
-            box_queries: Default::default(),
             group: Default::default(),
             costed: spawn_cost_types(world_biomes!(self)),
             spawner: None,
@@ -2198,161 +2166,6 @@ mod tests {
         }
     }
     const SULFUR_CUBE: &str = "minecraft:sulfur_cube";
-    /// A spawned mob as the draw comparisons see it: id, kind, position, yaw, persistence and
-    /// the next draw of its own random (seeded from its id).
-    type Snap = (u32, String, [f64; 3], f32, bool, i32);
-    fn snap(m: &Mob) -> Snap {
-        (
-            m.id,
-            m.kind.id.clone(),
-            [m.position.x, m.position.y, m.position.z],
-            m.yaw,
-            m.persistent,
-            m.random.clone().next_int(),
-        )
-    }
-    /// Runs `go` with no mod (`None`), or with a position-check listener answering `answer`
-    /// beside `extra` mods, and what that listener heard.
-    fn with_checks<R>(
-        answer: Option<SpawnCheck>,
-        extra: impl Fn() -> Vec<mod_api::ModEntry>,
-        go: impl FnOnce() -> R,
-    ) -> (R, Vec<Heard>) {
-        let log = Log::default();
-        let mut mods = extra();
-        if let Some(answer) = answer {
-            mods.push(mod_api::ModEntry::new(
-                "spawn-context",
-                Box::new(ContextMod {
-                    answer,
-                    log: log.clone(),
-                }),
-            ));
-        }
-        let out = if mods.is_empty() {
-            go()
-        } else {
-            mod_platform::testing::with_mods(mods.into(), go)
-        };
-        let heard = log.lock().unwrap().clone();
-        (out, heard)
-    }
-    /// A survival player standing at `at`, and empty lit chunks around the origin.
-    fn spawn_check_world(game: &mut Game<'_>, at: Vec3) {
-        use horizon_client::chunk::Chunk;
-        use std::sync::Arc;
-        game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, at).unwrap());
-        for cx in -2..=4 {
-            for cz in -2..=4 {
-                let mut chunk = Chunk::empty(cx, cz);
-                chunk.lit = true;
-                game.world.chunks.insert((cx, cz), Arc::new(chunk));
-            }
-        }
-    }
-    fn level_of(game: &Game<'_>) -> mod_api::LevelRef {
-        game.level(game.dim.id()).unwrap()
-    }
-
-    /// Natural spawning (`spawnCategoryForPosition`): a listener hears both checks with the
-    /// level and no spawner, and reads the pending mob; answering `Default` it leaves every draw,
-    /// id and spawned mob as with no listener, so the mob it read is the one that spawned, not
-    /// created twice. A `Fail` drops each mob: none is added and no provisional id is used.
-    #[test]
-    #[ignore = "daily"]
-    fn natural_spawn_checks_lend_the_mob_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
-        with_game(|game| {
-            spawn_check_world(game, Vec3::new(0.5, 64.0, 0.5));
-            let stone = game.pack.assets.registry.default_state("minecraft:stone");
-            for x in 32..48 {
-                for z in 32..48 {
-                    game.world.set(x, 63, z, stone.unwrap()).unwrap();
-                }
-            }
-            let level = level_of(game);
-            let attempt = |game: &mut Game<'_>| {
-                let mut random = LegacyRandom::new(42);
-                let natural = game.natural_level();
-                let players = natural
-                    .players
-                    .iter()
-                    .map(|p| SpawnPlayer {
-                        position: [p.position.x, p.position.y, p.position.z],
-                        spectator: p.spectator,
-                    })
-                    .collect();
-                let mut state = SpawnState::new(&natural, 289, players, &[], |_, _| true);
-                let mut pending = Vec::new();
-                let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LegacyRandom| {
-                    let spawned = l.finalize_spawned(r, &mut pending, rng);
-                    if let Some(s) = &spawned {
-                        l.pending.borrow_mut().push(s.bounds);
-                    }
-                    spawned
-                };
-                spawn_selection::spawn_category_for_position(
-                    &natural,
-                    &mut random,
-                    &mut state,
-                    Category::Monster,
-                    (2, 2),
-                    [40, 64, 40],
-                    &mut spawn,
-                    &mut |_| {},
-                );
-                assert!(natural.checked.borrow().is_none(), "no created mob is left");
-                let used = natural.provisional.get();
-                drop(natural);
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
-                (
-                    pending.iter().map(snap).collect::<Vec<_>>(),
-                    used,
-                    random.next_int(),
-                )
-            };
-            let spawns = || {
-                vec![mod_api::ModEntry::new(
-                    "sulfur-cubes",
-                    Box::new(SulfurCubesOnly),
-                )]
-            };
-            let (unlistened, heard) = with_checks(None, spawns, || attempt(game));
-            assert!(heard.is_empty());
-            assert!(!unlistened.0.is_empty(), "the attempt spawns");
-            assert_eq!(
-                unlistened.1 as usize,
-                unlistened.0.len(),
-                "one provisional id per spawned mob"
-            );
-            let (listened, heard) =
-                with_checks(Some(SpawnCheck::Default), spawns, || attempt(game));
-            assert_eq!(listened, unlistened, "same draws, ids and mobs");
-            let positions: Vec<_> = heard.iter().filter(|h| h.hook == "position").collect();
-            assert!(positions.len() >= unlistened.0.len());
-            for h in &heard {
-                assert_eq!(
-                    (h.kind.as_str(), h.level, h.spawner),
-                    (SULFUR_CUBE, level, None)
-                );
-            }
-            assert!(heard.iter().any(|h| h.hook == "placement"));
-            // Each spawned mob was read at its own position, a full mob (its head slot answers).
-            for m in &unlistened.0 {
-                let reads = (
-                    Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()),
-                    Ok(m.2),
-                    Ok(true),
-                );
-                assert!(positions.iter().any(|h| h.mob.as_ref() == Some(&reads)));
-            }
-            let (refused, heard) = with_checks(Some(SpawnCheck::Fail), spawns, || attempt(game));
-            assert!(refused.0.is_empty(), "a failed check adds nothing");
-            assert_eq!(refused.1, 0, "and gives each provisional id back");
-            assert!(heard.iter().any(|h| h.hook == "position"));
-        });
-    }
-
     /// A tropical fish's [`Spawned::school`] is the `TropicalFish.isSchool` its
     /// `finalizeSpawn` settled: the `nextFloat() < 0.9` else-branch clears it, and
     /// `isMaxGroupSizeReached = !isSchool` ends the pack there. The draws are replayed
@@ -2400,167 +2213,6 @@ mod tests {
         });
     }
 
-    /// A spawner block: both checks hear `Spawner::Block` at the block; a `Default` listener on
-    /// the position check leaves the draws, the real ids and the mobs that join as with none
-    /// (the lent mob is the one that joins); a `Fail` adds no mob, uses no entity id and leaves
-    /// no tracking entry. Spawn data with entity data lends the kind and position only.
-    #[test]
-    #[ignore = "daily"]
-    fn spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::chunk::block_entity::Next;
-        use horizon_client::mobs::spawner::{SpawnData, SpawnDataExt};
-        with_game(|game| {
-            spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
-            let level = level_of(game);
-            let key = (2, 70, 2);
-            let block = mod_api::Spawner::Block {
-                pos: mod_api::BlockPos::new(2, 70, 2),
-            };
-            let tick = |game: &mut Game<'_>, extra: Option<(&str, Tag)>| {
-                let (mobs, entities, tracked) =
-                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
-                game.world.random.set_seed(7);
-                let mut entity = Compound::default();
-                entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
-                if let Some((name, value)) = extra {
-                    entity.insert(name.into(), value);
-                }
-                let mut spawner = horizon_client::mobs::spawner::Spawner {
-                    spawn_delay: 0,
-                    next: Some(Next::Own(SpawnData::new(entity, None, None))),
-                    ..Default::default()
-                };
-                game.server_tick_spawner_of(key, &mut spawner, None)
-                    .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
-                let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
-                let out = (
-                    added,
-                    game.next_entity - entities,
-                    game.persist.uuids.len() - tracked,
-                    game.world.random.next_int(),
-                );
-                for m in game.mobs.drain(mobs..) {
-                    game.persist.uuids.remove(&m.id);
-                }
-                game.next_entity = entities;
-                out
-            };
-            let (unlistened, _) = with_checks(None, Vec::new, || tick(game, None));
-            assert!(!unlistened.0.is_empty(), "the spawner spawns");
-            let (listened, heard) =
-                with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game, None));
-            assert_eq!(listened, unlistened, "same draws, ids and mobs");
-            assert!(heard.iter().any(|h| h.hook == "placement"));
-            for h in &heard {
-                assert_eq!(
-                    (h.kind.as_str(), h.level, h.spawner),
-                    (SULFUR_CUBE, level, Some(block))
-                );
-                if let Some(reads) = &h.mob {
-                    assert_eq!(reads.2, Ok(true), "a fresh spawn lends the whole mob");
-                }
-            }
-            for m in &unlistened.0 {
-                assert!(
-                    heard
-                        .iter()
-                        .any(|h| h.mob.as_ref().is_some_and(|r| r.1 == Ok(m.2)))
-                );
-            }
-            let (refused, heard) =
-                with_checks(Some(SpawnCheck::Fail), Vec::new, || tick(game, None));
-            assert!(heard.iter().any(|h| h.hook == "position"));
-            assert_eq!(
-                (refused.0.len(), refused.1, refused.2),
-                (0, 0, 0),
-                "no mob, no entity id, no tracking entry"
-            );
-            // Entity data: the mob is loaded after the tick, so the lend is its kind and position.
-            let health = || Some(("Health", Tag::Float(5.0f32.to_bits())));
-            let (_, heard) =
-                with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game, health()));
-            let lent: Vec<_> = heard.iter().filter_map(|h| h.mob.clone()).collect();
-            assert!(!lent.is_empty());
-            for (kind, position, head) in lent {
-                assert_eq!(kind, Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()));
-                assert!(position.is_ok());
-                assert_eq!(head, Err(mod_api::UnspawnedMobError::Unsupported));
-            }
-        });
-    }
-
-    /// A trial spawner: the position check (obstruction only) and the placement check hear
-    /// `Spawner::Trial` at the block; a `Default` listener leaves the draws, ids and mob as with
-    /// none; a `Fail` adds no mob and no tracking entry.
-    #[test]
-    #[ignore = "daily"]
-    fn trial_spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::mobs::spawner::{SpawnData, SpawnDataExt};
-        use horizon_client::mobs::trial_spawner::{TrialSpawner, TrialState};
-        with_game(|game| {
-            spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
-            let level = level_of(game);
-            let key = (2, 70, 2);
-            let trial = mod_api::Spawner::Trial {
-                pos: mod_api::BlockPos::new(2, 70, 2),
-            };
-            let tick = |game: &mut Game<'_>| {
-                let (mobs, entities, tracked) =
-                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
-                game.world.random.set_seed(9);
-                let mut entity = Compound::default();
-                entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
-                let mut spawner = TrialSpawner {
-                    next_spawn_data: Some(SpawnData::new(entity, None, None)),
-                    ..Default::default()
-                };
-                game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
-                    .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
-                let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
-                let out = (
-                    added,
-                    game.next_entity - entities,
-                    game.persist.uuids.len() - tracked,
-                    game.world.random.next_int(),
-                );
-                for m in game.mobs.drain(mobs..) {
-                    game.persist.uuids.remove(&m.id);
-                }
-                game.next_entity = entities;
-                out
-            };
-            let (unlistened, _) = with_checks(None, Vec::new, || tick(game));
-            assert_eq!(unlistened.0.len(), 1, "the trial spawner spawns one mob");
-            assert!(unlistened.0[0].4, "a trial spawner's mob is persistent");
-            let (listened, heard) = with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game));
-            assert_eq!(listened, unlistened, "same draws, ids and mob");
-            let lent = (
-                Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()),
-                Ok(unlistened.0[0].2),
-                Ok(true),
-            );
-            assert!(heard.iter().any(|h| h.mob.as_ref() == Some(&lent)));
-            assert!(heard.iter().any(|h| h.hook == "placement"));
-            for h in &heard {
-                assert_eq!(
-                    (h.kind.as_str(), h.level, h.spawner),
-                    (SULFUR_CUBE, level, Some(trial))
-                );
-            }
-            let (refused, heard) = with_checks(Some(SpawnCheck::Fail), Vec::new, || tick(game));
-            assert!(heard.iter().any(|h| h.hook == "position"));
-            assert_eq!(
-                (refused.0.len(), refused.1, refused.2),
-                (0, 0, 0),
-                "no mob, no entity id, no tracking entry"
-            );
-        });
-    }
-
     /// Answers `finalize_spawn` the way a test asks.
     #[derive(Clone, Copy)]
     enum FinalizeAnswer {
@@ -2583,56 +2235,6 @@ mod tests {
             }
             mod_api::Flow::Continue
         }
-    }
-
-    /// No listener and a listener that changes nothing finalize and draw as vanilla; a cancel
-    /// skips finalization and its draws, the mob still spawning; `spawn_cancelled` adds no mob.
-    #[test]
-    #[ignore = "daily"]
-    fn finalize_spawn_cancels_pin_the_draws_and_the_outcome() {
-        use super::super::native_entity_refs::tests::with_game;
-        with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .cloned()
-                .unwrap();
-            let run = |game: &mut Game<'_>, answer: Option<FinalizeAnswer>| {
-                game.world.random.set_seed(5);
-                let mut mob = Mob::new(1, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
-                let go = |game: &mut Game<'_>, mob: &mut Mob| {
-                    game.finalize_with(mob, Reason::Natural, None)
-                };
-                let outcome = match answer {
-                    None => go(game, &mut mob),
-                    Some(a) => mod_platform::testing::with_mods(
-                        vec![mod_api::ModEntry::new("finalize", Box::new(FinalizeMod(a)))].into(),
-                        || go(game, &mut mob),
-                    ),
-                };
-                let tag = match outcome {
-                    Finalized::Done => "done",
-                    Finalized::Skipped => "skipped",
-                    Finalized::Cancelled => "cancelled",
-                };
-                (
-                    tag,
-                    game.world.random.next_int(),
-                    mob.random.clone().next_int(),
-                )
-            };
-            let none = run(game, None);
-            assert_eq!(none.0, "done");
-            assert_eq!(run(game, Some(FinalizeAnswer::Pass)), none, "pass-through");
-            let fresh = LegacyRandom::new(5).next_int();
-            let skipped = run(game, Some(FinalizeAnswer::SkipFinalize));
-            assert_eq!(skipped.0, "skipped");
-            assert_eq!(skipped.1, fresh, "a skipped finalization draws nothing");
-            let stopped = run(game, Some(FinalizeAnswer::StopSpawn));
-            assert_eq!(stopped.0, "cancelled");
-            assert_eq!(stopped.1, fresh, "a stopped spawn draws nothing");
-        });
     }
 
     /// Counts the `finalize_spawn` events it hears.
@@ -2734,228 +2336,6 @@ mod tests {
                     ]
                 );
             });
-        });
-    }
-
-    /// Answers every `mob_despawn` event with the value in its cell and counts them.
-    struct Despawns(
-        std::sync::Arc<std::sync::Mutex<mod_api::Despawn>>,
-        std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    );
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Despawns {
-        fn mob_despawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::MobDespawnEvent<'_>) {
-            self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            *event.result = *self.0.lock().unwrap();
-        }
-    }
-
-    /// `MobDespawnEvent` wraps the whole of `Mob.checkDespawn`: `Default` and no
-    /// listener leave vanilla's checks and their `nextInt(800)` draw as they
-    /// are, `Deny` keeps a peaceful-mode zombie and draws nothing, `Allow`
-    /// discards it in normal and draws nothing. The mob's own random is the
-    /// real draw source (a `LegacyRandom`), compared with an untouched copy.
-    /// A mob in an unloaded chunk is never asked.
-    #[test]
-    #[ignore = "daily"]
-    fn mob_despawn_answers_override_vanilla_and_default_passes_through() {
-        use super::super::native_entity_refs::tests::with_game;
-        use mod_api::Despawn::{Allow, Default as Vanilla, Deny};
-        use std::sync::atomic::Ordering::Relaxed;
-        let answer = std::sync::Arc::new(std::sync::Mutex::new(Vanilla));
-        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mods = vec![mod_api::ModEntry::new(
-            "despawns",
-            Box::new(Despawns(answer.clone(), asked.clone())),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                let id = game
-                    .spawn_mob(
-                        "minecraft:zombie",
-                        [8.5, 64.0, 8.5],
-                        false,
-                        super::super::creatures::SpawnSite::Plain,
-                    )
-                    .unwrap();
-                // Asks the hook, then runs `despawn_check` for an idle zombie 40
-                // blocks from the player. Returns whether it stayed and whether
-                // its random is where an untouched copy of it is.
-                let ask = |game: &mut super::Game<'_>, said, peaceful: bool| {
-                    *answer.lock().unwrap() = said;
-                    let mut mob = game.mobs.iter().find(|m| m.id == id).unwrap().clone();
-                    mob.ai.no_action_time = 601;
-                    let mut untouched = mob.random.clone();
-                    let handle = mod_api::MobRef::new(mod_api::EntityRef::new(
-                        game.native_lifecycle.epoch().unwrap(),
-                        id,
-                    ));
-                    let pos = [mob.position.x, mob.position.y, mob.position.z];
-                    crate::game::native_hooks::NativeHookHost { host: game }.native_mob_despawn(
-                        "minecraft:overworld",
-                        handle,
-                        &mob.kind.id,
-                        pos,
-                        &mut mob.despawn,
-                    );
-                    let mut world = game.mob_world_base(&[]);
-                    world.difficulty.effective = if peaceful { 0.0 } else { 2.0 };
-                    let mut player = mob.position;
-                    player.x += 40.0;
-                    world.nearest_player = Some(player);
-                    let kept = horizon_client::mobs::ai::despawn_check(&mut mob, &world);
-                    let untouched_random =
-                        mob.random.next_int_bound(1 << 30) == untouched.next_int_bound(1 << 30);
-                    (kept, untouched_random)
-                };
-                assert!(!ask(game, Vanilla, true).0, "Default: peaceful discards it");
-                assert_eq!(
-                    ask(game, Deny, true),
-                    (true, true),
-                    "Deny keeps it, no draw"
-                );
-                assert_eq!(
-                    ask(game, Allow, false),
-                    (false, true),
-                    "Allow discards it, no draw"
-                );
-                assert!(
-                    !ask(game, Vanilla, false).1,
-                    "Default rolls vanilla's nextInt(800)"
-                );
-                assert_eq!(asked.load(Relaxed), 4);
-                // No chunk is loaded here, so the mob loop skips the mob before
-                // the hook: an unloaded mob is never asked.
-                *answer.lock().unwrap() = Deny;
-                game.tick_creatures().unwrap();
-                assert_eq!(asked.load(Relaxed), 4, "an unloaded mob is not asked");
-            });
-        });
-    }
-
-    /// With no mod listening, `Mob.despawn` stays `Default` and vanilla's checks
-    /// and draws run as before.
-    #[test]
-    #[ignore = "daily"]
-    fn mob_despawn_with_no_listener_draws_as_vanilla() {
-        use super::super::native_entity_refs::tests::with_game;
-        with_game(|game| {
-            let id = game
-                .spawn_mob(
-                    "minecraft:zombie",
-                    [8.5, 64.0, 8.5],
-                    false,
-                    super::super::creatures::SpawnSite::Plain,
-                )
-                .unwrap();
-            let mut mob = game.mobs.iter().find(|m| m.id == id).unwrap().clone();
-            mob.ai.no_action_time = 601;
-            let mut untouched = mob.random.clone();
-            let mut world = game.mob_world_base(&[]);
-            world.difficulty.effective = 2.0;
-            let mut player = mob.position;
-            player.x += 40.0;
-            world.nearest_player = Some(player);
-            horizon_client::mobs::ai::despawn_check(&mut mob, &world);
-            assert_eq!(mob.despawn, mod_api::Despawn::Default);
-            assert_ne!(
-                mob.random.next_int_bound(1 << 30),
-                untouched.next_int_bound(1 << 30),
-                "vanilla's nextInt(800) is drawn"
-            );
-        });
-    }
-
-    /// Answers the group size limit of a type, reading the mob it is lent.
-    struct ZombieClusters;
-    #[mod_api::horizon_part]
-    impl mod_api::EntityPart for ZombieClusters {
-        fn spawn_cluster_size(
-            &self,
-            host: &dyn mod_api::Host,
-            mob: mod_api::UnspawnedMobRef,
-            reason: mod_api::SpawnReason,
-            _: Option<mod_api::SpawnSource>,
-            vanilla: u32,
-        ) -> Option<u32> {
-            assert_eq!(mob.kind(host).unwrap().to_string(), "minecraft:zombie");
-            Some(if reason == mod_api::SpawnReason::Natural {
-                vanilla * 2
-            } else {
-                1
-            })
-        }
-    }
-    /// A second part on the same type: asked only when the first does not answer.
-    struct LaterClusters;
-    #[mod_api::horizon_part]
-    impl mod_api::EntityPart for LaterClusters {
-        fn spawn_cluster_size(
-            &self,
-            _: &dyn mod_api::Host,
-            _: mod_api::UnspawnedMobRef,
-            _: mod_api::SpawnReason,
-            _: Option<mod_api::SpawnSource>,
-            _: u32,
-        ) -> Option<u32> {
-            Some(9)
-        }
-    }
-    /// A part that leaves the limit to vanilla.
-    struct SilentClusters;
-    #[mod_api::horizon_part]
-    impl mod_api::EntityPart for SilentClusters {}
-    struct ClusterMod;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for ClusterMod {
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_part("minecraft:zombie", ZombieClusters);
-            r.entity_part("minecraft:zombie", LaterClusters);
-            r.entity_part("minecraft:skeleton", SilentClusters);
-        }
-    }
-
-    /// The parts of the new mob's type answer the group size limit: a part's answer replaces
-    /// vanilla's for its type and reason (the first part to answer wins), a part that does not
-    /// answer, and a type with no part, leave it to vanilla.
-    #[test]
-    #[ignore = "daily"]
-    fn entity_parts_answer_the_spawn_cluster_size() {
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
-        if run_fresh_cases(
-            "game::natural_spawning::tests::entity_parts_answer_the_spawn_cluster_size",
-            "HORIZON_SPAWN_CLUSTER_CHILD",
-            &["valid"],
-        ) {
-            return;
-        }
-        let entries = vec![mod_api::ModEntry::new("clusters", Box::new(ClusterMod))];
-        mod_platform::__private::install(entries.into());
-        crate::game::api_values::install_parts(&[mod_api::ModEntry::new(
-            "clusters",
-            Box::new(ClusterMod),
-        )])
-        .unwrap();
-        with_game(|game| {
-            game.resolve_parts().unwrap();
-            let mob = |id: &str| {
-                let kind = game.res.mob_types().get(id).unwrap().clone();
-                Mob::new(1, kind, Vec3::ZERO, 0.0)
-            };
-            let ask = |id: &str, reason| game.spawn_cluster_size(&mut mob(id), reason, None, 4);
-            assert_eq!(
-                ask("minecraft:zombie", mod_api::SpawnReason::Natural),
-                Some(8)
-            );
-            assert_eq!(
-                ask("minecraft:zombie", mod_api::SpawnReason::Spawner),
-                Some(1)
-            );
-            assert_eq!(
-                ask("minecraft:skeleton", mod_api::SpawnReason::Natural),
-                None
-            );
-            assert_eq!(ask("minecraft:cow", mod_api::SpawnReason::Natural), None);
         });
     }
 

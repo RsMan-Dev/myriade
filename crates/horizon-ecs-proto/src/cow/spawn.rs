@@ -268,6 +268,7 @@ pub fn schedule() -> Schedule {
     crate::cart_move::register(&mut s);
     crate::cart_variants::register(&mut s);
     crate::general::register(&mut s);
+    crate::stuck::register(&mut s);
     crate::colony_register::register(&mut s);
     crate::raids::register(&mut s);
     crate::tnt_tick::register(&mut s);

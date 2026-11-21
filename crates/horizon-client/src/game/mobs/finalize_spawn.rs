@@ -121,16 +121,11 @@ impl Game<'_> {
     /// The first free chicken a jockey can take: alive, unhindered, inside
     /// the bounds.
     pub(super) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
-        self.remote_entities
-            .iter()
-            .find(|c| {
-                c.species() == Species::Chicken
-                    && c.alive()
-                    && c.extra.rider.is_none()
-                    && c.extra.mount.is_none()
-                    && c.bounds().intersects(bounds)
-            })
-            .map(|c| c.id)
+        self.ecs
+            .unridden_of_type("minecraft:chicken")
+            .into_iter()
+            .find(|(_, b)| b.intersects(bounds))
+            .map(|(id, _)| id)
     }
     /// `Fallable.isHalloween` at the level's clock.
     pub(super) fn finalize_halloween(&self) -> bool {

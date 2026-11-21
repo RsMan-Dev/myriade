@@ -44,11 +44,14 @@ impl EcsWorld {
     pub fn set_left_handed(&mut self, e: Entity, on: bool) {
         left_handed::set(self.world_mut(), e, on);
     }
-    /// `(arrows, stingers)` stuck in the creature.
-    pub fn stuck(&self, e: Entity) -> (u8, u8) {
+    /// The arrows and stingers stuck in the creature, with their times.
+    pub fn stuck(&self, e: Entity) -> stuck::Stuck {
         stuck::get(self.world(), e)
     }
-    pub fn set_stuck(&mut self, e: Entity, arrows: u8, stingers: u8) {
+    pub fn put_stuck(&mut self, e: Entity, s: stuck::Stuck) {
+        stuck::put(self.world_mut(), e, s);
+    }
+    pub fn set_stuck(&mut self, e: Entity, arrows: i32, stingers: i32) {
         stuck::set(self.world_mut(), e, arrows, stingers);
     }
     /// `LivingEntity.getFallFlyingTicks`: the ticks of the glide so far.

@@ -9,11 +9,9 @@ mod mob_conversion;
 #[cfg(test)]
 mod mob_dispatch_panic_tests;
 mod borrowed_tick;
-mod breeding;
 mod combat_adaptations;
 mod conversion_identity;
 mod death_tail;
-mod hoglin_target;
 mod projectile_targets;
 mod pufferfish_player;
 mod death_weapon;
@@ -1115,267 +1113,11 @@ impl Game<'_> {
             self.spawn_generation_creatures(key.0, key.1);
         }
     }
-    /// Advance every mob one tick, then apply their events.
-    pub(in crate::game) fn tick_creatures(&mut self) -> Result<()> {
-        // Hurts dealt since the last creature tick (explosions, commands, the
-        // systems after it) teleport an enderman before it ticks, not in its AI step.
-        self.settle_hurt_teleports()?;
-        self.attack_ticks = self.attack_ticks.saturating_add(1);
-        self.refresh_gear_knockback_resistance();
-        self.tick_leads();
-        // Vanilla's spawning and raids run before ChunkMap.tick.
-        self.tick_spawners();
-        let ticked =
-            horizon_client::spans::time("tick_creature_entities", || self.tick_creature_entities());
-        self.dismount_underwater_mob_riders();
-        ticked
-    }
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
     pub(super) fn entity_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
         let levels = self.tickets.levels();
         move |x, z| levels.entity_ticking_at(x, z)
-    }
-    /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
-    /// projectiles and effects that follow from them.
-    pub(super) fn tick_creature_entities(&mut self) -> Result<()> {
-        // Its steps as spans for `horizon-report` (nothing is read while spans are off).
-        let mut laps = horizon_client::spans::laps();
-        let blocked = self.mobs_below_off_level();
-        let level_id = self.dim.id();
-        if let Some(pending) = self.creatures.pending.get_mut(level_id)
-            && (pending.refusal_logged || pending.retained_passes >= MAX_PENDING_MOB_PASSES)
-        {
-            if !pending.refusal_logged {
-                log::warn!(
-                    "Refusing mob production in {level_id}: {} retained producer passes (limit {MAX_PENDING_MOB_PASSES}); draining before retry",
-                    pending.retained_passes
-                );
-                pending.refusal_logged = true;
-            }
-            // No new producer work until the backlog drains. Unrelated projectile
-            // phases still advance; mob-specific follow-up must not reuse old ticks.
-            self.creatures.ticked.clear();
-            let primable = self.sulfur_cubes_adopted_explosive();
-            self.deliver_pending_mob_actions(level_id)?;
-            return self.finish_creature_entities(&mut laps, &primable);
-        }
-        // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
-        // commands, a player's interaction), before the ticks move by them.
-        self.native_mob_sizes();
-        // LivingEntity.die runs when the killing blow lands: mobs killed
-        // since the last tick (by the player, explosions...) die first.
-        let killed: Vec<Mob> = self
-            .remote_entities
-            .iter()
-            .filter(|m| !m.alive() && !m.removed && !self.died.contains(&m.id))
-            .cloned()
-            .collect();
-        for m in killed {
-            self.died.insert(m.id);
-            self.mob_died(&m);
-        }
-        // Their victims have been looted and mourned: no charged creeper is
-        // waiting any more.
-        // Resolve saved attacker UUIDs before the mobs run baseTick.
-        self.resolve_last_hurt_by_refs();
-        self.combat.charged_exploders.clear();
-        self.combat.exploded.clear();
-        self.combat.exploded_kinds.clear();
-        // EntityTickEvent.Pre for the mobs about to tick, before the loop holds them.
-        let mut round = self.native_tick_round();
-        if round.listening() || mod_api::__private::listened(mod_api::HookId::CanContinueSleeping) {
-            let ticking = self.entity_ticking_area();
-            let mut i = 0;
-            while let Some(m) = self.remote_entities.get(i) {
-                let (x, z) = (m.position.x.floor() as i32, m.position.z.floor() as i32);
-                if !blocked.contains(&m.id) && self.world.loaded(x, z) && ticking(x, z) {
-                    let (id, kind) = (m.id, super::native_ticks::TickKind::Mob(m.kind.clone()));
-                    if self.native_tick_pre_batch(&mut round, id, kind) {
-                        self.sync_sleeping_mob(i);
-                    }
-                }
-                i += 1;
-            }
-        }
-        self.init_sulfur_attribute_maps();
-        let uuid = self.level.player_uuid;
-        // LivingEntity.isPushable reads onClimbable live; a mob's cached one
-        // is only refreshed by its own push step, so one that has not ticked
-        // yet (the first tick after a load, a fresh spawn) or has moved since
-        // would be pushed out of a ladder or scaffolding. Refreshed here, from
-        // where each mob stands now, before the snapshot others push it by.
-        let climbing: Vec<bool> = {
-            let w = self.mob_world_base(&[]);
-            self.remote_entities.iter().map(|m| m.on_climbable(&w)).collect()
-        };
-        for (m, climbing) in self.remote_entities.iter_mut().zip(climbing) {
-            m.on_climbable = climbing;
-        }
-        let mut snapshot = std::mem::take(&mut self.creatures.seen_buf);
-        snapshot.extend(self.remote_entities.iter().map(|m| seen(m, uuid, self.items())));
-        let mut events = std::mem::take(&mut self.creatures.event_buf);
-        events.clear();
-        let passenger_objects = self.retained_passenger_snapshot(uuid);
-        let mut pending = self.creatures.pending.remove(level_id).unwrap_or_default();
-        let primable = self.sulfur_cubes_adopted_explosive();
-        let mut mobs = self.remote_entities.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut dead = Vec::new();
-        let mut corpses = Vec::new();
-        let mut died = std::mem::take(&mut self.died);
-        let mut ticked = std::mem::take(&mut self.creatures.ticked);
-        ticked.clear();
-        // With guests on, each mob sees its nearest player (game/network/lan_mobs.rs).
-        let mut guests = self.lan_guest_views();
-        // What stands in a guest's slot while a mob holds that guest's view for
-        // its tick (see `lent` below).
-        let mut spare = guests.first().map(|g| g.1.clone());
-        let mut bindings = match self.lan.as_mut() {
-            Some(host) if !guests.is_empty() => std::mem::take(&mut host.mob_players),
-            _ => Default::default(),
-        };
-        // The guests' entity ids by connection, for the shulker bullets fired
-        // at the guest a mob sees.
-        let mut guest_ids: Vec<(u32, u32)> = match self.lan.as_ref() {
-            Some(host) if !guests.is_empty() => host
-                .hub
-                .guests
-                .iter()
-                .map(|g| (g.conn, g.entity_id as u32))
-                .collect(),
-            _ => Vec::new(),
-        };
-        let mut guest_events = Vec::new();
-        let mut player_credit = std::mem::take(&mut self.last_hurt_by_player);
-        // The block writes since the last tick: mobs re-path around them.
-        let mut path_writes = std::mem::take(self.world.path_writes.get_or_insert_with(Vec::new));
-        // The mobs whose bodies go this tick: (id, feet, width, height, split).
-        // 🤖 Agent: the last field is the grown slime, magma cube or sulfur
-        // cube the body leaves behind (`AbstractCubeMob.remove`), captured as
-        // the body goes because it has left the list by the time it splits.
-        let mut gone = Vec::new();
-        // The level's random and attachments, lent to the mobs (brain behaviours draw from
-        // the random, and a hit's damage hooks get both) and taken back after their ticks.
-        let lent = horizon_client::health::LentLevel::take(&mut self.world);
-        let (lent, dispatch_panic) = self.tick_borrowed_creatures(borrowed_tick::BorrowedMobTick {
-            mobs: &mut mobs,
-            snapshot: &mut snapshot,
-            passenger_objects: &passenger_objects,
-            blocked: &blocked,
-            events: &mut events,
-            pushes: &mut pending.pushes,
-            dead: &mut dead,
-            corpses: &mut corpses,
-            died: &mut died,
-            ticked: &mut ticked,
-            guests: &mut guests,
-            spare: &mut spare,
-            bindings: &mut bindings,
-            guest_ids: &mut guest_ids,
-            guest_events: &mut guest_events,
-            player_credit: &mut player_credit,
-            path_writes: &mut path_writes,
-            gone: &mut gone,
-            lent,
-            laps: &mut laps,
-            uuid,
-            level_id,
-            round: &round,
-        });
-        if dispatch_panic.is_some() {
-            // The aborted pass never applies retention, including previously
-            // finished despawn answers. Do not carry those into the retry.
-            for m in &mut mobs {
-                m.despawn = mod_api::Despawn::default();
-            }
-        }
-        lent.give_back(&mut self.world);
-        self.last_hurt_by_player = player_credit;
-        if let Some(host) = self.lan.as_mut()
-            && !guests.is_empty()
-        {
-            // A set: a scan of every mob for each binding is quadratic, and a
-            // server's loaded mobs run into the thousands.
-            let live: horizon_client::fast_hash::FxHashSet<u32> =
-                mobs.iter().map(|m| m.id).collect();
-            bindings.retain(|id, _| live.contains(id));
-            host.mob_players = bindings;
-        }
-        // The mobs added during the tick (into the emptied `self.mobs`) come
-        // first, as `append` put them; with none, the ticked list goes back
-        // as it is instead of being copied into a new one, every mob a tick.
-        self.remote_entities
-            .restore(mobs, horizon_client::join_seq::RestoreOrder::SpawnsFirst);
-        if dispatch_panic.is_some() {
-            // These death callbacks have not run, and the borrowed block writes
-            // must still invalidate paths on the next attempted pass.
-            for mob in &dead {
-                died.remove(&mob.id);
-            }
-            self.world
-                .path_writes
-                .get_or_insert_with(Vec::new)
-                .extend(path_writes);
-        }
-        self.died = died;
-        snapshot.clear();
-        self.creatures.seen_buf = snapshot;
-        self.creatures.ticked = ticked;
-        // Completed brain actions are never fed back into the producer pass.
-        if !events.is_empty() || !guest_events.is_empty() {
-            pending.batches.push_back(MobOutputBatch {
-                normal: NormalMobActions::new(std::mem::take(&mut events)),
-                guests: std::mem::take(&mut guest_events),
-            });
-        }
-        // A successful producer can still be retained behind a failing consumer.
-        // Count before any downstream callbacks; fully empty delivery resets it.
-        pending.retained_passes += 1;
-        if dispatch_panic.is_none() {
-            // The successful final sweep consumed all pushes for surviving mobs.
-            pending.pushes = Default::default();
-        }
-        self.creatures.pending.insert(level_id, pending);
-        self.creatures.event_buf = events;
-        if let Some(payload) = dispatch_panic {
-            // Restoration may itself panic and replace this payload; a second
-            // destructor panic may abort. panic=abort cannot recover at all.
-            std::panic::resume_unwind(payload);
-        }
-        self.native_tick_post_batch(round);
-        // ... and entity event 60 goes out as it is: the poof.
-        // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
-        // broadcasts event 60 before it calls `remove`.
-        for (id, at, _, _, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
-        }
-        laps.lap("creature_retain");
-        self.sync_riders();
-        self.villager_reputation_tick();
-        self.villager_item_sense();
-        self.villager_pickups();
-        laps.lap("creature_villagers");
-        for m in dead {
-            self.mob_died(&m);
-        }
-        for mut m in corpses {
-            let names: Vec<&'static str> = m
-                .extra
-                .effects
-                .iter()
-                .map(|e| e.id.trim_start_matches("minecraft:"))
-                .collect();
-            let bounds = m.bounds();
-            self.effects_on_death(&names, bounds, m.silent, Some(m.id), Some(&mut m.random));
-        }
-        self.deliver_pending_mob_actions(level_id)?;
-        self.finish_creature_entities(&mut laps, &primable)
     }
 
     fn deliver_pending_mob_actions(&mut self, level_id: &'static str) -> Result<()> {
@@ -1428,13 +1170,7 @@ impl Game<'_> {
         self.flush_wind_bursts()?;
         self.drain_entity_inside();
         laps.lap("creature_projectiles");
-        self.tick_allays();
-        self.tick_pandas();
-        self.tick_foxes();
-        self.tick_dolphins();
-        self.tick_mob_looting();
         self.tick_sniffer_effects();
-        self.piglin_pickups();
         self.sulfur_cube_pickups();
         self.sulfur_cube_power_priming(primable);
         laps.lap("creature_systems");
@@ -1450,110 +1186,6 @@ impl Game<'_> {
         // And for the sizes the ticks changed (a pose, a baby grown, a scale).
         self.native_mob_sizes();
         Ok(())
-    }
-    /// LivingEntity.die / dropAllDeathLoot.
-    pub(super) fn mob_died(&mut self, m: &Mob) {
-        // The killing blow for the drop hooks, before the player's hit is forgotten.
-        let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
-        let killer = self
-            .last_hurt_by_player
-            .get(&m.id)
-            .copied()
-            .filter(|_| m.ai.last_hurt_by_player > 0)
-            .and_then(|credit| self.resolve_player_credit(credit));
-        if self.mob_death_canceled(m) {
-            return;
-        }
-        // LivingEntity.die: a sleeper gets up, and its bed is free again.
-        if let Some(bed) = horizon_client::mobs::villager::sleeping_pos(m) {
-            self.wake_villager(m.id);
-            // The body may be gone already.
-            self.set_bed_occupied(bed, false);
-        }
-        self.last_hurt_by_player.remove(&m.id);
-        // TamableAnimal.die, before the rest of LivingEntity.die.
-        self.tell_owner_pet_died(m, killer);
-        self.love_cause.remove(&m.id);
-        let by_player = m.ai.last_hurt_by_player > 0;
-        let mut dying = m.clone();
-        // LivingEntity.die: the death is heard, and a sculk catalyst nearby
-        // takes the experience (before the loot is dropped). It takes what
-        // would drop, whoever killed the mob. Experience the catalyst takes is
-        // never dropped, so living_experience_drop does not hear of it.
-        self.sculk_mob_died(m);
-        let mut catalyst_xp = 0;
-        let consumed =
-            self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |_| {
-                catalyst_xp = if horizon_client::mobs::drops::drops_experience(&dying) {
-                    horizon_client::mobs::drops::base_experience(&mut dying).max(0) as u32
-                } else {
-                    0
-                };
-                catalyst_xp
-            });
-        // CatalystListener: with experience to take, the player who last hurt
-        // the mob gets KILL_MOB_NEAR_SCULK_CATALYST.
-        if consumed && catalyst_xp > 0 {
-            let who = match killer {
-                Some(Some(conn)) if self.lan_acting == Some(conn) => {
-                    Some(super::commands::Target::Player)
-                }
-                Some(Some(conn)) => Some(super::commands::Target::Guest(conn)),
-                Some(None) if self.lan_acting.is_none() => Some(super::commands::Target::Player),
-                _ => None,
-            };
-            if let Some(who) = who {
-                self.for_player(who, |g| {
-                    // CatalystListener: trigger(player, killedEntity, damageSource).
-                    let view = g.mob_entity(m);
-                    let blow = g.last_blow(m);
-                    g.trigger_killed_as(
-                        "minecraft:kill_mob_near_sculk_catalyst",
-                        &view,
-                        blow.as_ref(),
-                    );
-                });
-            }
-        }
-        if let Some(killer) = killer {
-            // Only the resolved player receives statistics and advancements.
-            match killer {
-                Some(conn) if self.lan_acting != Some(conn) => {
-                    self.as_guest(conn, |g| g.credit_kill(m));
-                }
-                _ => self.credit_kill(m),
-            }
-        }
-        // The body keeps its scores until it is removed (`ServerLevel.
-        // EntityCallbacks.onDestroyed` → `Scoreboard.entityRemoved`, run by
-        // `score_destroyed_entities`): LivingEntity.die does not reset them.
-        // Raider.die's hero and Villager.tellWitnessesThatIWasMurdered go to
-        // the causing entity, not the credited player: a tame wolf's kill is
-        // neither its owner's heroism nor a murder by them.
-        let slain_by_player = by_player && !killed_by_mob(m);
-        self.villager_murdered(m, slain_by_player, killer.flatten());
-        let pos = [m.position.x, m.position.y + 0.5, m.position.z];
-        let killer_entity = self.killer_loot_entity(killer.flatten());
-        // LAST_DAMAGE_PLAYER only while the player is still in the world and
-        // the hurt memory lasts (LivingEntity.dropFromLootTable). Experience
-        // and equipment use the timer alone (dropExperience / playerKilled):
-        // a guest who has left still counts.
-        let player = killer
-            .filter(|_| m.ai.last_hurt_by_player > 0)
-            .and_then(|conn| self.killer_uuid(conn));
-        if let Some(player) = player.filter(|_| m.extra.leash.is_some()) {
-            self.lead_killers.insert(m.id, (player, self.dim));
-        }
-        self.drop_death_loot(
-            &mut dying,
-            player,
-            m.ai.last_hurt_by_player > 0,
-            killer_entity,
-            consumed,
-            pos,
-            source,
-        );
-        self.finish_mob_death(m, &mut dying, source);
     }
     /// `AbstractCubeMob.remove`: split only as the dead body is removed.
     fn split_dead_cube(&mut self, mut dying: Mob) {
@@ -1576,21 +1208,6 @@ impl Game<'_> {
                 }
             }
         }
-    }
-    /// The killer's side of a mob's death: `ServerPlayer.awardKillScore`'s
-    /// statistics and scores, and the `player_killed_entity` trigger.
-    fn credit_kill(&mut self, m: &Mob) {
-        // Player.killedEntity: the killed statistic goes to the causing
-        // entity, so a kill by a mob (a tame wolf credited to its owner)
-        // leaves it out; ServerPlayer.awardKillScore counts the rest.
-        if !killed_by_mob(m) {
-            self.award_stat("killed", &m.kind.id, 1);
-        }
-        self.award_custom_stat("mob_kills", 1);
-        self.score_player_killed(super::commands::Target::Mob(m.id));
-        let view = self.mob_entity(m);
-        let blow = self.last_blow(m);
-        self.trigger_killed(&view, blow.as_ref());
     }
     /// The damage source a mob died to (`die`'s), its direct entity included when the mob
     /// recorded one ([`Mob::last_direct`]).
@@ -2062,7 +1679,7 @@ impl Game<'_> {
         }
     }
     /// A mob's projectile enters the level.
-    fn launch_mob_projectile(&mut self, mut p: Projectile) {
+    pub(in crate::game) fn launch_mob_projectile(&mut self, mut p: Projectile) {
         self.next_entity += 1;
         p.id = self.next_entity;
         self.spawn_mob_projectile(p);
@@ -2355,25 +1972,6 @@ impl Game<'_> {
                         }
                     }
                 }
-                MobEvent::RemoveKilled { target } => {
-                    // The bite that killed it ran `LivingEntity.die` (loot, such
-                    // as a magma cube's froglight, and experience) before
-                    // `eatEntity` removes it: a removed mob never reaches the
-                    // next tick's deaths, so it dies here first.
-                    if let Some(m) = self
-                        .remote_entities
-                        .iter()
-                        .find(|m| m.id == target && !m.alive() && !m.removed)
-                        .cloned()
-                    {
-                        if self.died.insert(target) {
-                            self.mob_died(&m);
-                        }
-                        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == target) {
-                            m.removed = true;
-                        }
-                    }
-                }
                 MobEvent::Push { target, velocity } => {
                     let v = Vec3::new(velocity[0], velocity[1], velocity[2]);
                     match target {
@@ -2657,7 +2255,6 @@ impl Game<'_> {
                         self.handle_mob_events(vec![MobEvent::Push { target, velocity }])?;
                     }
                 }
-                MobEvent::FinishAdmiring { mob } => self.finish_admiring(mob),
                 MobEvent::Tamed { .. }
                 | MobEvent::Buck { .. }
                 | MobEvent::StabDismount { .. }
@@ -2710,9 +2307,6 @@ impl Game<'_> {
                         }
                     }
                 }
-                MobEvent::Bonemeal { mob, pos } => {
-                    self.villager_bonemeal(mob, BlockPos::new(pos[0], pos[1], pos[2]));
-                }
                 MobEvent::RingBell { bell } => {
                     let pos = BlockPos::new(bell[0], bell[1], bell[2]);
                     let rang = self
@@ -2748,11 +2342,6 @@ impl Game<'_> {
                     self.set_event_ai_target(mob, Some(target), player);
                 }
                 MobEvent::PiglinAlertTarget(alert) => self.piglin_alert_target(alert),
-                MobEvent::HoglinAttackTarget {
-                    mob,
-                    target,
-                    player,
-                } => self.hoglin_attack_target(mob, target, player),
                 MobEvent::HuntHoglin { mob, target, ticks } => {
                     let mut acquire = false;
                     if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
@@ -3234,32 +2823,9 @@ impl Game<'_> {
                     self.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
-                MobEvent::Breed {
-                    parent,
-                    partner,
-                    equine,
-                    parent_variant,
-                    wolf_voice,
-                    experience,
-                } => {
-                    let child = self.breed(
-                        parent,
-                        partner,
-                        equine,
-                        parent_variant,
-                        wolf_voice,
-                        experience,
-                    );
-                    self.native_entity_breed(parent, partner, child);
-                }
                 MobEvent::LockGaze { mob, partner } => {
                     if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
                         horizon_client::mobs::animal_brain::lock_gaze(m, partner);
-                    }
-                }
-                MobEvent::BreedTarget { mob, partner } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        horizon_client::mobs::animal_brain::set_breed_partner(m, partner);
                     }
                 }
                 MobEvent::Retreat { mob, from, at } => {
@@ -3267,6 +2833,19 @@ impl Game<'_> {
                         horizon_client::mobs::piglin::receive_retreat(m, from, at);
                     }
                 }
+                // Dead producers only (old brains, frog, piglin): nothing to apply.
+                MobEvent::RemoveKilled { .. }
+                | MobEvent::HoglinAttackTarget { .. }
+                | MobEvent::Breed { .. }
+                | MobEvent::BreedTarget { .. }
+                | MobEvent::FinishAdmiring { .. }
+                | MobEvent::Bonemeal { .. }
+                | MobEvent::VillagerMeet { .. }
+                | MobEvent::VillagerBirth { .. }
+                | MobEvent::WorkAtComposter { .. }
+                | MobEvent::GolemCheck { .. }
+                | MobEvent::PandaSneezed { .. }
+                | MobEvent::VillagerTrade { .. } => {}
                 MobEvent::StartRiding { rider, vehicle } => {
                     self.start_riding_mob(rider, vehicle);
                 }
@@ -3309,17 +2888,8 @@ impl Game<'_> {
                 }
                 MobEvent::CureZombieVillager { mob } => self.cure_zombie_villager(mob),
                 MobEvent::Reinforcements { mob, target } => self.call_reinforcements(mob, target),
-                MobEvent::VillagerMeet { mob, other } => self.villager_meet(mob, other),
-                MobEvent::VillagerTrade { mob, player } => self.villager_traded_by(mob, player),
                 MobEvent::VillagerOffers { mob } => self.merchant_offers_generated(mob),
                 MobEvent::VillagerRestocked { mob } => self.merchant_restocked(mob),
-                MobEvent::VillagerBirth {
-                    parent,
-                    partner,
-                    child,
-                } => self.villager_birth(parent, partner, child),
-                MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
-                MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)
                 }
@@ -3344,7 +2914,6 @@ impl Game<'_> {
                         m.ai.aggressive |= aggressive;
                     }
                 }
-                MobEvent::PandaSneezed { mob } => self.panda_sneezed(mob),
                 MobEvent::FallToPassengers {
                     mob,
                     distance,
@@ -3571,309 +3140,6 @@ impl Game<'_> {
                 );
             if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                 horizon_client::mobs::ai::forgive_dead_player_with_change(mob, change);
-            }
-        }
-    }
-    /// Animal.spawnChildFromBreeding
-    fn breed(
-        &mut self,
-        parent: u32,
-        partner: u32,
-        equine: Option<Box<horizon_client::mobs::equine::Offspring>>,
-        parent_variant: Option<bool>,
-        wolf_voice: Option<u8>,
-        experience: horizon_client::mobs::BreedExperience,
-    ) -> Option<u32> {
-        let p = self.remote_entities.iter().find(|m| m.id == parent).cloned()?;
-        // BabyEntitySpawnEvent: not for an egg (turtle, frog, sniffer).
-        if !matches!(
-            p.species(),
-            Species::Turtle | Species::Frog | Species::Sniffer
-        ) && mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn)
-        {
-            let mule = matches!(
-                (
-                    p.species(),
-                    self.remote_entities
-                        .iter()
-                        .find(|m| m.id == partner)
-                        .map(|m| m.species())
-                ),
-                (Species::Horse, Some(Species::Donkey)) | (Species::Donkey, Some(Species::Horse))
-            );
-            let kind = if mule {
-                "minecraft:mule".to_owned()
-            } else {
-                super::native_hooks::mob_kind(&p)
-            };
-            let conn = self
-                .love_cause
-                .get(&parent)
-                .or(self.love_cause.get(&partner))
-                .copied();
-            let player = conn.and_then(|c| self.killer_uuid(c));
-            let player_entity_id = conn.and_then(|c| self.player_entity_id_by_connection(c));
-            let mut cancel = false;
-            self.native_baby_entity_spawn(
-                parent,
-                partner,
-                player,
-                player_entity_id,
-                &kind,
-                &mut cancel,
-            );
-            if cancel {
-                breeding_credit(&mut self.love_cause, parent, partner);
-                if let Some(q) = self.remote_entities.iter_mut().find(|m| m.id == partner) {
-                    q.extra.age = 6000;
-                    q.extra.in_love = 0;
-                }
-                return None;
-            }
-        }
-        let q = self.remote_entities.iter().find(|m| m.id == partner).cloned();
-        // Sniffer.spawnChildFromBreeding: an egg instead of a baby.
-        if p.species() == Species::Sniffer {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
-            self.lay_sniffer_egg(&p);
-            return None;
-        }
-        // TurtleBreedGoal.breed: the goal gave the mother her egg; only the
-        // experience is left, and only with mob loot on.
-        if matches!(p.species(), Species::Turtle | Species::Frog) {
-            self.finalize_breeding(&p, partner, None, OrbOrder::BeforeChild);
-            // One `new ExperienceOrb`, not split as `ExperienceOrb.award` does.
-            self.award_breeding_experience(parent, [p.position.x, p.position.y, p.position.z]);
-            return None;
-        }
-        let coin = if horizon_client::mobs::draws_parent_variant(p.species()) {
-            match parent_variant {
-                Some(choice) => choice,
-                None => {
-                    let parent = self.remote_entities.iter_mut().find(|m| m.id == parent)?;
-                    parent.random.next_boolean()
-                }
-            }
-        } else {
-            // Other species either draw their own variants or do not need a coin.
-            false
-        };
-        // The baby's variant; a rabbit draws its own (Rabbit.getBreedOffspring).
-        let rabbit_variant = self.bred_rabbit_variant(parent, &p, q.as_ref());
-        // Axolotl.getBreedOffspring: useRareVariant (one in 1200) makes it blue,
-        // else either parent's variant. The draws come from the mother's random.
-        let axolotl = if p.species() == Species::Axolotl {
-            let other = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            self.remote_entities.iter_mut().find(|m| m.id == parent).map(|m| {
-                if m.random.next_int_bound(1200).unwrap_or(1) == 0 {
-                    // Axolotl.Variant.getRareSpawnVariant: the one blue, still a draw.
-                    let _ = m.random.next_int_bound(1);
-                    4
-                } else if m.random.next_boolean() {
-                    p.extra.variant
-                } else {
-                    other
-                }
-            })
-        } else {
-            None
-        };
-        // MushroomCow.getOffspringVariant, from the mother's random: the other
-        // colour 1 time in 1024 when both parents share one, otherwise either
-        // parent's colour by a coin flip.
-        let mooshroom = if p.species() == Species::Mooshroom {
-            let mate = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            let own = p.extra.variant;
-            self.remote_entities.iter_mut().find(|m| m.id == parent).map(|m| {
-                if own == mate && m.random.next_int_bound(1024).unwrap_or(1) == 0 {
-                    if own == 1 { 0 } else { 1 }
-                } else if m.random.next_boolean() {
-                    own
-                } else {
-                    mate
-                }
-            })
-        } else {
-            None
-        };
-        // A horse and a donkey have a mule.
-        let kind = match (p.species(), q.as_ref().map(|q| q.species())) {
-            (Species::Horse, Some(Species::Donkey)) | (Species::Donkey, Some(Species::Horse)) => {
-                "minecraft:mule".to_owned()
-            }
-            _ => p.kind.id.clone(),
-        };
-        let mut child = self.create_mob_reason(
-            &kind,
-            [p.position.x, p.position.y, p.position.z],
-            true,
-            SpawnSite::Raw,
-            None,
-        )?;
-        'offspring: {
-            let child = &mut child;
-            child.extra.age = -24000;
-            // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
-            spawning::bred_offspring(child);
-            // getBreedOffspring creates the baby without finalizeSpawn: it keeps
-            // the default (`classic`) sound variant.
-            child.extra.sound_variant = None;
-            // Fox.getBreedOffspring runs no finalizeSpawn: nothing in the
-            // baby fox's mouth.
-            if p.species() == Species::Fox {
-                child.extra.set_main_hand(None);
-            }
-            // Fox.FoxBreedGoal.breed: the baby trusts the players who fed its
-            // parents into love.
-            if p.species() == Species::Fox {
-                let parent_cause = self
-                    .love_cause
-                    .get(&parent)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                let partner_cause = self
-                    .love_cause
-                    .get(&partner)
-                    .copied()
-                    .and_then(|conn| self.killer_uuid(conn));
-                horizon_client::mobs::fox::trust_breeders(
-                    child,
-                    parent_cause.map(horizon_client::lan::playerdata::uuid_ints),
-                    partner_cause.map(horizon_client::lan::playerdata::uuid_ints),
-                );
-            }
-            // Goat.getBreedOffspring: GoatAi.initMemories, then the baby
-            // screams if the parent a coin toss picks does, or on a 2% roll.
-            if p.species() == Species::Goat {
-                child.extra.lost_horns = [false; 2];
-                horizon_client::mobs::finalize::goat_init_memories(child, &mut self.world.random);
-                let pick_parent = self.world.random.next_boolean();
-                let parent_screams = if pick_parent {
-                    p.extra.screaming
-                } else {
-                    q.as_ref().unwrap_or(&p).extra.screaming
-                };
-                child.extra.screaming = parent_screams || self.world.random.next_double() < 0.02;
-            }
-            // Inheritance was drawn synchronously in the breeding goal,
-            // before the parent's later same-tick aiStep rolls.
-            if let Some(o) = equine {
-                horizon_client::mobs::equine::apply_offspring(child, &o);
-                break 'offspring;
-            }
-            // Camel.getBreedOffspring creates a camel with default attributes.
-            if horizon_client::mobs::camel::is_camel(p.species()) {
-                break 'offspring;
-            }
-            if p.species() == Species::Cat {
-                // Cat.getBreedOffspring.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
-                    child.extra.tame = true;
-                    child.extra.owner = p.extra.owner;
-                    let mixed = dye_mix(
-                        &self.loop_context,
-                        world_recipes!(self),
-                        &mut self.world.random,
-                        p.extra.color,
-                        other.extra.color,
-                    );
-                    child.extra.color = mixed;
-                }
-                break 'offspring;
-            }
-            if p.species() == Species::Wolf {
-                // Wolf.getBreedOffspring: a parent's variant; tame parents
-                // give a tame baby with their collar colours mixed.
-                let other = q.as_ref().unwrap_or(&p);
-                child.extra.variant = if coin {
-                    p.extra.variant
-                } else {
-                    other.extra.variant
-                };
-                if p.extra.tame {
-                    horizon_client::mobs::tame::set_tame(child, true);
-                    child.extra.owner = p.extra.owner;
-                    let mixed = dye_mix(
-                        &self.loop_context,
-                        world_recipes!(self),
-                        &mut self.world.random,
-                        p.extra.color,
-                        other.extra.color,
-                    );
-                    child.extra.color = mixed;
-                }
-                child.extra.sound_variant = wolf_voice.or_else(|| self.bred_wolf_voice(parent));
-                break 'offspring;
-            }
-            // Panda.getBreedOffspring: genes from both parents.
-            if p.species() == Species::Panda {
-                horizon_client::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
-                break 'offspring;
-            }
-            // Axolotl.getBreedOffspring: the drawn variant, and the baby is persistent.
-            if let Some(variant) = axolotl {
-                child.extra.variant = variant;
-                child.persistent = true;
-                break 'offspring;
-            }
-            // Nautilus.getBreedOffspring: a tame parent's baby is tame too.
-            if p.species() == Species::Nautilus && p.extra.tame {
-                child.extra.tame = true;
-                child.extra.owner = p.extra.owner;
-                child.persistent = true;
-            }
-            // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
-            child.extra.variant = p.extra.variant;
-            // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
-            if horizon_client::mobs::draws_parent_variant(p.species())
-                && p.species() != Species::Cat
-                && !coin
-            {
-                child.extra.variant = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            }
-            // The rabbit's own draw above.
-            if let Some(variant) = rabbit_variant {
-                child.extra.variant = variant;
-            }
-            if let Some(variant) = mooshroom {
-                child.extra.variant = variant;
-            }
-            // Sheep.getBreedOffspring: the lamb's wool mixes both parents' dyes.
-            if p.species() == Species::Sheep {
-                let other = q.as_ref().unwrap_or(&p);
-                let mixed = dye_mix(
-                    &self.loop_context,
-                    world_recipes!(self),
-                    &mut self.world.random,
-                    p.extra.color,
-                    other.extra.color,
-                );
-                child.extra.color = mixed;
-            }
-        }
-        let order = if horizon_client::mobs::orb_after_child(p.species()) {
-            OrbOrder::AfterChild
-        } else {
-            OrbOrder::BeforeChild
-        };
-        self.finalize_breeding(&p, partner, Some(&child), order);
-        let at = [p.position.x, p.position.y, p.position.z];
-        match order {
-            OrbOrder::AfterChild => {
-                let joined = self.insert_spawned_mob(child);
-                self.mob_event_particles(parent, 18);
-                self.breeding_orb(parent, at, experience);
-                joined
-            }
-            OrbOrder::BeforeChild => {
-                self.breeding_orb(parent, at, experience);
-                self.insert_spawned_mob(child)
             }
         }
     }
@@ -4521,17 +3787,8 @@ impl Game<'_> {
             self.swing_arm();
             return Ok(true);
         }
-        let creative = self.creative;
         // The hand's slot (Player.interactOn passes the hand).
         let selected = self.held_slot();
-        // Panda.mobInteract: bamboo, or a click on a panda lying on its back.
-        if self.remote_entities[index].species() == Species::Panda && self.remote_entities[index].alive() {
-            let taken = self.interact_panda(index, &item);
-            if taken {
-                self.swing_arm();
-            }
-            return Ok(taken);
-        }
         if self.interact_zombie_villager(index, &item) {
             return Ok(true);
         }
@@ -4587,17 +3844,6 @@ impl Game<'_> {
         // AbstractHorse.mobInteract: feed, equip or ride.
         if self.interact_mount(index, &item) {
             self.swing_arm();
-            return Ok(true);
-        }
-        // PiglinAi.mobInteract: hand over barter currency to admire.
-        if self.remote_entities[index].alive() && held.as_ref().is_some_and(|h| self.give_piglin(index, h)) {
-            self.swing_arm();
-            if !creative && let Some(stack) = self.stack_in_mut(selected).as_mut() {
-                stack.count -= 1;
-                if stack.count == 0 {
-                    *self.stack_in_mut(selected) = None;
-                }
-            }
             return Ok(true);
         }
         // Creeper.mobInteract: any item in #creeper_igniters, damaged when it
@@ -5241,7 +4487,7 @@ impl Game<'_> {
             }
         }
         if consume
-            && !creative
+            && !self.creative
             && let Some(stack) = self.stack_in_mut(selected).as_mut()
         {
             stack.count -= 1;
@@ -6076,123 +5322,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
-    fn wolf_owner_rejoining_receives_the_kill_statistic() {
-        use horizon_client::advancements::{Advancement, Criterion, Rewards, Tree};
-        use horizon_client::mobs::{Damage, Mob};
-        use horizon_core::{geometry::Vec3, position::BlockPos};
-        use std::sync::Arc;
-
-        for dedicated in [false, true] {
-            super::super::native_guest_turn_tests::with_guests(|game| {
-                if dedicated {
-                    game.options.dedicated = Some(Vec::new());
-                }
-                let mut tree = Tree::default();
-                tree.list.push(Advancement {
-                    id: "test:catalyst".into(),
-                    parent: None,
-                    display: None,
-                    criteria: vec![Criterion {
-                        name: "kill".into(),
-                        trigger: "minecraft:kill_mob_near_sculk_catalyst".into(),
-                        conditions: serde_json::json!({}).into(),
-                    }],
-                    requirements: vec![vec!["kill".into()]],
-                    rewards: Rewards::default(),
-                });
-                tree.by_id.insert("test:catalyst".into(), 0);
-                tree.by_trigger.insert(
-                    "minecraft:kill_mob_near_sculk_catalyst".into(),
-                    vec![(0, 0)],
-                );
-                game.adv.tree = Arc::new(tree);
-                game.adv.loaded = true;
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
-                let catalyst = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:sculk_catalyst")
-                    .unwrap();
-                game.with_level(|b, level, ticks| {
-                    b.set_block(level, ticks, BlockPos::new(1, 0, 0), catalyst, 2 | 16);
-                });
-                game.sculk_prepare();
-                game.sculk_sync_index();
-                assert!(game.world.block_entities.contains_key(&(1, 0, 0)));
-                let wolf_type = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
-                let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let mut wolf = Mob::new(100, wolf_type, Vec3::ZERO, 0.0);
-                wolf.extra.tame = true;
-                wolf.extra.owner = Some(horizon_client::lan::playerdata::uuid_ints(12));
-                game.mobs.push(wolf);
-                game.mobs.push(Mob::new(101, pig_type, Vec3::ZERO, 0.0));
-                {
-                    let value = false;
-                    game.lan
-                        .as_mut()
-                        .unwrap()
-                        .hub
-                        .guests
-                        .update(0, |guest| guest.placed = value);
-                }
-                game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-                let credit = *game.last_hurt_by_player.get(&101).unwrap();
-                assert!(game.resolve_player_credit(credit).is_none());
-                {
-                    let value = true;
-                    game.lan
-                        .as_mut()
-                        .unwrap()
-                        .hub
-                        .guests
-                        .update(0, |guest| guest.placed = value);
-                }
-                assert_eq!(game.resolve_player_credit(credit), Some(Some(12)));
-                let victim = game.mobs[1].clone();
-                game.mob_died(&victim);
-                let stats = &game.lan.as_ref().unwrap().play.get(&12).unwrap().stats;
-                assert_eq!(stats.get("custom", "minecraft:mob_kills"), 1);
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    assert!(guest.advancements.has("test:catalyst", "kill"));
-                    guest.advancements = Default::default();
-                });
-                let mut second = victim.clone();
-                second.id = 102;
-                game.last_hurt_by_player
-                    .insert(102, super::super::combat::PlayerCredit(12));
-                game.as_guest(12, |game| game.mob_died(&second)).unwrap();
-                let host = game.lan.as_ref().unwrap();
-                assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 2);
-                assert!(host.hub.guests[0].advancements.has("test:catalyst", "kill"));
-                {
-                    let value = "minecraft:the_nether".into();
-                    game.lan
-                        .as_mut()
-                        .unwrap()
-                        .hub
-                        .guests
-                        .update(0, |guest| guest.dimension = value);
-                }
-                let mut third = victim.clone();
-                third.id = 103;
-                game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-                let credit = game.last_hurt_by_player.remove(&101).unwrap();
-                game.last_hurt_by_player.insert(103, credit);
-                game.mob_died(&third);
-                let host = game.lan.as_ref().unwrap();
-                assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 3);
-                game.mobs[0].extra.owner = None;
-                game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-                assert!(!game.last_hurt_by_player.contains_key(&101));
-            });
-        }
-    }
-
-    #[test]
     fn nautilus_breath_lands_in_creative_as_ambient() {
         // AbstractNautilus.applyEffects: MobEffectInstance(BREATH_OF_THE_NAUTILUS,
         // 60, 0, ambient true, visible true, showIcon true), no game-mode gate.
@@ -6611,107 +5740,6 @@ mod living_drops_tests {
         assert_eq!((none.causing, none.direct), (0, 0));
     }
 
-    /// `LivingDropsEvent` hears a copper golem's preserved equipment with the
-    /// rest of its drops and can cancel it, and an armor stand's break
-    /// fires it with an empty list.
-    #[test]
-    #[ignore = "daily"]
-    fn the_golems_preserved_equipment_and_a_broken_stand_reach_living_drops() {
-        use mod_api::{self, Flow, Hooks, LivingDropsEvent};
-        use std::sync::{
-            Mutex,
-            atomic::{AtomicBool, Ordering},
-        };
-        struct Observer(Arc<Mutex<Vec<String>>>, Arc<AtomicBool>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Observer {
-            fn living_drops(
-                &self,
-                _: &mut dyn ServerHost,
-                event: &mut LivingDropsEvent<'_>,
-            ) -> Flow {
-                let items: Vec<_> = event
-                    .drops
-                    .iter()
-                    .map(|d| {
-                        mod_api::__private::item_key_id(d.stack.item())
-                            .unwrap()
-                            .to_string()
-                    })
-                    .collect();
-                self.0.lock().unwrap().push(format!(
-                    "{} {:?} {} {}",
-                    event.kind, items, event.source.damage_type, event.recently_hit
-                ));
-                if self.1.load(Ordering::SeqCst) {
-                    Flow::Cancel
-                } else {
-                    Flow::Continue
-                }
-            }
-        }
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let cancel = Arc::new(AtomicBool::new(false));
-        let mods: mod_api::Mods = Arc::from(vec![mod_api::ModEntry::new(
-            "living-drops-observer",
-            Box::new(Observer(seen.clone(), cancel.clone())),
-        )]);
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.load_server_loot();
-                let golem_type = game
-                    .res
-                    .mob_types()
-                    .get("minecraft:copper_golem")
-                    .unwrap()
-                    .clone();
-                let spawn_golem = |game: &mut Game<'_>| {
-                    game.next_entity += 1;
-                    let mut golem = Mob::new(
-                        game.next_entity,
-                        golem_type.clone(),
-                        Vec3::new(0.5, 64.0, 0.5),
-                        0.0,
-                    );
-                    horizon_client::mobs::transport_items::set_held(
-                        &mut golem,
-                        Some(ItemStack::new("minecraft:diamond", 1)),
-                    );
-                    golem.health = 0.0;
-                    golem
-                };
-                let golem = spawn_golem(game);
-                game.mobs.push(golem.clone());
-                game.mob_died(&golem);
-                // The preserved stack comes last in the list the mods hear.
-                assert!(
-                    seen.lock().unwrap()[0].starts_with("minecraft:copper_golem [")
-                        && seen.lock().unwrap()[0]
-                            .ends_with("\"minecraft:diamond\"] minecraft:generic false")
-                );
-                let dropped = game.dropped.len();
-                assert!(dropped >= 1);
-                // A canceled list drops nothing, the preserved stack included.
-                cancel.store(true, Ordering::SeqCst);
-                let golem = spawn_golem(game);
-                game.mob_died(&golem);
-                assert_eq!(game.dropped.len(), dropped);
-                // An armor stand that breaks fires it with nothing in the list.
-                game.armor_stands
-                    .push(horizon_client::entities::ArmorStand::new(
-                        9000,
-                        Vec3::new(4.5, 64.0, 4.5),
-                        0.0,
-                    ));
-                game.break_armor_stand_by_anything(0, "minecraft:player_explosion", 12);
-                let seen = seen.lock().unwrap();
-                assert_eq!(
-                    seen.last().unwrap(),
-                    "minecraft:armor_stand [] minecraft:player_explosion false"
-                );
-            });
-        });
-    }
 }
 
 #[cfg(test)]

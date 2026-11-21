@@ -98,12 +98,9 @@ impl Game<'_> {
         self.ecs.equip(e, slot, 0);
         Some(ItemStack::new(&item, 1))
     }
-    /// `mob.playAmbientSound()` on the entity `id`: the bridge picks the sound, the host plays it at the entity.
+    /// `mob.playAmbientSound()` on the entity `id`: the bridge queues the sound at its place, the host plays it.
     pub(in crate::game) fn ecs_ambient(&mut self, id: u32) {
-        let Some(m) = self.ecs_mob(id) else { return };
-        if let Some(sound) = self.ecs.ambient_sound(id) {
-            self.audio.play(sound, Some([m.at.x, m.at.y, m.at.z]), 1.0, 1.0);
-        }
+        self.ecs.play_ambient(id);
     }
     /// `setPersistenceRequired` on the entity `id`.
     pub(in crate::game) fn ecs_persist(&mut self, id: u32) {

@@ -469,6 +469,7 @@ impl Game<'_> {
         for target in self.stab_targets(eye, look, movement) {
             match target {
                 Target::Mob(i) => hit |= self.stab_mob(i, damage, true, true, false),
+                Target::Ecs(id) => hit |= self.stab_mob_ecs(id, damage, true, true, false),
                 Target::Player(k) => {
                     on_players.extend(self.queue_player_stab(k, damage, true, true, false))
                 }

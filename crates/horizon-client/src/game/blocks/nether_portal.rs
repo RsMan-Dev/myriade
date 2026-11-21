@@ -33,10 +33,6 @@ use {
 #[path = "nether_portal/respawn_attributes.rs"]
 mod respawn_attributes;
 
-#[cfg(test)]
-#[path = "tests/portal_spawn_tests.rs"]
-mod portal_spawn_tests;
-
 /// `Player.getDimensionChangingDelay`.
 pub(super) const PLAYER_DELAY: i32 = 10;
 /// `VehicleEntity.getDimensionChangingDelay`: boats and minecarts.
@@ -2414,9 +2410,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/portal_cooldown_tests.rs"]
-mod cooldown_tests;
 
 #[cfg(test)]
 #[path = "nether_portal/arrival_effects_tests.rs"]

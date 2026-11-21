@@ -41,9 +41,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::LivingDestroyBlock) {
             return true;
         }
-        let Some(kind) = (self.ecs.kind(id).map(str::to_owned)).or_else(|| {
-            (self.mobs.iter().find(|m| m.id == id)).map(crate::game::native_hooks::mob_kind)
-        }) else {
+        let Some(kind) = self.ecs.kind(id).map(str::to_owned) else {
             return true;
         };
         self.may_destroy(id, &kind, pos)

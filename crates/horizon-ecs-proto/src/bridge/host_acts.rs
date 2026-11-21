@@ -36,4 +36,8 @@ impl EcsWorld {
         }
         done
     }
+    /// `Mob.playAmbientSound`: the sound is queued at the creature's place; false without one.
+    pub fn play_ambient(&mut self, e: Entity) -> bool {
+        crate::behaviours::ambient_sound::play(self.world_mut(), e)
+    }
 }

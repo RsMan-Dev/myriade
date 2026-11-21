@@ -376,8 +376,9 @@ impl Game<'_> {
             }),
         );
         if villager {
-            session.reputation = self.villager_reputation(id);
-            session.hero = self.hero_amplifier();
+            let player = self.acting_player_uuid_id();
+            session.reputation = player.map_or(0, |p| self.ecs.villager_reputation_of(id, p));
+            session.hero = player.and_then(|p| self.ecs.player_hero(p));
             for seq in merchant::Session::sequences_needed(
                 &self.stations().trades,
                 &session.profession,
@@ -547,11 +548,6 @@ impl Game<'_> {
     }
     /// `merchant_traded` for an ECS trader: the same statistic and triggers, the kind and the trade hook read by id.
     pub(super) fn merchant_traded_ecs(&mut self, mob: Option<u32>, offers: &mut [MerchantOffer], traded: &[usize]) {
-        if !traded.is_empty()
-            && let Some(id) = mob
-        {
-            self.villager_trade_pending(id);
-        }
         for index in traded {
             let Some(offer) = offers.get_mut(*index) else { continue };
             self.award_custom_stat("traded_with_villager", 1);
@@ -585,11 +581,11 @@ impl Game<'_> {
         {
             return;
         }
-        let Some(uuid) = self.player_uuid_of(self.lan_acting) else {
+        let Some(player) = self.player_uuid_of(self.lan_acting).and_then(|uuid| self.player_id(uuid)) else {
             return;
         };
-        let reputation = self.villager_reputation_of(id, uuid);
-        let hero = self.hero_amplifier();
+        let reputation = self.ecs.villager_reputation_of(id, player);
+        let hero = self.ecs.player_hero(player);
         self.menu_session(|menu, env, _| {
             if let Some(session) = menu.merchant.as_mut() {
                 session.reputation = reputation;
@@ -790,11 +786,6 @@ impl Game<'_> {
         offers: &mut [MerchantOffer],
         traded: &[usize],
     ) {
-        if !traded.is_empty()
-            && let Some(id) = mob
-        {
-            self.villager_trade_pending(id);
-        }
         for index in traded {
             let Some(offer) = offers.get_mut(*index) else {
                 continue;

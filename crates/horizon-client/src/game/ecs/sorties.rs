@@ -246,6 +246,7 @@ impl Game<'_> {
                     self.lan_entity_event(id as i32, TOTEM_EVENT, at);
                 }
             }
+            UsingEvent::Started { .. } | UsingEvent::Stopped { .. } | UsingEvent::Released { .. } => {}
         }
     }
 }

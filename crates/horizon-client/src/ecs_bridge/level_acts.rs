@@ -15,6 +15,12 @@ impl EcsLevel {
         }
     }
 
+    /// `Mob.playAmbientSound` on `id`: the sound is queued at its place; false without one.
+    pub fn play_ambient(&mut self, id: u32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.play_ambient(e))
+    }
+
     /// `EcsWorld::swing`: true when the swing started; the clients hear it through `HostEvent::Swing`.
     pub fn swing(&mut self, id: u32, off_hand: bool) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

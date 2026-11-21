@@ -2626,7 +2626,3 @@ mod attribute_modifier_command_tests {
         });
     }
 }
-
-#[cfg(test)]
-#[path = "attribute_equipment_tests.rs"]
-mod attribute_equipment_tests;

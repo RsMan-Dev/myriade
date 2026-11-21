@@ -4907,6 +4907,18 @@ impl Game<'_> {
             self.system_message(horizon_client::text::Text::translate(key, &[]));
         }
     }
+    /// `AbstractBedBlock.kickVillagerOutOfBed`: the first sleeping villager whose box touches the bed's
+    /// head block gets up (`stop_sleeping`). Whether one did.
+    fn kick_sleeping_villager(&mut self, head: [i32; 3]) -> bool {
+        let min = Vec3::new(f64::from(head[0]), f64::from(head[1]), f64::from(head[2]));
+        let max = Vec3::new(min.x + 1.0, min.y + 1.0, min.z + 1.0);
+        let ecs = &self.ecs;
+        let found = ecs.mob_boxes().into_iter().find(|&(id, b, _, _)| {
+            b.intersects_corners(min, max) && ecs.is_villager(id) == Some(true) && ecs.sleeping_pos(id).is_some()
+        });
+        let Some((id, ..)) = found else { return false };
+        self.ecs.stop_sleeping(id)
+    }
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
     /// respawn point either way.
@@ -4943,7 +4955,7 @@ impl Game<'_> {
             .state(head_state)
             .is_some_and(|s| s.properties.get("occupied").is_some_and(|v| v == "true"));
         if occupied {
-            if !self.kick_villager_out_of_bed(head) {
+            if !self.kick_sleeping_villager(head) {
                 self.tell_sleeper("block.minecraft.bed.occupied", "This bed is occupied", true);
             }
             return;

@@ -6,8 +6,10 @@ use horizon_client_core::potions::{self, EffectDef};
 use horizon_core::geometry::Aabb;
 use horizon_ecs_proto::{
     attr_mod::Operation,
-    bridge::{host::Flag, host_read_living::{effect_kind, effect_name}},
+    behaviours::ender_teleport::WaterSensitive,
+    bridge::{host::Flag, host_read, host_read_living::{effect_kind, effect_name}},
     effects::{AMBIENT, Effect, HIDDEN, Kind},
+    goals::Head,
 };
 use horizon_world::attribute_map::ValueKind;
 use mod_api::{AttributeModifier, AttributeOperation, Identifier};
@@ -104,5 +106,43 @@ impl EcsLevel {
     }
     pub fn melee_reaches(&self, id: u32, bounds: Aabb) -> Option<bool> {
         Some(self.ecs()?.melee_reaches(self.entity_of(id)?, bounds))
+    }
+    /// Whether the entity `id` stands in water (`FluidState`); false when absent.
+    pub fn in_water(&self, id: u32) -> bool {
+        let (Some(w), Some(e)) = (self.world(), self.entity_of(id)) else { return false };
+        host_read::in_water(w, e)
+    }
+    /// The category name of the species of `id` (`Mob.category`); None when absent.
+    pub fn category(&self, id: u32) -> Option<&'static str> {
+        host_read::category(self.world()?, self.entity_of(id)?)
+    }
+    /// `Mob.isEnemy` of `id`; false when absent.
+    pub fn is_enemy(&self, id: u32) -> bool {
+        let (Some(w), Some(e)) = (self.world(), self.entity_of(id)) else { return false };
+        host_read::is_enemy(w, e)
+    }
+    /// Whether the entity `id` is in its first tick (`Mob.first_tick`); false when absent.
+    pub fn first_tick(&self, id: u32) -> bool {
+        let (Some(w), Some(e)) = (self.world(), self.entity_of(id)) else { return false };
+        host_read::first_tick(w, e)
+    }
+    /// The largest half width of the mob types, the reach of a box around a block.
+    pub fn max_half_width(&self) -> f32 {
+        host_read::max_half_width()
+    }
+    /// Whether the creature `id` is hurt by water (`WaterSensitive`).
+    pub fn water_sensitive(&self, id: u32) -> bool {
+        let (Some(w), Some(e)) = (self.world(), self.entity_of(id)) else { return false };
+        w.get::<WaterSensitive>(e).is_some()
+    }
+    /// `Entity.getLookAngle` of `id`: the view vector of its head's pitch and its yaw (`Mob.look_angle`); None without a yaw.
+    pub fn look_angle(&self, id: u32) -> Option<[f64; 3]> {
+        use horizon_core::geometry::trig::Mth;
+        let (w, e) = (self.world()?, self.entity_of(id)?);
+        let to_rad = std::f32::consts::PI / 180.0;
+        let x = w.get::<Head>(e).map_or(0.0, |h| h.pitch) * to_rad;
+        let y = -host_read::yaw(w, e)? * to_rad;
+        let (y_cos, y_sin, x_cos, x_sin) = (y.mcos(), y.msin(), x.mcos(), x.msin());
+        Some([f64::from(y_sin * x_cos), f64::from(-x_sin), f64::from(y_cos * x_cos)])
     }
 }

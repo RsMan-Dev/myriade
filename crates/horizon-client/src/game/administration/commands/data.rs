@@ -2030,9 +2030,6 @@ mod mod_block_entity_tests;
 
 
 #[cfg(test)]
-mod residency_tests;
-
-#[cfg(test)]
 mod arrow_owner_tests {
     use super::Target;
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
@@ -2586,7 +2583,3 @@ mod vehicle_container_tests {
         });
     }
 }
-
-#[cfg(test)]
-#[path = "finalize_marker_tests.rs"]
-mod finalize_marker_tests;

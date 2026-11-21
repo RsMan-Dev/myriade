@@ -1,7 +1,5 @@
 //! Typed adaptations for upstream mob knockback and breeding draws.
 use super::{Damage, Game, HurtSource, Who, source_damage_type};
-use horizon_client::mobs::Species;
-use horizon_core::random::RandomSource;
 
 impl Game<'_> {
     pub(super) fn mob_pushes_player(
@@ -51,13 +49,5 @@ impl Game<'_> {
             position: None,
         };
         self.knock_back_player(power, x, z, source, &attack, 0.0);
-    }
-    pub(super) fn bred_wolf_voice(&mut self, parent: u32) -> Option<u8> {
-        let voices = horizon_client::mobs::finalize::sound_variants(Species::Wolf);
-        self.mobs
-            .iter_mut()
-            .find(|m| m.id == parent)
-            .and_then(|m| m.random.next_int_bound(voices.len() as i32).ok())
-            .map(|i| i as u8)
     }
 }

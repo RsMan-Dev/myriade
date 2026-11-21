@@ -67,6 +67,14 @@ impl EcsLevel {
     pub fn has_tag(&self, id: u32, tag: &str) -> bool {
         self.at(id).is_some_and(|(w, e)| host_read::has_tag(w, e, tag))
     }
+    /// The network id of the entity `e` (`EcsWorld::id_of`); None when it has none or the level is inert.
+    pub fn id_of(&self, e: Entity) -> Option<u32> {
+        self.ecs()?.id_of(e)
+    }
+    /// A mob is an entity that carries a species (`TypeName`), as the mods' list of mobs reads them.
+    pub fn is_mob(&self, id: u32) -> bool {
+        self.species(id).is_some()
+    }
     /// `host_read::sits_on_chest`.
     pub fn sits_on_chest(&self, id: u32) -> bool {
         self.at(id).is_some_and(|(w, e)| host_read::sits_on_chest(w, e))

@@ -602,7 +602,7 @@ impl Game<'_> {
                             .find(|m| m.id == id)
                             .map(|m| self.mob_entity(m))
                     })
-                    .or_else(|| self.ecs_view(id))
+                    .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
             }
         });
         let projectile = match damage.as_str() {
@@ -766,7 +766,7 @@ impl Game<'_> {
                     .find(|m| m.id == id)
                     .map(|m| self.mob_entity(m))
             })
-            .or_else(|| self.ecs_view(id))
+            .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
     }
 
     /// The scalar death-tail/death-message source. `living_death` uses the

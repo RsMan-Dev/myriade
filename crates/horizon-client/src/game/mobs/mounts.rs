@@ -584,7 +584,7 @@ impl Game<'_> {
         let Some(e) = self.ecs.entity_of(id) else {
             return false;
         };
-        if keys.shift || !self.ecs.alive(e) || self.ecs.dismounts_in_water(e, self.rider_eyes_in_water()) {
+        if keys.shift || !self.ecs.alive(id) || self.ecs.dismounts_in_water(e, self.rider_eyes_in_water()) {
             self.dismount_mount();
             return true;
         }

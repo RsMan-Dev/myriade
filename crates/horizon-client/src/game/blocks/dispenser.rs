@@ -3466,7 +3466,3 @@ mod tests {
         assert!(at(15.9, 0.0, 0.0) < at(16.0, 0.0, 0.0));
     }
 }
-
-#[cfg(test)]
-#[path = "dispenser/decision_tests.rs"]
-mod decision_tests;

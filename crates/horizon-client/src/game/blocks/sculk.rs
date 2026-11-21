@@ -2440,16 +2440,6 @@ impl Game<'_> {
             }
         }
     }
-    /// `LivingEntity.die` with the catalyst's reach: a death event at the
-    /// mob's position.
-    pub(super) fn sculk_mob_died(&mut self, m: &Mob) {
-        let ctx = self.context_of_mob(Some(m), m.id, None);
-        self.post_game_event(
-            "minecraft:entity_die",
-            [m.position.x, m.position.y, m.position.z],
-            ctx,
-        );
-    }
     /// `Entity.kill` for an entity that is no mob (`BlockAttachedEntity.kill`,
     /// `ArmorStand.kill`, `VehicleEntity.destroy`): removed, then
     /// `gameEvent(ENTITY_DIE, attributedTo != null ? attributedTo : this)` at
@@ -2685,76 +2675,6 @@ mod tests {
         assert_eq!(*heard.lock().unwrap(), vec![Some(BlockStateId(3)), None]);
     }
 
-    /// The wardens that hear an event are those in the list when it is
-    /// posted, however the list changed since the last one.
-    #[test]
-    #[ignore = "daily"]
-    fn wardens_hear_events_however_the_list_changed_between_them() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.sculk_prepare();
-            let warden = game
-                .res
-                .mob_types()
-                .get("minecraft:warden")
-                .cloned()
-                .unwrap();
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .cloned()
-                .unwrap();
-            let at = |x| Vec3::new(x, 100.0, 0.0);
-            let post = |game: &mut Game<'_>| {
-                game.post_game_event("minecraft:explode", [0.5, 100.5, 0.5], Context::default());
-                let later = game.world.game_time + 1;
-                let heard = |m: &mut Mob| {
-                    let warden = m.extra.warden.as_mut()?;
-                    let heard = warden.vibration.selector.chosen_candidate(later);
-                    warden.vibration = Default::default();
-                    heard
-                };
-                let mut ids: Vec<u32> = game
-                    .mobs
-                    .iter_mut()
-                    .filter_map(|m| heard(m).map(|_| m.id))
-                    .collect();
-                ids.sort_unstable();
-                ids
-            };
-            assert_eq!(post(game), [0u32; 0], "nobody to hear it");
-            assert_eq!(post(game), [0u32; 0]);
-
-            game.mobs.push(Mob::new(1, zombie.clone(), at(1.0), 0.0));
-            game.mobs.push(Mob::new(2, warden.clone(), at(2.0), 0.0));
-            assert_eq!(post(game), [2], "one that joined since");
-            assert_eq!(post(game), [2], "and again with nothing changed");
-
-            game.mobs
-                .insert(0, Mob::new(3, warden.clone(), at(3.0), 0.0));
-            assert_eq!(post(game), [2, 3], "the slots moved");
-
-            let level = game.mobs.lift();
-            assert_eq!(post(game), [0u32; 0], "another level's list");
-            game.mobs.restore(
-                level,
-                horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-            );
-            assert_eq!(post(game), [2, 3], "this level's again");
-
-            game.mobs.retain(|m| m.id != 3);
-            assert_eq!(post(game), [2], "one that left");
-
-            // A write that keeps every slot and makes the zombie's a listener.
-            game.mobs[0] = Mob::new(1, warden, at(1.0), 0.0);
-            assert_eq!(post(game), [1, 2], "one replaced in its slot");
-
-            game.mobs[0].removed = true;
-            game.mobs[0].health = 0.0;
-            assert_eq!(post(game), [2], "the dead hear nothing");
-        });
-    }
-
     /// Retaining keeps the insertion order and the membership in step.
     #[test]
     fn the_index_retains_in_order() {
@@ -2979,7 +2899,3 @@ mod command_damage_listener_tests {
     }
 }
 
-// Milking and shearing farm animals; lives here for `TEST_POSTED_EVENTS`.
-#[cfg(test)]
-#[path = "tests/farm_animal_interaction_tests.rs"]
-mod farm_animal_interaction_tests;

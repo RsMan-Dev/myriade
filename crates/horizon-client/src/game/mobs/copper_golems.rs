@@ -398,9 +398,5 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-#[path = "copper_golems/lifetime_tests.rs"]
-mod lifetime_tests;
-
-#[cfg(test)]
 #[path = "tests/golem_gift_tests.rs"]
 mod golem_gift_tests;

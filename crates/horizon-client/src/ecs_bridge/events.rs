@@ -156,6 +156,17 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         | HostEvent::DeathAnimation { .. }
         | HostEvent::DeathSmoke { .. }
         | HostEvent::HeldConsume { .. }
+        | HostEvent::ComposterWork { .. }
+        | HostEvent::RaiderDied { .. }
+        | HostEvent::RaiderJoined { .. }
+        | HostEvent::RaiderLeads { .. }
+        | HostEvent::RaiderHurt { .. }
+        | HostEvent::HeldUsed { .. }
+        | HostEvent::HeldSwap { .. }
+        | HostEvent::PlayerGameEvent { .. }
+        | HostEvent::HeldWorn { .. }
+        | HostEvent::HeldGiven { .. }
+        | HostEvent::BecomeBlock { .. }
         | HostEvent::Arrow(_)
         | HostEvent::BoatEffect(_)
         | HostEvent::BoatHurt(_)

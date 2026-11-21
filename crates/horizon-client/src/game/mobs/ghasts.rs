@@ -17,7 +17,7 @@ impl Game<'_> {
         let Some(p) = &self.player else {
             return Vec::new();
         };
-        let sweep = Aabb::new(p.position - Vec3::new(3.0, 1.0, 3.0), p.position + Vec3::new(3.0, 4.0, 3.0));
+        let sweep = Aabb::new(p.position.subtract(Vec3::new(3.0, 1.0, 3.0)), p.position.add_vector(Vec3::new(3.0, 4.0, 3.0)));
         let solid = self.ecs.solid_boxes(sweep, Some(p.position.y), self.riding);
         self.remote_entities
             .iter()

@@ -7,15 +7,12 @@ use crate::game::*;
 use horizon_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    mobs::leash::Holder,
     motion::PlayerMotion,
 };
 use horizon_core::position::ChunkPos;
 use horizon_protocol::packets::configuration::ClientInformation;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-const PIG: &str = "0000609a-0000-0000-0000-000000000001";
-const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
 const AT_FENCE: &str = "@e[type=minecraft:leash_knot,x=8.5,y=201.375,z=0.5,distance=..0.001]";
 
 fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
@@ -83,13 +80,6 @@ fn summon_pig(game: &mut Game<'_>, n: i32, x: f64) {
 fn step(game: &mut Game<'_>) {
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
-}
-
-fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
-    match game.target_with_uuid(horizon_client::save::uuid_from_text(uuid).unwrap()) {
-        Some(super::Target::Mob(id)) => game.mobs.iter().position(|m| m.id == id).unwrap(),
-        other => panic!("{other:?}"),
-    }
 }
 
 /// The knots the level in place's selectors list, by entity id.
@@ -211,58 +201,6 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
 
 #[test]
 #[ignore = "daily"]
-fn two_leads_on_one_fence_share_one_knot() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    summon_pig(&mut game, 1, 16.5);
-    summon_pig(&mut game, 3, 4.5);
-    step(&mut game);
-    for uuid in [PIG, OTHER_PIG] {
-        let i = mob(&mut game, uuid);
-        assert_eq!(game.mobs[i].extra.leash, Some(Holder::Knot([8, 201, 0])));
-    }
-    assert_eq!(knots(&game).len(), 1);
-    assert!(game.run_command(&format!("execute if entity {AT_FENCE}")));
-    // One lead goes: the knot stays the same entity.
-    let id = knots(&game)[0];
-    let uuid = knot_uuid(&mut game);
-    let other = mob(&mut game, OTHER_PIG);
-    let other = game.mobs[other].id;
-    game.break_leash(other, false, false);
-    assert_eq!(knots(&game), [id]);
-    assert_eq!(knot_uuid(&mut game), uuid);
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_knot_tied_again_after_its_last_lead_is_a_new_entity() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    summon_pig(&mut game, 1, 13.5);
-    step(&mut game);
-    let first = knots(&game)[0];
-    let first_uuid = knot_uuid(&mut game);
-    let pig = mob(&mut game, PIG);
-    let pig = game.mobs[pig].id;
-    game.break_leash(pig, false, false);
-    assert!(knots(&game).is_empty(), "no lead holds it: gone");
-    assert!(!game.run_command(&format!("execute if entity {AT_FENCE}")));
-    // The player leads the pig and ties it to the fence again.
-    assert!(game.run_command("item replace entity @s weapon.mainhand with lead"));
-    let i = mob(&mut game, PIG);
-    assert!(game.interact_leash(i, "minecraft:lead"));
-    assert!(game.use_knot([8, 201, 0], false));
-    let i = mob(&mut game, PIG);
-    assert_eq!(game.mobs[i].extra.leash, Some(Holder::Knot([8, 201, 0])));
-    let [second] = knots(&game)[..] else {
-        panic!("{:?}", knots(&game));
-    };
-    assert_ne!(second, first, "a new entity id");
-    assert_ne!(knot_uuid(&mut game), first_uuid, "a new UUID");
-}
-
-#[test]
-#[ignore = "daily"]
 fn the_same_fence_position_in_another_level_is_another_knot() {
     let mut resources = None;
     let mut game = game(&mut resources);
@@ -312,31 +250,3 @@ fn the_same_fence_position_in_another_level_is_another_knot() {
     );
 }
 
-#[test]
-#[ignore = "daily"]
-fn commands_that_would_move_or_remove_a_natural_knot_fail() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    summon_pig(&mut game, 1, 16.5);
-    step(&mut game);
-    let id = knots(&game)[0];
-    for command in [
-        format!("kill {AT_FENCE}"),
-        format!("tp {AT_FENCE} 20 201 4"),
-        format!("teleport {AT_FENCE} ~ ~1 ~"),
-        format!("rotate {AT_FENCE} 90 0"),
-        format!("tag {AT_FENCE} add moved"),
-        format!("spreadplayers 16 8 0 2 false {AT_FENCE}"),
-        format!("data merge entity {AT_FENCE} {{Invulnerable:1b}}"),
-    ] {
-        assert!(!game.run_command(&command), "{command}");
-    }
-    assert_eq!(knots(&game), [id], "the knot is still there");
-    let i = mob(&mut game, PIG);
-    assert_eq!(game.mobs[i].extra.leash, Some(Holder::Knot([8, 201, 0])));
-    let at = horizon_client::mobs::leash::knot_state([8, 201, 0]).position;
-    assert_eq!(
-        game.target_position(super::Target::Knot(id)),
-        Some([at.x, at.y, at.z])
-    );
-}

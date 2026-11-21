@@ -143,7 +143,6 @@ impl Game<'_> {
                 | MobEvent::AroundSelf{ .. }
                 | MobEvent::ParticleAt{ .. }
                 | MobEvent::ParticleColored{ .. }
-                | MobEvent::Experience{ .. }
                 | MobEvent::AxolotlSupportPlayer{ .. }
                 | MobEvent::DolphinTreasure{ .. }
                 | MobEvent::EffectPlayer{ .. }
@@ -176,6 +175,7 @@ impl Game<'_> {
                 | MobEvent::LeashBreak{ .. }
                 | MobEvent::NotifyLeashHolder{ .. }
                 | MobEvent::CureZombieVillager{ .. }
+                | MobEvent::Experience{ .. }
                 | MobEvent::Vibration{ .. }
                 | MobEvent::DigParticles{ .. }
                 | MobEvent::BlockBreakEffect{ .. }

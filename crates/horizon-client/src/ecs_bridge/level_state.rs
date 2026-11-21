@@ -1,8 +1,9 @@
 //! The creature states of the bridge (`P bridge/host_state.rs`) by id: reads answer the neutral value and writes say whether the id was
 //! in the level. An inert level (a client) holds none of them.
 use super::level::EcsLevel;
+use crate::mobs::stuck::Stuck;
 use bevy_ecs::entity::Entity;
-use horizon_ecs_proto::bridge::host::EcsWorld;
+use horizon_ecs_proto::{bridge::host::EcsWorld, stuck::Stuck as EcsStuck};
 
 impl EcsLevel {
     fn read_state<R>(&self, id: u32, neutral: R, f: impl FnOnce(&EcsWorld, Entity) -> R) -> R {
@@ -49,11 +50,28 @@ impl EcsLevel {
     pub fn set_left_handed(&mut self, id: u32, on: bool) -> bool {
         self.write_state(id, |w, e| w.set_left_handed(e, on))
     }
-    pub fn stuck(&self, id: u32) -> (u8, u8) {
-        self.read_state(id, (0, 0), |w, e| w.stuck(e))
+    pub fn stuck(&self, id: u32) -> (i32, i32) {
+        self.read_state(id, (0, 0), |w, e| {
+            let s = w.stuck(e);
+            (s.arrows, s.stingers)
+        })
     }
-    pub fn set_stuck(&mut self, id: u32, arrows: u8, stingers: u8) -> bool {
+    /// `Mob.noActionTime` of `id`; None when it is absent.
+    pub fn no_action_time(&self, id: u32) -> Option<i32> {
+        self.read_state(id, None, |w, e| Some(w.no_action_time(e)))
+    }
+    pub fn set_stuck(&mut self, id: u32, arrows: i32, stingers: i32) -> bool {
         self.write_state(id, |w, e| w.set_stuck(e, arrows, stingers))
+    }
+    /// `f` on the creature's `Stuck` (the counts and their times), written back after; None when `id` is absent or the level inert.
+    pub fn stuck_with<T>(&mut self, id: u32, f: impl FnOnce(&mut Stuck) -> T) -> Option<T> {
+        let e = self.entity_of(id)?;
+        let w = self.ecs_mut()?;
+        let s = w.stuck(e);
+        let mut g = Stuck { arrows: s.arrows, stingers: s.stingers, remove_arrow_time: s.remove_arrow_time, remove_stinger_time: s.remove_stinger_time };
+        let r = f(&mut g);
+        w.put_stuck(e, EcsStuck { arrows: g.arrows, stingers: g.stingers, remove_arrow_time: g.remove_arrow_time, remove_stinger_time: g.remove_stinger_time });
+        Some(r)
     }
     pub fn fall_fly_ticks(&self, id: u32) -> i32 {
         self.read_state(id, 0, |w, e| w.fall_fly_ticks(e))

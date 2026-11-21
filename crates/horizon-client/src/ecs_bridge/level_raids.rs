@@ -1,6 +1,8 @@
 //! The raids by network id: the host's raid state is written to the ECS as a view, its raiders join by id and are read back by id.
 use super::level::EcsLevel;
-use horizon_ecs_proto::{bridge::ids::id_of, raid_buffs::{RaidBuff, RaidBuffRules}, raids::RaidView};
+use crate::mobs::MobWorld;
+use bevy_ecs::entity::Entity;
+use horizon_ecs_proto::{bridge::ids::id_of, raid_buffs::{RaidBuff, RaidBuffRules}, raids::RaidView, spawn_reason::SpawnReason};
 
 /// A living raider of a raid, by network id.
 #[derive(Clone, Copy, Debug)]
@@ -50,6 +52,10 @@ impl EcsLevel {
         if let Some(w) = self.ecs_mut() {
             w.leave_raid(e);
         }
+    }
+    /// `EcsWorld::spawn_patrol_member`: a member of a patrol, its leader when `leader`; None when inert.
+    pub fn spawn_patrol_member(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], leader: bool, reason: SpawnReason, special: f32) -> Option<Entity> {
+        self.ecs_mut()?.spawn_patrol_member(mw, kind, at, leader, reason, special)
     }
     /// `Raider.applyRaidBuffs` on creature `id`.
     pub fn apply_raid_buffs(&mut self, id: u32, kind: RaidBuff, wave: i32, rules: RaidBuffRules) -> bool {

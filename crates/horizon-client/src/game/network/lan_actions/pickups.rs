@@ -172,8 +172,12 @@ impl Game<'_> {
         if g.game_mode == SPECTATOR {
             return;
         }
-        let (conn, position, id) = (g.conn, g.position, g.entity_id);
-        let taken = self.ecs_with(|ecs, mw| ecs.pickup(mw, position, 1.5));
+        let (conn, position, id, uuid) = (g.conn, g.position, g.entity_id, g.uuid);
+        // P takes every stack in reach; the rest the guest's inventory refuses lies at the feet again (below).
+        let taken = self.ecs_with(|ecs, mw| {
+            let who = horizon_ecs_proto::targeting::Who::Player(id as u32);
+            ecs.pickup_items(mw, who, crate::lan::playerdata::uuid_ints(uuid), position, 1.5, &mut |s| s.count)
+        });
         let mut counts = Vec::new();
         for (item, stack, at) in taken {
             let kind = stack.item.clone();

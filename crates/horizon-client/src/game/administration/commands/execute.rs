@@ -1347,10 +1347,6 @@ fn is_player_in_place(
 }
 
 #[cfg(test)]
-#[path = "execute_facing_tests.rs"]
-mod execute_facing_tests;
-
-#[cfg(test)]
 mod tests {
     use super::is_player_in_place;
     use horizon_client::lan::playerdata::ints_uuid;

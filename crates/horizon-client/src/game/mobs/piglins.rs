@@ -1,16 +1,14 @@
-//! The game side of piglins (`PiglinAi`): the picking up, admiring and bartering run
-//! on the game's `PiglinLevel` (`horizon_gameplay::piglins`); what stays here needs the
-//! player, the LAN guests, the scoreboard or the mods' hooks (anger, safe armour).
+//! The game side of piglins (`PiglinAi`): the player, the LAN guests, the scoreboard
+//! and the mods' hooks (anger, safe armour, currency).
 use super::Game;
 use horizon_client::{
-    items::{ItemStack, Items},
+    items::ItemStack,
     mobs::{
         Mob, Species,
         piglin::{BARTERING_ITEM, is_idle},
     },
 };
 use horizon_core::geometry::Vec3;
-use horizon_gameplay::piglin_level::PiglinLevel;
 
 impl Game<'_> {
     /// `ZombifiedPiglin.alertOthers`: keep the source's player binding and
@@ -51,12 +49,6 @@ impl Game<'_> {
         }
         self.set_event_ai_target(mob, Some(target), player);
     }
-    fn item_in_tag(&self, tag: &str, item: &str) -> bool {
-        horizon_gameplay::piglins::item_in_tag(self, tag, item)
-    }
-    pub(in crate::game) fn piglin_loved(&self, item: &str) -> bool {
-        horizon_gameplay::piglins::piglin_loved(self, item)
-    }
     /// `PiglinAi.isBarterCurrency`: vanilla's answer (`BARTERING_ITEM`), then the
     /// parts of the stack's item (`ItemPart::is_piglin_currency`). An item with no
     /// part for it costs one table lookup.
@@ -66,58 +58,6 @@ impl Game<'_> {
             self.native_is_piglin_currency(stack, &mut currency);
         }
         currency
-    }
-    /// `ItemStack.has(DataComponents.BLOCKS_ATTACKS)` for an item id.
-    fn item_blocks_attacks(&self, item: &str) -> bool {
-        horizon_gameplay::piglins::item_blocks_attacks(self, item)
-    }
-    /// `PiglinAi.isLovedItem` or a preferred weapon (`Piglin.canReplaceCurrentItem`).
-    fn piglin_wanted(&self, m: &Mob, item: &str) -> bool {
-        horizon_gameplay::piglins::piglin_wanted(self, m, item)
-    }
-    /// The `SLOT_NAMES` index `getEquipmentSlotForItem` picks: the
-    /// `equippable` slot (armour, a shield's off hand), else the main hand.
-    fn piglin_slot(&self, item: &str) -> usize {
-        horizon_gameplay::piglins::piglin_slot(self, item)
-    }
-    /// `Piglin.canReplaceCurrentItem`: an empty slot takes anything, a
-    /// `PREVENT_ARMOR_CHANGE` piece stays, a wanted item replaces an unwanted
-    /// one and never the other way round; when both or neither are wanted,
-    /// `Mob.canReplaceCurrentItem` compares armour or weapons.
-    fn piglin_can_replace(&self, m: &Mob, stack: &ItemStack, slot: usize) -> bool {
-        horizon_gameplay::piglins::piglin_can_replace(self, m, stack, slot)
-    }
-    /// `SimpleContainer.canAddItem` on the piglin's eight slots.
-    fn piglin_can_add(&self, m: &Mob, stack: &ItemStack) -> bool {
-        horizon_gameplay::piglins::piglin_can_add(self, m, stack)
-    }
-    fn piglin_max_stack(&self, item: &str) -> u32 {
-        horizon_gameplay::piglins::piglin_max_stack(self, item)
-    }
-    /// `PiglinAi.wantsToPickup`: babies ignore their own item tag, but can
-    /// pick up currency and other loved items just like adults.
-    fn piglin_wants(&self, m: &Mob, stack: &ItemStack) -> bool {
-        horizon_gameplay::piglins::piglin_wants(self, m, stack)
-    }
-    /// `Mob.equipItemIfPossible` for a piglin: put it in its slot when that
-    /// slot takes it (an armour piece that cannot replace what is worn goes
-    /// to an empty main hand), dropping what it replaces by drop chance.
-    fn piglin_equip(&mut self, index: usize, stack: &ItemStack) -> bool {
-        horizon_gameplay::piglins::piglin_equip(self, index, stack)
-    }
-    /// `PiglinAi.putInInventory`: what does not fit is thrown at a random
-    /// spot nearby.
-    fn piglin_stash(&mut self, index: usize, stack: ItemStack) {
-        horizon_gameplay::piglins::piglin_stash(self, index, stack);
-    }
-    /// `PiglinAi.stopHoldingOffHandItem` for something that is not
-    /// bartering currency: wear it if it can, else keep it in the inventory.
-    fn piglin_keep(&mut self, index: usize, stack: ItemStack) {
-        horizon_gameplay::piglins::piglin_keep(self, index, stack);
-    }
-    /// `BehaviorUtils.throwItem`: toss a stack from a piglin toward `target_pos`.
-    fn piglin_throw(&mut self, index: usize, target_pos: [f64; 3], stack: ItemStack) {
-        horizon_gameplay::piglins::piglin_throw(self, index, target_pos, stack);
     }
     /// `PiglinAi.isWearingSafeArmor` for the acting player: a stack in an armour
     /// slot (feet, legs, chest, head, `EquipmentSlotGroup.ARMOR`'s order) in
@@ -142,41 +82,6 @@ impl Game<'_> {
             }
             neutral
         })
-    }
-    /// Piglins notice wanted items on the ground within 9 blocks (`PiglinAi.wantsToPickup`:
-    /// gold and other loved items, nuggets, food, gear), walk to them and
-    /// take them (`GoToWantedItem`, `Piglin.pickUpItem`).
-    pub(super) fn piglin_pickups(&mut self) {
-        horizon_gameplay::piglins::piglin_pickups(self);
-    }
-    /// `StartAdmiringItemIfSeen` and the admire activity's stop behaviours, from the
-    /// distance squared to `NEAREST_VISIBLE_WANTED_ITEM` and whether that item is loved.
-    fn admire_seen_item(&mut self, index: usize, nearest: Option<f64>, loved: bool) {
-        horizon_gameplay::piglins::admire_seen_item(self, index, nearest, loved);
-    }
-    /// `PiglinAi.holdInOffhand` and `admireGoldItem`: the piglin holds `stack`, the one item it
-    /// took (`split(1)` from the ground, `consumeAndReturn(1)` from a hand), with its components.
-    fn start_admiring(&mut self, index: usize, stack: ItemStack) {
-        horizon_gameplay::piglins::start_admiring(self, index, stack);
-    }
-    /// `PiglinAi.mobInteract`: hand a piglin the held `stack` (`canAdmire`: only
-    /// piglin currency is accepted from the hand; other loved items are passed over).
-    pub(super) fn give_piglin(&mut self, index: usize, stack: &ItemStack) -> bool {
-        horizon_gameplay::piglins::give_piglin(self, index, stack)
-    }
-    /// `PiglinAi.stopHoldingOffHandItem`, when the admiring ran out or a hit
-    /// stopped it (`piglin::stop_admiring`, which bars the barter). An adult
-    /// barters currency after admiring it, loses it to a hit, and equips or keeps
-    /// anything else. Babies equip the admired item, or hold it in the main hand
-    /// after stashing or throwing the old item. An empty off hand (a second stop
-    /// of the same hit) does nothing.
-    pub(super) fn finish_admiring(&mut self, mob: u32) {
-        horizon_gameplay::piglins::finish_admiring(self, mob);
-    }
-    /// `PiglinAi.throwItems`: barters and a baby's unwanted main-hand item
-    /// use the same player-directed throw.
-    fn piglin_throw_items(&mut self, i: usize, items: Vec<ItemStack>) {
-        horizon_gameplay::piglins::piglin_throw_items(self, i, items);
     }
     /// `PiglinAi.setAngerTargetToNearestTargetablePlayerIfFound`: the nearest
     /// visible targetable player when UNIVERSAL_ANGER is on.
@@ -328,116 +233,5 @@ impl Game<'_> {
             .block_tags
             .get("minecraft:guarded_by_piglins")
             .is_some_and(|t| t.contains(name))
-    }
-}
-
-impl PiglinLevel for Game<'_> {
-    fn res_items(&self) -> &Items {
-        self.res.items()
-    }
-    fn world_items(&self) -> &Items {
-        self.items()
-    }
-    fn item_in_tag(&self, tag: &str, item: &str) -> bool {
-        Game::item_in_tag(self, tag, item)
-    }
-    fn piglin_loved(&self, item: &str) -> bool {
-        Game::piglin_loved(self, item)
-    }
-    fn piglin_currency(&self, stack: &ItemStack) -> bool {
-        Game::piglin_currency(self, stack)
-    }
-    fn item_blocks_attacks(&self, item: &str) -> bool {
-        Game::item_blocks_attacks(self, item)
-    }
-    fn piglin_wanted(&self, m: &Mob, item: &str) -> bool {
-        Game::piglin_wanted(self, m, item)
-    }
-    fn piglin_slot(&self, item: &str) -> usize {
-        Game::piglin_slot(self, item)
-    }
-    fn piglin_can_replace(&self, m: &Mob, stack: &ItemStack, slot: usize) -> bool {
-        Game::piglin_can_replace(self, m, stack, slot)
-    }
-    fn piglin_can_add(&self, m: &Mob, stack: &ItemStack) -> bool {
-        Game::piglin_can_add(self, m, stack)
-    }
-    fn piglin_max_stack(&self, item: &str) -> u32 {
-        Game::piglin_max_stack(self, item)
-    }
-    fn piglin_wants(&self, m: &Mob, stack: &ItemStack) -> bool {
-        Game::piglin_wants(self, m, stack)
-    }
-    fn piglin_equip(&mut self, index: usize, stack: &ItemStack) -> bool {
-        Game::piglin_equip(self, index, stack)
-    }
-    fn piglin_stash(&mut self, index: usize, stack: ItemStack) {
-        Game::piglin_stash(self, index, stack);
-    }
-    fn piglin_keep(&mut self, index: usize, stack: ItemStack) {
-        Game::piglin_keep(self, index, stack);
-    }
-    fn piglin_throw(&mut self, index: usize, target_pos: [f64; 3], stack: ItemStack) {
-        Game::piglin_throw(self, index, target_pos, stack);
-    }
-    fn admire_seen_item(&mut self, index: usize, nearest: Option<f64>, loved: bool) {
-        Game::admire_seen_item(self, index, nearest, loved);
-    }
-    fn start_admiring(&mut self, index: usize, stack: ItemStack) {
-        Game::start_admiring(self, index, stack);
-    }
-    fn piglin_throw_items(&mut self, i: usize, items: Vec<ItemStack>) {
-        Game::piglin_throw_items(self, i, items);
-    }
-    fn piglin_throw_target(&self, at: Vec3) -> Option<[f64; 3]> {
-        let host = self
-            .player
-            .as_ref()
-            .filter(|p| !p.health.dead_or_dying() && !self.spectator())
-            .map(|p| [p.position.x, p.position.y, p.position.z]);
-        let guests = self.lan.iter().flat_map(|h| {
-            h.hub
-                .guests
-                .iter()
-                .filter(|g| h.hub.here(g) && g.loaded && !g.dead && !g.spectator())
-                .map(|g| g.position)
-        });
-        let d = |p: &[f64; 3]| at.distance_squared(Vec3::new(p[0], p[1], p[2]));
-        host.into_iter()
-            .chain(guests)
-            .filter(|p| d(p) < 256.0)
-            .min_by(|a, b| d(a).total_cmp(&d(b)))
-            .map(|p| [p[0], p[1] + 1.0, p[2]])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// `PiglinAi.throwItemsTowardPos` swings the off hand once when it has
-    /// something to throw, so barters leave the admiring hand (#12512).
-    #[test]
-    #[ignore = "daily"]
-    fn a_throw_swings_the_off_hand_once() {
-        let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        game.build_registries();
-        game.set_allow_commands(true);
-        assert!(game.run_command("summon piglin 8.5 80 8.5 {NoAI:1b,PersistenceRequired:1b}"));
-        let i = game
-            .mobs
-            .iter()
-            .position(|m| m.species() == Species::Piglin)
-            .expect("the summoned piglin");
-        // An empty list has nothing to throw and leaves the body alone.
-        game.piglin_throw_items(i, Vec::new());
-        assert!(!game.mobs[i].ai.swinging);
-        game.piglin_throw_items(i, vec![ItemStack::new("minecraft:gold_ingot", 1)]);
-        let m = &game.mobs[i];
-        assert!(m.ai.swinging, "the throw starts a swing");
-        // The off hand's arm: the right one only when the piglin is left-handed.
-        assert_eq!(m.extra.swing_right_arm, Some(m.main_arm_left()));
-        assert_eq!(m.swing_duration(), 6, "SwingAnimation.DEFAULT's ticks");
     }
 }

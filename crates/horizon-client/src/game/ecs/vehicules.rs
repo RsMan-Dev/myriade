@@ -22,7 +22,7 @@ impl Game<'_> {
         let Some(e) = self.ecs.entity_of(id) else {
             return false;
         };
-        self.ecs.set_velocity(e, v + dv);
+        self.ecs.set_velocity(e, v.add_vector(dv));
         true
     }
 }

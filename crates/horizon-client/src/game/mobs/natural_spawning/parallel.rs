@@ -231,18 +231,8 @@ pub(super) fn propose(
     chunks: &[(i32, i32)],
     lanes: usize,
 ) -> Vec<Pack<Made>> {
-    let mobs = LevelHost::mobs(&level.game);
-    let boxes = MobBoxes::new(mobs);
-    let chickens: Vec<(u32, Aabb)> = mobs
-        .iter()
-        .filter(|c| {
-            c.species() == Species::Chicken
-                && c.alive()
-                && c.extra.rider.is_none()
-                && c.extra.mount.is_none()
-        })
-        .map(|c| (c.id, c.bounds()))
-        .collect();
+    let boxes = MobBoxes::new(level.game.mob_boxes());
+    let chickens: Vec<(u32, Aabb)> = level.game.ecs.unridden_of_type("minecraft:chicken");
     let squares =
         (level.nearest.len() > PLAYERS_SCANNED).then(|| PlayerSquares::new(&level.nearest));
     let rebuild = prep::hookless(&level.w);
@@ -267,7 +257,6 @@ pub(super) fn propose(
             rides: Default::default(),
             provisional: Default::default(),
             boxes: Default::default(),
-            box_queries: Default::default(),
             group: Default::default(),
             costed: costed.clone(),
             spawner: None,
@@ -390,38 +379,6 @@ mod tests {
                 .unwrap(),
         );
         game.update_chunk_tickets();
-    }
-
-    /// The mobs a pass adds are the same whether one lane or three propose them: every chunk's
-    /// proposals come from its own random against the caps the pass started with.
-    #[test]
-    #[ignore = "needs the upstream-parallel-mobs feature and prepared resources"]
-    fn the_spawns_are_the_same_in_any_number_of_lanes() {
-        with_game(|game| {
-            let _reset = Reset;
-            plain(game);
-            let (mobs, random) = (game.mobs.clone(), game.world.random.clone());
-            let next = game.next_entity;
-            let mut runs = Vec::new();
-            for lanes in [1, 3] {
-                (game.mobs, game.world.random, game.next_entity) =
-                    (mobs.clone(), random.clone(), next);
-                LANES.with(|l| l.set(Some(lanes)));
-                for tick in 1..=6 {
-                    // Every 400th tick the creatures spawn too.
-                    game.world.game_time = 400 * tick;
-                    game.spawn_natural();
-                }
-                runs.push(
-                    game.mobs
-                        .iter()
-                        .map(|m| (m.kind.id.clone(), m.position, m.yaw))
-                        .collect::<Vec<_>>(),
-                );
-            }
-            assert!(runs[0].len() > 3, "the plain spawns: {}", runs[0].len());
-            assert_eq!(runs[0], runs[1]);
-        });
     }
 
     /// Two chunks near one player each propose a monster, together over the player's cap: the

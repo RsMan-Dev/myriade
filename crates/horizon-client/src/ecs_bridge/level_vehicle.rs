@@ -3,6 +3,7 @@
 use super::level::EcsLevel;
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::{items::ItemStack, merchant::MerchantOffer};
+use horizon_ecs_proto::behaviours::trade_session;
 use horizon_ecs_proto::bridge::ids::id_of;
 
 impl EcsLevel {
@@ -105,6 +106,15 @@ impl EcsLevel {
     }
     pub fn trade_busy(&self, id: u32) -> bool {
         self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.trade_busy(e))
+    }
+    /// `Villager.getPlayerReputation` of the player `player` at the villager `id` (`trade_session::reputation_of`); 0 when inert.
+    pub fn villager_reputation_of(&self, id: u32, player: u32) -> i32 {
+        let (Some(w), Some(e)) = (self.world(), self.entity_of(id)) else { return 0 };
+        trade_session::reputation_of(w, e, player)
+    }
+    /// The Hero of the Village amplifier of the player `player` (`trade_session::player_hero`); None when inert.
+    pub fn player_hero(&self, player: u32) -> Option<i32> {
+        trade_session::player_hero(self.world()?, player)
     }
     /// Some(true) for a villager, Some(false) for a wandering trader, None without a merchant (`EcsWorld::is_villager`).
     pub fn is_villager(&self, id: u32) -> Option<bool> {

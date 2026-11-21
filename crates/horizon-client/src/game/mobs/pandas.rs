@@ -1,11 +1,7 @@
 //! Pandas on the game side: the food they find on the ground and pick up
-//! (`Mob.aiStep`, `Panda.pickUpItem`), the bamboo a player gives them
-//! (`Panda.mobInteract`) and the start a sneeze gives the grown pandas about
-//! run on the game's `PandaLevel` (`horizon_gameplay::pandas`, implemented
-//! below: the food tag is the private `Game::panda_eats_from_ground`, which a
-//! mod can listen to).
+//! (`Mob.aiStep`, `Panda.pickUpItem`). The food tag is the private
+//! `Game::panda_eats_from_ground`, which a mod can listen to.
 use super::Game;
-use horizon_gameplay::panda_level::PandaLevel;
 
 impl Game<'_> {
     /// `Panda.canPickUpAndEat`'s tag.
@@ -15,71 +11,6 @@ impl Game<'_> {
             .item_tags
             .get("minecraft:panda_eats_from_ground")
             .is_some_and(|tag| tag.contains(item))
-    }
-    /// A panda takes what lies at its feet when its mouth is free, and
-    /// looks for food within 6 and 8 blocks for `PandaSitGoal`.
-    pub(super) fn tick_pandas(&mut self) {
-        horizon_gameplay::pandas::tick_pandas(self);
-    }
-    /// `Panda.mobInteract` for a click with `item`; whether the click is taken.
-    pub(super) fn interact_panda(&mut self, index: usize, item: &str) -> bool {
-        horizon_gameplay::pandas::interact_panda(self, index, item)
-    }
-    /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
-    pub(super) fn panda_sneezed(&mut self, id: u32) {
-        horizon_gameplay::pandas::panda_sneezed(self, id);
-    }
-}
-
-impl PandaLevel for Game<'_> {
-    fn panda_eats_from_ground(&self, item: &str) -> bool {
-        Game::panda_eats_from_ground(self, item)
-    }
-    fn is_creative(&self) -> bool {
-        self.creative
-    }
-    fn panda_in_love(&mut self, id: u32) {
-        self.love_cause.insert(id, self.lan_acting);
-        let kind = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .map(super::native_hooks::mob_kind)
-            .unwrap_or_default();
-        self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
-        // Animal.setInLove: entity event 18, the love hearts.
-        self.mob_event_particles(id, 18);
-    }
-    fn consume_held(&mut self) {
-        Game::consume_held(self);
-    }
-    fn after_mobs_lifted(&mut self) {
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-    }
-}
-
-#[cfg(test)]
-mod nested_spawn_tests {
-    #[test]
-    #[ignore = "daily"]
-    fn lifted_mob_callback_keeps_nested_spawns_until_the_next_pass() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            let kind = game.res.mob_types().get("minecraft:panda").unwrap().clone();
-            game.mobs.push(horizon_client::mobs::Mob::new(
-                99,
-                kind,
-                horizon_core::geometry::Vec3::new(0.5, 80.0, 0.5),
-                0.0,
-            ));
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    game.panda_sneezed(99);
-                },
-            );
-        });
     }
 }
 

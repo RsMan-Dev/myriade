@@ -43,13 +43,19 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
     true
 }
-fn start(w: &mut World, e: Entity, inst: Inst) {
-    let p = w.get::<Ambient>(e).unwrap().0;
-    if !p.sounds.is_empty() {
-        let pick = p.sounds[ambient_sound::pick(w.get_mut::<Rng>(e).unwrap().next_u32(), p.sounds.len())];
-        let at = w.get::<Pos>(e).unwrap().0;
-        w.resource_mut::<Events>().host.sound(pick, [at.x, at.y, at.z], 1.0, 1.0);
+/// The sound of the creature's ambient, drawn from its random source and queued at its place; false without one.
+pub fn play(w: &mut World, e: Entity) -> bool {
+    let Some(p) = w.get::<Ambient>(e).map(|a| a.0) else { return false };
+    if p.sounds.is_empty() {
+        return false;
     }
+    let pick = p.sounds[ambient_sound::pick(w.get_mut::<Rng>(e).unwrap().next_u32(), p.sounds.len())];
+    let at = w.get::<Pos>(e).unwrap().0;
+    w.resource_mut::<Events>().host.sound(pick, [at.x, at.y, at.z], 1.0, 1.0);
+    true
+}
+fn start(w: &mut World, e: Entity, inst: Inst) {
+    play(w, e);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {

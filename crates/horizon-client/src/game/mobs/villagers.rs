@@ -1,104 +1,18 @@
 //! What villagers do with each other and with the player: gossip and
 //! reputation, sharing food and wares, picking up dropped items, making
-//! babies, calling iron golems and the prices they ask. The logic runs in
-//! `horizon_gameplay::villagers` on the game's `VillagerLevel`; what stays here
+//! babies, calling iron golems and the prices they ask. What stays here
 //! needs the game itself: the particles, the player UUIDs, the merchant menu, the
 //! sleep hooks and the wake-up inside a mob pass.
 use super::Game;
-use horizon_client::items::ItemStack;
-use horizon_client::{
-    gossip::{self, GossipType},
-    items::Items,
-    mobs::{Mob, MobType, MobWorld, Seen, spawning::BiomeFacts, villager, villager_brain},
-    stations::StationData,
-};
+use horizon_client::mobs::{villager, villager_brain};
+#[cfg(test)]
+use horizon_client::mobs::Mob;
+#[cfg(test)]
 use horizon_core::geometry::Vec3;
-use horizon_core::position::BlockPos;
-use horizon_gameplay::villager_level::VillagerLevel;
-use std::{collections::HashSet, sync::Arc};
 
 impl Game<'_> {
-    fn villager_index(&self, id: u32) -> Option<usize> {
-        horizon_gameplay::villagers::villager_index(self, id)
-    }
     fn item_max_stack(&self, item: &str) -> u32 {
         horizon_gameplay::villagers::item_max_stack(self.items(), item)
-    }
-    /// `UseBonemeal.tick`'s `BoneMealItem.growCrop`: villager `id`'s first
-    /// bone meal on `pos`, with level event 1505 and the next crop to work
-    /// on when it grew.
-    pub(super) fn villager_bonemeal(&mut self, id: u32, pos: BlockPos) {
-        horizon_gameplay::villagers::villager_bonemeal(self, id, pos);
-    }
-    /// `WorkAtComposter.useWorkstation`: at a composter the farmer makes
-    /// bread, then composts seeds.
-    pub(super) fn villager_work_at_composter(&mut self, id: u32, pos: [i32; 3]) {
-        horizon_gameplay::villagers::villager_work_at_composter(self, id, pos);
-    }
-    /// `WorkAtComposter.makeBread`: up to three loaves from nine wheat while
-    /// the villager holds at most 36 bread; what does not fit drops.
-    fn villager_make_bread(&mut self, i: usize) {
-        horizon_gameplay::villagers::villager_make_bread(self, i);
-    }
-    /// `BehaviorUtils.throwItem`: toss a stack from a villager's hand toward
-    /// a point.
-    fn villager_throw(&mut self, from: Vec3, eye: f64, to: Vec3, stack: ItemStack) {
-        horizon_gameplay::villagers::villager_throw(self, from, eye, to, stack);
-    }
-
-    /// `TradeWithVillager.tick` for one pair: gossip (at most once in 1200
-    /// ticks for both), then surplus food and wanted wares tossed over.
-    pub(super) fn villager_meet(&mut self, a: u32, b: u32) {
-        let new_gossip = horizon_gameplay::villagers::villager_meet(self, a, b);
-        // Villager.gossip: a newly heard gossip refreshes the trading
-        // player's prices (`updateSpecialPrices`) right away.
-        if new_gossip > 0 {
-            self.villager_prices_refresh(a);
-        }
-    }
-
-    /// `Villager.updateSpecialPrices` for an open menu and tracked guests.
-    fn villager_prices_refresh(&mut self, id: u32) {
-        if self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id))
-        {
-            let reputation = self.villager_reputation(id);
-            self.menu_session(|menu, env, _| {
-                if let Some(session) = menu.merchant.as_mut() {
-                    session.reputation = reputation;
-                    session.update_special_prices();
-                }
-                menu.merchant_update(env);
-                Some(true)
-            });
-        }
-        self.lan_merchant_reputation(id);
-    }
-
-    /// `Villager.spawnGolemIfNeeded`: when enough villagers nearby that
-    /// slept recently and saw no golem agree, an iron golem appears.
-    pub(super) fn villager_golem_check(&mut self, id: u32, needed: usize) {
-        horizon_gameplay::villagers::villager_golem_check(self, id, needed);
-    }
-    /// `SpawnUtil.trySpawnMob(IRON_GOLEM, ...)`: a golem near `start`, with
-    /// the ambient sound `trySpawnMob` plays.
-    fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
-        horizon_gameplay::villagers::try_spawn_iron_golem(self, start)
-    }
-
-    /// `VillagerMakeLove.tryToGiveBirth`: both eat, a free bed within 48
-    /// blocks is taken for the child, who is a baby villager of one of
-    /// three villager types.
-    pub(super) fn villager_birth(
-        &mut self,
-        parent: u32,
-        partner: u32,
-        child: Option<([i32; 3], Option<u8>)>,
-    ) {
-        horizon_gameplay::villagers::villager_birth(self, parent, partner, child);
     }
     /// `Level.broadcastEntityEvent` of an event whose `handleEntityEvent`
     /// draws particles about the mob (villager 12, 13 and 14, taming 6 and 7,
@@ -110,18 +24,6 @@ impl Game<'_> {
         let at = [m.position.x, m.position.y, m.position.z];
         self.lan_entity_event(id as i32, event, at);
     }
-    /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the
-    /// nearest dropped item within 32 blocks that `Villager.wantsToPickUp`
-    /// accepts and the villager sees, or none.
-    pub(super) fn villager_item_sense(&mut self) {
-        horizon_gameplay::villagers::villager_item_sense(self);
-    }
-    /// `Mob.aiStep` item pickup for villagers (`InventoryCarrier`): food,
-    /// seeds and what their profession wants, from within a block.
-    pub(super) fn villager_pickups(&mut self) {
-        horizon_gameplay::villagers::villager_pickups(self);
-    }
-
     /// The UUID of a player by connection (None for the host).
     pub(super) fn player_uuid_of(&self, who: Option<u32>) -> Option<[i32; 4]> {
         let uuid = match who {
@@ -132,70 +34,9 @@ impl Game<'_> {
         };
         Some(horizon_client::lan::playerdata::uuid_ints(uuid))
     }
-    /// `Villager.setLastHurtByMob` and `ServerLevel.onReputationEvent`: a hit
-    /// from a player counts against that player with the villager that was hit.
-    pub(super) fn villager_reputation_tick(&mut self) {
-        horizon_gameplay::villagers::villager_reputation_tick(self);
-    }
-    /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
-    /// player kill one remember it as a major wrong.
-    /// `killer` is the guest connection that last hurt it (None: the host).
-    pub(super) fn villager_murdered(&mut self, victim: &Mob, by_player: bool, killer: Option<u32>) {
-        horizon_gameplay::villagers::villager_murdered(self, victim, by_player, killer);
-    }
-    /// Retain the accepted trade's actual player until the eligible mob AI
-    /// phase, including across menu close. XP and rewards stay in the session.
-    pub(super) fn villager_trade_pending(&mut self, id: u32) {
-        horizon_gameplay::villagers::villager_trade_pending(self, id);
-    }
-    /// The TRADE reputation event from the player `uuid` (a guest's too).
-    pub(super) fn villager_traded_by(&mut self, id: u32, uuid: [i32; 4]) {
-        let Some(i) = self.villager_index(id) else {
-            return;
-        };
-        villager::ext_mut(&mut self.remote_entities[i]).gossips.add(
-            uuid,
-            GossipType::Trading,
-            gossip::REPUTATION_CHANGE_PER_TRADE,
-        );
-        // Villager.customServerAiStep after a trade: entity event 14.
-        self.mob_event_particles(id, 14);
-        // onReputationEventFrom refreshes the current trading player's prices.
-        if self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id))
-        {
-            let reputation = self.villager_reputation(id);
-            self.menu_session(|menu, env, _| {
-                if let Some(session) = menu.merchant.as_mut() {
-                    session.reputation = reputation;
-                    session.update_special_prices();
-                }
-                menu.merchant_update(env);
-                Some(true)
-            });
-        }
-        self.lan_merchant_reputation(id);
-    }
-    /// `Villager.getPlayerReputation` of the local player.
-    pub(super) fn villager_reputation(&self, id: u32) -> i32 {
-        horizon_gameplay::villagers::villager_reputation(self, id)
-    }
-    /// `Villager.getPlayerReputation` of the player `uuid`.
-    pub(super) fn villager_reputation_of(&self, id: u32, uuid: [i32; 4]) -> i32 {
-        horizon_gameplay::villagers::villager_reputation_of(self, id, uuid)
-    }
     /// The Hero of the Village amplifier of the player, if any.
     pub(crate) fn hero_amplifier(&self) -> Option<i32> {
         self.potions.effects.amplifier("hero_of_the_village")
-    }
-    /// `AbstractBedBlock.kickVillagerOutOfBed`: the first sleeping villager
-    /// whose box touches the bed's head block wakes up
-    /// (`Villager.stopSleeping`). Whether one did.
-    pub(super) fn kick_villager_out_of_bed(&mut self, head: [i32; 3]) -> bool {
-        horizon_gameplay::villagers::kick_villager_out_of_bed(self, head)
     }
     /// Ask after this mob's tick Pre; its living tick applies the answer.
     pub(super) fn sync_sleeping_mob(&mut self, index: usize) {
@@ -238,96 +79,6 @@ impl Game<'_> {
         if let Err(e) = self.handle_mob_events(events) {
             log::warn!("waking villager {id}: {e}");
         }
-    }
-}
-
-impl VillagerLevel for Game<'_> {
-    fn items(&self) -> &Items {
-        Game::items(self)
-    }
-    fn stations(&self) -> &StationData {
-        Game::stations(self)
-    }
-    fn villager_picks_up(&self) -> Option<HashSet<String>> {
-        self.res
-            .items()
-            .item_tags
-            .get("minecraft:villager_picks_up")
-            .cloned()
-    }
-    fn mob_type(&self, id: &str) -> Option<Arc<MobType>> {
-        self.res.mob_types().get(id).cloned()
-    }
-    fn mob_world_seen<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
-        self.mob_world_base(others)
-    }
-    fn set_next_entity(&mut self, id: u32) {
-        self.next_entity = id;
-    }
-    fn mob_joined(&mut self, from: usize, natural: bool) {
-        self.native_mobs_joined(from, natural);
-    }
-    fn biome_facts(&self, x: i32, y: i32, z: i32) -> BiomeFacts {
-        Game::biome_facts(self, x, y, z)
-    }
-    fn spawn_mob_raw(&mut self, kind: &str, at: [f64; 3], persistent: bool) -> Option<u32> {
-        Game::spawn_mob_raw(self, kind, at, persistent)
-    }
-    fn mob_event_particles(&mut self, id: u32, event: i8) {
-        Game::mob_event_particles(self, id, event);
-    }
-    fn bonemeal_grow(&mut self, pos: BlockPos, stack: &mut ItemStack) -> (bool, Option<bool>) {
-        let ask = self.bonemeal(pos, false, stack);
-        let grown = ask.crop.unwrap_or_else(|| {
-            self.with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
-        });
-        (grown, ask.crop)
-    }
-    fn level_event(&mut self, event: horizon_world::level::LevelEvent) {
-        self.level_events.push(event);
-        let _ = self.process_level_events();
-    }
-    fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
-        Game::composter_level(self, pos)
-    }
-    fn compost_items(&mut self, mob: usize, pos: [i32; 3]) {
-        self.villager_compost_items(mob, pos);
-    }
-    fn hurt_by_player_uuid(&self, id: u32) -> Option<[i32; 4]> {
-        self.last_hurt_by_player.get(&id).and_then(|credit| {
-            self.resolve_player_credit(*credit)
-                .and_then(|who| self.player_uuid_of(who))
-        })
-    }
-    fn player_uuid_of(&self, who: Option<u32>) -> Option<[i32; 4]> {
-        Game::player_uuid_of(self, who)
-    }
-    fn lan_acting(&self) -> Option<u32> {
-        self.lan_acting
-    }
-    fn wake_villager(&mut self, id: u32) {
-        Game::wake_villager(self, id);
-    }
-    fn villager_index(&self, id: u32) -> Option<usize> {
-        Game::villager_index(self, id)
-    }
-    fn item_max_stack(&self, item: &str) -> u32 {
-        Game::item_max_stack(self, item)
-    }
-    fn villager_make_bread(&mut self, i: usize) {
-        Game::villager_make_bread(self, i);
-    }
-    fn villager_throw(&mut self, from: Vec3, eye: f64, to: Vec3, stack: ItemStack) {
-        Game::villager_throw(self, from, eye, to, stack);
-    }
-    fn villager_golem_check(&mut self, id: u32, needed: usize) {
-        Game::villager_golem_check(self, id, needed);
-    }
-    fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
-        Game::try_spawn_iron_golem(self, start)
-    }
-    fn villager_reputation_of(&self, id: u32, uuid: [i32; 4]) -> i32 {
-        Game::villager_reputation_of(self, id, uuid)
     }
 }
 
@@ -419,10 +170,6 @@ mod off_level_tests {
         });
     }
 }
-
-#[cfg(test)]
-#[path = "tests/villager_witness_tests.rs"]
-mod witness_tests;
 
 #[cfg(test)]
 mod birth_tests {

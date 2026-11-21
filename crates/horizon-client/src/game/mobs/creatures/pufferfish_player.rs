@@ -54,7 +54,8 @@ impl Game<'_> {
         let changes = self.potions.effects.changes;
         self.give_player_effect("minecraft:poison", 60 * puff, 0);
         if self.potions.effects.changes != changes {
-            self.trigger_effects_changed_by(Some(view));
+            let source = self.ecs_predicate_view(id);
+            self.trigger_effects_changed_by(Some(source));
         }
     }
     /// `ServerPlayer.connection.send(ClientboundGameEventPacket(PUFFER_FISH_STING, 0.0F))`: the

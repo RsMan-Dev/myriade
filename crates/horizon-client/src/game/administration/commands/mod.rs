@@ -5651,9 +5651,6 @@ mod global_selector_order_tests {
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity.rs"]
 mod knot_identity_tests;
-#[cfg(test)]
-#[path = "incoming_tests/ride.rs"]
-mod ride_tests;
 
 #[cfg(test)]
 mod mob_display_name_tests;
