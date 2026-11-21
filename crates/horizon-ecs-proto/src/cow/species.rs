@@ -130,11 +130,8 @@ pub struct Species {
     pub max_health: f32,
     pub water_slowdown: f32,
     pub lava_walker: bool,
-    /// `EntityTypeTags.UNDEAD` (the type's flag): poison and regeneration do nothing to it, healing hurts and harming heals.
-    pub undead: bool,
     pub water_efficiency: f32,
     pub eye_height: f64,
-    pub breathes_water: bool,
     /// The type (`minecraft:cow`...), whose size, speed and goals below are data of the species.
     pub name: &'static str,
     /// Whether the type is saved with its world (`Def::saved`): an entity of an unsaved species has no NBT.

@@ -60,11 +60,29 @@ pub fn install(root: &std::path::Path, species: &[Species]) {
     }
 }
 
+/// Declares a tag at run time (a mod's, without a data file) as the species `members` name, and gives it to `w`: the entities made after
+/// this call with those species get its marker. A name already known has its members replaced.
+pub fn declare(w: &mut World, name: &str, members: &[u8]) {
+    {
+        let mut all = MEMBERS.write().unwrap();
+        match all.iter().position(|(n, _)| n == name) {
+            Some(i) => all[i].1 = members.to_vec(),
+            None => all.push((name.to_owned(), members.to_vec())),
+        }
+    }
+    sync(w);
+}
+
 /// The id of a tag, given as `undead`, `#undead`, `minecraft:undead` or a mod's `ns:name`; None when no tag has that name.
 pub fn id(name: &str) -> Option<TagId> {
     let name = name.trim_start_matches('#');
     let key = if name.contains(':') { name.to_owned() } else { format!("minecraft:{name}") };
     MEMBERS.read().unwrap().iter().position(|(n, _)| *n == key).map(|i| TagId(i as u16))
+}
+
+/// Whether the tag names the species (by its `Species.id`), for the cold paths that have no entity yet (a test's setup).
+pub fn lists(name: &str, species: u8) -> bool {
+    id(name).is_some_and(|t| MEMBERS.read().unwrap()[usize::from(t.0)].1.contains(&species))
 }
 
 /// Gives a world its tags: each name is a component (a `typed` one is the component of its type), and each entity made later with a

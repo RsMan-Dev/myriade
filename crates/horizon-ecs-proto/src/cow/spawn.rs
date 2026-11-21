@@ -71,7 +71,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Frozen(0),
         Air(sp.max_air),
         Resist(sp.knockback_resistance),
-        Immune(crate::rules::attrs_of(sp.rules).immune | if sp.breathes_water { BREATHES_WATER } else { 0 }),
+        Immune(crate::rules::attrs_of(sp.rules).immune),
     )
 }
 

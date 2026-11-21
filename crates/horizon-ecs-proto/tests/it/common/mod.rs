@@ -217,7 +217,7 @@ pub fn ecs_cow(h: &mut Herd, x: f64, y: f64, z: f64, seed: u64) -> Entity {
 }
 /// A creature of the water lives in a pool (out of it, it flops in its own tick): a block of water around the cell where it stands.
 pub fn pool_if_aquatic(h: &mut Herd, x: i32, z: i32) {
-    if species().breathes_water {
+    if horizon_ecs_proto::type_tags::lists("can_breathe_under_water", species().id) {
         for dx in -2..=2 {
             for dz in -3..=3 {
                 for y in 1..=2 {

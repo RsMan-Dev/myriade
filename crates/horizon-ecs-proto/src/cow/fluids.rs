@@ -120,12 +120,12 @@ pub(crate) fn fluid_update(
 #[allow(clippy::type_complexity)]
 pub(crate) fn breathing(
     level: Res<Level>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid, Has<crate::behaviours::ender_teleport::WaterSensitive>), Or<(With<InFluid>, With<AirLow>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid, Has<crate::behaviours::ender_teleport::WaterSensitive>, Has<crate::effects::CanBreatheUnderWater>), Or<(With<InFluid>, With<AirLow>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, wet) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, wet, tag_breathes) in &mut q {
         // `Enderman.aiStep`: the water hurts it (1 a tick, through the invulnerability window), and the hurt sends it away.
         if wet && fs.in_water {
             queue.add(e, 1.0, Cause::Drown);
@@ -134,7 +134,7 @@ pub(crate) fn breathing(
             let (x, y, z) = (pos.0.x.ifloor(), (pos.0.y + fp.eye_height).ifloor(), pos.0.z.ifloor());
             mw.block_name(x, y, z) != "minecraft:bubble_column"
         };
-        let drowns = submerged && !imm.has(BREATHES_WATER);
+        let drowns = submerged && !imm.has(BREATHES_WATER) && !tag_breathes;
         let vanilla = horizon_client_lib::breathing::Breath {
             can_breathe: !drowns,
             consume: 1,

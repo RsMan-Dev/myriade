@@ -34,9 +34,6 @@ pub const ITEM_FRAME: &str = "minecraft:item_frame";
 pub const GLOW_ITEM_FRAME: &str = "minecraft:glow_item_frame";
 pub const PAINTING: &str = "minecraft:painting";
 
-pub fn is_illager(name: &str) -> bool {
-    matches!(name, "minecraft:evoker" | "minecraft:illusioner" | "minecraft:pillager" | "minecraft:vindicator")
-}
 pub fn is_vex(name: &str) -> bool {
     name == "minecraft:vex"
 }
