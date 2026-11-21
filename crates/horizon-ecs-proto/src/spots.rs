@@ -24,6 +24,10 @@ pub enum WalkValue {
     Bee,
     /// `Turtle.getWalkTargetValue` (not going home): water or sand under the spot 10, else the light.
     Turtle,
+    /// `Guardian.getWalkTargetValue`: water 10 plus the light, else the monster's.
+    Guardian,
+    /// `HappyGhast.getWalkTargetValue`: open air only, 10 just above the ground, else 5.
+    HappyGhast,
 }
 /// The value of walking to the block `p` (the species' preference).
 pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
@@ -43,6 +47,23 @@ pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
                 10.0
             } else {
                 light()
+            }
+        }
+        WalkValue::Guardian => {
+            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water {
+                10.0 + light()
+            } else {
+                -light()
+            }
+        }
+        WalkValue::HappyGhast => {
+            let air = |y: i32| mw.facts.is_air(mw.world.block(p[0], y, p[2]));
+            if !air(p[1]) {
+                0.0
+            } else if air(p[1] - 1) && !air(p[1] - 2) {
+                10.0
+            } else {
+                5.0
             }
         }
         WalkValue::Bee => {

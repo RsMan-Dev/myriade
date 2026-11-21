@@ -52,6 +52,8 @@ pub(crate) fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType)
         S::Mooshroom => W::Mooshroom,
         S::Bee => W::Bee,
         S::Turtle => W::Turtle,
+        S::Guardian | S::ElderGuardian => W::Guardian,
+        S::HappyGhast => W::HappyGhast,
         S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
         S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
         _ if mob.hostile() => W::Monster,

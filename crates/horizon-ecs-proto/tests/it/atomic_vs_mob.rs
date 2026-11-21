@@ -54,11 +54,11 @@ fn stable_destination_is_the_mob_stable_destination() {
     if !have_data() {
         return;
     }
+    let (mut r, _h) = flat_pair();
     if matches!(species().name, "minecraft:bee" | "minecraft:turtle") {
         horizon_ecs_proto::cow::skip_note("stable_destination_is_the_mob_stable_destination", "the bee and the turtle have their own navigation");
         return;
     }
-    let (mut r, _h) = flat_pair();
     scene(&r);
     let i = r.add(Vec3::new(0.5, 1.0, 0.5));
     for x in -12..=12 {

@@ -517,6 +517,17 @@ fn sun_eval(
         }
     }
 }
+/// `Mob.isSunBurnTick`'s other wet cases: rain at the feet or at the top of the box (`Entity.isInRain`), or the box in powder snow.
+fn wet_by_weather(mw: &horizon_client_lib::mobs::MobWorld, p: Vec3, bd: &Body) -> bool {
+    let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+    if mw.raining_at(x, y, z) || mw.raining_at(x, (p.y + f64::from(bd.height)).floor() as i32, z) {
+        return true;
+    }
+    let r = f64::from(bd.width) / 2.0 - 1.0e-5;
+    let (x0, x1, z0, z1) = ((p.x - r).floor() as i32, (p.x + r).floor() as i32, (p.z - r).floor() as i32, (p.z + r).floor() as i32);
+    let (y0, y1) = ((p.y + 1.0e-5).floor() as i32, (p.y + f64::from(bd.height) - 1.0e-5).floor() as i32);
+    (x0..=x1).any(|x| (y0..=y1).any(|y| (z0..=z1).any(|z| &*mw.facts.get(mw.world.block(x, y, z)).name == "minecraft:powder_snow")))
+}
 /// The draw came up: a monster that is not wet catches fire for 160 ticks (`ignite_for_ticks`), and the next draw is
 /// armed while it stays exposed.
 #[allow(clippy::type_complexity)]
@@ -528,6 +539,7 @@ fn sun_burn(
     mut wheel: ResMut<Wheel>,
     mut events: ResMut<crate::goals::Events>,
     mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng)>,
+    bodies: Query<(&Pos, &Body)>,
     mut cmd: Commands,
 ) {
     for e in std::mem::take(&mut fired.0) {
@@ -542,7 +554,7 @@ fn sun_burn(
                 w.entity_mut(e).remove::<crate::targeting::Target>();
                 crate::behaviours::ender_teleport::random(w, e);
             });
-        } else if !fs.in_water {
+        } else if !fs.in_water && !bodies.get(e).is_ok_and(|(p, bd)| wet_by_weather(level.mw.0, p.0, bd)) {
             let until = now + 160;
             match burning {
                 None => {

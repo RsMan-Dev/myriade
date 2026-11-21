@@ -423,8 +423,15 @@ pub fn steer_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
     w.entity_mut(e).insert(Moving);
 }
 fn wrap_degrees(d: f32) -> f32 {
-    let r = d.rem_euclid(360.0);
-    if r >= 180.0 { r - 360.0 } else { r }
+    // `Mth.wrapDegrees`: the remainder keeps its sign (`%`), then both bounds.
+    let mut r = d % 360.0;
+    if r >= 180.0 {
+        r -= 360.0;
+    }
+    if r < -180.0 {
+        r += 360.0;
+    }
+    r
 }
 fn approach(from: f32, to: f32, step: f32) -> f32 {
     if from < to { (from + step).min(to) } else { (from - step).max(to) }
@@ -511,10 +518,17 @@ pub fn move_relative_3d(vel: &mut Vel, yaw: f32, speed: f32, xxa: f32, yya: f32,
     let input = Vec3::new(f64::from(xxa), f64::from(yya), f64::from(zza));
     let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
     if len_sq < 1.0e-7 {
+        // `getInputVector` is `Vec3.ZERO`, still added to the motion: a -0.0 becomes 0.0.
+        vel.0 = Vec3::new(vel.0.x + 0.0, vel.0.y + 0.0, vel.0.z + 0.0);
         return;
     }
     let l = len_sq.sqrt();
-    let i = if len_sq > 1.0 { Vec3::new(input.x / l, input.y / l, input.z / l) } else { input };
+    let i = if len_sq > 1.0 {
+        // `Vec3.normalize`: ZERO under 1.0E-5.
+        if l < f64::from(1.0e-5_f32) { Vec3::ZERO } else { Vec3::new(input.x / l, input.y / l, input.z / l) }
+    } else {
+        input
+    };
     let i = Vec3::new(i.x * f64::from(speed), i.y * f64::from(speed), i.z * f64::from(speed));
     let angle = f64::from(yaw * trig::DEG_TO_RAD);
     let (s, co) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
