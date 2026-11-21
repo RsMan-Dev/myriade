@@ -30,16 +30,12 @@ thousands.
 > Myriade is under heavy development and is **not playable yet**.
 > **The first playable builds are coming soon.**
 
-What exists today lives in [`crates/horizon-ecs-proto`](crates/horizon-ecs-proto). It is a proving
-ground, not something to use on its own: the place where the ECS is written and tested before it
-is plugged into the game. It holds:
+Done so far: the game's mobs and other non-player entities are rewritten as components and
+systems, each one checked against the original behaviour and measured for what it costs per tick,
+awake and asleep.
 
-- the behaviour of the game's mobs and other non-player entities, rewritten as components and systems;
-- a test suite that runs each of them next to Horizon's original implementation and compares what the player would see;
-- cost gates that measure what an entity costs per tick, awake and asleep.
-
-What is still ahead: plugging the ECS into the running game in place of the original entity code,
-then block entities. Until that is done, the playable game in this repository is still Horizon's.
+Next: plugging the ECS into the running game in place of the original entity code, which is what
+the first playable builds will ship. Block entities come after.
 
 ## Why
 
@@ -77,16 +73,9 @@ from read-only data, and their effects on the shared world are then applied in a
 
 ## Build
 
-You need a Rust toolchain. A [Nix](https://nixos.org) flake is provided for a ready-made environment.
-
-```sh
-cargo build -p horizon-ecs-proto
-```
-
-The test suite compares the ECS against the original implementation on real game data, so it needs
-resources built from **your own copy of Minecraft: Java Edition 26.3**. Myriade ships no Minecraft
-files. See Horizon's [build guide](docs/native-client.md#run-from-a-checkout) for how the game is
-built and run from a checkout.
+Myriade builds like Horizon: a Rust toolchain, or the provided [Nix](https://nixos.org) flake, and
+**your own copy of Minecraft: Java Edition 26.3**. Myriade ships no Minecraft files. See the
+[build guide](docs/native-client.md#run-from-a-checkout).
 
 The documentation under [`docs/`](docs), along with `CONTRIBUTING.md`, `GOVERNANCE.md` and
 `ROADMAP.md`, is inherited from Horizon and describes Horizon. Myriade's own documentation will
