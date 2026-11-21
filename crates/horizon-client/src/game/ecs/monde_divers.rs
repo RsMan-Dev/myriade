@@ -46,7 +46,7 @@ impl Game<'_> {
         self.ecs.entity_of(id).is_some_and(|e| self.ecs.world().is_some_and(|w| w.get::<Cfg>(e).is_some()))
     }
     /// The ECS entities whose box meets `strike`, from the index around its centre (no scan of the level).
-    pub(in crate::game) fn ecs_in_box(&self, strike: Aabb) -> Vec<Entity> {
+    pub(in crate::game) fn ecs_entities_in_box(&self, strike: Aabb) -> Vec<Entity> {
         let (lo, hi) = (strike.min_position(), strike.max_position());
         let at = [(lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0];
         let reach = (hi - lo).length() / 2.0 + BOX_MARGIN;

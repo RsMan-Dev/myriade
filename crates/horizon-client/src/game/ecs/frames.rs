@@ -9,16 +9,6 @@ use horizon_ecs_proto::bridge::select::Select;
 use horizon_client::mobs::Who;
 use horizon_ecs_proto::{host_out_frames::FrameEvent, targeting};
 
-impl Game<'_> {
-    /// The host's `Who` of a bridge `Who`: the player (the acting one), or the mob of its ECS entity.
-    fn host_who(&mut self, who: Option<targeting::Who>) -> Option<Who> {
-        match who? {
-            targeting::Who::Player(_) => Some(Who::Player),
-            targeting::Who::Entity(e) => Some(Who::Mob(self.ecs_id_of(e))),
-        }
-    }
-}
-
 /// The sound and item name prefix of a frame: `glow_item_frame` for a glow frame.
 fn frame_kind(glow: bool) -> &'static str {
     if glow { "glow_item_frame" } else { "item_frame" }
@@ -31,7 +21,7 @@ impl Game<'_> {
                 FrameEvent::Placed { who, spot } => {
                     let c = block_centre(spot.at);
                     self.audio.play(&format!("minecraft:entity.{}.place", frame_kind(spot.glow)), Some(c), 1.0, 1.0);
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:entity_place", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
@@ -39,7 +29,7 @@ impl Game<'_> {
                 FrameEvent::PaintingPlaced { who, spot } => {
                     let c = block_centre(spot.at);
                     self.audio.play("minecraft:entity.painting.place", Some(c), 1.0, 1.0);
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:entity_place", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
@@ -48,7 +38,7 @@ impl Game<'_> {
                     let c = block_centre(spot.at);
                     self.audio.play(&format!("minecraft:entity.{}.add_item", frame_kind(spot.glow)), Some(c), 1.0, 1.0);
                     self.frame_output_changed(spot.at);
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:block_change", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
@@ -63,7 +53,7 @@ impl Game<'_> {
                     let c = block_centre(spot.at);
                     self.audio.play(&format!("minecraft:entity.{}.rotate_item", frame_kind(spot.glow)), Some(c), 1.0, 1.0);
                     self.frame_output_changed(spot.at);
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:block_change", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
@@ -75,7 +65,7 @@ impl Game<'_> {
                     if drop {
                         self.spawn_item(stack, drop_at, [0.0; 3], 10);
                     }
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:block_change", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
@@ -87,7 +77,7 @@ impl Game<'_> {
                         let item = if spot.glow { "minecraft:glow_item_frame" } else { "minecraft:item_frame" };
                         self.spawn_item(ItemStack::new(item, 1), drop_at, [0.0; 3], 10);
                     }
-                    let host = self.host_who(who);
+                    let host = self.host_who_opt(who);
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:block_change", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));

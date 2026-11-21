@@ -1,6 +1,7 @@
 //! The primed TNT on the bridge: lit by a player or a mob (`prime_tnt`, with the push of its constructor and its `Fuse`), its blast at the
 //! fuse's end (`tnt_explode`, explosion.rs `explode_tnt` through `explode_with`), and the events read at the step (`drain_tnt`).
 use crate::bridge::host::EcsWorld;
+use bevy_ecs::entity::Entity;
 use crate::explosion::ExplosionRng;
 use crate::host_out_tnt::TntEvent;
 use crate::projectile::Blast;

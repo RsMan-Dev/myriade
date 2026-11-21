@@ -6,6 +6,7 @@ use crate::falling_block::FallingBlock;
 use crate::projectile_more::{ensure_rng, ThrownRng};
 use crate::rules::falling_block::{anvil_steps, anvil_wear_chance, anvil_worn_name};
 use bevy_ecs::prelude::*;
+use horizon_core::random::RandomSource;
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
@@ -97,7 +98,7 @@ pub fn land(w: &mut World, e: Entity) -> Landing {
     let mw = crate::blocks::world_of(w);
     let name = mw.facts.get(b.state).name.to_string();
     let mut state = b.state;
-    if name.ends_with("anvil") && hurt_amount(&name, b.fell) > 0.0 {
+    if name.ends_with("anvil") && fall_damage(b.settings.fall_hurt_amount, b.settings.fall_hurt_max, b.fell) > 0.0 {
         ensure_rng(w);
         if w.resource_mut::<ThrownRng>().0.next_float() < anvil_wear_chance(anvil_steps(b.fell)) {
             let kind = name.strip_prefix("minecraft:").and_then(|n| n.strip_suffix("anvil")).unwrap_or("");

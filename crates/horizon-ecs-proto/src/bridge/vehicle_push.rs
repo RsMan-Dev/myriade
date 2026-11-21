@@ -22,7 +22,7 @@ impl EcsWorld {
         w.get::<crate::boat_state::BoatMarker>(e).is_some() || w.get::<crate::cart_state::Cart>(e).is_some()
     }
     /// Whether a push moves `e` (`Entity.isPushable`, not carrying riders).
-    pub fn pushable(&self, e: Entity) -> bool {
+    pub fn push_moves(&self, e: Entity) -> bool {
         vehicle_push::pushable(self.world(), e)
     }
 }

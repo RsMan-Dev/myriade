@@ -8,11 +8,16 @@ use horizon_ecs_proto::{host_out_tnt::TntEvent, targeting};
 
 impl Game<'_> {
     /// The host side of a bridge `Who`: the player, or the mob of its ECS entity.
-    fn host_who(&mut self, who: targeting::Who) -> Who {
+    pub(in crate::game) fn host_who(&mut self, who: targeting::Who) -> Who {
         match who {
             targeting::Who::Player(_) => Who::Player,
             targeting::Who::Entity(e) => Who::Mob(self.ecs_id_of(e)),
         }
+    }
+
+    /// `host_who` of an optional bridge `Who` (an event whose cause may be absent).
+    pub(in crate::game) fn host_who_opt(&mut self, who: Option<targeting::Who>) -> Option<Who> {
+        who.map(|w| self.host_who(w))
     }
 }
 

@@ -167,7 +167,7 @@ fn shot_flame(
     mut landed: (RemovedComponents<Flying>, RemovedComponents<TridentFlying>),
 ) {
     let mw = level.mw.0;
-    let mut check = |e: Entity, p: Vec3, size: f32, burning: bool| {
+    let mut check = |e: Entity, p: Vec3, size: f64, burning: bool| {
         if let Some(t) = flame(mw, &mut kinds, &crate::arrow_more::arrow_box(p, size), p, burning) {
             commands.queue(move |w: &mut World| light(w, e, t));
         }

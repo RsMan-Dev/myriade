@@ -51,14 +51,6 @@ impl Game<'_> {
         self.ecs.hook_of(EcsWho::Player(self.ecs_fisher()?))
     }
 
-    /// The ECS's name for a mob or player as the hook events and the catch use it (guests count as the player's mob).
-    fn host_who(&mut self, who: EcsWho) -> Who {
-        match who {
-            EcsWho::Player(_) => Who::Player,
-            EcsWho::Entity(e) => Who::Mob(self.ecs_id_of(e)),
-        }
-    }
-
     /// Casts the acting player's hook from `at` with `velocity`, its Luck and Lure levels; the id it gets is the one hook out.
     pub(in crate::game) fn ecs_cast_hook(&mut self, at: [f64; 3], velocity: [f64; 3], luck: u8, lure: u8) {
         let Some(owner) = self.ecs_fisher() else {

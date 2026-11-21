@@ -461,12 +461,9 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
         }
         let scale = rule::splash_scale(d2, direct);
         for &brew in brews {
-            let (brew, flags) = match brew {
-                Brew::Flagged(kind, amp, ticks, flags) => (Brew::Timed(kind, amp, ticks), flags),
-                b => (b, 0),
-            };
+            let flags = if let Brew::Flagged(.., flags) = brew { flags } else { 0 };
             match brew {
-                Brew::Timed(kind, amp, ticks) => {
+                Brew::Timed(kind, amp, ticks) | Brew::Flagged(kind, amp, ticks, _) => {
                     let t = rule::timed_ticks(scale, ticks);
                     if t > 0 {
                         add_flagged(w, c, kind, amp, t, flags);

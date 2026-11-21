@@ -15,7 +15,7 @@ fn main() {
         out_dir.join("game_modules.rs"),
         horizon_game_discovery::declarations(
             &root.join("crates/horizon-client/src/game"),
-            &["native_hooks", "host", "creatures"],
+            &["native_hooks", "host", "creatures", "ecs"],
         )
         .expect("discovering game modules"),
     )

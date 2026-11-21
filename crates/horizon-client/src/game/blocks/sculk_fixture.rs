@@ -787,7 +787,7 @@ impl Game<'_> {
                         .map(|p| [p.position.x, p.position.y, p.position.z])
                         .unwrap_or_default();
                     if self.ecs.is_active() {
-                        self.ecs_hurt(id, amount, Some(Who::Player));
+                        self.ecs_hurt_by(id, amount, Some(Who::Player));
                     } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         m.damage(
                             crate::game::entity::damage_level_of!(self),

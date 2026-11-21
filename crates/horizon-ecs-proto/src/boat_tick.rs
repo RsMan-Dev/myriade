@@ -52,7 +52,7 @@ pub struct BoatEvents(pub Vec<BoatEvent>);
 
 /// The events the boats made since the last call, in order.
 pub fn take_boat_events(w: &mut World) -> Vec<BoatEvent> {
-    w.get_resource_mut::<BoatEvents>().map(|e| std::mem::take(&mut e.0)).unwrap_or_default()
+    w.get_resource_mut::<BoatEvents>().map(|mut e| std::mem::take(&mut e.0)).unwrap_or_default()
 }
 
 /// `Mth`'s sine table through `trig` (`controlBoat`): the push of the paddles along the yaw, widened to double.
@@ -269,7 +269,7 @@ fn eject_out_of_control(w: &mut World, e: Entity) {
 
 /// The boats' events queue, created on the first one.
 fn events(w: &mut World) -> &mut Vec<BoatEvent> {
-    &mut w.get_resource_or_insert_with(BoatEvents::default).0
+    &mut w.get_resource_or_insert_with(BoatEvents::default).into_inner().0
 }
 
 /// `AbstractBoat.tick` for the awake boats only: a sleeping boat is not in the query, so it costs nothing.

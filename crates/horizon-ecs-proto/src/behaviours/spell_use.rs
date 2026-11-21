@@ -268,7 +268,7 @@ fn fangs(w: &mut World, e: Entity, _allies: &'static [&'static str]) {
     let (min_y, max_y) = (t.pos.y.min(me.y), t.pos.y.max(me.y) + 1.0);
     for (x, z, delay) in rules::fang_spots(me, t.pos, d2(me, t.pos) < 9.0) {
         if let Some(y) = floor(w, x, z, min_y, max_y) {
-            crate::fangs::spawn_fang(w, Vec3::new(x, y, z), delay, e);
+            crate::fangs::spawn_fang(w, Vec3::new(x, y, z), delay, Some(Who::Entity(e)));
         }
     }
 }

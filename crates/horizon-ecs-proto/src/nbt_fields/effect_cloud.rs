@@ -86,7 +86,7 @@ fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
         s.age_base = *v;
     }
     if *v < wait {
-        after(w, e, (wait - *v) as u64, wake);
+        after(w, e, wait - *v, wake);
     } else {
         wake(w, e);
     }

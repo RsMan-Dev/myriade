@@ -58,7 +58,7 @@ impl Game<'_> {
         }
     }
     /// Hurts the ECS entity `id` by `amount`, from `attacker` (a player is its source by entity id).
-    pub(in crate::game) fn ecs_hurt(&mut self, id: u32, amount: f32, attacker: Option<Who>) {
+    pub(in crate::game) fn ecs_hurt_by(&mut self, id: u32, amount: f32, attacker: Option<Who>) {
         let Some(e) = self.ecs.entity_of(id) else {
             return;
         };

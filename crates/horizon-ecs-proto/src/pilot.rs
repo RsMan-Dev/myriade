@@ -26,6 +26,11 @@ pub struct PilotInput {
     pub keys: [bool; 4],
 }
 
+/// The keys (left, right, up, down) a pilot input of `forward` and `strafe` stands for (`strafe` above 0 is right).
+pub fn keys_of(forward: f32, strafe: f32) -> [bool; 4] {
+    [strafe < 0.0, strafe > 0.0, forward > 0.0, forward < 0.0]
+}
+
 /// Sets the pilot's input of `vehicle` and wakes the vehicle. False, and nothing written, when the vehicle already holds this input.
 pub fn set(world: &mut World, vehicle: Entity, input: PilotInput) -> bool {
     if world.get::<PilotInput>(vehicle) == Some(&input) {

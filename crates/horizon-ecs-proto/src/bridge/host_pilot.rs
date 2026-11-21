@@ -9,7 +9,7 @@ impl EcsWorld {
     /// `who` steers `vehicle` with this input. False, and nothing written, when `vehicle` already holds it.
     #[allow(clippy::too_many_arguments)]
     pub fn pilot_input(&mut self, vehicle: Entity, who: Who, forward: f32, strafe: f32, yaw: f32, pitch: f32, jump: f32, sprint: bool, sneak: bool, steer: bool) -> bool {
-        pilot::set(self.world_mut(), vehicle, PilotInput { who, forward, strafe, yaw, pitch, jump, sprint, sneak, steer })
+        pilot::set(self.world_mut(), vehicle, PilotInput { who, forward, strafe, yaw, pitch, jump, sprint, sneak, steer, keys: pilot::keys_of(forward, strafe) })
     }
 
     /// The pilot left `vehicle`: its input goes and its keys are back to rest.

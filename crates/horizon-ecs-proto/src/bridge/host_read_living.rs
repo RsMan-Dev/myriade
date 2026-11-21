@@ -28,7 +28,7 @@ fn default_attack_reach() -> f64 {
 }
 
 /// The vanilla registry names of the effects this crate models, with their kind.
-const NAMES: [(&str, Kind); 15] = [
+const NAMES: [(&str, Kind); 16] = [
     ("minecraft:speed", Kind::Speed),
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
@@ -62,7 +62,7 @@ const STANDING: u8 = 0;
 
 impl EcsWorld {
     /// The world, when `e` exists: a dead entity answers no flag.
-    fn alive(&self, e: Entity) -> Option<&World> {
+    fn existing(&self, e: Entity) -> Option<&World> {
         let w = self.world();
         w.get_entity(e).ok().map(|_| w)
     }
@@ -85,7 +85,7 @@ impl EcsWorld {
     }
     /// The state a flag names: `on_fire`, `sleeping`, `invisible`, `frozen`. Any other name is None.
     pub fn flag(&self, e: Entity, name: &str) -> Option<bool> {
-        let w = self.alive(e)?;
+        let w = self.existing(e)?;
         let now = now_of(w, e);
         Some(match name {
             "on_fire" => w.get::<Burning>(e).is_some_and(|b| b.until > now),

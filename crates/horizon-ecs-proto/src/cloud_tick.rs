@@ -139,12 +139,8 @@ fn affect(w: &mut World, cloud: Entity, at: Vec3, who: Who, brews: &[Brew], c: &
     }
     for &brew in brews {
         // A custom effect's flags are the cloud's own lists for now: its brew is timed like a named one.
-        let brew = match brew {
-            Brew::Flagged(kind, amp, ticks, _) => Brew::Timed(kind, amp, ticks),
-            b => b,
-        };
         let (harm, level) = match brew {
-            Brew::Timed(kind, amp, ticks) => {
+            Brew::Timed(kind, amp, ticks) | Brew::Flagged(kind, amp, ticks, _) => {
                 let (ticks, flags) = (rule::scaled(ticks, c.duration_scale), flags(c, kind));
                 match who {
                     Who::Player(_) => {

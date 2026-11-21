@@ -175,7 +175,8 @@ pub fn own(w: &mut World, owner: u32, e: Entity) {
 fn index_wait(w: &mut World, e: Entity) {
     let Some(key) = w.get::<Pos>(e).map(|p| crate::fishing_hook::cell(p.0)) else { return };
     w.init_resource::<HookIndex>();
-    let list = w.resource_mut::<HookIndex>().cells.entry(key).or_default();
+    let mut index = w.resource_mut::<HookIndex>();
+    let list = index.cells.entry(key).or_default();
     if !list.contains(&e) {
         list.push(e);
     }
@@ -183,7 +184,7 @@ fn index_wait(w: &mut World, e: Entity) {
 
 /// The waiting hooks of the cell `key`, the ones still waiting (the others are dropped).
 pub fn waiting_at(w: &mut World, key: [i32; 3]) -> Vec<Entity> {
-    let list = w.get_resource_mut::<HookIndex>().and_then(|x| x.cells.remove(&key)).unwrap_or_default();
+    let list = w.get_resource_mut::<HookIndex>().and_then(|mut x| x.cells.remove(&key)).unwrap_or_default();
     let live: Vec<Entity> = list.into_iter().filter(|&e| w.get::<Wait>(e).is_some()).collect();
     if !live.is_empty() {
         w.resource_mut::<HookIndex>().cells.insert(key, live.clone());
@@ -200,8 +201,9 @@ pub fn owner_changed(w: &mut World, owner: u32, player: Option<Player>) {
     }
     let stop = player.is_none_or(|p| {
         let rod = item_id("minecraft:fishing_rod");
-        let d = w.get::<Pos>(e).map_or(Vec3::ZERO, |q| q.0) - Vec3::new(p.x, p.y, p.z);
-        !p.holds(rod) || d.x * d.x + d.y * d.y + d.z * d.z > 1024.0
+        let q = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
+        let (dx, dy, dz) = (q[0] - p.x, q[1] - p.y, q[2] - p.z);
+        !p.holds(rod) || dx * dx + dy * dy + dz * dz > 1024.0
     });
     if stop {
         leave_water(w, e);

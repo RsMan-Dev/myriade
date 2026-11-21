@@ -32,10 +32,10 @@ impl EcsLevel {
         w.cart_use(mw, e, player, hand)
     }
 
-    /// `EcsWorld::cart_fuel` on the furnace cart `id`: false when it is not taken.
-    pub fn cart_fuel(&mut self, id: u32) -> bool {
+    /// `EcsWorld::cart_feed` on the furnace cart `id`: false when it is not taken.
+    pub fn cart_feed(&mut self, id: u32) -> bool {
         let Some(e) = self.entity_of(id) else { return false };
-        self.ecs_mut().is_some_and(|w| w.cart_fuel(e))
+        self.ecs_mut().is_some_and(|w| w.cart_feed(e))
     }
 
     /// `EcsWorld::cart_ignite` on the cart `id`.

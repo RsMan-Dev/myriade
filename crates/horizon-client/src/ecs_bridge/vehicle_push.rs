@@ -22,9 +22,9 @@ impl EcsLevel {
         Some(([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z]))
     }
     /// Whether a push moves the entity `id` (false when it is not in the level).
-    pub fn pushable(&self, id: u32) -> bool {
+    pub fn push_moves(&self, id: u32) -> bool {
         let (Some(e), Some(w)) = (self.entity_of(id), self.ecs()) else { return false };
-        w.pushable(e)
+        w.push_moves(e)
     }
     /// Whether the entity `id` is a boat or a cart (false when it is not in the level).
     pub fn is_vehicle(&self, id: u32) -> bool {

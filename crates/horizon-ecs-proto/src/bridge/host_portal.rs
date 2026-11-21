@@ -54,7 +54,6 @@ impl EcsWorld {
                 .collect()
         })
     }
-    }
 
     /// The box of the creature by its species' data and its age: a baby (`GrowAt` still running) has the baby box.
     pub fn size(&self, e: Entity) -> Option<(f32, f32)> {

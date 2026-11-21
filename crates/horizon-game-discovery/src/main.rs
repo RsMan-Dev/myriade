@@ -66,7 +66,7 @@ fn expand_items(
             {
                 Some(horizon_game_discovery::declarations(
                     &root.join("crates/horizon-client/src/game"),
-                    &["native_hooks", "host", "creatures"],
+                    &["native_hooks", "host", "creatures", "ecs"],
                 )?)
             } else if tokens.contains("builtin_ingredient_test_modules.rs") {
                 Some(horizon_game_discovery::folder_modules(&root.join(

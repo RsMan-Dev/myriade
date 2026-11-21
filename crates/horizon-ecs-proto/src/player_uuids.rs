@@ -53,7 +53,7 @@ pub fn wait(w: &mut World, uuid: u128, e: Entity, slot: Slot) {
 /// The player `id` joined with `uuid`: its entries are set, and the entities waiting for `uuid` take it. A lead that the distance refuses
 /// waits for the next connection of the player.
 pub fn join(w: &mut World, id: u32, uuid: u128) {
-    let table = w.get_resource_or_insert_with(PlayerUuids::default);
+    let mut table = w.get_resource_or_insert_with(PlayerUuids::default);
     if let Some(old) = table.by_id.insert(id, uuid) {
         if table.by_uuid.get(&old) == Some(&id) {
             table.by_uuid.remove(&old);

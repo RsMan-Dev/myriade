@@ -57,7 +57,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 }
 
 fn out(w: &mut World) -> &mut Vec<CartEvent> {
-    &mut w.get_resource_or_insert_with(CartOut::default).0
+    &mut w.get_resource_or_insert_with(CartOut::default).into_inner().0
 }
 
 /// Arms `f` on the wheel for `e` unless an entry of it is already there (an activation may come every tick).

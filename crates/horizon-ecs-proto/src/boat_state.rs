@@ -182,7 +182,7 @@ fn write_loot_table(w: &World, e: Entity, c: &mut Compound) {
 }
 fn read_loot_table(w: &mut World, e: Entity, t: &Tag) -> bool {
     let (Some(mut k), Tag::String(s)) = (w.get_mut::<Chest>(e), t) else { return false };
-    k.loot = Some(PendingLoot { table: s.to_string_lossy().into_owned(), seed: 0 });
+    k.loot = Some(PendingLoot { table: s.to_string_lossy(), seed: 0 });
     true
 }
 

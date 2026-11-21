@@ -19,7 +19,7 @@ impl EcsWorld {
     }
 
     /// A fuel item given to the furnace cart `e`: true when it took it (the fuel is under the cap), and the furnace is lit.
-    pub fn cart_fuel(&mut self, e: Entity) -> bool {
+    pub fn cart_feed(&mut self, e: Entity) -> bool {
         cart_variants::fuel_cart(self.world_mut(), e)
     }
 

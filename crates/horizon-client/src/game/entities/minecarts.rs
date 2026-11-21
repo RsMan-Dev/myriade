@@ -641,7 +641,7 @@ impl Game<'_> {
                 let fuel = held
                     .as_ref()
                     .is_some_and(|s| matches!(&*s.item, "minecraft:coal" | "minecraft:charcoal"));
-                let fueled = fuel && self.ecs.cart_fuel(id);
+                let fueled = fuel && self.ecs.cart_feed(id);
                 if fueled && !self.creative {
                     self.consume_held();
                 }

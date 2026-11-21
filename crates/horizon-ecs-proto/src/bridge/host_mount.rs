@@ -58,7 +58,7 @@ impl EcsWorld {
         let held = w.resource::<Online>().get(id).map_or(0, |p| p.main);
         let steer = held == goals::carrot_on_a_stick() || held == goals::warped_fungus_on_a_stick();
         let jump = if jump_held { 0.0 } else { jump };
-        pilot::set(w, e, PilotInput { who: Who::Player(id), forward: move_xz[1], strafe: move_xz[0], yaw, pitch, jump, sprint, sneak: false, steer });
+        pilot::set(w, e, PilotInput { who: Who::Player(id), forward: move_xz[1], strafe: move_xz[0], yaw, pitch, jump, sprint, sneak: false, steer, keys: pilot::keys_of(move_xz[1], move_xz[0]) });
     }
 
     /// `AbstractHorse.handleStartJump`: a jumpable mount with a rider starts its jump and plays its sound. None when refused.
