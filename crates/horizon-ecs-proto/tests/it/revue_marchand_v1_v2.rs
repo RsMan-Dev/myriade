@@ -367,9 +367,9 @@ fn hero_gift_is_thrown_toward_the_player_after_the_wait_vs_mob() {
     eprintln!("gift: ecs tick {e:?} x {ex}; mob tick {m:?} from {from:?} to {to:?}");
     let (e, m) = (e.expect("the ECS villager throws no gift"), m.expect("the Mob villager throws no gift"));
     assert!(e >= 600 && m >= 600, "the gift comes after the 600-tick wait: ecs {e}, mob {m}");
-    // The villagers idle (no post): each strolls to a different place before the 600-tick wait ends, and the walk to the player
-    // (speed 0.5) then takes a different time; the tolerance is that walk's spread, not a draw of the gift.
-    assert!(e.abs_diff(m) <= 40, "gift at tick {e} (ecs) against {m} (mob)");
+    // The villagers idle (no post): each strolls (one stroll per 180 ticks) to a different place before the 600-tick wait ends, and the walk to the player
+    // (speed 0.5) then takes a different time (4 ticks measured, 637 against 633); the tolerance is that walk's spread, not a draw of the gift.
+    assert!(e.abs_diff(m) <= 10, "gift at tick {e} (ecs) against {m} (mob)");
     assert_eq!(to, [3.5, 1.0, 0.5], "the Mob throws toward the player");
     let (dm, de) = (((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt(), (ex - 3.5).abs());
     assert!(dm > 0.5, "the Mob's throw is aimed at the player from {dm} blocks");

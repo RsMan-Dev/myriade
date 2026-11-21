@@ -93,6 +93,35 @@ fn two_villagers_with_an_interaction_target_meet_awake() {
     assert!(looked, "le villageois ne regarde pas son partenaire d'interaction");
 }
 
+/// `TradeWithVillager.tick` (jar) : un villageois qui a trop de nourriture (30 pains = 150 points >= 24) et dont le partenaire en veut
+/// plus jette ce qui dépasse 24 (`throwHalfStack`, 30 <= 32 : le surplus 6) ; le partenaire n'a rien.
+#[test]
+fn a_villager_with_excess_food_throws_the_surplus_to_a_hungry_partner_awake() {
+    if skip() {
+        return;
+    }
+    use horizon_ecs_proto::behaviours::food_inventory::{insert, Stock};
+    let mut h = Herd::with_slab_awake(60, true, false);
+    let e = villager(&mut h);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
+    let other = spawn_species(&mut h.world, &sp, 2.5, 0.5, 2);
+    h.world.get_mut::<ActiveUntil>(other).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(other);
+    super::villager_misc_vs_mob::insert_trade_data(&mut h);
+    insert(&mut h.world, e, "minecraft:bread", 30);
+    for _ in 0..30 {
+        h.tick();
+    }
+    horizon_ecs_proto::behaviours::schedule::Times::set(&mut h.world, 10500);
+    set(&mut h.world, e, &play_tag::INTERACTION_TARGET, MemValue::Who(Who::Entity(other)), None);
+    for _ in 0..10 {
+        h.tick();
+    }
+    let left: u32 = h.world.get::<Stock>(e).map_or(0, |s| s.0.iter().filter(|(n, _)| n == "minecraft:bread").map(|(_, c)| u32::from(*c)).sum());
+    assert_eq!(left, 24, "le surplus de 6 pains n'a pas été jeté");
+}
+
 /// `GiveGiftToHero` (`villager_brain.rs:1579`) : un héros visible n'obtient le cadeau qu'après le délai de 600 tics, une seule fois.
 #[test]
 fn the_gift_to_a_hero_waits_600_ticks_awake() {

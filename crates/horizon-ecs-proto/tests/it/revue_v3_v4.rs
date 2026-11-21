@@ -262,10 +262,9 @@ fn bell_hides_the_villager_for_300_ticks_on_both_sides() {
 
 /// 3. `SetRaidStatus` / `ResetRaidStatus` and the walk inside: a raided villager outside a roof goes under it (the first tick it
 /// is under the roof, tolerance 20), and comes out again once the raid is over (tolerance 20). Ticks are counted from the raid's start.
-#[test]
-fn raided_villager_goes_indoors_and_out_at_the_same_tick_as_a_mob() {
+fn raid_run() -> Option<(Option<i64>, Option<i64>, Option<i64>, Option<i64>, bool)> {
     if skip() {
-        return;
+        return None;
     }
     let mut h = Herd::with_slab_awake(40, true, false);
     roof_ecs(&mut h);
@@ -312,13 +311,27 @@ fn raided_villager_goes_indoors_and_out_at_the_same_tick_as_a_mob() {
             out_mob = Some(t - 200);
         }
     }
+    let over = super::lot_v3_village::ecs_act(&h.world, e) != "raid";
+    Some((in_ecs, out_ecs, in_mob, out_mob, over))
+}
+
+/// Entry under the roof at the same tick on both sides; the raid activity ends with the status (`ResetRaidStatus`).
+#[test]
+fn raided_villager_goes_indoors_at_the_same_tick_as_a_mob() {
+    let Some((in_ecs, _, in_mob, _, over)) = raid_run() else { return };
     assert!(in_ecs.is_some() && in_mob.is_some(), "entrée sous le toit : ECS {in_ecs:?}, Mob {in_mob:?}");
     assert!((in_ecs.unwrap() - in_mob.unwrap()).abs() <= 20, "entrée : ECS {in_ecs:?}, Mob {in_mob:?}");
-    // The exit is not compared: after the hiding place the jar's raid package runs `MoveToSkySeeingSpot` (weight 5 of 7) while the raid is
-    // active, so the ECS leaves the roof during the raid (seen), whereas the Mob stays at the bed for 240 ticks (walk target never
-    // released; not verified against the jar). The ECS must at least leave the raid activity once the raid is over.
-    let _ = (out_ecs, out_mob);
-    assert_ne!(super::lot_v3_village::ecs_act(&h.world, e), "raid".to_string(), "le raid est fini");
+    assert!(over, "le raid est fini");
+}
+
+/// The exit from the roof. The jar's raid package holds `MoveToSkySeeingSpot` (shuffled with the village stroll), so the ECS leaves the
+/// roof while the raid is on; the Mob stays at the bed (240 ticks), cause not read on its side.
+#[test]
+#[ignore = "Mob : reste au lit pendant 240 ticks après la fin du raid, l'ECS est déjà sorti (MoveToSkySeeingSpot du paquet raid du jar) ; cause côté Mob non lue ; écart consigné"]
+fn raided_villager_goes_out_at_the_same_tick_as_a_mob() {
+    let Some((_, out_ecs, _, out_mob, _)) = raid_run() else { return };
+    assert!(out_ecs.is_some() && out_mob.is_some(), "sortie du toit : ECS {out_ecs:?}, Mob {out_mob:?}");
+    assert!((out_ecs.unwrap() - out_mob.unwrap()).abs() <= 40, "sortie : ECS {out_ecs:?}, Mob {out_mob:?}");
 }
 
 /// 4. `MoveToSkySeeingSpot`: from under a roof, the villager reaches a spot out of it, on both sides (tolerance 20 ticks).
