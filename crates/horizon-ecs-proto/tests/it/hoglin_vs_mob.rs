@@ -149,7 +149,7 @@ fn hoglins_strike_every_41_ticks_as_a_mob_does() {
     if !have_data() {
         return;
     }
-    let (m, e) = (mob_run(12, 12.0, 400), ecs_run(12, 12.0, 400));
+    let (m, e) = (mob_run(12, 12.0, 400, 0), ecs_run(12, 12.0, 400, 0));
     let mode = |r: &Run| {
         let mut c = std::collections::HashMap::new();
         for h in &r.hits {
