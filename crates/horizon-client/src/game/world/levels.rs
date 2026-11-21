@@ -48,7 +48,7 @@ use std::{
 
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(super) struct EntityCountView<'a> {
-    pub(super) fixed: [(&'static str, usize); 19],
+    pub(super) fixed: [(&'static str, usize); 18],
     pub(super) mobs: &'a [Mob],
     /// The entities the level's ECS world holds (`EcsLevel::count`), beside the remote list.
     pub(super) ecs: usize,

@@ -1,5 +1,6 @@
 //! Dropped items and experience orbs as the ECS holds them: the spawns, the players' pickups by position, the host's effects of
 //! the ends P reports. P's `item` and `orb` move, merge, expire and collect them; nothing here scans them.
+use horizon_core::random::RandomSource as _;
 use crate::game::{Game, pickups::{Collector, Taken}};
 use bevy_ecs::entity::Entity;
 use horizon_client::items::ItemStack;

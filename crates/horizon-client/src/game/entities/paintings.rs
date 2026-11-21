@@ -2,6 +2,7 @@
 //! variant choice (or the stack's `painting/variant`), `HangingEntity.survives`
 //! checks every 100 ticks, breaking by attack (`dropItem`), saving, and
 //! `PaintingRenderer` quads.
+use horizon_core::random::RandomSource as _;
 use super::{Game, Hit, entity_culling::default_range};
 use horizon_client::{items::ItemStack, mesher::Vertex, random_source};
 use horizon_ecs_proto::targeting::Who;

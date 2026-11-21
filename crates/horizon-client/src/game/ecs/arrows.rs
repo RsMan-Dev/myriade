@@ -2,6 +2,7 @@
 //! knockback on a player (gap: no direction in the event), the pickup a player or a guest asks (the stack goes to the inventory, then
 //! `arrow_taken` answers), the potion effects of a hit, the mod impact of its kind, and the launch of a shot arrow with its end effects
 //! read by `arrow_shot_of`. P hurts the victim itself. Written, not run.
+use horizon_core::random::RandomSource as _;
 use crate::game::{Game, pickups::{Collector, Taken}};
 use horizon_client::{advancements::EntityView, arrows::ArrowState, effects::EffectInstance, health::{Attack, HurtSource}, items::ItemStack};
 use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, host_out_arrows::ArrowEvent, targeting::Who};

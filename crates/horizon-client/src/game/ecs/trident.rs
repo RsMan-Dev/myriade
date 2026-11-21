@@ -1,5 +1,6 @@
 //! The trident events of the ECS (`TridentEvent`), applied by the host's own functions: the blow (advancement, absorption and the hurt of
 //! the player it reaches), the thunder, the landing and the return sounds, and the pickup (the stack back to its taker).
+use horizon_core::random::RandomSource as _;
 use super::super::Game;
 use horizon_client::{enchant::EffectContext, items::ItemStack};
 use horizon_core::random::LegacyRandom;
