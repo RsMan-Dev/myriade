@@ -1485,7 +1485,13 @@ fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
 fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>, Option<&mut LookMemo>), With<Looking>>, mut cmd: Commands) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
     for (e, pos, yaw, mut look, mut h, walking, mut kept) in &mut q {
-        let mut memo = kept.as_deref().copied().unwrap_or_default();
+        // The memo is worked in place (no copy, no change mark): a laid one is written through, a missing one is laid when it holds something.
+        let had = kept.is_some();
+        let mut fresh = LookMemo::default();
+        let memo: &mut LookMemo = match kept.as_mut() {
+            Some(k) => k.bypass_change_detection(),
+            None => &mut fresh,
+        };
         if h.yaw.is_nan() {
             *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z) };
         }
@@ -1540,13 +1546,8 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
         memo.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
         if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {
             cmd.entity(e).remove::<(Looking, LookMemo)>();
-        } else if kept.is_some() || memo.angles.is_some() || memo.settled.is_some() {
-            match kept.as_mut() {
-                Some(k) => **k = memo,
-                None => {
-                    cmd.entity(e).insert(memo);
-                }
-            }
+        } else if !had && (memo.angles.is_some() || memo.settled.is_some()) {
+            cmd.entity(e).insert(*memo);
         }
     }
 }
