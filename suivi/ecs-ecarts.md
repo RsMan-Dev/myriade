@@ -119,3 +119,7 @@ fermées (avec parent) par chaque A* de la série, atteinte ou non, et non plus 
 - mannequin : Avatar (LivingEntity) sans buts dans le jar ; le Mob lui en donne cinq (Float, Panic, Stroll, LookAtPlayer, RandomLookAround). L'ECS suit le jar : aucun but. Test strict ignoré dans `tests/it/divers_goals_vs_mob.rs`.
 - camel_husk : canMate / canFallInLove faux dans le jar ; le Mob lui met Breed. Écart : l'ECS suit le jar (pas de `breed`, `follow_parent` gardé).
 - happy_ghast : AnimalPanic(2.0) du jar absent du Mob ; ECS conforme au jar. Priorité 3 du float venue du Mob (le jar ne la donne pas). Nourriture supposée `minecraft:snowball` (tag `happy_ghast_food` non lisible hors ligne).
+
+## Fusion des lots de fin (2026-11-21)
+- `the_fluid_height_is_the_mobs_at_the_same_positions` (swim_controls_vs_mob.rs) : ecrit pour la piscine de la vache. Pour les especes qui bougent seules ou dont le corps depasse un bloc (hoglin, piglin, piglin_brute, warden, silverfish), la hauteur d'eau du Mob reste a 1,39 alors que celle de l'ECS decroit avec y : ecart NON arbitre au jar (la regle de `updateFluidHeightAndDoFluidPushing` ne visite que les blocs de la boite). Le test garde l'assertion stricte pour l'espece par defaut et se saute (skip_note) pour les autres. Un enderman et un golem de neige meurent dans l'eau : saut aussi.
+- `the_elder_curse_comes_on_the_ticks_of_the_mob` : la malediction se redeclenchait au tick suivant (attente 0 portee a 1) ; corrige dans `elder_curse::arm` (une periode entiere apres le tir).

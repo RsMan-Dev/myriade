@@ -49,13 +49,14 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         w.entity_mut(e).insert(Restriction { center, radius: 16, wanted: None });
     }
 }
-/// The next tick at which `(now + id) % period == 0` (at least one tick away).
+/// The next tick at which `(now + id) % period == 0` (a tick away at least).
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let p = w.get::<Curse>(e).unwrap().p;
     let now = w.resource::<Clock>().of(e) as i64;
     let phase = (now + i64::from(e.index().index())).rem_euclid(p.period);
-    let wait = (p.period - phase) % p.period;
-    crate::goals::arm(w, e, inst.slot, wait.max(1) as i32);
+    // On the firing tick itself (the stop that follows the curse), the next one is a period away, not the next tick.
+    let wait = if phase == 0 { p.period } else { p.period - phase };
+    crate::goals::arm(w, e, inst.slot, wait as i32);
 }
 /// The curse: the players within range that the effect reaches (`MobEffectUtil`'s test), then the sound.
 fn start(w: &mut World, e: Entity, inst: Inst) {

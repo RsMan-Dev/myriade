@@ -905,6 +905,10 @@ fn the_random_look_holds_the_goal_slot_as_the_mob_s_does_when_nobody_sees() {
         for &e in &cows {
             h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
             horizon_ecs_proto::goals::arm_timers(&mut h.world, e);
+            // The stroll of the Mob's animal runs by itself; the ecs one is asked by its own timer, armed here.
+            if h.world.get::<horizon_ecs_proto::cow::Stroll>(e).is_some() {
+                horizon_ecs_proto::behaviours::stroll::arm_now(&mut h.world, e);
+            }
         }
         if r.mobs[mobs[0]].extra.warden.is_some() {
             // The Mob decides by a brain (activities), with no goal selector: there is no RandomLookAround to compare with.
