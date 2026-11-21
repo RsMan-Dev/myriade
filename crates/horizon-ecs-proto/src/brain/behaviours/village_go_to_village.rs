@@ -45,7 +45,7 @@ fn village_sections(w: &mut World, e: Entity, near: Option<[i32; 3]>) -> Vec<[i3
         }
     }
     let own = w.get::<SpeciesId>(e).map(|s| s.0);
-    for who in find_all(w, e, |w, who| matches!(who, Who::Entity(t) if own.is_some() && w.get::<SpeciesId>(t).map(|s| s.0) == own)) {
+    for who in find_all(w, e, |w, who| matches!(who, Who::Entity(t) if own.is_some() && w.get::<SpeciesId>(t).map(|s| s.0) == own && keys.into_iter().any(|k| poi_block(w, t, k).is_some()))) {
         if let Who::Entity(t) = who {
             pois.extend(keys.into_iter().filter_map(|k| poi_block(w, t, k)));
         }

@@ -617,7 +617,6 @@ pub fn sensor_due(w: &mut World, e: Entity, i: u8) {
         (plan.sensors[i].sensor.scan)(w, e, &sensor_ctx(plan, i));
     }
     arm_at(w, e, now + plan.sensors[i].period as u64, Due::Sensor(i as u8));
-    wake(w, e);
 }
 /// The memories whose time is up are forgotten (`Brain.forgetOutdatedMemories`, before the sensors).
 fn expire(w: &mut World, e: Entity, now: u64) {
@@ -717,7 +716,11 @@ pub fn set(w: &mut World, e: Entity, k: &MemKey, v: MemValue, ttl: Option<u64>) 
     // Written again with the same value (a schedule's slice, a re-sensed flag): only the expiry moves, nothing to re-evaluate.
     let same = matches!((&s.v, &v), (Some(MemValue::Unit), MemValue::Unit))
         || matches!((&s.v, &v), (Some(MemValue::Bool(a)), MemValue::Bool(c)) if a == c)
-        || matches!((&s.v, &v), (Some(MemValue::Int(a)), MemValue::Int(c)) if a == c);
+        || matches!((&s.v, &v), (Some(MemValue::Int(a)), MemValue::Int(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Who(a)), MemValue::Who(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Whos(a)), MemValue::Whos(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Block(a)), MemValue::Block(c)) if a == c)
+        || matches!((&s.v, &v), (Some(MemValue::Blocks(a)), MemValue::Blocks(c)) if a == c);
     s.v = Some(v);
     s.token += 1;
     s.until = ttl.map_or(u64::MAX, |t| now + t + 1);
