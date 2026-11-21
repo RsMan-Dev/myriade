@@ -158,6 +158,7 @@ mod instant_brews_vs_original;
 mod type_tags_vs_original;
 mod nbt_tag;
 mod nbt_creatures;
+mod nbt_cles;
 mod passive_entities_vs_original;
 mod lot_fin_villager_wiring;
 mod lot_fin_villager_new;

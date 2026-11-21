@@ -9,8 +9,17 @@ use crate::goals::{Occupied, OCC_SITTING};
 use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant};
 use crate::behaviours::do_nothing::Invulnerable;
 use crate::behaviours::forget_target::LlamaStrength;
-use crate::cow::{now_of, GrowAt};
+use crate::cow::{arm_at, now_of, Due, GrowAt};
 use crate::explosion::{Charged, Fuse};
+use crate::farm::{Egg, Wool};
+use crate::behaviours::bat_flutter::Hanging;
+use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING, SLEEPING as FOX_SLEEPING};
+use crate::behaviours::swim_to_treasure::GotFish;
+use crate::behaviours::lay_egg::Carrying;
+use crate::behaviours::peek::Peek;
+use crate::behaviours::turtle_state::Turtle;
+use crate::behaviours::still_under_riders::StillUntil;
+use crate::behaviours::swallow_hold::SearchAfter;
 use crate::nbt::{accept, owner, Field};
 use crate::size::Size;
 use crate::species::goat::Screaming;
@@ -32,8 +41,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Screaming>) },
     Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<LlamaStrength>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
-    Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Attached>) },
-    Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Attached>) },
+    Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("Peek"), write: write_peek, read: read_peek, accepts: byte, owner: Some(owner::<Peek>) },
+    Field { key: Cow::Borrowed("has_egg"), write: write_has_egg, read: read_has_egg, accepts: byte, owner: Some(owner::<Turtle>) },
     Field { key: Cow::Borrowed("VillagerData"), write: write_villager, read: read_villager, accepts: compound, owner: Some(owner::<Merchant>) },
     Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("HasNectar"), write: write_nectar, read: read_nectar, accepts: byte, owner: Some(owner::<Bee>) },
@@ -45,6 +56,16 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("PuffState"), write: write_puff, read: read_puff, accepts: accept::int, owner: Some(owner::<Puff>) },
     Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<Occupied>) },
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
+    Field { key: Cow::Borrowed("Color"), write: write_wool_color, read: read_wool_color, accepts: byte, owner: Some(owner::<Wool>) },
+    Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("Crouching"), write: write_fox_crouching, read: read_fox_crouching, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("Sleeping"), write: write_fox_sleeping, read: read_fox_sleeping, accepts: byte, owner: Some(owner::<FoxFlags>) },
+    Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: byte, owner: Some(owner::<GotFish>) },
+    Field { key: Cow::Borrowed("TicksSincePollination"), write: write_pollination, read: read_pollination, accepts: accept::int, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Hanging>) },
+    Field { key: Cow::Borrowed("still_timeout"), write: write_still, read: read_still, accepts: accept::int, owner: Some(owner::<StillUntil>) },
+    Field { key: Cow::Borrowed("pickup_timer"), write: write_pickup, read: read_pickup, accepts: accept::int, owner: Some(owner::<SearchAfter>) },
 ];
 
 fn int_array(t: &Tag) -> bool {
@@ -182,6 +203,35 @@ fn read_face(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
     a.face = *v as u8;
+    true
+}
+
+/// `Peek` of a shulker: the raw lid opening (0 to 100), from `Attached` (`peek` moves it).
+fn write_peek(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Attached>(e) {
+        c.insert("Peek".into(), Tag::Byte(a.raw as i8));
+    }
+}
+
+fn read_peek(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
+    a.raw = i32::from(*v);
+    true
+}
+
+/// `has_egg` of a turtle: a byte of one while it carries its egg (`Carrying`, the lay load).
+fn write_has_egg(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("has_egg".into(), Tag::Byte(i8::from(w.get::<Carrying>(e).is_some())));
+}
+
+fn read_has_egg(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Carrying);
+    } else {
+        w.entity_mut(e).remove::<Carrying>();
+    }
     true
 }
 
@@ -372,5 +422,175 @@ fn read_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     let Some(mut o) = w.get_mut::<Occupied>(e) else { return false };
     if *v != 0 { o.0 |= OCC_SITTING } else { o.0 &= !OCC_SITTING }
+    true
+}
+
+/// `EggLayTime`: the ticks until the next egg (an int), the due tick less now when the timer runs, else the ticks left (`Egg.left`).
+fn write_egg_time(w: &World, e: Entity, c: &mut Compound) {
+    let Some(g) = w.get::<Egg>(e) else { return };
+    let left = if g.at == u64::MAX { g.left } else { g.at.saturating_sub(now_of(w, e)) };
+    c.insert("EggLayTime".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+/// A read of a running timer re-arms it at the new due tick; an idle one keeps the ticks left until it runs.
+fn read_egg_time(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    let now = now_of(w, e);
+    let at = {
+        let Some(mut g) = w.get_mut::<Egg>(e) else { return false };
+        if g.at == u64::MAX {
+            g.left = ticks;
+            return true;
+        }
+        g.at = now + ticks;
+        g.at
+    };
+    arm_at(w, e, at, Due::Egg);
+    true
+}
+
+/// `Color` of a sheep: the dye of its wool (a byte, 0 to 15).
+fn write_wool_color(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(wool) = w.get::<Wool>(e) {
+        c.insert("Color".into(), Tag::Byte(wool.color as i8));
+    }
+}
+
+fn read_wool_color(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut wool) = w.get_mut::<Wool>(e) else { return false };
+    wool.color = (*v as u8) & 15;
+    true
+}
+
+/// A bit of the flags of a fox (`fox_state`): written as a byte, read back by setting or clearing the bit.
+fn put_fox_bit(w: &World, e: Entity, c: &mut Compound, key: &str, bit: u8) {
+    if let Some(f) = w.get::<FoxFlags>(e) {
+        c.insert(key.into(), Tag::Byte(i8::from(f.0 & bit != 0)));
+    }
+}
+
+fn set_fox_bit(w: &mut World, e: Entity, t: &Tag, bit: u8) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<FoxFlags>(e) else { return false };
+    if *v != 0 { f.0 |= bit } else { f.0 &= !bit }
+    true
+}
+
+/// `Sitting` of a fox: the sitting bit of its flags.
+fn write_fox_sitting(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Sitting", FOX_SITTING);
+}
+
+fn read_fox_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    set_fox_bit(w, e, t, FOX_SITTING)
+}
+
+/// `Crouching` of a fox: the crouching bit; a load that sets it starts the crouch clock at the load's time.
+fn write_fox_crouching(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Crouching", FOX_CROUCHING);
+}
+
+fn read_fox_crouching(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let now = now_of(w, e);
+    if !set_fox_bit(w, e, t, FOX_CROUCHING) {
+        return false;
+    }
+    if let (Tag::Byte(v), Some(mut c)) = (t, w.get_mut::<Crouch>(e)) {
+        if *v != 0 && c.0.is_none() {
+            c.0 = Some(now);
+        } else if *v == 0 {
+            c.0 = None;
+        }
+    }
+    true
+}
+
+/// `Sleeping` of a fox: the sleeping bit of its flags.
+fn write_fox_sleeping(w: &World, e: Entity, c: &mut Compound) {
+    put_fox_bit(w, e, c, "Sleeping", FOX_SLEEPING);
+}
+
+fn read_fox_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
+    set_fox_bit(w, e, t, FOX_SLEEPING)
+}
+
+/// `GotFish` of a dolphin: a byte of one while the marker is there.
+fn write_got_fish(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<GotFish>(e).is_some() {
+        c.insert("GotFish".into(), Tag::Byte(1));
+    }
+}
+
+fn read_got_fish(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(GotFish);
+    } else {
+        w.entity_mut(e).remove::<GotFish>();
+    }
+    true
+}
+
+/// `TicksSincePollination`: the ticks since the bee last had nectar (an int), from `Bee.no_nectar_since` (its own time).
+fn write_pollination(w: &World, e: Entity, c: &mut Compound) {
+    let Some(b) = w.get::<Bee>(e) else { return };
+    let ticks = now_of(w, e).saturating_sub(b.no_nectar_since);
+    c.insert("TicksSincePollination".into(), Tag::Int(i32::try_from(ticks).unwrap_or(i32::MAX)));
+}
+
+fn read_pollination(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let since = now_of(w, e).saturating_sub(u64::try_from(*v).unwrap_or(0));
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.no_nectar_since = since;
+    true
+}
+
+/// `BatFlags`: bit 0 while the bat hangs (its `Hanging` marker). The perch is the bat's own state: a load keeps it.
+fn write_bat_flags(_: &World, _: Entity, c: &mut Compound) {
+    c.insert("BatFlags".into(), Tag::Byte(1));
+}
+
+fn read_bat_flags(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_))
+}
+
+/// `still_timeout`: the ticks left of the stillness (an int), from `StillUntil` (its own time); 0 takes the marker away.
+fn write_still(w: &World, e: Entity, c: &mut Compound) {
+    let Some(s) = w.get::<StillUntil>(e) else { return };
+    let left = s.0.saturating_sub(now_of(w, e));
+    c.insert("still_timeout".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+fn read_still(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    if ticks == 0 {
+        w.entity_mut(e).remove::<StillUntil>();
+    } else {
+        let until = now_of(w, e) + ticks;
+        w.entity_mut(e).insert(StillUntil(until));
+    }
+    true
+}
+
+/// `pickup_timer`: the ticks left before the cube searches again (an int), from `SearchAfter` (its own time); 0 takes the marker away.
+fn write_pickup(w: &World, e: Entity, c: &mut Compound) {
+    let Some(s) = w.get::<SearchAfter>(e) else { return };
+    let left = s.0.saturating_sub(now_of(w, e));
+    c.insert("pickup_timer".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+
+fn read_pickup(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let ticks = u64::try_from(*v).unwrap_or(0);
+    if ticks == 0 {
+        w.entity_mut(e).remove::<SearchAfter>();
+    } else {
+        let until = now_of(w, e) + ticks;
+        w.entity_mut(e).insert(SearchAfter(until));
+    }
     true
 }
