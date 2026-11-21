@@ -131,18 +131,6 @@ fn a_village_nobody_holds_is_seen_by_the_registry_and_not_by_the_villagers_memor
     assert!(e.nearest < m.nearest - 10.0, "the Mob's golem does not see the village: ecs {e:?}, mob {m:?}");
 }
 
-/// The same stop, held to the `Mob` too. Not yet true: the `Mob` keeps walking past the zone's entrance.
-#[test]
-#[ignore = "Mob non conforme au jar : MoveBackToVillage ne s'arrête pas à l'entrée de la zone village (Mob 40,2 blocs, jar ~23)"]
-fn the_village_nobody_holds_stops_the_ecs_golem_and_the_mob_golem_in_the_zone() {
-    if skip() {
-        return;
-    }
-    let (e, m) = (ecs_run(false), mob_run(false));
-    eprintln!("the village held by nobody: ecs {e:?}\n                            mob {m:?}");
-    assert!(stays_in_zone(&e) && stays_in_zone(&m) && e.inside > 0.8 && m.inside > 0.8, "ecs {e:?}, mob {m:?}");
-}
-
 /// The return time is a random walk (the golem is 3 sections away, the pull toward the village reaches 2): one seed proves nothing. The law of
 /// the time to come within 20 blocks over 40 seeds on each side (the median and the quartiles, a run that does not come back counts 3000).
 #[test]

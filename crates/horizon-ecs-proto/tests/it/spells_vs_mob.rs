@@ -21,6 +21,13 @@ fn idle(mut s: Species) -> Species {
     s
 }
 
+/// The species with its target entries only (`idle` drops them with the goals, and a goal-less entity never asks for a target).
+fn targets_only(mut s: Species) -> Species {
+    let keep: Vec<_> = s.goals.entries.iter().filter(|e| e.module.flags & horizon_ecs_proto::goals::TARGET != 0).copied().collect();
+    s.goals = horizon_ecs_proto::species::Config { entries: Box::leak(keep.into_boxed_slice()) };
+    s
+}
+
 /// The tick of the Mob's `Wololo` event for an evoker with a blue sheep 5 blocks away, and the sheep's colour afterwards.
 fn mob_wololo(blue: bool) -> Option<usize> {
     let mut r = MobRef::new(24, false);
@@ -143,8 +150,8 @@ fn an_illusioner_blinds_a_target_once_as_the_mob_s_does() {
 }
 
 /// An evoker and an iron golem 6 blocks away, a stone wall between them: does each side target the golem within 40 ticks.
-fn golem_behind_wall() -> (bool, bool) {
-    let cells: Vec<(i32, i32, i32)> = (-3..=3).flat_map(|z| (1..=3).map(move |y| (3, y, z))).collect();
+fn golem_behind_wall(wall: bool) -> (bool, bool) {
+    let cells: Vec<(i32, i32, i32)> = (-3..=3).flat_map(|z| (1..=3).map(move |y| (3, y, z))).filter(|_| wall).collect();
     let mut r = MobRef::new(24, false);
     for &(x, y, z) in &cells {
         r.set_block(x, y, z, "minecraft:stone");
@@ -162,7 +169,7 @@ fn golem_behind_wall() -> (bool, bool) {
     for &(x, y, z) in &cells {
         h.set_block(x, y, z, "minecraft:stone");
     }
-    let (ec, gc) = (idle(named(&h, "minecraft:evoker")), idle(named(&h, "minecraft:iron_golem")));
+    let (ec, gc) = (targets_only(named(&h, "minecraft:evoker")), idle(named(&h, "minecraft:iron_golem")));
     let e = spawn_species(&mut h.world, &ec, 0.5, 0.5, 7);
     let g = spawn_species(&mut h.world, &gc, 6.5, 0.5, 8);
     for x in [e, g] {
@@ -175,15 +182,17 @@ fn golem_behind_wall() -> (bool, bool) {
     }
     (r.mobs[ev].ai.target.is_some(), h.world.get::<Target>(e).is_some())
 }
-/// The evoker's golem target (`must_see` off, the jar: 60 ticks of memory without sight): the golem behind a wall is targeted on both sides.
+/// The evoker's golem target (`must_see` off): `NearestAttackableTargetGoal` never calls `ignoreLineOfSight` (jar: `forCombat().range().selector()`),
+/// `mustSee` only decides whether a target is kept (`TargetGoal.canContinueToUse`). So the golem is acquired in the open and not behind a wall, as
+/// the Mob does.
 #[test]
-#[ignore = "Mob non conforme au jar : cible golem de l'evoker avec vue exigée et mémoire 300 ; jar : sans vue, 60"]
-fn an_evoker_targets_an_iron_golem_it_cannot_see_as_the_mob_does() {
+fn an_evoker_targets_an_iron_golem_only_in_sight_as_the_mob_does() {
     if !have_data() {
         return;
     }
-    let (m, e) = golem_behind_wall();
-    eprintln!("evoker golem target behind a wall: mob {m}, ecs {e}");
-    assert!(e, "the ecs evoker targets the golem behind the wall");
-    assert_eq!(m, e, "the Mob evoker targets it too");
+    let (m_open, e_open) = golem_behind_wall(false);
+    let (m_wall, e_wall) = golem_behind_wall(true);
+    eprintln!("evoker golem target: open mob {m_open}, ecs {e_open}; behind a wall mob {m_wall}, ecs {e_wall}");
+    assert!(m_open && e_open, "in the open both target the golem");
+    assert!(!m_wall && !e_wall, "behind a wall neither does");
 }
