@@ -3,6 +3,9 @@
 //! n'écrit pas.
 use crate::behaviours::attached_face::Attached;
 use crate::behaviours::bee::Bee;
+use crate::behaviours::cat_state::Trusting;
+use crate::behaviours::pufferfish_puff::Puff;
+use crate::goals::{Occupied, OCC_SITTING};
 use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant};
 use crate::behaviours::do_nothing::Invulnerable;
 use crate::behaviours::forget_target::LlamaStrength;
@@ -35,6 +38,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("HasStung"), write: write_stung, read: read_stung, accepts: byte, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("CannotEnterHiveTicks"), write: write_stay_out, read: read_stay_out, accepts: accept::int, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("hive_pos"), write: write_hive, read: read_hive, accepts: int_array, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("Trusting"), write: write_trusting, read: read_trusting, accepts: byte, owner: None },
+    Field { key: Cow::Borrowed("CropsGrownSincePollination"), write: write_crops, read: read_crops, accepts: accept::int, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("PuffState"), write: write_puff, read: read_puff, accepts: accept::int, owner: Some(owner::<Puff>) },
+    Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<Occupied>) },
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
 ];
 
@@ -291,4 +298,60 @@ fn write_baby(w: &World, e: Entity, c: &mut Compound) {
 
 fn read_baby(_: &mut World, _: Entity, t: &Tag) -> bool {
     matches!(t, Tag::Byte(_))
+}
+
+/// `Trusting` is a marker: written when present; the read of 1 sets it (an ocelot only).
+fn write_trusting(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Trusting>(e).is_some() {
+        c.insert("Trusting".into(), Tag::Byte(1));
+    }
+}
+
+fn read_trusting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Trusting);
+    }
+    true
+}
+
+fn write_crops(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<Bee>(e) {
+        c.insert("CropsGrownSincePollination".into(), Tag::Int(b.crops));
+    }
+}
+
+fn read_crops(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let Some(mut b) = w.get_mut::<Bee>(e) else { return false };
+    b.crops = *v;
+    true
+}
+
+/// The pufferfish's `PuffState` (0 deflated, 1 half, 2 full).
+fn write_puff(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<Puff>(e) {
+        c.insert("PuffState".into(), Tag::Int(i32::from(p.size)));
+    }
+}
+
+fn read_puff(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let Some(mut p) = w.get_mut::<Puff>(e) else { return false };
+    p.size = (*v).clamp(0, 2) as u8;
+    true
+}
+
+/// `TamableAnimal.Sitting`, the sitting bit of the occupations.
+fn write_sitting(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(o) = w.get::<Occupied>(e) {
+        c.insert("Sitting".into(), Tag::Byte(i8::from(o.0 & OCC_SITTING != 0)));
+    }
+}
+
+fn read_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut o) = w.get_mut::<Occupied>(e) else { return false };
+    if *v != 0 { o.0 |= OCC_SITTING } else { o.0 &= !OCC_SITTING }
+    true
 }

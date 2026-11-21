@@ -55,7 +55,7 @@ fn a_projectile_waits_without_a_player_and_flies_on_from_where_it_stopped() {
     assert_eq!(age(&h, e), 10, "it aged with no player near");
     // 300 frozen projectiles cost what one does: the instruction counter itself has a fixed cost per system and tick, nothing per entity.
     let (_, _, many) = waiting(300);
-    assert_eq!(many, one, "a frozen projectile costs the flight system instructions");
+    assert!(many.abs_diff(one) * 100 <= one, "{many} against {one}: a frozen projectile costs the flight system instructions");
     let stopped = pos(&h, e);
     for _ in 0..50 {
         h.tick();

@@ -108,7 +108,6 @@ fn gap(r: &Run) -> (f64, i64) {
 
 /// Hoglins around a still player: acquisition, first strike, cadence, in a ring of 12 blocks.
 #[test]
-#[ignore = "mean gap 49.0 (ecs) vs 43.7 (mob): the cadence is equal (every regular gap is 41 in both runs), the mean differs by the long gaps after a miss or a knockback (ecs up to 172, mob up to 82); origin of these long gaps not established, see suivi/ecs-ecarts.md"]
 fn hoglins_hunt_a_still_player_as_a_mob_does() {
     if !have_data() {
         return;
@@ -125,7 +124,10 @@ fn hoglins_hunt_a_still_player_as_a_mob_does() {
         }
         all
     };
-    let (m, e) = (pool((0..7u32).map(|k| mob_run(12, 12.0, 400, k)).collect()), pool((0..7u32).map(|k| ecs_run(12, 12.0, 400, u64::from(k))).collect()));
+    let seeds: u32 = std::env::var("HOGLIN_SEEDS").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
+    let (m, e) = (pool((0..seeds).map(|k| mob_run(12, 12.0, 400, k)).collect()), pool((0..seeds).map(|k| ecs_run(12, 12.0, 400, u64::from(k))).collect()));
+    let longest = |r: &Run| r.hits.iter().flat_map(|h| h.windows(2).map(|w| w[1] - w[0])).max().unwrap_or(0);
+    eprintln!("longest gap: mob {} ecs {}", longest(&m), longest(&e));
     eprintln!(
         "ring 12 hoglin: acquired mob {:.1} ecs {:.1}; first hit mob {:.1} ecs {:.1}; gap (mean, min) mob {:?} ecs {:?}",
         mean_of(&m.acquired),
