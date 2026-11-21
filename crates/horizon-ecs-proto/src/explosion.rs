@@ -53,6 +53,8 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
     let (min_y, max_y) = (mw.world.bottom_y(), mw.world.top_y());
     let mut rng = w.resource::<ExplosionRng>().0;
     let mut set: Vec<[i32; 3]> = Vec::new();
+    // The tag answer of each block state met (the same few states along the 1352 rays).
+    let mut immune: Vec<(u32, bool)> = Vec::new();
     for xx in 0..16 {
         for yy in 0..16 {
             for zz in 0..16 {
@@ -62,6 +64,7 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
                 let (mut xd, mut yd, mut zd) = (f64::from(xx as f32 / 15.0 * 2.0 - 1.0), f64::from(yy as f32 / 15.0 * 2.0 - 1.0), f64::from(zz as f32 / 15.0 * 2.0 - 1.0));
                 let d = (xd * xd + yd * yd + zd * zd).sqrt();
                 (xd, yd, zd) = (xd / d, yd / d, zd / d);
+                let mut last = None;
                 let mut power = radius * (0.7 + rng.next_float() * 0.6);
                 let (mut xp, mut yp, mut zp) = (c.x, c.y, c.z);
                 while power > 0.0 {
@@ -69,13 +72,25 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
                     if pos[1] < min_y || pos[1] >= max_y {
                         break;
                     }
-                    let state = mw.world.block(pos[0], pos[1], pos[2]);
+                    // Steps are 0.3 apart: several in a row stay in one block.
+                    let state = match last {
+                        Some((p, s)) if p == pos => s,
+                        _ => mw.world.block(pos[0], pos[1], pos[2]),
+                    };
+                    last = Some((pos, state));
                     let f = mw.facts.get(state);
                     let fluid = if f.fluid != horizon_client_lib::blocks::Fluid::None { 100.0_f32 } else { 0.0 };
                     if !mw.facts.is_air(state) || f.fluid != horizon_client_lib::blocks::Fluid::None {
                         let mut res = f.explosion_resistance.max(fluid);
                         // `WitherSkull.getBlockExplosionResistance`: a blue skull's blast gives the wither-destroyable blocks at most 0.8.
-                        if skull && !mw.facts.is_air(state) && !crate::level::has_block_tag(w, "minecraft:wither_immune", pos) {
+                        if skull && !mw.facts.is_air(state) && !(match immune.iter().find(|t| t.0 == state.0) {
+                            Some(t) => t.1,
+                            None => {
+                                let v = crate::level::has_block_tag(w, "minecraft:wither_immune", pos);
+                                immune.push((state.0, v));
+                                v
+                            }
+                        }) {
                             res = res.min(0.8);
                         }
                         power -= (res + 0.3) * 0.3;
