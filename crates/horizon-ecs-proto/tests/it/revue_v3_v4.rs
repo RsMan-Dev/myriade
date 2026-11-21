@@ -93,6 +93,19 @@ fn bed_ecs(h: &mut Herd) {
     h.set_block_state(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
     h.set_block_state(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
 }
+/// Two more beds (z 2 and 4): with the first, one bed per parent and one for the child.
+fn extra_beds_ecs(h: &mut Herd) {
+    for z in [2, 4] {
+        h.set_block_state(8, 1, z, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
+        h.set_block_state(7, 1, z, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
+    }
+}
+fn extra_beds_mob(r: &MobRef) {
+    for z in [2, 4] {
+        r.set_block_props(8, 1, z, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
+        r.set_block_props(7, 1, z, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
+    }
+}
 fn bed_mob(r: &MobRef) {
     r.set_block_props(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
     r.set_block_props(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
@@ -374,6 +387,7 @@ fn two_villagers_with_food_and_beds_have_a_baby_at_the_same_delay() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     bed_ecs(&mut h);
+    extra_beds_ecs(&mut h);
     let a = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 26);
     let b = spawn(&mut h, "minecraft:villager", 1.5, 0.5, 27);
     for &p in &[a, b] {
@@ -389,11 +403,12 @@ fn two_villagers_with_food_and_beds_have_a_baby_at_the_same_delay() {
     let due = h.world.get::<breed_love::Mating>(by).unwrap().birth;
     let mut r = mob_day();
     bed_mob(&r);
+    extra_beds_mob(&r);
     r.apply_block_events();
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let j = r.add_kind(Vec3::new(1.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     for k in [i, j] {
-        villager::ext_mut(&mut r.mobs[k]).add_item(ItemStack::new("minecraft:wheat", 3), 64);
+        villager::ext_mut(&mut r.mobs[k]).add_item(ItemStack::new("minecraft:bread", 3), 64);
     }
     let (mut love, mut born) = (None, None);
     for t in 1..=2500i64 {
@@ -401,7 +416,7 @@ fn two_villagers_with_food_and_beds_have_a_baby_at_the_same_delay() {
         if love.is_none() && (mob_token(&r.mobs[i], "breed_target") || mob_token(&r.mobs[j], "breed_target")) {
             love = Some(t);
         }
-        if born.is_none() && r.events.iter().any(|ev| matches!(ev, MobEvent::Breed { .. })) {
+        if born.is_none() && r.events.iter().any(|ev| matches!(ev, MobEvent::VillagerBirth { child: Some(_), .. })) {
             born = Some(t);
         }
     }
@@ -440,12 +455,12 @@ fn villagers_without_a_free_bed_have_no_baby() {
     let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     let j = r.add_kind(Vec3::new(1.5, 1.0, 0.5), mob_kind("minecraft:villager"));
     for k in [i, j] {
-        villager::ext_mut(&mut r.mobs[k]).add_item(ItemStack::new("minecraft:wheat", 3), 64);
+        villager::ext_mut(&mut r.mobs[k]).add_item(ItemStack::new("minecraft:bread", 3), 64);
     }
     for _ in 0..2500 {
         mstep(&mut r);
     }
-    let mob_babies = r.events.iter().filter(|ev| matches!(ev, MobEvent::Breed { .. })).count();
+    let mob_babies = r.events.iter().filter(|ev| matches!(ev, MobEvent::VillagerBirth { child: Some(_), .. })).count();
     assert_eq!(ecs_babies, 0, "sans lit libre, pas de bébé (ECS)");
     assert_eq!(mob_babies, 0, "sans lit libre, pas de bébé (Mob)");
 }
